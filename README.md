@@ -45,10 +45,11 @@ muster
 | `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `v` | have Claude Code review the selected worktree's change, in plan mode (it changes nothing) |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
-| `⇥` | switch between all sessions, *Needs you* and *Tickets* |
+| `1` `2` `3` | show *Sessions*, *Needs you* or *Tickets* (the tabs at the top); `⇥` goes round them |
+| `esc` `⌫` | back to *Sessions* from *Needs you* or *Tickets* |
 | `q` | quit the UI (sessions keep running) |
 
-In a full-screen session every key goes to the program; **Ctrl-]** comes back to the list.
+In a full-screen session every key goes to the program, Esc and Backspace included (Claude Code needs them); **Ctrl-]** comes back to the list.
 
 | Key | On the *Tickets* screen |
 |---|---|
