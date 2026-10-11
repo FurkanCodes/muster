@@ -40,6 +40,7 @@ The daemon is the only process that owns agent processes and talks to Docker, Gi
 | `muster-core` | IDs (ULID newtypes), entities, protocol types, typed error codes, harness descriptor types | No IO (`ARC-01`) |
 | `muster-state` | The pure state machines: session status and run stages, each `step(state, event, now) -> (state, Vec<Effect>)` | No IO, no async, injected clock (`ARC-01`) |
 | `muster-daemon` | Supervisor, store, IPC server, PTY host, container runtime, hook receiver, scheduler, sampler, sources, git host, harness drivers and parsers | Every external system behind a trait (`ARC-03`) |
+| `muster-client` | The async framed transport over the socket, and a client connection that performs the handshake; shared by the daemon, the TUI, the binary and the e2e tests | No business logic |
 | `muster-tui` | ratatui client: sessions, runs, needs-you, resources, terminal view | Renders state; holds no business logic |
 | `muster` | The binary (clap): no args opens the TUI; `daemon`, `run <issue-url>`, `spawn`, `status`, `doctor` | Thin |
 
@@ -62,6 +63,7 @@ Main dependencies: tokio, portable-pty, vt100 + tui-term, bollard (Docker API), 
 - **PTY host:** portable-pty spawns the harness in the worktree as the user, with the user's environment minus variables of any parent agent session. One reader thread per PTY feeds a bounded channel (backpressure); a pump batches output (up to 8 KiB or 5 ms, sent at once after a quiet spell so typed echo is never delayed) into a 1 MiB ring numbered by byte offset and broadcasts it.
 - **Attach:** `Attach { session, from_seq }` replays the ring and continues live; a client that falls off the ring gets the whole ring and resets its parser. The forwarder rebinds when a session is relaunched under the same id.
 - **Stop:** SIGHUP, then SIGKILL to every process group under the child after 3 s. A natural exit is told apart from a deliberate stop.
+- **No inherited descriptors:** an agent must not inherit the daemon's sockets or files. macOS cannot create a socket close-on-exec in one step, so a spawn racing a `bind` can leak a listening socket into the child, which then keeps a dead socket accepting connections (seen in the e2e tests). The child closes every descriptor above stderr before `exec`.
 - **Worktrees:** created with `git worktree add` under Muster's data directory (configurable), on a branch the user names or `muster/<slug>`. The worktree's metadata in the repo's `.git` is git's own mechanism; Muster writes nothing else into the user's repository (`ARC-05`).
 
 ### Hands-on in a container (M2)
@@ -82,7 +84,7 @@ Copied from Nebula where it is good, fixed where it is not.
 - **Transport and framing:** Unix socket `<runtime>/daemon.sock` with mode 0700. Frames are `[u32 LE length][MessagePack]`, capped at 4 MiB and checked before allocating.
 - **Handshake:** `Hello { min_version, max_version, capabilities }`, answered with the agreed version or `Incompatible`. Encoded with named fields (`rmp_serde::to_vec_named`) so the handshake can grow; Nebula's positional encoding froze it.
 - **Planes,** each its own enum rather than one 45-variant request type:
-  - *State:* `Subscribe` registers for deltas **before** the snapshot is taken, then streams `Upserted`, `Removed`, `StatusChanged` and `Transitioned`. A subscriber that falls behind gets a fresh snapshot instead of the lost deltas.
+  - *State:* `Subscribe` returns a snapshot, then streams `Upserted`, `Removed`, `StatusChanged` and `Transitioned`. The Supervisor takes the snapshot and opens the subscription in the same step, so no delta is missed or repeated — simpler than Nebula's subscribe-before-snapshot ordering, which a single owner makes unnecessary. A subscriber that falls behind gets a fresh snapshot instead of the lost deltas.
   - *Stream:* `Attach { session, stream, from_seq }`, `Input`, `Resize`, `Detach`. Streams are a PTY's terminal output, a headless agent's raw JSONL and parsed events, and check output.
   - *Commands:* carry a `req_id` and get `Ack`, a typed reply, or `Error { code, message }` with a machine-readable code (`ARC-07`).
 - **One writer task per connection,** so replies and stream frames never interleave.
