@@ -13,7 +13,7 @@ use muster_core::protocol::{
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::pty::PtyHandle;
@@ -90,8 +90,9 @@ struct Connection {
     outgoing: mpsc::Sender<ServerFrame>,
     supervisor: SupervisorHandle,
     pump: Option<JoinHandle<()>>,
-    /// Terminals this client has used, so keystrokes skip the Supervisor.
-    terminals: HashMap<SessionId, PtyHandle>,
+    /// Terminals this client has used, so keystrokes skip the Supervisor:
+    /// each session's current one, which follows it to a new program.
+    terminals: HashMap<SessionId, watch::Receiver<Option<PtyHandle>>>,
     /// One output stream per attached session.
     forwarders: HashMap<SessionId, JoinHandle<()>>,
 }
@@ -126,11 +127,7 @@ impl Connection {
                     });
                 }
                 ClientFrame::Attach { session, from_seq } => self.attach(session, from_seq).await,
-                ClientFrame::Detach { session } => {
-                    if let Some(forwarder) = self.forwarders.remove(&session) {
-                        forwarder.abort();
-                    }
-                }
+                ClientFrame::Detach { session } => self.stop_forwarding(session).await,
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await
                         && !pty.input(data).await
@@ -151,33 +148,49 @@ impl Connection {
     }
 
     async fn attach(&mut self, session: SessionId, from_seq: Option<u64>) {
-        if let Some(old) = self.forwarders.remove(&session) {
-            old.abort();
-        }
-        let Some(pty) = self.supervisor.terminal(session, true).await else {
+        self.stop_forwarding(session).await;
+        let Some(link) = self.supervisor.terminal(session, true).await else {
             self.detached(session).await;
             return;
         };
-        self.terminals.insert(session, pty.clone());
-        let forwarder = forward_output(session, pty, from_seq, self.outgoing.clone());
+        self.terminals.insert(session, link.current.clone());
+        let forwarder = forward_output(session, link, from_seq, self.outgoing.clone());
         self.forwarders.insert(session, tokio::spawn(forwarder));
     }
 
-    /// The session's terminal, asking the Supervisor only the first time.
+    /// Stops streaming `session` to this client, and waits until the stream
+    /// has ended, so its watch is over before the next frame is read.
+    async fn stop_forwarding(&mut self, session: SessionId) {
+        if let Some(forwarder) = self.forwarders.remove(&session) {
+            forwarder.abort();
+            let _ = forwarder.await;
+        }
+    }
+
+    /// The session's current terminal, asking the Supervisor only the first
+    /// time.
     async fn terminal(&mut self, session: SessionId) -> Option<PtyHandle> {
-        if let Some(pty) = self.terminals.get(&session) {
-            return Some(pty.clone());
-        }
-        match self.supervisor.terminal(session, false).await {
-            Some(pty) => {
-                self.terminals.insert(session, pty.clone());
-                Some(pty)
-            }
-            None => {
-                self.detached(session).await;
-                None
+        if !self.terminals.contains_key(&session) {
+            match self.supervisor.terminal(session, false).await {
+                Some(link) => {
+                    self.terminals.insert(session, link.current);
+                }
+                None => {
+                    self.detached(session).await;
+                    return None;
+                }
             }
         }
+        let current = self.terminals.get(&session)?;
+        // A closed link keeps its last value; the terminal is released.
+        let pty = match current.has_changed() {
+            Ok(_) => current.borrow().clone(),
+            Err(_) => None,
+        };
+        if pty.is_none() {
+            self.forget(session).await;
+        }
+        pty
     }
 
     /// The terminal was released: tell the client and stop using it.

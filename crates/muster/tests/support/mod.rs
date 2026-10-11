@@ -33,7 +33,8 @@ pub(crate) struct Sandbox {
 /// then the hook socket and token it was given), then behaves like a shell
 /// so tests can type into it. While the FAKE_CLAUDE_RESUME_FAILS flag file
 /// exists, a resume exits at once, as a real one does when the conversation
-/// is gone.
+/// is gone; with FAKE_CLAUDE_RESUME_FAILS_LATE, it says so and exits after
+/// a second, long enough for a client to be watching.
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
 dir="$FAKE_CLAUDE_DIR/$MUSTER_SESSION"
 mkdir -p "$dir"
@@ -42,6 +43,9 @@ printf '%s\n%s\n' "$MUSTER_HOOK_SOCKET" "$MUSTER_HOOK_TOKEN" > "$dir/launch-$n.e
 for arg in "$@"; do printf '%s\0' "$arg"; done > "$dir/launch-$n.part"
 mv "$dir/launch-$n.part" "$dir/launch-$n.args"
 if [ "$1" = "--resume" ] && [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_RESUME_FAILS" ]; then exit 1; fi
+if [ "$1" = "--resume" ] && [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_RESUME_FAILS_LATE" ]; then
+  echo "resume-failing-$((40+2))"; sleep 1; exit 1
+fi
 exec /bin/sh
 "#;
 

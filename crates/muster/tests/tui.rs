@@ -193,3 +193,39 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     assert!(stdout.contains("Shell"), "{stdout}");
     assert!(!stdout.contains("exited"), "{stdout}");
 }
+
+#[test]
+fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let socket = sandbox.paths().socket();
+    let _stop = StopDaemon(socket.clone());
+
+    let ui = Ui::start(&sandbox, &root);
+    ui.wait_for("daemon 0.1.0");
+    let first = daemon_pid(&socket).expect("the UI started a daemon");
+    let pid = Pid::from_raw(i32::try_from(first).unwrap());
+    kill(pid, Signal::SIGTERM).unwrap();
+
+    // The UI waits for its child, so no zombie is left: signalling the pid
+    // fails once it is gone, which a zombie's would not.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while kill(pid, None).is_ok() {
+        assert!(
+            Instant::now() < deadline,
+            "daemon {first} lingers as a zombie"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    // The UI notices and starts a new daemon.
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        match daemon_pid(&socket) {
+            Some(second) if second != first => break,
+            _ => assert!(Instant::now() < deadline, "no new daemon"),
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    ui.wait_for("daemon 0.1.0");
+}

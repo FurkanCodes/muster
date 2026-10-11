@@ -11,6 +11,7 @@
 mod issues;
 mod projects;
 mod sessions;
+mod terminals;
 mod worktrees;
 
 use std::collections::HashMap;
@@ -18,12 +19,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use muster_core::protocol::{
-    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot,
+    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot, TermSize,
 };
 use muster_core::{SessionId, SessionStatus};
 use muster_state::session::{Effect, SessionMachine, Signal};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
+pub(crate) use self::terminals::TerminalLink;
 use crate::clock::Clock;
 use crate::harness::{Harness, claude};
 use crate::hooks::HookDelivery;
@@ -38,11 +40,11 @@ enum Request {
         command: Command,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     },
-    /// A client wants a session's terminal; `viewed` when it will show it.
+    /// A client wants a session's terminal; `watch` when it will show it.
     Terminal {
         session: SessionId,
-        viewed: bool,
-        reply: oneshot::Sender<Option<PtyHandle>>,
+        watch: bool,
+        reply: oneshot::Sender<Option<TerminalLink>>,
     },
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
@@ -107,14 +109,14 @@ impl SupervisorHandle {
         self.requests.send(Request::Resources(report)).await.is_ok()
     }
 
-    /// A session's terminal, if it still has one. With `viewed`, the session
-    /// counts as seen.
-    pub(crate) async fn terminal(&self, session: SessionId, viewed: bool) -> Option<PtyHandle> {
+    /// A link to a session's terminal, if it still has one. With `watch`,
+    /// the session counts as watched until the link is dropped.
+    pub(crate) async fn terminal(&self, session: SessionId, watch: bool) -> Option<TerminalLink> {
         let (reply, answer) = oneshot::channel();
         self.requests
             .send(Request::Terminal {
                 session,
-                viewed,
+                watch,
                 reply,
             })
             .await
@@ -148,6 +150,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))??;
     let (requests, queue) = mpsc::channel(256);
     let (pty_events, pty_queue) = mpsc::unbounded_channel();
+    let (unwatched, unwatched_queue) = mpsc::unbounded_channel();
     let mut supervisor = Supervisor {
         requests: requests.clone(),
         store: settings.store,
@@ -157,13 +160,16 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         deltas: broadcast::channel(settings.delta_capacity).0,
         state,
         live: HashMap::new(),
+        terminals: HashMap::new(),
+        watchers: HashMap::new(),
+        unwatched,
         hook_tokens: HashMap::new(),
         pty_events,
         history_every: settings.history_every.max(1),
         measurements: 0,
     };
     supervisor.recover_sessions().await;
-    tokio::spawn(supervisor.run(queue, pty_queue, settings.hook_queue));
+    tokio::spawn(supervisor.run(queue, pty_queue, settings.hook_queue, unwatched_queue));
     Ok(SupervisorHandle { requests })
 }
 
@@ -179,6 +185,9 @@ struct Live {
     launched: std::time::Instant,
     /// Started with `--resume`; a quick exit means the resume failed.
     resumed: bool,
+    /// Where its output ended and the size its terminal had, once it has
+    /// exited; a program started again in the session carries on from there.
+    ended: Option<(u64, TermSize)>,
 }
 
 #[derive(Debug)]
@@ -192,6 +201,13 @@ struct Supervisor {
     deltas: broadcast::Sender<Delta>,
     state: Snapshot,
     live: HashMap<SessionId, Live>,
+    /// Each session's current terminal, followed by its clients across
+    /// relaunches.
+    terminals: HashMap<SessionId, watch::Sender<Option<PtyHandle>>>,
+    /// How many clients watch each watched session.
+    watchers: HashMap<SessionId, usize>,
+    /// Where dropped watch guards report.
+    unwatched: mpsc::UnboundedSender<SessionId>,
     /// Which session each issued hook token names (`ARC-11`).
     hook_tokens: HashMap<String, SessionId>,
     history_every: u32,
@@ -207,6 +223,7 @@ impl Supervisor {
         mut queue: mpsc::Receiver<Request>,
         mut pty_queue: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
         mut hook_queue: mpsc::Receiver<HookDelivery>,
+        mut unwatched: mpsc::UnboundedReceiver<SessionId>,
     ) {
         loop {
             let deadline = self.next_deadline();
@@ -218,6 +235,7 @@ impl Supervisor {
                 },
                 Some((session, event)) = pty_queue.recv() => self.on_pty_event(session, event).await,
                 Some(delivery) = hook_queue.recv() => self.on_hook(delivery).await,
+                Some(session) = unwatched.recv() => self.unwatch(session).await,
                 () = tokio::time::sleep_until(wake_at), if deadline.is_some() => self.tick().await,
             }
         }
@@ -260,20 +278,12 @@ impl Supervisor {
             Request::Resources(report) => self.record_resources(report).await,
             Request::Terminal {
                 session,
-                viewed,
+                watch,
                 reply,
             } => {
-                let pty = self.live.get(&session).map(|live| live.pty.clone());
-                let _ = reply.send(pty);
-                if viewed {
-                    // Looking at a suspended agent brings it back.
-                    if let Some(live) = self.live.get(&session)
-                        && live.harness.suspends_itself()
-                    {
-                        live.pty.resume_if_suspended().await;
-                    }
-                    self.step_session(session, Signal::Viewed).await;
-                }
+                let link = self.link_terminal(session, watch).await;
+                // A client that left already drops the link, which unwatches.
+                let _ = reply.send(link);
             }
         }
     }

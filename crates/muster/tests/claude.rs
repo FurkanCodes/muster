@@ -378,3 +378,129 @@ async fn opening_a_claude_session_that_suspended_itself_continues_it() {
     viewer.attach(session, None).await.unwrap();
     support::read_terminal(&mut viewer, session, "got-cont-7").await;
 }
+
+#[tokio::test]
+async fn nothing_is_news_while_someone_watches_the_session() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace, None).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str, extra| launch.fire(event, &payload(&id, event, extra));
+
+    let mut viewer = setup.daemon.connect().await;
+    viewer.attach(session, None).await.unwrap();
+    viewer.command(Command::Ping).await.unwrap();
+
+    fire("UserPromptSubmit", json!({}));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Running, false)
+    );
+    fire("PermissionRequest", json!({ "tool_name": "Bash" }));
+    let needs_permission = SessionStatus::NeedsYou {
+        reason: WaitReason::Permission,
+    };
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (needs_permission, false),
+        "a prompt shown to someone watching is still a wait, but not news"
+    );
+    fire("PostToolUse", json!({ "tool_name": "Bash" }));
+    expect_status(&mut connection, session).await;
+    fire("Stop", json!({}));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false)
+    );
+
+    // Once nobody watches, the next finish is news again.
+    viewer.detach(session).await.unwrap();
+    viewer.command(Command::Ping).await.unwrap();
+    fire("UserPromptSubmit", json!({}));
+    expect_status(&mut connection, session).await;
+    fire("Stop", json!({}));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, true)
+    );
+
+    // Watching from a client that then disconnects counts until it does.
+    let mut viewer = setup.daemon.connect().await;
+    viewer.attach(session, None).await.unwrap();
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false)
+    );
+    drop(viewer);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    fire("UserPromptSubmit", json!({}));
+    expect_status(&mut connection, session).await;
+    fire("Stop", json!({}));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, true)
+    );
+}
+
+#[tokio::test]
+async fn a_session_that_exits_while_watched_is_not_news() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace, None).await;
+    setup.sandbox.wait_for_launches(session, 1);
+    let mut viewer = setup.daemon.connect().await;
+    viewer.attach(session, None).await.unwrap();
+    viewer.input(session, b"exit\n").await.unwrap();
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Exited { success: true }, false)
+    );
+}
+
+#[tokio::test]
+async fn a_watching_client_follows_the_session_to_its_new_program() {
+    let (sandbox, session, _) = session_cut_short_by_a_restart(setup().await, true).await;
+    std::fs::write(
+        sandbox.fake_claude_flag("FAKE_CLAUDE_RESUME_FAILS_LATE"),
+        "1",
+    )
+    .unwrap();
+    let daemon = sandbox.start();
+    sandbox.wait_for_launches(session, 2);
+
+    // Watching while the resume fails: the stream ends with the old
+    // program, then starts over with the new one on a clean screen.
+    let mut viewer = daemon.connect().await;
+    viewer.attach(session, None).await.unwrap();
+    let (_, old_end) = support::read_terminal(&mut viewer, session, "resume-failing-42").await;
+    let (seq, reset) = expect_event(&mut viewer, |frame| match frame {
+        ServerFrame::Replay {
+            session: s,
+            seq,
+            reset,
+            ..
+        } if *s == session => Some((*seq, *reset)),
+        _ => None,
+    })
+    .await;
+    assert!(reset, "a new program starts on a clean screen");
+    assert!(seq > old_end, "its output is numbered after the old one's");
+    sandbox.wait_for_launches(session, 3);
+
+    // Keystrokes reach the new program.
+    viewer
+        .input(session, b"echo rebound-$((6*7))\n")
+        .await
+        .unwrap();
+    support::read_terminal(&mut viewer, session, "rebound-42").await;
+
+    // The fresh start was watched, so it is not news.
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    assert_eq!(
+        (snapshot.sessions[0].status, snapshot.sessions[0].unseen),
+        (SessionStatus::Fresh, false)
+    );
+}

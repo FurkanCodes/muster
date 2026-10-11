@@ -119,6 +119,7 @@ fn a_launch_with_a_prompt_is_running() {
     let session = Session::launched(Launch {
         agent_session: None,
         start: Start::WithPrompt,
+        unseen: false,
     });
     assert_eq!(session.status(), SessionStatus::Running);
 }
@@ -126,7 +127,7 @@ fn a_launch_with_a_prompt_is_running() {
 // Turns
 
 #[test]
-fn a_finished_turn_is_unseen_until_viewed() {
+fn a_finished_turn_is_unseen_until_watched() {
     let mut session = Session::fresh();
     assert_eq!(
         session.hook(HookEvent::PromptSubmitted),
@@ -137,8 +138,83 @@ fn a_finished_turn_is_unseen_until_viewed() {
         [status_effect(SessionStatus::Finished, true)]
     );
     assert_eq!(
-        session.send(Signal::Viewed),
+        session.send(Signal::Watched { watching: true }),
         [status_effect(SessionStatus::Finished, false)]
+    );
+}
+
+#[test]
+fn nothing_is_unseen_while_the_session_is_watched() {
+    let mut session = Session::fresh();
+    let watch = |watching| Signal::Watched { watching };
+    assert!(session.send(watch(true)).is_empty());
+    session.hook(HookEvent::PromptSubmitted);
+    assert_eq!(
+        session.hook(HookEvent::TurnEnded),
+        [status_effect(SessionStatus::Finished, false)]
+    );
+    session.hook(HookEvent::PromptSubmitted);
+    assert_eq!(
+        session.hook(permission(Origin::Main)),
+        [status_effect(NEEDS_PERMISSION, false)]
+    );
+    session.hook(tool_started(Origin::Main));
+    session.hook(HookEvent::QuestionAsked {
+        origin: Origin::Main,
+    });
+    assert_eq!(session.status(), NEEDS_ANSWER);
+    assert!(!session.unseen());
+    assert_eq!(
+        session.send(Signal::Exited {
+            success: false,
+            requested: false,
+        }),
+        [status_effect(
+            SessionStatus::Exited { success: false },
+            false
+        )]
+    );
+}
+
+#[test]
+fn news_after_watching_stops_is_unseen_again() {
+    let mut session = Session::running_turn();
+    session.send(Signal::Watched { watching: true });
+    // Stopping watching changes nothing by itself.
+    assert!(session.send(Signal::Watched { watching: false }).is_empty());
+    assert_eq!(
+        session.hook(HookEvent::TurnEnded),
+        [status_effect(SessionStatus::Finished, true)]
+    );
+}
+
+#[test]
+fn a_resumed_session_with_news_is_seen_once_watched() {
+    let mut session = Session::launched(Launch {
+        agent_session: Some("kept".to_owned()),
+        start: Start::Resumed,
+        unseen: true,
+    });
+    assert_eq!(
+        session.send(Signal::Watched { watching: true }),
+        [status_effect(SessionStatus::Finished, false)]
+    );
+}
+
+#[test]
+fn a_launch_with_news_keeps_it_until_watched() {
+    let mut session = Session::launched(Launch {
+        agent_session: None,
+        start: Start::Idle,
+        unseen: true,
+    });
+    assert_eq!(
+        (session.status(), session.unseen()),
+        (SessionStatus::Fresh, true)
+    );
+    assert_eq!(
+        session.send(Signal::Watched { watching: true }),
+        [status_effect(SessionStatus::Fresh, false)]
     );
 }
 
@@ -407,6 +483,7 @@ fn an_idle_edge_before_any_busy_edge_is_the_startup_state() {
     let mut session = Session::launched(Launch {
         agent_session: None,
         start: Start::WithPrompt,
+        unseen: false,
     });
     session.send(Signal::Progress { busy: false });
     assert_eq!(session.status(), SessionStatus::Running);
@@ -448,6 +525,7 @@ fn hooks_from_another_harness_session_are_ignored() {
     let mut session = Session::launched(Launch {
         agent_session: Some("ours".to_owned()),
         start: Start::Idle,
+        unseen: false,
     });
     assert!(
         session
@@ -463,6 +541,7 @@ fn clear_switches_to_the_new_harness_session() {
     let mut session = Session::launched(Launch {
         agent_session: Some("first".to_owned()),
         start: Start::Idle,
+        unseen: false,
     });
     session.hook_from("second", HookEvent::SessionStarted);
     assert_eq!(session.machine.agent_session(), Some("second"));
@@ -484,6 +563,7 @@ fn the_resume_id_is_saved_once_a_turn_has_run() {
     let mut session = Session::launched(Launch {
         agent_session: Some("first".to_owned()),
         start: Start::Idle,
+        unseen: false,
     });
     assert!(
         session
@@ -534,7 +614,7 @@ fn a_requested_stop_is_not_unseen() {
 }
 
 #[test]
-fn nothing_but_viewing_changes_an_exited_session() {
+fn nothing_but_watching_changes_an_exited_session() {
     let mut session = Session::running_turn();
     session.hook(subagent_started("a"));
     session.send(Signal::Exited {
@@ -546,7 +626,7 @@ fn nothing_but_viewing_changes_an_exited_session() {
     assert!(session.send(Signal::Tick).is_empty());
     assert_eq!(session.machine.next_deadline(), None);
     assert_eq!(
-        session.send(Signal::Viewed),
+        session.send(Signal::Watched { watching: true }),
         [status_effect(
             SessionStatus::Exited { success: true },
             false
@@ -559,7 +639,8 @@ fn a_resumed_session_is_finished_and_keeps_what_was_unseen() {
     for unseen in [false, true] {
         let session = Session::launched(Launch {
             agent_session: Some("kept".to_owned()),
-            start: Start::Resumed { unseen },
+            start: Start::Resumed,
+            unseen,
         });
         assert_eq!(session.status(), SessionStatus::Finished);
         assert_eq!(session.unseen(), unseen);
@@ -570,7 +651,8 @@ fn a_resumed_session_is_finished_and_keeps_what_was_unseen() {
 fn a_resumed_session_does_not_save_its_id_again() {
     let mut session = Session::launched(Launch {
         agent_session: Some("kept".to_owned()),
-        start: Start::Resumed { unseen: false },
+        start: Start::Resumed,
+        unseen: false,
     });
     let effects = session.hook_from("kept", HookEvent::PromptSubmitted);
     assert!(!effects.contains(&Effect::SaveResumeId("kept".to_owned())));

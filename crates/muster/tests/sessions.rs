@@ -232,9 +232,10 @@ async fn an_exit_is_reported_and_its_output_stays_readable() {
         (exited.is_some() && detached.is_some()).then_some(())
     })
     .await;
+    // It exited in front of a client watching it, so it is not news.
     assert_eq!(
         exited,
-        Some((SessionStatus::Exited { success: false }, true))
+        Some((SessionStatus::Exited { success: false }, false))
     );
     assert_eq!(detached, Some(DetachReason::Exited));
 
