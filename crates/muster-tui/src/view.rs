@@ -56,6 +56,16 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
         Link::Connecting => spans.push(Span::from("connecting to the daemon…").dim()),
         Link::Connected { daemon_version } => {
             spans.push(Span::from(format!("daemon {daemon_version}")).dim());
+            if let Some(report) = app.model.resources() {
+                spans.push(
+                    Span::from(format!(
+                        "  ·  memory {} of {}",
+                        bytes(report.host_memory_used),
+                        bytes(report.host_memory_total)
+                    ))
+                    .dim(),
+                );
+            }
             spans.push(Span::raw(format!(
                 "  ·  {}  ·  ",
                 count(app.model.sessions().len(), "session")
@@ -130,7 +140,14 @@ fn row_item<'a>(app: &'a App, row: Row) -> ListItem<'a> {
             ]))
         }
         Row::Session(id) => match app.model.session(id) {
-            Some(session) => ListItem::new(session_line(session, "    ")),
+            Some(session) => {
+                let mut line = session_line(session, "    ");
+                if let Some(usage) = app.model.usage(id) {
+                    line.spans
+                        .push(Span::from(format!("  {}", usage_text(usage))).dim());
+                }
+                ListItem::new(line)
+            }
             None => ListItem::new(""),
         },
     }
@@ -512,6 +529,26 @@ pub(crate) fn describe(status: SessionStatus) -> &'static str {
         SessionStatus::Finished => "finished",
         SessionStatus::Exited { success: true } => "exited",
         SessionStatus::Exited { success: false } => "exited with an error",
+    }
+}
+
+/// `312 MB · 4%`: memory, and CPU as a share of one core.
+pub(crate) fn usage_text(usage: &muster_core::protocol::SessionUsage) -> String {
+    format!(
+        "{} · {}%",
+        bytes(usage.memory_bytes),
+        usage.cpu_permille.div_ceil(10)
+    )
+}
+
+/// A byte count for people: `880 MB`, `9.1 GB`.
+pub(crate) fn bytes(count: u64) -> String {
+    const MB: u64 = 1_000_000;
+    const GB: u64 = 1_000_000_000;
+    if count >= GB {
+        format!("{:.1} GB", count as f64 / GB as f64)
+    } else {
+        format!("{} MB", count.div_ceil(MB))
     }
 }
 

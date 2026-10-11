@@ -25,6 +25,8 @@ pub(crate) const BINARY: &str = env!("CARGO_BIN_EXE_muster");
 #[derive(Debug)]
 pub(crate) struct Sandbox {
     dir: TempDir,
+    /// More environment for every process this sandbox starts.
+    env: Vec<(String, String)>,
 }
 
 /// Stands in for Claude Code: records how it was started (its arguments,
@@ -75,7 +77,16 @@ impl Sandbox {
         std::fs::create_dir_all(dir.path().join("fake-gh")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
         std::fs::create_dir_all(dir.path().join("claude-config/projects")).unwrap();
-        Self { dir }
+        Self {
+            dir,
+            env: Vec::new(),
+        }
+    }
+
+    /// Sets `key` for every process this sandbox starts.
+    pub(crate) fn with_env(mut self, key: &str, value: &str) -> Self {
+        self.env.push((key.to_owned(), value.to_owned()));
+        self
     }
 
     /// A flag file the stand-in `claude` checks, such as
@@ -188,6 +199,9 @@ impl Sandbox {
             // which sessions must not inherit.
             .env("CLAUDECODE", "1");
         for (key, value) in GIT_ENV {
+            command.env(key, value);
+        }
+        for (key, value) in &self.env {
             command.env(key, value);
         }
         command

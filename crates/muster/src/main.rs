@@ -208,7 +208,16 @@ async fn daemon(paths: Paths) -> ExitCode {
         )
         .with_writer(std::io::stderr)
         .init();
-    match muster_daemon::run(DaemonConfig::new(paths), shutdown_signal()).await {
+    let mut config = DaemonConfig::new(paths);
+    // Tests measure more often than people need.
+    let millis = |key| std::env::var(key).ok()?.parse::<u64>().ok();
+    if let Some(ms) = millis("MUSTER_SAMPLE_MS") {
+        config.sample_interval = std::time::Duration::from_millis(ms.max(10));
+    }
+    if let Some(ms) = millis("MUSTER_HISTORY_MS") {
+        config.history_interval = std::time::Duration::from_millis(ms.max(10));
+    }
+    match muster_daemon::run(config, shutdown_signal()).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),
     }

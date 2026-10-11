@@ -259,6 +259,7 @@ impl Store {
             projects,
             workspaces,
             sessions,
+            resources: None,
         })
     }
 

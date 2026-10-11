@@ -100,9 +100,15 @@ enum Command {
 #[derive(Clone, Debug)]
 pub(crate) struct PtyHandle {
     commands: mpsc::Sender<Command>,
+    pid: Option<u32>,
 }
 
 impl PtyHandle {
+    /// The program's process id, the root of what it uses.
+    pub(crate) fn pid(&self) -> Option<u32> {
+        self.pid
+    }
+
     /// The replay from `from_seq` and the live stream, or `None` once the
     /// terminal has been released.
     pub(crate) async fn attach(&self, from_seq: Option<u64>) -> Option<Attachment> {
@@ -156,8 +162,8 @@ pub(crate) fn spawn(
     // the reader from seeing end-of-file when the child exits.
     drop(pair.slave);
 
-    let process_group = child
-        .process_id()
+    let pid = child.process_id();
+    let process_group = pid
         .and_then(|pid| i32::try_from(pid).ok())
         .map(Pid::from_raw);
     let reader = pair
@@ -199,7 +205,7 @@ pub(crate) fn spawn(
         kill_at: None,
     };
     tokio::spawn(actor.run(queue, output_queue, exited, events));
-    Ok(PtyHandle { commands })
+    Ok(PtyHandle { commands, pid })
 }
 
 fn pty_size(size: TermSize) -> PtySize {

@@ -9,6 +9,7 @@ mod github;
 mod harness;
 mod hooks;
 mod pty;
+mod resources;
 mod server;
 mod supervisor;
 mod terminal;
@@ -22,6 +23,7 @@ use std::io;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use muster_core::Paths;
 use tokio::net::UnixListener;
@@ -36,6 +38,10 @@ pub struct DaemonConfig {
     /// How many deltas a slow subscriber may fall behind before it is sent a
     /// fresh snapshot instead.
     pub delta_capacity: usize,
+    /// How often sessions' resource use is measured.
+    pub sample_interval: Duration,
+    /// How often a measurement is kept in the store's history.
+    pub history_interval: Duration,
 }
 
 impl DaemonConfig {
@@ -43,6 +49,8 @@ impl DaemonConfig {
         Self {
             paths,
             delta_capacity: 1024,
+            sample_interval: Duration::from_secs(2),
+            history_interval: Duration::from_secs(30),
         }
     }
 }
@@ -112,8 +120,10 @@ pub async fn run(
         hook_socket: hook_socket.clone(),
         hook_queue,
         delta_capacity: config.delta_capacity,
+        history_every: history_every(config.sample_interval, config.history_interval),
     })
     .await?;
+    let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
     let hook_server = tokio::spawn(hooks::serve(hook_listener, hook_deliveries, async {
@@ -123,12 +133,19 @@ pub async fn run(
     tracing::info!(socket = %socket.display(), pid = std::process::id(), "daemon ready");
     server::serve(listener, supervisor, shutdown).await;
 
+    sampler.abort();
     let _ = stop_hooks.send(());
     let _ = hook_server.await;
     let _ = std::fs::remove_file(&hook_socket);
     let _ = std::fs::remove_file(&socket);
     tracing::info!("daemon stopped");
     Ok(())
+}
+
+/// How many measurements pass between those kept in history.
+fn history_every(sample: Duration, history: Duration) -> u32 {
+    let ratio = history.as_millis() / sample.as_millis().max(1);
+    u32::try_from(ratio).unwrap_or(u32::MAX).max(1)
 }
 
 /// Binds a Unix socket only this user can use.

@@ -39,6 +39,7 @@ fn world() -> World {
         projects: vec![project.clone()],
         workspaces: vec![worktree.clone()],
         sessions: vec![session.clone()],
+        ..Snapshot::default()
     }));
     World {
         app,
@@ -103,6 +104,25 @@ fn the_list_shows_projects_worktrees_and_sessions() {
     assert!(screen.contains("⎇ work"), "{screen}");
     assert!(screen.contains("Shell  idle"), "{screen}");
     assert!(screen.contains("daemon 0.1.0"), "{screen}");
+}
+
+#[test]
+fn resource_use_is_shown_for_the_host_and_each_session() {
+    let mut world = world();
+    world.app.on_frame(ServerFrame::Delta(Delta::Resources(
+        muster_core::protocol::ResourceReport {
+            host_memory_used: 9_100_000_000,
+            host_memory_total: 16_000_000_000,
+            sessions: vec![muster_core::protocol::SessionUsage {
+                session: world.session.id,
+                memory_bytes: 312_400_000,
+                cpu_permille: 41,
+            }],
+        },
+    )));
+    let screen = render(&world.app);
+    assert!(screen.contains("memory 9.1 GB of 16.0 GB"), "{screen}");
+    assert!(screen.contains("313 MB · 5%"), "{screen}");
 }
 
 #[test]

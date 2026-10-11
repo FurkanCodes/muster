@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use muster_core::protocol::{Delta, Snapshot};
+use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
 use muster_core::{
     Project, ProjectId, Session, SessionId, SessionStatus, Workspace, WorkspaceId, WorkspaceKind,
 };
@@ -26,6 +26,7 @@ pub(crate) struct Model {
     /// counter, which orders the Needs you queue oldest first.
     changed: HashMap<SessionId, u64>,
     clock: u64,
+    resources: Option<ResourceReport>,
 }
 
 impl Model {
@@ -41,6 +42,7 @@ impl Model {
         self.projects = snapshot.projects;
         self.workspaces = snapshot.workspaces;
         self.sessions = sessions;
+        self.resources = snapshot.resources;
     }
 
     pub(crate) fn apply(&mut self, delta: Delta) {
@@ -71,7 +73,22 @@ impl Model {
                     stored.unseen = unseen;
                 }
             }
+            Delta::Resources(report) => self.resources = Some(report),
         }
+    }
+
+    /// The latest measurement of the host, if any.
+    pub(crate) fn resources(&self) -> Option<&ResourceReport> {
+        self.resources.as_ref()
+    }
+
+    /// What a running session used at the latest measurement.
+    pub(crate) fn usage(&self, session: SessionId) -> Option<&SessionUsage> {
+        self.resources
+            .as_ref()?
+            .sessions
+            .iter()
+            .find(|usage| usage.session == session)
     }
 
     fn touch(&mut self, session: SessionId) {
@@ -237,6 +254,7 @@ pub(crate) mod tests {
             projects: vec![app.clone(), other.clone()],
             workspaces: vec![tree.clone()],
             sessions: vec![shell.clone()],
+            ..Snapshot::default()
         });
         assert_eq!(
             model.rows(),
@@ -289,6 +307,7 @@ pub(crate) mod tests {
             projects: vec![app],
             workspaces: vec![tree],
             sessions: vec![three.clone(), one.clone(), two.clone()],
+            ..Snapshot::default()
         });
         let finished_unseen = |session: SessionId| Delta::SessionStatus {
             session,
