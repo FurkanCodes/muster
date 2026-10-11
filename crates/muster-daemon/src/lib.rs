@@ -6,6 +6,7 @@ pub mod config;
 pub mod store;
 
 mod branches;
+mod containers;
 mod git;
 mod github;
 mod harness;

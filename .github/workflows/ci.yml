@@ -34,6 +34,21 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+  docker:
+    name: Real Docker (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Pull the test image
+        run: docker pull alpine:3
+      - name: Container tests
+        run: cargo test --locked -p muster-daemon containers
+        env:
+          MUSTER_DOCKER_TESTS: "1"
+          MUSTER_TEST_IMAGE: alpine:3
+
   dependencies:
     name: Dependencies (licenses and advisories)
     runs-on: ubuntu-latest
