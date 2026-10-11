@@ -23,8 +23,11 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Run the daemon in this terminal until interrupted.
+    /// Run the daemon in this terminal until interrupted; `muster daemon
+    /// stop` stops a running one.
     Daemon {
+        #[command(subcommand)]
+        action: Option<DaemonCommand>,
         /// Leave the terminal's session, as the UI does when it starts the
         /// daemon, so closing the terminal does not stop it.
         #[arg(long)]
@@ -44,6 +47,14 @@ enum Commands {
     /// Work on GitHub issues, through the GitHub CLI (`gh`).
     #[command(subcommand)]
     Issue(IssueCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum DaemonCommand {
+    /// Stop the running daemon, even one from another build of muster, as
+    /// after an upgrade. Shells in sessions end; Claude Code sessions are
+    /// resumed when the daemon starts again.
+    Stop,
 }
 
 #[derive(Debug, Subcommand)]
@@ -107,6 +118,11 @@ enum SessionCommand {
     },
     /// Stop SESSION (its id).
     Stop { session: String },
+    /// Start ended SESSION's program again: Claude Code resumes its
+    /// conversation, a shell starts afresh.
+    Restart { session: String },
+    /// Take ended SESSION off the list; its history is kept.
+    Remove { session: String },
 }
 
 fn main() -> ExitCode {
@@ -122,7 +138,14 @@ fn main() -> ExitCode {
     runtime.block_on(async {
         let socket = paths.socket();
         let outcome = match cli.command {
-            Some(Commands::Daemon { detach }) => {
+            Some(Commands::Daemon {
+                action: Some(DaemonCommand::Stop),
+                ..
+            }) => return commands::stop_daemon(&socket).await,
+            Some(Commands::Daemon {
+                action: None,
+                detach,
+            }) => {
                 if detach {
                     // Fails only if already a session leader, which is fine.
                     let _ = nix::unistd::setsid();
@@ -147,6 +170,12 @@ fn main() -> ExitCode {
             })) => commands::start_session(&socket, &worktree, harness, title, prompt).await,
             Some(Commands::Session(SessionCommand::Stop { session })) => {
                 commands::stop_session(&socket, &session).await
+            }
+            Some(Commands::Session(SessionCommand::Restart { session })) => {
+                commands::restart_session(&socket, &session).await
+            }
+            Some(Commands::Session(SessionCommand::Remove { session })) => {
+                commands::remove_session(&socket, &session).await
             }
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await

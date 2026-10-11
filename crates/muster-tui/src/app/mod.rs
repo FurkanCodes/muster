@@ -5,6 +5,8 @@
 mod events;
 
 #[cfg(test)]
+mod lifecycle_tests;
+#[cfg(test)]
 mod tests;
 
 use std::collections::HashMap;
@@ -121,6 +123,8 @@ enum Then {
     SelectProject,
     SelectWorktree,
     OpenSession,
+    /// Open the restarted session, streaming its new program from the start.
+    OpenRestarted,
     /// Offer to force the removal if it was refused for uncommitted changes.
     RemovedWorktree(WorkspaceId),
     /// Fill the issues dialog for this project.
@@ -138,6 +142,9 @@ pub(crate) struct App {
     pub(crate) note: Option<Note>,
     /// The selected line of the sessions list, by identity.
     pub(crate) selected: Option<Row>,
+    /// Where the selected line was, so the selection stays nearby when
+    /// that line goes away.
+    selected_at: usize,
     /// The Needs you queue as shown: a session stays in place while it is
     /// selected, even once looking at it has cleared it, so the list does
     /// not move under the person.
@@ -168,6 +175,7 @@ impl App {
             link: Link::Connecting,
             note: None,
             selected: None,
+            selected_at: 0,
             needs_list: Vec::new(),
             needs_selected: None,
             screens: HashMap::new(),
@@ -186,6 +194,9 @@ impl App {
         self.link = Link::Connected { daemon_version };
         self.attached = None;
         self.pending.clear();
+        // A new connection is a new daemon, which numbers its terminals'
+        // output afresh: positions in the old screens mean nothing to it.
+        self.screens.clear();
         vec![Action::Send(ClientFrame::Subscribe)]
     }
 
@@ -233,6 +244,15 @@ impl App {
             }
             (Ok(Reply::SessionStarted { id }), Then::OpenSession)
             | (Ok(Reply::IssueStarted { session: id, .. }), Then::OpenIssueSession) => {
+                self.wanted = Some((Row::Session(id), true));
+                self.note = None;
+            }
+            (Ok(Reply::SessionStarted { id }), Then::OpenRestarted) => {
+                // Attach again: a session the daemon no longer held a
+                // terminal for has a new one to stream.
+                if self.attached == Some(id) {
+                    self.attached = None;
+                }
                 self.wanted = Some((Row::Session(id), true));
                 self.note = None;
             }
@@ -392,12 +412,23 @@ impl App {
         }
     }
 
-    /// Keeps the selection on something that exists.
+    /// Keeps the selection on something that exists: the line that took
+    /// the place of one that went away, or the last line.
     fn keep_selection(&mut self) {
         let rows = self.model.rows();
-        if !self.selected.is_some_and(|row| rows.contains(&row)) {
-            self.selected = rows.first().copied();
+        match self
+            .selected
+            .and_then(|row| rows.iter().position(|r| *r == row))
+        {
+            Some(at) => self.selected_at = at,
+            None => {
+                let at = self.selected_at.min(rows.len().saturating_sub(1));
+                self.selected = rows.get(at).copied();
+            }
         }
+        // Screens of sessions that are gone are not drawn again.
+        let model = &self.model;
+        self.screens.retain(|id, _| model.session(*id).is_some());
         // Questions first, then news, oldest first; but the selected session
         // keeps its place after looking at it has cleared it.
         let mut list = self.model.needs_you();

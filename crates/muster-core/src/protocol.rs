@@ -6,8 +6,11 @@
 //! - a new variant is sent only to a peer whose agreed version knows it;
 //! - removing or renaming anything also raises [`MIN_PROTOCOL_VERSION`].
 //!
-//! Protocol 1 has not been released; until the first release it changes
-//! without a version bump.
+//! Until the first release the protocol may change in ways older peers
+//! cannot read, but each such change still bumps both versions, so a daemon
+//! left running by an older build and a newer client say they do not match
+//! instead of misreading each other. Version 2 added restarting and removing
+//! sessions.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -21,9 +24,9 @@ use crate::ids::{ProjectId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 1;
+pub const MIN_PROTOCOL_VERSION: u32 = 2;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,7 +67,17 @@ pub struct Incompatible {
     pub min_version: u32,
     pub max_version: u32,
     pub daemon_version: String,
+    /// So a client can tell the person which process to stop; 0 from
+    /// daemons older than protocol 2.
+    #[serde(default)]
+    pub daemon_pid: u32,
 }
+
+/// The first protocol version there ever was. A hello offering every
+/// version from here is answered with a welcome by any daemon this build
+/// can still talk to, and also by older ones, whose welcome carries their
+/// process id too.
+pub const FIRST_PROTOCOL_VERSION: u32 = 1;
 
 /// The newest version both `hello` and this build speak, if any.
 pub fn negotiate(hello: &Hello) -> Option<u32> {
@@ -220,6 +233,13 @@ pub enum Command {
     },
     /// Stop a running session.
     StopSession { session: SessionId },
+    /// Start an ended session's program again, in the same session: Claude
+    /// Code resumes its conversation if it had one, a shell starts afresh.
+    /// Answered with [`Reply::SessionStarted`]. `size` is used when the
+    /// daemon no longer knows the session's terminal size.
+    RestartSession { session: SessionId, size: TermSize },
+    /// Take an ended session off the list. Its history is kept.
+    RemoveSession { session: SessionId },
     /// List a project's open GitHub issues, newest first.
     ListIssues { project: ProjectId },
     /// Work on a GitHub issue: a worktree on `muster/issue-<n>-<title>`
@@ -296,6 +316,10 @@ pub enum Delta {
         id: WorkspaceId,
     },
     SessionUpserted(Session),
+    /// A session was taken off the list.
+    SessionRemoved {
+        id: SessionId,
+    },
     SessionStatus {
         session: SessionId,
         status: SessionStatus,

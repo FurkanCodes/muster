@@ -13,20 +13,20 @@ use super::{Action, App, Dialog, HarnessChoice, Link, Mode, View};
 use crate::model::Row;
 use crate::model::tests::{project, session, worktree};
 
-const SIZE: TermSize = TermSize {
+pub(super) const SIZE: TermSize = TermSize {
     cols: 100,
     rows: 29,
 };
 
-struct World {
-    app: App,
-    project: Project,
-    worktree: Workspace,
-    session: Session,
+pub(super) struct World {
+    pub(super) app: App,
+    pub(super) project: Project,
+    pub(super) worktree: Workspace,
+    pub(super) session: Session,
 }
 
 /// An app connected to a daemon with one project, worktree and session.
-fn world() -> World {
+pub(super) fn world() -> World {
     let mut app = App::new(PathBuf::from("/src"), SIZE);
     assert_eq!(
         app.on_connected("0.1.0".to_owned()),
@@ -49,26 +49,26 @@ fn world() -> World {
     }
 }
 
-fn key(code: KeyCode) -> KeyEvent {
+pub(super) fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
-fn ctrl(c: char) -> KeyEvent {
+pub(super) fn ctrl(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
 }
 
-fn press(app: &mut App, code: KeyCode) -> Vec<Action> {
+pub(super) fn press(app: &mut App, code: KeyCode) -> Vec<Action> {
     app.on_key(key(code))
 }
 
-fn typed(app: &mut App, text: &str) {
+pub(super) fn typed(app: &mut App, text: &str) {
     for c in text.chars() {
         press(app, KeyCode::Char(c));
     }
 }
 
 /// The command in `actions`, with its request id.
-fn command(actions: &[Action]) -> (u64, Command) {
+pub(super) fn command(actions: &[Action]) -> (u64, Command) {
     actions
         .iter()
         .find_map(|action| match action {
@@ -80,7 +80,7 @@ fn command(actions: &[Action]) -> (u64, Command) {
         .expect("a command")
 }
 
-fn render(app: &App) -> String {
+pub(super) fn render(app: &App) -> String {
     let mut terminal = Terminal::new(TestBackend::new(SIZE.cols, SIZE.rows + 1)).unwrap();
     terminal
         .draw(|frame| crate::view::draw(frame, app))

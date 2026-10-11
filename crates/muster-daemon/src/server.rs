@@ -227,6 +227,7 @@ impl Connection {
                     min_version: MIN_PROTOCOL_VERSION,
                     max_version: PROTOCOL_VERSION,
                     daemon_version,
+                    daemon_pid: std::process::id(),
                 }))
                 .await;
             return Ok(false);

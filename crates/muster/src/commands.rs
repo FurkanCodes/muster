@@ -173,6 +173,60 @@ pub(crate) async fn stop_session(socket: &Path, session: &str) -> Outcome {
     Ok(())
 }
 
+pub(crate) async fn restart_session(socket: &Path, session: &str) -> Outcome {
+    let session: SessionId = session.parse()?;
+    connect(socket)
+        .await?
+        .command(Command::RestartSession {
+            session,
+            size: TermSize::default(),
+        })
+        .await?;
+    println!("Restarted {session}.");
+    Ok(())
+}
+
+pub(crate) async fn remove_session(socket: &Path, session: &str) -> Outcome {
+    let session: SessionId = session.parse()?;
+    connect(socket)
+        .await?
+        .command(Command::RemoveSession { session })
+        .await?;
+    println!("Removed {session}.");
+    Ok(())
+}
+
+/// Stops whichever daemon answers on `socket`, waiting until it has gone.
+pub(crate) async fn stop_daemon(socket: &Path) -> ExitCode {
+    let pid = match muster_client::daemon_pid(socket, CLIENT).await {
+        Ok(pid) => pid,
+        Err(ClientError::Unreachable { .. }) => {
+            println!("The daemon is not running.");
+            return ExitCode::SUCCESS;
+        }
+        Err(error) => return crate::fail(error),
+    };
+    let Ok(raw) = i32::try_from(pid) else {
+        return crate::fail(format!("the daemon reported an impossible pid {pid}"));
+    };
+    let process = nix::unistd::Pid::from_raw(raw);
+    if let Err(error) = nix::sys::signal::kill(process, nix::sys::signal::Signal::SIGTERM) {
+        return crate::fail(format!("could not stop the daemon (pid {pid}): {error}"));
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    // Gone once it no longer answers; it removes its socket as it stops.
+    while muster_client::daemon_pid(socket, CLIENT).await.is_ok() {
+        if std::time::Instant::now() >= deadline {
+            return crate::fail(format!(
+                "the daemon (pid {pid}) is still running after 10 seconds; `kill -9 {pid}` ends it"
+            ));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    println!("Stopped the daemon (pid {pid}).");
+    ExitCode::SUCCESS
+}
+
 pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;

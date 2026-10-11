@@ -38,7 +38,9 @@ muster
 | `w` | new worktree for the selected project |
 | `n` | new session in the selected worktree: Claude Code with an optional first prompt, or a shell (`⇥` switches) |
 | `i` | the project's open GitHub issues; `⏎` starts work on one |
-| `s` / `x` | stop a session / remove a worktree |
+| `s` | stop a session |
+| `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
+| `x` | remove the selected ended session, or the selected worktree (after asking) |
 | `⇥` | switch between all sessions and *Needs you* |
 | `q` | quit the UI (sessions keep running) |
 
@@ -64,6 +66,16 @@ muster issue start app 42
 
 ```bash
 muster status
+```
+
+```bash
+muster session restart <session-id>
+```
+
+After upgrading muster, stop the daemon the old build left running; the next `muster` starts the new one, and Claude Code sessions resume:
+
+```bash
+muster daemon stop
 ```
 
 ## How it is built

@@ -105,7 +105,8 @@ impl App {
             KeyCode::Char('i') => return self.open_issues(),
             KeyCode::Char('n') => self.new_session(),
             KeyCode::Char('s') => self.confirm_stop(),
-            KeyCode::Char('x') => self.confirm_remove(),
+            KeyCode::Char('r') => return self.restart(),
+            KeyCode::Char('x') => return self.remove(),
             _ => {}
         }
         Vec::new()
@@ -212,9 +213,50 @@ impl App {
         });
     }
 
-    fn confirm_remove(&mut self) {
+    /// Starts the focused session's program again, if it has ended.
+    fn restart(&mut self) -> Vec<Action> {
+        let Some(session) = self.focused_session() else {
+            self.complain("Select a session to restart.");
+            return Vec::new();
+        };
+        let Some(stored) = self.model.session(session) else {
+            return Vec::new();
+        };
+        if stored.ended_at.is_none() {
+            self.complain(format!("{} is still running.", stored.title));
+            return Vec::new();
+        }
+        let command = Command::RestartSession {
+            session,
+            size: self.terminal_size,
+        };
+        vec![self.command(command, Then::OpenRestarted)]
+    }
+
+    /// Removes what is selected: an ended session from the list at once,
+    /// or a worktree after asking.
+    fn remove(&mut self) -> Vec<Action> {
+        if let Some(session) = self.focused_session() {
+            let Some(stored) = self.model.session(session) else {
+                return Vec::new();
+            };
+            if stored.ended_at.is_none() {
+                self.complain(format!(
+                    "{} is still running; stop it first with s.",
+                    stored.title
+                ));
+                return Vec::new();
+            }
+            let command = Command::RemoveSession { session };
+            return vec![self.command(command, Then::Say("Removed the session."))];
+        }
+        self.confirm_remove_worktree();
+        Vec::new()
+    }
+
+    fn confirm_remove_worktree(&mut self) {
         let Some(workspace) = self.selected.and_then(|row| self.model.worktree_of(row)) else {
-            return self.complain("Select a worktree to remove.");
+            return self.complain("Select a worktree or an ended session to remove.");
         };
         let branch = self
             .model

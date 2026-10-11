@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -62,6 +62,12 @@ CREATE TABLE resource_samples (
     memory_bytes  INTEGER NOT NULL CHECK (memory_bytes >= 0),
     PRIMARY KEY (session_id, at)
 ) STRICT, WITHOUT ROWID;
+";
+
+/// Sessions the person removed from the list. Like removed workspaces,
+/// they keep their history.
+const V2: &str = r"
+ALTER TABLE sessions ADD COLUMN removed_at INTEGER;
 ";
 
 /// The schema version this build creates.
