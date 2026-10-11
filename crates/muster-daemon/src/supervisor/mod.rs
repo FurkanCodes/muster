@@ -272,6 +272,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
     supervisor.resume_runs(stored_runs).await;
     supervisor.recover_sessions().await;
     supervisor.drop_stale_container_workspaces().await;
+    supervisor.remove_ended_runs_containers();
     tokio::spawn(supervisor.run(
         queue,
         pty_queue,

@@ -220,3 +220,17 @@ async fn work_that_cannot_go_to_a_run_is_refused_plainly() {
     );
     assert_eq!(setup.work.count(), 0, "nothing started");
 }
+
+#[tokio::test]
+async fn a_run_never_takes_over_a_branch_the_person_has() {
+    let setup = real_setup().await;
+    // The person started on #42 by hand: its branch is theirs.
+    git(
+        &setup.root,
+        &["branch", "muster/issue-42-fix-the-login-redirect"],
+    );
+    let run = start(&setup).await;
+    let (context, _) = setup.work.asked(1).await;
+    assert_eq!(context.branch, "muster/issue-42-fix-the-login-redirect-2");
+    let _ = run;
+}

@@ -3,14 +3,14 @@
 //! [`RunWork`](crate::runs::RunWork) and taking its reports back, and
 //! resuming runs after a restart (`PRD-09`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use muster_core::config::ProjectConfig;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
 use muster_core::{ProjectId, Run, RunId, RunStage, RunTransition, Ticket, WorkspaceId};
 use muster_state::run::{Limits, RunEffect, RunEvent, RunMachine};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 use super::{Request, Supervisor, store_closed, store_error};
 use crate::github::{self, IssueDetail};
@@ -25,6 +25,20 @@ const HEADLESS: &str = "claude";
 pub(super) struct ActiveRun {
     pub(super) machine: RunMachine,
     pub(super) context: RunContext,
+    /// Tells the run's work its generation as it moves on.
+    pub(super) generation: watch::Sender<u64>,
+}
+
+impl ActiveRun {
+    fn new(machine: RunMachine, mut context: RunContext) -> Self {
+        let (generation, current) = watch::channel(machine.generation());
+        context.current = current;
+        Self {
+            machine,
+            context,
+            generation,
+        }
+    }
 }
 
 /// A ticket fetched for a run, on its way back to the Supervisor.
@@ -169,7 +183,8 @@ impl Supervisor {
         let (branch, machine) = match handed {
             Some(branch) => (branch, RunMachine::handed_off(limits)),
             None => (
-                self.unused_run_branch(project, &github::issue_branch(&detail.issue)),
+                self.unused_run_branch(project, &root, &github::issue_branch(&detail.issue))
+                    .await,
                 RunMachine::new(limits),
             ),
         };
@@ -213,8 +228,10 @@ impl Supervisor {
             container: None,
             pr: None,
             cost_micros: 0,
+            current: watch::channel(0).1,
         };
-        self.active_runs.insert(id, ActiveRun { machine, context });
+        self.active_runs
+            .insert(id, ActiveRun::new(machine, context));
         tracing::info!(run = %id, issue = number, "picked up a run");
         let _ = reply.send(Ok(Reply::RunStarted { id }));
         self.step_run(id, RunEvent::SlotGranted).await;
@@ -239,6 +256,20 @@ impl Supervisor {
             );
         };
         let stage = active.machine.stage();
+        // Sent back to work, the run works with the settings as they are
+        // now: the person may have mended them meanwhile, and work with
+        // settings that cannot be read is no work at all.
+        let rereads = matches!(
+            event,
+            RunEvent::Retry { .. } | RunEvent::HandBack | RunEvent::PersonRequestedChanges { .. }
+        );
+        if rereads {
+            let (root, project) = (active.context.root.clone(), active.context.project);
+            let config = settings_for_runs(root, self.overrides_of(project)).await?;
+            if let Some(active) = self.active_runs.get_mut(&run) {
+                active.context.config = config;
+            }
+        }
         if !self.step_run(run, event).await {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,
@@ -246,6 +277,13 @@ impl Supervisor {
             ));
         }
         Ok(Reply::Done)
+    }
+
+    /// Where the person's overrides of `project`'s settings live.
+    fn overrides_of(&self, project: ProjectId) -> PathBuf {
+        self.config_dir
+            .join("projects")
+            .join(format!("{project}.toml"))
     }
 
     pub(super) async fn run_history(&self, run: RunId) -> Result<Reply, ErrorBody> {
@@ -268,6 +306,9 @@ impl Supervisor {
         };
         let cost = matches!(event, RunEvent::CostReported { .. });
         let effects = active.machine.step(event, Instant::now());
+        // The work hears of the new generation before any is asked for
+        // under it, and work under the old one stops.
+        active.generation.send_replace(active.machine.generation());
         let changed = !effects.is_empty();
         if cost && !changed {
             // A cost under the limit moves nothing, but is worth keeping.
@@ -403,6 +444,11 @@ impl Supervisor {
     /// A report from a run's work.
     pub(super) async fn on_run_report(&mut self, run: RunId, report: Report) {
         let Some(active) = self.active_runs.get_mut(&run) else {
+            if let Report::Container(container) = report {
+                // Made by work the run's end overtook: it goes too.
+                tracing::info!(%run, %container, "removing the container of a run that ended");
+                self.work.remove_containers_of(vec![run]);
+            }
             return;
         };
         match report {
@@ -476,12 +522,11 @@ impl Supervisor {
                 .config_dir
                 .join("projects")
                 .join(format!("{}.toml", run.project));
-            let config = match settings_for_runs(root.clone(), overrides).await {
-                Ok(config) => config,
+            let (config, unusable) = match settings_for_runs(root.clone(), overrides).await {
+                Ok(config) => (config, None),
                 Err(error) => {
-                    // Its work cannot go on as set up; say so when it is asked for.
                     tracing::warn!(run = %run.id, %error, "a resumed run's settings are not usable");
-                    ProjectConfig::default()
+                    (ProjectConfig::default(), Some(error.message))
                 }
             };
             let machine = RunMachine::restore(machine, Instant::now());
@@ -497,18 +542,46 @@ impl Supervisor {
                 container,
                 pr: run.pr.clone(),
                 cost_micros: machine.cost_micros(),
+                current: watch::channel(0).1,
             };
             let work = machine.resume_work();
-            let queued = machine.stage() == RunStage::Queued;
-            tracing::info!(run = %run.id, stage = ?machine.stage(), "resumed a run");
+            let (stage, generation) = (machine.stage(), machine.generation());
+            tracing::info!(run = %run.id, ?stage, "resumed a run");
             self.active_runs
-                .insert(run.id, ActiveRun { machine, context });
-            if queued {
+                .insert(run.id, ActiveRun::new(machine, context));
+            if let Some(reason) = unusable {
+                // Work with settings that cannot be read could pass with no
+                // checks at all (`PRD-02`): it stops for the person instead,
+                // and goes on once they mend them and send it back.
+                if stage.is_active() {
+                    let event = RunEvent::InfraFailed {
+                        generation,
+                        reason: format!("its settings cannot be read: {reason}"),
+                        container_lost: false,
+                    };
+                    self.step_run(run.id, event).await;
+                }
+                continue;
+            }
+            if stage == RunStage::Queued {
                 self.step_run(run.id, RunEvent::SlotGranted).await;
             } else {
                 self.apply_run_effects(run.id, work).await;
             }
         }
+    }
+
+    /// Removes what is left of the containers of runs that have ended: the
+    /// last daemon may have stopped before it removed one.
+    pub(super) fn remove_ended_runs_containers(&self) {
+        let ended: Vec<RunId> = self
+            .state
+            .runs
+            .iter()
+            .filter(|run| run.stage.is_over())
+            .map(|run| run.id)
+            .collect();
+        self.work.remove_containers_of(ended);
     }
 
     /// The run going on `number` in `project`, if one is.
@@ -576,22 +649,44 @@ impl Supervisor {
         })
     }
 
-    /// `branch`, or `branch-2`, `-3`… if an earlier run took it.
-    fn unused_run_branch(&self, project: ProjectId, branch: &str) -> String {
-        let taken = |name: &str| {
-            self.state
+    /// `branch`, or `branch-2`, `-3`… if an earlier run took it, or the
+    /// person's repository has it already, on their machine or their
+    /// remote as last fetched: a run never takes over a branch someone
+    /// works on (and the pull request that may be open from it).
+    async fn unused_run_branch(&self, project: ProjectId, root: &Path, branch: &str) -> String {
+        for candidate in
+            std::iter::once(branch.to_owned()).chain((2..100).map(|n| format!("{branch}-{n}")))
+        {
+            let run_has_it = self
+                .state
                 .runs
                 .iter()
-                .any(|run| run.project == project && run.branch == name)
-        };
-        if !taken(branch) {
-            return branch.to_owned();
+                .any(|run| run.project == project && run.branch == candidate);
+            if !run_has_it && !repository_has(root, &candidate).await {
+                return candidate;
+            }
         }
-        (2..)
-            .map(|n| format!("{branch}-{n}"))
-            .find(|candidate| !taken(candidate))
-            .unwrap_or_else(|| branch.to_owned())
+        // A hundred taken: the run's id makes it its own.
+        format!(
+            "{branch}-{}",
+            RunId::new().ulid().to_string().to_lowercase()
+        )
     }
+}
+
+/// Whether the repository at `root` has `branch`, locally or on `origin`
+/// as last fetched; a repository that cannot be asked counts as having it.
+async fn repository_has(root: &Path, branch: &str) -> bool {
+    for reference in [
+        format!("refs/heads/{branch}"),
+        format!("refs/remotes/origin/{branch}"),
+    ] {
+        match crate::git::answer(root, &["show-ref", "--verify", "--quiet", &reference]).await {
+            Ok(Some(_)) | Err(_) => return true,
+            Ok(None) => {}
+        }
+    }
+    false
 }
 
 /// Whether the work in `hand_off` can go to a run: all committed (a run

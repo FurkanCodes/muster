@@ -30,6 +30,7 @@ fn context(root: PathBuf) -> RunContext {
         container: None,
         pr: None,
         cost_micros: 0,
+        current: tokio::sync::watch::channel(0).1,
     }
 }
 
