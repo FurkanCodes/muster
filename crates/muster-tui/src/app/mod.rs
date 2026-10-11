@@ -19,6 +19,8 @@ mod folder_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod motion_tests;
+#[cfg(test)]
 mod navigation_tests;
 #[cfg(test)]
 mod picker_tests;
@@ -37,7 +39,7 @@ use std::path::PathBuf;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
 };
-use muster_core::{ProjectId, SessionId, WorkspaceId};
+use muster_core::{ProjectId, SessionId, SessionStatus, WorkspaceId};
 
 use crate::input::LineInput;
 use crate::model::{Model, Row, needs_attention};
@@ -238,6 +240,11 @@ pub(crate) struct App {
     pub(crate) focused: Option<bool>,
     /// Whether to notify the person of news while they look elsewhere.
     pub(crate) notify: bool,
+    /// Whether anything moves: running sessions' marks spin and what
+    /// needs the person pulses.
+    pub(crate) motion: bool,
+    /// The step of the motion to draw, counted out by the runtime.
+    pub(crate) step: u64,
 }
 
 impl App {
@@ -270,6 +277,8 @@ impl App {
             cwd,
             focused: None,
             notify: true,
+            motion: true,
+            step: 0,
         }
     }
 
@@ -588,6 +597,22 @@ impl App {
             cols: pane.width.max(1),
             rows: pane.height.max(1),
         }
+    }
+
+    /// The step of the motion to draw, or `None` to draw everything still.
+    pub(crate) fn motion_step(&self) -> Option<u64> {
+        self.motion.then_some(self.step)
+    }
+
+    /// Whether something on screen moves: a running session, or something
+    /// waiting on the person. Nothing else asks for drawing.
+    pub(crate) fn animating(&self) -> bool {
+        self.motion
+            && self
+                .model
+                .sessions()
+                .iter()
+                .any(|session| session.status == SessionStatus::Running || needs_attention(session))
     }
 
     /// Whether the list has the keys, rather than a session's terminal.

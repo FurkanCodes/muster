@@ -177,7 +177,8 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
 
     // With an agent on it, ⏎ opens that agent rather than starting one.
     let screen = render(&world.app);
-    assert!(screen.contains("#42 Fix the login redirect ●"), "{screen}");
+    // Its agent is running: its mark spins (step 0 here).
+    assert!(screen.contains("#42 Fix the login redirect ⠋"), "{screen}");
     assert!(screen.contains("Agents"), "{screen}");
     assert!(screen.contains("⏎ open agent  a another agent"), "{screen}");
     let actions = press(&mut world.app, KeyCode::Enter);

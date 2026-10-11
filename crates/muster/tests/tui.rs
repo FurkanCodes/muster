@@ -35,6 +35,11 @@ struct Ui {
 
 impl Ui {
     fn start(sandbox: &Sandbox, cwd: &Path) -> Self {
+        Self::start_with(sandbox, cwd, &[])
+    }
+
+    /// Starts the UI with `env` set as well.
+    fn start_with(sandbox: &Sandbox, cwd: &Path, env: &[(&str, &str)]) -> Self {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: ROWS,
@@ -52,6 +57,9 @@ impl Ui {
             }
         }
         command.env("TERM", "xterm-256color");
+        for (key, value) in env {
+            command.env(key, value);
+        }
         let child = pair.slave.spawn_command(command).unwrap();
         drop(pair.slave);
 
@@ -476,4 +484,63 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
         branches.contains("muster/issue-42-fix-the-login-redirect-2"),
         "{branches}"
     );
+}
+
+#[test]
+fn a_running_agent_s_mark_spins_unless_motion_is_off() {
+    const LINE: &str = "#42 Fix the login redirect ";
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let gh = sandbox.fake_gh();
+    let issue = serde_json::json!({
+        "number": 42, "title": "Fix the login redirect",
+        "url": "https://github.com/o/app/issues/42", "labels": [],
+        "author": {"login": "someone"}
+    });
+    std::fs::write(
+        gh.join("issues.json"),
+        serde_json::json!([issue]).to_string(),
+    )
+    .unwrap();
+    std::fs::write(gh.join("issue-42.json"), issue.to_string()).unwrap();
+    let _stop = StopDaemon(sandbox.paths().socket());
+
+    // An agent on the ticket, started with it to work on: running.
+    let mut ui = Ui::start(&sandbox, &root);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+    ui.keys(b"i");
+    ui.wait_for("app  1 open");
+    ui.keys(b"j");
+    ui.keys(b"\r");
+    ui.wait_for("Ctrl-Q back to the list");
+    ui.keys(&[0x11]);
+    ui.wait_for("⏎ open agent");
+
+    // Its mark on the ticket's line goes round the spinner's frames.
+    let mark = |ui: &Ui| {
+        let text = ui.text();
+        let at = text.find(LINE).expect("the ticket's line") + LINE.len();
+        text[at..].chars().next().unwrap()
+    };
+    let first = mark(&ui);
+    assert!("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".contains(first), "{}", ui.text());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while mark(&ui) == first {
+        assert!(Instant::now() < deadline, "it never moved: {}", ui.text());
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    ui.keys(b"q");
+    assert!(ui.wait_for_exit());
+
+    // MUSTER_MOTION=off: the same agent, standing still.
+    let mut ui = Ui::start_with(&sandbox, &root, &[("MUSTER_MOTION", "off")]);
+    ui.keys(b"i");
+    ui.wait_for(&format!("{LINE}●"));
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(mark(&ui), '●', "{}", ui.text());
+    ui.keys(b"q");
+    assert!(ui.wait_for_exit());
 }

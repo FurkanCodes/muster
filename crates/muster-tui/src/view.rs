@@ -11,6 +11,7 @@ use tui_term::widget::PseudoTerminal;
 
 use crate::app::{App, Link, Mode, View};
 use crate::model::Row;
+use crate::motion;
 
 mod dialogs;
 mod tickets;
@@ -124,7 +125,11 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
         }
         let mut tab = vec![Span::raw(format!(" {name} "))];
         if view == View::NeedsYou && waiting > 0 {
-            tab.push(Span::from(format!("{waiting} ")).red().bold());
+            let style = Style::default().fg(Color::Red).bold();
+            let style = app
+                .motion_step()
+                .map_or(style, |step| motion::pulse(style, step));
+            tab.push(Span::styled(format!("{waiting} "), style));
         }
         if app.view == view {
             tab = tab.into_iter().map(|span| span.reversed().bold()).collect();
@@ -339,7 +344,7 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
                 // The status stays in view. The title gives way, but not
                 // below a readable length: then the usage goes instead,
                 // which the session's pane also shows.
-                let base = session_line(session, "    ", "").width();
+                let base = session_line(session, "    ", "", None).width();
                 let readable = session.title.chars().count().min(READABLE_TITLE);
                 let usage = if width.saturating_sub(base + usage.chars().count()) >= readable {
                     usage
@@ -348,7 +353,7 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
                 };
                 let rest = base + usage.chars().count();
                 let title = shorten(&session.title, width.saturating_sub(rest).max(8));
-                let mut line = session_line(session, "    ", &title);
+                let mut line = session_line(session, "    ", &title, app.motion_step());
                 if !usage.is_empty() {
                     line.spans.push(Span::from(usage).dim());
                 }
@@ -372,8 +377,13 @@ pub(super) fn shorten(text: &str, max: usize) -> String {
     format!("{kept}…")
 }
 
-fn session_line<'a>(session: &'a Session, indent: &'a str, title: &str) -> Line<'a> {
-    let (symbol, style) = status_symbol(session.status);
+fn session_line<'a>(
+    session: &'a Session,
+    indent: &'a str,
+    title: &str,
+    step: Option<u64>,
+) -> Line<'a> {
+    let (symbol, style) = status_symbol(session.status, step);
     let mut spans = vec![
         Span::raw(indent),
         Span::styled(symbol, style),
@@ -405,7 +415,7 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .filter_map(|id| app.model.session(*id))
         .map(|session| {
             let place = app.model.branch(session.workspace).unwrap_or("?");
-            let mut line = session_line(session, "", &session.title);
+            let mut line = session_line(session, "", &session.title, app.motion_step());
             line.spans.push(Span::from(format!("  {place}")).dim());
             ListItem::new(line)
         })
@@ -604,7 +614,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
     let [top, body] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
     let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw(" ")];
     if let Some(stored) = app.model.session(session) {
-        let (symbol, style) = status_symbol(stored.status);
+        let (symbol, style) = status_symbol(stored.status, app.motion_step());
         spans.push(Span::styled(symbol, style));
         spans.push(Span::raw(format!(" {}  ", stored.title)));
         spans.push(Span::from(describe(stored.status)).dim());
@@ -661,11 +671,19 @@ pub(super) fn panel<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> 
     }
 }
 
-pub(super) fn status_symbol(status: SessionStatus) -> (&'static str, Style) {
+/// A session's mark: at a motion `step`, a running one's spins and one
+/// that needs the person pulses; without one, they stand still.
+pub(super) fn status_symbol(status: SessionStatus, step: Option<u64>) -> (&'static str, Style) {
     match status {
         SessionStatus::Fresh => ("○", Style::default().fg(Color::Gray)),
-        SessionStatus::Running => ("●", Style::default().fg(Color::Yellow)),
-        SessionStatus::NeedsYou { .. } => ("▲", Style::default().fg(Color::Red).bold()),
+        SessionStatus::Running => (
+            step.map_or("●", motion::spinner),
+            Style::default().fg(Color::Yellow),
+        ),
+        SessionStatus::NeedsYou { .. } => {
+            let style = Style::default().fg(Color::Red).bold();
+            ("▲", step.map_or(style, |step| motion::pulse(style, step)))
+        }
         SessionStatus::Finished => ("✓", Style::default().fg(Color::Green)),
         SessionStatus::Exited { success: true } => ("■", Style::default().fg(Color::DarkGray)),
         SessionStatus::Exited { success: false } => ("✕", Style::default().fg(Color::Red)),

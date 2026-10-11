@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::app::{Action, App};
 use crate::folders::{self, Folder};
+use crate::motion;
 use crate::view;
 
 /// How the app finds, and if need be starts, the daemon.
@@ -31,6 +32,8 @@ pub struct Options {
     /// Notify the person of news while their terminal window is not in
     /// focus.
     pub notify: bool,
+    /// Let running sessions' marks spin and what needs the person pulse.
+    pub motion: bool,
 }
 
 impl std::fmt::Debug for Options {
@@ -40,6 +43,7 @@ impl std::fmt::Debug for Options {
             .field("starts_daemon", &self.start_daemon.is_some())
             .field("cwd", &self.cwd)
             .field("notify", &self.notify)
+            .field("motion", &self.motion)
             .finish()
     }
 }
@@ -75,6 +79,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let size = terminal_size(&terminal.terminal)?;
     let mut app = App::new(options.cwd.clone(), size);
     app.notify = options.notify;
+    app.motion = options.motion;
 
     let (link_events, mut link) = mpsc::unbounded_channel();
     let link_task = tokio::spawn(keep_linked(options, link_events));
@@ -89,6 +94,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let mut redraw = tokio::time::interval(FRAME);
     let mut dirty = true;
     let mut hold = FrameHold::default();
+    let mut steps = motion::Steps::new(Instant::now());
     let outcome = loop {
         let actions = tokio::select! {
             event = input.next() => match event {
@@ -115,7 +121,14 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
             },
             Some((dir, folders)) = folder_lists.recv() => app.on_folders(dir, folders),
             _ = redraw.tick() => {
-                if dirty && hold.may_draw(app.frame_pending(), Instant::now()) {
+                let now = Instant::now();
+                if app.animating()
+                    && let Some(step) = steps.due(now)
+                {
+                    app.step = step;
+                    dirty = true;
+                }
+                if dirty && hold.may_draw(app.frame_pending(), now) {
                     terminal.terminal.draw(|frame| view::draw(frame, &app))?;
                     dirty = false;
                 }

@@ -75,7 +75,7 @@ fn row_line(app: &App, row: TicketRow, width: usize) -> Line<'static> {
                 .iter()
                 .take(AGENTS_SHOWN)
                 .map(|session| {
-                    let (symbol, style) = status_symbol(session.status);
+                    let (symbol, style) = status_symbol(session.status, app.motion_step());
                     Span::styled(format!(" {symbol}"), style)
                 })
                 .collect();
@@ -179,7 +179,7 @@ fn ticket_text(app: &App, project: muster_core::ProjectId, number: u64) -> Text<
         for session in &agents {
             // Their titles all name the ticket: what tells them apart is
             // how each is doing and where it works.
-            let (symbol, style) = status_symbol(session.status);
+            let (symbol, style) = status_symbol(session.status, app.motion_step());
             let branch = app
                 .model
                 .branch(session.workspace)
