@@ -33,6 +33,9 @@ pub(crate) struct RunContext {
     pub(crate) ticket: Ticket,
     pub(crate) branch: String,
     pub(crate) config: ProjectConfig,
+    /// The run took over the person's branch: the mirror takes it from
+    /// their repository, and the agent carries their work on.
+    pub(crate) from_branch: bool,
     /// The building agent's harness session, once it has one.
     pub(crate) agent_session: Option<String>,
     /// The run's container, once started.

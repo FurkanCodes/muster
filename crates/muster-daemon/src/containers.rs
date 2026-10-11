@@ -117,6 +117,14 @@ impl Default for Docker {
 }
 
 impl Docker {
+    /// The `docker` command at `program`, for tests.
+    #[cfg(test)]
+    pub(crate) fn with_program(program: &str) -> Self {
+        Self {
+            program: program.to_owned(),
+        }
+    }
+
     /// The runtime's memory and CPUs; fails plainly if Docker is not there
     /// or not running.
     #[cfg_attr(

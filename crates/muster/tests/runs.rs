@@ -246,3 +246,55 @@ async fn runs_say_plainly_what_stops_them_from_starting() {
     assert!(unchecked.contains("runs need checks"), "{unchecked}");
     assert!(sandbox.docker_calls().is_empty());
 }
+
+#[tokio::test]
+async fn a_worktree_s_committed_work_is_handed_to_the_autopilot() {
+    let (sandbox, root) = sandbox();
+    // The settings are the project's, committed: the checkout is clean.
+    support::git(&root, &["add", "muster.toml"]);
+    support::git(&root, &["commit", "--quiet", "--message", "Runs"]);
+    let daemon = sandbox.start();
+    ok(&sandbox, &["project", "add", root.to_str().unwrap()]);
+    ok(&sandbox, &["worktree", "add", "app", "--branch", "by-hand"]);
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    let tree = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.kind.branch() == "by-hand")
+        .and_then(|workspace| workspace.kind.host_path())
+        .unwrap()
+        .to_owned();
+
+    std::fs::write(tree.join("fix.txt"), "by hand\n").unwrap();
+    let dirty = refused(
+        &sandbox,
+        &["run", "start", "app", "42", "--from", "by-hand"],
+    );
+    assert!(
+        dirty.contains("1 uncommitted change(s); commit them first"),
+        "{dirty}"
+    );
+    support::git(&tree, &["add", "fix.txt"]);
+    support::git(&tree, &["commit", "--quiet", "--message", "By hand"]);
+
+    let started = ok(
+        &sandbox,
+        &["run", "start", "app", "42", "--from", "by-hand"],
+    );
+    assert!(
+        started.starts_with("Handed the work on by-hand to the autopilot as run run_"),
+        "{started}"
+    );
+    // The branch reached Muster's copy before Docker was asked for a
+    // container (which is not running here).
+    let (run, _) = wait_for_run(&daemon, |run, _| run.stage == RunStage::NeedsYou).await;
+    assert_eq!(run.branch, "by-hand");
+    assert!(run.reason.unwrap().starts_with("Docker is not running"));
+    let shown = ok(&sandbox, &["run", "show", "42"]);
+    assert!(shown.contains("branch        by-hand"), "{shown}");
+    let base = refused(
+        &sandbox,
+        &["run", "start", "app", "7", "--from", "elsewhere"],
+    );
+    assert!(base.contains("no worktree matches \"elsewhere\""), "{base}");
+}

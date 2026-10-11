@@ -71,6 +71,14 @@ pub(crate) fn builder_first(
     )
 }
 
+/// Added to the first turn of a run that took over a person's branch.
+pub(crate) fn carry_on(base: &str) -> String {
+    format!(
+        "\n\nSomeone has already worked on this branch: read its commits with \
+         `git log origin/{base}..HEAD` and carry the work on, rather than starting over."
+    )
+}
+
 /// The building agent's later turns, in the same conversation.
 pub(crate) fn builder_again(feedback: &Feedback) -> String {
     let (what, detail) = match feedback {

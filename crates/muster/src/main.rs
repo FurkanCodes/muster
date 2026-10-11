@@ -94,7 +94,15 @@ enum IssueCommand {
 enum RunCommand {
     /// Hand issue NUMBER of PROJECT (its name, id or path) to the
     /// autopilot. The project's `muster.toml` must name its checks.
-    Start { project: String, number: u64 },
+    Start {
+        project: String,
+        number: u64,
+        /// Hand over the work already done in this worktree (its id or
+        /// branch, or the project's name for its own checkout): the run
+        /// takes its branch, as committed, and starts with the checks.
+        #[arg(long)]
+        from: Option<String>,
+    },
     /// The runs going on, those waiting on you first.
     List {
         /// Include the runs that have ended.
@@ -264,7 +272,11 @@ fn main() -> ExitCode {
 
 async fn run_command(socket: &std::path::Path, command: RunCommand) -> commands::Outcome {
     match command {
-        RunCommand::Start { project, number } => runs::start(socket, &project, number).await,
+        RunCommand::Start {
+            project,
+            number,
+            from,
+        } => runs::start(socket, &project, number, from).await,
         RunCommand::List { all } => runs::list(socket, all).await,
         RunCommand::Show { run } => runs::show(socket, &run).await,
         RunCommand::Retry { run, notes } => runs::retry(socket, &run, notes).await,

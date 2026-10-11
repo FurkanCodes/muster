@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use muster_core::config::ProjectConfig;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
-use muster_core::{ProjectId, Run, RunId, RunStage, RunTransition, Ticket};
+use muster_core::{ProjectId, Run, RunId, RunStage, RunTransition, Ticket, WorkspaceId};
 use muster_state::run::{Limits, RunEffect, RunEvent, RunMachine};
 use tokio::sync::oneshot;
 
@@ -33,7 +33,16 @@ pub(super) struct FetchedRun {
     project: ProjectId,
     config: ProjectConfig,
     detail: IssueDetail,
+    /// The person's branch the run takes over, if it was handed one.
+    handed: Option<String>,
     reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+}
+
+/// A workspace whose work a run is to take over: its place and branch.
+#[derive(Debug)]
+struct HandOff {
+    path: PathBuf,
+    branch: String,
 }
 
 impl Supervisor {
@@ -43,6 +52,7 @@ impl Supervisor {
         &self,
         project: ProjectId,
         number: u64,
+        from: Option<WorkspaceId>,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         let Some(root) = self.project_root(project) else {
@@ -59,6 +69,15 @@ impl Supervisor {
             )));
             return;
         }
+        let hand_off = match from.map(|workspace| self.hand_off(project, workspace)) {
+            None => None,
+            Some(Ok(hand_off)) => Some(hand_off),
+            Some(Err(error)) => {
+                tracing::info!(command = "start run", %error, "command refused");
+                let _ = reply.send(Err(error));
+                return;
+            }
+        };
         let overrides = self
             .config_dir
             .join("projects")
@@ -67,6 +86,9 @@ impl Supervisor {
         tokio::spawn(async move {
             let prepared = async {
                 let config = settings_for_runs(root.clone(), overrides).await?;
+                if let Some(hand_off) = &hand_off {
+                    ready_to_hand_off(hand_off, &config).await?;
+                }
                 let detail = tickets
                     .view(&root, number)
                     .await
@@ -79,6 +101,7 @@ impl Supervisor {
                         project,
                         config,
                         detail,
+                        handed: hand_off.map(|hand_off| hand_off.branch),
                         reply,
                     };
                     let _ = requests
@@ -100,6 +123,7 @@ impl Supervisor {
             project,
             config,
             detail,
+            handed,
             reply,
         } = fetched;
         let number = detail.issue.number;
@@ -125,15 +149,30 @@ impl Supervisor {
             labels: detail.issue.labels.clone(),
             author: detail.issue.author.clone(),
         };
-        let branch = self.unused_run_branch(project, &github::issue_branch(&detail.issue));
-        let machine = RunMachine::new(Limits {
+        if let Some(branch) = &handed
+            && let Some(existing) = self.active_run_on(project, branch)
+        {
+            let _ = reply.send(Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("{branch} is already a run's ({existing})"),
+            )));
+            return;
+        }
+        let limits = Limits {
             attempts: config.limits.attempts,
             run_timeout: config.limits.run_timeout,
             max_cost_micros: config
                 .limits
                 .max_cost_usd
                 .map(|usd| (usd * 1_000_000.0).round() as u64),
-        });
+        };
+        let (branch, machine) = match handed {
+            Some(branch) => (branch, RunMachine::handed_off(limits)),
+            None => (
+                self.unused_run_branch(project, &github::issue_branch(&detail.issue)),
+                RunMachine::new(limits),
+            ),
+        };
         let run = Run {
             id: RunId::new(),
             project,
@@ -169,6 +208,7 @@ impl Supervisor {
             ticket,
             branch,
             config,
+            from_branch: machine.from_branch(),
             agent_session: None,
             container: None,
             pr: None,
@@ -452,6 +492,7 @@ impl Supervisor {
                 ticket: run.ticket.clone(),
                 branch: run.branch.clone(),
                 config,
+                from_branch: machine.from_branch(),
                 agent_session,
                 container,
                 pr: run.pr.clone(),
@@ -480,6 +521,61 @@ impl Supervisor {
             .map(|(id, _)| *id)
     }
 
+    /// The run going on `branch` in `project`, if one is.
+    fn active_run_on(&self, project: ProjectId, branch: &str) -> Option<RunId> {
+        self.active_runs
+            .iter()
+            .find(|(_, active)| {
+                active.context.project == project && active.context.branch == branch
+            })
+            .map(|(id, _)| *id)
+    }
+
+    /// The workspace whose work a run is to take over: one of the
+    /// project's, on the host, on a branch no run has.
+    fn hand_off(&self, project: ProjectId, workspace: WorkspaceId) -> Result<HandOff, ErrorBody> {
+        let found = self
+            .state
+            .workspaces
+            .iter()
+            .find(|candidate| candidate.id == workspace)
+            .ok_or_else(|| {
+                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
+            })?;
+        if found.project != project {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "that workspace belongs to another project",
+            ));
+        }
+        let Some(path) = found.kind.host_path() else {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "that is a run's container; its work is the run's already",
+            ));
+        };
+        let branch = found.kind.branch().to_owned();
+        if branch.starts_with("detached at ") || branch == "?" {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!(
+                    "{} has no branch checked out ({branch}); a run needs one",
+                    path.display()
+                ),
+            ));
+        }
+        if let Some(existing) = self.active_run_on(project, &branch) {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("{branch} is already a run's ({existing})"),
+            ));
+        }
+        Ok(HandOff {
+            path: path.to_owned(),
+            branch,
+        })
+    }
+
     /// `branch`, or `branch-2`, `-3`… if an earlier run took it.
     fn unused_run_branch(&self, project: ProjectId, branch: &str) -> String {
         let taken = |name: &str| {
@@ -496,6 +592,36 @@ impl Supervisor {
             .find(|candidate| !taken(candidate))
             .unwrap_or_else(|| branch.to_owned())
     }
+}
+
+/// Whether the work in `hand_off` can go to a run: all committed (a run
+/// takes the branch as committed, and would leave the rest out), and not
+/// the branch runs start from.
+async fn ready_to_hand_off(hand_off: &HandOff, config: &ProjectConfig) -> Result<(), ErrorBody> {
+    if config.base_branch.as_deref() == Some(hand_off.branch.as_str()) {
+        return Err(ErrorBody::new(
+            ErrorCode::BadRequest,
+            format!(
+                "{} is the branch runs start from; hand over a branch of its own",
+                hand_off.branch
+            ),
+        ));
+    }
+    let uncommitted = crate::git::uncommitted(&hand_off.path)
+        .await
+        .map_err(|error| ErrorBody::new(ErrorCode::BadRequest, error.to_string()))?;
+    if !uncommitted.is_empty() {
+        return Err(ErrorBody::new(
+            ErrorCode::Conflict,
+            format!(
+                "{} has {} uncommitted change(s); commit them first, as the run takes the \
+                 branch as committed",
+                hand_off.path.display(),
+                uncommitted.len()
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// A project's settings, checked as runs need them.

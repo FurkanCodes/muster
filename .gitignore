@@ -1,1 +1,3 @@
 /target
+# Worktrees that Claude Code makes for its own agents.
+/.claude/worktrees/

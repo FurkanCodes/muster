@@ -756,3 +756,95 @@ fn a_restored_run_asks_again_for_the_work_of_its_stage() {
         assert!(Run::at_stage(stage).machine.resume_work().is_empty());
     }
 }
+
+#[test]
+fn a_handed_off_run_checks_the_person_s_work_first_and_builds_only_if_it_fails() {
+    let mut run = Run {
+        machine: RunMachine::handed_off(Limits::default()),
+        start: Instant::now(),
+        now: Instant::now(),
+    };
+    assert!(run.machine.from_branch());
+    run.send(RunEvent::SlotGranted);
+    let effects = run.container_ready();
+    assert_eq!(
+        transition(&effects),
+        (
+            RunStage::Provisioning,
+            RunStage::Checking,
+            "its container is ready with your work".to_owned()
+        )
+    );
+    assert!(matches!(work(&effects), [RunEffect::RunChecks { .. }]));
+    assert_eq!(run.machine.attempt(), 0, "nothing was built");
+
+    // Failing, the building agent takes it on with the evidence.
+    let effects = run.checks(false);
+    assert_eq!(run.stage(), RunStage::Building);
+    assert_eq!(
+        builder(&effects),
+        (
+            1,
+            Some(Feedback::ChecksFailed {
+                report: "test failed".to_owned()
+            })
+        )
+    );
+
+    // A handed-off run whose checks pass goes on to its pull request.
+    let mut passing = Run {
+        machine: RunMachine::handed_off(Limits::default()),
+        start: Instant::now(),
+        now: Instant::now(),
+    };
+    passing.send(RunEvent::SlotGranted);
+    passing.container_ready();
+    passing.checks(true);
+    assert_eq!(passing.stage(), RunStage::OpeningPr);
+
+    // Stored and restored, it still knows where its work came from.
+    let saved = serde_json::to_string(&passing.machine.save(Instant::now())).unwrap();
+    let restored: RunMachine = serde_json::from_str(&saved).unwrap();
+    assert!(restored.from_branch());
+    // A machine stored before hand-offs existed reads as a run of its own.
+    let mut old: serde_json::Value = serde_json::from_str(&saved).unwrap();
+    old.as_object_mut().unwrap().remove("from_branch");
+    let old: RunMachine = serde_json::from_value(old).unwrap();
+    assert!(!old.from_branch());
+}
+
+#[test]
+fn a_handed_off_run_sent_back_before_any_build_builds_with_the_notes() {
+    let mut run = Run {
+        machine: RunMachine::handed_off(Limits::default()),
+        start: Instant::now(),
+        now: Instant::now(),
+    };
+    run.send(RunEvent::SlotGranted);
+    run.infra(true);
+    assert_eq!(run.stage(), RunStage::NeedsYou);
+    run.send(RunEvent::Retry {
+        notes: Some("rebase first".to_owned()),
+    });
+    let effects = run.container_ready();
+    assert_eq!(
+        builder(&effects),
+        (
+            1,
+            Some(Feedback::PersonNotes {
+                notes: "rebase first".to_owned()
+            })
+        )
+    );
+    // Without notes, a new container checks the work again.
+    let mut again = Run {
+        machine: RunMachine::handed_off(Limits::default()),
+        start: Instant::now(),
+        now: Instant::now(),
+    };
+    again.send(RunEvent::SlotGranted);
+    again.infra(true);
+    again.send(RunEvent::Retry { notes: None });
+    again.container_ready();
+    assert_eq!(again.stage(), RunStage::Checking);
+}

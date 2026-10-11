@@ -98,6 +98,32 @@ impl Mirror {
         Ok(base)
     }
 
+    /// Takes the person's own `branch` from their repository at `root`, for
+    /// a run handed their work: fast-forward only, so commits a run pushed
+    /// since are never taken back, and the mirror's own refresh (which
+    /// keeps only `origin`'s branches) cannot lose it. Errs if the mirror
+    /// then has no such branch.
+    pub(crate) async fn take_local(&self, root: &Path, branch: &str) -> Result<(), GitError> {
+        let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
+        let root = root.to_string_lossy();
+        if let Err(error) = git::checked(&self.path, &["fetch", "--quiet", &root, &refspec]).await {
+            // Behind what the mirror has, or gone from the repository: what
+            // the mirror has stands, if it has the branch at all.
+            tracing::debug!(%error, branch, "kept the mirror's copy of a branch");
+        }
+        let reference = format!("refs/heads/{branch}");
+        if git::answer(&self.path, &["show-ref", "--verify", "--quiet", &reference])
+            .await?
+            .is_none()
+        {
+            return Err(GitError::Failed {
+                args: format!("show-ref {reference}"),
+                stderr: format!("the repository has no branch {branch}"),
+            });
+        }
+        Ok(())
+    }
+
     /// Takes `branch` from a bundle a container made, replacing what the
     /// mirror had of it.
     pub(crate) async fn take_bundle(&self, bundle: &Path, branch: &str) -> Result<(), GitError> {
@@ -198,5 +224,77 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(mirror.base_branch(None).await.unwrap(), "main");
+    }
+}
+
+#[cfg(test)]
+mod local_tests {
+    use super::*;
+    use crate::git::tests::{git, repository};
+
+    fn head(repo: &Path, branch: &str) -> String {
+        let output = std::process::Command::new("git")
+            .args(["-C", repo.to_str().unwrap(), "rev-parse", branch])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    }
+
+    #[tokio::test]
+    async fn a_person_s_branch_comes_in_fast_forward_only_and_must_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let remote = repository(dir.path(), "remote");
+        let checkout = dir.path().join("checkout");
+        git(
+            dir.path(),
+            &[
+                "clone",
+                "-q",
+                remote.to_str().unwrap(),
+                checkout.to_str().unwrap(),
+            ],
+        );
+        // Work on a branch only the person's repository has.
+        git(&checkout, &["checkout", "-q", "-b", "feature"]);
+        std::fs::write(checkout.join("a.txt"), "a\n").unwrap();
+        git(&checkout, &["add", "a.txt"]);
+        git(&checkout, &["commit", "-q", "-m", "A"]);
+        let project = ProjectId::new();
+        let data = dir.path().join("data");
+        let mirror = refresh(&data, project, &checkout).await.unwrap();
+        mirror.take_local(&checkout, "feature").await.unwrap();
+        assert_eq!(head(&mirror.path, "feature"), head(&checkout, "feature"));
+
+        // The refresh, keeping origin's branches only, drops it; taking it
+        // again brings it back.
+        let mirror = refresh(&data, project, &checkout).await.unwrap();
+        assert_eq!(head(&mirror.path, "feature"), "feature");
+        mirror.take_local(&checkout, "feature").await.unwrap();
+        assert_eq!(head(&mirror.path, "feature"), head(&checkout, "feature"));
+
+        // Pushed on by a run, the mirror is ahead: the person's older copy
+        // does not take it back.
+        let work = dir.path().join("work");
+        git(
+            dir.path(),
+            &[
+                "clone",
+                "-q",
+                "-b",
+                "feature",
+                mirror.path.to_str().unwrap(),
+                work.to_str().unwrap(),
+            ],
+        );
+        std::fs::write(work.join("b.txt"), "b\n").unwrap();
+        git(&work, &["add", "b.txt"]);
+        git(&work, &["commit", "-q", "-m", "B"]);
+        git(&work, &["push", "-q", "origin", "feature"]);
+        let ahead = head(&mirror.path, "feature");
+        mirror.take_local(&checkout, "feature").await.unwrap();
+        assert_eq!(head(&mirror.path, "feature"), ahead);
+
+        // A branch neither has is an error.
+        assert!(mirror.take_local(&checkout, "missing").await.is_err());
     }
 }

@@ -108,6 +108,11 @@ pub(crate) enum Dialog {
         run: RunId,
         comments: LineInput,
     },
+    /// The issue a workspace's work is for, as it goes to the autopilot.
+    HandOff {
+        workspace: WorkspaceId,
+        number: LineInput,
+    },
 }
 
 /// How to work on an issue: a session the person drives, or a run.

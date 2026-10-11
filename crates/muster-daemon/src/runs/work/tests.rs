@@ -180,6 +180,7 @@ fn context(root: PathBuf) -> RunContext {
             },
             ..ProjectConfig::default()
         },
+        from_branch: false,
         agent_session: None,
         container: None,
         pr: None,

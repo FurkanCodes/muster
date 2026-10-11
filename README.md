@@ -41,6 +41,7 @@ muster
 | `s` | stop a session |
 | `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
 | `x` | remove the selected ended session; or, after asking, the selected worktree, or a project (Muster forgets it; the repository is untouched) |
+| `p` | hand the selected worktree's committed work to the autopilot, for an issue you name |
 | `⇥` | switch between all sessions, *Needs you* and *Runs* |
 | `q` | quit the UI (sessions keep running) |
 
@@ -113,7 +114,7 @@ muster run start app 42
 muster run list
 ```
 
-`muster run show 42` shows where a run is, why, and its timeline; `muster run retry 42 --notes "…"` sends a run that needs you back to work; `muster run changes 42 "…"` sends a ready one back to its agent with what to change; `muster run cancel 42` ends one. `muster run take-over 42` lets you drive a run's agent yourself: Claude Code carries on its conversation in a session in the run's container, which appears in the UI under the project (`⧉`); `muster run hand-back 42` gives the run back, and your work goes to the checks. `muster project config app` shows the settings a project's runs use (memory, image, limits, agents) and where they come from.
+`muster run show 42` shows where a run is, why, and its timeline; `muster run retry 42 --notes "…"` sends a run that needs you back to work; `muster run changes 42 "…"` sends a ready one back to its agent with what to change; `muster run cancel 42` ends one. `muster run take-over 42` lets you drive a run's agent yourself: Claude Code carries on its conversation in a session in the run's container, which appears in the UI under the project (`⧉`); `muster run hand-back 42` gives the run back, and your work goes to the checks. Work you did yourself can go the other way: `muster run start app 42 --from fix-login` hands the committed work on that worktree's branch to the autopilot, which starts with the checks (`p` on a worktree in the UI). `muster project config app` shows the settings a project's runs use (memory, image, limits, agents) and where they come from.
 
 ## How it is built
 

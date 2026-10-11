@@ -136,6 +136,7 @@ impl App {
             KeyCode::Char('s') => self.confirm_stop(),
             KeyCode::Char('r') => return self.restart(),
             KeyCode::Char('x') => return self.remove(),
+            KeyCode::Char('p') if self.view == View::Sessions => self.ask_hand_off(),
             _ => {}
         }
         Vec::new()
@@ -432,7 +433,11 @@ impl App {
                                     vec![self.command(command, Then::OpenIssueSession)]
                                 }
                                 IssueWork::Autopilot => {
-                                    let command = Command::StartRun { project, number };
+                                    let command = Command::StartRun {
+                                        project,
+                                        number,
+                                        from: None,
+                                    };
                                     self.say(format!("Handing #{number} to the autopilot…"));
                                     vec![self.command(command, Then::ShowRun)]
                                 }
@@ -450,9 +455,9 @@ impl App {
                 });
                 Vec::new()
             }
-            dialog @ (Dialog::RunNotes { .. } | Dialog::RunChanges { .. }) => {
-                self.run_dialog_key(dialog, key)
-            }
+            dialog @ (Dialog::RunNotes { .. }
+            | Dialog::RunChanges { .. }
+            | Dialog::HandOff { .. }) => self.run_dialog_key(dialog, key),
             Dialog::NewSession {
                 workspace,
                 harness,

@@ -8,26 +8,49 @@ use muster_core::protocol::{Command, Reply, Snapshot};
 use muster_core::time::{between, span};
 use muster_core::{Run, RunId, RunStage, RunTransition, Timestamp};
 
-use crate::commands::{Outcome, connect, find_project, shown, unexpected};
+use crate::commands::{Outcome, connect, find_project, find_worktree, shown, unexpected};
 
-pub(crate) async fn start(socket: &Path, project: &str, number: u64) -> Outcome {
+pub(crate) async fn start(
+    socket: &Path,
+    project: &str,
+    number: u64,
+    from: Option<String>,
+) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
     let project = find_project(&snapshot, project)?;
     let name = project.name.clone();
+    let handed = match &from {
+        Some(wanted) => {
+            let workspace = find_worktree(&snapshot, wanted)?;
+            if workspace.project != project.id {
+                return Err(format!("{wanted:?} is not one of {}'s", shown(&name)).into());
+            }
+            Some((workspace.id, workspace.kind.branch().to_owned()))
+        }
+        None => None,
+    };
     let reply = connection
         .command(Command::StartRun {
             project: project.id,
             number,
+            from: handed.as_ref().map(|(workspace, _)| *workspace),
         })
         .await?;
     let Reply::RunStarted { id } = reply else {
         return Err(unexpected(&reply));
     };
-    println!(
-        "Picked up issue #{number} in {} as run {id}.\n`muster run show {number}` follows it.",
-        shown(&name)
-    );
+    match handed {
+        Some((_, branch)) => println!(
+            "Handed the work on {} to the autopilot as run {id} on issue #{number}; it starts \
+             with the checks.\n`muster run show {number}` follows it.",
+            shown(&branch)
+        ),
+        None => println!(
+            "Picked up issue #{number} in {} as run {id}.\n`muster run show {number}` follows it.",
+            shown(&name)
+        ),
+    }
     Ok(())
 }
 

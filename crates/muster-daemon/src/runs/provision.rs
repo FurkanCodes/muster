@@ -56,6 +56,12 @@ pub(crate) async fn provision(
         .base_branch(context.config.base_branch.as_deref())
         .await
         .map_err(|error| error.to_string())?;
+    if context.branch == base {
+        // A run pushes its branch and asks to merge it into the base.
+        return Err(format!(
+            "{base} is the branch runs start from; a run needs a branch of its own"
+        ));
+    }
     let run = context.run.to_string();
     let found = docker
         .find(LABEL_RUN, &run)

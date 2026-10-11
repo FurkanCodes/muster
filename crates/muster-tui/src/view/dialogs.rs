@@ -194,6 +194,18 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
             ],
             Some(comments),
         ),
+        Dialog::HandOff { workspace, number } => (
+            " Hand to the autopilot ",
+            vec![
+                Line::from(format!(
+                    "The work committed on {} goes to a run, which starts with the project's \
+                     checks, then opens a pull request and has it reviewed.",
+                    app.model.branch(*workspace).unwrap_or("?")
+                )),
+                Line::from("The issue it is for:"),
+            ],
+            Some(number),
+        ),
         Dialog::Issues { .. } => return,
     };
     let inner_width = width.saturating_sub(2).max(1);
