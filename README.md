@@ -16,11 +16,13 @@
 
 ## Install and run
 
-Muster runs on macOS and Linux. You need git, Rust 1.89 or newer to build it, and — for the features that use them — Claude Code and the GitHub CLI (`gh`), signed in.
+Muster runs on macOS and Linux. You need git, Rust 1.95 or newer to build it, and — for the features that use them — Claude Code and the GitHub CLI (`gh`), signed in.
 
 ```bash
-cargo install --path crates/muster
+cargo install --locked --path crates/muster
 ```
+
+`--locked` builds the exact dependency versions the tests ran against.
 
 ```bash
 muster
