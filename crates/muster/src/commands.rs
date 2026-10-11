@@ -129,6 +129,92 @@ pub(crate) async fn remove_project(socket: &Path, project: &str) -> Outcome {
     Ok(())
 }
 
+pub(crate) async fn show_config(
+    socket: &Path,
+    paths: &muster_core::Paths,
+    project: &str,
+) -> Outcome {
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let found = find_project(&snapshot, project)?;
+    let overrides = paths.project_overrides(found.id);
+    println!(
+        "Settings for {} come from {} and {}.",
+        shown(&found.name),
+        shown(
+            &found
+                .root
+                .join(muster_daemon::config::FILE_NAME)
+                .display()
+                .to_string()
+        ),
+        shown(&overrides.display().to_string())
+    );
+    let loaded = muster_daemon::config::load(&found.root, &overrides)?;
+    if loaded.files.is_empty() {
+        println!("Neither exists yet; these are the defaults.");
+    }
+    let config = &loaded.config;
+    let gib = |bytes: u64| bytes as f64 / f64::from(1u32 << 30);
+    println!(
+        "\nbase branch   {}",
+        config
+            .base_branch
+            .as_deref()
+            .map_or("the repository's default".to_owned(), shown)
+    );
+    println!(
+        "image         {}",
+        config
+            .dockerfile
+            .as_ref()
+            .map_or("Muster's base image".to_owned(), |path| shown(
+                &path.display().to_string()
+            ))
+    );
+    println!(
+        "resources     {:.1} GB, {} CPUs",
+        gib(config.memory_bytes),
+        f64::from(config.millicpus) / 1000.0
+    );
+    println!(
+        "checks        {} (each within {} min)",
+        if config.checks.commands.is_empty() {
+            "none".to_owned()
+        } else {
+            shown(&config.checks.commands.join("; "))
+        },
+        config.checks.timeout.as_secs().div_ceil(60)
+    );
+    println!(
+        "agents        {} builds, {} reviews",
+        shown(&config.agents.builder),
+        shown(&config.agents.reviewer)
+    );
+    println!(
+        "limits        {} attempts, {} min, {}",
+        config.limits.attempts,
+        config.limits.run_timeout.as_secs().div_ceil(60),
+        config
+            .limits
+            .max_cost_usd
+            .map_or("no cost limit".to_owned(), |usd| format!("${usd:.2}"))
+    );
+    match &config.intake.label {
+        Some(label) => println!(
+            "pickup        issues labelled {:?} by {}",
+            shown(label),
+            shown(&config.intake.allowed_accounts.join(", "))
+        ),
+        None => println!("pickup        only issues you choose"),
+    }
+    match config.ready_for_runs() {
+        Ok(()) => println!("\nRuns can use these settings."),
+        Err(reason) => println!("\nRuns cannot start yet: {reason}."),
+    }
+    Ok(())
+}
+
 pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<String>) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;

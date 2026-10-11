@@ -154,7 +154,7 @@ A harness is **data plus a parser**, following Nebula's descriptor idea.
 
 ## 12. Configuration
 
-`muster.toml` in the repo, with local overrides under `~/.config/muster/`. Hands-on sessions need none of it; runs and actions do. Example for Lamphaus:
+`muster.toml` in the repo, with local overrides in `~/.config/muster/projects/<project id>.toml` (`MUSTER_CONFIG_DIR`, then `$XDG_CONFIG_HOME/muster`), merged over it key by key; `muster project config <project>` shows the result and where it came from. Hands-on sessions need none of it; runs and actions do, and runs need at least one check (`PRD-02`). Read strictly (`muster_core::config`): an unknown key, a size or duration that does not parse, a path that leaves the repository, or a pickup label nobody is allowed to apply is an error naming the file, never a silent default. Example for Lamphaus:
 
 ```toml
 [project]

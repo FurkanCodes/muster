@@ -2,6 +2,7 @@
 //! talks to agents, Docker, GitHub and ticket sources (`ARCHITECTURE.md` §4).
 
 pub mod clock;
+pub mod config;
 pub mod store;
 
 mod branches;
