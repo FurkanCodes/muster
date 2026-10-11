@@ -504,3 +504,61 @@ async fn a_watching_client_follows_the_session_to_its_new_program() {
         (SessionStatus::Fresh, false)
     );
 }
+
+#[tokio::test]
+async fn a_client_looking_away_stops_watching_until_it_looks_back() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace, None).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str| launch.fire(event, &payload(&id, event, json!({})));
+
+    let mut viewer = setup.daemon.connect().await;
+    // Watching before attaching does nothing.
+    viewer.watch(session, true).await.unwrap();
+    viewer.attach(session, None).await.unwrap();
+    // Its window lost focus.
+    viewer.watch(session, false).await.unwrap();
+    viewer.command(Command::Ping).await.unwrap();
+    fire("UserPromptSubmit");
+    expect_status(&mut connection, session).await;
+    fire("Stop");
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, true),
+        "finished while nobody looked"
+    );
+
+    // Looking back sees it, and watches again.
+    viewer.watch(session, true).await.unwrap();
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false)
+    );
+    viewer.watch(session, true).await.unwrap();
+    viewer.command(Command::Ping).await.unwrap();
+    fire("UserPromptSubmit");
+    expect_status(&mut connection, session).await;
+    fire("Stop");
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false)
+    );
+
+    // Looking away and detaching ends the watch once, not twice.
+    viewer.watch(session, false).await.unwrap();
+    viewer.detach(session).await.unwrap();
+    let mut other = setup.daemon.connect().await;
+    other.attach(session, None).await.unwrap();
+    other.command(Command::Ping).await.unwrap();
+    fire("UserPromptSubmit");
+    expect_status(&mut connection, session).await;
+    fire("Stop");
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false),
+        "the other client still watches"
+    );
+}

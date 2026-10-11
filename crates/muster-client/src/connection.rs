@@ -132,6 +132,11 @@ impl Connection {
         self.send(ClientFrame::Detach { session }).await
     }
 
+    /// Starts or stops watching an attached session.
+    pub async fn watch(&mut self, session: SessionId, watching: bool) -> Result<(), ClientError> {
+        self.send(ClientFrame::Watch { session, watching }).await
+    }
+
     /// Types into a session's terminal.
     pub async fn input(&mut self, session: SessionId, data: &[u8]) -> Result<(), ClientError> {
         self.send(ClientFrame::Input {

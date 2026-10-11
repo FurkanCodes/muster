@@ -6,6 +6,8 @@ mod events;
 mod pointer;
 
 #[cfg(test)]
+mod focus_tests;
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
 mod pointer_tests;
@@ -18,18 +20,21 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use muster_core::protocol::{
-    ClientFrame, Command, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
+    ClientFrame, Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
 };
 use muster_core::{Issue, ProjectId, SessionId, WorkspaceId};
 
 use crate::input::LineInput;
-use crate::model::{Model, Row};
+use crate::model::{Model, Row, needs_attention};
 use crate::screen::Screen;
 
 /// What the runtime must do for the app.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Action {
     Send(ClientFrame),
+    /// Tell the person, who is looking elsewhere: a desktop notification
+    /// where the terminal shows one, and its bell.
+    Notify(String),
     Quit,
 }
 
@@ -174,6 +179,11 @@ pub(crate) struct App {
     pub(crate) terminal_size: TermSize,
     /// Where `muster` was started, offered when adding a project.
     cwd: PathBuf,
+    /// Whether the person's terminal window has focus, once it has said;
+    /// terminals that never say count as looking.
+    pub(crate) focused: Option<bool>,
+    /// Whether to notify the person of news while they look elsewhere.
+    pub(crate) notify: bool,
 }
 
 impl App {
@@ -197,6 +207,8 @@ impl App {
             next_req: 1,
             terminal_size,
             cwd,
+            focused: None,
+            notify: true,
         }
     }
 
@@ -221,9 +233,21 @@ impl App {
     // Frames from the daemon.
 
     pub(crate) fn on_frame(&mut self, frame: ServerFrame) -> Vec<Action> {
+        let mut news = None;
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
-            ServerFrame::Delta(delta) => self.model.apply(delta),
+            ServerFrame::Delta(delta) => {
+                let session = match &delta {
+                    Delta::SessionStatus { session, .. } => Some(*session),
+                    Delta::SessionUpserted(session) => Some(session.id),
+                    _ => None,
+                };
+                let before = session.and_then(|id| self.model.session(id).map(needs_attention));
+                self.model.apply(delta);
+                if before == Some(false) {
+                    news = session.and_then(|id| self.news(id));
+                }
+            }
             ServerFrame::Reply { req_id, outcome } => return self.on_reply(req_id, outcome),
             ServerFrame::Replay {
                 session,
@@ -238,7 +262,54 @@ impl App {
             }
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
         }
-        self.settle()
+        let mut actions: Vec<Action> = news.into_iter().collect();
+        actions.extend(self.settle());
+        actions
+    }
+
+    /// A notification for a session that has just come to need the
+    /// person, if they are looking elsewhere and want to be told.
+    fn news(&self, session: SessionId) -> Option<Action> {
+        if !self.notify || self.focused != Some(false) {
+            return None;
+        }
+        let stored = self.model.session(session)?;
+        if !needs_attention(stored) {
+            return None;
+        }
+        let what = match stored.status {
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Permission,
+            } => "needs your permission",
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Question,
+            } => "has a question for you",
+            muster_core::SessionStatus::Exited { success: false } => "exited with an error",
+            muster_core::SessionStatus::Exited { success: true } => "exited",
+            _ => "finished",
+        };
+        let place = self
+            .model
+            .branch(stored.workspace)
+            .map(|branch| format!(" ({branch})"))
+            .unwrap_or_default();
+        Some(Action::Notify(format!("{}{place} {what}", stored.title)))
+    }
+
+    /// The person's terminal window gained or lost focus. Looking away
+    /// stops watching the attached session, so what happens meanwhile is
+    /// news; looking back watches it again.
+    pub(crate) fn on_focus(&mut self, focused: bool) -> Vec<Action> {
+        self.focused = Some(focused);
+        match self.attached {
+            Some(session) if matches!(self.link, Link::Connected { .. }) => {
+                vec![Action::Send(ClientFrame::Watch {
+                    session,
+                    watching: focused,
+                })]
+            }
+            _ => Vec::new(),
+        }
     }
 
     fn on_reply(&mut self, req_id: u64, outcome: Result<Reply, ErrorBody>) -> Vec<Action> {
@@ -427,6 +498,13 @@ impl App {
                 actions.push(Action::Send(ClientFrame::Resize { session, size }));
             }
             actions.push(Action::Send(ClientFrame::Attach { session, from_seq }));
+            if self.focused == Some(false) {
+                // Attached, but nobody is looking.
+                actions.push(Action::Send(ClientFrame::Watch {
+                    session,
+                    watching: false,
+                }));
+            }
             self.attached = Some(session);
         }
         actions
