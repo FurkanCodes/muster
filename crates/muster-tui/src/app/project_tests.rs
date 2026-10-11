@@ -160,3 +160,20 @@ fn a_long_title_gives_way_so_the_status_stays_in_view() {
         .expect("the session's row");
     assert!(row.contains("…  idle"), "{row}");
 }
+
+#[test]
+fn control_characters_in_a_title_are_never_drawn() {
+    let mut world = world();
+    let mut hostile = world.session.clone();
+    hostile.title = "evil\u{1b}]0;owned\u{7}\u{1b}[2J title".to_owned();
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(hostile)));
+    world.app.selected = Some(Row::Session(world.session.id));
+    let screen = render(&world.app);
+    assert!(
+        !screen.contains('\u{1b}') && !screen.contains('\u{7}'),
+        "{screen:?}"
+    );
+    assert!(screen.contains("evil]0;owned[2J title"), "{screen}");
+}

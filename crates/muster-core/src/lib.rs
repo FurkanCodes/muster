@@ -9,6 +9,7 @@ pub mod ids;
 pub mod paths;
 pub mod protocol;
 pub mod session;
+pub mod text;
 pub mod time;
 
 pub use entities::{Issue, Project, Session, Workspace, WorkspaceKind};

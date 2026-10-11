@@ -115,7 +115,15 @@ impl Supervisor {
             },
         };
         let takes_prompt = harness::find(&harness).is_some_and(|found| found.takes_prompt());
-        let prompt = takes_prompt.then(|| github::issue_prompt(detail));
+        let prompt = match takes_prompt.then(github::new_fence).transpose() {
+            Ok(fence) => fence.map(|fence| github::issue_prompt(detail, &fence)),
+            Err(error) => {
+                return Err(ErrorBody::new(
+                    ErrorCode::Internal,
+                    format!("could not prepare the prompt: {error}"),
+                ));
+            }
+        };
         let title = format!("#{} {}", detail.issue.number, detail.issue.title);
         match self
             .start_session(workspace, harness, Some(title), size, prompt)
