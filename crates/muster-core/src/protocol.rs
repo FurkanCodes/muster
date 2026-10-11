@@ -343,6 +343,8 @@ pub struct Snapshot {
     pub projects: Vec<Project>,
     pub workspaces: Vec<Workspace>,
     pub sessions: Vec<Session>,
+    #[serde(default)]
+    pub runs: Vec<crate::Run>,
     /// The latest measurement, once one has been taken.
     #[serde(default)]
     pub resources: Option<ResourceReport>,

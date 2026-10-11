@@ -7,7 +7,7 @@ use muster_core::{
 use rusqlite::Connection;
 
 use super::migrations::{MIGRATIONS, latest_version};
-use super::{ResourceSample, StatusChange, Store, StoreError, StoreHandle};
+use super::{ResourceSample, RunUpdate, StatusChange, Store, StoreError, StoreHandle};
 
 fn at(millis: i64) -> Timestamp {
     Timestamp::from_millis(millis)
@@ -342,4 +342,116 @@ async fn a_panicking_call_does_not_stop_the_store() {
     let panicked = handle.call(|_| -> () { panic!("bug") }).await;
     assert!(panicked.is_err());
     assert!(handle.call(|store| store.schema_version()).await.is_ok());
+}
+
+// Runs
+
+fn run(project: ProjectId) -> (muster_core::Run, muster_state::run::RunMachine) {
+    let machine = muster_state::run::RunMachine::new(muster_state::run::Limits::default());
+    let run = muster_core::Run {
+        id: muster_core::RunId::new(),
+        project,
+        ticket: muster_core::Ticket {
+            number: 42,
+            title: "Fix the login redirect".to_owned(),
+            url: "https://github.com/o/app/issues/42".to_owned(),
+            body: "Users land on /404.".to_owned(),
+            labels: vec!["bug".to_owned()],
+            author: Some("someone".to_owned()),
+        },
+        branch: "muster/issue-42-fix-the-login-redirect".to_owned(),
+        stage: muster_core::RunStage::Queued,
+        attempt: 0,
+        max_attempts: 3,
+        reason: None,
+        pr: None,
+        cost_micros: None,
+        created_at: at(5),
+        ended_at: None,
+    };
+    (run, machine)
+}
+
+#[test]
+fn a_run_is_stored_with_its_machine_and_its_timeline() {
+    use muster_core::{PullRequest, RunStage, RunTransition};
+    use muster_state::run::RunEvent;
+
+    let (mut store, project, _, _) = populated();
+    let (stored_run, mut machine) = run(project.id);
+    store.insert_run(&stored_run, &machine).unwrap();
+    assert_eq!(store.snapshot().unwrap().runs, std::slice::from_ref(&stored_run));
+
+    let now = std::time::Instant::now();
+    machine.step(RunEvent::SlotGranted, now);
+    let first = RunTransition {
+        from: RunStage::Queued,
+        to: RunStage::Provisioning,
+        reason: "there is room to run".to_owned(),
+        at: at(6),
+    };
+    let saved = machine.save(now);
+    store
+        .record_run_transition(
+            stored_run.id,
+            &first,
+            &RunUpdate {
+                stage: RunStage::Provisioning,
+                reason: None,
+                pr: None,
+                machine: &saved,
+                ended_at: None,
+            },
+        )
+        .unwrap();
+    let pr = PullRequest {
+        number: 17,
+        url: "https://github.com/o/app/pull/17".to_owned(),
+    };
+    machine.step(RunEvent::CostReported { micros: 250_000 }, now);
+    store
+        .save_run(stored_run.id, &machine.save(now), Some(&pr))
+        .unwrap();
+    let second = RunTransition {
+        from: RunStage::Provisioning,
+        to: RunStage::Cancelled,
+        reason: "you cancelled it".to_owned(),
+        at: at(7),
+    };
+    store
+        .record_run_transition(
+            stored_run.id,
+            &second,
+            &RunUpdate {
+                stage: RunStage::Cancelled,
+                reason: None,
+                pr: Some(&pr),
+                machine: &machine.save(now),
+                ended_at: Some(at(7)),
+            },
+        )
+        .unwrap();
+
+    let found = store.run(stored_run.id).unwrap().unwrap();
+    assert_eq!(found.run.stage, RunStage::Cancelled);
+    assert_eq!(found.run.pr, Some(pr));
+    assert_eq!(found.run.cost_micros, Some(250_000));
+    assert_eq!(found.run.ended_at, Some(at(7)));
+    assert_eq!(found.run.ticket, stored_run.ticket);
+    assert_eq!(found.machine.generation(), machine.generation());
+    assert_eq!(store.run_history(stored_run.id).unwrap(), [first, second]);
+    assert!(matches!(
+        store.save_run(muster_core::RunId::new(), &machine, None),
+        Err(StoreError::NotFound(_))
+    ));
+}
+
+#[test]
+fn a_project_s_runs_go_with_it() {
+    let (mut store, project, _, _) = populated();
+    let (stored_run, machine) = run(project.id);
+    store.insert_run(&stored_run, &machine).unwrap();
+    store.delete_project(project.id).unwrap();
+    assert!(store.runs().unwrap().is_empty());
+    assert!(store.run_history(stored_run.id).unwrap().is_empty());
 }

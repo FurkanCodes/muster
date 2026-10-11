@@ -673,3 +673,83 @@ fn every_transition_comes_first_and_bumps_the_generation() {
     let effects = run.send(RunEvent::Cancel);
     assert!(matches!(effects[0], RunEffect::Transition { .. }));
 }
+
+// Surviving a restart
+
+#[test]
+fn a_saved_machine_comes_back_as_it_was_with_its_time_spent() {
+    let mut run = Run::with(Limits {
+        run_timeout: Duration::from_secs(60 * 60),
+        ..Limits::default()
+    });
+    run.send(RunEvent::SlotGranted);
+    run.container_ready();
+    run.agent_done();
+    run.checks(false);
+    // Twenty minutes into the hour, saved and stored as JSON.
+    let saved = run.machine.save(run.start + Duration::from_secs(20 * 60));
+    let json = serde_json::to_string(&saved).unwrap();
+    let stored: RunMachine = serde_json::from_str(&json).unwrap();
+
+    // The daemon comes back two hours later; downtime is not the run's.
+    let later = run.start + Duration::from_secs(140 * 60);
+    let restored = RunMachine::restore(stored, later);
+    assert_eq!(restored.stage(), RunStage::Building);
+    assert_eq!(restored.generation(), run.generation());
+    assert_eq!(restored.attempt(), 2);
+    assert_eq!(
+        restored.next_deadline(),
+        Some(later + Duration::from_secs(40 * 60))
+    );
+    // And it goes on deciding as before: the budget's last attempt.
+    let mut restored = restored;
+    let generation = restored.generation();
+    restored.step(
+        RunEvent::AgentFinished {
+            generation,
+            outcome: AgentOutcome::Done,
+        },
+        later,
+    );
+    let generation = restored.generation();
+    restored.step(
+        RunEvent::ChecksFinished {
+            generation,
+            passed: false,
+            report: "still".to_owned(),
+        },
+        later,
+    );
+    assert_eq!(restored.stage(), RunStage::Building);
+    assert_eq!(restored.attempt(), 3);
+}
+
+#[test]
+fn a_restored_run_asks_again_for_the_work_of_its_stage() {
+    let mut run = Run::at_stage(RunStage::Checking);
+    run.checks(false);
+    assert_eq!(
+        run.machine.resume_work(),
+        [RunEffect::StartBuilder {
+            generation: run.generation(),
+            attempt: 2,
+            feedback: Some(Feedback::ChecksFailed {
+                report: "test failed".to_owned()
+            }),
+        }]
+    );
+    for (stage, expected) in [
+        (RunStage::Provisioning, "StartContainer"),
+        (RunStage::Checking, "RunChecks"),
+        (RunStage::OpeningPr, "PublishBranch"),
+        (RunStage::AgentReview, "StartReviewer"),
+    ] {
+        let run = Run::at_stage(stage);
+        let work = run.machine.resume_work();
+        assert_eq!(work.len(), 1);
+        assert!(format!("{:?}", work[0]).starts_with(expected), "{stage:?}");
+    }
+    for stage in [RunStage::Queued, RunStage::ReadyForYou] {
+        assert!(Run::at_stage(stage).machine.resume_work().is_empty());
+    }
+}

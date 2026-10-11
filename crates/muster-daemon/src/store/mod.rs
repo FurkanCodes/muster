@@ -4,6 +4,7 @@
 mod handle;
 mod migrations;
 mod rows;
+mod runs;
 
 #[cfg(test)]
 mod tests;
@@ -16,6 +17,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 pub use handle::{StoreClosed, StoreHandle};
 pub use rows::{ResourceSample, StatusChange};
+pub use runs::{RunUpdate, StoredRun};
 
 use rows::{id_text, path_text, status_json};
 
@@ -335,10 +337,12 @@ impl Store {
              ORDER BY s.created_at, s.id",
             rows::session,
         )?;
+        let runs = self.runs()?.into_iter().map(|stored| stored.run).collect();
         Ok(Snapshot {
             projects,
             workspaces,
             sessions,
+            runs,
             resources: None,
         })
     }
