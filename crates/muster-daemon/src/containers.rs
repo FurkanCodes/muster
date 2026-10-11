@@ -33,6 +33,12 @@ pub(crate) enum RuntimeError {
     Missing,
     #[error("Docker is not running; start it, then retry ({0})")]
     NotRunning(String),
+    /// The container named is not there.
+    #[error("the container is gone: {0}")]
+    NoContainer(String),
+    /// The container is there but stopped.
+    #[error("the container is stopped: {0}")]
+    Stopped(String),
     #[error("could not run docker: {0}")]
     Spawn(std::io::Error),
     #[error("`docker {args}` failed: {stderr}")]
@@ -168,6 +174,27 @@ impl Docker {
         parse_ps(&output)
     }
 
+    /// The containers carrying `label`, whatever its value, with that
+    /// value; running or not.
+    pub(crate) async fn labelled(&self, label: &str) -> Result<Vec<(Found, String)>, RuntimeError> {
+        let filter = format!("label={label}");
+        let output = self
+            .quick(
+                &[
+                    "ps",
+                    "--all",
+                    "--no-trunc",
+                    "--filter",
+                    &filter,
+                    "--format",
+                    "{{json .}}",
+                ],
+                &[],
+            )
+            .await?;
+        parse_labelled(&output, label)
+    }
+
     /// Starts a container from `spec` and returns its id. Docker refuses a
     /// second container of the same name, so a retry after a restart finds
     /// the first one instead (see [`find`](Self::find)).
@@ -217,8 +244,10 @@ impl Docker {
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
         let output = self.run_with(&args, env, input, limit).await?;
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        if is_not_running(&stderr) {
-            return Err(RuntimeError::NotRunning(stderr));
+        if !output.status.success()
+            && let Some(error) = docker_failure(&stderr)
+        {
+            return Err(error);
         }
         Ok(ExecOutput {
             code: output.status.code(),
@@ -302,6 +331,7 @@ impl Docker {
     pub(crate) async fn remove(&self, container: &str) -> Result<(), RuntimeError> {
         match self.quick(&["rm", "--force", container], &[]).await {
             Ok(_) => Ok(()),
+            Err(RuntimeError::NoContainer(_)) => Ok(()),
             Err(RuntimeError::Failed { stderr, .. }) if stderr.contains("No such container") => {
                 Ok(())
             }
@@ -316,8 +346,8 @@ impl Docker {
             return Ok(output.stdout);
         }
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        if is_not_running(&stderr) {
-            return Err(RuntimeError::NotRunning(stderr));
+        if let Some(error) = docker_failure(&stderr) {
+            return Err(error);
         }
         Err(RuntimeError::Failed {
             args: args.join(" "),
@@ -442,11 +472,64 @@ fn parse_ps(output: &[u8]) -> Result<Vec<Found>, RuntimeError> {
         .collect()
 }
 
+/// `docker ps --format '{{json .}}'` with each container's value of
+/// `label`, from its `Labels` (`a=1,b=2`).
+fn parse_labelled(output: &[u8], label: &str) -> Result<Vec<(Found, String)>, RuntimeError> {
+    #[derive(Deserialize)]
+    struct Line {
+        #[serde(rename = "Labels", default)]
+        labels: String,
+    }
+    let found = parse_ps(output)?;
+    let lines: Vec<&str> = std::str::from_utf8(output)
+        .map_err(|error| RuntimeError::Unreadable(error.to_string()))?
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let prefix = format!("{label}=");
+    found
+        .into_iter()
+        .zip(lines)
+        .map(|(found, line)| {
+            let parsed: Line = serde_json::from_str(line)
+                .map_err(|error| RuntimeError::Unreadable(format!("{error}: {line}")))?;
+            let value = parsed
+                .labels
+                .split(',')
+                .find_map(|pair| pair.strip_prefix(&prefix))
+                .unwrap_or_default()
+                .to_owned();
+            Ok((found, value))
+        })
+        .collect()
+}
+
 /// Whether docker's complaint means the runtime is not up.
 fn is_not_running(stderr: &str) -> bool {
     stderr.contains("Cannot connect to the Docker daemon")
         || stderr.contains("Is the docker daemon running")
         || stderr.contains("error during connect")
+}
+
+/// A failure of docker's own, rather than of the command it ran: the
+/// runtime is down, or the container is gone or stopped. Docker says so on
+/// its first line (`Error response from daemon: …`, checked against Docker
+/// Desktop 4).
+fn docker_failure(stderr: &str) -> Option<RuntimeError> {
+    if is_not_running(stderr) {
+        return Some(RuntimeError::NotRunning(stderr.to_owned()));
+    }
+    let first = stderr.lines().next().unwrap_or_default();
+    if !first.starts_with("Error response from daemon:") {
+        return None;
+    }
+    if first.contains("No such container") {
+        Some(RuntimeError::NoContainer(first.to_owned()))
+    } else if first.contains("is not running") || first.contains("is paused") {
+        Some(RuntimeError::Stopped(first.to_owned()))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

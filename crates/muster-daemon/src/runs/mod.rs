@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use muster_core::config::ProjectConfig;
 use muster_core::{ProjectId, PullRequest, RunId, SessionId, Ticket};
 use muster_state::run::{RunEffect, RunEvent};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 /// What work on a run needs to know.
 #[derive(Clone, Debug)]
@@ -43,6 +43,17 @@ pub(crate) struct RunContext {
     pub(crate) pr: Option<PullRequest>,
     /// What the run has cost so far, for the work to add to.
     pub(crate) cost_micros: u64,
+    /// The run's generation now, as the Supervisor moves it on: work asked
+    /// for under an earlier one has been overtaken, and stops without a
+    /// word rather than start anything more (`ARC-10`).
+    pub(crate) current: watch::Receiver<u64>,
+}
+
+impl RunContext {
+    /// Whether work asked for under `generation` has been overtaken since.
+    pub(crate) fn overtaken(&self, generation: u64) -> bool {
+        *self.current.borrow() != generation
+    }
 }
 
 /// What work reports back.
@@ -75,6 +86,11 @@ pub(crate) trait RunWork: Send + Sync + std::fmt::Debug {
     /// Stops a session's program in a run's container, where stopping
     /// docker's client on the host does not reach it.
     fn stop_session(&self, container: String, session: SessionId);
+
+    /// Removes the containers of runs that have ended: one made by work
+    /// overtaken by the run's end, or left by a daemon that stopped before
+    /// it removed them.
+    fn remove_containers_of(&self, runs: Vec<RunId>);
 }
 
 /// Work that cannot be done: every piece of it fails plainly. For tests
@@ -107,4 +123,6 @@ impl RunWork for NotYetBuilt {
     fn check_pull_request(&self, _context: RunContext, _reports: Reports) {}
 
     fn stop_session(&self, _container: String, _session: SessionId) {}
+
+    fn remove_containers_of(&self, _runs: Vec<RunId>) {}
 }

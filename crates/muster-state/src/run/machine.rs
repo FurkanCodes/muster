@@ -434,10 +434,16 @@ impl RunMachine {
         self.enter(RunStage::Building, &reason, Some(feedback), now, effects);
     }
 
-    /// Stops for the person; a retry goes back to the stage it stopped in.
+    /// Stops for the person; a retry goes back to the stage it stopped in,
+    /// except that one stopped publishing checks again first: the branch
+    /// may have gained commits elsewhere since (which were not checked, and
+    /// which a push would have to take in).
     fn needs_you(&mut self, reason: String, now: Instant, effects: &mut Vec<RunEffect>) {
         if self.stage != RunStage::NeedsYou {
-            self.resume = Some(self.stage);
+            self.resume = Some(match self.stage {
+                RunStage::OpeningPr => RunStage::Checking,
+                stage => stage,
+            });
         }
         self.transition(RunStage::NeedsYou, reason.clone(), now, effects);
         self.reason = Some(reason);
@@ -483,8 +489,11 @@ impl RunMachine {
     }
 
     fn end(&mut self, stage: RunStage, reason: &str, now: Instant, effects: &mut Vec<RunEffect>) {
+        // A container may exist from the moment one was asked for, ready
+        // or not: one still starting, or one whose checkout failed.
+        let may_have_container = self.has_container || self.generation > 0;
         self.transition(stage, reason.to_owned(), now, effects);
-        if self.has_container {
+        if may_have_container {
             effects.push(RunEffect::RemoveContainer);
             self.has_container = false;
         }

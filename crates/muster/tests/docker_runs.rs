@@ -25,7 +25,8 @@ use support::{Daemon, Sandbox, git, read_terminal};
 /// Stands in for Claude Code in a run's container. Headless (`-p`), it
 /// speaks stream-json: a reviewer (`--allowedTools`) approves; a builder
 /// writes `fix.txt` and commits, after `slow-build`'s seconds on its first
-/// turn, and adds `fixed` once told the checks failed. Interactive, for a
+/// turn, adds `fixed` once told the checks failed and `changed` once asked
+/// for changes. Interactive, for a
 /// person taking the run over, a shell stands in for it.
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
 session=""; review=no; headless=no; previous=""
@@ -48,6 +49,7 @@ if [ "$review" = yes ]; then
 fi
 case "$prompt" in
   *"checks failed"*) echo fixed >> fix.txt ;;
+  *"asked for changes"*) echo changed >> fix.txt ;;
   *) sleep "$(cat slow-build 2>/dev/null || echo 0)"; echo first > fix.txt ;;
 esac
 git add fix.txt && git commit --quiet --message "Fix the thing"
@@ -55,7 +57,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"Done.","
 "#;
 
 /// Bump with any change to the image.
-const IMAGE: &str = "muster-e2e-claude:1";
+const IMAGE: &str = "muster-e2e-claude:2";
 
 fn docker_tests() -> bool {
     std::env::var("MUSTER_DOCKER_TESTS").as_deref() == Ok("1")
@@ -463,4 +465,68 @@ async fn real_docker_takes_a_person_s_branch_from_the_checks_to_a_ready_pull_req
     );
     let calls = std::fs::read_to_string(sandbox.fake_gh().join("calls")).unwrap();
     assert!(calls.contains("--head by-hand"), "{calls}");
+}
+
+#[tokio::test]
+async fn real_docker_takes_in_a_suggestion_committed_on_github_before_more_work() {
+    if !docker_tests() {
+        return;
+    }
+    let toml = "[checks]\ncommands = [\"grep -q fixed fix.txt\"]\n";
+    let (sandbox, root, remote) = sandbox(toml, None);
+    let mut cleanup = Cleanup(None);
+    let daemon = sandbox.start();
+    cleanup.0 = Some(add_project(&daemon, &root).await);
+    muster(&sandbox, &["run", "start", "app", "42"]);
+    wait_for_stage(&daemon, RunStage::ReadyForYou, Duration::from_secs(120)).await;
+
+    // Someone commits a suggestion on the pull request's branch on GitHub.
+    let elsewhere = sandbox.root().join("elsewhere");
+    git(
+        sandbox.root(),
+        &[
+            "clone",
+            "--quiet",
+            "--branch",
+            "muster/issue-42-fix-the-thing",
+            remote.to_str().unwrap(),
+            elsewhere.to_str().unwrap(),
+        ],
+    );
+    std::fs::write(elsewhere.join("suggestion.txt"), "suggested\n").unwrap();
+    git(&elsewhere, &["add", "suggestion.txt"]);
+    git(
+        &elsewhere,
+        &["commit", "--quiet", "--message", "Suggestion"],
+    );
+    git(
+        &elsewhere,
+        &["push", "--quiet", "origin", "muster/issue-42-fix-the-thing"],
+    );
+
+    // Asked for changes, the run takes the suggestion in before its agent
+    // works again, and its push goes through.
+    muster(&sandbox, &["run", "changes", "42", "Say what changed."]);
+    let (run, timeline) =
+        wait_for_stage(&daemon, RunStage::Building, Duration::from_secs(30)).await;
+    assert_eq!(run.attempt, 3);
+    assert_eq!(
+        timeline.last().unwrap().reason,
+        "you asked for changes; attempt 3"
+    );
+    let (run, _) = wait_for_stage(&daemon, RunStage::ReadyForYou, Duration::from_secs(120)).await;
+    assert_eq!(run.attempt, 3);
+    let log = branch_log(&remote);
+    assert!(log.contains(&"Suggestion".to_owned()), "{log:?}");
+    assert_eq!(
+        git(&remote, &["show", "muster/issue-42-fix-the-thing:fix.txt"]),
+        "first\nfixed\nchanged"
+    );
+    assert_eq!(
+        git(
+            &remote,
+            &["show", "muster/issue-42-fix-the-thing:suggestion.txt"]
+        ),
+        "suggested"
+    );
 }

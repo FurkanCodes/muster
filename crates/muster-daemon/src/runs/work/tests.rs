@@ -185,6 +185,7 @@ fn context(root: PathBuf) -> RunContext {
         container: None,
         pr: None,
         cost_micros: 0,
+        current: tokio::sync::watch::channel(0).1,
     }
 }
 
@@ -225,7 +226,11 @@ async fn real_docker_takes_a_run_from_pickup_to_ready_through_a_failed_check() {
         max_cost_micros: None,
     });
     let (reports, mut queue) = mpsc::unbounded_channel();
+    // As the Supervisor does: the work hears of each generation first.
+    let (generation, current) = tokio::sync::watch::channel(0);
+    context.current = current;
     let mut effects = machine.step(RunEvent::SlotGranted, Instant::now());
+    generation.send_replace(machine.generation());
     let deadline = Instant::now() + Duration::from_secs(240);
     while !matches!(machine.stage(), RunStage::ReadyForYou | RunStage::NeedsYou) {
         for effect in effects.drain(..) {
@@ -240,7 +245,10 @@ async fn real_docker_takes_a_run_from_pickup_to_ready_through_a_failed_check() {
             .unwrap_or_else(|_| panic!("stuck at {:?}", machine.stage()))
             .unwrap();
         match report {
-            Report::Event(event) => effects = machine.step(event, Instant::now()),
+            Report::Event(event) => {
+                effects = machine.step(event, Instant::now());
+                generation.send_replace(machine.generation());
+            }
             Report::Container(container) => context.container = Some(container),
             Report::AgentSession(session) => context.agent_session = Some(session),
             Report::PullRequest(pr) => context.pr = Some(pr),

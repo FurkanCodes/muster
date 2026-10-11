@@ -71,6 +71,8 @@ struct FakeWork {
     reports: Mutex<Option<Reports>>,
     /// Sessions asked to stop in their container.
     stopped: Mutex<Vec<(String, SessionId)>>,
+    /// Runs whose containers were asked to go, outside their own work.
+    removed: Mutex<Vec<RunId>>,
 }
 
 impl RunWork for FakeWork {
@@ -86,6 +88,10 @@ impl RunWork for FakeWork {
 
     fn stop_session(&self, container: String, session: SessionId) {
         self.stopped.lock().unwrap().push((container, session));
+    }
+
+    fn remove_containers_of(&self, runs: Vec<RunId>) {
+        self.removed.lock().unwrap().extend(runs);
     }
 }
 
@@ -675,3 +681,129 @@ mod take_over_tests;
 
 #[path = "hand_off_tests.rs"]
 mod hand_off_tests;
+
+#[tokio::test]
+async fn a_run_resumed_with_unreadable_settings_stops_for_the_person_until_they_are_mended() {
+    let setup = setup(CHECKS).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    let (_, effect) = setup.work.asked(1).await;
+    setup.work.report(run, Report::Container("c-1".to_owned()));
+    setup.work.report(
+        run,
+        Report::Event(RunEvent::ContainerReady {
+            generation: generation(&effect),
+        }),
+    );
+    wait_for_stage(&mut deltas, run, RunStage::Building).await;
+    setup.supervisor.command(Command::Ping).await.unwrap();
+
+    // The settings break while the daemon is down.
+    std::fs::write(
+        setup.root.join("muster.toml"),
+        "[checks]\ncommand = [\"typo\"]\n",
+    )
+    .unwrap();
+    let Setup {
+        _dir: dir,
+        database,
+        supervisor,
+        root,
+        ..
+    } = setup;
+    drop(supervisor);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let work = Arc::new(FakeWork::default());
+    let supervisor = spawn(&database, work.clone(), dir.path()).await;
+    let (snapshot, mut deltas) = supervisor.subscribe().await.unwrap();
+    let stopped = &snapshot.runs[0];
+    assert_eq!(stopped.stage, RunStage::NeedsYou, "no work with no checks");
+    let reason = stopped.reason.clone().unwrap();
+    assert!(
+        reason.starts_with("its settings cannot be read"),
+        "{reason}"
+    );
+    assert!(
+        work.asked
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(_, effect)| !matches!(effect, RunEffect::StartBuilder { .. })),
+        "the agent was not started again"
+    );
+
+    // Sent back while they are still broken: refused, with why.
+    let refused = supervisor
+        .command(Command::RetryRun { run, notes: None })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::BadRequest);
+    assert!(refused.message.contains("command"), "{}", refused.message);
+
+    // Mended, it goes back to work with them.
+    std::fs::write(
+        root.join("muster.toml"),
+        "[checks]\ncommands = [\"make check\"]\n",
+    )
+    .unwrap();
+    supervisor
+        .command(Command::RetryRun { run, notes: None })
+        .await
+        .unwrap();
+    wait_for_stage(&mut deltas, run, RunStage::Building).await;
+    let (context, _) = work
+        .asked
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|(_, effect)| matches!(effect, RunEffect::StartBuilder { .. }))
+        .cloned()
+        .unwrap();
+    assert_eq!(context.config.checks.commands, ["make check"]);
+}
+
+#[tokio::test]
+async fn containers_of_runs_that_ended_go_even_when_they_come_late() {
+    let setup = setup(CHECKS).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    setup.work.asked(1).await;
+    // Cancelled while its container was still starting: the cancel asks
+    // for whatever came of it to go.
+    setup
+        .supervisor
+        .command(Command::CancelRun { run })
+        .await
+        .unwrap();
+    wait_for_stage(&mut deltas, run, RunStage::Cancelled).await;
+    assert!(
+        setup
+            .work
+            .asked
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, effect)| *effect == RunEffect::RemoveContainer)
+    );
+    // The container starting then comes too late: it goes as well.
+    setup
+        .work
+        .report(run, Report::Container("c-late".to_owned()));
+    setup.supervisor.command(Command::Ping).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert_eq!(setup.work.removed.lock().unwrap().as_slice(), [run]);
+
+    // A daemon starting again clears what is left of ended runs.
+    let Setup {
+        _dir: dir,
+        database,
+        supervisor,
+        ..
+    } = setup;
+    drop(supervisor);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let work = Arc::new(FakeWork::default());
+    let _supervisor = spawn(&database, work.clone(), dir.path()).await;
+    assert_eq!(work.removed.lock().unwrap().as_slice(), [run]);
+}

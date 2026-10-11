@@ -401,8 +401,18 @@ fn an_infrastructure_failure_stops_the_work_and_a_retry_resumes_there() {
         )
     );
     assert_eq!(work(&effects), [stop(&run)]);
+    // Stopped publishing, a retry checks again first: the branch may have
+    // gained commits elsewhere meanwhile.
     let effects = run.send(RunEvent::Retry { notes: None });
-    assert!(matches!(work(&effects), [RunEffect::PublishBranch { .. }]));
+    assert!(matches!(work(&effects), [RunEffect::RunChecks { .. }]));
+    run.checks(true);
+    assert_eq!(run.stage(), RunStage::OpeningPr);
+
+    // Elsewhere, a retry goes back to the very stage.
+    let mut review = Run::at_stage(RunStage::AgentReview);
+    review.infra(false);
+    let effects = review.send(RunEvent::Retry { notes: None });
+    assert!(matches!(work(&effects), [RunEffect::StartReviewer { .. }]));
 }
 
 #[test]
@@ -423,10 +433,20 @@ fn a_lost_container_starts_over_in_a_new_one_with_the_persons_notes() {
             })
         )
     );
-    // And nothing to remove when cancelled before a container is made.
+    // Cancelled after a container was asked for, whatever came of it (one
+    // still starting, one whose checkout failed) goes; never asked for,
+    // there is nothing to remove.
     let mut early = Run::at_stage(RunStage::Provisioning);
     early.infra(false);
     let effects = early.send(RunEvent::Cancel);
+    assert_eq!(work(&effects), [RunEffect::RemoveContainer]);
+    let mut starting = Run::at_stage(RunStage::Provisioning);
+    let effects = starting.send(RunEvent::Cancel);
+    assert_eq!(
+        work(&effects),
+        [stop(&starting), RunEffect::RemoveContainer]
+    );
+    let effects = Run::new().send(RunEvent::Cancel);
     assert_eq!(work(&effects), []);
 }
 
