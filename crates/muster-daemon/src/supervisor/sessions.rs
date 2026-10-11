@@ -189,6 +189,107 @@ impl Supervisor {
             .map(|live| (live.machine.status(), live.machine.unseen()))
     }
 
+    /// Starts an ended session's program again in the same session. Claude
+    /// Code resumes the conversation it had, if its transcript is still
+    /// there; otherwise, and for a shell, the program starts afresh.
+    pub(super) async fn restart_session(
+        &mut self,
+        session: SessionId,
+        size: TermSize,
+    ) -> Result<Reply, ErrorBody> {
+        let stored = self
+            .state
+            .sessions
+            .iter()
+            .find(|stored| stored.id == session)
+            .cloned()
+            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no session {session}")))?;
+        if self.is_running(session) {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("{} is still running", stored.title),
+            ));
+        }
+        let cwd = self.workspace_path(stored.workspace).ok_or_else(|| {
+            ErrorBody::new(
+                ErrorCode::NotFound,
+                format!("{}'s worktree is gone", stored.title),
+            )
+        })?;
+        let harness = harness::find(&stored.harness).ok_or_else(|| {
+            ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!("no harness called {:?}", stored.harness),
+            )
+        })?;
+        let (mode, start) = match resumable(harness, &stored) {
+            Some(agent_session) => (Mode::Resume { agent_session }, Start::Resumed),
+            None => (Mode::Fresh { prompt: None }, Start::Idle),
+        };
+
+        // The session is open again before its program starts (`ARC-10`).
+        self.store
+            .call(move |store| store.reopen_session(session))
+            .await
+            .map_err(store_closed)?
+            .map_err(store_error)?;
+        if let Some(reopened) = self.session_mut(session) {
+            reopened.ended_at = None;
+        }
+        if let Err(error) = self.launch(session, harness, cwd, size, mode, start, false) {
+            self.end_session(session, SessionStatus::Exited { success: false }, true)
+                .await;
+            return Err(ErrorBody::new(
+                ErrorCode::Internal,
+                format!("could not start {}: {error}", harness.label),
+            ));
+        }
+        tracing::info!(%session, "restarted");
+        if let Some((status, unseen)) = self.launched_status(session) {
+            self.set_status(session, status, unseen).await;
+        }
+        if let Some(reopened) = self.session_mut(session) {
+            let reopened = reopened.clone();
+            self.broadcast(Delta::SessionUpserted(reopened));
+        }
+        Ok(Reply::SessionStarted { id: session })
+    }
+
+    /// Takes an ended session off the list, keeping its history.
+    pub(super) async fn remove_session(&mut self, session: SessionId) -> Result<Reply, ErrorBody> {
+        let title = self
+            .state
+            .sessions
+            .iter()
+            .find(|stored| stored.id == session)
+            .map(|stored| stored.title.clone())
+            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no session {session}")))?;
+        if self.is_running(session) {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("{title} is still running; stop it first"),
+            ));
+        }
+        let at = self.clock.now();
+        self.store
+            .call(move |store| store.remove_session(session, at))
+            .await
+            .map_err(store_closed)?
+            .map_err(store_error)?;
+        self.forget_token(session);
+        self.release_terminal(session);
+        self.state.sessions.retain(|stored| stored.id != session);
+        self.broadcast(Delta::SessionRemoved { id: session });
+        Ok(Reply::Done)
+    }
+
+    /// Whether the session's program is running.
+    fn is_running(&self, session: SessionId) -> bool {
+        self.live
+            .get(&session)
+            .is_some_and(|live| !live.machine.status().is_exited())
+    }
+
     pub(super) async fn stop_session(&mut self, session: SessionId) -> Result<Reply, ErrorBody> {
         let live = self.live.get(&session).ok_or_else(|| {
             ErrorBody::new(ErrorCode::NotFound, format!("{session} is not running"))
@@ -289,20 +390,15 @@ impl Supervisor {
     /// Resumes `session` if it can be. A turn the restart cut short counts
     /// as unseen.
     async fn resume(&mut self, session: &Session) -> bool {
-        let harness = harness::find(&session.harness).filter(|harness| harness.can_resume());
-        let (Some(harness), Some(agent_session), Some(cwd)) = (
-            harness,
-            session.resume_id.clone(),
+        let Some(harness) = harness::find(&session.harness) else {
+            return false;
+        };
+        let (Some(agent_session), Some(cwd)) = (
+            resumable(harness, session),
             self.workspace_path(session.workspace),
         ) else {
             return false;
         };
-        let transcript = transcript::projects_dir()
-            .and_then(|projects| transcript::exists(&projects, &agent_session));
-        if transcript == Some(false) {
-            tracing::info!(session = %session.id, "no transcript to resume");
-            return false;
-        }
         let unseen = session.unseen
             || matches!(
                 session.status,
@@ -383,4 +479,19 @@ impl Supervisor {
             })
             .count()
     }
+}
+
+/// The harness session to resume `session` from: one whose harness can
+/// resume, whose id was saved after a turn ran, and whose transcript has
+/// not been deleted. An unreadable transcript folder is no verdict, so the
+/// resume is tried; if it fails the session starts fresh.
+fn resumable(harness: Harness, session: &Session) -> Option<String> {
+    let agent_session = session.resume_id.clone().filter(|_| harness.can_resume())?;
+    let transcript = transcript::projects_dir()
+        .and_then(|projects| transcript::exists(&projects, &agent_session));
+    if transcript == Some(false) {
+        tracing::info!(session = %session.id, "no transcript to resume");
+        return None;
+    }
+    Some(agent_session)
 }

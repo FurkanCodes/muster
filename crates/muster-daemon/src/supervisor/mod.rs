@@ -309,6 +309,8 @@ impl Supervisor {
                     .await
             }
             Command::StopSession { session } => self.stop_session(session).await,
+            Command::RestartSession { session, size } => self.restart_session(session, size).await,
+            Command::RemoveSession { session } => self.remove_session(session).await,
             Command::ListIssues { .. } | Command::StartFromIssue { .. } => Err(ErrorBody::new(
                 ErrorCode::Internal,
                 "issue commands are answered off the Supervisor's loop",
@@ -458,6 +460,8 @@ fn command_name(command: &Command) -> &'static str {
         Command::RemoveWorktree { .. } => "remove worktree",
         Command::StartSession { .. } => "start session",
         Command::StopSession { .. } => "stop session",
+        Command::RestartSession { .. } => "restart session",
+        Command::RemoveSession { .. } => "remove session",
         Command::ListIssues { .. } => "list issues",
         Command::StartFromIssue { .. } => "start from issue",
     }

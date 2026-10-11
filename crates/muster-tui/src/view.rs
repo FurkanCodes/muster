@@ -1,5 +1,6 @@
 //! Drawing the app. Pure: reads the app, writes the frame.
 
+use muster_core::protocol::DetachReason;
 use muster_core::{Session, SessionStatus, WaitReason, WorkspaceKind};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
@@ -80,9 +81,7 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
                 needs.dim()
             });
         }
-        Link::Lost(reason) => {
-            spans.push(Span::from(format!("daemon unreachable ({reason}); retrying…")).red())
-        }
+        Link::Lost(_) => spans.push(Span::from("daemon unreachable; retrying…").red()),
     }
     frame.render_widget(Line::from(spans), area);
 }
@@ -100,35 +99,71 @@ fn note_text(text: &str) -> String {
     format!(" {}", lines.join(" · "))
 }
 
+/// What the bottom bar says instead of hints, if anything: the last note,
+/// or why the daemon cannot be reached; and whether it is an error.
+fn message(app: &App) -> Option<(&str, bool)> {
+    match (&app.note, &app.link) {
+        (Some(note), _) => Some((note.text.as_str(), note.error)),
+        (None, Link::Lost(reason)) => Some((reason.as_str(), true)),
+        (None, _) => None,
+    }
+}
+
 /// How many lines the bottom bar needs: hints take one, a long message up
 /// to three, so the reason in an error is not cut off.
 fn bottom_height(app: &App, width: u16) -> u16 {
-    let Some(note) = &app.note else {
+    let Some((text, _)) = message(app) else {
         return 1;
     };
-    let length = u16::try_from(note_text(&note.text).chars().count()).unwrap_or(u16::MAX);
+    let length = u16::try_from(note_text(text).chars().count()).unwrap_or(u16::MAX);
     length.div_ceil(width.max(1)).clamp(1, MAX_NOTE_LINES)
 }
 
 fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    if let Some(note) = &app.note {
-        let text = Line::from(note_text(&note.text));
-        let text = if note.error { text.red() } else { text.green() };
+    if let Some((text, error)) = message(app) {
+        let text = Line::from(note_text(text));
+        let text = if error { text.red() } else { text.green() };
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), area);
         return;
     }
-    let hints = match app.view {
-        View::Sessions => {
-            "↑↓ move  ⏎ open  a project  w worktree  n session  i issues  s stop  x remove  ⇥ needs you  q quit"
+    frame.render_widget(Line::from(format!(" {}", hints(app))).dim(), area);
+}
+
+/// The keys that do something for what is selected.
+fn hints(app: &App) -> String {
+    let session = app.focused_session().and_then(|id| app.model.session(id));
+    let mut hints = vec!["↑↓ move"];
+    match (app.view, app.selected, session) {
+        (_, _, Some(session)) if session.ended_at.is_none() => {
+            hints.extend(["⏎ open", "s stop", "n session"]);
         }
-        View::NeedsYou => "↑↓ move  ⏎ open  n session  s stop  ⇥ all sessions  q quit",
-    };
-    frame.render_widget(Line::from(format!(" {hints}")).dim(), area);
+        (_, _, Some(_)) => hints.extend(["⏎ open", "r restart", "x remove", "n session"]),
+        (View::Sessions, Some(Row::Worktree(_)), None) => {
+            hints.extend(["⏎ session", "x remove", "w worktree", "i issues"]);
+        }
+        (View::Sessions, Some(Row::Project(_)), None) => {
+            hints.extend(["⏎ worktree", "i issues"]);
+        }
+        _ => {}
+    }
+    if app.view == View::Sessions {
+        hints.extend(["a project", "⇥ needs you", "q quit"]);
+    } else {
+        hints.extend(["⇥ all sessions", "q quit"]);
+    }
+    hints.join("  ")
 }
 
 fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let rows = app.model.rows();
     let block = panel(" Sessions ", app.view == View::Sessions);
+    if !app.model.loaded() {
+        frame.render_widget(
+            Paragraph::new("Waiting for the daemon…").block(block).dim(),
+            area,
+        );
+        return;
+    }
     if rows.is_empty() {
         let text = Text::from(vec![
             Line::from("No projects yet."),
@@ -231,6 +266,15 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
         let title = format!(" {} · {} ", session.title, describe(session.status));
         let block = panel(title, false);
         match app.screens.get(&session.id) {
+            Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
+                frame.render_widget(
+                    Paragraph::new(ENDED_WITHOUT_OUTPUT)
+                        .wrap(Wrap { trim: false })
+                        .block(block)
+                        .dim(),
+                    area,
+                );
+            }
             Some(screen) => {
                 frame.render_widget(PseudoTerminal::new(screen.screen()).block(block), area)
             }
@@ -296,6 +340,10 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
     );
 }
 
+/// What is shown for a session whose output the daemon no longer holds.
+const ENDED_WITHOUT_OUTPUT: &str = "This session ended and its output is no longer kept \
+     (the daemon was restarted). Press r to start it again, or x to remove it.";
+
 fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::SessionId, area: Rect) {
     let [top, body] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
     let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw(" ")];
@@ -314,6 +362,14 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
     }
     frame.render_widget(Line::from(spans), top);
     match app.screens.get(&session) {
+        Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
+            frame.render_widget(
+                Paragraph::new(ENDED_WITHOUT_OUTPUT)
+                    .wrap(Wrap { trim: false })
+                    .dim(),
+                body,
+            );
+        }
         Some(screen) => {
             frame.render_widget(PseudoTerminal::new(screen.screen()), body);
             if !screen.screen().hide_cursor() {

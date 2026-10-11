@@ -6,8 +6,8 @@ use std::path::Path;
 
 use muster_core::SessionId;
 use muster_core::protocol::{
-    ClientFrame, Command, ErrorBody, Hello, Incompatible, Reply, ServerFrame, Snapshot, TermSize,
-    Welcome,
+    ClientFrame, Command, ErrorBody, FIRST_PROTOCOL_VERSION, Hello, Incompatible,
+    MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, Reply, ServerFrame, Snapshot, TermSize, Welcome,
 };
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
@@ -22,8 +22,9 @@ pub enum ClientError {
     #[error(transparent)]
     Transport(#[from] TransportError),
     #[error(
-        "the daemon ({}) speaks protocol {}..={}, which this client does not; restart the daemon",
-        .0.daemon_version, .0.min_version, .0.max_version
+        "the running daemon (muster {}, protocol {}..={}) is from another build than this muster \
+         (protocol {}..={}); stop it with `muster daemon stop` so this build's daemon can take over",
+        .0.daemon_version, .0.min_version, .0.max_version, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION
     )]
     Incompatible(Incompatible),
     #[error("the daemon refused: {0}")]
@@ -182,6 +183,36 @@ impl Connection {
             }
             other => Err(ClientError::Unexpected(format!("{other:?}"))),
         }
+    }
+}
+
+/// The process id of the daemon answering on `socket`, whichever protocol
+/// it speaks, so it can be stopped even when this build cannot talk to it.
+pub async fn daemon_pid(socket: &Path, client: &str) -> Result<u32, ClientError> {
+    let stream = UnixStream::connect(socket)
+        .await
+        .map_err(|source| ClientError::Unreachable {
+            path: socket.display().to_string(),
+            source,
+        })?;
+    let (read, write) = stream.into_split();
+    let (mut reader, mut writer) = (FramedRead::new(read), FramedWrite::new(write));
+    let hello = Hello {
+        min_version: FIRST_PROTOCOL_VERSION,
+        ..Hello::current(client)
+    };
+    writer.send(&ClientFrame::Hello(hello)).await?;
+    match reader.next::<ServerFrame>().await? {
+        Some(ServerFrame::Welcome(welcome)) => Ok(welcome.daemon_pid),
+        Some(ServerFrame::Incompatible(incompatible)) if incompatible.daemon_pid != 0 => {
+            Ok(incompatible.daemon_pid)
+        }
+        Some(ServerFrame::Incompatible(incompatible)) => {
+            Err(ClientError::Incompatible(incompatible))
+        }
+        Some(ServerFrame::Error(error)) => Err(ClientError::Daemon(error)),
+        Some(other) => Err(ClientError::Unexpected(format!("{other:?}"))),
+        None => Err(ClientError::Closed),
     }
 }
 

@@ -67,6 +67,10 @@ impl Model {
                 self.touch(session.id);
                 upsert(&mut self.sessions, session, |s| s.id);
             }
+            Delta::SessionRemoved { id } => {
+                self.sessions.retain(|session| session.id != id);
+                self.changed.remove(&id);
+            }
             Delta::SessionStatus {
                 session,
                 status,

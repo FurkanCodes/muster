@@ -94,6 +94,32 @@ fn every_older_schema_migrates_to_the_latest() {
 }
 
 #[test]
+fn sessions_written_by_the_first_schema_survive_the_upgrade() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    {
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(MIGRATIONS[0]).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn.execute_batch(
+            "INSERT INTO projects VALUES ('prj_01M4NG2BJY5GJ7C4GHEV9ZADAN', 'app', '/src/app', 1);
+             INSERT INTO workspaces VALUES ('wsp_01M4NG2HX3A9RJ9SNANGSYT0DF',
+                 'prj_01M4NG2BJY5GJ7C4GHEV9ZADAN', 'worktree', '/w/app/x', 'x', 2, NULL);
+             INSERT INTO sessions VALUES ('ses_01M4NG33FANFNPXKH5FFNWYTZA',
+                 'wsp_01M4NG2HX3A9RJ9SNANGSYT0DF', 'claude', 'Claude Code',
+                 '{\"state\":\"finished\"}', 1, 'ea25847c', 3, NULL);",
+        )
+        .unwrap();
+    }
+    let store = Store::open(&path).unwrap();
+    let sessions = store.snapshot().unwrap().sessions;
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].status, SessionStatus::Finished);
+    assert!(sessions[0].unseen);
+    assert_eq!(sessions[0].resume_id.as_deref(), Some("ea25847c"));
+}
+
+#[test]
 fn a_database_from_a_newer_muster_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("muster.db");
@@ -224,6 +250,33 @@ fn resume_id_and_end_are_saved() {
     assert_eq!(stored.ended_at, Some(at(99)));
     assert!(matches!(
         store.end_session(SessionId::new(), at(1)),
+        Err(StoreError::NotFound(_))
+    ));
+}
+
+#[test]
+fn a_removed_session_leaves_the_snapshot_and_keeps_its_history() {
+    let (mut store, _, _, session) = populated();
+    store
+        .record_status(session.id, SessionStatus::Running, false, at(10))
+        .unwrap();
+    store.remove_session(session.id, at(20)).unwrap();
+    assert!(store.snapshot().unwrap().sessions.is_empty());
+    assert_eq!(store.status_history(session.id).unwrap().len(), 1);
+    assert!(matches!(
+        store.remove_session(session.id, at(30)),
+        Err(StoreError::NotFound(_))
+    ));
+}
+
+#[test]
+fn a_reopened_session_has_no_end() {
+    let (mut store, _, _, session) = populated();
+    store.end_session(session.id, at(99)).unwrap();
+    store.reopen_session(session.id).unwrap();
+    assert_eq!(store.snapshot().unwrap().sessions[0].ended_at, None);
+    assert!(matches!(
+        store.reopen_session(SessionId::new()),
         Err(StoreError::NotFound(_))
     ));
 }

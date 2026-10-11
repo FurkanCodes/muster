@@ -180,6 +180,28 @@ impl Store {
         )
     }
 
+    /// Clears a session's end: its program was started again.
+    pub fn reopen_session(&mut self, session: SessionId) -> Result<()> {
+        match self.conn.execute(
+            "UPDATE sessions SET ended_at = NULL WHERE id = ?1",
+            [id_text(session)],
+        )? {
+            0 => Err(StoreError::NotFound(session.to_string())),
+            _ => Ok(()),
+        }
+    }
+
+    /// Marks a session removed from the list. Its history is kept.
+    pub fn remove_session(&mut self, session: SessionId, at: Timestamp) -> Result<()> {
+        match self.conn.execute(
+            "UPDATE sessions SET removed_at = ?2 WHERE id = ?1 AND removed_at IS NULL",
+            params![id_text(session), at.as_millis()],
+        )? {
+            0 => Err(StoreError::NotFound(session.to_string())),
+            _ => Ok(()),
+        }
+    }
+
     pub fn end_session(&mut self, session: SessionId, at: Timestamp) -> Result<()> {
         self.update_session(
             session,
@@ -237,7 +259,7 @@ impl Store {
     }
 
     /// Everything a client needs: all projects, and the workspaces still in
-    /// use with their sessions.
+    /// use with the sessions not removed from them.
     pub fn snapshot(&self) -> Result<Snapshot> {
         let projects = self.collect(
             "SELECT id, name, root, created_at FROM projects ORDER BY created_at, id",
@@ -252,7 +274,8 @@ impl Store {
             "SELECT s.id, s.workspace_id, s.harness, s.title, s.status, s.unseen, s.resume_id,
                     s.created_at, s.ended_at
              FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
-             WHERE w.removed_at IS NULL ORDER BY s.created_at, s.id",
+             WHERE w.removed_at IS NULL AND s.removed_at IS NULL
+             ORDER BY s.created_at, s.id",
             rows::session,
         )?;
         Ok(Snapshot {
