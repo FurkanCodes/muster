@@ -540,3 +540,15 @@ fn an_issue_listing_error_is_shown_in_the_picker() {
     press(&mut world.app, KeyCode::Esc);
     assert_eq!(world.app.mode, Mode::Browse);
 }
+
+#[test]
+fn a_long_error_wraps_instead_of_being_cut_off() {
+    let mut world = world();
+    world.app.complain(
+        "`git worktree add -b test /Users/me/.muster/worktrees/lamphaus/test` failed: \
+         fatal: the reason that must stay readable at the end of a long line\nsecond line",
+    );
+    let screen = render(&world.app);
+    assert!(screen.contains("must stay readable"), "{screen}");
+    assert!(screen.contains("· second line"), "{screen}");
+}

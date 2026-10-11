@@ -152,6 +152,11 @@ async fn bad_requests_are_refused_with_their_code() {
         code(create(&mut connection, project, Some("twice")).await),
         ErrorCode::Conflict
     );
+
+    // Refusals are logged with their reason, for reading afterwards.
+    let log = daemon.log();
+    assert!(log.contains("command refused"), "{log}");
+    assert!(log.contains("not a valid branch name"), "{log}");
 }
 
 #[tokio::test]

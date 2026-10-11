@@ -74,8 +74,30 @@ async fn checked(cwd: &Path, args: &[&str]) -> Result<String, GitError> {
     } else {
         Err(GitError::Failed {
             args: args.join(" "),
-            stderr: outcome.stderr,
+            stderr: reason(&outcome.stderr),
         })
+    }
+}
+
+/// The part of git's stderr that says what went wrong. Git mixes progress
+/// ("Preparing worktree…") with its errors; the `fatal:` and `error:` lines
+/// are the reason, so they come alone when there are any, on one line.
+fn reason(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let errors: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| line.starts_with("fatal:") || line.starts_with("error:"))
+        .collect();
+    let chosen = if errors.is_empty() { lines } else { errors };
+    if chosen.is_empty() {
+        "git gave no reason".to_owned()
+    } else {
+        chosen.join(" · ")
     }
 }
 
@@ -203,6 +225,21 @@ pub(crate) mod tests {
             branch_exists(&repo, "feature").await.unwrap(),
             "the branch is kept"
         );
+    }
+
+    #[test]
+    fn the_reason_is_gits_error_without_its_progress() {
+        let stderr = "Preparing worktree (new branch 'test')\nfatal: could not create directory\n";
+        assert_eq!(reason(stderr), "fatal: could not create directory");
+        assert_eq!(
+            reason("error: one\nhint: try this\nfatal: two\n"),
+            "error: one · fatal: two"
+        );
+        assert_eq!(
+            reason("something odd\nand more\n"),
+            "something odd · and more"
+        );
+        assert_eq!(reason("\n  \n"), "git gave no reason");
     }
 
     #[tokio::test]

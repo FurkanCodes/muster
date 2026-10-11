@@ -39,6 +39,9 @@ impl Supervisor {
                 .await
                 .map(|issues| Reply::Issues { issues })
                 .map_err(github_error);
+            if let Err(error) = &outcome {
+                tracing::info!(command = "list issues", %error, "command refused");
+            }
             let _ = reply.send(outcome);
         });
     }
@@ -90,6 +93,9 @@ impl Supervisor {
             }
             Err(error) => Err(github_error(error)),
         };
+        if let Err(error) = &outcome {
+            tracing::info!(command = "start from issue", %error, "command refused");
+        }
         let _ = fetched.reply.send(outcome);
     }
 
