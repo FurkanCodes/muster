@@ -5,6 +5,7 @@
 //! from its program; the daemon does the rest.
 
 pub(crate) mod claude;
+pub(crate) mod claude_stream;
 pub(crate) mod transcript;
 
 use std::path::PathBuf;
