@@ -40,6 +40,7 @@ The daemon is the only process that owns agent processes and talks to Docker, Gi
 | `muster-core` | IDs (ULID newtypes), entities, protocol types, typed error codes, harness descriptor types | No IO (`ARC-01`) |
 | `muster-state` | The pure state machines: session status and run stages, each `step(state, event, now) -> (state, Vec<Effect>)` | No IO, no async, injected clock (`ARC-01`) |
 | `muster-daemon` | Supervisor, store, IPC server, PTY host, container runtime, hook receiver, scheduler, sampler, sources, git host, harness drivers and parsers | Every external system behind a trait (`ARC-03`) |
+| `muster-client` | The async framed transport over the socket, and a client connection that performs the handshake; shared by the daemon, the TUI, the binary and the e2e tests | No business logic |
 | `muster-tui` | ratatui client: sessions, runs, needs-you, resources, terminal view | Renders state; holds no business logic |
 | `muster` | The binary (clap): no args opens the TUI; `daemon`, `run <issue-url>`, `spawn`, `status`, `doctor` | Thin |
 
@@ -53,7 +54,7 @@ Main dependencies: tokio, portable-pty, vt100 + tui-term, bollard (Docker API), 
 - **Lifecycle.** The TUI auto-starts the daemon (`setsid`, no controlling terminal) when the socket does not answer. `muster daemon --foreground` runs it attached for development. Runtime and data directories come from `MUSTER_RUNTIME_DIR` and `MUSTER_DATA_DIR` when set, so every test gets its own.
 - **Restart** (`PRD-09`):
   - *Containers* outlive the daemon (`ARC-04`). On boot the daemon lists containers labelled `muster.workspace=<id>`, matches them with SQLite, and re-attaches each stream from the last stored offset. A missing container moves its run to *Needs you* with that reason.
-  - *Worktree sessions* die with the daemon, because it holds their PTYs. On boot each one is relaunched with the harness's resume (`claude --resume <session-id>`) in the same worktree. A resume that exits within 10 s falls back to a fresh session with a note, as Nebula does.
+  - *Worktree sessions* die with the daemon, because it holds their PTYs. On boot each one is relaunched with the harness's resume (`claude --resume <session-id>`) in the same worktree. A resume that exits within 10 s falls back to a fresh session with a note, as Nebula does. Until resume exists (M1 step 7), and for harnesses without one such as `shell`, they are recorded as exited with an error and marked unseen.
 
 ## 5. Sessions
 
@@ -61,8 +62,11 @@ Main dependencies: tokio, portable-pty, vt100 + tui-term, bollard (Docker API), 
 
 - **PTY host:** portable-pty spawns the harness in the worktree as the user, with the user's environment minus variables of any parent agent session. One reader thread per PTY feeds a bounded channel (backpressure); a pump batches output (up to 8 KiB or 5 ms, sent at once after a quiet spell so typed echo is never delayed) into a 1 MiB ring numbered by byte offset and broadcasts it.
 - **Attach:** `Attach { session, from_seq }` replays the ring and continues live; a client that falls off the ring gets the whole ring and resets its parser. The forwarder rebinds when a session is relaunched under the same id.
-- **Stop:** SIGHUP, then SIGKILL to every process group under the child after 3 s. A natural exit is told apart from a deliberate stop.
-- **Worktrees:** created with `git worktree add` under Muster's data directory (configurable), on a branch the user names or `muster/<slug>`. The worktree's metadata in the repo's `.git` is git's own mechanism; Muster writes nothing else into the user's repository (`ARC-05`).
+- **Stop:** SIGHUP to the child's process group, then SIGKILL to it after 3 s. A natural exit is told apart from a deliberate stop. Processes that moved to another process group are not reached yet.
+- **Exit:** announced only once all output is in the ring, waiting at most 2 s after the process exits, since a background job can hold the terminal open. The terminal's output stays readable after the exit until its worktree is removed.
+- **No inherited descriptors:** an agent must not inherit the daemon's sockets or files. macOS cannot create a socket close-on-exec in one step, so a spawn racing a `bind` can leak a listening socket into the child, which then keeps a dead socket accepting connections (seen in the e2e tests). portable-pty closes every descriptor above stderr in the child before `exec`; a test asks `lsof` what an idle shell holds.
+- **Worktrees:** created with `git worktree add` under `~/.muster/worktrees/<repository>/<branch>` (`MUSTER_WORKTREES_DIR` overrides it), on the branch the user names — checked out if it exists, created from the current commit if not — or on `muster/<six random characters>`. They stay out of the data directory because on macOS its path contains a space, which some build scripts mishandle. Removing a worktree deletes its directory and keeps its branch; uncommitted changes need `force`, and running sessions block it. The worktree's metadata in the repo's `.git` is git's own mechanism; Muster writes nothing else into the user's repository (`ARC-05`).
+- **Git:** run without a shell, with a 2-minute limit and without inherited `GIT_DIR`-style variables. It runs while the Supervisor waits, so a slow checkout delays other commands and status updates, though never keystrokes; moving it off the Supervisor is a later step if it hurts.
 
 ### Hands-on in a container (M2)
 
@@ -73,7 +77,7 @@ A Docker `exec` with a TTY, resized through the exec-resize call, feeding the sa
 - **Signals:** harness hooks, the terminal progress sequence (OSC 9;4), and process exit for hands-on sessions; the JSON output stream for headless ones (a finished turn is a `result` event).
 - **Hooks without editing config** (`PRD-13`, `ARC-05`): Claude Code takes extra settings at launch through `--settings <json>`, so its hooks are passed on the command line and never written to disk. Each hook runs `curl --unix-socket <runtime>/hooks.sock` with the session's own token from its environment, times out after 3 s, and never fails the agent. A harness without a launch-time option runs without hooks, and its status comes from the progress sequence and process state.
 - **Identity** (`ARC-11`): every session gets its own random token, and the receiver derives the session from the token. Nebula shares one token per boot and trusts the session id in the query string; Muster does not.
-- **Machine:** pure, with an injected clock and exhaustive unit tests (Nebula's best pattern). States: `Starting`, `Running`, `NeedsYou` (a permission prompt or question), `Finished`, `Exited`, plus an `unseen` flag. It keeps Nebula's hard-won rules: ignore hooks from a different agent session in the same directory; hold `Running` while subagents still work; clear a permission wait only on a tool event from the one who raised it. It drops the screen-scraping and timing tricks.
+- **Machine:** pure, with an injected clock and exhaustive unit tests (Nebula's best pattern). States: `Fresh` (launched, nothing asked yet), `Running`, `NeedsYou` (a permission prompt or question; several can be open at once), `Finished`, `Exited`, plus an `unseen` flag. The machine reports its next deadline, so the daemon wakes it exactly when a grace period ends instead of polling. It keeps Nebula's hard-won rules: ignore hooks from a different agent session in the same directory; hold `Running` while subagents still work; clear a permission wait only on a tool event from the one who raised it. It drops the screen-scraping and timing tricks.
 
 ## 6. Protocol
 
@@ -82,7 +86,7 @@ Copied from Nebula where it is good, fixed where it is not.
 - **Transport and framing:** Unix socket `<runtime>/daemon.sock` with mode 0700. Frames are `[u32 LE length][MessagePack]`, capped at 4 MiB and checked before allocating.
 - **Handshake:** `Hello { min_version, max_version, capabilities }`, answered with the agreed version or `Incompatible`. Encoded with named fields (`rmp_serde::to_vec_named`) so the handshake can grow; Nebula's positional encoding froze it.
 - **Planes,** each its own enum rather than one 45-variant request type:
-  - *State:* `Subscribe` registers for deltas **before** the snapshot is taken, then streams `Upserted`, `Removed`, `StatusChanged` and `Transitioned`. A subscriber that falls behind gets a fresh snapshot instead of the lost deltas.
+  - *State:* `Subscribe` returns a snapshot, then streams `Upserted`, `Removed`, `StatusChanged` and `Transitioned`. The Supervisor takes the snapshot and opens the subscription in the same step, so no delta is missed or repeated — simpler than Nebula's subscribe-before-snapshot ordering, which a single owner makes unnecessary. A subscriber that falls behind gets a fresh snapshot instead of the lost deltas.
   - *Stream:* `Attach { session, stream, from_seq }`, `Input`, `Resize`, `Detach`. Streams are a PTY's terminal output, a headless agent's raw JSONL and parsed events, and check output.
   - *Commands:* carry a `req_id` and get `Ack`, a typed reply, or `Error { code, message }` with a machine-readable code (`ARC-07`).
 - **One writer task per connection,** so replies and stream frames never interleave.
@@ -187,6 +191,8 @@ Following Nebula's strategy, which is the best part of its codebase.
 - **ARC-11** A session's identity comes from its own secret token, never from an id the caller supplies.
 
 ## 15. Milestone 1 plan — Cockpit
+
+Steps 1–6 are done; 6 was built before 5 so sessions run in real worktrees from the start. A built-in `shell` harness (the person's `$SHELL`) stands in until step 7 adds Claude Code.
 
 0. **Container spike, alongside the rest:** run `claude -p --output-format stream-json` in a container with `CLAUDE_CODE_OAUTH_TOKEN`; record fixtures for a success, a failure and a long tool-heavy turn; measure memory. Settles the headless question before M2.
 1. Workspace, CI gates, core types.

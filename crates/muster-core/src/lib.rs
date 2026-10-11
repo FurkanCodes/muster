@@ -1,0 +1,18 @@
+//! Types shared by every Muster crate: identifiers, the entities the daemon
+//! stores, the protocol, and its framing.
+//!
+//! This crate does no IO (`ARC-01`).
+
+pub mod entities;
+pub mod frame;
+pub mod ids;
+pub mod paths;
+pub mod protocol;
+pub mod session;
+pub mod time;
+
+pub use entities::{Project, Session, Workspace, WorkspaceKind};
+pub use ids::{ParseIdError, ProjectId, RunId, SessionId, WorkspaceId};
+pub use paths::Paths;
+pub use session::{SessionStatus, WaitReason};
+pub use time::Timestamp;

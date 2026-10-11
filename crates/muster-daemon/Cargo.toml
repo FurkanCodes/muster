@@ -1,0 +1,24 @@
+[package]
+name = "muster-daemon"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+muster-client.workspace = true
+muster-core.workspace = true
+muster-state.workspace = true
+nix.workspace = true
+portable-pty = "0.9.0"
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "muster-state"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+muster-core.workspace = true
+
+[lints]
+workspace = true
