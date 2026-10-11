@@ -335,3 +335,33 @@ async fn sessions_running_when_the_daemon_stopped_are_recorded_as_exited() {
     assert!(stored.unseen);
     assert!(stored.ended_at.is_some());
 }
+
+#[tokio::test]
+async fn input_modes_reach_the_client() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let session = start(&mut connection, setup.workspace).await;
+    connection.attach(session, None).await.unwrap();
+    // A fresh shell has the default modes.
+    let initial = expect_event(&mut connection, |frame| match frame {
+        ServerFrame::Modes { session: s, modes } if *s == session => Some(*modes),
+        _ => None,
+    })
+    .await;
+    assert!(!initial.bracketed_paste);
+
+    connection
+        .input(session, b"printf '\\033[?2004h\\033[?1h\\033[>1u'\n")
+        .await
+        .unwrap();
+    let changed = expect_event(&mut connection, |frame| match frame {
+        ServerFrame::Modes { session: s, modes }
+            if *s == session && modes.bracketed_paste && modes.application_cursor =>
+        {
+            Some(*modes)
+        }
+        _ => None,
+    })
+    .await;
+    assert_eq!(changed.kitty_flags, 1);
+}

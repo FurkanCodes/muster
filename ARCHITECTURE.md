@@ -41,7 +41,7 @@ The daemon is the only process that owns agent processes and talks to Docker, Gi
 | `muster-state` | The pure state machines: session status and run stages, each `step(state, event, now) -> (state, Vec<Effect>)` | No IO, no async, injected clock (`ARC-01`) |
 | `muster-daemon` | Supervisor, store, IPC server, PTY host, container runtime, hook receiver, scheduler, sampler, sources, git host, harness drivers and parsers | Every external system behind a trait (`ARC-03`) |
 | `muster-client` | The async framed transport over the socket, and a client connection that performs the handshake; shared by the daemon, the TUI, the binary and the e2e tests | No business logic |
-| `muster-tui` | ratatui client: sessions, runs, needs-you, resources, terminal view | Renders state; holds no business logic |
+| `muster-tui` | ratatui client: sessions, needs-you, terminal view, dialogs | Renders state; holds no business logic |
 | `muster` | The binary (clap): no args opens the TUI; `daemon`, `run <issue-url>`, `spawn`, `status`, `doctor` | Thin |
 
 Main dependencies: tokio, portable-pty, vt100 + tui-term, bollard (Docker API), rusqlite (bundled), serde + rmp-serde, ratatui + crossterm, axum (hook receiver), clap, octocrab or reqwest (GitHub), keyring (macOS Keychain), sysinfo, tracing, ulid.
@@ -79,6 +79,14 @@ A Docker `exec` with a TTY, resized through the exec-resize call, feeding the sa
 - **Terminal questions:** programs ask their terminal things at startup and wait for answers; Claude Code 2.1.291 asks for keyboard-protocol support, device attributes and the terminal version. The terminal actor answers them, plus device status and cursor position (from a screen built only when first asked), and tracks kitty keyboard flags and bracketed paste for clients. Adapted from Nebula, which leaves the version query unanswered.
 - **Identity** (`ARC-11`): every session gets its own random token, and the receiver derives the session from the token. Nebula shares one token per boot and trusts the session id in the query string; Muster does not.
 - **Machine:** pure, with an injected clock and exhaustive unit tests (Nebula's best pattern). States: `Fresh` (launched, nothing asked yet), `Running`, `NeedsYou` (a permission prompt or question; several can be open at once), `Finished`, `Exited`, plus an `unseen` flag. The machine reports its next deadline, so the daemon wakes it exactly when a grace period ends instead of polling. It keeps Nebula's hard-won rules: ignore hooks from a different agent session in the same directory; hold `Running` while subagents still work; clear a permission wait only on a tool event from the one who raised it. It drops the screen-scraping and timing tricks.
+
+## 5a. Terminal UI
+
+- **Shape:** `model` mirrors the daemon's state from the snapshot and deltas; `app` is a state machine with no IO that turns keys, pastes and frames into frames to send; `view` draws it with ratatui; `runtime` owns the person's terminal and the link to the daemon. So every behaviour is a unit test, drawn into ratatui's test buffer.
+- **Link:** `muster` with no arguments connects, and if nothing answers it starts `muster daemon --detach` (which calls `setsid`, so closing the terminal leaves it running) and logs to `daemon.log` in the runtime directory. A lost connection is shown and retried every half second; on reconnect the UI re-subscribes and re-attaches from the last byte it has. The client connection splits into a sender and a receiver for this.
+- **Sessions:** the selected session streams into a preview; ⏎ opens it full screen, where keys go to the program and Ctrl-] comes back (sent as byte 0x1d by terminals without the kitty protocol, which crossterm reports as Ctrl-5, so both are accepted). Keys are encoded from the program's modes — kitty flags, bracketed paste, application cursor keys — which the daemon sends with every attach and on change (`Modes`), since a client parsing output alone loses them once the ring has wrapped. The person's terminal gets the kitty protocol when it supports it, so Shift+Enter reaches Claude Code.
+- **Needs you:** questions first, then unseen news, oldest first. Looking at a session clears it, so the selected entry holds its place until the selection moves on.
+- **Replies and deltas race:** a reply ("worktree created") can arrive before the delta that adds the worktree. The app remembers what a reply named and selects or opens it once it appears.
 
 ## 6. Protocol
 
@@ -193,7 +201,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 
 ## 15. Milestone 1 plan — Cockpit
 
-Steps 1–7 are done; 6 was built before 5 so sessions run in real worktrees from the start. Harnesses: `shell` (the person's `$SHELL`) and `claude`. End-to-end tests use a stand-in `claude` on `PATH` and fire the exact hook commands from its `--settings`, so resume and hooks are tested for real, unlike Nebula's command override.
+Steps 1–7 and 9 are done; 6 was built before 5 so sessions run in real worktrees from the start, and 9 before 8 because the UI is what makes Muster usable. Harnesses: `shell` (the person's `$SHELL`) and `claude`. End-to-end tests use a stand-in `claude` on `PATH` and fire the exact hook commands from its `--settings`, so resume and hooks are tested for real, unlike Nebula's command override.
 
 0. **Container spike, alongside the rest:** run `claude -p --output-format stream-json` in a container with `CLAUDE_CODE_OAUTH_TOKEN`; record fixtures for a success, a failure and a long tool-heavy turn; measure memory. Settles the headless question before M2.
 1. Workspace, CI gates, core types.

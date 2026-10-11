@@ -7,14 +7,16 @@
 //! (`CSI ? u`), device attributes (`CSI c`) and the terminal's version
 //! (`CSI > 0 q`).
 //!
-//! Also tracked, for clients to use later: the kitty keyboard flags the
-//! program pushes (so keys can be encoded the way it asked) and whether it
-//! turned bracketed paste on.
+//! Also tracked, for clients: the kitty keyboard flags the program pushes,
+//! whether it turned bracketed paste on, and whether cursor keys are in
+//! application mode, which decide how a client encodes keys and pastes. A
+//! client parsing the output could see the last two itself, but not once the
+//! ring has dropped the bytes that set them.
 //!
 //! Adapted from Nebula's `pty/kitty.rs` (MIT, Copyright (c) 2026 Cody
 //! Seibert; see NOTICE). Changed: the version query is answered too (Nebula
-//! leaves it unanswered, so a program waits out its timeout), and the
-//! scanner is renamed for what it does.
+//! leaves it unanswered, so a program waits out its timeout), application
+//! cursor mode is tracked, and the scanner is renamed for what it does.
 
 const ESC: u8 = 0x1b;
 /// The deepest kitty flag stack the spec asks implementations to keep.
@@ -64,6 +66,7 @@ pub(crate) struct QueryScanner {
     params: Vec<u8>,
     kitty_flags: Vec<u8>,
     bracketed_paste: bool,
+    application_cursor: bool,
 }
 
 impl Default for QueryScanner {
@@ -73,6 +76,7 @@ impl Default for QueryScanner {
             params: Vec::new(),
             kitty_flags: Vec::new(),
             bracketed_paste: false,
+            application_cursor: false,
         }
     }
 }
@@ -84,12 +88,18 @@ impl QueryScanner {
     }
 
     /// Whether the program turned bracketed paste on (`CSI ? 2004 h`).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the TUI reads it to paste correctly (M1 step 9)")
-    )]
+    #[cfg(test)]
     pub(crate) fn bracketed_paste(&self) -> bool {
         self.bracketed_paste
+    }
+
+    /// The input modes in effect, for clients.
+    pub(crate) fn modes(&self) -> muster_core::protocol::TerminalModes {
+        muster_core::protocol::TerminalModes {
+            kitty_flags: self.kitty_flags(),
+            bracketed_paste: self.bracketed_paste,
+            application_cursor: self.application_cursor,
+        }
     }
 
     /// Reads program output and returns the answers it is owed. A question
@@ -115,6 +125,7 @@ impl QueryScanner {
                 // RIS (`ESC c`) puts every mode back to its default.
                 if byte == b'c' {
                     self.bracketed_paste = false;
+                    self.application_cursor = false;
                 }
                 if byte == ESC {
                     State::Escape
@@ -176,13 +187,15 @@ impl QueryScanner {
                 }
             }
             // Private mode set and reset, several at once
-            // (`CSI ? 1004 ; 2004 h`): only bracketed paste matters.
+            // (`CSI ? 1 ; 2004 h`): bracketed paste and cursor-key mode.
             (b'h' | b'l', [b'?', modes @ ..]) => {
-                if modes
-                    .split(|&byte| byte == b';')
-                    .any(|mode| mode == b"2004")
-                {
-                    self.bracketed_paste = final_byte == b'h';
+                let on = final_byte == b'h';
+                for mode in modes.split(|&byte| byte == b';') {
+                    match mode {
+                        b"2004" => self.bracketed_paste = on,
+                        b"1" => self.application_cursor = on,
+                        _ => {}
+                    }
                 }
             }
             // Device attributes: claim a VT102 so probing loops end.
@@ -279,6 +292,18 @@ mod tests {
         assert!(!scanner.bracketed_paste());
         scanner.scan(b"\x1b[?2004h\x1bc");
         assert!(!scanner.bracketed_paste(), "a full reset turns it off");
+    }
+
+    #[test]
+    fn cursor_key_mode_is_tracked_and_reset() {
+        let mut scanner = QueryScanner::default();
+        scanner.scan(b"\x1b[?1;2004h");
+        let modes = scanner.modes();
+        assert!(modes.application_cursor && modes.bracketed_paste);
+        scanner.scan(b"\x1b[?1l");
+        assert!(!scanner.modes().application_cursor);
+        scanner.scan(b"\x1b[?1h\x1bc");
+        assert_eq!(scanner.modes(), Default::default());
     }
 
     #[test]

@@ -9,14 +9,17 @@ clap.workspace = true
 muster-client.workspace = true
 muster-core.workspace = true
 muster-daemon.workspace = true
+muster-tui.workspace = true
 nix.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+portable-pty.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+vt100.workspace = true
 
 [lints]
 workspace = true

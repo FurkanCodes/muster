@@ -286,6 +286,27 @@ impl Drop for Daemon {
     }
 }
 
+/// The pid of the daemon answering on `socket`, if one does.
+pub(crate) fn daemon_pid(socket: &Path) -> Option<u32> {
+    let mut stream = UnixStream::connect(socket).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .ok()?;
+    let hello = frame::encode(&ClientFrame::Hello(Hello::current("e2e pid"))).ok()?;
+    stream.write_all(&hello).ok()?;
+    let (mut decoder, mut chunk) = (FrameDecoder::new(), [0; 4096]);
+    loop {
+        let read = stream.read(&mut chunk).ok().filter(|read| *read > 0)?;
+        decoder.push(&chunk[..read]);
+        if let Some(frame) = decoder.next_frame::<ServerFrame>().ok()? {
+            return match frame {
+                ServerFrame::Welcome(welcome) => Some(welcome.daemon_pid),
+                _ => None,
+            };
+        }
+    }
+}
+
 /// Whether a daemon answers a hello on `socket`.
 ///
 /// Being able to connect is not enough: on macOS a socket cannot be created

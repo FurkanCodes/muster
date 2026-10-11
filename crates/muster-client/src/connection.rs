@@ -175,11 +175,66 @@ impl Connection {
             | ServerFrame::Delta(_)
             | ServerFrame::Replay { .. }
             | ServerFrame::Output { .. }
+            | ServerFrame::Modes { .. }
             | ServerFrame::Detached { .. } => {
                 self.pending.push_back(frame);
                 Ok(())
             }
             other => Err(ClientError::Unexpected(format!("{other:?}"))),
         }
+    }
+}
+
+/// The sending half of a split [`Connection`].
+#[derive(Debug)]
+pub struct FrameSender {
+    writer: FramedWrite<OwnedWriteHalf>,
+}
+
+impl FrameSender {
+    /// Sends one frame. The caller numbers its commands and matches the
+    /// replies the receiving half delivers.
+    pub async fn send(&mut self, frame: &ClientFrame) -> Result<(), ClientError> {
+        Ok(self.writer.send(frame).await?)
+    }
+}
+
+/// The receiving half of a split [`Connection`].
+#[derive(Debug)]
+pub struct FrameReceiver {
+    reader: FramedRead<OwnedReadHalf>,
+    pending: VecDeque<ServerFrame>,
+}
+
+impl FrameReceiver {
+    /// The next frame from the daemon, replies included, or `None` once it
+    /// has closed the connection. A connection-level error frame is returned
+    /// as an error.
+    pub async fn next(&mut self) -> Result<Option<ServerFrame>, ClientError> {
+        if let Some(frame) = self.pending.pop_front() {
+            return Ok(Some(frame));
+        }
+        match self.reader.next::<ServerFrame>().await? {
+            Some(ServerFrame::Error(error)) => Err(ClientError::Daemon(error)),
+            frame => Ok(frame),
+        }
+    }
+}
+
+impl Connection {
+    /// Splits the connection so frames can be sent while others are being
+    /// received, as an interactive client needs. Frames held for
+    /// [`next_event`](Self::next_event) come first from the receiver.
+    pub fn into_split(self) -> (FrameSender, FrameReceiver, Welcome) {
+        (
+            FrameSender {
+                writer: self.writer,
+            },
+            FrameReceiver {
+                reader: self.reader,
+                pending: self.pending,
+            },
+            self.welcome,
+        )
     }
 }
