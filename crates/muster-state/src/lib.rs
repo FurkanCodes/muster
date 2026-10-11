@@ -3,4 +3,5 @@
 //!
 //! This crate does no IO and keeps no clock of its own (`ARC-01`).
 
+pub mod run;
 pub mod session;
