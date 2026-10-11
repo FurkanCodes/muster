@@ -53,6 +53,13 @@ enum Commands {
     /// checkout), showing their output; exits as they did. The run stays
     /// in the UI as a session; starting it again runs them again.
     Check { worktree: String },
+    /// Have Claude Code review the change in WORKTREE against the branch it
+    /// is to merge into, in plan mode (it changes nothing), as a session
+    /// you read in `muster`.
+    Review { worktree: String },
+    /// Push WORKTREE's branch, as committed, with your own git, and open a
+    /// draft pull request from it with your `gh` (or show the one open).
+    Pr { worktree: String },
     /// Hand issues to the autopilot and follow its runs: each builds in a
     /// container, passes the project's checks, opens a draft pull request
     /// and has it reviewed before it asks for you.
@@ -259,6 +266,10 @@ fn main() -> ExitCode {
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
             Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
+            Some(Commands::Review { worktree }) => commands::review(&socket, &worktree).await,
+            Some(Commands::Pr { worktree }) => {
+                commands::open_pull_request(&socket, &worktree).await
+            }
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await
             }

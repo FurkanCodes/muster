@@ -140,6 +140,7 @@ pub async fn run(
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
     let credentials: Arc<dyn runs::credentials::Credentials> =
         Arc::new(runs::credentials::PersonsCredentials);
+    let git_host: Arc<dyn githost::GitHost> = Arc::new(githost::GitHub);
     let supervisor = supervisor::spawn(supervisor::Settings {
         store,
         clock,
@@ -152,11 +153,12 @@ pub async fn run(
             start_grace: config.start_grace,
             ..muster_state::session::Timing::default()
         },
-        work: Arc::new(run_work(paths, credentials.clone())),
+        work: Arc::new(run_work(paths, credentials.clone(), git_host.clone())),
         tickets: Arc::new(github::GitHubIssues),
         config_dir: paths.config_dir.clone(),
         credentials,
         docker: "docker".to_owned(),
+        git_host,
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
@@ -192,10 +194,11 @@ pub async fn run(
 fn run_work(
     paths: &Paths,
     credentials: Arc<dyn runs::credentials::Credentials>,
+    git_host: Arc<dyn githost::GitHost>,
 ) -> runs::work::DockerWork {
     runs::work::DockerWork::new(
         paths.data_dir.clone(),
-        Arc::new(githost::GitHub),
+        git_host,
         credentials,
         Duration::from_millis(500),
         std::env::var("MUSTER_RUN_IMAGE")

@@ -8,7 +8,7 @@
 //! Terminal traffic does not pass through here: a connection asks once for a
 //! session's [`PtyHandle`] and then talks to its actor directly.
 
-mod checks;
+mod by_hand;
 mod containers;
 mod issues;
 mod projects;
@@ -31,6 +31,7 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
+use crate::githost::GitHost;
 use crate::github::TicketSource;
 use crate::harness::{Harness, claude};
 use crate::hooks::HookDelivery;
@@ -228,6 +229,8 @@ pub(crate) struct Settings {
     pub(crate) credentials: Arc<dyn Credentials>,
     /// The `docker` command, for sessions in runs' containers.
     pub(crate) docker: String,
+    /// Where pull requests opened by hand go.
+    pub(crate) git_host: Arc<dyn GitHost>,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -266,6 +269,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         config_dir: settings.config_dir,
         credentials: settings.credentials,
         docker: settings.docker,
+        git_host: settings.git_host,
     };
     supervisor.ensure_checkouts().await;
     // Runs first: a session in a run's container needs its run.
@@ -333,6 +337,7 @@ struct Supervisor {
     config_dir: PathBuf,
     credentials: Arc<dyn Credentials>,
     docker: String,
+    git_host: Arc<dyn GitHost>,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }
@@ -376,6 +381,7 @@ impl Supervisor {
                     number,
                     from,
                 } => self.fetch_run_ticket(project, number, from, reply),
+                Command::OpenPullRequest { workspace } => self.open_pull_request(workspace, reply),
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }
@@ -471,6 +477,9 @@ impl Supervisor {
             Command::CheckWorkspace { workspace, size } => {
                 self.check_workspace(workspace, size).await
             }
+            Command::ReviewWorkspace { workspace, size } => {
+                self.review_workspace(workspace, size).await
+            }
             Command::RestartSession { session, size } => self.restart_session(session, size).await,
             Command::RemoveSession { session } => self.remove_session(session).await,
             Command::CancelRun { run } => {
@@ -500,7 +509,8 @@ impl Supervisor {
             Command::ListIssues { .. }
             | Command::StartFromIssue { .. }
             | Command::StartRun { .. }
-            | Command::TakeOverRun { .. } => Err(ErrorBody::new(
+            | Command::TakeOverRun { .. }
+            | Command::OpenPullRequest { .. } => Err(ErrorBody::new(
                 ErrorCode::Internal,
                 "this command is answered off the Supervisor's loop",
             )),
@@ -657,6 +667,8 @@ fn command_name(command: &Command) -> &'static str {
         Command::StartSession { .. } => "start session",
         Command::StopSession { .. } => "stop session",
         Command::CheckWorkspace { .. } => "check workspace",
+        Command::ReviewWorkspace { .. } => "review workspace",
+        Command::OpenPullRequest { .. } => "open pull request",
         Command::RestartSession { .. } => "restart session",
         Command::RemoveSession { .. } => "remove session",
         Command::ListIssues { .. } => "list issues",
