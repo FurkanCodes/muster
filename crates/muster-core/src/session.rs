@@ -40,6 +40,9 @@ pub enum WaitReason {
     Permission,
     /// The agent asked the person a question.
     Question,
+    /// The agent has not started: it is asking something first, such as
+    /// whether to trust the folder or to sign in.
+    Startup,
 }
 
 #[cfg(test)]

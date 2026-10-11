@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::text::one_line;
 use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
-use muster_state::session::{self, SessionMachine, Signal, Start, Timing};
+use muster_state::session::{self, SessionMachine, Signal, Start};
 
 use super::{Live, Supervisor, store_closed, store_error};
 use crate::harness::{self, Harness, HookEndpoint, claude, transcript};
@@ -163,8 +163,10 @@ impl Supervisor {
                 agent_session,
                 start,
                 unseen,
+                reports_start: harness.has_hooks(),
             },
-            Timing::default(),
+            self.timing,
+            Instant::now(),
         );
         self.live.insert(
             session,

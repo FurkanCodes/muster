@@ -11,7 +11,8 @@
 //! left running by an older build and a newer client say they do not match
 //! instead of misreading each other. Version 2 added restarting and removing
 //! sessions; version 3 projects' own checkouts as workspaces, removing
-//! projects, mouse modes, and watching that follows the client's focus.
+//! projects, mouse modes, and watching that follows the client's focus;
+//! version 4 the wait on a harness asking before it starts.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -25,9 +26,9 @@ use crate::ids::{ProjectId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 3;
+pub const MIN_PROTOCOL_VERSION: u32 = 4;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

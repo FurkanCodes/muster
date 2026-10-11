@@ -269,6 +269,9 @@ async fn daemon(paths: Paths) -> ExitCode {
     if let Some(ms) = millis("MUSTER_BRANCH_MS") {
         config.branch_interval = std::time::Duration::from_millis(ms.max(10));
     }
+    if let Some(ms) = millis("MUSTER_START_GRACE_MS") {
+        config.start_grace = std::time::Duration::from_millis(ms.max(10));
+    }
     match muster_daemon::run(config, shutdown_signal()).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),

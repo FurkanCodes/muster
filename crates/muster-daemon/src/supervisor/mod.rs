@@ -22,7 +22,7 @@ use muster_core::protocol::{
     Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot, TermSize,
 };
 use muster_core::{SessionId, SessionStatus, WorkspaceId};
-use muster_state::session::{Effect, SessionMachine, Signal};
+use muster_state::session::{Effect, SessionMachine, Signal, Timing};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
@@ -159,6 +159,8 @@ pub(crate) struct Settings {
     pub(crate) delta_capacity: usize,
     /// Keep every this-many-th measurement in the store's history.
     pub(crate) history_every: u32,
+    /// The session machines' time windows.
+    pub(crate) timing: Timing,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -188,6 +190,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         pty_events,
         history_every: settings.history_every.max(1),
         measurements: 0,
+        timing: settings.timing,
     };
     supervisor.ensure_checkouts().await;
     supervisor.recover_sessions().await;
@@ -235,6 +238,7 @@ struct Supervisor {
     history_every: u32,
     /// Measurements received, to keep every `history_every`-th.
     measurements: u32,
+    timing: Timing,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }

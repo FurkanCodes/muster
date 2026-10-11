@@ -364,6 +364,9 @@ fn describe(status: SessionStatus) -> String {
         SessionStatus::NeedsYou {
             reason: WaitReason::Question,
         } => "needs you: question".to_owned(),
+        SessionStatus::NeedsYou {
+            reason: WaitReason::Startup,
+        } => "needs you: asking before it starts".to_owned(),
         SessionStatus::Finished => "finished".to_owned(),
         SessionStatus::Exited { success: true } => "exited".to_owned(),
         SessionStatus::Exited { success: false } => "exited with an error".to_owned(),

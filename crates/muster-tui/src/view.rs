@@ -740,6 +740,9 @@ pub(crate) fn describe(status: SessionStatus) -> &'static str {
         SessionStatus::NeedsYou {
             reason: WaitReason::Question,
         } => "needs you: question",
+        SessionStatus::NeedsYou {
+            reason: WaitReason::Startup,
+        } => "needs you: asking before it starts",
         SessionStatus::Finished => "finished",
         SessionStatus::Exited { success: true } => "exited",
         SessionStatus::Exited { success: false } => "exited with an error",
