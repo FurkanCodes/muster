@@ -9,9 +9,12 @@
 //!
 //! The child is started by portable-pty, which makes it a session leader with
 //! the terminal as its controlling terminal and closes every inherited
-//! descriptor above stderr before `exec`.
+//! descriptor above stderr before `exec`. The actor also answers the
+//! questions programs ask their terminal (see `queries`).
 
+mod cursor;
 mod progress;
+mod queries;
 mod ring;
 
 #[cfg(test)]
@@ -29,7 +32,9 @@ use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::Instant;
 
+use self::cursor::CursorTracker;
 use self::progress::ProgressScanner;
+use self::queries::{QueryScanner, Reply};
 use self::ring::{RING_CAPACITY, Replay, Ring};
 
 /// After asking a session to stop, how long before it is killed.
@@ -184,6 +189,9 @@ pub(crate) fn spawn(
         live: Some(broadcast::channel(256).0),
         input: Some(input),
         progress: ProgressScanner::default(),
+        queries: QueryScanner::default(),
+        cursor: None,
+        size: spec.size,
         stopping: false,
         kill_at: None,
     };
@@ -235,6 +243,10 @@ struct Actor {
     live: Option<broadcast::Sender<Chunk>>,
     input: Option<std::sync::mpsc::Sender<Vec<u8>>>,
     progress: ProgressScanner,
+    queries: QueryScanner,
+    /// A screen for cursor-position answers, built at the first question.
+    cursor: Option<CursorTracker>,
+    size: TermSize,
     stopping: bool,
     kill_at: Option<Instant>,
 }
@@ -311,6 +323,7 @@ impl Actor {
         for busy in self.progress.scan(&data) {
             events(PtyEvent::Progress { busy });
         }
+        self.answer_queries(&data);
         let seq = self.ring.push(&data);
         if let Some(live) = &self.live {
             // No subscribers is fine; the ring holds it.
@@ -318,6 +331,33 @@ impl Actor {
                 seq,
                 data: data.into(),
             });
+        }
+    }
+
+    /// Answers what `data` asks the terminal, in the order it asked. Runs
+    /// before `data` joins the ring, so a new cursor screen is built from
+    /// the output before it.
+    fn answer_queries(&mut self, data: &[u8]) {
+        let mut fed = 0;
+        for reply in self.queries.scan(data).replies {
+            let bytes = match reply {
+                Reply::Bytes(bytes) => bytes,
+                Reply::CursorPosition { at } => {
+                    let (size, ring) = (self.size, &self.ring);
+                    let tracker = self.cursor.get_or_insert_with(|| {
+                        CursorTracker::new(size.cols, size.rows, &ring.replay_from(None).data)
+                    });
+                    tracker.feed(&data[fed..at]);
+                    fed = at;
+                    tracker.report()
+                }
+            };
+            if let Some(input) = &self.input {
+                let _ = input.send(bytes);
+            }
+        }
+        if let Some(tracker) = &mut self.cursor {
+            tracker.feed(&data[fed..]);
         }
     }
 
@@ -337,6 +377,10 @@ impl Actor {
             Command::Resize(size) => {
                 if self.live.is_some() {
                     let _ = self.master.resize(pty_size(size));
+                    self.size = size;
+                    if let Some(tracker) = &mut self.cursor {
+                        tracker.resize(size.cols, size.rows);
+                    }
                 }
             }
             Command::Stop => {

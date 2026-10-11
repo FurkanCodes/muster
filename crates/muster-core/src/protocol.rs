@@ -190,10 +190,13 @@ pub enum Command {
     /// Start a session in a workspace.
     StartSession {
         workspace: WorkspaceId,
-        /// A harness id, such as `shell`.
+        /// A harness id: `shell` or `claude`.
         harness: String,
         title: Option<String>,
         size: TermSize,
+        /// A first prompt, for harnesses that take one.
+        #[serde(default)]
+        prompt: Option<String>,
     },
     /// Stop a running session.
     StopSession { session: SessionId },

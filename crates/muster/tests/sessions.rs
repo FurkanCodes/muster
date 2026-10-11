@@ -63,6 +63,7 @@ async fn start(connection: &mut Connection, workspace: WorkspaceId) -> SessionId
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
+            prompt: None,
         })
         .await
         .unwrap()
@@ -296,6 +297,7 @@ async fn unknown_harnesses_and_sessions_are_refused() {
             harness: "nonsense".to_owned(),
             title: None,
             size: TermSize::default(),
+            prompt: None,
         })
         .await;
     assert!(

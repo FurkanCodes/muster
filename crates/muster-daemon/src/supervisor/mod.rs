@@ -22,6 +22,8 @@ use muster_state::session::{Effect, SessionMachine, Signal};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::clock::Clock;
+use crate::harness::{Harness, claude};
+use crate::hooks::HookDelivery;
 use crate::pty::{PtyEvent, PtyHandle};
 use crate::store::{StoreClosed, StoreError, StoreHandle};
 
@@ -99,11 +101,15 @@ pub(crate) struct Settings {
     pub(crate) store: StoreHandle,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) worktrees_dir: PathBuf,
+    /// Where sessions' hooks report.
+    pub(crate) hook_socket: PathBuf,
+    /// What the hook receiver accepted.
+    pub(crate) hook_queue: mpsc::Receiver<HookDelivery>,
     pub(crate) delta_capacity: usize,
 }
 
-/// Loads the state from the store, settles sessions the last daemon left
-/// running, and starts the Supervisor.
+/// Loads the state from the store, resumes or settles sessions the last
+/// daemon left running, and starts the Supervisor.
 pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreError> {
     let state = settings
         .store
@@ -116,13 +122,15 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         store: settings.store,
         clock: settings.clock,
         worktrees_dir: settings.worktrees_dir,
+        hook_socket: settings.hook_socket,
         deltas: broadcast::channel(settings.delta_capacity).0,
         state,
         live: HashMap::new(),
+        hook_tokens: HashMap::new(),
         pty_events,
     };
-    supervisor.settle_orphaned_sessions().await;
-    tokio::spawn(supervisor.run(queue, pty_queue));
+    supervisor.recover_sessions().await;
+    tokio::spawn(supervisor.run(queue, pty_queue, settings.hook_queue));
     Ok(SupervisorHandle { requests })
 }
 
@@ -132,6 +140,12 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
 struct Live {
     pty: PtyHandle,
     machine: SessionMachine,
+    harness: Harness,
+    /// The token its hooks carry, while it runs.
+    token: Option<String>,
+    launched: std::time::Instant,
+    /// Started with `--resume`; a quick exit means the resume failed.
+    resumed: bool,
 }
 
 #[derive(Debug)]
@@ -139,9 +153,12 @@ struct Supervisor {
     store: StoreHandle,
     clock: Arc<dyn Clock>,
     worktrees_dir: PathBuf,
+    hook_socket: PathBuf,
     deltas: broadcast::Sender<Delta>,
     state: Snapshot,
     live: HashMap<SessionId, Live>,
+    /// Which session each issued hook token names (`ARC-11`).
+    hook_tokens: HashMap<String, SessionId>,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }
@@ -151,6 +168,7 @@ impl Supervisor {
         mut self,
         mut queue: mpsc::Receiver<Request>,
         mut pty_queue: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
+        mut hook_queue: mpsc::Receiver<HookDelivery>,
     ) {
         loop {
             let deadline = self.next_deadline();
@@ -161,6 +179,7 @@ impl Supervisor {
                     None => return,
                 },
                 Some((session, event)) = pty_queue.recv() => self.on_pty_event(session, event).await,
+                Some(delivery) = hook_queue.recv() => self.on_hook(delivery).await,
                 () = tokio::time::sleep_until(wake_at), if deadline.is_some() => self.tick().await,
             }
         }
@@ -207,8 +226,30 @@ impl Supervisor {
                 harness,
                 title,
                 size,
-            } => self.start_session(workspace, harness, title, size).await,
+                prompt,
+            } => {
+                self.start_session(workspace, harness, title, size, prompt)
+                    .await
+            }
             Command::StopSession { session } => self.stop_session(session).await,
+        }
+    }
+
+    /// A hook arrived: the token says whose it is, never the payload.
+    async fn on_hook(&mut self, delivery: HookDelivery) {
+        let Some(&session) = self.hook_tokens.get(&delivery.token) else {
+            tracing::debug!("ignored a hook with an unknown token");
+            return;
+        };
+        if let Some((agent_session, event)) = claude::translate(&delivery.payload) {
+            self.step_session(
+                session,
+                Signal::Hook {
+                    agent_session,
+                    event,
+                },
+            )
+            .await;
         }
     }
 

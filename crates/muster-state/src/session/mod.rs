@@ -20,5 +20,5 @@ mod signal;
 #[cfg(test)]
 mod tests;
 
-pub use machine::{Launch, SessionMachine, Timing};
+pub use machine::{Launch, SessionMachine, Start, Timing};
 pub use signal::{Effect, HookEvent, Origin, Signal};

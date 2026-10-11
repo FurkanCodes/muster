@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use muster_core::{SessionStatus, WaitReason};
 
-use super::{Effect, HookEvent, Launch, Origin, SessionMachine, Signal, Timing};
+use super::{Effect, HookEvent, Launch, Origin, SessionMachine, Signal, Start, Timing};
 
 const NEEDS_PERMISSION: SessionStatus = SessionStatus::NeedsYou {
     reason: WaitReason::Permission,
@@ -118,7 +118,7 @@ fn a_launch_without_a_prompt_is_fresh_and_seen() {
 fn a_launch_with_a_prompt_is_running() {
     let session = Session::launched(Launch {
         agent_session: None,
-        with_prompt: true,
+        start: Start::WithPrompt,
     });
     assert_eq!(session.status(), SessionStatus::Running);
 }
@@ -406,7 +406,7 @@ fn progress_alone_drives_a_harness_without_hooks() {
 fn an_idle_edge_before_any_busy_edge_is_the_startup_state() {
     let mut session = Session::launched(Launch {
         agent_session: None,
-        with_prompt: true,
+        start: Start::WithPrompt,
     });
     session.send(Signal::Progress { busy: false });
     assert_eq!(session.status(), SessionStatus::Running);
@@ -447,7 +447,7 @@ fn a_busy_edge_does_not_cancel_a_hold() {
 fn hooks_from_another_harness_session_are_ignored() {
     let mut session = Session::launched(Launch {
         agent_session: Some("ours".to_owned()),
-        with_prompt: false,
+        start: Start::Idle,
     });
     assert!(
         session
@@ -462,7 +462,7 @@ fn hooks_from_another_harness_session_are_ignored() {
 fn clear_switches_to_the_new_harness_session() {
     let mut session = Session::launched(Launch {
         agent_session: Some("first".to_owned()),
-        with_prompt: false,
+        start: Start::Idle,
     });
     session.hook_from("second", HookEvent::SessionStarted);
     assert_eq!(session.machine.agent_session(), Some("second"));
@@ -483,7 +483,7 @@ fn the_first_hook_names_the_harness_session_when_launch_did_not() {
 fn the_resume_id_is_saved_once_a_turn_has_run() {
     let mut session = Session::launched(Launch {
         agent_session: Some("first".to_owned()),
-        with_prompt: false,
+        start: Start::Idle,
     });
     assert!(
         session
@@ -552,4 +552,26 @@ fn nothing_but_viewing_changes_an_exited_session() {
             false
         )]
     );
+}
+
+#[test]
+fn a_resumed_session_is_finished_and_keeps_what_was_unseen() {
+    for unseen in [false, true] {
+        let session = Session::launched(Launch {
+            agent_session: Some("kept".to_owned()),
+            start: Start::Resumed { unseen },
+        });
+        assert_eq!(session.status(), SessionStatus::Finished);
+        assert_eq!(session.unseen(), unseen);
+    }
+}
+
+#[test]
+fn a_resumed_session_does_not_save_its_id_again() {
+    let mut session = Session::launched(Launch {
+        agent_session: Some("kept".to_owned()),
+        start: Start::Resumed { unseen: false },
+    });
+    let effects = session.hook_from("kept", HookEvent::PromptSubmitted);
+    assert!(!effects.contains(&Effect::SaveResumeId("kept".to_owned())));
 }

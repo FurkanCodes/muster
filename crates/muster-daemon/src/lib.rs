@@ -6,6 +6,7 @@ pub mod store;
 
 mod git;
 mod harness;
+mod hooks;
 mod pty;
 mod server;
 mod supervisor;
@@ -86,34 +87,55 @@ pub async fn run(
     let _lock = lock(&paths.lock_file())?;
 
     let socket = paths.socket();
+    let hook_socket = paths.hook_socket();
     // Holding the lock means any socket left here belongs to a daemon that died.
-    match std::fs::remove_file(&socket) {
-        Ok(()) => tracing::info!("removed a stale socket"),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(io_error("cannot remove", &socket)(error)),
+    for stale in [&socket, &hook_socket] {
+        match std::fs::remove_file(stale) {
+            Ok(()) => tracing::info!(socket = %stale.display(), "removed a stale socket"),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_error("cannot remove", stale)(error)),
+        }
     }
-    let listener = UnixListener::bind(&socket).map_err(io_error("cannot listen on", &socket))?;
-    std::fs::set_permissions(&socket, Permissions::from_mode(0o600))
-        .map_err(io_error("cannot restrict", &socket))?;
+    let listener = listen(&socket)?;
+    let hook_listener = listen(&hook_socket)?;
 
     let store = Store::open(&paths.database())?;
     let store = StoreHandle::spawn(store)
         .map_err(io_error("cannot start the store for", &paths.database()))?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
     let supervisor = supervisor::spawn(supervisor::Settings {
         store,
         clock,
         worktrees_dir: paths.worktrees_dir.clone(),
+        hook_socket: hook_socket.clone(),
+        hook_queue,
         delta_capacity: config.delta_capacity,
     })
     .await?;
 
+    let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
+    let hook_server = tokio::spawn(hooks::serve(hook_listener, hook_deliveries, async {
+        let _ = hooks_stopped.await;
+    }));
+
     tracing::info!(socket = %socket.display(), pid = std::process::id(), "daemon ready");
     server::serve(listener, supervisor, shutdown).await;
 
+    let _ = stop_hooks.send(());
+    let _ = hook_server.await;
+    let _ = std::fs::remove_file(&hook_socket);
     let _ = std::fs::remove_file(&socket);
     tracing::info!("daemon stopped");
     Ok(())
+}
+
+/// Binds a Unix socket only this user can use.
+fn listen(socket: &Path) -> Result<UnixListener, DaemonError> {
+    let listener = UnixListener::bind(socket).map_err(io_error("cannot listen on", socket))?;
+    std::fs::set_permissions(socket, Permissions::from_mode(0o600))
+        .map_err(io_error("cannot restrict", socket))?;
+    Ok(listener)
 }
 
 /// Creates `dir` if needed and makes it private to this user: the socket's
