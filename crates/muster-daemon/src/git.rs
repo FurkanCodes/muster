@@ -144,6 +144,12 @@ pub(crate) async fn remove_worktree(repo: &Path, path: &Path, force: bool) -> Re
     checked(repo, &args).await.map(drop)
 }
 
+/// Git's own list of the repository's worktrees, in its stable porcelain
+/// form with NUL separators (see `worktree_sync::parse`).
+pub(crate) async fn list_worktrees(repo: &Path) -> Result<String, GitError> {
+    checked(repo, &["worktree", "list", "--porcelain", "-z"]).await
+}
+
 /// Forgets worktrees whose directories no longer exist.
 pub(crate) async fn prune_worktrees(repo: &Path) -> Result<(), GitError> {
     checked(repo, &["worktree", "prune"]).await.map(drop)

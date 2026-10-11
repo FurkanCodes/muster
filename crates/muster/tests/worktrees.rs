@@ -236,7 +236,8 @@ async fn removing_keeps_the_branch_and_protects_uncommitted_work() {
 
 #[tokio::test]
 async fn a_worktree_deleted_by_hand_can_still_be_removed() {
-    let sandbox = Sandbox::new();
+    // Removed before the worktree sync would notice and forget it.
+    let sandbox = Sandbox::new().with_env("MUSTER_WORKTREE_MS", "3600000");
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;

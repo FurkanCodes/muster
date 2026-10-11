@@ -55,6 +55,13 @@ enum Request {
     Workspaces(oneshot::Sender<Vec<(WorkspaceId, PathBuf, String)>>),
     /// The branch watcher's findings.
     Branches(Vec<(WorkspaceId, String)>),
+    /// The worktree sync asks for the projects and their worktrees.
+    ProjectsForSync(oneshot::Sender<Vec<crate::worktree_sync::ProjectWorktrees>>),
+    /// Git's list of a project's worktrees.
+    WorktreesListed {
+        project: muster_core::ProjectId,
+        listed: Vec<crate::worktree_sync::Listed>,
+    },
     /// The sampler's measurement.
     Resources(ResourceReport),
 }
@@ -69,6 +76,8 @@ impl std::fmt::Debug for Request {
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
             Self::Branches(_) => f.write_str("Branches"),
+            Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
+            Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
             Self::Resources(_) => f.write_str("Resources"),
         }
     }
@@ -123,6 +132,32 @@ impl SupervisorHandle {
     /// stopped.
     pub(crate) async fn record_branches(&self, changes: Vec<(WorkspaceId, String)>) -> bool {
         self.requests.send(Request::Branches(changes)).await.is_ok()
+    }
+
+    /// Each project's root and Muster's worktrees of it, or `None` once
+    /// the Supervisor has stopped.
+    pub(crate) async fn projects_for_sync(
+        &self,
+    ) -> Option<Vec<crate::worktree_sync::ProjectWorktrees>> {
+        let (reply, answer) = oneshot::channel();
+        self.requests
+            .send(Request::ProjectsForSync(reply))
+            .await
+            .ok()?;
+        answer.await.ok()
+    }
+
+    /// Hands over git's list of a project's worktrees. `false` once the
+    /// Supervisor has stopped.
+    pub(crate) async fn worktrees_listed(
+        &self,
+        project: muster_core::ProjectId,
+        listed: Vec<crate::worktree_sync::Listed>,
+    ) -> bool {
+        self.requests
+            .send(Request::WorktreesListed { project, listed })
+            .await
+            .is_ok()
     }
 
     /// Hands over a measurement. `false` once the Supervisor has stopped.
@@ -306,6 +341,12 @@ impl Supervisor {
                 let _ = reply.send(self.workspace_heads());
             }
             Request::Branches(changes) => self.record_branches(changes).await,
+            Request::ProjectsForSync(reply) => {
+                let _ = reply.send(self.projects_for_sync());
+            }
+            Request::WorktreesListed { project, listed } => {
+                self.sync_worktrees(project, listed).await;
+            }
             Request::Terminal {
                 session,
                 watch,
