@@ -21,6 +21,9 @@ pub struct Paths {
     /// Where new git worktrees go. Kept out of the data directory because on
     /// macOS that path contains a space, which some build scripts mishandle.
     pub worktrees_dir: PathBuf,
+    /// The person's settings, such as per-project overrides of
+    /// `muster.toml`.
+    pub config_dir: PathBuf,
 }
 
 /// Why the directories could not be worked out.
@@ -67,10 +70,16 @@ impl Paths {
             .or_else(|| var("HOME").map(|home| home.join(".muster/worktrees")))
             .unwrap_or_else(|| data_dir.join("worktrees"));
 
+        let config_dir = var("MUSTER_CONFIG_DIR")
+            .or_else(|| var("XDG_CONFIG_HOME").map(|dir| dir.join("muster")))
+            .or_else(|| var("HOME").map(|home| home.join(".config/muster")))
+            .unwrap_or_else(|| data_dir.join("config"));
+
         let paths = Self {
             runtime_dir,
             data_dir,
             worktrees_dir,
+            config_dir,
         };
         let socket = paths.socket();
         if socket.as_os_str().len() > MAX_SOCKET_PATH_LEN {
@@ -97,6 +106,13 @@ impl Paths {
     /// The SQLite database.
     pub fn database(&self) -> PathBuf {
         self.data_dir.join("muster.db")
+    }
+
+    /// The person's overrides of a project's `muster.toml`.
+    pub fn project_overrides(&self, project: crate::ProjectId) -> PathBuf {
+        self.config_dir
+            .join("projects")
+            .join(format!("{project}.toml"))
     }
 }
 
@@ -162,6 +178,21 @@ mod tests {
 
         let bare = resolve(&[("HOME", "/h")]).unwrap();
         assert_eq!(bare.runtime_dir, PathBuf::from("/tmp/muster-501"));
+    }
+
+    #[test]
+    fn settings_follow_their_variable_then_xdg_then_home() {
+        let set = resolve(&[("MUSTER_CONFIG_DIR", "/c"), ("HOME", "/h")]).unwrap();
+        assert_eq!(set.config_dir, PathBuf::from("/c"));
+        let xdg = resolve(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")]).unwrap();
+        assert_eq!(xdg.config_dir, PathBuf::from("/x/muster"));
+        let home = resolve(&[("HOME", "/h")]).unwrap();
+        assert_eq!(home.config_dir, PathBuf::from("/h/.config/muster"));
+        let project = crate::ProjectId::new();
+        assert_eq!(
+            home.project_overrides(project),
+            PathBuf::from(format!("/h/.config/muster/projects/{project}.toml"))
+        );
     }
 
     #[test]

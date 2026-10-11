@@ -315,3 +315,57 @@ fn the_command_line_works_in_a_projects_checkout_and_removes_projects() {
     }
     assert!(ok(&["status"]).contains("0 projects"));
 }
+
+#[test]
+fn project_settings_are_shown_with_overrides_and_their_mistakes_explained() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let _daemon = sandbox.start();
+    let run = |args: &[&str]| sandbox.run(args);
+    assert!(
+        run(&["project", "add", root.to_str().unwrap()])
+            .status
+            .success()
+    );
+
+    let defaults = run(&["project", "config", "app"]);
+    let text = String::from_utf8_lossy(&defaults.stdout);
+    assert!(defaults.status.success(), "{defaults:?}");
+    assert!(text.contains("Neither exists yet"), "{text}");
+    assert!(
+        text.contains("Runs cannot start yet: runs need checks"),
+        "{text}"
+    );
+
+    std::fs::write(
+        root.join("muster.toml"),
+        "[checks]\ncommands = [\"cargo test\"]\n[limits]\nattempts = 2\n",
+    )
+    .unwrap();
+    let status = String::from_utf8_lossy(&run(&["status"]).stdout).into_owned();
+    let id = status
+        .split("(prj_")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .map(|ulid| format!("prj_{ulid}"))
+        .unwrap();
+    let overrides = sandbox
+        .paths()
+        .config_dir
+        .join("projects")
+        .join(format!("{id}.toml"));
+    std::fs::create_dir_all(overrides.parent().unwrap()).unwrap();
+    std::fs::write(&overrides, "[project]\nmemory = \"8g\"\n").unwrap();
+    let shown = run(&["project", "config", "app"]);
+    let text = String::from_utf8_lossy(&shown.stdout);
+    assert!(text.contains("checks        cargo test"), "{text}");
+    assert!(text.contains("2 attempts"), "{text}");
+    assert!(text.contains("8.0 GB"), "{text}");
+    assert!(text.contains("Runs can use these settings."), "{text}");
+
+    std::fs::write(&overrides, "[project]\nmemroy = \"8g\"\n").unwrap();
+    let wrong = run(&["project", "config", "app"]);
+    assert!(!wrong.status.success());
+    let error = String::from_utf8_lossy(&wrong.stderr);
+    assert!(error.contains("memroy"), "{error}");
+}

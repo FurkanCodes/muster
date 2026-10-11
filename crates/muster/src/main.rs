@@ -84,6 +84,9 @@ enum ProjectCommand {
     /// Stop tracking PROJECT (its name, id or path). Its repository is not
     /// touched; its worktrees must be removed first.
     Remove { project: String },
+    /// Show PROJECT's settings for runs: its `muster.toml` with your
+    /// overrides, or what is wrong with them.
+    Config { project: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -162,6 +165,9 @@ fn main() -> ExitCode {
             }
             Some(Commands::Project(ProjectCommand::Remove { project })) => {
                 commands::remove_project(&socket, &project).await
+            }
+            Some(Commands::Project(ProjectCommand::Config { project })) => {
+                commands::show_config(&socket, &paths, &project).await
             }
             Some(Commands::Worktree(WorktreeCommand::Add { project, branch })) => {
                 commands::add_worktree(&socket, &project, branch).await

@@ -175,6 +175,7 @@ impl Sandbox {
             runtime_dir: self.dir.path().join("run"),
             data_dir: self.dir.path().join("data"),
             worktrees_dir: self.dir.path().join("worktrees"),
+            config_dir: self.dir.path().join("config"),
         }
     }
 
@@ -197,6 +198,7 @@ impl Sandbox {
             .env("MUSTER_RUNTIME_DIR", &paths.runtime_dir)
             .env("MUSTER_DATA_DIR", &paths.data_dir)
             .env("MUSTER_WORKTREES_DIR", &paths.worktrees_dir)
+            .env("MUSTER_CONFIG_DIR", &paths.config_dir)
             .env("MUSTER_LOG", "debug")
             // Sessions run a plain, predictable shell.
             .env("SHELL", "/bin/sh")
