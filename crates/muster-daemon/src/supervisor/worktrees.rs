@@ -64,7 +64,7 @@ impl Supervisor {
             .map_err(git_failure)?;
         git::add_worktree(&project.root, &path, &branch, !exists)
             .await
-            .map_err(git_failure)?;
+            .map_err(|error| branch_clash(&error, &branch).unwrap_or_else(|| git_failure(error)))?;
         let path = tokio::fs::canonicalize(&path).await.unwrap_or(path);
 
         let workspace = Workspace {
@@ -212,6 +212,29 @@ async fn unused_path(group: &Path, name: &str) -> PathBuf {
     path
 }
 
+/// Git's refusal to create `branch` because another branch's name contains
+/// it as a folder (`test` when `test/x` exists, or `test/x` when `test`
+/// exists), explained with the branch in the way and a name that would do.
+fn branch_clash(error: &GitError, branch: &str) -> Option<ErrorBody> {
+    let GitError::Failed { stderr, .. } = error else {
+        return None;
+    };
+    if !(stderr.contains("cannot lock ref") && stderr.contains("exists; cannot create")) {
+        return None;
+    }
+    // "… 'refs/heads/<existing>' exists; cannot create …"
+    let before = stderr.split(" exists; cannot create").next()?;
+    let existing = before.rsplit("'refs/heads/").next()?.trim_end_matches('\'');
+    Some(ErrorBody::new(
+        ErrorCode::Conflict,
+        format!(
+            "git cannot create the branch {branch} because the branch {existing} exists \
+             (one branch name cannot be a folder of another); choose another name, \
+             such as {branch}-1"
+        ),
+    ))
+}
+
 fn is_dirty(stderr: &str) -> bool {
     stderr.contains("modified or untracked") || stderr.contains("contains modified")
 }
@@ -233,6 +256,31 @@ mod tests {
         assert_eq!(slug("muster/fix-login"), "muster-fix-login");
         assert_eq!(slug("feature/ünïcode name"), "feature--n-code-name");
         assert_eq!(slug("../.."), "worktree");
+    }
+
+    #[test]
+    fn a_clashing_branch_name_is_explained() {
+        let error = GitError::Failed {
+            args: "worktree add -b test /w/test".to_owned(),
+            stderr: "fatal: cannot lock ref 'refs/heads/test': 'refs/heads/test/beta38-candidate' \
+                     exists; cannot create 'refs/heads/test'"
+                .to_owned(),
+        };
+        let body = branch_clash(&error, "test").unwrap();
+        assert_eq!(body.code, ErrorCode::Conflict);
+        assert!(
+            body.message
+                .contains("the branch test/beta38-candidate exists"),
+            "{}",
+            body.message
+        );
+        assert!(body.message.contains("such as test-1"), "{}", body.message);
+
+        let other = GitError::Failed {
+            args: String::new(),
+            stderr: "fatal: something else".to_owned(),
+        };
+        assert!(branch_clash(&other, "x").is_none());
     }
 
     #[test]

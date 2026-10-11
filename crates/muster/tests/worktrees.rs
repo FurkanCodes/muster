@@ -153,6 +153,32 @@ async fn bad_requests_are_refused_with_their_code() {
         ErrorCode::Conflict
     );
 
+    // A branch name that would also be another branch's folder, both ways.
+    git(&root, &["branch", "nest/inner"]);
+    let clash = create(&mut connection, project, Some("nest"))
+        .await
+        .unwrap_err();
+    let ClientError::Daemon(clash) = clash else {
+        panic!("expected a refusal");
+    };
+    assert_eq!(clash.code, ErrorCode::Conflict);
+    assert!(
+        clash.message.contains("the branch nest/inner exists"),
+        "{}",
+        clash.message
+    );
+    let clash = create(&mut connection, project, Some("main/x"))
+        .await
+        .unwrap_err();
+    let ClientError::Daemon(clash) = clash else {
+        panic!("expected a refusal");
+    };
+    assert!(
+        clash.message.contains("the branch main exists"),
+        "{}",
+        clash.message
+    );
+
     // Refusals are logged with their reason, for reading afterwards.
     let log = daemon.log();
     assert!(log.contains("command refused"), "{log}");
