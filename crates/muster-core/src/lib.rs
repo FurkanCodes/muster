@@ -11,7 +11,7 @@ pub mod protocol;
 pub mod session;
 pub mod time;
 
-pub use entities::{Project, Session, Workspace, WorkspaceKind};
+pub use entities::{Issue, Project, Session, Workspace, WorkspaceKind};
 pub use ids::{ParseIdError, ProjectId, RunId, SessionId, WorkspaceId};
 pub use paths::Paths;
 pub use session::{SessionStatus, WaitReason};

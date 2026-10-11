@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::entities::{Project, Session, Workspace};
+use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
@@ -218,6 +218,18 @@ pub enum Command {
     },
     /// Stop a running session.
     StopSession { session: SessionId },
+    /// List a project's open GitHub issues, newest first.
+    ListIssues { project: ProjectId },
+    /// Work on a GitHub issue: a worktree on `muster/issue-<n>-<title>`
+    /// (reused if it exists) and a session in it. Claude Code gets the issue
+    /// as its first prompt, marked as data rather than instructions.
+    StartFromIssue {
+        project: ProjectId,
+        number: u64,
+        /// A harness id: `claude` or `shell`.
+        harness: String,
+        size: TermSize,
+    },
 }
 
 /// A successful answer to a [`Command`].
@@ -232,6 +244,13 @@ pub enum Reply {
     },
     SessionStarted {
         id: SessionId,
+    },
+    Issues {
+        issues: Vec<Issue>,
+    },
+    IssueStarted {
+        workspace: WorkspaceId,
+        session: SessionId,
     },
     /// The command was carried out and has nothing to report.
     Done,

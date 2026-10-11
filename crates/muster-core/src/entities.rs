@@ -36,6 +36,18 @@ pub enum WorkspaceKind {
     Worktree { path: PathBuf, branch: String },
 }
 
+/// A GitHub issue, as listed for the person to pick from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Issue {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// Who filed it.
+    pub author: Option<String>,
+}
+
 /// One agent process in one workspace.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Session {

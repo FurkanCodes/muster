@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use muster_core::protocol::{
     ClientFrame, Command, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
 };
-use muster_core::{ProjectId, SessionId, WorkspaceId};
+use muster_core::{Issue, ProjectId, SessionId, WorkspaceId};
 
 use crate::input::LineInput;
 use crate::model::{Model, Row};
@@ -69,6 +69,15 @@ pub(crate) enum Dialog {
         question: String,
         then: Confirmed,
     },
+    /// A project's open GitHub issues, to start work on one.
+    Issues {
+        project: ProjectId,
+        /// `None` while they load.
+        issues: Option<Vec<Issue>>,
+        selected: usize,
+        harness: HarnessChoice,
+        error: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,6 +123,9 @@ enum Then {
     OpenSession,
     /// Offer to force the removal if it was refused for uncommitted changes.
     RemovedWorktree(WorkspaceId),
+    /// Fill the issues dialog for this project.
+    ShowIssues(ProjectId),
+    OpenIssueSession,
     Say(&'static str),
 }
 
@@ -219,9 +231,32 @@ impl App {
                 self.wanted = Some((Row::Worktree(id), false));
                 self.say("Created the worktree.");
             }
-            (Ok(Reply::SessionStarted { id }), Then::OpenSession) => {
+            (Ok(Reply::SessionStarted { id }), Then::OpenSession)
+            | (Ok(Reply::IssueStarted { session: id, .. }), Then::OpenIssueSession) => {
                 self.wanted = Some((Row::Session(id), true));
                 self.note = None;
+            }
+            (Ok(Reply::Issues { issues: listed }), Then::ShowIssues(project)) => {
+                if let Mode::Dialog(Dialog::Issues {
+                    project: showing,
+                    issues,
+                    ..
+                }) = &mut self.mode
+                    && *showing == project
+                {
+                    *issues = Some(listed);
+                }
+            }
+            (Err(error), Then::ShowIssues(project)) => {
+                if let Mode::Dialog(Dialog::Issues {
+                    project: showing,
+                    error: shown,
+                    ..
+                }) = &mut self.mode
+                    && *showing == project
+                {
+                    *shown = Some(error.message);
+                }
             }
             (Ok(_), Then::RemovedWorktree(_)) => {
                 self.say("Removed the worktree; its branch is kept.")

@@ -43,17 +43,36 @@ if [ "$1" = "--resume" ] && [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_RESUME_FAILS" ]; 
 exec /bin/sh
 "#;
 
+/// Stands in for the GitHub CLI: answers `issue list` and `issue view N`
+/// from fixture files and records every call. While the GH_SLOW flag file
+/// exists it takes two seconds to answer, like a slow network.
+const FAKE_GH: &str = r#"#!/bin/sh
+dir="$FAKE_GH_DIR"
+printf '%s\n' "$*" >> "$dir/calls"
+[ -f "$dir/GH_SLOW" ] && sleep 2
+case "$1 $2" in
+  "issue list") cat "$dir/issues.json" ;;
+  "issue view")
+    if [ -f "$dir/issue-$3.json" ]; then cat "$dir/issue-$3.json"
+    else echo "GraphQL: Could not resolve to an Issue with the number of $3." >&2; exit 1; fi ;;
+  *) echo "unexpected gh call: $*" >&2; exit 1 ;;
+esac
+"#;
+
 impl Sandbox {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("bin");
         std::fs::create_dir_all(&bin).unwrap();
-        std::fs::write(bin.join("claude"), FAKE_CLAUDE).unwrap();
-        std::fs::set_permissions(
-            bin.join("claude"),
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
+        for (name, script) in [("claude", FAKE_CLAUDE), ("gh", FAKE_GH)] {
+            std::fs::write(bin.join(name), script).unwrap();
+            std::fs::set_permissions(
+                bin.join(name),
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            )
+            .unwrap();
+        }
+        std::fs::create_dir_all(dir.path().join("fake-gh")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
         std::fs::create_dir_all(dir.path().join("claude-config/projects")).unwrap();
         Self { dir }
@@ -63,6 +82,12 @@ impl Sandbox {
     /// `FAKE_CLAUDE_RESUME_FAILS`.
     pub(crate) fn fake_claude_flag(&self, name: &str) -> PathBuf {
         self.dir.path().join("fake-claude").join(name)
+    }
+
+    /// The stand-in `gh`'s directory: `issues.json`, `issue-<n>.json`, the
+    /// `GH_SLOW` flag and the `calls` it recorded.
+    pub(crate) fn fake_gh(&self) -> PathBuf {
+        self.dir.path().join("fake-gh")
     }
 
     /// Where Claude Code would keep its transcripts in this sandbox.
@@ -157,6 +182,7 @@ impl Sandbox {
                 ),
             )
             .env("FAKE_CLAUDE_DIR", self.dir.path().join("fake-claude"))
+            .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))
             // As if the daemon were started from inside an agent session,
             // which sessions must not inherit.

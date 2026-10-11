@@ -8,6 +8,7 @@
 //! Terminal traffic does not pass through here: a connection asks once for a
 //! session's [`PtyHandle`] and then talks to its actor directly.
 
+mod issues;
 mod projects;
 mod sessions;
 mod worktrees;
@@ -41,6 +42,8 @@ enum Request {
         viewed: bool,
         reply: oneshot::Sender<Option<PtyHandle>>,
     },
+    /// An issue fetched off the loop, back to start work on it.
+    IssueFetched(Box<issues::FetchedIssue>),
 }
 
 impl std::fmt::Debug for Request {
@@ -49,6 +52,7 @@ impl std::fmt::Debug for Request {
             Self::Subscribe(_) => f.write_str("Subscribe"),
             Self::Command { command, .. } => write!(f, "Command({command:?})"),
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
+            Self::IssueFetched(_) => f.write_str("IssueFetched"),
         }
     }
 }
@@ -119,6 +123,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
     let (requests, queue) = mpsc::channel(256);
     let (pty_events, pty_queue) = mpsc::unbounded_channel();
     let mut supervisor = Supervisor {
+        requests: requests.clone(),
         store: settings.store,
         clock: settings.clock,
         worktrees_dir: settings.worktrees_dir,
@@ -150,6 +155,8 @@ struct Live {
 
 #[derive(Debug)]
 struct Supervisor {
+    /// Its own queue, for work finished off the loop to come back.
+    requests: mpsc::Sender<Request>,
     store: StoreHandle,
     clock: Arc<dyn Clock>,
     worktrees_dir: PathBuf,
@@ -190,13 +197,24 @@ impl Supervisor {
             Request::Subscribe(reply) => {
                 let _ = reply.send((self.state.clone(), self.deltas.subscribe()));
             }
-            Request::Command { command, reply } => {
-                let outcome = self.handle(command).await;
-                if let Err(error) = &outcome {
-                    tracing::debug!(%error, "command refused");
+            Request::Command { command, reply } => match command {
+                // These talk to GitHub, so they answer from a task of their own.
+                Command::ListIssues { project } => self.list_issues(project, reply),
+                Command::StartFromIssue {
+                    project,
+                    number,
+                    harness,
+                    size,
+                } => self.fetch_issue(project, number, harness, size, reply),
+                command => {
+                    let outcome = self.handle(command).await;
+                    if let Err(error) = &outcome {
+                        tracing::debug!(%error, "command refused");
+                    }
+                    let _ = reply.send(outcome);
                 }
-                let _ = reply.send(outcome);
-            }
+            },
+            Request::IssueFetched(fetched) => self.start_fetched_issue(*fetched).await,
             Request::Terminal {
                 session,
                 viewed,
@@ -232,6 +250,10 @@ impl Supervisor {
                     .await
             }
             Command::StopSession { session } => self.stop_session(session).await,
+            Command::ListIssues { .. } | Command::StartFromIssue { .. } => Err(ErrorBody::new(
+                ErrorCode::Internal,
+                "issue commands are answered off the Supervisor's loop",
+            )),
         }
     }
 

@@ -161,6 +161,52 @@ pub(crate) async fn stop_session(socket: &Path, session: &str) -> Outcome {
     Ok(())
 }
 
+pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let project = find_project(&snapshot, project)?.id;
+    let reply = connection.command(Command::ListIssues { project }).await?;
+    let Reply::Issues { issues } = reply else {
+        return Err(unexpected(&reply));
+    };
+    if issues.is_empty() {
+        println!("No open issues.");
+    }
+    for issue in issues {
+        let labels = if issue.labels.is_empty() {
+            String::new()
+        } else {
+            format!("  [{}]", issue.labels.join(", "))
+        };
+        println!("#{:<6} {}{labels}", issue.number, issue.title);
+    }
+    Ok(())
+}
+
+pub(crate) async fn start_issue(
+    socket: &Path,
+    project: &str,
+    number: u64,
+    harness: String,
+) -> Outcome {
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let project = find_project(&snapshot, project)?.id;
+    let reply = connection
+        .command(Command::StartFromIssue {
+            project,
+            number,
+            harness,
+            size: TermSize::default(),
+        })
+        .await?;
+    let Reply::IssueStarted { workspace, session } = reply else {
+        return Err(unexpected(&reply));
+    };
+    println!("Started {session} for issue #{number} in {workspace}.");
+    Ok(())
+}
+
 /// A project by id, name or path.
 fn find_project<'a>(snapshot: &'a Snapshot, wanted: &str) -> Result<&'a Project, String> {
     let path = std::path::absolute(wanted)

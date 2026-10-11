@@ -81,7 +81,7 @@ fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
         None => {
             let hints = match app.view {
                 View::Sessions => {
-                    "↑↓ move  ⏎ open  a project  w worktree  n session  s stop  x remove  ⇥ needs you  q quit"
+                    "↑↓ move  ⏎ open  a project  w worktree  n session  i issues  s stop  x remove  ⇥ needs you  q quit"
                 }
                 View::NeedsYou => "↑↓ move  ⏎ open  n session  s stop  ⇥ all sessions  q quit",
             };
@@ -283,7 +283,111 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
     }
 }
 
+/// What the issues dialog shows.
+struct IssuesView<'a> {
+    project: muster_core::ProjectId,
+    issues: Option<&'a Vec<muster_core::Issue>>,
+    selected: usize,
+    harness: HarnessChoice,
+    error: Option<&'a String>,
+}
+
+fn draw_issues(frame: &mut Frame<'_>, app: &App, area: Rect, shown: IssuesView<'_>) {
+    let width = area.width.saturating_sub(4).min(96);
+    let height = area.height.saturating_sub(4).min(22);
+    let rect = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, rect);
+    let name = app
+        .model
+        .project(shown.project)
+        .map_or("?", |found| found.name.as_str());
+    let block = Block::default()
+        .title(format!(" Issues of {name} "))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded);
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+    let [list_area, footer] =
+        Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).areas(inner);
+    match (shown.issues, shown.error) {
+        (_, Some(error)) => frame.render_widget(
+            Paragraph::new(error.clone())
+                .wrap(Wrap { trim: false })
+                .red(),
+            list_area,
+        ),
+        (None, None) => frame.render_widget(Paragraph::new("Loading…").dim(), list_area),
+        (Some(list), None) if list.is_empty() => {
+            frame.render_widget(Paragraph::new("No open issues.").dim(), list_area);
+        }
+        (Some(list), None) => {
+            let items: Vec<ListItem<'_>> = list
+                .iter()
+                .map(|issue| {
+                    let mut spans = vec![
+                        Span::from(format!("#{:<5} ", issue.number)).dim(),
+                        Span::raw(issue.title.clone()),
+                    ];
+                    if !issue.labels.is_empty() {
+                        spans.push(Span::from(format!("  {}", issue.labels.join(", "))).cyan());
+                    }
+                    ListItem::new(Line::from(spans))
+                })
+                .collect();
+            let mut state = ListState::default().with_selected(Some(shown.selected));
+            frame.render_stateful_widget(
+                List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
+                list_area,
+                &mut state,
+            );
+        }
+    }
+    let choice = |option: HarnessChoice| {
+        let label = format!(" {} ", option.label());
+        if option == shown.harness {
+            Span::from(label).reversed()
+        } else {
+            Span::from(label).dim()
+        }
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::raw("Run  "),
+                choice(HarnessChoice::Claude),
+                Span::raw(" "),
+                choice(HarnessChoice::Shell),
+            ]),
+            Line::from("↑↓ choose  ⏎ start work  ⇥ switch  esc close").dim(),
+        ]),
+        footer,
+    );
+}
+
 fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
+    if let Dialog::Issues {
+        project,
+        issues,
+        selected,
+        harness,
+        error,
+    } = dialog
+    {
+        let shown = IssuesView {
+            project: *project,
+            issues: issues.as_ref(),
+            selected: *selected,
+            harness: *harness,
+            error: error.as_ref(),
+        };
+        draw_issues(frame, app, area, shown);
+        return;
+    }
     let width = area.width.saturating_sub(4).min(72);
     let (title, lines, input) = match dialog {
         Dialog::AddProject { path } => (
@@ -339,6 +443,7 @@ fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
             ],
             None,
         ),
+        Dialog::Issues { .. } => return,
     };
     let height = lines.len() as u16 + 2 + u16::from(input.is_some()) + 2;
     let rect = Rect {

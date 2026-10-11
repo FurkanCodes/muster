@@ -5,6 +5,7 @@ pub mod clock;
 pub mod store;
 
 mod git;
+mod github;
 mod harness;
 mod hooks;
 mod pty;
