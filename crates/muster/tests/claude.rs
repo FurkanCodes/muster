@@ -357,3 +357,24 @@ async fn a_resume_that_fails_at_once_starts_fresh() {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 }
+
+#[tokio::test]
+async fn opening_a_claude_session_that_suspended_itself_continues_it() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let session = start_claude(&mut connection, setup.workspace, None).await;
+    setup.sandbox.wait_for_launches(session, 1);
+    connection.attach(session, None).await.unwrap();
+    // The stand-in is a shell: make it hand the terminal back the way
+    // Claude Code does on Ctrl+Z, then wait for a continue.
+    let suspend = "trap 'echo got-cont-$((2+5))' CONT; printf '\\033[?2004h\\033[?2004l'; \
+                   echo handed-$((3*3)); while :; do sleep 0.1; done\n";
+    connection.input(session, suspend.as_bytes()).await.unwrap();
+    support::read_terminal(&mut connection, session, "handed-9").await;
+    connection.detach(session).await.unwrap();
+
+    // Opening it again continues it.
+    let mut viewer = setup.daemon.connect().await;
+    viewer.attach(session, None).await.unwrap();
+    support::read_terminal(&mut viewer, session, "got-cont-7").await;
+}

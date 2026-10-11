@@ -54,6 +54,9 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw("  ")];
     match &app.link {
         Link::Connecting => spans.push(Span::from("connecting to the daemon…").dim()),
+        Link::Connected { .. } if !app.model.loaded() => {
+            spans.push(Span::from("loading…").dim());
+        }
         Link::Connected { daemon_version } => {
             spans.push(Span::from(format!("daemon {daemon_version}")).dim());
             if let Some(report) = app.model.resources() {
@@ -305,7 +308,10 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
             spans.push(Span::from(format!("  ⎇ {branch}")).dim());
         }
     }
-    spans.push(Span::from("   Ctrl-] back").dim());
+    match &app.note {
+        Some(note) => spans.push(Span::from(format!("   {}", note.text)).red()),
+        None => spans.push(Span::from("   Ctrl-] back").dim()),
+    }
     frame.render_widget(Line::from(spans), top);
     match app.screens.get(&session) {
         Some(screen) => {

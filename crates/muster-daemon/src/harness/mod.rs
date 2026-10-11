@@ -62,6 +62,12 @@ impl Harness {
     pub(crate) fn can_resume(self) -> bool {
         self.kind == Kind::Claude
     }
+
+    /// Whether the program suspends itself on Ctrl+Z and waits to be
+    /// continued (see `PtyHandle::resume_if_suspended`).
+    pub(crate) fn suspends_itself(self) -> bool {
+        self.kind == Kind::Claude
+    }
 }
 
 /// Where a session's hooks report to, and the token that names the session.
