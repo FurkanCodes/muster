@@ -125,7 +125,27 @@ impl Connection {
         session: SessionId,
         from_seq: Option<u64>,
     ) -> Result<(), ClientError> {
-        self.send(ClientFrame::Attach { session, from_seq }).await
+        self.send(ClientFrame::Attach {
+            session,
+            from_seq,
+            watching: true,
+        })
+        .await
+    }
+
+    /// As [`attach`](Self::attach), for a person who is not looking: the
+    /// stream comes, but what happens in the session stays news.
+    pub async fn attach_unwatched(
+        &mut self,
+        session: SessionId,
+        from_seq: Option<u64>,
+    ) -> Result<(), ClientError> {
+        self.send(ClientFrame::Attach {
+            session,
+            from_seq,
+            watching: false,
+        })
+        .await
     }
 
     pub async fn detach(&mut self, session: SessionId) -> Result<(), ClientError> {

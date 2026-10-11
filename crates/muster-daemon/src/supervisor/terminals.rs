@@ -62,8 +62,12 @@ impl Supervisor {
     pub(super) fn release_terminal(&mut self, session: SessionId) {
         self.forget_token(session);
         self.live.remove(&session);
-        // Dropping the sender closes every client's link.
-        self.terminals.remove(&session);
+        // A closed channel keeps its last value for receivers still held,
+        // which would keep the terminal's output in memory; empty it, then
+        // close it, which tells every client's stream it is gone.
+        if let Some(current) = self.terminals.remove(&session) {
+            current.send_replace(None);
+        }
     }
 
     /// A link to the session's terminal, if it has one. With `watch`, the
@@ -73,7 +77,12 @@ impl Supervisor {
         session: SessionId,
         watch: bool,
     ) -> Option<TerminalLink> {
-        let current = self.terminals.get(&session)?.subscribe();
+        let Some(current) = self.terminals.get(&session).map(watch::Sender::subscribe) else {
+            if watch {
+                self.seen_without_terminal(session).await;
+            }
+            return None;
+        };
         let watching = if watch {
             self.watch(session).await;
             Some(WatchGuard {
@@ -111,6 +120,22 @@ impl Supervisor {
             self.watchers.remove(&session);
             self.step_session(session, Signal::Watched { watching: false })
                 .await;
+        }
+    }
+
+    /// A session whose terminal is no longer held (it ended with an earlier
+    /// daemon) has nothing to watch, but being looked at still clears its
+    /// news.
+    async fn seen_without_terminal(&mut self, session: SessionId) {
+        let unseen = self
+            .state
+            .sessions
+            .iter()
+            .find(|stored| stored.id == session)
+            .filter(|stored| stored.unseen)
+            .map(|stored| stored.status);
+        if let Some(status) = unseen {
+            self.set_status(session, status, false).await;
         }
     }
 

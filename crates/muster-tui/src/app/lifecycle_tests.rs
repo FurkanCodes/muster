@@ -37,12 +37,9 @@ fn upsert(world: &mut World, session: &Session) -> Vec<Action> {
 }
 
 #[test]
-fn r_restarts_an_ended_session_and_opens_it_streaming_afresh() {
+fn r_restarts_an_ended_session_and_opens_it() {
     let mut world = ended();
     let id = world.session.id;
-    // Selecting it attached it, to show its last output.
-    let session = world.session.clone();
-    upsert(&mut world, &session);
     let (req_id, sent) = command(&press(&mut world.app, KeyCode::Char('r')));
     assert_eq!(
         sent,
@@ -51,18 +48,54 @@ fn r_restarts_an_ended_session_and_opens_it_streaming_afresh() {
             size: SIZE,
         }
     );
-
-    let actions = world.app.on_frame(ServerFrame::Reply {
+    world.app.on_frame(ServerFrame::Reply {
         req_id,
         outcome: Ok(Reply::SessionStarted { id }),
     });
     assert_eq!(world.app.mode, Mode::Terminal(id));
+}
+
+#[test]
+fn a_session_reopened_elsewhere_is_attached_again_if_its_stream_had_ended() {
+    let mut world = ended();
+    let id = world.session.id;
+    // Selected, attached, and the daemon held no terminal for it.
+    let session = world.session.clone();
+    upsert(&mut world, &session);
+    world.app.on_frame(ServerFrame::Detached {
+        session: id,
+        reason: muster_core::protocol::DetachReason::NotRunning,
+    });
+    // Another client restarted it.
+    let mut reopened = world.session.clone();
+    reopened.ended_at = None;
+    reopened.status = SessionStatus::Fresh;
+    let actions = upsert(&mut world, &reopened);
     assert!(
         actions.iter().any(|action| matches!(
             action,
             Action::Send(ClientFrame::Attach { session, .. }) if *session == id
         )),
-        "attaches again for the new program: {actions:?}"
+        "{actions:?}"
+    );
+
+    // The new stream arrives, and from then on follows the session: its
+    // next end and reopening need no new attach.
+    world.app.on_frame(ServerFrame::Replay {
+        session: id,
+        seq: 0,
+        data: b"$ ".to_vec(),
+        reset: true,
+    });
+    let mut again = reopened.clone();
+    again.ended_at = Some(Timestamp::from_millis(20));
+    upsert(&mut world, &again);
+    let actions = upsert(&mut world, &reopened);
+    assert!(
+        !actions
+            .iter()
+            .any(|action| matches!(action, Action::Send(ClientFrame::Attach { .. }))),
+        "{actions:?}"
     );
 }
 

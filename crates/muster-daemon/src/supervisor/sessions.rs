@@ -97,13 +97,12 @@ impl Supervisor {
         Ok(Reply::SessionStarted { id })
     }
 
-    /// Starts a session's program and begins tracking it. A program started
-    /// again in a session carries on from its last one: the same terminal
-    /// size, and output numbered on from where the last one's ended, past a
-    /// gap of one so that no client's position from before is mistaken for
-    /// one after and every client starts the new program on a clean screen.
-    /// `unseen` starts the session with news for the person, unless someone
-    /// is already watching it.
+    /// Starts a session's program at `size` and begins tracking it. A
+    /// program started again in a session numbers its output on from where
+    /// the last one's ended, past a gap of one, so that no client's position
+    /// from before is mistaken for one after and every client starts the
+    /// new program on a clean screen. `unseen` starts the session with news
+    /// for the person, unless someone is already watching it.
     #[allow(clippy::too_many_arguments)]
     fn launch(
         &mut self,
@@ -115,9 +114,11 @@ impl Supervisor {
         start: Start,
         unseen: bool,
     ) -> std::io::Result<()> {
-        let previous = self.live.get(&session).and_then(|live| live.ended);
-        let size = previous.map_or(size, |(_, size)| size);
-        let first_seq = previous.map_or(0, |(end, _)| end + 1);
+        let first_seq = self
+            .live
+            .get(&session)
+            .and_then(|live| live.ended)
+            .map_or(0, |(end, _)| end + 1);
         let (agent_session, resume, prompt) = match mode {
             Mode::Fresh { prompt } => {
                 let id = harness
@@ -352,7 +353,13 @@ impl Supervisor {
             return false;
         };
         tracing::warn!(%session, "resume failed; starting the session fresh");
-        let size = TermSize::default();
+        // In the size the failed program's terminal had: its clients are
+        // still looking at it, and will not say again.
+        let size = self
+            .live
+            .get(&session)
+            .and_then(|live| live.ended)
+            .map_or_else(TermSize::default, |(_, size)| size);
         let mode = Mode::Fresh { prompt: None };
         match self.launch(session, harness, cwd, size, mode, Start::Idle, true) {
             Ok(()) => {

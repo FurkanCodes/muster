@@ -105,6 +105,10 @@ pub enum ClientFrame {
     Attach {
         session: SessionId,
         from_seq: Option<u64>,
+        /// Whether the person is looking; a client whose window is out of
+        /// focus attaches without watching (see [`ClientFrame::Watch`]).
+        #[serde(default = "watching_by_default")]
+        watching: bool,
     },
     /// Stop streaming a session's terminal.
     Detach { session: SessionId },
@@ -120,6 +124,10 @@ pub enum ClientFrame {
     },
     /// The client's view of a session's terminal changed size.
     Resize { session: SessionId, size: TermSize },
+}
+
+fn watching_by_default() -> bool {
+    true
 }
 
 /// Everything the daemon sends.

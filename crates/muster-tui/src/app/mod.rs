@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use muster_core::protocol::{
-    ClientFrame, Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
+    ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
 };
 use muster_core::{Issue, ProjectId, SessionId, WorkspaceId};
 
@@ -216,6 +216,7 @@ impl App {
 
     pub(crate) fn on_connected(&mut self, daemon_version: String) -> Vec<Action> {
         self.link = Link::Connected { daemon_version };
+        self.keep_in_view();
         self.attached = None;
         self.pending.clear();
         // A new connection is a new daemon, which numbers its terminals'
@@ -228,6 +229,8 @@ impl App {
         self.link = Link::Lost(reason);
         self.attached = None;
         self.pending.clear();
+        // The reason takes lines from the list.
+        self.keep_in_view();
     }
 
     // Frames from the daemon.
@@ -243,9 +246,15 @@ impl App {
                     _ => None,
                 };
                 let before = session.and_then(|id| self.model.session(id).map(needs_attention));
+                let was_ended = session
+                    .and_then(|id| self.model.session(id))
+                    .is_some_and(|stored| stored.ended_at.is_some());
                 self.model.apply(delta);
                 if before == Some(false) {
                     news = session.and_then(|id| self.news(id));
+                }
+                if let Some(id) = session {
+                    self.reattach_if_reopened(id, was_ended);
                 }
             }
             ServerFrame::Reply { req_id, outcome } => return self.on_reply(req_id, outcome),
@@ -265,6 +274,24 @@ impl App {
         let mut actions: Vec<Action> = news.into_iter().collect();
         actions.extend(self.settle());
         actions
+    }
+
+    /// A session that had ended reopened (restarted, maybe by another
+    /// client). A stream the daemon ended because it held no terminal for
+    /// it does not come back on its own, so attach again.
+    fn reattach_if_reopened(&mut self, session: SessionId, was_ended: bool) {
+        let reopened = was_ended
+            && self
+                .model
+                .session(session)
+                .is_some_and(|stored| stored.ended_at.is_none());
+        let stream_gone = self
+            .screens
+            .get(&session)
+            .is_some_and(|screen| screen.ended == Some(DetachReason::NotRunning));
+        if reopened && stream_gone && self.attached == Some(session) {
+            self.attached = None;
+        }
     }
 
     /// A notification for a session that has just come to need the
@@ -334,11 +361,9 @@ impl App {
                 self.note = None;
             }
             (Ok(Reply::SessionStarted { id }), Then::OpenRestarted) => {
-                // Attach again: a session the daemon no longer held a
-                // terminal for has a new one to stream.
-                if self.attached == Some(id) {
-                    self.attached = None;
-                }
+                // The stream follows the session to its new program; one the
+                // daemon had no terminal for is attached again once the
+                // state says it reopened (see `on_frame`).
                 self.wanted = Some((Row::Session(id), true));
                 self.note = None;
             }
@@ -500,14 +525,12 @@ impl App {
             if running {
                 actions.push(Action::Send(ClientFrame::Resize { session, size }));
             }
-            actions.push(Action::Send(ClientFrame::Attach { session, from_seq }));
-            if self.focused == Some(false) {
-                // Attached, but nobody is looking.
-                actions.push(Action::Send(ClientFrame::Watch {
-                    session,
-                    watching: false,
-                }));
-            }
+            actions.push(Action::Send(ClientFrame::Attach {
+                session,
+                from_seq,
+                // Attached while the window is out of focus: nobody looks.
+                watching: self.focused != Some(false),
+            }));
             self.attached = Some(session);
         }
         actions

@@ -165,11 +165,19 @@ async fn a_session_that_ended_with_the_daemon_can_be_started_again() {
     } = setup;
     assert!(daemon.stop().success());
 
-    // A shell cannot resume, so it ended with the daemon.
+    // A shell cannot resume, so it ended with the daemon, as news.
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let stored = wait_for(&mut connection, session, |s| s.ended_at.is_some()).await;
-    assert_eq!(stored.status, SessionStatus::Exited { success: false });
+    assert_eq!(
+        (stored.status, stored.unseen),
+        (SessionStatus::Exited { success: false }, true)
+    );
+    // Looking at it clears that, though it has no terminal to show.
+    let mut viewer = daemon.connect().await;
+    viewer.attach(session, None).await.unwrap();
+    wait_for(&mut connection, session, |s| !s.unseen).await;
+    drop(viewer);
 
     // Nothing holds its terminal any more; restarting gives it a new one,
     // at the size the client asked for.
@@ -185,6 +193,23 @@ async fn a_session_that_ended_with_the_daemon_can_be_started_again() {
     } else {
         read_terminal(&mut connection, session, "30 90").await
     };
+    assert!(text.contains("30 90"), "{text}");
+}
+
+#[tokio::test]
+async fn a_restarted_program_gets_the_size_the_client_asks_for() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    // Started, and ended, at the default size.
+    let session = start(&mut connection, setup.workspace, "shell").await;
+    exit(&mut connection, session).await;
+    restart(&mut connection, session).await.unwrap();
+    connection.attach(session, None).await.unwrap();
+    connection
+        .input(session, b"stty size; echo sized-$((5*5))\n")
+        .await
+        .unwrap();
+    let (text, _) = read_terminal(&mut connection, session, "sized-25").await;
     assert!(text.contains("30 90"), "{text}");
 }
 
