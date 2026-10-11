@@ -126,13 +126,53 @@ pub(crate) fn spawn_spec(harness: Harness, launch: Launch) -> SpawnSpec {
     }
 }
 
-/// The daemon's variables a session must not inherit: those that tell an
-/// agent it is running inside another agent's session, and those naming the
-/// terminal tab the daemon happened to be started from.
+/// Variables a Claude Code session, or the app hosting it, sets for what it
+/// runs: they say a program runs inside that session (one inheriting
+/// `CLAUDE_CODE_CHILD_SESSION` stops saving its transcript, so it could not
+/// be resumed), reach for its sockets, or carry its account and effort.
+/// Seen in Claude Code 2.1.296 and its desktop app.
+const PARENT_SESSION: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_PID",
+    "CLAUDE_EFFORT",
+    "CLAUDE_PREVIEW_CLASSIFIER_FLOOR",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_HOST_SESSION_ID",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_DESKTOP_APP_VERSION",
+    "CLAUDE_CODE_ORGANIZATION_UUID",
+    "CLAUDE_CODE_ACCOUNT_UUID",
+    "CLAUDE_CODE_USER_EMAIL",
+    "CLAUDE_CODE_OAUTH_SCOPES",
+    "CLAUDE_CODE_SIMPLE",
+    "CLAUDE_CODE_DISABLE_CRON",
+    "CLAUDE_CODE_TERMINAL_MCP_TOOLS",
+    "CLAUDE_CODE_EAGER_FLUSH",
+    "CLAUDE_CODE_REPORT_FINDINGS",
+    "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES",
+    "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL",
+    "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+];
+
+/// Prefixes of the same, for families of them.
+const PARENT_SESSION_PREFIXES: &[&str] = &["CLAUDE_AGENT_SDK_", "CLAUDE_CODE_SDK_"];
+
+/// The daemon's variables a session must not inherit: those of a Claude
+/// Code session the daemon happened to be started from, and those naming
+/// the terminal tab it was started in. The person's own settings stay,
+/// `CLAUDE_CODE_USE_BEDROCK` or `CLAUDE_CODE_OAUTH_TOKEN` among them: a
+/// session runs as if started in their terminal (`PRD-06`).
 fn scrubbed(keys: impl Iterator<Item = String>) -> Vec<String> {
     keys.filter(|key| {
-        key == "CLAUDECODE"
-            || key.starts_with("CLAUDE_CODE_")
+        PARENT_SESSION.contains(&key.as_str())
+            || PARENT_SESSION_PREFIXES
+                .iter()
+                .any(|prefix| key.starts_with(prefix))
             || key == "TERM_SESSION_ID"
             || key == "ITERM_SESSION_ID"
     })
@@ -159,19 +199,39 @@ mod tests {
     }
 
     #[test]
-    fn parent_agent_and_terminal_variables_are_scrubbed() {
+    fn parent_session_and_terminal_variables_are_scrubbed_and_settings_kept() {
         let keys = [
             "CLAUDECODE",
             "CLAUDE_CODE_ENTRYPOINT",
+            "CLAUDE_CODE_CHILD_SESSION",
+            "CLAUDE_PID",
+            "CLAUDE_EFFORT",
+            "CLAUDE_AGENT_SDK_VERSION",
+            "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
             "TERM_SESSION_ID",
+            // The person's own settings.
             "PATH",
             "HOME",
             "CLAUDE_CONFIG_DIR",
+            "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+            "ANTHROPIC_API_KEY",
         ]
         .map(str::to_owned);
         assert_eq!(
             scrubbed(keys.into_iter()),
-            ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "TERM_SESSION_ID"]
+            [
+                "CLAUDECODE",
+                "CLAUDE_CODE_ENTRYPOINT",
+                "CLAUDE_CODE_CHILD_SESSION",
+                "CLAUDE_PID",
+                "CLAUDE_EFFORT",
+                "CLAUDE_AGENT_SDK_VERSION",
+                "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
+                "TERM_SESSION_ID",
+            ]
         );
     }
 

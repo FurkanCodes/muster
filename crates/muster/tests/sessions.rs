@@ -176,6 +176,36 @@ async fn parent_agent_variables_do_not_reach_sessions() {
 }
 
 #[tokio::test]
+async fn the_persons_claude_settings_reach_sessions_and_a_parent_sessions_markers_do_not() {
+    let sandbox = Sandbox::new()
+        .with_env("CLAUDE_CODE_USE_BEDROCK", "1")
+        .with_env("CLAUDE_CODE_CHILD_SESSION", "1")
+        .with_env("CLAUDE_PID", "4242");
+    let root = sandbox.repository("app");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let Reply::ProjectAdded { .. } = connection
+        .command(Command::AddProject { root, name: None })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    let snapshot = connection.subscribe().await.unwrap();
+    let session = start(&mut connection, snapshot.workspaces[0].id).await;
+    connection.attach(session, None).await.unwrap();
+    connection
+        .input(
+            session,
+            b"echo \"[${CLAUDE_CODE_USE_BEDROCK}][${CLAUDE_CODE_CHILD_SESSION}][${CLAUDE_PID}]-$((3+3))\"\n",
+        )
+        .await
+        .unwrap();
+    let (text, _) = read_terminal(&mut connection, session, "]-6").await;
+    assert!(text.contains("[1][][]-6"), "{text:?}");
+}
+
+#[tokio::test]
 async fn the_progress_signal_moves_the_status() {
     let setup = setup().await;
     let mut connection = setup.daemon.connect().await;
