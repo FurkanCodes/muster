@@ -2,7 +2,7 @@
 
 **A terminal cockpit for coding agents.** Run Claude Code and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
-> Status: milestone 1 (the cockpit) is built and tested. Milestone 2 adds the autopilot: a ticket in, a reviewed pull request out, in containers. See [PRODUCT.md](PRODUCT.md). No release yet.
+> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), has its foundations in place. See [PRODUCT.md](PRODUCT.md). No release yet.
 
 ## What it does
 
@@ -98,7 +98,7 @@ A Rust workspace of six crates around one rule: the daemon owns everything, and 
 cargo test --workspace
 ```
 
-The suite (over 200 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, clippy with warnings as errors, a 1,000-line file limit, `cargo deny`, and the tests on macOS and Linux.
+The suite (over 350 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, clippy with warnings as errors, a 1,000-line file limit, `cargo deny`, and the tests on macOS and Linux.
 
 ## Credits
 
