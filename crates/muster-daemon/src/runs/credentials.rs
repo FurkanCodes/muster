@@ -64,9 +64,11 @@ impl Credentials for PersonsCredentials {
     }
 }
 
-/// The token in the macOS Keychain, if there is one.
+/// The token in the macOS Keychain, if there is one. `MUSTER_KEYCHAIN=off`
+/// leaves the Keychain alone, for scripts and tests that must not reach
+/// the person's own credential.
 async fn keychain() -> Option<String> {
-    if !cfg!(target_os = "macos") {
+    if !cfg!(target_os = "macos") || std::env::var("MUSTER_KEYCHAIN").as_deref() == Ok("off") {
         return None;
     }
     let output = tokio::time::timeout(
@@ -89,6 +91,19 @@ async fn keychain() -> Option<String> {
     .ok()?;
     let token = String::from_utf8(output.stdout).ok()?.trim().to_owned();
     (output.status.success() && !token.is_empty()).then_some(token)
+}
+
+/// A credential fixed in advance, or none: for tests.
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub(crate) struct FixedCredentials(pub(crate) Option<Secret>);
+
+#[cfg(test)]
+impl Credentials for FixedCredentials {
+    fn claude(&self) -> BoxFuture<'_, Option<Secret>> {
+        let secret = self.0.clone();
+        Box::pin(async move { secret })
+    }
 }
 
 /// What to do when there is none.

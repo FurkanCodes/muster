@@ -334,7 +334,7 @@ mod tests {
                 socket: PathBuf::from("/s"),
                 token: "t".to_owned(),
             }),
-            cwd: PathBuf::from("/w"),
+            place: crate::harness::Place::Host(PathBuf::from("/w")),
             size: TermSize::default(),
         };
         let fresh = arguments(&launch(false, Some("fix the login")));

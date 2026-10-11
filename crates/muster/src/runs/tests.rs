@@ -158,7 +158,7 @@ Timeline
   +1 h 05 min  needs you  the checks failed after 3 attempt(s)
 
 `muster run retry 42 [--notes …]` sends it back to work with a fresh budget;
-`muster run cancel 42` ends it.
+`muster run take-over 42` lets you drive its agent; `muster run cancel 42` ends it.
 ",
         needs_you.id
     );

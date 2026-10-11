@@ -19,7 +19,7 @@ pub(crate) mod work;
 use std::path::PathBuf;
 
 use muster_core::config::ProjectConfig;
-use muster_core::{ProjectId, PullRequest, RunId, Ticket};
+use muster_core::{ProjectId, PullRequest, RunId, SessionId, Ticket};
 use muster_state::run::{RunEffect, RunEvent};
 use tokio::sync::mpsc;
 
@@ -68,6 +68,10 @@ pub(crate) trait RunWork: Send + Sync + std::fmt::Debug {
     /// Looks at the run's pull request once: merged, closed, or changes
     /// asked for by the person become events.
     fn check_pull_request(&self, context: RunContext, reports: Reports);
+
+    /// Stops a session's program in a run's container, where stopping
+    /// docker's client on the host does not reach it.
+    fn stop_session(&self, container: String, session: SessionId);
 }
 
 /// Work that cannot be done: every piece of it fails plainly. For tests
@@ -98,4 +102,6 @@ impl RunWork for NotYetBuilt {
     }
 
     fn check_pull_request(&self, _context: RunContext, _reports: Reports) {}
+
+    fn stop_session(&self, _container: String, _session: SessionId) {}
 }

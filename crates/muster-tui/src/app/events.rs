@@ -201,9 +201,19 @@ impl App {
         };
         match workspace {
             Some(workspace) => {
+                // In a run's container, Claude Code is the run's own; a
+                // shell can look around.
+                let in_container = self
+                    .model
+                    .workspace(workspace)
+                    .is_some_and(|found| found.kind.run().is_some());
                 self.mode = Mode::Dialog(Dialog::NewSession {
                     workspace,
-                    harness: HarnessChoice::Claude,
+                    harness: if in_container {
+                        HarnessChoice::Shell
+                    } else {
+                        HarnessChoice::Claude
+                    },
                     prompt: LineInput::default(),
                 });
             }
@@ -294,6 +304,11 @@ impl App {
         {
             return self.complain(
                 "That is the project's own checkout, which Muster never removes; select the project to stop tracking it.",
+            );
+        }
+        if self.model.run_of(workspace).is_some() {
+            return self.complain(
+                "That is a run's container, which goes when the run ends; cancel the run to end it.",
             );
         }
         let branch = self

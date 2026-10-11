@@ -62,7 +62,8 @@ fn path_of(snapshot: &Snapshot, id: WorkspaceId) -> PathBuf {
         .find(|workspace| workspace.id == id)
         .unwrap()
         .kind
-        .path()
+        .host_path()
+        .unwrap()
         .to_owned()
 }
 
@@ -89,7 +90,7 @@ async fn a_worktree_made_with_git_appears_and_goes_when_git_removes_it() {
     let outside = outside.canonicalize().unwrap();
     let snapshot = wait_until(&mut connection, |s| worktrees(s).len() == 1).await;
     let adopted = worktrees(&snapshot)[0].clone();
-    assert_eq!(adopted.kind.path(), outside);
+    assert_eq!(adopted.kind.host_path().unwrap(), outside);
     assert_eq!(adopted.kind.branch(), "manual");
 
     // A session can run in it.

@@ -14,6 +14,7 @@ use muster_core::SessionId;
 use muster_core::protocol::TermSize;
 
 use crate::pty::SpawnSpec;
+use crate::runs::credentials::Secret;
 
 /// A harness Muster can start.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +49,11 @@ pub(crate) fn find(id: &str) -> Option<Harness> {
 }
 
 impl Harness {
+    /// Whether it is a coding agent, rather than a shell.
+    pub(crate) fn is_agent(self) -> bool {
+        self.kind == Kind::Claude
+    }
+
     /// Whether the program reports its state through hooks, and so needs a
     /// session id and a hook token at launch.
     pub(crate) fn has_hooks(self) -> bool {
@@ -78,6 +84,30 @@ pub(crate) struct HookEndpoint {
     pub(crate) token: String,
 }
 
+/// Where a session's program runs.
+#[derive(Clone, Debug)]
+pub(crate) enum Place {
+    /// On the host, in this directory, as the person, with their sign-ins.
+    Host(PathBuf),
+    /// In a run's container, through `docker exec` with a terminal: the
+    /// daemon's terminal drives docker's, which drives the program's
+    /// (`ARCHITECTURE.md` §5). Claude Code there gets `secret`, through
+    /// docker's environment, never its arguments (`PRD-06`).
+    Container {
+        docker: String,
+        container: String,
+        secret: Option<Secret>,
+    },
+}
+
+impl Place {
+    /// Whether hooks can reach the daemon from there: its socket is on the
+    /// host, out of a container's reach.
+    pub(crate) fn hears_hooks(&self) -> bool {
+        matches!(self, Self::Host(_))
+    }
+}
+
 /// Everything needed to start a session's program.
 #[derive(Clone, Debug)]
 pub(crate) struct Launch {
@@ -88,17 +118,82 @@ pub(crate) struct Launch {
     pub(crate) resume: bool,
     pub(crate) prompt: Option<String>,
     pub(crate) hooks: Option<HookEndpoint>,
-    pub(crate) cwd: PathBuf,
+    pub(crate) place: Place,
     pub(crate) size: TermSize,
 }
 
+/// Runs a session's program in a container: `$1` the session, `$2` the
+/// harness, `$3` its agent session. It records its process, which the
+/// program then becomes, so Muster can stop it there: stopping docker's
+/// client stops nothing in the container. A program the session ran
+/// before, still there after a daemon restart, is stopped first; a pid is
+/// trusted only if that process carries the session in its environment,
+/// as a pid can be reused. Stopping is what a closed terminal does, a
+/// hangup (an interactive shell ignores a plain terminate), and a kill if
+/// the program is still there after two seconds. Claude Code resumes its
+/// conversation if the container has the transcript, and starts it under
+/// that id otherwise; the container is the sandbox, so it asks no
+/// permissions, as the building agent does.
+pub(crate) const IN_CONTAINER: &str = r#"stop_session() {
+  f="/tmp/muster/sessions/$1.pid"
+  [ -s "$f" ] || return 0
+  pid="$(cat "$f")"
+  if tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx "MUSTER_SESSION=$1"; then
+    kill -HUP -- "-$pid" 2>/dev/null || kill -HUP "$pid" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.2 2>/dev/null || sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null
+    fi
+  fi
+  rm -f "$f"
+}
+"#;
+
+/// Starts a session's program: [`IN_CONTAINER`], then this.
+const START_IN_CONTAINER: &str = r#"stop_session "$1"
+mkdir -p /tmp/muster/sessions && echo $$ > "/tmp/muster/sessions/$1.pid"
+cd /work 2>/dev/null || cd
+case "$2" in
+  claude)
+    if ls "$HOME"/.claude/projects/*/"$3".jsonl >/dev/null 2>&1; then
+      exec claude --dangerously-skip-permissions --resume "$3"
+    fi
+    exec claude --dangerously-skip-permissions --session-id "$3" ;;
+  *)
+    command -v bash >/dev/null 2>&1 && exec bash -l
+    exec sh -l ;;
+esac
+"#;
+
+/// Stops a session's program in a container: `$1` the session.
+pub(crate) const STOP_IN_CONTAINER: &str = r#"stop_session "$1""#;
+
 /// How to start `harness` for `launch`.
 pub(crate) fn spawn_spec(harness: Harness, launch: Launch) -> SpawnSpec {
-    let mut env = vec![
+    let env = vec![
         ("TERM".to_owned(), "xterm-256color".to_owned()),
         ("COLORTERM".to_owned(), "truecolor".to_owned()),
         ("MUSTER_SESSION".to_owned(), launch.session.to_string()),
     ];
+    match &launch.place {
+        Place::Host(cwd) => on_host(harness, &launch, cwd.clone(), env),
+        Place::Container {
+            docker,
+            container,
+            secret,
+        } => in_container(harness, &launch, (docker, container), secret.as_ref(), env),
+    }
+}
+
+fn on_host(
+    harness: Harness,
+    launch: &Launch,
+    cwd: PathBuf,
+    mut env: Vec<(String, String)>,
+) -> SpawnSpec {
     if let Some(hooks) = &launch.hooks {
         env.push((
             "MUSTER_HOOK_SOCKET".to_owned(),
@@ -114,12 +209,55 @@ pub(crate) fn spawn_spec(harness: Harness, launch: Launch) -> SpawnSpec {
                 .unwrap_or_else(|| "/bin/sh".to_owned()),
             Vec::new(),
         ),
-        Kind::Claude => ("claude".to_owned(), claude::arguments(&launch)),
+        Kind::Claude => ("claude".to_owned(), claude::arguments(launch)),
     };
     SpawnSpec {
         program,
         args,
-        cwd: launch.cwd,
+        cwd,
+        env,
+        env_remove: scrubbed(std::env::vars().map(|(key, _)| key)),
+        size: launch.size,
+    }
+}
+
+/// `docker exec` with a terminal, running [`START_IN_CONTAINER`].
+fn in_container(
+    harness: Harness,
+    launch: &Launch,
+    (docker, container): (&str, &str),
+    secret: Option<&Secret>,
+    mut env: Vec<(String, String)>,
+) -> SpawnSpec {
+    if let Some(secret) = secret.filter(|_| harness.kind == Kind::Claude) {
+        env.push((secret.variable.to_owned(), secret.value().to_owned()));
+    }
+    let mut args: Vec<String> = ["exec", "--interactive", "--tty"]
+        .map(str::to_owned)
+        .to_vec();
+    // Values reach the program through docker's own environment.
+    for (name, _) in &env {
+        args.extend(["--env".to_owned(), name.clone()]);
+    }
+    let kind = match harness.kind {
+        Kind::Claude => "claude",
+        Kind::Shell => "shell",
+    };
+    args.extend([
+        container.to_owned(),
+        "sh".to_owned(),
+        "-c".to_owned(),
+        format!("{IN_CONTAINER}{START_IN_CONTAINER}"),
+        "sh".to_owned(),
+        launch.session.to_string(),
+        kind.to_owned(),
+        launch.agent_session.clone().unwrap_or_default(),
+    ]);
+    SpawnSpec {
+        program: docker.to_owned(),
+        args,
+        // Docker's client needs no particular directory.
+        cwd: PathBuf::from("/"),
         env,
         env_remove: scrubbed(std::env::vars().map(|(key, _)| key)),
         size: launch.size,
@@ -186,6 +324,9 @@ pub(crate) fn new_token() -> std::io::Result<String> {
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
+
+#[cfg(test)]
+mod in_container_tests;
 
 #[cfg(test)]
 mod tests {
@@ -256,7 +397,7 @@ mod tests {
                     socket: PathBuf::from("/run/hooks.sock"),
                     token: "secret".to_owned(),
                 }),
-                cwd: PathBuf::from("/work"),
+                place: Place::Host(PathBuf::from("/work")),
                 size: TermSize::default(),
             },
         );

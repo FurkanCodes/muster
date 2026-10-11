@@ -238,13 +238,23 @@ impl Supervisor {
     }
 
     /// Stores a transition before anything else (`ARC-10`), then hands the
-    /// work it brings to the run's work.
+    /// work it brings to the run's work. Leaving the person's hands stops
+    /// the sessions in the run's container; the end of the run takes its
+    /// container's workspace with it.
     async fn apply_run_effects(&mut self, run: RunId, effects: Vec<RunEffect>) {
         for effect in effects {
             match effect {
                 RunEffect::Transition { from, to, reason } => {
                     self.record_run_transition(run, from, to, reason).await;
+                    if to.is_over() {
+                        self.drop_container_workspace(run).await;
+                    } else if from == RunStage::TakenOver {
+                        self.stop_container_sessions(run).await;
+                    }
                 }
+                // Taking over starts the person's session itself, with the
+                // credential it fetched first.
+                RunEffect::StartInteractive => {}
                 work => {
                     let Some(active) = self.active_runs.get(&run) else {
                         continue;
@@ -329,7 +339,7 @@ impl Supervisor {
     }
 
     /// Stores what changed in a run between transitions.
-    async fn save_run_progress(&mut self, run: RunId) {
+    pub(super) async fn save_run_progress(&mut self, run: RunId) {
         let Some(active) = self.active_runs.get(&run) else {
             return;
         };

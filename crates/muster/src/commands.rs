@@ -77,17 +77,27 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
             .iter()
             .filter(|w| w.project == project.id)
         {
-            let place = if workspace.kind.is_checkout() {
-                "  (the project's checkout)"
-            } else {
-                ""
+            let place = match (&workspace.kind, workspace.kind.host_path()) {
+                (muster_core::WorkspaceKind::Checkout { .. }, Some(path)) => format!(
+                    "  {}  ({})  (the project's checkout)",
+                    shown(&path.display().to_string()),
+                    workspace.id
+                ),
+                (_, Some(path)) => format!(
+                    "  {}  ({})",
+                    shown(&path.display().to_string()),
+                    workspace.id
+                ),
+                (_, None) => {
+                    let number = workspace
+                        .kind
+                        .run()
+                        .and_then(|run| snapshot.runs.iter().find(|found| found.id == run))
+                        .map_or_else(String::new, |run| format!(" #{}", run.ticket.number));
+                    format!("  ({})  (the container of run{number})", workspace.id)
+                }
             };
-            println!(
-                "  {}  {}  ({}){place}",
-                shown(workspace.kind.branch()),
-                shown(&workspace.kind.path().display().to_string()),
-                workspace.id
-            );
+            println!("  {}{place}", shown(workspace.kind.branch()));
             for session in snapshot
                 .sessions
                 .iter()
@@ -256,7 +266,12 @@ pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<St
         Some(workspace) => println!(
             "Created {} at {} ({id}).",
             shown(workspace.kind.branch()),
-            shown(&workspace.kind.path().display().to_string())
+            shown(
+                &workspace
+                    .kind
+                    .host_path()
+                    .map_or_else(String::new, |path| path.display().to_string())
+            )
         ),
         None => println!("Created {id}."),
     }

@@ -63,8 +63,9 @@ exec /bin/sh
 "#;
 
 /// Stands in for the GitHub CLI: answers `issue list` and `issue view N`
-/// from fixture files and records every call. While the GH_SLOW flag file
-/// exists it takes two seconds to answer, like a slow network.
+/// from fixture files, keeps one pull request (#17) once one is created,
+/// with what it is told about it, and records every call. While the GH_SLOW
+/// flag file exists it takes two seconds to answer, like a slow network.
 const FAKE_GH: &str = r#"#!/bin/sh
 dir="$FAKE_GH_DIR"
 printf '%s\n' "$*" >> "$dir/calls"
@@ -74,6 +75,16 @@ case "$1 $2" in
   "issue view")
     if [ -f "$dir/issue-$3.json" ]; then cat "$dir/issue-$3.json"
     else echo "GraphQL: Could not resolve to an Issue with the number of $3." >&2; exit 1; fi ;;
+  "pr list") if [ -f "$dir/pr.json" ]; then cat "$dir/pr.json"; else echo "[]"; fi ;;
+  "pr create")
+    cat > "$dir/pr-body"
+    echo '[{"number":17,"url":"https://github.com/o/app/pull/17"}]' > "$dir/pr.json"
+    echo "https://github.com/o/app/pull/17" ;;
+  "pr ready") echo "$3 $4" >> "$dir/ready" ;;
+  "pr review") { cat; echo; echo "-----"; } >> "$dir/reviews" ;;
+  "pr view")
+    if [ -f "$dir/pr-state" ]; then printf '{"state":"%s"}' "$(cat "$dir/pr-state")"
+    else echo '{"state":"OPEN"}'; fi ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 "#;
@@ -112,6 +123,18 @@ impl Sandbox {
             dir,
             env: Vec::new(),
         }
+    }
+
+    /// Uses the real `docker` instead of the stand-in, for tests against
+    /// the real Docker.
+    pub(crate) fn with_real_docker(self) -> Self {
+        std::fs::remove_file(self.dir.path().join("bin/docker")).unwrap();
+        self
+    }
+
+    /// The sandbox's own directory, for repositories and fixtures.
+    pub(crate) fn root(&self) -> &Path {
+        self.dir.path()
     }
 
     /// Sets `key` for every process this sandbox starts.
@@ -234,6 +257,11 @@ impl Sandbox {
             .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
             .env("FAKE_DOCKER_DIR", self.dir.path().join("fake-docker"))
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))
+            // Runs never reach the person's own credential: not the
+            // Keychain, and not one in the environment the tests run in.
+            .env("MUSTER_KEYCHAIN", "off")
+            .env("CLAUDE_CODE_OAUTH_TOKEN", "")
+            .env("ANTHROPIC_API_KEY", "")
             // As if the daemon were started from inside an agent session,
             // which sessions must not inherit.
             .env("CLAUDECODE", "1");

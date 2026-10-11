@@ -83,7 +83,7 @@ async fn a_project_comes_with_its_own_checkout_to_work_in() {
 
     let snapshot = connection.subscribe().await.unwrap();
     let workspace = checkout(&snapshot, project).clone();
-    assert_eq!(workspace.kind.path(), root);
+    assert_eq!(workspace.kind.host_path(), Some(root.as_path()));
     assert_eq!(workspace.kind.branch(), "develop");
 
     // A session there runs in the repository itself.
@@ -136,7 +136,8 @@ async fn branches_follow_switches_in_the_checkout_and_in_worktrees() {
         .find(|workspace| workspace.id == worktree)
         .unwrap()
         .kind
-        .path()
+        .host_path()
+        .unwrap()
         .to_owned();
 
     git(&root, &["switch", "--quiet", "-c", "elsewhere"]);
@@ -182,7 +183,7 @@ async fn projects_added_before_checkouts_get_theirs_at_start() {
     let daemon = sandbox.start();
     let snapshot = daemon.connect().await.subscribe().await.unwrap();
     let workspace = checkout(&snapshot, project.id);
-    assert_eq!(workspace.kind.path(), root);
+    assert_eq!(workspace.kind.host_path(), Some(root.as_path()));
     assert_eq!(workspace.kind.branch(), "main");
 
     // Only once: a restart does not add another.

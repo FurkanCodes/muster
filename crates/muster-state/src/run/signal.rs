@@ -134,8 +134,12 @@ pub enum RunEffect {
     MarkReady,
     /// Put the pull request back to draft while work goes on.
     MarkDraft,
-    /// Stop whatever Muster runs for the run: an agent or the checks.
-    StopWork,
+    /// Stop whatever Muster runs for the run, an agent or the checks, that
+    /// was asked for under a generation before `before`: work this same
+    /// step asks for, under the generation it moved to, is left to run.
+    StopWork {
+        before: u64,
+    },
     /// Start the building agent interactively, resuming its conversation.
     StartInteractive,
     RemoveContainer,

@@ -9,7 +9,7 @@ use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start};
 
 use super::{Live, Supervisor, store_closed, store_error};
-use crate::harness::{self, Harness, HookEndpoint, claude, transcript};
+use crate::harness::{self, Harness, HookEndpoint, Place, claude, transcript};
 use crate::pty::{self, PtyEvent};
 
 /// A resumed program that exits sooner than this, unasked, could not
@@ -18,7 +18,7 @@ const RESUME_GRACE: Duration = Duration::from_secs(10);
 
 /// How a session's program is started.
 #[derive(Debug)]
-enum Mode {
+pub(super) enum Mode {
     Fresh { prompt: Option<String> },
     Resume { agent_session: String },
 }
@@ -32,15 +32,13 @@ impl Supervisor {
         size: TermSize,
         prompt: Option<String>,
     ) -> Result<Reply, ErrorBody> {
-        let cwd = self.workspace_path(workspace).ok_or_else(|| {
-            ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-        })?;
         let harness = harness::find(&harness).ok_or_else(|| {
             ErrorBody::new(
                 ErrorCode::BadRequest,
                 format!("no harness called {harness:?}"),
             )
         })?;
+        let place = self.place_for(workspace, harness)?;
         let prompt = prompt.filter(|prompt| !prompt.trim().is_empty());
         if prompt.is_some() && !harness.takes_prompt() {
             return Err(ErrorBody::new(
@@ -48,7 +46,42 @@ impl Supervisor {
                 format!("{} takes no prompt", harness.label),
             ));
         }
+        let start = if prompt.is_some() {
+            Start::WithPrompt
+        } else {
+            Start::Idle
+        };
+        let id = self.add_session(workspace, harness, title, start).await?;
+        if let Err(error) = self.launch(
+            id,
+            harness,
+            place,
+            size,
+            Mode::Fresh { prompt },
+            start,
+            false,
+        ) {
+            // The session was stored before its program was started
+            // (`ARC-10`), so record that it never ran.
+            self.end_session(id, SessionStatus::Exited { success: false }, true)
+                .await;
+            return Err(ErrorBody::new(
+                ErrorCode::Internal,
+                format!("could not start {}: {error}", harness.label),
+            ));
+        }
+        Ok(Reply::SessionStarted { id })
+    }
 
+    /// Stores a new session in `workspace` and tells clients, before its
+    /// program starts (`ARC-10`).
+    pub(super) async fn add_session(
+        &mut self,
+        workspace: WorkspaceId,
+        harness: Harness,
+        title: Option<String>,
+        start: Start,
+    ) -> Result<SessionId, ErrorBody> {
         let session = Session {
             id: SessionId::new(),
             workspace,
@@ -57,7 +90,7 @@ impl Supervisor {
                 .map(|title| one_line(&title).trim().to_owned())
                 .filter(|title| !title.is_empty())
                 .unwrap_or_else(|| harness.label.to_owned()),
-            status: if prompt.is_some() {
+            status: if start == Start::WithPrompt {
                 SessionStatus::Running
             } else {
                 SessionStatus::Fresh
@@ -76,25 +109,41 @@ impl Supervisor {
             .map_err(store_error)?;
         self.state.sessions.push(session.clone());
         self.broadcast(Delta::SessionUpserted(session));
+        Ok(id)
+    }
 
-        let start = if prompt.is_some() {
-            Start::WithPrompt
-        } else {
-            Start::Idle
-        };
-        if let Err(error) =
-            self.launch(id, harness, cwd, size, Mode::Fresh { prompt }, start, false)
-        {
-            // The session was stored before its program was started
-            // (`ARC-10`), so record that it never ran.
-            self.end_session(id, SessionStatus::Exited { success: false }, true)
-                .await;
+    /// Where a new session in `workspace` runs: on the host in a worktree
+    /// or checkout; in a run's container through docker, where Claude Code
+    /// runs only for the person taking the run over.
+    fn place_for(&self, workspace: WorkspaceId, harness: Harness) -> Result<Place, ErrorBody> {
+        let found = self
+            .state
+            .workspaces
+            .iter()
+            .find(|candidate| candidate.id == workspace)
+            .ok_or_else(|| {
+                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
+            })?;
+        if let Some(path) = found.kind.host_path() {
+            return Ok(Place::Host(path.to_owned()));
+        }
+        let Some(run) = found.kind.run() else {
             return Err(ErrorBody::new(
                 ErrorCode::Internal,
-                format!("could not start {}: {error}", harness.label),
+                "a workspace with no place",
+            ));
+        };
+        if harness.is_agent() {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!(
+                    "{} runs in a run's container only for the person taking the run over \
+                     (`muster run take-over`); a shell can look around",
+                    harness.label
+                ),
             ));
         }
-        Ok(Reply::SessionStarted { id })
+        self.container_place(run, None)
     }
 
     /// Starts a session's program at `size` and begins tracking it. A
@@ -104,11 +153,11 @@ impl Supervisor {
     /// new program on a clean screen. `unseen` starts the session with news
     /// for the person, unless someone is already watching it.
     #[allow(clippy::too_many_arguments)]
-    fn launch(
+    pub(super) fn launch(
         &mut self,
         session: SessionId,
         harness: Harness,
-        cwd: PathBuf,
+        place: Place,
         size: TermSize,
         mode: Mode,
         start: Start,
@@ -119,17 +168,18 @@ impl Supervisor {
             .get(&session)
             .and_then(|live| live.ended)
             .map_or(0, |(end, _)| end + 1);
+        // Hooks reach the daemon only from the host; in a container the
+        // status comes from the terminal and the process.
+        let hooked = harness.has_hooks() && place.hears_hooks();
+        let on_host = matches!(place, Place::Host(_));
         let (agent_session, resume, prompt) = match mode {
             Mode::Fresh { prompt } => {
-                let id = harness
-                    .has_hooks()
-                    .then(claude::new_session_id)
-                    .transpose()?;
+                let id = hooked.then(claude::new_session_id).transpose()?;
                 (id, false, prompt)
             }
             Mode::Resume { agent_session } => (Some(agent_session), true, None),
         };
-        let hooks = if harness.has_hooks() {
+        let hooks = if hooked {
             Some(HookEndpoint {
                 socket: self.hook_socket.clone(),
                 token: harness::new_token()?,
@@ -145,7 +195,7 @@ impl Supervisor {
                 resume,
                 prompt,
                 hooks: hooks.clone(),
-                cwd,
+                place,
                 size,
             },
         );
@@ -164,7 +214,7 @@ impl Supervisor {
                 agent_session,
                 start,
                 unseen,
-                reports_start: harness.has_hooks(),
+                reports_start: hooked,
             },
             self.timing,
             Instant::now(),
@@ -177,7 +227,9 @@ impl Supervisor {
                 harness,
                 token,
                 launched: Instant::now(),
-                resumed: resume,
+                // In a container the program itself falls back to a fresh
+                // conversation when it has none to resume.
+                resumed: resume && on_host,
                 ended: None,
             },
         );
@@ -188,7 +240,7 @@ impl Supervisor {
 
     /// The status a just-launched session's machine starts in, as the person
     /// should see it.
-    fn launched_status(&self, session: SessionId) -> Option<(SessionStatus, bool)> {
+    pub(super) fn launched_status(&self, session: SessionId) -> Option<(SessionStatus, bool)> {
         self.live
             .get(&session)
             .map(|live| (live.machine.status(), live.machine.unseen()))
@@ -196,42 +248,61 @@ impl Supervisor {
 
     /// Starts an ended session's program again in the same session. Claude
     /// Code resumes the conversation it had, if its transcript is still
-    /// there; otherwise, and for a shell, the program starts afresh.
+    /// there; otherwise, and for a shell, the program starts afresh. (The
+    /// agent in a run's container is started again by
+    /// [`restart_agent_in_container`](Self::restart_agent_in_container),
+    /// once its credential is fetched.)
     pub(super) async fn restart_session(
         &mut self,
         session: SessionId,
         size: TermSize,
     ) -> Result<Reply, ErrorBody> {
-        let stored = self
-            .state
-            .sessions
-            .iter()
-            .find(|stored| stored.id == session)
-            .cloned()
-            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no session {session}")))?;
+        let stored = self.stored_session(session)?;
         if self.is_running(session) {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,
                 format!("{} is still running", stored.title),
             ));
         }
-        let cwd = self.workspace_path(stored.workspace).ok_or_else(|| {
-            ErrorBody::new(
-                ErrorCode::NotFound,
-                format!("{}'s worktree is gone", stored.title),
-            )
-        })?;
         let harness = harness::find(&stored.harness).ok_or_else(|| {
             ErrorBody::new(
                 ErrorCode::BadRequest,
                 format!("no harness called {:?}", stored.harness),
             )
         })?;
-        let (mode, start) = match resumable(harness, &stored) {
-            Some(agent_session) => (Mode::Resume { agent_session }, Start::Resumed),
-            None => (Mode::Fresh { prompt: None }, Start::Idle),
+        let place = self.place_for(stored.workspace, harness)?;
+        let (mode, start) = match (&place, resumable(harness, &stored)) {
+            (Place::Host(_), Some(agent_session)) => {
+                (Mode::Resume { agent_session }, Start::Resumed)
+            }
+            _ => (Mode::Fresh { prompt: None }, Start::Idle),
         };
+        self.reopen_and_launch(session, harness, place, size, mode, start)
+            .await?;
+        Ok(Reply::SessionStarted { id: session })
+    }
 
+    /// The stored session `session`, if there is one.
+    pub(super) fn stored_session(&self, session: SessionId) -> Result<Session, ErrorBody> {
+        self.state
+            .sessions
+            .iter()
+            .find(|stored| stored.id == session)
+            .cloned()
+            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no session {session}")))
+    }
+
+    /// Opens an ended session again and starts its program, telling
+    /// clients.
+    pub(super) async fn reopen_and_launch(
+        &mut self,
+        session: SessionId,
+        harness: Harness,
+        place: Place,
+        size: TermSize,
+        mode: Mode,
+        start: Start,
+    ) -> Result<(), ErrorBody> {
         // The session is open again before its program starts (`ARC-10`).
         self.store
             .call(move |store| store.reopen_session(session))
@@ -241,7 +312,7 @@ impl Supervisor {
         if let Some(reopened) = self.session_mut(session) {
             reopened.ended_at = None;
         }
-        if let Err(error) = self.launch(session, harness, cwd, size, mode, start, false) {
+        if let Err(error) = self.launch(session, harness, place, size, mode, start, false) {
             self.end_session(session, SessionStatus::Exited { success: false }, true)
                 .await;
             return Err(ErrorBody::new(
@@ -257,7 +328,7 @@ impl Supervisor {
             let reopened = reopened.clone();
             self.broadcast(Delta::SessionUpserted(reopened));
         }
-        Ok(Reply::SessionStarted { id: session })
+        Ok(())
     }
 
     /// Takes an ended session off the list, keeping its history.
@@ -288,7 +359,7 @@ impl Supervisor {
     }
 
     /// Whether the session's program is running.
-    fn is_running(&self, session: SessionId) -> bool {
+    pub(super) fn is_running(&self, session: SessionId) -> bool {
         self.live
             .get(&session)
             .is_some_and(|live| !live.machine.status().is_exited())
@@ -304,7 +375,9 @@ impl Supervisor {
                 format!("{session} has already exited"),
             ));
         }
-        live.pty.stop().await;
+        let pty = live.pty.clone();
+        self.stop_in_container(session);
+        pty.stop().await;
         Ok(Reply::Done)
     }
 
@@ -361,7 +434,8 @@ impl Supervisor {
             .and_then(|live| live.ended)
             .map_or_else(TermSize::default, |(_, size)| size);
         let mode = Mode::Fresh { prompt: None };
-        match self.launch(session, harness, cwd, size, mode, Start::Idle, true) {
+        let place = Place::Host(cwd);
+        match self.launch(session, harness, place, size, mode, Start::Idle, true) {
             Ok(()) => {
                 if let Some((status, unseen)) = self.launched_status(session) {
                     self.set_status(session, status, unseen).await;
@@ -388,6 +462,10 @@ impl Supervisor {
             .cloned()
             .collect();
         for session in orphaned {
+            if let Some(run) = self.workspace_run(session.workspace) {
+                self.recover_in_container(&session, run).await;
+                continue;
+            }
             if self.resume(&session).await {
                 continue;
             }
@@ -415,8 +493,16 @@ impl Supervisor {
                 SessionStatus::Running | SessionStatus::NeedsYou { .. }
             );
         let mode = Mode::Resume { agent_session };
-        let size = TermSize::default();
-        match self.launch(session.id, harness, cwd, size, mode, Start::Resumed, unseen) {
+        let (size, place) = (TermSize::default(), Place::Host(cwd));
+        match self.launch(
+            session.id,
+            harness,
+            place,
+            size,
+            mode,
+            Start::Resumed,
+            unseen,
+        ) {
             Ok(()) => {
                 tracing::info!(session = %session.id, "resumed");
                 if let Some((status, unseen)) = self.launched_status(session.id) {
@@ -432,7 +518,12 @@ impl Supervisor {
     }
 
     /// Records that a session ended without its terminal reporting it.
-    async fn end_session(&mut self, session: SessionId, status: SessionStatus, unseen: bool) {
+    pub(super) async fn end_session(
+        &mut self,
+        session: SessionId,
+        status: SessionStatus,
+        unseen: bool,
+    ) {
         self.set_status(session, status, unseen).await;
         let at = self.clock.now();
         self.write(move |store| store.end_session(session, at))
@@ -455,12 +546,13 @@ impl Supervisor {
         }
     }
 
+    /// Where a workspace is on the host; a run's container has no such place.
     fn workspace_path(&self, workspace: WorkspaceId) -> Option<PathBuf> {
         self.state
             .workspaces
             .iter()
             .find(|candidate| candidate.id == workspace)
-            .map(|found| found.kind.path().to_owned())
+            .and_then(|found| found.kind.host_path().map(std::path::Path::to_owned))
     }
 
     fn session_path(&self, session: SessionId) -> Option<PathBuf> {

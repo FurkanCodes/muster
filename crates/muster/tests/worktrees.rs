@@ -55,7 +55,7 @@ async fn worktree(connection: &mut Connection, id: WorkspaceId) -> (PathBuf, Str
         .expect("the worktree is in the snapshot");
     assert!(!workspace.kind.is_checkout());
     (
-        workspace.kind.path().to_owned(),
+        workspace.kind.host_path().unwrap().to_owned(),
         workspace.kind.branch().to_owned(),
     )
 }

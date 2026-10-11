@@ -42,11 +42,37 @@ pub(super) fn status_json(status: SessionStatus) -> Result<String> {
     serde_json::to_string(&status).map_err(|error| StoreError::Invalid(error.to_string()))
 }
 
-pub(super) fn workspace_columns(workspace: &Workspace) -> Result<(&'static str, &str, &str)> {
-    match &workspace.kind {
-        WorkspaceKind::Worktree { path, branch } => Ok(("worktree", path_text(path)?, branch)),
-        WorkspaceKind::Checkout { path, branch } => Ok(("checkout", path_text(path)?, branch)),
-    }
+/// A workspace as its row stores it.
+pub(super) struct WorkspaceColumns<'a> {
+    pub(super) kind: &'static str,
+    /// Where it is on the host; empty for a container.
+    pub(super) path: &'a str,
+    pub(super) branch: &'a str,
+    /// The run, for a run's container.
+    pub(super) run: Option<String>,
+}
+
+pub(super) fn workspace_columns(workspace: &Workspace) -> Result<WorkspaceColumns<'_>> {
+    Ok(match &workspace.kind {
+        WorkspaceKind::Worktree { path, branch } => WorkspaceColumns {
+            kind: "worktree",
+            path: path_text(path)?,
+            branch,
+            run: None,
+        },
+        WorkspaceKind::Checkout { path, branch } => WorkspaceColumns {
+            kind: "checkout",
+            path: path_text(path)?,
+            branch,
+            run: None,
+        },
+        WorkspaceKind::Container { run, branch } => WorkspaceColumns {
+            kind: "container",
+            path: "",
+            branch,
+            run: Some(id_text(run)),
+        },
+    })
 }
 
 fn parse_id<T: FromStr>(text: &str) -> Result<T>
@@ -81,6 +107,7 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
     let (id, project): (String, String) = (row.get(0)?, row.get(1)?);
     let (kind, path, branch): (String, String, String) = (row.get(2)?, row.get(3)?, row.get(4)?);
     let created_at = Timestamp::from_millis(row.get(5)?);
+    let run: Option<String> = row.get(6)?;
     Ok((|| {
         let kind = match kind.as_str() {
             "worktree" => WorkspaceKind::Worktree {
@@ -89,6 +116,10 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
             },
             "checkout" => WorkspaceKind::Checkout {
                 path: PathBuf::from(path),
+                branch,
+            },
+            "container" => WorkspaceKind::Container {
+                run: parse_id(run.as_deref().unwrap_or_default())?,
                 branch,
             },
             other => return Err(StoreError::Invalid(format!("workspace kind {other:?}"))),

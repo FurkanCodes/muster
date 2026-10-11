@@ -6,6 +6,24 @@ mod migrations;
 mod rows;
 mod runs;
 
+fn insert_workspace_row(conn: &Connection, workspace: &Workspace) -> Result<()> {
+    let columns = rows::workspace_columns(workspace)?;
+    conn.execute(
+        "INSERT INTO workspaces (id, project_id, kind, path, branch, created_at, run_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            id_text(workspace.id),
+            id_text(workspace.project),
+            columns.kind,
+            columns.path,
+            columns.branch,
+            workspace.created_at.as_millis(),
+            columns.run,
+        ],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -97,7 +115,6 @@ impl Store {
         if self.project_by_root(&project.root)?.is_some() {
             return Err(StoreError::Conflict(format!("a project at {root}")));
         }
-        let (kind, path, branch) = rows::workspace_columns(checkout)?;
         let tx = self.conn.transaction()?;
         tx.execute(
             "INSERT INTO projects (id, name, root, created_at) VALUES (?1, ?2, ?3, ?4)",
@@ -108,18 +125,7 @@ impl Store {
                 project.created_at.as_millis()
             ],
         )?;
-        tx.execute(
-            "INSERT INTO workspaces (id, project_id, kind, path, branch, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                id_text(checkout.id),
-                id_text(checkout.project),
-                kind,
-                path,
-                branch,
-                checkout.created_at.as_millis()
-            ],
-        )?;
+        insert_workspace_row(&tx, checkout)?;
         tx.commit()?;
         Ok(())
     }
@@ -159,20 +165,7 @@ impl Store {
     }
 
     pub fn insert_workspace(&mut self, workspace: &Workspace) -> Result<()> {
-        let (kind, path, branch) = rows::workspace_columns(workspace)?;
-        self.conn.execute(
-            "INSERT INTO workspaces (id, project_id, kind, path, branch, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                id_text(workspace.id),
-                id_text(workspace.project),
-                kind,
-                path,
-                branch,
-                workspace.created_at.as_millis()
-            ],
-        )?;
-        Ok(())
+        insert_workspace_row(&self.conn, workspace)
     }
 
     /// Marks a workspace removed. Its sessions and their history are kept.
@@ -325,7 +318,7 @@ impl Store {
             rows::project,
         )?;
         let workspaces = self.collect(
-            "SELECT id, project_id, kind, path, branch, created_at FROM workspaces
+            "SELECT id, project_id, kind, path, branch, created_at, run_id FROM workspaces
              WHERE removed_at IS NULL ORDER BY created_at, id",
             rows::workspace,
         )?;

@@ -85,12 +85,23 @@ impl Supervisor {
             .state
             .workspaces
             .iter()
-            .filter(|workspace| workspace.project == project && !workspace.kind.is_checkout())
+            .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
             .count();
         if worktrees > 0 {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,
                 format!("{name} has {worktrees} worktree(s); remove them first"),
+            ));
+        }
+        let runs = self
+            .active_runs
+            .values()
+            .filter(|active| active.context.project == project)
+            .count();
+        if runs > 0 {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("{name} has {runs} run(s) going; cancel them first"),
             ));
         }
         let running: usize = workspaces
@@ -182,17 +193,18 @@ impl Supervisor {
         }
     }
 
-    /// Every workspace's place and what it was last seen to have checked out.
+    /// Every host workspace's place and what it was last seen to have
+    /// checked out. A run's container keeps the run's branch.
     pub(super) fn workspace_heads(&self) -> Vec<(WorkspaceId, PathBuf, String)> {
         self.state
             .workspaces
             .iter()
-            .map(|workspace| {
-                (
+            .filter_map(|workspace| {
+                Some((
                     workspace.id,
-                    workspace.kind.path().to_owned(),
+                    workspace.kind.host_path()?.to_owned(),
                     workspace.kind.branch().to_owned(),
-                )
+                ))
             })
             .collect()
     }
@@ -211,7 +223,8 @@ impl Supervisor {
             };
             match &mut found.kind {
                 WorkspaceKind::Worktree { branch: known, .. }
-                | WorkspaceKind::Checkout { branch: known, .. } => known.clone_from(&branch),
+                | WorkspaceKind::Checkout { branch: known, .. }
+                | WorkspaceKind::Container { branch: known, .. } => known.clone_from(&branch),
             }
             let updated = found.clone();
             self.write(move |store| store.update_branch(workspace, &branch))

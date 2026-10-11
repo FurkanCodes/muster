@@ -51,7 +51,7 @@ async fn setup() -> Setup {
         .workspaces
         .iter()
         .find(|found| found.id == workspace)
-        .map(|found| found.kind.path().to_owned())
+        .map(|found| found.kind.host_path().unwrap().to_owned())
         .unwrap();
     Setup {
         _sandbox: sandbox,

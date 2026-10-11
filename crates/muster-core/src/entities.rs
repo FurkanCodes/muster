@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{ProjectId, SessionId, WorkspaceId};
+use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 use crate::time::Timestamp;
 
@@ -28,7 +28,7 @@ pub struct Workspace {
     pub created_at: Timestamp,
 }
 
-/// The kinds of workspace. Containers arrive in M2.
+/// The kinds of workspace.
 ///
 /// `branch` is what is checked out, kept current as it changes: a branch
 /// name, or `detached at <commit>`.
@@ -40,26 +40,47 @@ pub enum WorkspaceKind {
     /// The project's own checkout: the repository the person added, where
     /// they work too. Muster never removes it.
     Checkout { path: PathBuf, branch: String },
+    /// A run's container, where its agents work on a clone of their own
+    /// (`ARCHITECTURE.md` §8). Its sessions are the person taking the run
+    /// over, or looking around in it; it goes with the run's container.
+    Container { run: RunId, branch: String },
 }
 
 impl WorkspaceKind {
-    /// Where the workspace's files are.
-    pub fn path(&self) -> &Path {
+    /// Where the workspace's files are on the host; a container's are in
+    /// the container only.
+    pub fn host_path(&self) -> Option<&Path> {
         match self {
-            Self::Worktree { path, .. } | Self::Checkout { path, .. } => path,
+            Self::Worktree { path, .. } | Self::Checkout { path, .. } => Some(path),
+            Self::Container { .. } => None,
         }
     }
 
     /// What is checked out there.
     pub fn branch(&self) -> &str {
         match self {
-            Self::Worktree { branch, .. } | Self::Checkout { branch, .. } => branch,
+            Self::Worktree { branch, .. }
+            | Self::Checkout { branch, .. }
+            | Self::Container { branch, .. } => branch,
         }
     }
 
     /// Whether this is a project's own checkout.
     pub fn is_checkout(&self) -> bool {
         matches!(self, Self::Checkout { .. })
+    }
+
+    /// Whether this is a git worktree on the host.
+    pub fn is_worktree(&self) -> bool {
+        matches!(self, Self::Worktree { .. })
+    }
+
+    /// The run whose container this is.
+    pub fn run(&self) -> Option<RunId> {
+        match self {
+            Self::Container { run, .. } => Some(*run),
+            Self::Worktree { .. } | Self::Checkout { .. } => None,
+        }
     }
 }
 

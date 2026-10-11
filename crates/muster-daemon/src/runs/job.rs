@@ -41,11 +41,17 @@ wait $!
 echo $? > "$stem.exit.part" && mv "$stem.exit.part" "$stem.exit"
 "#;
 
-/// Stops every job that has not ended: its whole process group.
-const STOP: &str = r#"for pid in /tmp/muster/out/*.pid; do
+/// Stops every job that has not ended and was asked for under a
+/// generation before `$1` (its name starts with it): its whole process
+/// group. Work asked for since keeps running.
+const STOP: &str = r#"before="$1"
+for pid in /tmp/muster/out/*.pid; do
   [ -e "$pid" ] || continue
   stem="${pid%.pid}"
   [ -e "$stem.exit" ] && continue
+  name="${stem##*/}"; generation="${name%%-*}"
+  case "$generation" in ''|*[!0-9]*) continue ;; esac
+  [ "$generation" -lt "$before" ] || continue
   kill -TERM -- "-$(cat "$pid")" 2>/dev/null || kill -TERM "$(cat "$pid")" 2>/dev/null
 done
 true
@@ -187,20 +193,27 @@ impl Job {
     }
 }
 
-/// Stops every job in the container that has not ended.
-pub(crate) async fn stop_all(docker: &Docker, container: &str) -> Result<(), RuntimeError> {
+/// Stops every job in the container that has not ended and was asked for
+/// under a generation before `before`.
+pub(crate) async fn stop_before(
+    docker: &Docker,
+    container: &str,
+    before: u64,
+) -> Result<(), RuntimeError> {
+    let before = before.to_string();
     docker
-        .exec(container, &["sh", "-c", STOP], &[], LOOK)
+        .exec(container, &["sh", "-c", STOP, "sh", &before], &[], LOOK)
         .await
         .map(drop)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::runs::provision::tests::test_image;
 
-    struct Container(String);
+    /// A test container, removed when dropped.
+    pub(crate) struct Container(pub(crate) String);
 
     impl Drop for Container {
         fn drop(&mut self) {
@@ -212,7 +225,7 @@ mod tests {
         }
     }
 
-    async fn container(docker: &Docker) -> Container {
+    pub(crate) async fn container(docker: &Docker) -> Container {
         let image = test_image(docker).await;
         let name = format!(
             "muster-job-test-{}",
@@ -282,35 +295,35 @@ mod tests {
         assert_eq!(code, 3);
         assert_eq!(job.errors(&docker, name).await.trim(), "shh");
 
-        // A long job and what it started are stopped together.
+        // A long job and what it started are stopped together; work asked
+        // for under a later generation is not.
         let long = Job::named("2-long");
-        long.start(
-            &docker,
-            name,
-            &["sh", "-c", "sleep 600 & sleep 600; echo done"],
-            &[],
-            b"",
-        )
-        .await
-        .unwrap();
+        let sleeps = ["sh", "-c", "sleep 600 & sleep 600; echo done"];
+        long.start(&docker, name, &sleeps, &[], b"").await.unwrap();
+        let newer = Job::named("3-newer");
+        let naps = ["sh", "-c", "sleep 500 & sleep 500; echo done"];
+        newer.start(&docker, name, &naps, &[], b"").await.unwrap();
         tokio::time::sleep(Duration::from_millis(500)).await;
-        stop_all(&docker, name).await.unwrap();
+        stop_before(&docker, name, 3).await.unwrap();
         let (output, code) = until_over(&long, &docker, name).await;
         assert!(output.is_empty());
         assert_ne!(code, 0);
-        let left = docker
-            .exec(
-                name,
-                &["sh", "-c", "ps -o pid,args | grep '[s]leep 600' || true"],
-                &[],
-                LOOK,
-            )
-            .await
-            .unwrap();
-        assert!(
-            left.stdout.is_empty(),
-            "left running: {}",
-            String::from_utf8_lossy(&left.stdout)
-        );
+        // The sleeps themselves, not the shells that started them.
+        let running = |seconds: &'static str| {
+            let docker = docker.clone();
+            let name = name.clone();
+            async move {
+                let script = format!("ps -o args | grep -x 'sleep {seconds}' || true");
+                let found = docker
+                    .exec(&name, &["sh", "-c", &script], &[], LOOK)
+                    .await
+                    .unwrap();
+                String::from_utf8_lossy(&found.stdout).into_owned()
+            }
+        };
+        let left = running("600").await;
+        assert!(left.is_empty(), "left running: {left}");
+        assert_eq!(running("500").await.lines().count(), 2);
+        assert_eq!(newer.look(&docker, name, 0).await.unwrap().exit, None);
     }
 }

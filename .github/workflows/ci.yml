@@ -48,6 +48,10 @@ jobs:
         env:
           MUSTER_DOCKER_TESTS: "1"
           MUSTER_TEST_IMAGE: alpine:3
+      - name: Runs end to end with real Docker
+        run: cargo test --locked -p muster --test docker_runs
+        env:
+          MUSTER_DOCKER_TESTS: "1"
 
   dependencies:
     name: Dependencies (licenses and advisories)

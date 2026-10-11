@@ -210,7 +210,7 @@ impl RunMachine {
                 container_lost,
                 ..
             } if self.stage.is_active() => {
-                effects.push(RunEffect::StopWork);
+                effects.push(STOP_WORK);
                 if container_lost {
                     // Its work went with it; a retry starts from a new one.
                     self.has_container = false;
@@ -224,13 +224,13 @@ impl RunMachine {
                     .max_cost_micros
                     .is_some_and(|max| self.cost_micros.saturating_sub(self.cost_at_budget) >= max);
                 if over && self.stage.is_active() {
-                    effects.push(RunEffect::StopWork);
+                    effects.push(STOP_WORK);
                     self.needs_you("it reached its cost limit".to_owned(), now, &mut effects);
                 }
             }
             RunEvent::Tick => {
                 if self.next_deadline().is_some_and(|deadline| now >= deadline) {
-                    effects.push(RunEffect::StopWork);
+                    effects.push(STOP_WORK);
                     let limit = self.limits.run_timeout.as_secs();
                     let shown = if limit < 60 {
                         format!("{limit} s")
@@ -242,6 +242,13 @@ impl RunMachine {
                 }
             }
             event => self.on_stage_event(event, now, &mut effects),
+        }
+        // Work is stopped below the generation the step moved to, so the
+        // work it asks for next, under that generation, is not.
+        for effect in &mut effects {
+            if let RunEffect::StopWork { before } = effect {
+                *before = self.generation;
+            }
         }
         effects
     }
@@ -327,7 +334,7 @@ impl RunMachine {
                 RunEvent::TakeOver,
             ) if self.has_container => {
                 if self.stage.is_active() {
-                    effects.push(RunEffect::StopWork);
+                    effects.push(STOP_WORK);
                 }
                 if self.stage == RunStage::ReadyForYou {
                     effects.push(RunEffect::MarkDraft);
@@ -445,7 +452,7 @@ impl RunMachine {
     /// Asks for whatever runs to stop.
     fn stop_work(&self, effects: &mut Vec<RunEffect>) {
         if self.stage.is_active() || self.stage == RunStage::TakenOver {
-            effects.push(RunEffect::StopWork);
+            effects.push(STOP_WORK);
         }
     }
 
@@ -496,6 +503,9 @@ impl RunMachine {
         );
     }
 }
+
+/// Stopping work, its generation filled in at the end of the step.
+const STOP_WORK: RunEffect = RunEffect::StopWork { before: 0 };
 
 /// The generation a report names, for reports on work asked for.
 fn generation_of(event: &RunEvent) -> Option<u64> {
