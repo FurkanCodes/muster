@@ -94,6 +94,7 @@ enum Command {
     Input(Vec<u8>),
     Resize(TermSize),
     Stop,
+    ResumeIfSuspended,
 }
 
 /// A cheap, cloneable way to reach a terminal's actor.
@@ -133,6 +134,17 @@ impl PtyHandle {
     /// running after a grace period.
     pub(crate) async fn stop(&self) {
         let _ = self.commands.send(Command::Stop).await;
+    }
+
+    /// Continues a program that suspended itself. Claude Code takes Ctrl+Z
+    /// as "suspend": it hands the terminal back (bracketed paste and its
+    /// keyboard modes off) and waits for SIGCONT. In a terminal of its own
+    /// with no shell above it the system ignores the stop, so it never truly
+    /// stops, and nothing would ever continue it. Sent only when paste mode
+    /// went off while the program kept running; a continue it did not need
+    /// only makes it redraw.
+    pub(crate) async fn resume_if_suspended(&self) {
+        let _ = self.commands.send(Command::ResumeIfSuspended).await;
     }
 }
 
@@ -392,6 +404,12 @@ impl Actor {
                     if let Some(tracker) = &mut self.cursor {
                         tracker.resize(size.cols, size.rows);
                     }
+                }
+            }
+            Command::ResumeIfSuspended => {
+                let suspended = self.queries.paste_used() && !self.queries.modes().bracketed_paste;
+                if self.live.is_some() && !self.stopping && suspended {
+                    self.signal(Signal::SIGCONT);
                 }
             }
             Command::Stop => {

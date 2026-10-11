@@ -293,3 +293,30 @@ async fn questions_to_the_terminal_are_answered() {
     assert!(answer.starts_with("E[?6cE["), "{answer:?} in {text:?}");
     assert!(answer.ends_with(";1R"), "{answer:?} in {text:?}");
 }
+
+#[tokio::test]
+async fn a_program_that_suspended_itself_is_continued_and_no_other_is() {
+    let (pty, _) = shell(vec![], vec![]);
+    // A loop that reports continues, like a program waiting for one. The
+    // shell runs the trap between the loop's commands.
+    let waiting = "trap 'echo got-cont-$((2+5))' CONT; echo ready-$((1+1)); \
+                   while :; do sleep 0.1; done\n";
+    pty.input(waiting.as_bytes().to_vec()).await;
+    let (_, next) = read_until(&pty, None, "ready-2").await;
+
+    // Not continued: it never handed the terminal back.
+    pty.resume_if_suspended().await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let quiet = pty.attach(Some(next)).await.unwrap().replay.data;
+    assert!(!String::from_utf8_lossy(&quiet).contains("got-cont-7"));
+
+    // Turning bracketed paste on and then off while still running is what
+    // Claude Code's suspend looks like.
+    pty.input(b"\x03".to_vec()).await;
+    let suspend = "printf '\\033[?2004h\\033[?2004l'; echo handed-$((3*3)); \
+                   while :; do sleep 0.1; done\n";
+    pty.input(suspend.as_bytes().to_vec()).await;
+    let (_, next) = read_until(&pty, Some(next), "handed-9").await;
+    pty.resume_if_suspended().await;
+    read_until(&pty, Some(next), "got-cont-7").await;
+}

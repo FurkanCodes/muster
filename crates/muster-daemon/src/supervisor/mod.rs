@@ -266,6 +266,12 @@ impl Supervisor {
                 let pty = self.live.get(&session).map(|live| live.pty.clone());
                 let _ = reply.send(pty);
                 if viewed {
+                    // Looking at a suspended agent brings it back.
+                    if let Some(live) = self.live.get(&session)
+                        && live.harness.suspends_itself()
+                    {
+                        live.pty.resume_if_suspended().await;
+                    }
                     self.step_session(session, Signal::Viewed).await;
                 }
             }

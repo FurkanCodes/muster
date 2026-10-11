@@ -55,9 +55,23 @@ impl App {
     }
 
     fn terminal_key(&mut self, session: muster_core::SessionId, key: &KeyEvent) -> Vec<Action> {
+        self.note = None;
         if leaves_terminal(key) {
             self.mode = Mode::Browse;
             return self.settle();
+        }
+        // Claude Code suspends itself on Ctrl+Z and waits for a shell's `fg`;
+        // a session has no shell above it, so the key would only freeze it.
+        let is_claude = self
+            .model
+            .session(session)
+            .is_some_and(|stored| stored.harness == "claude");
+        if is_claude
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+            && key.code == KeyCode::Char('z')
+        {
+            self.complain("Ctrl+Z would freeze Claude Code here, so it was not sent. Ctrl-] goes back to the list.");
+            return Vec::new();
         }
         let modes = self.screen(session).modes;
         encode_key(key, modes)

@@ -27,6 +27,9 @@ pub(crate) struct Model {
     changed: HashMap<SessionId, u64>,
     clock: u64,
     resources: Option<ResourceReport>,
+    /// Whether a snapshot has arrived; until then the model is empty, not
+    /// "no sessions".
+    loaded: bool,
 }
 
 impl Model {
@@ -43,6 +46,11 @@ impl Model {
         self.workspaces = snapshot.workspaces;
         self.sessions = sessions;
         self.resources = snapshot.resources;
+        self.loaded = true;
+    }
+
+    pub(crate) fn loaded(&self) -> bool {
+        self.loaded
     }
 
     pub(crate) fn apply(&mut self, delta: Delta) {

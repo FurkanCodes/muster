@@ -66,6 +66,8 @@ pub(crate) struct QueryScanner {
     params: Vec<u8>,
     kitty_flags: Vec<u8>,
     bracketed_paste: bool,
+    /// Whether bracketed paste was ever turned on, even within one chunk.
+    paste_used: bool,
     application_cursor: bool,
 }
 
@@ -76,6 +78,7 @@ impl Default for QueryScanner {
             params: Vec::new(),
             kitty_flags: Vec::new(),
             bracketed_paste: false,
+            paste_used: false,
             application_cursor: false,
         }
     }
@@ -91,6 +94,13 @@ impl QueryScanner {
     #[cfg(test)]
     pub(crate) fn bracketed_paste(&self) -> bool {
         self.bracketed_paste
+    }
+
+    /// Whether the program has ever turned bracketed paste on. A program
+    /// that did and has turned it off while still running has handed the
+    /// terminal back, as Claude Code does when it suspends itself.
+    pub(crate) fn paste_used(&self) -> bool {
+        self.paste_used
     }
 
     /// The input modes in effect, for clients.
@@ -192,7 +202,10 @@ impl QueryScanner {
                 let on = final_byte == b'h';
                 for mode in modes.split(|&byte| byte == b';') {
                     match mode {
-                        b"2004" => self.bracketed_paste = on,
+                        b"2004" => {
+                            self.bracketed_paste = on;
+                            self.paste_used |= on;
+                        }
                         b"1" => self.application_cursor = on,
                         _ => {}
                     }
@@ -292,6 +305,15 @@ mod tests {
         assert!(!scanner.bracketed_paste());
         scanner.scan(b"\x1b[?2004h\x1bc");
         assert!(!scanner.bracketed_paste(), "a full reset turns it off");
+    }
+
+    #[test]
+    fn paste_counts_as_used_even_when_turned_off_in_the_same_chunk() {
+        let mut scanner = QueryScanner::default();
+        assert!(!scanner.paste_used());
+        scanner.scan(b"\x1b[?2004h\x1b[?2004l");
+        assert!(scanner.paste_used());
+        assert!(!scanner.modes().bracketed_paste);
     }
 
     #[test]

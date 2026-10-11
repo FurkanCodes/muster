@@ -552,3 +552,43 @@ fn a_long_error_wraps_instead_of_being_cut_off() {
     assert!(screen.contains("must stay readable"), "{screen}");
     assert!(screen.contains("· second line"), "{screen}");
 }
+
+#[test]
+fn ctrl_z_is_held_back_from_claude_but_reaches_a_shell() {
+    let mut world = world();
+    let claude = Session {
+        harness: "claude".to_owned(),
+        ..session(world.worktree.id, "Claude Code", 7)
+    };
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(claude.clone())));
+
+    world.app.selected = Some(Row::Session(claude.id));
+    press(&mut world.app, KeyCode::Enter);
+    assert!(world.app.on_key(ctrl('z')).is_empty());
+    assert!(render(&world.app).contains("Ctrl+Z would freeze Claude Code"));
+    // The next key clears the message.
+    press(&mut world.app, KeyCode::Char('a'));
+    assert!(world.app.note.is_none());
+
+    world.app.on_key(ctrl(']'));
+    world.app.selected = Some(Row::Session(world.session.id));
+    press(&mut world.app, KeyCode::Enter);
+    assert_eq!(
+        world.app.on_key(ctrl('z')),
+        [Action::Send(ClientFrame::Input {
+            session: world.session.id,
+            data: vec![0x1a]
+        })]
+    );
+}
+
+#[test]
+fn before_the_first_snapshot_the_ui_says_it_is_loading() {
+    let mut app = App::new(PathBuf::from("/src"), SIZE);
+    app.on_connected("0.1.0".to_owned());
+    let screen = render(&app);
+    assert!(screen.contains("loading…"), "{screen}");
+    assert!(!screen.contains("0 sessions"), "{screen}");
+}
