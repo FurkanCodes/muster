@@ -1,8 +1,8 @@
 # Muster
 
-**A terminal cockpit for coding agents.** Run Claude Code and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
+**A terminal cockpit for coding agents.** Fetch your tickets, assign agents to them, and run Claude Code and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
-> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), runs from the UI and the command line, including taking a run over by hand; it waits on its first run against a real repository. See [PRODUCT.md](PRODUCT.md). No release yet.
+> Status: the cockpit is built, tested and dogfooded; the Tickets screen takes a project's GitHub issues, with Jira Cloud and Linear to come. An autopilot that took tickets to reviewed pull requests in containers was built and set aside; its code is kept. See [PRODUCT.md](PRODUCT.md). No release yet.
 
 ## What it does
 
@@ -11,7 +11,8 @@
 - **Needs you.** One queue of everything waiting on you: questions first, then news, oldest first. While your terminal window is in the background, Muster tells you as something comes to need you, with a desktop notification where your terminal shows them (iTerm2, WezTerm, Ghostty, kitty) and its bell elsewhere; `MUSTER_NOTIFY=off` turns that off.
 - **A real terminal per session.** Open any session full screen and use it as you would in your own terminal: the daemon answers the program's terminal questions, and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys).
 - **Survives restarts.** Sessions belong to the daemon. After a daemon restart, Claude Code sessions resume with `--resume`; one that cannot falls back to a fresh start.
-- **GitHub issues.** Pick an open issue and Muster creates `muster/issue-<n>-<title>`, starts Claude Code there, and hands it the issue — marked as a description of the work, not as instructions, since anyone can file an issue.
+- **Tickets.** A screen of each project's open tickets (GitHub issues, through your `gh`) with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<n>-<title>`, starts Claude Code there, and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file an issue. More agents on the same ticket get worktrees of their own. Muster only reads tickets; nothing changes in the tracker.
+- **The stages by hand.** On any worktree: run the project's checks as a session, have Claude Code review the change in plan mode, or push the branch and open a draft pull request.
 - **Resources.** Memory and CPU for each session's whole process tree, and the machine's memory.
 
 ## Install and run
@@ -37,28 +38,24 @@ muster
 | `a` | add a project |
 | `w` | new worktree for the selected project |
 | `n` | new session in the selected worktree, or on a project in its own checkout: Claude Code with an optional first prompt, or a shell (`⇥` switches) |
-| `i` | the project's open GitHub issues; `⏎` starts work on one |
+| `i` | the Tickets screen, on the selected project |
 | `s` | stop a session |
 | `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
 | `x` | remove the selected ended session; or, after asking, the selected worktree, or a project (Muster forgets it; the repository is untouched) |
 | `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `v` | have Claude Code review the selected worktree's change, in plan mode (it changes nothing) |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
-| `p` | hand the selected worktree's committed work to the autopilot, for an issue you name |
-| `⇥` | switch between all sessions, *Needs you* and *Runs* |
+| `⇥` | switch between all sessions, *Needs you* and *Tickets* |
 | `q` | quit the UI (sessions keep running) |
 
 In a full-screen session every key goes to the program; **Ctrl-]** comes back to the list.
 
-| Key | On a run (in *Runs*, or in *Needs you*) |
+| Key | On the *Tickets* screen |
 |---|---|
-| `n` | hand one of the project's issues to the autopilot (in *Runs*; in the issues dialog `⇥` chooses Claude Code, a shell or the autopilot) |
-| `t` | take the run over: its agent is yours, in a session in its container |
-| `⏎` | open the agent you took over |
-| `h` | hand the run back: your work goes to the checks |
-| `r` | send a run that needs you back to work, with notes for its agent |
-| `c` | send a ready run back to its agent with what to change |
-| `x` | cancel the run |
+| `⏎` | open the agent on the selected ticket, or start the first: Claude Code in a worktree for it, with the ticket as its first prompt |
+| `a` | start another agent on the ticket, in a worktree of its own |
+| `b` | open the ticket in your browser |
+| `r` | fetch the tickets again |
 
 The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the preview opens it. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
 
@@ -74,6 +71,10 @@ muster worktree add app --branch fix-login
 
 ```bash
 muster session start fix-login --harness claude --prompt "Fix the login redirect"
+```
+
+```bash
+muster issue list app
 ```
 
 ```bash
@@ -105,31 +106,6 @@ After upgrading muster, stop the daemon the old build left running; the next `mu
 ```bash
 muster daemon stop
 ```
-
-## The autopilot (in progress)
-
-Hand Muster an issue and it works on it alone: in a container of its own, Claude Code builds the change on `muster/issue-<n>-<title>`, the project's checks run on it, Muster pushes the branch from your machine and opens a draft pull request, a second Claude Code reviews it, and only then is it marked ready and waiting on you. A failed check or a review asking for changes goes back to the building agent with the evidence, within the project's limits; past them, the run stops and waits on you with the reason.
-
-It needs Docker (Docker Desktop, OrbStack or Colima) running, `gh` signed in, a `muster.toml` in the repository naming its checks, and a Claude Code token for the containers, made with `claude setup-token` and kept in the macOS Keychain:
-
-```toml
-[checks]
-commands = ["cargo test"]
-```
-
-```bash
-muster auth claude
-```
-
-```bash
-muster run start app 42
-```
-
-```bash
-muster run list
-```
-
-`muster run show 42` shows where a run is, why, and its timeline; `muster run retry 42 --notes "…"` sends a run that needs you back to work; `muster run changes 42 "…"` sends a ready one back to its agent with what to change; `muster run cancel 42` ends one. `muster run take-over 42` lets you drive a run's agent yourself: Claude Code carries on its conversation in a session in the run's container, which appears in the UI under the project (`⧉`); `muster run hand-back 42` gives the run back, and your work goes to the checks. Work you did yourself can go the other way: `muster run start app 42 --from fix-login` hands the committed work on that worktree's branch to the autopilot, which starts with the checks (`p` on a worktree in the UI). `muster project config app` shows the settings a project's runs use (memory, image, limits, agents) and where they come from.
 
 ## How it is built
 

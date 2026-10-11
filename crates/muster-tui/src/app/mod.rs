@@ -4,10 +4,12 @@
 
 mod events;
 mod pointer;
-mod runs;
+mod tickets;
 
-pub(crate) use runs::RunActions;
+pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
+#[cfg(test)]
+mod by_hand_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]
@@ -17,9 +19,9 @@ mod pointer_tests;
 #[cfg(test)]
 mod project_tests;
 #[cfg(test)]
-mod run_tests;
-#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tickets_tests;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,12 +29,10 @@ use std::path::PathBuf;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
 };
-use muster_core::{
-    Issue, ProjectId, RunId, RunStage, RunTransition, SessionId, Timestamp, WorkspaceId,
-};
+use muster_core::{ProjectId, SessionId, WorkspaceId};
 
 use crate::input::LineInput;
-use crate::model::{Model, Need, Row, needs_attention};
+use crate::model::{Model, Row, needs_attention};
 use crate::screen::Screen;
 
 /// What the runtime must do for the app.
@@ -42,6 +42,8 @@ pub(crate) enum Action {
     /// Tell the person, who is looking elsewhere: a desktop notification
     /// where the terminal shows one, and its bell.
     Notify(String),
+    /// Open a web page in the person's browser.
+    Open(String),
     Quit,
 }
 
@@ -60,7 +62,7 @@ pub(crate) enum Link {
 pub(crate) enum View {
     Sessions,
     NeedsYou,
-    Runs,
+    Tickets,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,58 +91,6 @@ pub(crate) enum Dialog {
         question: String,
         then: Confirmed,
     },
-    /// A project's open GitHub issues, to start work on one.
-    Issues {
-        project: ProjectId,
-        /// `None` while they load.
-        issues: Option<Vec<Issue>>,
-        selected: usize,
-        work: IssueWork,
-        error: Option<String>,
-    },
-    /// Notes for a run's agent as the run goes back to work.
-    RunNotes {
-        run: RunId,
-        notes: LineInput,
-    },
-    /// What a ready run's agent is to change.
-    RunChanges {
-        run: RunId,
-        comments: LineInput,
-    },
-    /// The issue a workspace's work is for, as it goes to the autopilot.
-    HandOff {
-        workspace: WorkspaceId,
-        number: LineInput,
-    },
-}
-
-/// How to work on an issue: a session the person drives, or a run.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum IssueWork {
-    Session(HarnessChoice),
-    Autopilot,
-}
-
-impl IssueWork {
-    /// The choices, in the order ⇥ goes through them.
-    pub(crate) const ALL: [Self; 3] = [
-        Self::Session(HarnessChoice::Claude),
-        Self::Session(HarnessChoice::Shell),
-        Self::Autopilot,
-    ];
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Session(harness) => harness.label(),
-            Self::Autopilot => "Autopilot run",
-        }
-    }
-
-    pub(crate) fn next(self) -> Self {
-        let at = Self::ALL.iter().position(|work| *work == self).unwrap_or(0);
-        Self::ALL[(at + 1) % Self::ALL.len()]
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,8 +120,6 @@ pub(crate) enum Confirmed {
     StopSession(SessionId),
     RemoveWorktree { workspace: WorkspaceId, force: bool },
     RemoveProject(ProjectId),
-    CancelRun(RunId),
-    HandBackRun(RunId),
 }
 
 /// A line under the screen telling the person what just happened.
@@ -191,15 +139,11 @@ enum Then {
     OpenRestarted,
     /// Offer to force the removal if it was refused for uncommitted changes.
     RemovedWorktree(WorkspaceId),
-    /// Fill the issues dialog for this project.
-    ShowIssues(ProjectId),
+    /// Keep the project's tickets.
+    Tickets(ProjectId),
+    /// Keep the ticket's text.
+    TicketText(ProjectId, u64),
     OpenIssueSession,
-    /// Show the run picked up, in the runs list.
-    ShowRun,
-    /// Open the person's session with the run's agent.
-    OpenTakenOver,
-    /// Keep the run's timeline.
-    RunHistory(RunId),
     /// Say which pull request was opened.
     ShowPullRequest,
     Say(&'static str),
@@ -221,24 +165,19 @@ pub(crate) struct App {
     /// queue: the view moves only when the selection would leave it.
     pub(crate) list_offset: usize,
     pub(crate) needs_offset: usize,
-    /// The Needs you queue as shown: an entry stays in place while it is
+    /// The Needs you queue as shown: a session stays in place while it is
     /// selected, even once looking at it has cleared it, so the list does
     /// not move under the person.
-    pub(crate) needs_list: Vec<Need>,
-    /// The selected entry of the Needs you queue.
-    pub(crate) needs_selected: Option<Need>,
-    /// The runs list as shown, its selection and its first line shown.
-    pub(crate) runs_list: Vec<RunId>,
-    pub(crate) runs_selected: Option<RunId>,
-    pub(crate) runs_offset: usize,
-    /// Runs' timelines, as last fetched; the shown run's is kept current.
-    pub(crate) run_history: HashMap<RunId, Vec<RunTransition>>,
-    /// The run, stage and attempt the last timeline was asked for.
-    history_asked: Option<(RunId, RunStage, u32)>,
-    /// A run a reply named, shown in the runs list once it appears.
-    wanted_run: Option<RunId>,
-    /// The time when the screen was last drawn, for how long runs took.
-    pub(crate) now: Timestamp,
+    pub(crate) needs_list: Vec<SessionId>,
+    /// The selected session of the Needs you queue.
+    pub(crate) needs_selected: Option<SessionId>,
+    /// Each project's tickets, as last fetched; fetched again on `r`.
+    pub(crate) tickets: HashMap<ProjectId, Tickets>,
+    /// The selected line of the tickets list, and its first line shown.
+    pub(crate) tickets_selected: Option<TicketRow>,
+    pub(crate) tickets_offset: usize,
+    /// Tickets' text, fetched as each is first shown.
+    pub(crate) ticket_texts: HashMap<(ProjectId, u64), TicketText>,
     pub(crate) screens: HashMap<SessionId, Screen>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
@@ -273,13 +212,10 @@ impl App {
             needs_offset: 0,
             needs_list: Vec::new(),
             needs_selected: None,
-            runs_list: Vec::new(),
-            runs_selected: None,
-            runs_offset: 0,
-            run_history: HashMap::new(),
-            history_asked: None,
-            wanted_run: None,
-            now: Timestamp::from_millis(0),
+            tickets: HashMap::new(),
+            tickets_selected: None,
+            tickets_offset: 0,
+            ticket_texts: HashMap::new(),
             screens: HashMap::new(),
             attached: None,
             wanted: None,
@@ -299,7 +235,8 @@ impl App {
         self.keep_in_view();
         self.attached = None;
         self.pending.clear();
-        self.history_asked = None;
+        // Asked of the last daemon, never answered: asked again.
+        self.forget_unanswered();
         // A new connection is a new daemon, which numbers its terminals'
         // output afresh: positions in the old screens mean nothing to it.
         self.screens.clear();
@@ -310,7 +247,7 @@ impl App {
         self.link = Link::Lost(reason);
         self.attached = None;
         self.pending.clear();
-        self.history_asked = None;
+        self.forget_unanswered();
         // The reason takes lines from the list.
         self.keep_in_view();
     }
@@ -327,23 +264,13 @@ impl App {
                     Delta::SessionUpserted(session) => Some(session.id),
                     _ => None,
                 };
-                let run = match &delta {
-                    Delta::RunUpserted(run) => Some(run.id),
-                    _ => None,
-                };
                 let before = session.and_then(|id| self.model.session(id).map(needs_attention));
-                let run_waited = run
-                    .and_then(|id| self.model.run(id))
-                    .is_some_and(|known| known.stage.waits_on_person());
                 let was_ended = session
                     .and_then(|id| self.model.session(id))
                     .is_some_and(|stored| stored.ended_at.is_some());
                 self.model.apply(delta);
                 if before == Some(false) {
                     news = session.and_then(|id| self.news(id));
-                }
-                if !run_waited {
-                    news = news.or_else(|| run.and_then(|id| self.run_news(id)));
                 }
                 if let Some(id) = session {
                     self.reattach_if_reopened(id, was_ended);
@@ -459,47 +386,25 @@ impl App {
                 self.wanted = Some((Row::Session(id), true));
                 self.note = None;
             }
-            (Ok(Reply::RunStarted { id }), Then::ShowRun) => {
-                self.wanted_run = Some(id);
-                self.say("Handed the issue to the autopilot.");
-            }
-            (Ok(Reply::RunTakenOver { session, .. }), Then::OpenTakenOver) => {
-                self.wanted = Some((Row::Session(session), true));
-                self.note = None;
-            }
             (Ok(Reply::PullRequestOpened { pr }), Then::ShowPullRequest) => {
                 self.say(format!(
                     "Draft pull request #{} is open: {}",
                     pr.number, pr.url
                 ));
             }
-            (Ok(Reply::RunHistory { transitions }), Then::RunHistory(run)) => {
-                self.run_history.insert(run, transitions);
+            (Ok(Reply::Issues { issues }), Then::Tickets(project)) => {
+                self.tickets.insert(project, Tickets::Loaded(issues));
             }
-            // A timeline that did not come is asked for again on the next
-            // change; it is no news for the person.
-            (Err(_), Then::RunHistory(_)) => self.history_asked = None,
-            (Ok(Reply::Issues { issues: listed }), Then::ShowIssues(project)) => {
-                if let Mode::Dialog(Dialog::Issues {
-                    project: showing,
-                    issues,
-                    ..
-                }) = &mut self.mode
-                    && *showing == project
-                {
-                    *issues = Some(listed);
-                }
+            (Err(error), Then::Tickets(project)) => {
+                self.tickets.insert(project, Tickets::Failed(error.message));
             }
-            (Err(error), Then::ShowIssues(project)) => {
-                if let Mode::Dialog(Dialog::Issues {
-                    project: showing,
-                    error: shown,
-                    ..
-                }) = &mut self.mode
-                    && *showing == project
-                {
-                    *shown = Some(error.message);
-                }
+            (Ok(Reply::IssueViewed { body, .. }), Then::TicketText(project, number)) => {
+                self.ticket_texts
+                    .insert((project, number), TicketText::Loaded(body));
+            }
+            (Err(error), Then::TicketText(project, number)) => {
+                self.ticket_texts
+                    .insert((project, number), TicketText::Failed(error.message));
             }
             (Ok(_), Then::RemovedWorktree(_)) => {
                 self.say("Removed the worktree; its branch is kept.")
@@ -559,28 +464,22 @@ impl App {
     pub(crate) fn focused_session(&self) -> Option<SessionId> {
         match (&self.mode, self.view) {
             (Mode::Terminal(session), _) => Some(*session),
-            (_, View::NeedsYou) => match self.needs_selected {
-                Some(Need::Session(session)) => Some(session),
-                _ => None,
-            },
+            (_, View::NeedsYou) => self.needs_selected,
             (_, View::Sessions) => match self.selected {
                 Some(Row::Session(session)) => Some(session),
                 _ => None,
             },
-            (_, View::Runs) => None,
+            (_, View::Tickets) => None,
         }
     }
 
-    /// The run shown: selected in the runs list or the Needs you queue.
-    pub(crate) fn focused_run(&self) -> Option<RunId> {
-        match (&self.mode, self.view) {
-            (Mode::Terminal(_), _) | (_, View::Sessions) => None,
-            (_, View::Runs) => self.runs_selected,
-            (_, View::NeedsYou) => match self.needs_selected {
-                Some(Need::Run(run)) => Some(run),
-                _ => None,
-            },
-        }
+    /// Asked of a daemon and never answered (the connection went): asked
+    /// again once the screen wants it.
+    fn forget_unanswered(&mut self) {
+        self.tickets
+            .retain(|_, tickets| !matches!(tickets, Tickets::Loading));
+        self.ticket_texts
+            .retain(|_, text| !matches!(text, TicketText::Loading));
     }
 
     /// Scrolls the lists just enough to show their selections.
@@ -601,12 +500,13 @@ impl App {
         self.list_offset = in_view(self.list_offset, selected, rows.len(), height);
         let needs = self
             .needs_selected
-            .and_then(|need| self.needs_list.iter().position(|n| *n == need));
+            .and_then(|session| self.needs_list.iter().position(|s| *s == session));
         self.needs_offset = in_view(self.needs_offset, needs, self.needs_list.len(), height);
-        let runs = self
-            .runs_selected
-            .and_then(|run| self.runs_list.iter().position(|r| *r == run));
-        self.runs_offset = in_view(self.runs_offset, runs, self.runs_list.len(), height);
+        let tickets = self.ticket_rows();
+        let ticket = self
+            .tickets_selected
+            .and_then(|row| tickets.iter().position(|r| *r == row));
+        self.tickets_offset = in_view(self.tickets_offset, ticket, tickets.len(), height);
     }
 
     /// The terminal area changed size.
@@ -626,7 +526,7 @@ impl App {
     fn settle(&mut self) -> Vec<Action> {
         self.take_wanted();
         self.keep_selection();
-        self.take_wanted_run();
+        self.keep_ticket_selection();
         self.keep_in_view();
         if let Mode::Terminal(session) = self.mode
             && self.model.session(session).is_none()
@@ -636,7 +536,7 @@ impl App {
         if !matches!(self.link, Link::Connected { .. }) {
             return Vec::new();
         }
-        let mut actions: Vec<Action> = self.ask_history().into_iter().collect();
+        let mut actions = self.fetch_tickets();
         let focus = self
             .focused_session()
             .filter(|s| self.model.session(*s).is_some());
@@ -678,7 +578,11 @@ impl App {
             return;
         }
         self.wanted = None;
-        self.view = View::Sessions;
+        // A session opened from the Tickets screen leaves the person there
+        // once they come back from it.
+        if !(open && self.view == View::Tickets) {
+            self.view = View::Sessions;
+        }
         self.selected = Some(row);
         if let (true, Row::Session(session)) = (open, row) {
             self.mode = Mode::Terminal(session);
@@ -702,31 +606,23 @@ impl App {
         // Screens of sessions that are gone are not drawn again.
         let model = &self.model;
         self.screens.retain(|id, _| model.session(*id).is_some());
-        // Questions first, then runs, then news, oldest first; but the
-        // selected entry keeps its place after looking at it has cleared it.
+        // Questions first, then news, oldest first; but the selected session
+        // keeps its place after looking at it has cleared it.
         let mut list = self.model.needs_you();
-        let exists = |need: Need| match need {
-            Need::Session(session) => self.model.session(session).is_some(),
-            Need::Run(run) => self.model.run(run).is_some(),
-        };
         if let Some(selected) = self.needs_selected
             && !list.contains(&selected)
-            && exists(selected)
-            && let Some(was) = self.needs_list.iter().position(|n| *n == selected)
+            && self.model.session(selected).is_some()
+            && let Some(was) = self.needs_list.iter().position(|s| *s == selected)
         {
             list.insert(was.min(list.len()), selected);
         }
-        if !self.needs_selected.is_some_and(|need| list.contains(&need)) {
+        if !self
+            .needs_selected
+            .is_some_and(|session| list.contains(&session))
+        {
             self.needs_selected = list.first().copied();
         }
         self.needs_list = list;
-        self.runs_list = self.model.runs_listed();
-        if !self
-            .runs_selected
-            .is_some_and(|run| self.runs_list.contains(&run))
-        {
-            self.runs_selected = self.runs_list.first().copied();
-        }
     }
 }
 

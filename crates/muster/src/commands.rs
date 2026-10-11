@@ -396,9 +396,46 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
         } else {
             format!("  [{}]", shown(&issue.labels.join(", ")))
         };
-        println!("#{:<6} {}{labels}", issue.number, shown(&issue.title));
+        let agents = agents_on(&snapshot, project, issue.number);
+        let agents = if agents.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "  · {}: {}",
+                count(agents.len(), "agent"),
+                agents.join(", ")
+            )
+        };
+        println!(
+            "#{:<6} {}{labels}{agents}",
+            issue.number,
+            shown(&issue.title)
+        );
     }
     Ok(())
+}
+
+/// How each agent on issue `number` is doing: the sessions in the
+/// project's worktrees on branches named for it, oldest first.
+fn agents_on(snapshot: &Snapshot, project: muster_core::ProjectId, number: u64) -> Vec<String> {
+    let mut agents: Vec<&muster_core::Session> = snapshot
+        .sessions
+        .iter()
+        .filter(|session| {
+            snapshot.workspaces.iter().any(|workspace| {
+                workspace.id == session.workspace
+                    && workspace.project == project
+                    && workspace.kind.is_worktree()
+                    && muster_core::tickets::issue_of_branch(workspace.kind.branch())
+                        == Some(number)
+            })
+        })
+        .collect();
+    agents.sort_by_key(|session| (session.created_at, session.id));
+    agents
+        .iter()
+        .map(|session| describe(session.status))
+        .collect()
 }
 
 pub(crate) async fn start_issue(
@@ -406,6 +443,7 @@ pub(crate) async fn start_issue(
     project: &str,
     number: u64,
     harness: String,
+    another: bool,
 ) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
@@ -416,6 +454,7 @@ pub(crate) async fn start_issue(
             number,
             harness,
             size: TermSize::default(),
+            another,
         })
         .await?;
     let Reply::IssueStarted { workspace, session } = reply else {

@@ -14,10 +14,11 @@ Worktrees also isolate only files. Agents still share ports, databases, caches a
 
 ## 2. Product
 
-Muster is a **cockpit with an autopilot**.
+Muster is a **cockpit for agents working on your tickets**.
 
+- **Tickets.** Muster fetches each project's tickets (GitHub Issues; Jira Cloud and Linear next) and shows them with the agents working on each. The person assigns agents to tickets: each agent is a Claude Code session in a worktree of its own, started with the ticket as its first prompt. Muster only reads tickets; changing them is the person's, or their agents' through the tools those already have (such as a tracker's MCP server).
 - **Cockpit (hands-on).** Every agent is a *session* you can watch and type into. Sessions live in a *workspace*: a git worktree on your machine, or a container. Muster shows which sessions are running, finished, or waiting for you, and keeps them alive when the UI closes.
-- **Autopilot (hands-off, optional).** A *run* takes a ticket through fixed stages on its own and drives sessions for you. A person is brought in only where a decision is genuinely theirs, and only after the work has passed checks.
+- **Autopilot (set aside 2026-10-11).** A *run* took a ticket through fixed stages on its own, in a container, and asked a person only once the work had passed checks and a review. It was built and tested (M2) and then set aside at the author's call: hidden from the UI and the command line's help, its code kept. The rules and stages below that concern runs describe that code.
 
 ```
 Ticket → Build → Check → Draft PR → Agent review → Ready for you → Merged
@@ -35,13 +36,13 @@ Ticket → Build → Check → Draft PR → Agent review → Ready for you → M
 
 ## 4. Principles
 
-- **PRD-01 — Cockpit first, autopilot when asked.** Muster is fully useful as a terminal UI for sessions the user drives. Nothing runs on its own unless the user starts a run or turns on automatic pickup for a project.
+- **PRD-01 — The person assigns the work.** Muster is a terminal UI for sessions the user drives, on the tickets they choose. Nothing starts on its own: an agent works on a ticket because the person assigned it.
 - **PRD-02 — Nothing unverified reaches a person.** A run reaches *Ready for you* only after the project's checks pass and the reviewer agent approves. Failures go back to the building agent with the evidence, up to a per-project attempt limit; after that the run goes to *Needs you* with the full history.
 - **PRD-03 — Bring your own agents.** Muster wraps existing harnesses (Claude Code, Codex, OpenCode, …) through one interface. It ships no model and no agent of its own, and uses the user's own subscriptions or keys.
 - **PRD-04 — The right isolation for the job.** Hands-on sessions default to a git worktree on the host: instant, with the user's own tools and sign-ins. Any session can run in a container instead. Runs always use containers, and a container can never write to the host filesystem.
 - **PRD-05 — Resources decide, not just display.** Muster shows memory and CPU for every session and container. Runs carry a memory reservation and start only when it fits the budget; the UI always says why a run is waiting. Hands-on sessions never wait — the user asked for them.
 - **PRD-06 — Secrets never leak.** Credentials Muster handles are injected at run time with the narrowest scope available, and never enter the repository, an image layer, a log, a PR, or the database. A worktree session runs as the user with the user's own sign-ins, exactly as if started in a terminal; Muster adds none.
-- **PRD-07 — Tickets are untrusted input.** Anyone can file a GitHub issue. Runs pick up only tickets the user selects, or that carry a configured label applied by an allowed account. Ticket text reaches agents as data inside a container's limits, never as configuration.
+- **PRD-07 — Tickets are untrusted input.** Anyone can file a GitHub issue. Agents work only on tickets the user assigns them (and runs, set aside, picked up only tickets the user selected). Ticket text reaches agents as data, set apart and named as a description of the work, never as configuration or instructions, and never reaches a terminal with its control characters.
 - **PRD-08 — Move freely between hands-on and hands-off.** Any run's agent can be taken over interactively and handed back. Any hands-on session can be handed to the autopilot from *Check* onward.
 - **PRD-09 — Survives restarts.** Closing the UI never stops a session or a run. Container sessions and runs also survive a daemon restart; worktree sessions come back through the harness's own resume.
 - **PRD-10 — Local first.** No Muster server, no account, no telemetry. Muster talks only to the user's ticket sources, git host, container runtime and agent providers.
@@ -49,7 +50,7 @@ Ticket → Build → Check → Draft PR → Agent review → Ready for you → M
 - **PRD-12 — Bounded cost.** Every run has a time limit and an attempt limit, and a cost limit where the harness reports cost. Hitting a limit stops the run and moves it to *Needs you*; it never silently keeps spending. Hands-on sessions show cost where reported but are never stopped by Muster.
 - **PRD-13 — Leave the user's setup alone.** Muster never edits the user's global agent configuration or adds files to their repository to make itself work. It passes what it needs at launch (for example Claude Code's `--settings`). Where a harness offers no such way, Muster runs it with less status detail rather than editing its config.
 
-## 5. Run stages
+## 5. Run stages (autopilot, set aside)
 
 | Stage | Enters when | Does | Leaves to |
 |---|---|---|---|
@@ -70,22 +71,21 @@ Every transition is recorded with its reason, so the timeline of a run is always
 
 Terminal UI first (ratatui). The daemon exposes the same API to any client, so a web UI can be added later without changing the daemon.
 
-- **Sessions** (home) — projects, then their worktrees and containers, then session cards with live status: running, finished, waiting for you. The selected session's live terminal is one key away. Start a session from a prompt or from a GitHub issue, in a new worktree or a container.
-- **Runs** — every run grouped by stage. Each row: ticket, harness, stage, attempt `n/N`, elapsed time, cost where known, memory in use.
-- **Needs you** — one queue for everything waiting on a person, oldest first: sessions asking a question or finished and not yet seen, and runs stopped at a gate or a limit. This is where the user starts their day.
-- **Session and run views** — live agent output, stage timeline with reasons, check output, diff with reviewed marks, reviewer comments.
-- **Resources** — host and container-runtime memory and CPU, each session's and container's usage, the run budget, and the queue with the reason each run waits.
+- **Sessions** (home) — projects, then their worktrees, then session cards with live status: running, finished, waiting for you. The selected session's live terminal is one key away. Start a session from a prompt, in a new worktree or the project's checkout.
+- **Tickets** — each project's open tickets, with the agents on each and how they are doing. The selected ticket shows its text and its agents. Assign an agent to a ticket (a worktree for it and Claude Code with the ticket as its first prompt), open the agent on it, or add another in a worktree of its own.
+- **Needs you** — one queue for everything waiting on a person, oldest first: sessions asking a question, or finished and not yet seen. This is where the user starts their day.
+- **Resources** — host memory and CPU, and each session's usage.
 
 ## 7. Integrations
 
 | Kind | v1 | Later |
 |---|---|---|
-| Ticket sources | GitHub Issues | Jira Cloud, Linear |
+| Ticket sources | GitHub Issues (the person's `gh`) | Jira Cloud, Linear; how to reach them (their APIs, or the MCP servers agents already use) is open |
 | Git host | GitHub | GitLab |
 | Harnesses | Claude Code | Codex, OpenCode, others through config |
 | Container runtime | Docker API (Docker Desktop, OrbStack, Colima on macOS; Docker Engine on Linux) | Podman |
 
-Each kind sits behind one interface from day one, so adding Jira or Codex never touches sessions or runs.
+Each kind sits behind one interface from day one, so adding Jira or Codex never touches sessions or tickets.
 
 ## 8. Milestones
 
@@ -94,14 +94,18 @@ Each milestone ends with a demo that works on a real repository, and with tests 
 1. **M1 — Cockpit.** The daemon owns hands-on Claude Code sessions in git worktrees. The TUI shows projects, worktrees and session cards with live status, the live terminal, and *Needs you*. Sessions start from a prompt or a GitHub issue. Closing the TUI stops nothing; restarting the daemon brings sessions back through Claude Code's resume.
    *Done when:* the author builds Muster with Muster, instead of plain terminals, for a full week. A container spike (headless Claude Code in Docker) runs alongside, so M2 starts on proven ground.
    *Status (2026-10-11):* built and dogfooded in a pseudo-terminal against Claude Code 2.1.296, with over 350 tests. Beyond the first build: sessions in the project's own checkout; restarting (Claude resumes) and removing ended sessions; worktrees and branches kept in step with git; mouse scrollback; notifications while the window is out of focus; a session asking before it starts (Claude's trust question) shown as needing you; untrusted issue text kept from terminals; `muster daemon stop` for upgrades. Waiting on the author's week of dogfooding.
-2. **M2 — One ticket, end to end.** Containers as workspaces; one GitHub issue goes through every run stage; *Check*, *Draft PR* and *Agent review* by hand on any session; take over and hand back.
+2. **M2 — One ticket, end to end (set aside).** Containers as workspaces; one GitHub issue goes through every run stage; *Check*, *Draft PR* and *Agent review* by hand on any session; take over and hand back.
    *Done when:* selecting an issue produces a draft PR, a reviewer-agent review on it, and — after a requested change has been fixed — a PR marked ready and waiting in Needs you (GitHub lets nobody be asked to review their own pull request, and Muster opens it as the user). Killing and restarting the daemon mid-build resumes the run.
    *Status (2026-10-11):* the run machine, runs in the store, orchestration in the daemon and the real work (mirror, container, headless agents and checks as jobs, bundle out and push, draft pull request, reviewer verdict) are built and tested, the last against real Docker and git with a stand-in agent; runs are started, followed, retried, sent back with changes, taken over, handed back and cancelled from the command line (`muster run`), and the same from the UI: a Runs view (waiting on the person first, each run's timeline with reasons), runs in Needs you with notifications, and the issues dialog handing an issue to the autopilot; a run's container appears in the UI with the person's sessions in it. A worktree's committed work can be handed to the autopilot for an issue (`muster run start --from`, `p` in the UI): the run starts at the checks. End-to-end tests on real Docker, with stand-ins for Claude Code and `gh`, take an issue to a pull request marked ready through a daemon killed mid-build, and a person through taking a run over in its container and handing it back. The stages run by hand on any worktree: the checks (`muster check`, `c` in the UI), a draft pull request (`muster pr`, `o`) and an agent review in plan mode (`muster review`, `v`). Next: a first real run, which needs a Claude Code token (`claude setup-token`, `muster auth claude`) and a repository to open pull requests on.
-3. **M3 — Many at once.** Memory-aware scheduler, queue reasons, the Resources view, run limits (`PRD-12`).
+   *Set aside (2026-10-11):* at the author's call, the autopilot is hidden: Muster is to assign agents to tickets the person chooses, not to work tickets alone. Its code, tests and the stages by hand (*Check*, *Draft PR*, *Agent review*), which stay in use, are kept.
+3. **M3 — Tickets.** A Tickets screen: each project's tickets with the agents on them; assign an agent (a worktree and Claude Code with the ticket), open it, add another. Read-only towards the tracker.
+   *Done when:* the author starts their day on the Tickets screen and assigns agents from it, for a week.
+   *Status (2026-10-11):* built for GitHub Issues through `gh`, in the UI (`i`, `⇥`) and the command line (`muster issue list`, `muster issue start --another`). Next: Jira Cloud and Linear.
+4. **M4 — More trackers.** Jira Cloud and Linear as ticket sources, read-only.
+5. **M5 — Many at once (with the autopilot; set aside).** Memory-aware scheduler, queue reasons, the Resources view, run limits (`PRD-12`).
    *Done when:* five runs on a machine that fits three run three, queue two with a visible reason, and finish all five.
-4. **M4 — More harnesses.** Codex and OpenCode, hands-on and in runs; a reviewer on a different harness from the builder.
-5. **M5 — Jira.** Jira Cloud as a ticket source; status written back to the Jira ticket.
-6. **M6 — Benchmark and release.** A fixed task set (real closed issues with known fixes), run single-agent vs Muster; publish solve rate, time to ready and cost per merged PR. Write-up, demo video, `v0.1.0`.
+6. **M6 — More harnesses.** Codex and OpenCode, hands-on.
+7. **M7 — Benchmark and release.** (The benchmark below measured the autopilot; it is to be rethought for assigned agents.) A fixed task set (real closed issues with known fixes), run single-agent vs Muster; publish solve rate, time to ready and cost per merged PR. Write-up, demo video, `v0.1.0`.
 
 ## 9. Not in v1
 

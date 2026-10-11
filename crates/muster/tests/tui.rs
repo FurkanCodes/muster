@@ -261,20 +261,14 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
 }
 
 #[test]
-fn a_run_is_handed_over_followed_and_sent_back_to_work_from_the_ui() {
-    // Docker is a stand-in that is not running, so the run stops for the
-    // person at once: enough to follow it and act on it.
-    let sandbox = Sandbox::new().with_env("MUSTER_RUN_IMAGE", "muster-e2e:absent");
+fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
+    let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
-    std::fs::write(
-        root.join("muster.toml"),
-        "[checks]\ncommands = [\"true\"]\n",
-    )
-    .unwrap();
     let gh = sandbox.fake_gh();
     let issue = serde_json::json!({
         "number": 42, "title": "Fix the login redirect",
-        "url": "https://github.com/o/app/issues/42", "labels": [], "author": {"login": "someone"}
+        "url": "https://github.com/o/app/issues/42", "labels": [{"name": "bug"}],
+        "author": {"login": "someone"}
     });
     std::fs::write(
         gh.join("issues.json"),
@@ -292,36 +286,30 @@ fn a_run_is_handed_over_followed_and_sent_back_to_work_from_the_ui() {
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
 
-    // ⇥ ⇥: the runs view, empty; n: the project's issues, for a run.
-    ui.keys(b"\t\t");
-    ui.wait_for("No runs yet");
-    ui.keys(b"n");
-    ui.wait_for("Fix the login redirect");
-    ui.wait_for("⏎ hand to the autopilot");
+    // i: the Tickets screen, with the project's tickets; the selected
+    // one's text comes as it is shown.
+    ui.keys(b"i");
+    ui.wait_for("app  1 open");
+    ui.keys(b"j");
+    ui.wait_for("users land on /404.");
+    ui.wait_for("No agent on it yet");
+
+    // ⏎: an agent on it, opened as it starts, with the ticket to work on.
     ui.keys(b"\r");
+    ui.wait_for("Ctrl-] back");
+    ui.keys(&[0x1d]);
+    ui.wait_for("⏎ open agent  a another agent");
 
-    // It stops for the person, with why and its timeline.
-    ui.wait_for("▲ #42 needs you");
-    ui.wait_for("Docker is not running");
-    ui.wait_for("there is room to run");
-    ui.wait_for("1 need you");
+    // a: another, in a worktree of its own.
+    ui.keys(b"a");
+    ui.wait_for("Ctrl-] back");
+    ui.keys(&[0x1d]);
+    ui.wait_for("muster/issue-42-fix-the-login-redirect-2");
 
-    // r: back to work with notes; it stops again at the same place.
-    ui.keys(b"r");
-    ui.wait_for("Back to work");
-    ui.keys(b"Docker is up now");
-    ui.keys(b"\r");
-    ui.wait_for("Sent the run back to work.");
-    ui.wait_for("you sent it back to work");
-
-    // x, y: cancelled, and listed as ended.
-    ui.keys(b"x");
-    ui.wait_for("Cancel the run on #42?");
-    ui.keys(b"y");
-    ui.wait_for("✕ #42 cancelled");
-    ui.wait_for("0 runs going");
-    let shown = sandbox.run(&["run", "show", "42"]);
-    let shown = String::from_utf8_lossy(&shown.stdout);
-    assert!(shown.contains("stage         cancelled"), "{shown}");
-    assert!(shown.contains("you sent it back to work"), "{shown}");
+    let listed = sandbox.run(&["issue", "list", "app"]);
+    let listed = String::from_utf8_lossy(&listed.stdout);
+    assert!(
+        listed.contains("#42") && listed.contains("2 agents"),
+        "{listed}"
+    );
 }

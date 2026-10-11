@@ -3,10 +3,10 @@
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use muster_core::WorkspaceId;
 use muster_core::protocol::{ClientFrame, Command};
-use muster_core::{ProjectId, WorkspaceId};
 
-use super::{Action, App, Confirmed, Dialog, HarnessChoice, IssueWork, Mode, Then, View};
+use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
 use crate::input::{Edit, LineInput};
 use crate::keys::{encode_key, encode_paste};
 use crate::model::Row;
@@ -90,35 +90,26 @@ impl App {
 
     fn browse_key(&mut self, key: &KeyEvent) -> Vec<Action> {
         let control = key.modifiers.contains(KeyModifiers::CONTROL);
-        if !control
-            && let Some(run) = self.focused_run()
-            && let Some(actions) = self.run_key(run, key)
-        {
-            return actions;
-        }
-        if self.view == View::Runs && matches!(key.code, KeyCode::Char('n' | 'i')) {
-            return self.issues_for_a_run();
-        }
         match key.code {
             KeyCode::Char('c') if control => return vec![Action::Quit],
             KeyCode::Char('q') => return vec![Action::Quit],
             KeyCode::Tab | KeyCode::BackTab => {
                 let back = key.code == KeyCode::BackTab;
                 self.view = match (self.view, back) {
-                    (View::Sessions, false) | (View::Runs, true) => {
-                        // The queue opens on its most urgent entry.
+                    (View::Sessions, false) | (View::Tickets, true) => {
+                        // The queue opens on its most urgent session.
                         self.needs_selected = self.needs_list.first().copied();
                         View::NeedsYou
                     }
-                    (View::NeedsYou, false) | (View::Sessions, true) => {
-                        // As the queue, the runs open on what most waits on
-                        // the person.
-                        self.runs_selected = self.runs_list.first().copied();
-                        View::Runs
-                    }
-                    (View::Runs, false) | (View::NeedsYou, true) => View::Sessions,
+                    (View::NeedsYou, false) | (View::Sessions, true) => View::Tickets,
+                    (View::Tickets, false) | (View::NeedsYou, true) => View::Sessions,
                 };
+                return self.settle();
             }
+            _ if self.view == View::Tickets => return self.tickets_key(key),
+            _ => {}
+        }
+        match key.code {
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::PageUp => self.page_preview(true),
@@ -131,12 +122,15 @@ impl App {
                 });
             }
             KeyCode::Char('w') => self.new_worktree(),
-            KeyCode::Char('i') => return self.open_issues(),
+            KeyCode::Char('i') => {
+                let project = self.selected.and_then(|row| self.model.project_of(row));
+                self.show_tickets(project);
+                return self.settle();
+            }
             KeyCode::Char('n') => self.new_session(),
             KeyCode::Char('s') => self.confirm_stop(),
             KeyCode::Char('r') => return self.restart(),
             KeyCode::Char('x') => return self.remove(),
-            KeyCode::Char('p') if self.view == View::Sessions => self.ask_hand_off(),
             KeyCode::Char('c') if self.view == View::Sessions => return self.check(),
             KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
@@ -165,15 +159,15 @@ impl App {
                 let list = &self.needs_list;
                 let at = self
                     .needs_selected
-                    .and_then(|need| list.iter().position(|n| *n == need));
+                    .and_then(|session| list.iter().position(|s| *s == session));
                 self.needs_selected = step(list.len(), at).map(|index| list[index]);
             }
-            View::Runs => {
-                let list = &self.runs_list;
+            View::Tickets => {
+                let rows = self.ticket_rows();
                 let at = self
-                    .runs_selected
-                    .and_then(|run| list.iter().position(|r| *r == run));
-                self.runs_selected = step(list.len(), at).map(|index| list[index]);
+                    .tickets_selected
+                    .and_then(|row| rows.iter().position(|r| *r == row));
+                self.tickets_selected = step(rows.len(), at).map(|index| rows[index]);
             }
         }
     }
@@ -182,10 +176,6 @@ impl App {
         if let Some(session) = self.focused_session() {
             self.mode = Mode::Terminal(session);
             self.note = None;
-            return;
-        }
-        if let Some(run) = self.focused_run() {
-            self.open_run(run);
             return;
         }
         match self.selected {
@@ -263,27 +253,6 @@ impl App {
         }
     }
 
-    fn open_issues(&mut self) -> Vec<Action> {
-        let project = self.selected.and_then(|row| self.model.project_of(row));
-        self.open_issues_of(project)
-    }
-
-    /// The issues dialog for `project`, loading its issues.
-    pub(super) fn open_issues_of(&mut self, project: Option<ProjectId>) -> Vec<Action> {
-        let Some(project) = project else {
-            self.complain("Add a project first: press a.");
-            return Vec::new();
-        };
-        self.mode = Mode::Dialog(Dialog::Issues {
-            project,
-            issues: None,
-            selected: 0,
-            work: IssueWork::Session(HarnessChoice::Claude),
-            error: None,
-        });
-        vec![self.command(Command::ListIssues { project }, Then::ShowIssues(project))]
-    }
-
     fn new_session(&mut self) {
         let workspace = match self.view {
             // On a project, its own checkout.
@@ -294,7 +263,7 @@ impl App {
             View::NeedsYou => self
                 .focused_session()
                 .and_then(|session| self.model.worktree_of(Row::Session(session))),
-            View::Runs => None,
+            View::Tickets => None,
         };
         match workspace {
             Some(workspace) => {
@@ -456,67 +425,6 @@ impl App {
                 }
                 edit => self.keep_editing(edit, Dialog::NewWorktree { project, branch }),
             },
-            Dialog::Issues {
-                project,
-                issues,
-                selected,
-                work,
-                error,
-            } => {
-                let count = issues.as_ref().map_or(0, Vec::len);
-                let mut selected = selected;
-                let mut work = work;
-                match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') => {
-                        self.mode = Mode::Browse;
-                        return Vec::new();
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => selected = selected.saturating_sub(1),
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        selected = (selected + 1).min(count.saturating_sub(1));
-                    }
-                    KeyCode::Tab | KeyCode::BackTab => work = work.next(),
-                    KeyCode::Enter => {
-                        if let Some(issue) = issues.as_ref().and_then(|list| list.get(selected)) {
-                            let number = issue.number;
-                            self.mode = Mode::Browse;
-                            return match work {
-                                IssueWork::Session(harness) => {
-                                    let command = Command::StartFromIssue {
-                                        project,
-                                        number,
-                                        harness: harness.id().to_owned(),
-                                        size: self.terminal_size,
-                                    };
-                                    self.say(format!("Starting work on #{number}…"));
-                                    vec![self.command(command, Then::OpenIssueSession)]
-                                }
-                                IssueWork::Autopilot => {
-                                    let command = Command::StartRun {
-                                        project,
-                                        number,
-                                        from: None,
-                                    };
-                                    self.say(format!("Handing #{number} to the autopilot…"));
-                                    vec![self.command(command, Then::ShowRun)]
-                                }
-                            };
-                        }
-                    }
-                    _ => {}
-                }
-                self.mode = Mode::Dialog(Dialog::Issues {
-                    project,
-                    issues,
-                    selected,
-                    work,
-                    error,
-                });
-                Vec::new()
-            }
-            dialog @ (Dialog::RunNotes { .. }
-            | Dialog::RunChanges { .. }
-            | Dialog::HandOff { .. }) => self.run_dialog_key(dialog, key),
             Dialog::NewSession {
                 workspace,
                 harness,
@@ -591,14 +499,6 @@ impl App {
             Confirmed::RemoveProject(project) => self.command(
                 Command::RemoveProject { project },
                 Then::Say("Muster no longer tracks the project; its repository is untouched."),
-            ),
-            Confirmed::CancelRun(run) => self.command(
-                Command::CancelRun { run },
-                Then::Say("Cancelled the run; its container goes."),
-            ),
-            Confirmed::HandBackRun(run) => self.command(
-                Command::HandBackRun { run },
-                Then::Say("Handed the run back; the checks run on your work."),
             ),
         }
     }

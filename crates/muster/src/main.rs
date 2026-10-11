@@ -45,7 +45,8 @@ enum Commands {
     /// Start and stop sessions.
     #[command(subcommand)]
     Session(SessionCommand),
-    /// Work on GitHub issues, through the GitHub CLI (`gh`).
+    /// Tickets: a project's GitHub issues, through the GitHub CLI (`gh`),
+    /// and agents on them.
     #[command(subcommand)]
     Issue(IssueCommand),
     /// Run the project's checks (`[checks]` in its `muster.toml`) in
@@ -60,13 +61,12 @@ enum Commands {
     /// Push WORKTREE's branch, as committed, with your own git, and open a
     /// draft pull request from it with your `gh` (or show the one open).
     Pr { worktree: String },
-    /// Hand issues to the autopilot and follow its runs: each builds in a
-    /// container, passes the project's checks, opens a draft pull request
-    /// and has it reviewed before it asks for you.
-    #[command(subcommand)]
+    /// The autopilot, set aside: runs that take an issue to a reviewed pull
+    /// request in a container. Hidden; its code is kept.
+    #[command(subcommand, hide = true)]
     Run(RunCommand),
-    /// Credentials runs need, kept in the macOS Keychain.
-    #[command(subcommand)]
+    /// Credentials the autopilot's runs need, kept in the macOS Keychain.
+    #[command(subcommand, hide = true)]
     Auth(AuthCommand),
 }
 
@@ -87,9 +87,10 @@ enum DaemonCommand {
 
 #[derive(Debug, Subcommand)]
 enum IssueCommand {
-    /// List PROJECT's open issues (its name, id or path).
+    /// List PROJECT's open issues (its name, id or path), with the agents
+    /// on each.
     List { project: String },
-    /// Start work on issue NUMBER of PROJECT: a worktree for it and a
+    /// Start an agent on issue NUMBER of PROJECT: a worktree for it and a
     /// session with the issue as its first prompt.
     Start {
         project: String,
@@ -97,6 +98,10 @@ enum IssueCommand {
         /// What to run: `claude` or `shell`.
         #[arg(long, default_value = "claude")]
         harness: String,
+        /// Another agent on the issue, in a worktree of its own, rather
+        /// than in the issue's worktree as it is.
+        #[arg(long)]
+        another: bool,
     },
 }
 
@@ -277,7 +282,8 @@ fn main() -> ExitCode {
                 project,
                 number,
                 harness,
-            })) => commands::start_issue(&socket, &project, number, harness).await,
+                another,
+            })) => commands::start_issue(&socket, &project, number, harness, another).await,
             None => return ui(paths).await,
         };
         match outcome {
