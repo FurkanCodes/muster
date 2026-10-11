@@ -229,3 +229,33 @@ fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
     }
     ui.wait_for("daemon 0.1.0");
 }
+
+#[test]
+fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let _stop = StopDaemon(sandbox.paths().socket());
+    let mut ui = Ui::start(&sandbox, &root);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+
+    // n on the project: a shell in its own checkout, full screen.
+    ui.keys(b"n");
+    ui.wait_for("New session");
+    ui.keys(b"\t");
+    ui.keys(b"\r");
+    ui.wait_for("Ctrl-] back");
+    ui.keys(b"seq 1 300\r");
+    ui.wait_for("300");
+
+    // Two turns of the wheel, as the terminal reports them (SGR).
+    ui.keys(b"\x1b[<64;20;10M");
+    ui.keys(b"\x1b[<64;20;10M");
+    ui.wait_for("6 lines back");
+    // Typing returns to the newest output.
+    ui.keys(b"echo back-$((6*7))\r");
+    ui.wait_for("back-42");
+    assert!(!ui.text().contains("lines back"), "{}", ui.text());
+}

@@ -24,21 +24,47 @@ pub(crate) fn terminal_area(area: Rect) -> Rect {
     }
 }
 
-pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
-    let area = frame.area();
-    if let Mode::Terminal(session) = app.mode {
-        draw_terminal(frame, app, session, area);
-        return;
-    }
+/// Where the list view's parts are drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BrowseAreas {
+    pub(crate) top: Rect,
+    pub(crate) list: Rect,
+    pub(crate) preview: Rect,
+    pub(crate) bottom: Rect,
+}
+
+/// The list view's layout in `area`, shared with the app so the mouse
+/// lands where things are drawn.
+pub(crate) fn browse_areas(app: &App, area: Rect) -> BrowseAreas {
     let [top, body, bottom] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
         Constraint::Length(bottom_height(app, area.width)),
     ])
     .areas(area);
-    draw_top_bar(frame, app, top);
     let [list, preview] =
         Layout::horizontal([Constraint::Percentage(38), Constraint::Percentage(62)]).areas(body);
+    BrowseAreas {
+        top,
+        list,
+        preview,
+        bottom,
+    }
+}
+
+pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
+    let area = frame.area();
+    if let Mode::Terminal(session) = app.mode {
+        draw_terminal(frame, app, session, area);
+        return;
+    }
+    let BrowseAreas {
+        top,
+        list,
+        preview,
+        bottom,
+    } = browse_areas(app, area);
+    draw_top_bar(frame, app, top);
     match app.view {
         View::Sessions => draw_sessions(frame, app, list),
         View::NeedsYou => draw_needs_you(frame, app, list),
@@ -111,7 +137,7 @@ fn message(app: &App) -> Option<(&str, bool)> {
 
 /// How many lines the bottom bar needs: hints take one, a long message up
 /// to three, so the reason in an error is not cut off.
-fn bottom_height(app: &App, width: u16) -> u16 {
+pub(crate) fn bottom_height(app: &App, width: u16) -> u16 {
     let Some((text, _)) = message(app) else {
         return 1;
     };
@@ -184,6 +210,7 @@ fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let width = usize::from(area.width.saturating_sub(2));
     let items: Vec<ListItem<'_>> = rows.iter().map(|row| row_item(app, *row, width)).collect();
     let mut state = ListState::default()
+        .with_offset(app.list_offset)
         .with_selected(app.selected.and_then(|s| rows.iter().position(|r| *r == s)));
     let list = List::new(items)
         .block(block)
@@ -280,10 +307,12 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
             ListItem::new(line)
         })
         .collect();
-    let mut state = ListState::default().with_selected(
-        app.needs_selected
-            .and_then(|s| app.needs_list.iter().position(|id| *id == s)),
-    );
+    let mut state = ListState::default()
+        .with_offset(app.needs_offset)
+        .with_selected(
+            app.needs_selected
+                .and_then(|s| app.needs_list.iter().position(|id| *id == s)),
+        );
     let list = List::new(items)
         .block(block)
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
@@ -292,7 +321,19 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
 
 fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
     if let Some(session) = app.focused_session().and_then(|id| app.model.session(id)) {
-        let title = format!(" {} · {} ", session.title, describe(session.status));
+        let back = app
+            .screens
+            .get(&session.id)
+            .map_or(0, crate::screen::Screen::scrolled_back);
+        let title = if back > 0 {
+            format!(
+                " {} · {} · ↑ {back} lines back ",
+                session.title,
+                describe(session.status)
+            )
+        } else {
+            format!(" {} · {} ", session.title, describe(session.status))
+        };
         let block = panel(title, false);
         match app.screens.get(&session.id) {
             Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
@@ -405,8 +446,18 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
             spans.push(Span::from(format!("  {mark} {}", workspace.kind.branch())).dim());
         }
     }
+    let back = app
+        .screens
+        .get(&session)
+        .map_or(0, crate::screen::Screen::scrolled_back);
     match &app.note {
         Some(note) => spans.push(Span::from(format!("   {}", note.text)).red()),
+        None if back > 0 => spans.push(
+            Span::from(format!(
+                "   ↑ {back} lines back · scroll down or type to return"
+            ))
+            .yellow(),
+        ),
         None => spans.push(Span::from("   Ctrl-] back").dim()),
     }
     frame.render_widget(Line::from(spans), top);
@@ -421,7 +472,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
         }
         Some(screen) => {
             frame.render_widget(PseudoTerminal::new(screen.screen()), body);
-            if !screen.screen().hide_cursor() {
+            if !screen.screen().hide_cursor() && screen.scrolled_back() == 0 {
                 let (row, col) = screen.screen().cursor_position();
                 frame.set_cursor_position(Position {
                     x: body.x + col.min(body.width.saturating_sub(1)),

@@ -10,6 +10,7 @@ mod app;
 mod input;
 mod keys;
 mod model;
+mod mouse;
 mod runtime;
 mod screen;
 mod view;
