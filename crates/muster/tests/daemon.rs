@@ -131,13 +131,12 @@ async fn subscribers_get_a_snapshot_then_live_changes() {
         panic!("expected ProjectAdded");
     };
 
-    let event = timeout(Duration::from_secs(5), watcher.next_event())
-        .await
-        .unwrap()
-        .unwrap();
-    let Some(ServerFrame::Delta(Delta::ProjectUpserted(project))) = event else {
-        panic!("expected ProjectUpserted, got {event:?}");
-    };
+    // Other deltas (resource reports, every couple of seconds) may come first.
+    let project = support::expect_event(&mut watcher, |frame| match frame {
+        ServerFrame::Delta(Delta::ProjectUpserted(project)) => Some(project.clone()),
+        _ => None,
+    })
+    .await;
     assert_eq!((project.id, project.root.as_path()), (id, root.as_path()));
 
     let mut late = daemon.connect().await;
