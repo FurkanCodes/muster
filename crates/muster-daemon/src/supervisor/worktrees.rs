@@ -109,7 +109,13 @@ impl Supervisor {
             .ok_or_else(|| {
                 ErrorBody::new(ErrorCode::NotFound, format!("no worktree {workspace}"))
             })?;
-        let WorkspaceKind::Worktree { path, .. } = &found.kind;
+        let WorkspaceKind::Worktree { path, .. } = &found.kind else {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "that is the project's own checkout, which Muster never removes; \
+                 remove the project instead",
+            ));
+        };
         let root = self
             .state
             .projects
@@ -168,7 +174,7 @@ impl Supervisor {
         Ok(Reply::Done)
     }
 
-    /// The live worktree of `project` on `branch`, if any.
+    /// The live worktree Muster made for `project` on `branch`, if any.
     pub(super) fn worktree_on(&self, project: ProjectId, branch: &str) -> Option<&Workspace> {
         self.state.workspaces.iter().find(|workspace| {
             workspace.project == project

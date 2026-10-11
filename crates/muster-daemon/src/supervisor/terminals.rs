@@ -56,9 +56,11 @@ impl Supervisor {
         }
     }
 
-    /// Lets go of the session's terminal: its clients are told it is gone,
-    /// and its output is freed once they have let go too.
+    /// Lets go of the session's terminal: its hooks are no longer accepted,
+    /// its clients are told it is gone, and its output is freed once they
+    /// have let go too.
     pub(super) fn release_terminal(&mut self, session: SessionId) {
+        self.forget_token(session);
         self.live.remove(&session);
         // Dropping the sender closes every client's link.
         self.terminals.remove(&session);

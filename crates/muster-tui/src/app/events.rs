@@ -180,7 +180,11 @@ impl App {
 
     fn new_session(&mut self) {
         let workspace = match self.view {
-            View::Sessions => self.selected.and_then(|row| self.model.worktree_of(row)),
+            // On a project, its own checkout.
+            View::Sessions => self.selected.and_then(|row| match row {
+                Row::Project(project) => self.model.checkout_of(project),
+                row => self.model.worktree_of(row),
+            }),
             View::NeedsYou => self
                 .needs_selected
                 .and_then(|session| self.model.worktree_of(Row::Session(session))),
@@ -234,8 +238,23 @@ impl App {
     }
 
     /// Removes what is selected: an ended session from the list at once,
-    /// or a worktree after asking.
+    /// a worktree or a project after asking.
     fn remove(&mut self) -> Vec<Action> {
+        if self.view == View::Sessions
+            && let Some(Row::Project(project)) = self.selected
+        {
+            let name = self
+                .model
+                .project(project)
+                .map_or("this project", |found| found.name.as_str());
+            self.mode = Mode::Dialog(Dialog::Confirm {
+                question: format!(
+                    "Stop tracking {name}? Muster forgets it; its repository and files are not touched."
+                ),
+                then: Confirmed::RemoveProject(project),
+            });
+            return Vec::new();
+        }
         if let Some(session) = self.focused_session() {
             let Some(stored) = self.model.session(session) else {
                 return Vec::new();
@@ -258,6 +277,15 @@ impl App {
         let Some(workspace) = self.selected.and_then(|row| self.model.worktree_of(row)) else {
             return self.complain("Select a worktree or an ended session to remove.");
         };
+        if self
+            .model
+            .workspace(workspace)
+            .is_some_and(|found| found.kind.is_checkout())
+        {
+            return self.complain(
+                "That is the project's own checkout, which Muster never removes; select the project to stop tracking it.",
+            );
+        }
         let branch = self
             .model
             .branch(workspace)
@@ -425,6 +453,10 @@ impl App {
             Confirmed::RemoveWorktree { workspace, force } => self.command(
                 Command::RemoveWorktree { workspace, force },
                 Then::RemovedWorktree(workspace),
+            ),
+            Confirmed::RemoveProject(project) => self.command(
+                Command::RemoveProject { project },
+                Then::Say("Muster no longer tracks the project; its repository is untouched."),
             ),
         }
     }

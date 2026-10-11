@@ -1,11 +1,13 @@
-//! Adding projects.
+//! Adding and removing projects, their own checkouts, and keeping every
+//! workspace's checked-out branch current.
 
 use std::path::{Path, PathBuf};
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
-use muster_core::{Project, ProjectId};
+use muster_core::{Project, ProjectId, Workspace, WorkspaceId, WorkspaceKind};
 
 use super::{Supervisor, store_closed, store_error};
+use crate::branches;
 
 impl Supervisor {
     pub(super) async fn add_project(
@@ -38,18 +40,179 @@ impl Supervisor {
             root,
             created_at: self.clock.now(),
         };
+        let checkout = self.checkout_of(&project).await;
 
-        let stored = project.clone();
+        let (stored, stored_checkout) = (project.clone(), checkout.clone());
         self.store
-            .call(move |store| store.insert_project(&stored))
+            .call(move |store| store.add_project(&stored, &stored_checkout))
             .await
             .map_err(store_closed)?
             .map_err(store_error)?;
 
         self.state.projects.push(project.clone());
+        self.state.workspaces.push(checkout.clone());
         let id = project.id;
         self.broadcast(Delta::ProjectUpserted(project));
+        self.broadcast(Delta::WorkspaceUpserted(checkout));
         Ok(Reply::ProjectAdded { id })
+    }
+
+    /// Stops tracking a project: Muster forgets it and what it stored about
+    /// it, and leaves the repository alone. Worktrees must go first, since
+    /// forgetting them would leave their directories behind unknown, and
+    /// sessions must have ended.
+    pub(super) async fn remove_project(&mut self, project: ProjectId) -> Result<Reply, ErrorBody> {
+        let name = self
+            .state
+            .projects
+            .iter()
+            .find(|candidate| candidate.id == project)
+            .map(|found| found.name.clone())
+            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no project {project}")))?;
+        let workspaces: Vec<WorkspaceId> = self
+            .state
+            .workspaces
+            .iter()
+            .filter(|workspace| workspace.project == project)
+            .map(|workspace| workspace.id)
+            .collect();
+        let worktrees = self
+            .state
+            .workspaces
+            .iter()
+            .filter(|workspace| workspace.project == project && !workspace.kind.is_checkout())
+            .count();
+        if worktrees > 0 {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("{name} has {worktrees} worktree(s); remove them first"),
+            ));
+        }
+        let running: usize = workspaces
+            .iter()
+            .map(|workspace| self.running_sessions_in(*workspace))
+            .sum();
+        if running > 0 {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("stop {name}'s {running} running session(s) first"),
+            ));
+        }
+
+        self.store
+            .call(move |store| store.delete_project(project))
+            .await
+            .map_err(store_closed)?
+            .map_err(store_error)?;
+
+        let sessions: Vec<_> = self
+            .state
+            .sessions
+            .iter()
+            .filter(|session| workspaces.contains(&session.workspace))
+            .map(|session| session.id)
+            .collect();
+        for session in sessions {
+            self.release_terminal(session);
+        }
+        self.state
+            .sessions
+            .retain(|session| !workspaces.contains(&session.workspace));
+        self.state
+            .workspaces
+            .retain(|workspace| workspace.project != project);
+        self.state.projects.retain(|kept| kept.id != project);
+        self.broadcast(Delta::ProjectRemoved { id: project });
+        Ok(Reply::Done)
+    }
+
+    /// Gives every project its own checkout as a workspace, for projects
+    /// added before checkouts were workspaces.
+    pub(super) async fn ensure_checkouts(&mut self) {
+        let missing: Vec<Project> = self
+            .state
+            .projects
+            .iter()
+            .filter(|project| {
+                !self.state.workspaces.iter().any(|workspace| {
+                    workspace.project == project.id && workspace.kind.is_checkout()
+                })
+            })
+            .cloned()
+            .collect();
+        for project in missing {
+            let checkout = self.checkout_of(&project).await;
+            let stored = checkout.clone();
+            match self
+                .store
+                .call(move |store| store.insert_workspace(&stored))
+                .await
+            {
+                Ok(Ok(())) => self.state.workspaces.push(checkout),
+                Ok(Err(error)) => {
+                    tracing::error!(project = %project.id, %error, "could not add its checkout");
+                }
+                Err(_) => tracing::error!("could not add a checkout: the store stopped"),
+            }
+        }
+    }
+
+    /// A workspace for the project's own checkout, on whatever it has
+    /// checked out now.
+    async fn checkout_of(&self, project: &Project) -> Workspace {
+        let root = project.root.clone();
+        let branch = tokio::task::spawn_blocking(move || branches::checked_out(&root))
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_else(|| "?".to_owned());
+        Workspace {
+            id: WorkspaceId::new(),
+            project: project.id,
+            kind: WorkspaceKind::Checkout {
+                path: project.root.clone(),
+                branch,
+            },
+            created_at: self.clock.now(),
+        }
+    }
+
+    /// Every workspace's place and what it was last seen to have checked out.
+    pub(super) fn workspace_heads(&self) -> Vec<(WorkspaceId, PathBuf, String)> {
+        self.state
+            .workspaces
+            .iter()
+            .map(|workspace| {
+                (
+                    workspace.id,
+                    workspace.kind.path().to_owned(),
+                    workspace.kind.branch().to_owned(),
+                )
+            })
+            .collect()
+    }
+
+    /// Stores and announces branches that changed under workspaces.
+    pub(super) async fn record_branches(&mut self, changes: Vec<(WorkspaceId, String)>) {
+        for (workspace, branch) in changes {
+            let Some(found) = self
+                .state
+                .workspaces
+                .iter_mut()
+                .find(|candidate| candidate.id == workspace)
+            else {
+                // Removed since it was looked at.
+                continue;
+            };
+            match &mut found.kind {
+                WorkspaceKind::Worktree { branch: known, .. }
+                | WorkspaceKind::Checkout { branch: known, .. } => known.clone_from(&branch),
+            }
+            let updated = found.clone();
+            self.write(move |store| store.update_branch(workspace, &branch))
+                .await;
+            self.broadcast(Delta::WorkspaceUpserted(updated));
+        }
     }
 }
 

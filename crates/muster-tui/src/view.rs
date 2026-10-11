@@ -1,7 +1,7 @@
 //! Drawing the app. Pure: reads the app, writes the frame.
 
 use muster_core::protocol::DetachReason;
-use muster_core::{Session, SessionStatus, WaitReason, WorkspaceKind};
+use muster_core::{Session, SessionStatus, WaitReason};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -138,11 +138,19 @@ fn hints(app: &App) -> String {
             hints.extend(["⏎ open", "s stop", "n session"]);
         }
         (_, _, Some(_)) => hints.extend(["⏎ open", "r restart", "x remove", "n session"]),
-        (View::Sessions, Some(Row::Worktree(_)), None) => {
-            hints.extend(["⏎ session", "x remove", "w worktree", "i issues"]);
+        (View::Sessions, Some(Row::Worktree(id)), None) => {
+            let checkout = app
+                .model
+                .workspace(id)
+                .is_some_and(|workspace| workspace.kind.is_checkout());
+            hints.push("⏎ session");
+            if !checkout {
+                hints.push("x remove");
+            }
+            hints.extend(["w worktree", "i issues"]);
         }
         (View::Sessions, Some(Row::Project(_)), None) => {
-            hints.extend(["⏎ worktree", "i issues"]);
+            hints.extend(["⏎ worktree", "n session", "i issues", "x remove"]);
         }
         _ => {}
     }
@@ -173,7 +181,8 @@ fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
         frame.render_widget(Paragraph::new(text).block(block).dim(), area);
         return;
     }
-    let items: Vec<ListItem<'_>> = rows.iter().map(|row| row_item(app, *row)).collect();
+    let width = usize::from(area.width.saturating_sub(2));
+    let items: Vec<ListItem<'_>> = rows.iter().map(|row| row_item(app, *row, width)).collect();
     let mut state = ListState::default()
         .with_selected(app.selected.and_then(|s| rows.iter().position(|r| *r == s)));
     let list = List::new(items)
@@ -182,7 +191,7 @@ fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn row_item<'a>(app: &'a App, row: Row) -> ListItem<'a> {
+fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
     match row {
         Row::Project(id) => {
             let name = app
@@ -193,18 +202,29 @@ fn row_item<'a>(app: &'a App, row: Row) -> ListItem<'a> {
         }
         Row::Worktree(id) => {
             let branch = app.model.branch(id).unwrap_or("?").to_owned();
+            let checkout = app
+                .model
+                .workspace(id)
+                .is_some_and(|workspace| workspace.kind.is_checkout());
             ListItem::new(Line::from(vec![
                 Span::raw("  "),
-                Span::from("⎇ ").dim(),
+                Span::from(if checkout { "⌂ " } else { "⎇ " }).dim(),
                 Span::raw(branch),
             ]))
         }
         Row::Session(id) => match app.model.session(id) {
             Some(session) => {
-                let mut line = session_line(session, "    ");
-                if let Some(usage) = app.model.usage(id) {
-                    line.spans
-                        .push(Span::from(format!("  {}", usage_text(usage))).dim());
+                let usage = app
+                    .model
+                    .usage(id)
+                    .map(|usage| format!("  {}", usage_text(usage)))
+                    .unwrap_or_default();
+                // The title gives way, so the status stays in view.
+                let rest = session_line(session, "    ", "").width() + usage.chars().count();
+                let title = shorten(&session.title, width.saturating_sub(rest).max(8));
+                let mut line = session_line(session, "    ", &title);
+                if !usage.is_empty() {
+                    line.spans.push(Span::from(usage).dim());
                 }
                 ListItem::new(line)
             }
@@ -213,13 +233,22 @@ fn row_item<'a>(app: &'a App, row: Row) -> ListItem<'a> {
     }
 }
 
-fn session_line<'a>(session: &'a Session, indent: &'a str) -> Line<'a> {
+/// `text`, cut to `max` characters with an ellipsis if it is longer.
+fn shorten(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_owned();
+    }
+    let kept: String = text.chars().take(max.saturating_sub(1)).collect();
+    format!("{kept}…")
+}
+
+fn session_line<'a>(session: &'a Session, indent: &'a str, title: &str) -> Line<'a> {
     let (symbol, style) = status_symbol(session.status);
     let mut spans = vec![
         Span::raw(indent),
         Span::styled(symbol, style),
         Span::raw(" "),
-        Span::raw(session.title.as_str()),
+        Span::raw(title.to_owned()),
         Span::raw("  "),
         Span::from(describe(session.status)).dim(),
     ];
@@ -246,7 +275,7 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .filter_map(|id| app.model.session(*id))
         .map(|session| {
             let place = app.model.branch(session.workspace).unwrap_or("?");
-            let mut line = session_line(session, "");
+            let mut line = session_line(session, "", &session.title);
             line.spans.push(Span::from(format!("  {place}")).dim());
             ListItem::new(line)
         })
@@ -290,31 +319,45 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
     {
         Some(Row::Worktree(id)) => match app.model.workspace(id) {
             Some(workspace) => {
-                let WorkspaceKind::Worktree { path, branch } = &workspace.kind;
                 let sessions = app.model.sessions_of(id).count();
-                Text::from(vec![
+                let mut lines = Vec::new();
+                if workspace.kind.is_checkout() {
+                    lines.push(Line::from("The project's own checkout, where you work too.").dim());
+                }
+                lines.extend([
                     Line::from(vec![
                         Span::from("Branch  ").dim(),
-                        Span::raw(branch.clone()),
+                        Span::raw(workspace.kind.branch().to_owned()),
                     ]),
                     Line::from(vec![
                         Span::from("Path    ").dim(),
-                        Span::raw(path.display().to_string()),
+                        Span::raw(workspace.kind.path().display().to_string()),
                     ]),
                     Line::from(vec![
                         Span::from("Sessions ").dim(),
                         Span::raw(sessions.to_string()),
                     ]),
                     Line::from(""),
-                    Line::from("Press n or ⏎ to start a session here, x to remove the worktree.")
-                        .dim(),
-                ])
+                ]);
+                lines.push(
+                    Line::from(if workspace.kind.is_checkout() {
+                        "Press n or ⏎ to start a session here."
+                    } else {
+                        "Press n or ⏎ to start a session here, x to remove the worktree."
+                    })
+                    .dim(),
+                );
+                Text::from(lines)
             }
             None => Text::default(),
         },
         Some(Row::Project(id)) => match app.model.project(id) {
             Some(project) => {
-                let worktrees = app.model.workspaces_of(id).count();
+                let worktrees = app
+                    .model
+                    .workspaces_of(id)
+                    .filter(|workspace| !workspace.kind.is_checkout())
+                    .count();
                 Text::from(vec![
                     Line::from(vec![
                         Span::from("Repository  ").dim(),
@@ -325,7 +368,8 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
                         Span::raw(worktrees.to_string()),
                     ]),
                     Line::from(""),
-                    Line::from("Press w or ⏎ to create a worktree for a new piece of work.").dim(),
+                    Line::from("Press w or ⏎ to create a worktree for a new piece of work,").dim(),
+                    Line::from("n to start a session in the project's own checkout.").dim(),
                 ])
             }
             None => Text::default(),
@@ -352,8 +396,13 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
         spans.push(Span::styled(symbol, style));
         spans.push(Span::raw(format!(" {}  ", stored.title)));
         spans.push(Span::from(describe(stored.status)).dim());
-        if let Some(branch) = app.model.branch(stored.workspace) {
-            spans.push(Span::from(format!("  ⎇ {branch}")).dim());
+        if let Some(workspace) = app.model.workspace(stored.workspace) {
+            let mark = if workspace.kind.is_checkout() {
+                "⌂"
+            } else {
+                "⎇"
+            };
+            spans.push(Span::from(format!("  {mark} {}", workspace.kind.branch())).dim());
         }
     }
     match &app.note {
@@ -546,7 +595,14 @@ fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
         ),
         Dialog::Issues { .. } => return,
     };
-    let height = lines.len() as u16 + 2 + u16::from(input.is_some()) + 2;
+    let inner_width = width.saturating_sub(2).max(1);
+    // Text wraps rather than being cut off; an input takes its line, a
+    // blank one and its hint.
+    let text_height: u16 = lines
+        .iter()
+        .map(|line| wrapped_height(line.width(), inner_width))
+        .sum();
+    let height = 2 + text_height + if input.is_some() { 3 } else { 0 };
     let rect = Rect {
         x: area.x + (area.width.saturating_sub(width)) / 2,
         y: area.y + (area.height.saturating_sub(height)) / 2,
@@ -560,21 +616,44 @@ fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
         .border_type(BorderType::Rounded);
     let inner = block.inner(rect);
     frame.render_widget(block, rect);
-    let mut text = lines;
+    let [text_area, input_area] =
+        Layout::vertical([Constraint::Length(text_height), Constraint::Min(0)]).areas(inner);
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), text_area);
     if let Some(input) = input {
-        text.push(Line::from(input.text().to_owned()).bold());
-        text.push(Line::from(""));
-        text.push(Line::from("⏎ confirm   esc cancel").dim());
+        let (shown, column) = input_window(input.text(), input.before_cursor(), inner_width);
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(shown).bold(),
+                Line::from(""),
+                Line::from("⏎ confirm   esc cancel").dim(),
+            ]),
+            input_area,
+        );
+        if input_area.height > 0 {
+            frame.set_cursor_position(Position {
+                x: input_area.x + column,
+                y: input_area.y,
+            });
+        }
     }
-    frame.render_widget(Paragraph::new(text), inner);
-    if let Some(input) = input {
-        let line = inner.y + inner.height.saturating_sub(3);
-        let column = u16::try_from(input.before_cursor().chars().count()).unwrap_or(u16::MAX);
-        frame.set_cursor_position(Position {
-            x: (inner.x + column).min(inner.right().saturating_sub(1)),
-            y: line,
-        });
-    }
+}
+
+/// How many lines text `width` columns wide takes when wrapped at `columns`.
+fn wrapped_height(width: usize, columns: u16) -> u16 {
+    let lines = width.div_ceil(usize::from(columns.max(1))).max(1);
+    u16::try_from(lines).unwrap_or(u16::MAX)
+}
+
+/// The part of an input's `text` that fits in `columns`, scrolled so the
+/// cursor (after `before_cursor`) stays in view, and the cursor's column
+/// within it.
+fn input_window(text: &str, before_cursor: &str, columns: u16) -> (String, u16) {
+    let columns = usize::from(columns.max(1));
+    let cursor = before_cursor.chars().count();
+    // The cursor sits after the last character shown, so keep a column for it.
+    let start = (cursor + 1).saturating_sub(columns);
+    let shown: String = text.chars().skip(start).take(columns).collect();
+    (shown, u16::try_from(cursor - start).unwrap_or(0))
 }
 
 fn panel<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> {

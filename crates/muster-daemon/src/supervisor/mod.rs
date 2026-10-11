@@ -21,7 +21,7 @@ use std::sync::Arc;
 use muster_core::protocol::{
     Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot, TermSize,
 };
-use muster_core::{SessionId, SessionStatus};
+use muster_core::{SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{Effect, SessionMachine, Signal};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
@@ -50,6 +50,11 @@ enum Request {
     IssueFetched(Box<issues::FetchedIssue>),
     /// The sampler asks which sessions run under which process.
     RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
+    /// The branch watcher asks where each workspace is and what it had
+    /// checked out.
+    Workspaces(oneshot::Sender<Vec<(WorkspaceId, PathBuf, String)>>),
+    /// The branch watcher's findings.
+    Branches(Vec<(WorkspaceId, String)>),
     /// The sampler's measurement.
     Resources(ResourceReport),
 }
@@ -62,6 +67,8 @@ impl std::fmt::Debug for Request {
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
+            Self::Workspaces(_) => f.write_str("Workspaces"),
+            Self::Branches(_) => f.write_str("Branches"),
             Self::Resources(_) => f.write_str("Resources"),
         }
     }
@@ -102,6 +109,20 @@ impl SupervisorHandle {
             .await
             .ok()?;
         answer.await.ok()
+    }
+
+    /// Every workspace's place and last known branch, or `None` once the
+    /// Supervisor has stopped.
+    pub(crate) async fn workspaces(&self) -> Option<Vec<(WorkspaceId, PathBuf, String)>> {
+        let (reply, answer) = oneshot::channel();
+        self.requests.send(Request::Workspaces(reply)).await.ok()?;
+        answer.await.ok()
+    }
+
+    /// Hands over branches that changed. `false` once the Supervisor has
+    /// stopped.
+    pub(crate) async fn record_branches(&self, changes: Vec<(WorkspaceId, String)>) -> bool {
+        self.requests.send(Request::Branches(changes)).await.is_ok()
     }
 
     /// Hands over a measurement. `false` once the Supervisor has stopped.
@@ -168,6 +189,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         history_every: settings.history_every.max(1),
         measurements: 0,
     };
+    supervisor.ensure_checkouts().await;
     supervisor.recover_sessions().await;
     tokio::spawn(supervisor.run(queue, pty_queue, settings.hook_queue, unwatched_queue));
     Ok(SupervisorHandle { requests })
@@ -276,6 +298,10 @@ impl Supervisor {
                 let _ = reply.send(running);
             }
             Request::Resources(report) => self.record_resources(report).await,
+            Request::Workspaces(reply) => {
+                let _ = reply.send(self.workspace_heads());
+            }
+            Request::Branches(changes) => self.record_branches(changes).await,
             Request::Terminal {
                 session,
                 watch,
@@ -292,6 +318,7 @@ impl Supervisor {
         match command {
             Command::Ping => Ok(Reply::Pong),
             Command::AddProject { root, name } => self.add_project(root, name).await,
+            Command::RemoveProject { project } => self.remove_project(project).await,
             Command::CreateWorktree { project, branch } => {
                 self.create_worktree(project, branch).await
             }
@@ -456,6 +483,7 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Ping => "ping",
         Command::AddProject { .. } => "add project",
+        Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",
         Command::RemoveWorktree { .. } => "remove worktree",
         Command::StartSession { .. } => "start session",

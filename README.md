@@ -6,7 +6,7 @@
 
 ## What it does
 
-- **Sessions in worktrees.** Add a repository, create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start Claude Code or a shell in it. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist.
+- **Sessions in worktrees, or in your checkout.** Add a repository, create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start Claude Code or a shell in it, or start one in the repository itself. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist. Branches shown follow what is checked out, also when you or an agent switch.
 - **Live status, no screen scraping.** Claude Code reports through hooks passed on its command line (`--settings`), never written into your repository or your Claude settings. Muster shows each session as running, finished, or *needs you* (a permission prompt or a question), with a dot for news you have not seen.
 - **Needs you.** One queue of everything waiting on you: questions first, then news, oldest first.
 - **A real terminal per session.** Open any session full screen and use it as you would in your own terminal: the daemon answers the program's terminal questions, and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys).
@@ -33,14 +33,14 @@ muster
 | Key | In the list |
 |---|---|
 | `↑` `↓` | move (the selected session streams into the preview) |
-| `⏎` | open a session full screen; on a worktree, start a session; on a project, create a worktree |
+| `⏎` | open a session full screen; on a worktree or checkout (`⌂`), start a session; on a project, create a worktree |
 | `a` | add a project |
 | `w` | new worktree for the selected project |
-| `n` | new session in the selected worktree: Claude Code with an optional first prompt, or a shell (`⇥` switches) |
+| `n` | new session in the selected worktree, or on a project in its own checkout: Claude Code with an optional first prompt, or a shell (`⇥` switches) |
 | `i` | the project's open GitHub issues; `⏎` starts work on one |
 | `s` | stop a session |
 | `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
-| `x` | remove the selected ended session, or the selected worktree (after asking) |
+| `x` | remove the selected ended session; or, after asking, the selected worktree, or a project (Muster forgets it; the repository is untouched) |
 | `⇥` | switch between all sessions and *Needs you* |
 | `q` | quit the UI (sessions keep running) |
 

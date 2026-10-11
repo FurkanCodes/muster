@@ -7,6 +7,8 @@ mod events;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod project_tests;
+#[cfg(test)]
 mod tests;
 
 use std::collections::HashMap;
@@ -108,6 +110,7 @@ impl HarnessChoice {
 pub(crate) enum Confirmed {
     StopSession(SessionId),
     RemoveWorktree { workspace: WorkspaceId, force: bool },
+    RemoveProject(ProjectId),
 }
 
 /// A line under the screen telling the person what just happened.

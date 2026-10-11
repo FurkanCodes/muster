@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame};
-use muster_core::{ProjectId, WorkspaceId, WorkspaceKind};
+use muster_core::{ProjectId, WorkspaceId};
 
 use support::{Sandbox, expect_event, git};
 
@@ -53,8 +53,11 @@ async fn worktree(connection: &mut Connection, id: WorkspaceId) -> (PathBuf, Str
         .into_iter()
         .find(|workspace| workspace.id == id)
         .expect("the worktree is in the snapshot");
-    let WorkspaceKind::Worktree { path, branch } = workspace.kind;
-    (path, branch)
+    assert!(!workspace.kind.is_checkout());
+    (
+        workspace.kind.path().to_owned(),
+        workspace.kind.branch().to_owned(),
+    )
 }
 
 fn code(result: Result<impl std::fmt::Debug, ClientError>) -> ErrorCode {
@@ -77,8 +80,13 @@ async fn a_worktree_is_created_on_a_new_branch_and_announced() {
     let id = create(&mut connection, project, Some("feature/login"))
         .await
         .unwrap();
+    // The project's own checkout is announced with it; then the worktree.
     let announced = expect_event(&mut watcher, |frame| match frame {
-        ServerFrame::Delta(Delta::WorkspaceUpserted(workspace)) => Some(workspace.clone()),
+        ServerFrame::Delta(Delta::WorkspaceUpserted(workspace))
+            if !workspace.kind.is_checkout() =>
+        {
+            Some(workspace.clone())
+        }
         _ => None,
     })
     .await;
@@ -218,7 +226,8 @@ async fn removing_keeps_the_branch_and_protects_uncommitted_work() {
     .await;
     assert!(!path.exists());
     assert_eq!(git(&root, &["branch", "--list", "work"]), "work");
-    assert!(connection.subscribe().await.unwrap().workspaces.is_empty());
+    let left = connection.subscribe().await.unwrap().workspaces;
+    assert!(left.iter().all(|workspace| workspace.kind.is_checkout()));
     assert_eq!(
         code(connection.command(remove(false)).await),
         ErrorCode::NotFound
