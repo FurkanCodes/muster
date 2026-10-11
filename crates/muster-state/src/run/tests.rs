@@ -135,6 +135,13 @@ fn work(effects: &[RunEffect]) -> &[RunEffect] {
     &effects[1..]
 }
 
+/// Stopping the work asked for before the run's current generation.
+fn stop(run: &Run) -> RunEffect {
+    RunEffect::StopWork {
+        before: run.machine.generation(),
+    }
+}
+
 fn builder(effects: &[RunEffect]) -> (u32, Option<Feedback>) {
     effects
         .iter()
@@ -393,7 +400,7 @@ fn an_infrastructure_failure_stops_the_work_and_a_retry_resumes_there() {
             "docker went away".to_owned()
         )
     );
-    assert_eq!(work(&effects), [RunEffect::StopWork]);
+    assert_eq!(work(&effects), [stop(&run)]);
     let effects = run.send(RunEvent::Retry { notes: None });
     assert!(matches!(work(&effects), [RunEffect::PublishBranch { .. }]));
 }
@@ -455,7 +462,7 @@ fn time_counts_only_while_the_run_works_on_its_own() {
     assert!(run.at(249).send(RunEvent::Tick).is_empty());
     let effects = run.at(250).send(RunEvent::Tick);
     assert_eq!(transition(&effects).2, "it reached its time limit (60 min)");
-    assert_eq!(work(&effects), [RunEffect::StopWork]);
+    assert_eq!(work(&effects), [stop(&run)]);
     assert_eq!(run.machine.next_deadline(), None);
 
     // A retry starts a fresh hour.
@@ -480,7 +487,7 @@ fn the_cost_limit_stops_work_and_spending_resumes_with_a_fresh_budget() {
     );
     let effects = run.send(RunEvent::CostReported { micros: 5_000_000 });
     assert_eq!(transition(&effects).2, "it reached its cost limit");
-    assert_eq!(work(&effects), [RunEffect::StopWork]);
+    assert_eq!(work(&effects), [stop(&run)]);
     // Reports while it waits change nothing.
     assert!(
         run.send(RunEvent::CostReported { micros: 9_000_000 })
@@ -505,10 +512,7 @@ fn cancelling_stops_the_work_and_removes_the_container() {
 
     let mut run = Run::at_stage(RunStage::Checking);
     let effects = run.send(RunEvent::Cancel);
-    assert_eq!(
-        work(&effects),
-        [RunEffect::StopWork, RunEffect::RemoveContainer]
-    );
+    assert_eq!(work(&effects), [stop(&run), RunEffect::RemoveContainer]);
 
     let mut run = Run::at_stage(RunStage::ReadyForYou);
     let effects = run.send(RunEvent::Cancel);
@@ -520,18 +524,20 @@ fn taking_over_stops_the_agent_and_handing_back_checks_the_persons_work() {
     let mut run = Run::at_stage(RunStage::Building);
     let effects = run.send(RunEvent::TakeOver);
     assert_eq!(transition(&effects).1, RunStage::TakenOver);
-    assert_eq!(
-        work(&effects),
-        [RunEffect::StopWork, RunEffect::StartInteractive]
-    );
+    assert_eq!(work(&effects), [stop(&run), RunEffect::StartInteractive]);
     assert_eq!(run.machine.next_deadline(), None, "the person's time");
 
     let effects = run.send(RunEvent::HandBack);
     assert_eq!(transition(&effects).2, "you handed it back");
-    assert!(matches!(
+    // The checks it asks for are not among the work it stops.
+    let generation = run.machine.generation();
+    assert_eq!(
         work(&effects),
-        [RunEffect::StopWork, RunEffect::RunChecks { .. }]
-    ));
+        [
+            RunEffect::StopWork { before: generation },
+            RunEffect::RunChecks { generation }
+        ]
+    );
 }
 
 #[test]
@@ -625,10 +631,7 @@ fn a_merge_while_checks_run_again_ends_the_run() {
     assert_eq!(run.stage(), RunStage::Checking);
     let effects = run.send(RunEvent::PrMerged);
     assert_eq!(transition(&effects).1, RunStage::Merged);
-    assert_eq!(
-        work(&effects),
-        [RunEffect::StopWork, RunEffect::RemoveContainer]
-    );
+    assert_eq!(work(&effects), [stop(&run), RunEffect::RemoveContainer]);
 }
 
 #[test]
@@ -645,7 +648,7 @@ fn a_limit_hit_during_review_stops_the_reviewer() {
     assert_eq!(run.stage(), RunStage::AgentReview);
     let effects = run.at(1).send(RunEvent::Tick);
     assert_eq!(transition(&effects).1, RunStage::NeedsYou);
-    assert_eq!(work(&effects), [RunEffect::StopWork]);
+    assert_eq!(work(&effects), [stop(&run)]);
 }
 
 #[test]

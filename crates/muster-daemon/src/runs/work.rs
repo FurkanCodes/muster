@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use muster_core::{ProjectId, PullRequest};
+use muster_core::{ProjectId, PullRequest, SessionId};
 use muster_state::run::{AgentOutcome, Feedback, RunEffect, RunEvent, Verdict};
 
 use super::credentials::{Credentials, MISSING, Secret};
@@ -119,15 +119,16 @@ impl RunWork for DockerWork {
                 }
                 RunEffect::MarkReady => inner.mark(&context, true).await,
                 RunEffect::MarkDraft => inner.mark(&context, false).await,
-                RunEffect::StopWork => {
+                RunEffect::StopWork { before } => {
                     if let Some(container) = &context.container
-                        && let Err(error) = job::stop_all(&inner.docker, container).await
+                        && let Err(error) = job::stop_before(&inner.docker, container, before).await
                     {
                         tracing::warn!(%run, %error, "could not stop a run's work");
                     }
                 }
                 RunEffect::StartInteractive => {
-                    tracing::warn!(%run, "taking over a run is not built yet");
+                    // The Supervisor starts the person's session itself.
+                    tracing::warn!(%run, "asked to start an agent for the person");
                 }
                 RunEffect::RemoveContainer => {
                     let container = context
@@ -139,6 +140,30 @@ impl RunWork for DockerWork {
                     }
                 }
                 RunEffect::Transition { .. } => {}
+            }
+        });
+    }
+
+    fn stop_session(&self, container: String, session: SessionId) {
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            let script = format!(
+                "{}{}",
+                crate::harness::IN_CONTAINER,
+                crate::harness::STOP_IN_CONTAINER
+            );
+            let session = session.to_string();
+            let stopped = inner
+                .docker
+                .exec(
+                    &container,
+                    &["sh", "-c", &script, "sh", &session],
+                    &[],
+                    QUICK,
+                )
+                .await;
+            if let Err(error) = stopped {
+                tracing::debug!(%session, %error, "could not stop a session in its container");
             }
         });
     }

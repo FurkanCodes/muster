@@ -8,6 +8,7 @@
 //! Terminal traffic does not pass through here: a connection asks once for a
 //! session's [`PtyHandle`] and then talks to its actor directly.
 
+mod containers;
 mod issues;
 mod projects;
 mod runs;
@@ -33,6 +34,7 @@ use crate::github::TicketSource;
 use crate::harness::{Harness, claude};
 use crate::hooks::HookDelivery;
 use crate::pty::{PtyEvent, PtyHandle};
+use crate::runs::credentials::Credentials;
 use crate::runs::{Report, Reports, RunWork};
 use crate::store::{StoreClosed, StoreError, StoreHandle};
 
@@ -54,6 +56,8 @@ enum Request {
     IssueFetched(Box<issues::FetchedIssue>),
     /// A ticket fetched off the loop, back to start a run on it.
     RunTicketFetched(Box<runs::FetchedRun>),
+    /// The runs' credential fetched off the loop, back to start an agent.
+    CredentialFetched(Box<containers::CredentialFetched>),
     /// Time to look at runs' pull requests.
     CheckPullRequests,
     /// The sampler asks which sessions run under which process.
@@ -82,6 +86,7 @@ impl std::fmt::Debug for Request {
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
+            Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
             Self::CheckPullRequests => f.write_str("CheckPullRequests"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
@@ -218,6 +223,10 @@ pub(crate) struct Settings {
     pub(crate) tickets: Arc<dyn TicketSource>,
     /// The person's settings, such as projects' overrides.
     pub(crate) config_dir: PathBuf,
+    /// The credential runs' agents use, also when the person drives one.
+    pub(crate) credentials: Arc<dyn Credentials>,
+    /// The `docker` command, for sessions in runs' containers.
+    pub(crate) docker: String,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -254,10 +263,14 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         tickets: settings.tickets,
         run_reports,
         config_dir: settings.config_dir,
+        credentials: settings.credentials,
+        docker: settings.docker,
     };
     supervisor.ensure_checkouts().await;
-    supervisor.recover_sessions().await;
+    // Runs first: a session in a run's container needs its run.
     supervisor.resume_runs(stored_runs).await;
+    supervisor.recover_sessions().await;
+    supervisor.drop_stale_container_workspaces().await;
     tokio::spawn(supervisor.run(
         queue,
         pty_queue,
@@ -316,6 +329,8 @@ struct Supervisor {
     /// Where runs' work reports.
     run_reports: Reports,
     config_dir: PathBuf,
+    credentials: Arc<dyn Credentials>,
+    docker: String,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }
@@ -357,6 +372,24 @@ impl Supervisor {
                 Command::StartRun { project, number } => {
                     self.fetch_run_ticket(project, number, reply);
                 }
+                // These need the runs' credential, fetched off the loop.
+                Command::TakeOverRun { run } => self.take_over_run(run, reply),
+                Command::RestartSession { session, size }
+                    if self.agent_restart(session).is_some() =>
+                {
+                    match self.agent_restart(session) {
+                        Some(Ok(())) => self.fetch_credential(containers::Purpose::Restart {
+                            session,
+                            size,
+                            reply,
+                        }),
+                        Some(Err(error)) => {
+                            tracing::info!(command = "restart session", %error, "command refused");
+                            let _ = reply.send(Err(error));
+                        }
+                        None => {}
+                    }
+                }
                 Command::StartFromIssue {
                     project,
                     number,
@@ -375,6 +408,7 @@ impl Supervisor {
             },
             Request::IssueFetched(fetched) => self.start_fetched_issue(*fetched).await,
             Request::RunTicketFetched(fetched) => self.start_fetched_run(*fetched).await,
+            Request::CredentialFetched(fetched) => self.on_credential(*fetched).await,
             Request::CheckPullRequests => self.check_pull_requests(),
             Request::RunningProcesses(reply) => {
                 let running = self
@@ -440,10 +474,6 @@ impl Supervisor {
                 self.command_run(run, RunEvent::Retry { notes }, "be sent back to work")
                     .await
             }
-            Command::TakeOverRun { run } => {
-                self.command_run(run, RunEvent::TakeOver, "be taken over")
-                    .await
-            }
             Command::HandBackRun { run } => {
                 self.command_run(run, RunEvent::HandBack, "be handed back")
                     .await
@@ -462,9 +492,10 @@ impl Supervisor {
             Command::RunHistory { run } => self.run_history(run).await,
             Command::ListIssues { .. }
             | Command::StartFromIssue { .. }
-            | Command::StartRun { .. } => Err(ErrorBody::new(
+            | Command::StartRun { .. }
+            | Command::TakeOverRun { .. } => Err(ErrorBody::new(
                 ErrorCode::Internal,
-                "GitHub commands are answered off the Supervisor's loop",
+                "this command is answered off the Supervisor's loop",
             )),
         }
     }

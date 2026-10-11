@@ -109,7 +109,7 @@ async fn real_docker_gives_a_run_its_clone_on_its_branch_and_keeps_its_work() {
     let mirror = mirror::refresh(&dir.path().join("data"), context.project, &checkout)
         .await
         .unwrap();
-    let _remove = RemoveOnDrop(container_name(context.run));
+    let _remove = RemoveOnDrop::for_run(&context);
     let identity = Identity {
         name: "Test Person".to_owned(),
         email: "test@example.com".to_owned(),
@@ -162,14 +162,32 @@ async fn real_docker_gives_a_run_its_clone_on_its_branch_and_keeps_its_work() {
     assert_eq!(run("git -C /work log -1 --format=%s").await, "Fix");
 }
 
-struct RemoveOnDrop(String);
+/// Removes a run's container and its project's cache volume when dropped.
+pub(crate) struct RemoveOnDrop {
+    container: String,
+    volume: String,
+}
+
+impl RemoveOnDrop {
+    pub(crate) fn for_run(context: &RunContext) -> Self {
+        Self {
+            container: container_name(context.run),
+            volume: format!("muster-cache-{}", context.project),
+        }
+    }
+}
 
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
-        let _ = std::process::Command::new("docker")
-            .args(["rm", "--force", &self.0])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
+        for args in [
+            ["rm", "--force", &self.container],
+            ["volume", "rm", &self.volume],
+        ] {
+            let _ = std::process::Command::new("docker")
+                .args(args)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
     }
 }

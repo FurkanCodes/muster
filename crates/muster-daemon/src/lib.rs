@@ -138,6 +138,8 @@ pub async fn run(
         .map_err(io_error("cannot start the store for", &paths.database()))?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
+    let credentials: Arc<dyn runs::credentials::Credentials> =
+        Arc::new(runs::credentials::PersonsCredentials);
     let supervisor = supervisor::spawn(supervisor::Settings {
         store,
         clock,
@@ -150,9 +152,11 @@ pub async fn run(
             start_grace: config.start_grace,
             ..muster_state::session::Timing::default()
         },
-        work: Arc::new(run_work(paths)),
+        work: Arc::new(run_work(paths, credentials.clone())),
         tickets: Arc::new(github::GitHubIssues),
         config_dir: paths.config_dir.clone(),
+        credentials,
+        docker: "docker".to_owned(),
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
@@ -185,11 +189,14 @@ pub async fn run(
 
 /// Runs' work with Docker, git and GitHub; `MUSTER_RUN_IMAGE` names an
 /// image to use instead of building one.
-fn run_work(paths: &Paths) -> runs::work::DockerWork {
+fn run_work(
+    paths: &Paths,
+    credentials: Arc<dyn runs::credentials::Credentials>,
+) -> runs::work::DockerWork {
     runs::work::DockerWork::new(
         paths.data_dir.clone(),
         Arc::new(githost::GitHub),
-        Arc::new(runs::credentials::PersonsCredentials),
+        credentials,
         Duration::from_millis(500),
         std::env::var("MUSTER_RUN_IMAGE")
             .ok()

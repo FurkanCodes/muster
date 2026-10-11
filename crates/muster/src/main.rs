@@ -114,6 +114,13 @@ enum RunCommand {
     /// change (`-` reads it from stdin); its pull request goes back to
     /// draft.
     Changes { run: String, comments: String },
+    /// Drive RUN's building agent yourself: Muster stops its own work, and
+    /// Claude Code carries on the agent's conversation in a session in the
+    /// run's container, which `muster` opens.
+    TakeOver { run: String },
+    /// Give RUN back once you have driven it: the sessions in its
+    /// container stop and your work goes to the checks.
+    HandBack { run: String },
     /// Stop RUN for good: its container goes, its record stays.
     Cancel { run: String },
 }
@@ -264,6 +271,8 @@ async fn run_command(socket: &std::path::Path, command: RunCommand) -> commands:
         RunCommand::Changes { run, comments } => {
             runs::request_changes(socket, &run, comments).await
         }
+        RunCommand::TakeOver { run } => runs::take_over(socket, &run).await,
+        RunCommand::HandBack { run } => runs::hand_back(socket, &run).await,
         RunCommand::Cancel { run } => runs::cancel(socket, &run).await,
     }
 }
@@ -341,6 +350,9 @@ async fn daemon(paths: Paths) -> ExitCode {
     }
     if let Some(ms) = millis("MUSTER_START_GRACE_MS") {
         config.start_grace = std::time::Duration::from_millis(ms.max(10));
+    }
+    if let Some(ms) = millis("MUSTER_PR_MS") {
+        config.pr_interval = std::time::Duration::from_millis(ms.max(10));
     }
     match muster_daemon::run(config, shutdown_signal()).await {
         Ok(()) => ExitCode::SUCCESS,

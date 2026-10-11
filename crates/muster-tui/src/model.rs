@@ -146,7 +146,7 @@ impl Model {
     }
 
     /// A project's workspaces: its own checkout first, then its worktrees
-    /// oldest first.
+    /// oldest first, then its runs' containers.
     pub(crate) fn workspaces_of(&self, project: ProjectId) -> impl Iterator<Item = &Workspace> {
         let mine = move |workspace: &&Workspace| workspace.project == project;
         let checkouts = self
@@ -158,8 +158,19 @@ impl Model {
             .workspaces
             .iter()
             .filter(mine)
-            .filter(|workspace| !workspace.kind.is_checkout());
-        checkouts.chain(worktrees)
+            .filter(|workspace| workspace.kind.is_worktree());
+        let containers = self
+            .workspaces
+            .iter()
+            .filter(mine)
+            .filter(|workspace| workspace.kind.run().is_some());
+        checkouts.chain(worktrees).chain(containers)
+    }
+
+    /// The run whose container `workspace` is, if it is one.
+    pub(crate) fn run_of(&self, workspace: WorkspaceId) -> Option<&Run> {
+        let run = self.workspace(workspace)?.kind.run()?;
+        self.runs.iter().find(|candidate| candidate.id == run)
     }
 
     /// A project's own checkout.

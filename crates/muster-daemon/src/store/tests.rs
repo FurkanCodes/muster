@@ -474,3 +474,44 @@ fn a_project_s_runs_go_with_it() {
     assert!(store.runs().unwrap().is_empty());
     assert!(store.run_history(stored_run.id).unwrap().is_empty());
 }
+
+#[test]
+fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
+    let (mut store, project, _, _) = populated();
+    let (stored_run, machine) = run(project.id);
+    store.insert_run(&stored_run, &machine).unwrap();
+    let container = Workspace {
+        id: WorkspaceId::new(),
+        project: project.id,
+        kind: WorkspaceKind::Container {
+            run: stored_run.id,
+            branch: stored_run.branch.clone(),
+        },
+        created_at: at(5),
+    };
+    store.insert_workspace(&container).unwrap();
+    let mut agent = session(container.id);
+    agent.created_at = at(6);
+    store.insert_session(&agent).unwrap();
+
+    let snapshot = store.snapshot().unwrap();
+    assert!(snapshot.workspaces.contains(&container));
+    assert!(snapshot.sessions.contains(&agent));
+    assert_eq!(container.kind.host_path(), None);
+
+    // A container of a run that is not stored is refused.
+    let orphan = Workspace {
+        id: WorkspaceId::new(),
+        kind: WorkspaceKind::Container {
+            run: muster_core::RunId::new(),
+            branch: "x".to_owned(),
+        },
+        ..container.clone()
+    };
+    assert!(store.insert_workspace(&orphan).is_err());
+
+    store.remove_workspace(container.id, at(9)).unwrap();
+    let snapshot = store.snapshot().unwrap();
+    assert!(!snapshot.workspaces.contains(&container));
+    assert!(!snapshot.sessions.contains(&agent));
+}

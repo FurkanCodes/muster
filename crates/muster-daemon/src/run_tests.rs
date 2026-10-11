@@ -6,13 +6,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use muster_core::protocol::{Command, Delta, ErrorCode, Reply};
-use muster_core::{Issue, ProjectId, PullRequest, RunId, RunStage, Timestamp};
+use muster_core::{Issue, ProjectId, PullRequest, RunId, RunStage, SessionId, Timestamp};
 use muster_state::run::{AgentOutcome, RunEffect, RunEvent, Verdict};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::timeout;
 
 use crate::clock::Clock;
 use crate::github::{BoxFuture, GitHubError, IssueDetail, TicketSource};
+use crate::runs::credentials::{FixedCredentials, Secret};
 use crate::runs::{Report, Reports, RunContext, RunWork};
 use crate::store::{Store, StoreHandle};
 use crate::supervisor::{self, SupervisorHandle};
@@ -68,6 +69,8 @@ struct FakeWork {
     asked: Mutex<Vec<(RunContext, RunEffect)>>,
     pr_checks: Mutex<Vec<RunId>>,
     reports: Mutex<Option<Reports>>,
+    /// Sessions asked to stop in their container.
+    stopped: Mutex<Vec<(String, SessionId)>>,
 }
 
 impl RunWork for FakeWork {
@@ -79,6 +82,10 @@ impl RunWork for FakeWork {
     fn check_pull_request(&self, context: RunContext, reports: Reports) {
         self.pr_checks.lock().unwrap().push(context.run);
         *self.reports.lock().unwrap() = Some(reports);
+    }
+
+    fn stop_session(&self, container: String, session: SessionId) {
+        self.stopped.lock().unwrap().push((container, session));
     }
 }
 
@@ -128,8 +135,35 @@ struct Setup {
 
 const CHECKS: &str = "[checks]\ncommands = [\"make test\"]\n";
 
+/// The runs' credential in these tests.
+const TOKEN: &str = "sk-ant-oat01-test-only";
+
+/// Stands in for `docker exec` with a terminal: records its arguments and
+/// the credential it was given in `launches/`, then acts as a shell.
+const FAKE_DOCKER: &str = r#"#!/bin/sh
+dir="$(dirname "$0")/launches"
+mkdir -p "$dir"
+for arg in "$@"; do printf '%s\0' "$arg"; done > "$dir/$$.part"
+printf '%s' "${CLAUDE_CODE_OAUTH_TOKEN:-}" > "$dir/$$.secret"
+mv "$dir/$$.part" "$dir/$$.args"
+exec /bin/sh
+"#;
+
 async fn spawn(database: &Path, work: Arc<FakeWork>, config_dir: &Path) -> SupervisorHandle {
+    spawn_with(database, work, config_dir, Some(TOKEN)).await
+}
+
+async fn spawn_with(
+    database: &Path,
+    work: Arc<FakeWork>,
+    config_dir: &Path,
+    token: Option<&str>,
+) -> SupervisorHandle {
+    let docker = config_dir.join("docker");
+    std::fs::write(&docker, FAKE_DOCKER).unwrap();
+    std::fs::set_permissions(&docker, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let store = StoreHandle::spawn(Store::open(database).unwrap()).unwrap();
+    let secret = token.map(|token| Secret::new("CLAUDE_CODE_OAUTH_TOKEN", token.to_owned()));
     supervisor::spawn(supervisor::Settings {
         store,
         clock: Arc::new(FixedClock),
@@ -142,12 +176,18 @@ async fn spawn(database: &Path, work: Arc<FakeWork>, config_dir: &Path) -> Super
         work,
         tickets: Arc::new(OneIssue),
         config_dir: config_dir.to_owned(),
+        credentials: Arc::new(FixedCredentials(secret)),
+        docker: docker.display().to_string(),
     })
     .await
     .unwrap()
 }
 
 async fn setup(muster_toml: &str) -> Setup {
+    setup_with(muster_toml, Some(TOKEN)).await
+}
+
+async fn setup_with(muster_toml: &str, token: Option<&str>) -> Setup {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("app");
     std::fs::create_dir_all(root.join(".git")).unwrap();
@@ -155,7 +195,7 @@ async fn setup(muster_toml: &str) -> Setup {
     let root = root.canonicalize().unwrap();
     let database = dir.path().join("muster.db");
     let work = Arc::new(FakeWork::default());
-    let supervisor = spawn(&database, work.clone(), dir.path()).await;
+    let supervisor = spawn_with(&database, work.clone(), dir.path(), token).await;
     let Reply::ProjectAdded { id: project } = supervisor
         .command(Command::AddProject {
             root: root.clone(),
@@ -463,7 +503,10 @@ async fn a_run_over_its_time_stops_its_work_for_the_person() {
     setup.work.asked(1).await;
     wait_for_stage(&mut deltas, run, RunStage::NeedsYou).await;
     let (_, effect) = setup.work.asked(2).await;
-    assert_eq!(effect, RunEffect::StopWork);
+    assert!(
+        matches!(effect, RunEffect::StopWork { before: 2 }),
+        "{effect:?}"
+    );
     let (snapshot, _) = setup.supervisor.subscribe().await.unwrap();
     assert_eq!(
         snapshot.runs[0].reason.as_deref(),
@@ -622,3 +665,6 @@ async fn the_person_sends_a_ready_run_back_with_what_to_change() {
         "you asked for changes; attempt 2"
     );
 }
+
+#[path = "take_over_tests.rs"]
+mod take_over_tests;

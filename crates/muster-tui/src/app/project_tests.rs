@@ -177,3 +177,85 @@ fn control_characters_in_a_title_are_never_drawn() {
     );
     assert!(screen.contains("evil]0;owned[2J title"), "{screen}");
 }
+
+/// The world with a run on #42 taken over, and its container.
+fn with_container() -> (World, Workspace) {
+    let mut world = world();
+    let run = muster_core::Run {
+        id: muster_core::RunId::new(),
+        project: world.project.id,
+        ticket: muster_core::Ticket {
+            number: 42,
+            title: "Fix the login redirect".to_owned(),
+            url: "https://github.com/o/app/issues/42".to_owned(),
+            body: String::new(),
+            labels: Vec::new(),
+            author: None,
+        },
+        branch: "muster/issue-42-fix".to_owned(),
+        stage: muster_core::RunStage::TakenOver,
+        attempt: 1,
+        max_attempts: 3,
+        reason: None,
+        pr: None,
+        cost_micros: None,
+        created_at: Timestamp::from_millis(60),
+        ended_at: None,
+    };
+    let container = Workspace {
+        id: WorkspaceId::new(),
+        project: world.project.id,
+        kind: WorkspaceKind::Container {
+            run: run.id,
+            branch: run.branch.clone(),
+        },
+        created_at: Timestamp::from_millis(1),
+    };
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::RunUpserted(run)));
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(
+            container.clone(),
+        )));
+    (world, container)
+}
+
+#[test]
+fn a_run_s_container_follows_the_worktrees_with_its_issue_and_stage() {
+    let (mut world, container) = with_container();
+    let rows = world.app.model.rows();
+    let at = |row| rows.iter().position(|candidate| *candidate == row).unwrap();
+    assert!(at(Row::Worktree(container.id)) > at(Row::Worktree(world.worktree.id)));
+    world.app.selected = Some(Row::Worktree(container.id));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("⧉ #42 taken over  muster/issue"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("The container of the run on #42"),
+        "{screen}"
+    );
+    assert!(!screen.contains("x remove"), "{screen}");
+}
+
+#[test]
+fn a_session_in_a_run_s_container_starts_as_a_shell_and_it_is_not_removed() {
+    let (mut world, container) = with_container();
+    world.app.selected = Some(Row::Worktree(container.id));
+    press(&mut world.app, KeyCode::Char('n'));
+    let Mode::Dialog(Dialog::NewSession { harness, .. }) = &world.app.mode else {
+        panic!("expected the new-session dialog, got {:?}", world.app.mode);
+    };
+    assert_eq!(*harness, super::HarnessChoice::Shell);
+    press(&mut world.app, KeyCode::Esc);
+    press(&mut world.app, KeyCode::Char('x'));
+    assert_eq!(world.app.mode, Mode::Browse);
+    let note = world.app.note.clone().expect("a note");
+    assert!(
+        note.error && note.text.contains("cancel the run"),
+        "{note:?}"
+    );
+}

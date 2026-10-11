@@ -152,6 +152,36 @@ pub(crate) async fn request_changes(socket: &Path, wanted: &str, comments: Strin
     Ok(())
 }
 
+pub(crate) async fn take_over(socket: &Path, wanted: &str) -> Outcome {
+    let (run, mut connection) = command_target(socket, wanted).await?;
+    let reply = connection
+        .command(Command::TakeOverRun { run: run.id })
+        .await?;
+    let Reply::RunTakenOver { session, .. } = reply else {
+        return Err(unexpected(&reply));
+    };
+    let number = run.ticket.number;
+    println!(
+        "The run on #{number} is yours: Claude Code carries on its agent's conversation in \
+         session {session}, in the run's container.\nOpen it in `muster`; \
+         `muster run hand-back {number}` gives the run back, and your work goes to the checks."
+    );
+    Ok(())
+}
+
+pub(crate) async fn hand_back(socket: &Path, wanted: &str) -> Outcome {
+    let (run, mut connection) = command_target(socket, wanted).await?;
+    connection
+        .command(Command::HandBackRun { run: run.id })
+        .await?;
+    println!(
+        "Handed the run on #{} back: the sessions in its container stop, and the checks run on \
+         your work.",
+        run.ticket.number
+    );
+    Ok(())
+}
+
 /// `-` reads the text from stdin, for long notes and comments.
 fn read_text(text: String) -> Result<String, std::io::Error> {
     if text != "-" {
@@ -294,7 +324,12 @@ fn next_steps(run: &Run) -> Option<String> {
     match run.stage {
         RunStage::NeedsYou => Some(format!(
             "`muster run retry {number} [--notes …]` sends it back to work with a fresh budget;\n\
+             `muster run take-over {number}` lets you drive its agent; \
              `muster run cancel {number}` ends it."
+        )),
+        RunStage::TakenOver => Some(format!(
+            "Its agent is yours, in a session in the run's container (open it in `muster`);\n\
+             `muster run hand-back {number}` gives it back, and your work goes to the checks."
         )),
         RunStage::ReadyForYou => Some(format!(
             "Review {} on GitHub. Merging it ends the run;\n\

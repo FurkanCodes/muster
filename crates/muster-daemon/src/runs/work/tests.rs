@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::git::tests::{git, repository};
 use crate::github::{BoxFuture, GitHubError};
-use crate::runs::provision::tests::test_image;
+use crate::runs::provision::tests::{RemoveOnDrop, test_image};
 
 /// Stands in for Claude Code in the container: a builder that commits
 /// (and fixes its work when told the checks failed), or, with
@@ -152,18 +152,6 @@ impl Credentials for FakeCredentials {
     }
 }
 
-struct RemoveOnDrop(String);
-
-impl Drop for RemoveOnDrop {
-    fn drop(&mut self) {
-        let _ = std::process::Command::new("docker")
-            .args(["rm", "--force", &self.0])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    }
-}
-
 fn context(root: PathBuf) -> RunContext {
     RunContext {
         run: RunId::new(),
@@ -220,7 +208,7 @@ async fn real_docker_takes_a_run_from_pickup_to_ready_through_a_failed_check() {
     );
     let mut context = context(checkout);
     context.config.dockerfile = None;
-    let _remove = RemoveOnDrop(provision::container_name(context.run));
+    let _remove = RemoveOnDrop::for_run(&context);
     let host = Arc::new(FakeHost::default());
     let work = DockerWork::new(
         dir.path().join("data"),

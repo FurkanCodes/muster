@@ -2,7 +2,7 @@
 
 **A terminal cockpit for coding agents.** Run Claude Code and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
-> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), runs from the command line; taking a run over by hand and runs in the UI come next. See [PRODUCT.md](PRODUCT.md). No release yet.
+> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), runs from the command line, including taking a run over by hand; runs in the UI come next. See [PRODUCT.md](PRODUCT.md). No release yet.
 
 ## What it does
 
@@ -103,7 +103,7 @@ muster run start app 42
 muster run list
 ```
 
-`muster run show 42` shows where a run is, why, and its timeline; `muster run retry 42 --notes "…"` sends a run that needs you back to work; `muster run changes 42 "…"` sends a ready one back to its agent with what to change; `muster run cancel 42` ends one. `muster project config app` shows the settings a project's runs use (memory, image, limits, agents) and where they come from.
+`muster run show 42` shows where a run is, why, and its timeline; `muster run retry 42 --notes "…"` sends a run that needs you back to work; `muster run changes 42 "…"` sends a ready one back to its agent with what to change; `muster run cancel 42` ends one. `muster run take-over 42` lets you drive a run's agent yourself: Claude Code carries on its conversation in a session in the run's container, which appears in the UI under the project (`⧉`); `muster run hand-back 42` gives the run back, and your work goes to the checks. `muster project config app` shows the settings a project's runs use (memory, image, limits, agents) and where they come from.
 
 ## How it is built
 

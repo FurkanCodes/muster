@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -107,6 +107,12 @@ CREATE TABLE run_transitions (
 ) STRICT;
 
 CREATE INDEX run_transitions_by_run ON run_transitions (run_id, seq);
+";
+
+/// Runs' containers as workspaces: the run each belongs to. Their path is
+/// empty; their files are in the container only.
+const V5: &str = r"
+ALTER TABLE workspaces ADD COLUMN run_id TEXT REFERENCES runs (id) ON DELETE CASCADE;
 ";
 
 /// The schema version this build creates.

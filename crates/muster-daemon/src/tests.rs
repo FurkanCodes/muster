@@ -38,6 +38,8 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
         tickets: std::sync::Arc::new(crate::github::GitHubIssues),
         config_dir: std::env::temp_dir(),
+        credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
+        docker: "docker".to_owned(),
     })
     .await
     .unwrap()
@@ -224,6 +226,8 @@ async fn every_nth_measurement_is_kept_in_history() {
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
         tickets: std::sync::Arc::new(crate::github::GitHubIssues),
         config_dir: std::env::temp_dir(),
+        credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
+        docker: "docker".to_owned(),
     })
     .await
     .unwrap();

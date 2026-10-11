@@ -110,12 +110,22 @@ impl Supervisor {
             .ok_or_else(|| {
                 ErrorBody::new(ErrorCode::NotFound, format!("no worktree {workspace}"))
             })?;
-        let WorkspaceKind::Worktree { path, .. } = &found.kind else {
-            return Err(ErrorBody::new(
-                ErrorCode::BadRequest,
-                "that is the project's own checkout, which Muster never removes; \
-                 remove the project instead",
-            ));
+        let path = match &found.kind {
+            WorkspaceKind::Worktree { path, .. } => path,
+            WorkspaceKind::Checkout { .. } => {
+                return Err(ErrorBody::new(
+                    ErrorCode::BadRequest,
+                    "that is the project's own checkout, which Muster never removes; \
+                     remove the project instead",
+                ));
+            }
+            WorkspaceKind::Container { .. } => {
+                return Err(ErrorBody::new(
+                    ErrorCode::BadRequest,
+                    "that is a run's container, which goes when the run ends; \
+                     cancel the run instead",
+                ));
+            }
         };
         let root = self
             .state
@@ -173,10 +183,9 @@ impl Supervisor {
                     .state
                     .workspaces
                     .iter()
-                    .filter(|workspace| {
-                        workspace.project == project.id && !workspace.kind.is_checkout()
-                    })
-                    .map(|workspace| workspace.kind.path().to_owned())
+                    .filter(|workspace| workspace.project == project.id)
+                    .filter(|workspace| workspace.kind.is_worktree())
+                    .filter_map(|workspace| workspace.kind.host_path().map(Path::to_owned))
                     .collect(),
             })
             .collect()
@@ -214,7 +223,7 @@ impl Supervisor {
                     .state
                     .workspaces
                     .iter()
-                    .any(|workspace| workspace.kind.path() == path);
+                    .any(|workspace| workspace.kind.host_path() == Some(path.as_path()));
             if taken || !tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_dir()) {
                 continue;
             }
@@ -225,9 +234,9 @@ impl Supervisor {
             .state
             .workspaces
             .iter()
-            .filter(|workspace| workspace.project == project && !workspace.kind.is_checkout())
-            .filter(|workspace| !present.contains(&workspace.kind.path().to_path_buf()))
-            .map(|workspace| (workspace.id, workspace.kind.path().to_owned()))
+            .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
+            .filter_map(|workspace| Some((workspace.id, workspace.kind.host_path()?.to_owned())))
+            .filter(|(_, path)| !present.contains(path))
             .collect();
         for (workspace, path) in gone {
             let exists = tokio::fs::try_exists(&path).await.unwrap_or(true);
@@ -294,7 +303,7 @@ impl Supervisor {
 
     /// Takes a removed workspace and its sessions out of the state, and
     /// tells clients.
-    fn drop_workspace(&mut self, workspace: WorkspaceId) {
+    pub(super) fn drop_workspace(&mut self, workspace: WorkspaceId) {
         self.state.workspaces.retain(|kept| kept.id != workspace);
         let released: Vec<_> = self
             .state

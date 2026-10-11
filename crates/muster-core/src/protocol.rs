@@ -13,7 +13,8 @@
 //! sessions; version 3 projects' own checkouts as workspaces, removing
 //! projects, mouse modes, and watching that follows the client's focus;
 //! version 4 the wait on a harness asking before it starts; version 5 runs;
-//! version 6 the person's request for changes on a run.
+//! version 6 the person's request for changes on a run; version 7 runs'
+//! containers as workspaces, and taking a run over.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -27,9 +28,9 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 6;
+pub const MIN_PROTOCOL_VERSION: u32 = 7;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -315,9 +316,12 @@ pub enum Command {
         #[serde(default)]
         notes: Option<String>,
     },
-    /// Drive a run's building agent by hand.
+    /// Drive a run's building agent by hand: Muster stops its own work and
+    /// starts the agent interactively in the run's container, resuming its
+    /// conversation. Answered with [`Reply::RunTakenOver`].
     TakeOverRun { run: RunId },
-    /// Give a run back after driving it: its work goes to the checks.
+    /// Give a run back after driving it: the sessions in its container
+    /// stop and its work goes to the checks.
     HandBackRun { run: RunId },
     /// Send a run that is ready for the person back to its building agent
     /// with what to change; its pull request goes back to draft.
@@ -361,6 +365,11 @@ pub enum Reply {
     },
     RunHistory {
         transitions: Vec<crate::RunTransition>,
+    },
+    /// The run is the person's; `session` is its agent, in its container.
+    RunTakenOver {
+        workspace: WorkspaceId,
+        session: SessionId,
     },
     /// The command was carried out and has nothing to report.
     Done,

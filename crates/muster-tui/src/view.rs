@@ -1,7 +1,7 @@
 //! Drawing the app. Pure: reads the app, writes the frame.
 
 use muster_core::protocol::DetachReason;
-use muster_core::{Session, SessionStatus, WaitReason};
+use muster_core::{Session, SessionStatus, WaitReason, WorkspaceKind};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -165,12 +165,12 @@ fn hints(app: &App) -> String {
         }
         (_, _, Some(_)) => hints.extend(["⏎ open", "r restart", "x remove", "n session"]),
         (View::Sessions, Some(Row::Worktree(id)), None) => {
-            let checkout = app
+            let worktree = app
                 .model
                 .workspace(id)
-                .is_some_and(|workspace| workspace.kind.is_checkout());
+                .is_some_and(|workspace| workspace.kind.is_worktree());
             hints.push("⏎ session");
-            if !checkout {
+            if worktree {
                 hints.push("x remove");
             }
             hints.extend(["w worktree", "i issues"]);
@@ -229,15 +229,25 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
         }
         Row::Worktree(id) => {
             let branch = app.model.branch(id).unwrap_or("?").to_owned();
-            let checkout = app
-                .model
-                .workspace(id)
-                .is_some_and(|workspace| workspace.kind.is_checkout());
-            ListItem::new(Line::from(vec![
+            let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
+            let mut spans = vec![
                 Span::raw("  "),
-                Span::from(if checkout { "⌂ " } else { "⎇ " }).dim(),
-                Span::raw(branch),
-            ]))
+                Span::from(match kind {
+                    Some(WorkspaceKind::Checkout { .. }) => "⌂ ",
+                    Some(WorkspaceKind::Container { .. }) => "⧉ ",
+                    _ => "⎇ ",
+                })
+                .dim(),
+            ];
+            if let Some(run) = app.model.run_of(id) {
+                // The stage first: the branch is long, and says less.
+                spans.push(Span::raw(format!("#{} ", run.ticket.number)));
+                spans.push(Span::from(run.stage.label()).dim());
+                spans.push(Span::raw(format!("  {branch}")));
+            } else {
+                spans.push(Span::raw(branch));
+            }
+            ListItem::new(Line::from(spans))
         }
         Row::Session(id) => match app.model.session(id) {
             Some(session) => {
@@ -365,6 +375,16 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
                 if workspace.kind.is_checkout() {
                     lines.push(Line::from("The project's own checkout, where you work too.").dim());
                 }
+                if let Some(run) = app.model.run_of(id) {
+                    lines.push(
+                        Line::from(format!(
+                            "The container of the run on #{} ({}), with a clone of its own.",
+                            run.ticket.number,
+                            run.stage.label()
+                        ))
+                        .dim(),
+                    );
+                }
                 lines.extend([
                     Line::from(vec![
                         Span::from("Branch  ").dim(),
@@ -372,7 +392,10 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::from("Path    ").dim(),
-                        Span::raw(workspace.kind.path().display().to_string()),
+                        Span::raw(workspace.kind.host_path().map_or_else(
+                            || "in the run's container".to_owned(),
+                            |path| path.display().to_string(),
+                        )),
                     ]),
                     Line::from(vec![
                         Span::from("Sessions ").dim(),
@@ -381,10 +404,14 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
                     Line::from(""),
                 ]);
                 lines.push(
-                    Line::from(if workspace.kind.is_checkout() {
-                        "Press n or ⏎ to start a session here."
-                    } else {
-                        "Press n or ⏎ to start a session here, x to remove the worktree."
+                    Line::from(match &workspace.kind {
+                        WorkspaceKind::Checkout { .. } => "Press n or ⏎ to start a session here.",
+                        WorkspaceKind::Worktree { .. } => {
+                            "Press n or ⏎ to start a session here, x to remove the worktree."
+                        }
+                        WorkspaceKind::Container { .. } => {
+                            "Press n or ⏎ for a shell in it; it goes when the run ends."
+                        }
                     })
                     .dim(),
                 );
