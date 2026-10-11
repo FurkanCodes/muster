@@ -84,7 +84,28 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
 
 fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let waiting = app.model.needs_you().len();
-    let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw("  ")];
+    let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw(" ")];
+    // The screens as tabs, the one shown marked; their numbers jump to them.
+    for (view, number, name) in [
+        (View::Sessions, '1', "Sessions"),
+        (View::NeedsYou, '2', "Needs you"),
+        (View::Tickets, '3', "Tickets"),
+    ] {
+        let current = app.view == view;
+        let mut tab = vec![
+            Span::from(format!(" {number} ")).dim(),
+            Span::raw(format!("{name} ")),
+        ];
+        if view == View::NeedsYou && waiting > 0 {
+            tab.push(Span::from(format!("{waiting} ")).red().bold());
+        }
+        if current {
+            tab = tab.into_iter().map(|span| span.reversed()).collect();
+        }
+        spans.extend(tab);
+        spans.push(Span::raw(" "));
+    }
+    spans.push(Span::raw(" "));
     match &app.link {
         Link::Connecting => spans.push(Span::from("connecting to the daemon…").dim()),
         Link::Connected { .. } if !app.model.loaded() => {
@@ -102,16 +123,13 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
                     .dim(),
                 );
             }
-            spans.push(Span::raw(format!(
-                "  ·  {}  ·  ",
-                count(app.model.sessions().len(), "session")
-            )));
-            let needs = Span::from(format!("{waiting} need you"));
-            spans.push(if waiting > 0 {
-                needs.red().bold()
-            } else {
-                needs.dim()
-            });
+            spans.push(
+                Span::from(format!(
+                    "  ·  {}",
+                    count(app.model.sessions().len(), "session")
+                ))
+                .dim(),
+            );
         }
         Link::Lost(_) => spans.push(Span::from("daemon unreachable; retrying…").red()),
     }
@@ -167,7 +185,7 @@ fn hints(app: &App) -> String {
     let mut hints = vec!["↑↓ move"];
     if app.view == View::Tickets {
         hints.extend(tickets::hints(app));
-        hints.extend(["⇥ sessions", "q quit"]);
+        hints.extend(["esc back", "q quit"]);
         return hints.join("  ");
     }
     match (app.view, app.selected, session) {
@@ -192,8 +210,8 @@ fn hints(app: &App) -> String {
         _ => {}
     }
     match app.view {
-        View::Sessions => hints.extend(["a project", "⇥ needs you", "q quit"]),
-        View::NeedsYou => hints.extend(["⇥ tickets", "q quit"]),
+        View::Sessions => hints.extend(["a project", "q quit"]),
+        View::NeedsYou => hints.extend(["esc back", "q quit"]),
         View::Tickets => {}
     }
     hints.join("  ")

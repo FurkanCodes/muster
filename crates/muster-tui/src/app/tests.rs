@@ -436,7 +436,7 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
     assert_eq!(world.app.needs_list, [other.id, world.session.id]);
     press(&mut world.app, KeyCode::Down);
     assert_eq!(world.app.needs_list, [world.session.id]);
-    assert!(render(&world.app).contains("1 need you"));
+    assert!(render(&world.app).contains("2 Needs you 1 "));
 }
 
 #[test]

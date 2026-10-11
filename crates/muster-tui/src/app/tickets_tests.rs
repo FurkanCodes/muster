@@ -127,7 +127,7 @@ fn a_project_s_tickets_are_listed_and_the_selected_one_shown_with_its_text() {
         "by someone · bug",
         "No agent on it yet",
         "After signing in, users land on /404.",
-        "⏎ start an agent  b browser  r refresh  ⇥ sessions",
+        "⏎ start an agent  b browser  r refresh  esc back",
     ] {
         assert!(screen.contains(shown), "{shown:?} in\n{screen}");
     }

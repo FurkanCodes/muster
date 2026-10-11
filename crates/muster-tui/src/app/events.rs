@@ -95,16 +95,19 @@ impl App {
             KeyCode::Char('q') => return vec![Action::Quit],
             KeyCode::Tab | KeyCode::BackTab => {
                 let back = key.code == KeyCode::BackTab;
-                self.view = match (self.view, back) {
-                    (View::Sessions, false) | (View::Tickets, true) => {
-                        // The queue opens on its most urgent session.
-                        self.needs_selected = self.needs_list.first().copied();
-                        View::NeedsYou
-                    }
+                let to = match (self.view, back) {
+                    (View::Sessions, false) | (View::Tickets, true) => View::NeedsYou,
                     (View::NeedsYou, false) | (View::Sessions, true) => View::Tickets,
                     (View::Tickets, false) | (View::NeedsYou, true) => View::Sessions,
                 };
-                return self.settle();
+                return self.show(to);
+            }
+            KeyCode::Char('1') => return self.show(View::Sessions),
+            KeyCode::Char('2') => return self.show(View::NeedsYou),
+            KeyCode::Char('3') => return self.show(View::Tickets),
+            // Back to the main screen; there, nothing to go back to.
+            KeyCode::Esc | KeyCode::Backspace if self.view != View::Sessions => {
+                return self.show(View::Sessions);
             }
             _ if self.view == View::Tickets => return self.tickets_key(key),
             _ => {}
@@ -137,6 +140,15 @@ impl App {
             _ => {}
         }
         Vec::new()
+    }
+
+    /// Shows `view`. The queue opens on its most urgent session.
+    fn show(&mut self, view: View) -> Vec<Action> {
+        if view == View::NeedsYou && self.view != View::NeedsYou {
+            self.needs_selected = self.needs_list.first().copied();
+        }
+        self.view = view;
+        self.settle()
     }
 
     pub(super) fn move_selection(&mut self, by: isize) {
