@@ -41,6 +41,7 @@ muster
 | `s` | stop a session |
 | `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
 | `x` | remove the selected ended session; or, after asking, the selected worktree, or a project (Muster forgets it; the repository is untouched) |
+| `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `p` | hand the selected worktree's committed work to the autopilot, for an issue you name |
 | `⇥` | switch between all sessions, *Needs you* and *Runs* |
 | `q` | quit the UI (sessions keep running) |
@@ -75,6 +76,10 @@ muster session start fix-login --harness claude --prompt "Fix the login redirect
 
 ```bash
 muster issue start app 42
+```
+
+```bash
+muster check fix-login
 ```
 
 ```bash

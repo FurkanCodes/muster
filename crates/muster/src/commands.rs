@@ -552,3 +552,70 @@ pub(crate) fn store_claude_token() -> ExitCode {
         Err(error) => crate::fail(format!("could not run `security`: {error}")),
     }
 }
+
+/// Runs the checks in a worktree, copying their terminal's output here as
+/// it comes, and exits as they did.
+pub(crate) async fn check(socket: &Path, worktree: &str) -> ExitCode {
+    match run_checks(socket, worktree).await {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
+        Err(error) => crate::fail(error),
+    }
+}
+
+async fn run_checks(socket: &Path, worktree: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    use muster_core::protocol::{DetachReason, ServerFrame};
+    use std::io::Write;
+
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let workspace = find_worktree(&snapshot, worktree)?.id;
+    let columns = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|columns| columns.parse().ok())
+        .unwrap_or(120);
+    let reply = connection
+        .command(Command::CheckWorkspace {
+            workspace,
+            size: TermSize {
+                cols: columns,
+                rows: 40,
+            },
+        })
+        .await?;
+    let Reply::SessionStarted { id } = reply else {
+        return Err(unexpected(&reply));
+    };
+    connection.attach(id, None).await?;
+    let mut out = std::io::stdout();
+    loop {
+        match connection.next_event().await? {
+            Some(
+                ServerFrame::Replay { session, data, .. }
+                | ServerFrame::Output { session, data, .. },
+            ) if session == id => {
+                out.write_all(&data)?;
+                out.flush()?;
+            }
+            Some(ServerFrame::Detached { session, reason }) if session == id => {
+                if reason == DetachReason::NotRunning {
+                    return Err("the checks' terminal went away".into());
+                }
+                break;
+            }
+            Some(_) => {}
+            None => return Err("the daemon closed the connection".into()),
+        }
+    }
+    // The session's end is in the state once its terminal has ended.
+    for _ in 0..100 {
+        let snapshot = connection.subscribe().await?;
+        if let Some(session) = snapshot.sessions.iter().find(|session| session.id == id)
+            && let SessionStatus::Exited { success } = session.status
+        {
+            return Ok(success);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    Err("the checks ended without saying how".into())
+}

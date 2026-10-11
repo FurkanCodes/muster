@@ -8,6 +8,7 @@
 //! Terminal traffic does not pass through here: a connection asks once for a
 //! session's [`PtyHandle`] and then talks to its actor directly.
 
+mod checks;
 mod containers;
 mod issues;
 mod projects;
@@ -466,6 +467,9 @@ impl Supervisor {
                     .await
             }
             Command::StopSession { session } => self.stop_session(session).await,
+            Command::CheckWorkspace { workspace, size } => {
+                self.check_workspace(workspace, size).await
+            }
             Command::RestartSession { session, size } => self.restart_session(session, size).await,
             Command::RemoveSession { session } => self.remove_session(session).await,
             Command::CancelRun { run } => {
@@ -651,6 +655,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::RemoveWorktree { .. } => "remove worktree",
         Command::StartSession { .. } => "start session",
         Command::StopSession { .. } => "stop session",
+        Command::CheckWorkspace { .. } => "check workspace",
         Command::RestartSession { .. } => "restart session",
         Command::RemoveSession { .. } => "remove session",
         Command::ListIssues { .. } => "list issues",

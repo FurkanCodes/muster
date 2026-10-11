@@ -189,7 +189,7 @@ fn hints(app: &App) -> String {
                 hints.push("x remove");
             }
             if kind.is_some_and(|kind| kind.run().is_none()) {
-                hints.push("p autopilot");
+                hints.extend(["c check", "p autopilot"]);
             }
             hints.extend(["w worktree", "i issues"]);
         }

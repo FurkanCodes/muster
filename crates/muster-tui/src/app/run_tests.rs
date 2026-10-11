@@ -454,3 +454,27 @@ fn p_hands_a_worktree_s_work_to_the_autopilot_for_the_issue_it_names() {
         Command::StartRun { number: 7, from: Some(id), .. } if id == world.worktree.id
     ));
 }
+
+#[test]
+fn c_runs_the_checks_in_the_selected_workspace_and_opens_them() {
+    let mut world = world();
+    world.app.selected = Some(crate::model::Row::Worktree(world.worktree.id));
+    assert!(render(&world.app).contains("c check"));
+    let actions = press(&mut world.app, KeyCode::Char('c'));
+    let (req_id, sent) = command(&actions);
+    assert!(matches!(
+        sent,
+        Command::CheckWorkspace { workspace, .. } if workspace == world.worktree.id
+    ));
+    let mut checks = session(world.worktree.id, "Checks", 9);
+    checks.harness = "checks".to_owned();
+    reply(
+        &mut world,
+        req_id,
+        Ok(Reply::SessionStarted { id: checks.id }),
+    );
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(checks.clone())));
+    assert_eq!(world.app.mode, Mode::Terminal(checks.id));
+}

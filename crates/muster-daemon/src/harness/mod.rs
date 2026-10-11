@@ -29,6 +29,8 @@ pub(crate) struct Harness {
 enum Kind {
     Shell,
     Claude,
+    /// The project's checks, run by hand in a workspace.
+    Checks,
 }
 
 const SHELL: Harness = Harness {
@@ -43,15 +45,61 @@ const CLAUDE: Harness = Harness {
     kind: Kind::Claude,
 };
 
+const CHECKS: Harness = Harness {
+    id: "checks",
+    label: "Checks",
+    kind: Kind::Checks,
+};
+
 /// The harness called `id`, if Muster knows it.
 pub(crate) fn find(id: &str) -> Option<Harness> {
-    [SHELL, CLAUDE].into_iter().find(|harness| harness.id == id)
+    [SHELL, CLAUDE, CHECKS]
+        .into_iter()
+        .find(|harness| harness.id == id)
 }
+
+/// What the project's checks are, for a session that runs them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CheckCommands {
+    pub(crate) commands: Vec<String>,
+    /// How long each command may take.
+    pub(crate) limit: std::time::Duration,
+}
+
+/// Runs the checks: `$1` is the time limit per command in seconds, the
+/// rest the commands, each in a shell of its own, stopping at the first
+/// that fails. The limit needs `timeout`, which macOS lacks unless GNU's
+/// coreutils are installed; without it a command runs until it ends or
+/// the person stops it.
+const CHECKS_BY_HAND: &str = r#"limit="$1"; shift
+for command in "$@"; do
+  printf '\033[1m$ %s\033[0m\n' "$command"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$limit" sh -c "$command"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$limit" sh -c "$command"
+  else
+    sh -c "$command"
+  fi
+  code=$?
+  if [ "$code" -ne 0 ]; then
+    if [ "$code" -eq 124 ]; then echo "(stopped after ${limit}s)"; else echo "(exit $code)"; fi
+    printf '\033[1;31mThe checks failed.\033[0m\n'
+    exit "$code"
+  fi
+done
+printf '\033[1;32mAll checks passed.\033[0m\n'
+"#;
 
 impl Harness {
     /// Whether it is a coding agent, rather than a shell.
     pub(crate) fn is_agent(self) -> bool {
         self.kind == Kind::Claude
+    }
+
+    /// Whether it runs the project's checks.
+    pub(crate) fn is_checks(self) -> bool {
+        self.kind == Kind::Checks
     }
 
     /// Whether the program reports its state through hooks, and so needs a
@@ -120,6 +168,8 @@ pub(crate) struct Launch {
     pub(crate) hooks: Option<HookEndpoint>,
     pub(crate) place: Place,
     pub(crate) size: TermSize,
+    /// The checks, for the harness that runs them.
+    pub(crate) checks: Option<CheckCommands>,
 }
 
 /// Runs a session's program in a container: `$1` the session, `$2` the
@@ -210,6 +260,20 @@ fn on_host(
             Vec::new(),
         ),
         Kind::Claude => ("claude".to_owned(), claude::arguments(launch)),
+        Kind::Checks => {
+            let checks = launch.checks.clone().unwrap_or(CheckCommands {
+                commands: Vec::new(),
+                limit: std::time::Duration::from_secs(60),
+            });
+            let mut args = vec![
+                "-c".to_owned(),
+                CHECKS_BY_HAND.to_owned(),
+                "sh".to_owned(),
+                checks.limit.as_secs().max(1).to_string(),
+            ];
+            args.extend(checks.commands);
+            ("/bin/sh".to_owned(), args)
+        }
     };
     SpawnSpec {
         program,
@@ -241,7 +305,9 @@ fn in_container(
     }
     let kind = match harness.kind {
         Kind::Claude => "claude",
-        Kind::Shell => "shell",
+        // Checks never run in a container by hand (`place_for` refuses):
+        // a run checks its own work.
+        Kind::Shell | Kind::Checks => "shell",
     };
     args.extend([
         container.to_owned(),
@@ -336,6 +402,7 @@ mod tests {
     fn only_known_harnesses_are_found() {
         assert_eq!(find("shell"), Some(SHELL));
         assert_eq!(find("claude"), Some(CLAUDE));
+        assert_eq!(find("checks"), Some(CHECKS));
         assert_eq!(find("nonsense"), None);
     }
 
@@ -385,6 +452,30 @@ mod tests {
     }
 
     #[test]
+    fn checks_run_in_a_shell_with_their_limit_and_commands() {
+        let spec = spawn_spec(
+            CHECKS,
+            Launch {
+                session: SessionId::new(),
+                agent_session: None,
+                resume: false,
+                prompt: None,
+                hooks: None,
+                place: Place::Host(PathBuf::from("/work")),
+                size: TermSize::default(),
+                checks: Some(CheckCommands {
+                    commands: vec!["cargo test".to_owned(), "cargo clippy".to_owned()],
+                    limit: std::time::Duration::from_secs(1800),
+                }),
+            },
+        );
+        assert_eq!(spec.program, "/bin/sh");
+        assert_eq!(spec.args[0], "-c");
+        assert_eq!(spec.args[2..], ["sh", "1800", "cargo test", "cargo clippy"]);
+        assert_eq!(spec.cwd, PathBuf::from("/work"));
+    }
+
+    #[test]
     fn hooks_reach_the_program_through_its_environment() {
         let spec = spawn_spec(
             CLAUDE,
@@ -399,6 +490,7 @@ mod tests {
                 }),
                 place: Place::Host(PathBuf::from("/work")),
                 size: TermSize::default(),
+                checks: None,
             },
         );
         assert_eq!(spec.program, "claude");
