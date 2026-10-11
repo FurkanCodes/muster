@@ -1,6 +1,7 @@
 //! What the run machine consumes and produces.
 
 use muster_core::RunStage;
+use serde::{Deserialize, Serialize};
 
 /// How a building agent's turn ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,7 +20,8 @@ pub enum Verdict {
 }
 
 /// Why an attempt is being made, handed to the building agent with it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Feedback {
     ChecksFailed {
         report: String,

@@ -3,11 +3,12 @@
 use std::time::{Duration, Instant};
 
 use muster_core::RunStage;
+use serde::{Deserialize, Serialize};
 
 use super::signal::{AgentOutcome, Feedback, RunEffect, RunEvent, Verdict};
 
 /// What a run may spend before it stops for the person (`PRD-12`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Limits {
     /// Building attempts per budget; a failed check, a reviewer's and a
     /// person's request for changes each start another (`PRD-02`).
@@ -34,7 +35,11 @@ impl Default for Limits {
 ///
 /// Pure: no IO, and time comes in with every call (`ARC-01`). A person's
 /// retry or hand-back starts a fresh budget of attempts, time and cost.
-#[derive(Clone, Debug)]
+///
+/// It is stored with its run, so a daemon restart resumes the run
+/// (`PRD-09`): [`save`](Self::save) folds the current stretch of work into
+/// the time spent, and [`restore`](Self::restore) starts a new stretch.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunMachine {
     limits: Limits,
     stage: RunStage,
@@ -56,6 +61,7 @@ pub struct RunMachine {
     /// Why it needs the person, while it does.
     reason: Option<String>,
     /// When the current stretch of work on its own began.
+    #[serde(skip)]
     active_since: Option<Instant>,
     /// Work on its own in the current budget before that stretch.
     active_spent: Duration,
@@ -91,6 +97,57 @@ impl RunMachine {
 
     pub fn stage(&self) -> RunStage {
         self.stage
+    }
+
+    /// The machine as it is to be stored, at `now`.
+    pub fn save(&self, now: Instant) -> Self {
+        let mut saved = self.clone();
+        if let Some(since) = saved.active_since.take() {
+            saved.active_spent += now.saturating_duration_since(since);
+        }
+        saved
+    }
+
+    /// A stored machine, carrying on at `now`: work on its own resumes its
+    /// time budget from here.
+    pub fn restore(mut saved: Self, now: Instant) -> Self {
+        saved.active_since = saved.stage.is_active().then_some(now);
+        saved
+    }
+
+    /// The work the current stage is doing, asked for again under the
+    /// current generation, for a daemon that restarted while it was under
+    /// way. Carrying it out must find the work already started for this
+    /// generation rather than start it twice (`ARC-10`).
+    pub fn resume_work(&self) -> Vec<RunEffect> {
+        let generation = self.generation;
+        match self.stage {
+            RunStage::Provisioning => vec![RunEffect::StartContainer { generation }],
+            RunStage::Building => vec![RunEffect::StartBuilder {
+                generation,
+                attempt: self.attempt,
+                feedback: self.last_feedback.clone(),
+            }],
+            RunStage::Checking => vec![RunEffect::RunChecks { generation }],
+            RunStage::OpeningPr => vec![RunEffect::PublishBranch { generation }],
+            RunStage::AgentReview => vec![RunEffect::StartReviewer { generation }],
+            RunStage::Queued
+            | RunStage::ReadyForYou
+            | RunStage::TakenOver
+            | RunStage::NeedsYou
+            | RunStage::Merged
+            | RunStage::Cancelled => Vec::new(),
+        }
+    }
+
+    /// The limits of a budget.
+    pub fn limits(&self) -> Limits {
+        self.limits
+    }
+
+    /// What the run has cost, where the harness reported it.
+    pub fn cost_micros(&self) -> u64 {
+        self.cost_micros
     }
 
     /// The generation work is asked for under now.

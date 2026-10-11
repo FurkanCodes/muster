@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -75,6 +75,36 @@ ALTER TABLE sessions ADD COLUMN removed_at INTEGER;
 /// the version alone changes, so such a Muster refuses the database plainly
 /// instead of failing on one session.
 const V3: &str = "";
+
+/// Runs: each one's ticket as picked up, where it stands, and its machine,
+/// with the timeline of its transitions and their reasons.
+const V4: &str = r"
+CREATE TABLE runs (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+    ticket      TEXT NOT NULL CHECK (json_valid(ticket)),
+    branch      TEXT NOT NULL,
+    stage       TEXT NOT NULL,
+    reason      TEXT,
+    pr          TEXT CHECK (pr IS NULL OR json_valid(pr)),
+    machine     TEXT NOT NULL CHECK (json_valid(machine)),
+    created_at  INTEGER NOT NULL,
+    ended_at    INTEGER
+) STRICT;
+
+CREATE INDEX runs_by_project ON runs (project_id);
+
+CREATE TABLE run_transitions (
+    seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
+    from_stage  TEXT NOT NULL,
+    to_stage    TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    at          INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX run_transitions_by_run ON run_transitions (run_id, seq);
+";
 
 /// The schema version this build creates.
 pub(super) fn latest_version() -> u32 {

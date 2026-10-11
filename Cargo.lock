@@ -898,6 +898,8 @@ name = "muster-state"
 version = "0.1.0"
 dependencies = [
  "muster-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
