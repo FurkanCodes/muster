@@ -130,6 +130,7 @@ pub(crate) async fn start_session(
     worktree: &str,
     harness: String,
     title: Option<String>,
+    prompt: Option<String>,
 ) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
@@ -140,6 +141,7 @@ pub(crate) async fn start_session(
             harness,
             title,
             size: TermSize::default(),
+            prompt,
         })
         .await?;
     let Reply::SessionStarted { id } = reply else {

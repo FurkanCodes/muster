@@ -1,12 +1,26 @@
-//! Starting and stopping sessions, and what their terminals report.
+//! Starting, stopping and resuming sessions, and what their terminals report.
+
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::{Session, SessionId, SessionStatus, WorkspaceId, WorkspaceKind};
-use muster_state::session::{Launch, SessionMachine, Signal, Timing};
+use muster_state::session::{self, SessionMachine, Signal, Start, Timing};
 
 use super::{Live, Supervisor, store_closed, store_error};
-use crate::harness;
+use crate::harness::{self, Harness, HookEndpoint, claude, transcript};
 use crate::pty::{self, PtyEvent};
+
+/// A resumed program that exits sooner than this, unasked, could not
+/// resume; the session starts fresh instead (as Nebula does).
+const RESUME_GRACE: Duration = Duration::from_secs(10);
+
+/// How a session's program is started.
+#[derive(Debug)]
+enum Mode {
+    Fresh { prompt: Option<String> },
+    Resume { agent_session: String },
+}
 
 impl Supervisor {
     pub(super) async fn start_session(
@@ -15,23 +29,24 @@ impl Supervisor {
         harness: String,
         title: Option<String>,
         size: TermSize,
+        prompt: Option<String>,
     ) -> Result<Reply, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
-        let WorkspaceKind::Worktree { path, .. } = &found.kind;
-        let cwd = path.clone();
+        let cwd = self.workspace_path(workspace).ok_or_else(|| {
+            ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
+        })?;
         let harness = harness::find(&harness).ok_or_else(|| {
             ErrorBody::new(
                 ErrorCode::BadRequest,
                 format!("no harness called {harness:?}"),
             )
         })?;
+        let prompt = prompt.filter(|prompt| !prompt.trim().is_empty());
+        if prompt.is_some() && !harness.takes_prompt() {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!("{} takes no prompt", harness.label),
+            ));
+        }
 
         let session = Session {
             id: SessionId::new(),
@@ -40,7 +55,11 @@ impl Supervisor {
             title: title
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or_else(|| harness.label.to_owned()),
-            status: SessionStatus::Fresh,
+            status: if prompt.is_some() {
+                SessionStatus::Running
+            } else {
+                SessionStatus::Fresh
+            },
             unseen: false,
             resume_id: None,
             created_at: self.clock.now(),
@@ -56,26 +75,93 @@ impl Supervisor {
         self.state.sessions.push(session.clone());
         self.broadcast(Delta::SessionUpserted(session));
 
-        let events = self.pty_events.clone();
-        let spec = harness::spawn_spec(harness, id, cwd, size);
-        let pty = match pty::spawn(spec, move |event| {
-            let _ = events.send((id, event));
-        }) {
-            Ok(pty) => pty,
-            Err(error) => {
-                // The session was stored before its process was started
-                // (`ARC-10`), so record that it never ran.
-                self.end_session(id, SessionStatus::Exited { success: false }, true)
-                    .await;
-                return Err(ErrorBody::new(
-                    ErrorCode::Internal,
-                    format!("could not start {}: {error}", harness.label),
-                ));
-            }
+        let start = if prompt.is_some() {
+            Start::WithPrompt
+        } else {
+            Start::Idle
         };
-        let machine = SessionMachine::new(Launch::default(), Timing::default());
-        self.live.insert(id, Live { pty, machine });
+        if let Err(error) = self.launch(id, harness, cwd, size, Mode::Fresh { prompt }, start) {
+            // The session was stored before its program was started
+            // (`ARC-10`), so record that it never ran.
+            self.end_session(id, SessionStatus::Exited { success: false }, true)
+                .await;
+            return Err(ErrorBody::new(
+                ErrorCode::Internal,
+                format!("could not start {}: {error}", harness.label),
+            ));
+        }
         Ok(Reply::SessionStarted { id })
+    }
+
+    /// Starts a session's program and begins tracking it.
+    fn launch(
+        &mut self,
+        session: SessionId,
+        harness: Harness,
+        cwd: PathBuf,
+        size: TermSize,
+        mode: Mode,
+        start: Start,
+    ) -> std::io::Result<()> {
+        let (agent_session, resume, prompt) = match mode {
+            Mode::Fresh { prompt } => {
+                let id = harness
+                    .has_hooks()
+                    .then(claude::new_session_id)
+                    .transpose()?;
+                (id, false, prompt)
+            }
+            Mode::Resume { agent_session } => (Some(agent_session), true, None),
+        };
+        let hooks = if harness.has_hooks() {
+            Some(HookEndpoint {
+                socket: self.hook_socket.clone(),
+                token: harness::new_token()?,
+            })
+        } else {
+            None
+        };
+        let spec = harness::spawn_spec(
+            harness,
+            harness::Launch {
+                session,
+                agent_session: agent_session.clone(),
+                resume,
+                prompt,
+                hooks: hooks.clone(),
+                cwd,
+                size,
+            },
+        );
+        let events = self.pty_events.clone();
+        let pty = pty::spawn(spec, move |event| {
+            let _ = events.send((session, event));
+        })?;
+
+        self.forget_token(session);
+        let token = hooks.map(|hooks| hooks.token);
+        if let Some(token) = &token {
+            self.hook_tokens.insert(token.clone(), session);
+        }
+        let machine = SessionMachine::new(
+            session::Launch {
+                agent_session,
+                start,
+            },
+            Timing::default(),
+        );
+        self.live.insert(
+            session,
+            Live {
+                pty,
+                machine,
+                harness,
+                token,
+                launched: Instant::now(),
+                resumed: resume,
+            },
+        );
+        Ok(())
     }
 
     pub(super) async fn stop_session(&mut self, session: SessionId) -> Result<Reply, ErrorBody> {
@@ -98,6 +184,13 @@ impl Supervisor {
                 self.step_session(session, Signal::Progress { busy }).await;
             }
             PtyEvent::Exited { success, requested } => {
+                self.forget_token(session);
+                let failed_resume = self.live.get(&session).is_some_and(|live| {
+                    live.resumed && !requested && live.launched.elapsed() < RESUME_GRACE
+                });
+                if failed_resume && self.start_fresh_after_failed_resume(session).await {
+                    return;
+                }
                 self.step_session(session, Signal::Exited { success, requested })
                     .await;
                 let at = self.clock.now();
@@ -108,6 +201,90 @@ impl Supervisor {
                     let stored = stored.clone();
                     self.broadcast(Delta::SessionUpserted(stored));
                 }
+            }
+        }
+    }
+
+    /// A resumed program exited at once: start the harness fresh in the same
+    /// session rather than leave a dead terminal. `false` if that failed too.
+    async fn start_fresh_after_failed_resume(&mut self, session: SessionId) -> bool {
+        let Some(harness) = self.live.get(&session).map(|live| live.harness) else {
+            return false;
+        };
+        let Some(cwd) = self.session_path(session) else {
+            return false;
+        };
+        tracing::warn!(%session, "resume failed; starting the session fresh");
+        let size = TermSize::default();
+        let mode = Mode::Fresh { prompt: None };
+        match self.launch(session, harness, cwd, size, mode, Start::Idle) {
+            Ok(()) => {
+                self.set_status(session, SessionStatus::Fresh, true).await;
+                true
+            }
+            Err(error) => {
+                tracing::error!(%session, %error, "could not start the session fresh");
+                false
+            }
+        }
+    }
+
+    /// Sessions the last daemon left running died with it, because it held
+    /// their terminals. A harness that can resume is resumed where its
+    /// transcript survives; the rest are recorded as exited, for the person
+    /// to see.
+    pub(super) async fn recover_sessions(&mut self) {
+        let orphaned: Vec<Session> = self
+            .state
+            .sessions
+            .iter()
+            .filter(|session| session.ended_at.is_none())
+            .cloned()
+            .collect();
+        for session in orphaned {
+            if self.resume(&session).await {
+                continue;
+            }
+            tracing::info!(session = %session.id, "a session ended when the daemon stopped");
+            self.end_session(session.id, SessionStatus::Exited { success: false }, true)
+                .await;
+        }
+    }
+
+    /// Resumes `session` if it can be. A turn the restart cut short counts
+    /// as unseen.
+    async fn resume(&mut self, session: &Session) -> bool {
+        let harness = harness::find(&session.harness).filter(|harness| harness.can_resume());
+        let (Some(harness), Some(agent_session), Some(cwd)) = (
+            harness,
+            session.resume_id.clone(),
+            self.workspace_path(session.workspace),
+        ) else {
+            return false;
+        };
+        let transcript = transcript::projects_dir()
+            .and_then(|projects| transcript::exists(&projects, &agent_session));
+        if transcript == Some(false) {
+            tracing::info!(session = %session.id, "no transcript to resume");
+            return false;
+        }
+        let unseen = session.unseen
+            || matches!(
+                session.status,
+                SessionStatus::Running | SessionStatus::NeedsYou { .. }
+            );
+        let mode = Mode::Resume { agent_session };
+        let start = Start::Resumed { unseen };
+        match self.launch(session.id, harness, cwd, TermSize::default(), mode, start) {
+            Ok(()) => {
+                tracing::info!(session = %session.id, "resumed");
+                self.set_status(session.id, SessionStatus::Finished, unseen)
+                    .await;
+                true
+            }
+            Err(error) => {
+                tracing::warn!(session = %session.id, %error, "could not resume");
+                false
             }
         }
     }
@@ -125,21 +302,36 @@ impl Supervisor {
         }
     }
 
-    /// Sessions the last daemon left running died with it, because it held
-    /// their terminals. Records them as exited, for the person to see.
-    pub(super) async fn settle_orphaned_sessions(&mut self) {
-        let orphaned: Vec<SessionId> = self
+    /// Stops accepting hooks for `session`.
+    fn forget_token(&mut self, session: SessionId) {
+        if let Some(token) = self
+            .live
+            .get_mut(&session)
+            .and_then(|live| live.token.take())
+        {
+            self.hook_tokens.remove(&token);
+        }
+    }
+
+    fn workspace_path(&self, workspace: WorkspaceId) -> Option<PathBuf> {
+        self.state
+            .workspaces
+            .iter()
+            .find(|candidate| candidate.id == workspace)
+            .map(|found| {
+                let WorkspaceKind::Worktree { path, .. } = &found.kind;
+                path.clone()
+            })
+    }
+
+    fn session_path(&self, session: SessionId) -> Option<PathBuf> {
+        let workspace = self
             .state
             .sessions
             .iter()
-            .filter(|session| session.ended_at.is_none())
-            .map(|session| session.id)
-            .collect();
-        for session in orphaned {
-            tracing::info!(%session, "a session ended when the daemon stopped");
-            self.end_session(session, SessionStatus::Exited { success: false }, true)
-                .await;
-        }
+            .find(|stored| stored.id == session)?
+            .workspace;
+        self.workspace_path(workspace)
     }
 
     /// How many of a workspace's sessions are still running.

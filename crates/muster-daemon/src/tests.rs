@@ -30,6 +30,8 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         store,
         clock: Arc::new(FixedClock),
         worktrees_dir: std::env::temp_dir().join("muster-unit-worktrees"),
+        hook_socket: std::env::temp_dir().join("muster-unit-hooks.sock"),
+        hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity,
     })
     .await

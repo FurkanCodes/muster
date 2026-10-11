@@ -72,11 +72,14 @@ enum SessionCommand {
     /// Start a session in WORKTREE (its id or branch).
     Start {
         worktree: String,
-        /// What to run.
+        /// What to run: `shell` or `claude`.
         #[arg(long, default_value = "shell")]
         harness: String,
         #[arg(long)]
         title: Option<String>,
+        /// A first prompt, for harnesses that take one.
+        #[arg(long)]
+        prompt: Option<String>,
     },
     /// Stop SESSION (its id).
     Stop { session: String },
@@ -110,7 +113,8 @@ fn main() -> ExitCode {
                 worktree,
                 harness,
                 title,
-            })) => commands::start_session(&socket, &worktree, harness, title).await,
+                prompt,
+            })) => commands::start_session(&socket, &worktree, harness, title, prompt).await,
             Some(Commands::Session(SessionCommand::Stop { session })) => {
                 commands::stop_session(&socket, &session).await
             }

@@ -54,7 +54,7 @@ Main dependencies: tokio, portable-pty, vt100 + tui-term, bollard (Docker API), 
 - **Lifecycle.** The TUI auto-starts the daemon (`setsid`, no controlling terminal) when the socket does not answer. `muster daemon --foreground` runs it attached for development. Runtime and data directories come from `MUSTER_RUNTIME_DIR` and `MUSTER_DATA_DIR` when set, so every test gets its own.
 - **Restart** (`PRD-09`):
   - *Containers* outlive the daemon (`ARC-04`). On boot the daemon lists containers labelled `muster.workspace=<id>`, matches them with SQLite, and re-attaches each stream from the last stored offset. A missing container moves its run to *Needs you* with that reason.
-  - *Worktree sessions* die with the daemon, because it holds their PTYs. On boot each one is relaunched with the harness's resume (`claude --resume <session-id>`) in the same worktree. A resume that exits within 10 s falls back to a fresh session with a note, as Nebula does. Until resume exists (M1 step 7), and for harnesses without one such as `shell`, they are recorded as exited with an error and marked unseen.
+  - *Worktree sessions* die with the daemon, because it holds their PTYs. On boot each one is relaunched with the harness's resume (`claude --resume <session-id>`) in the same worktree. A resume that exits within 10 s falls back to a fresh session with a note, as Nebula does. A resumed session starts finished, and unseen if the restart cut a turn short; its hooks get a new token. Sessions whose harness cannot resume (`shell`), whose resume id was never saved (no turn ran), or whose transcript is gone are recorded as exited with an error and marked unseen.
 
 ## 5. Sessions
 
@@ -75,7 +75,8 @@ A Docker `exec` with a TTY, resized through the exec-resize call, feeding the sa
 ### Status
 
 - **Signals:** harness hooks, the terminal progress sequence (OSC 9;4), and process exit for hands-on sessions; the JSON output stream for headless ones (a finished turn is a `result` event).
-- **Hooks without editing config** (`PRD-13`, `ARC-05`): Claude Code takes extra settings at launch through `--settings <json>`, so its hooks are passed on the command line and never written to disk. Each hook runs `curl --unix-socket <runtime>/hooks.sock` with the session's own token from its environment, times out after 3 s, and never fails the agent. A harness without a launch-time option runs without hooks, and its status comes from the progress sequence and process state.
+- **Hooks without editing config** (`PRD-13`, `ARC-05`): Claude Code takes extra settings at launch through `--settings <json>`, so its hooks are passed on the command line and never written to disk. Each hook runs `curl --unix-socket <runtime>/hooks.sock` with the session's own token from its environment, times out after 3 s, and never fails the agent. The receiver (axum on that socket) answers at once and only queues the payload; payload fields are read one by one, so a changed field loses only itself. Verified against Claude Code 2.1.291: inline `--settings` hooks run, `--session-id` is honoured, and the fields read are present. A harness without a launch-time option runs without hooks, and its status comes from the progress sequence and process state.
+- **Terminal questions:** programs ask their terminal things at startup and wait for answers; Claude Code 2.1.291 asks for keyboard-protocol support, device attributes and the terminal version. The terminal actor answers them, plus device status and cursor position (from a screen built only when first asked), and tracks kitty keyboard flags and bracketed paste for clients. Adapted from Nebula, which leaves the version query unanswered.
 - **Identity** (`ARC-11`): every session gets its own random token, and the receiver derives the session from the token. Nebula shares one token per boot and trusts the session id in the query string; Muster does not.
 - **Machine:** pure, with an injected clock and exhaustive unit tests (Nebula's best pattern). States: `Fresh` (launched, nothing asked yet), `Running`, `NeedsYou` (a permission prompt or question; several can be open at once), `Finished`, `Exited`, plus an `unseen` flag. The machine reports its next deadline, so the daemon wakes it exactly when a grace period ends instead of polling. It keeps Nebula's hard-won rules: ignore hooks from a different agent session in the same directory; hold `Running` while subagents still work; clear a permission wait only on a tool event from the one who raised it. It drops the screen-scraping and timing tricks.
 
@@ -192,7 +193,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 
 ## 15. Milestone 1 plan — Cockpit
 
-Steps 1–6 are done; 6 was built before 5 so sessions run in real worktrees from the start. A built-in `shell` harness (the person's `$SHELL`) stands in until step 7 adds Claude Code.
+Steps 1–7 are done; 6 was built before 5 so sessions run in real worktrees from the start. Harnesses: `shell` (the person's `$SHELL`) and `claude`. End-to-end tests use a stand-in `claude` on `PATH` and fire the exact hook commands from its `--settings`, so resume and hooks are tested for real, unlike Nebula's command override.
 
 0. **Container spike, alongside the rest:** run `claude -p --output-format stream-json` in a container with `CLAUDE_CODE_OAUTH_TOKEN`; record fixtures for a success, a failure and a long tool-heavy turn; measure memory. Settles the headless question before M2.
 1. Workspace, CI gates, core types.

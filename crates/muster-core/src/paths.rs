@@ -84,6 +84,11 @@ impl Paths {
         self.runtime_dir.join("daemon.sock")
     }
 
+    /// Where agents' hooks report to the daemon.
+    pub fn hook_socket(&self) -> PathBuf {
+        self.runtime_dir.join("hooks.sock")
+    }
+
     /// Held by the running daemon so a second one refuses to start.
     pub fn lock_file(&self) -> PathBuf {
         self.runtime_dir.join("daemon.lock")

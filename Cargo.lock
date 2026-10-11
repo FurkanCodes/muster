@@ -561,6 +561,7 @@ dependencies = [
  "muster-core",
  "muster-daemon",
  "nix 0.31.3",
+ "serde_json",
  "tempfile",
  "tokio",
  "tracing",

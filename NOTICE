@@ -2,6 +2,9 @@ Muster includes code adapted from Nebula (https://github.com/AgentSystemLabs/neb
 
 - crates/muster-daemon/src/pty/queries.rs, from crates/nebula-daemon/src/pty/kitty.rs
 - crates/muster-daemon/src/pty/cursor.rs, from crates/nebula-daemon/src/pty/cursor.rs
+- crates/muster-daemon/src/harness/claude.rs (hook events and payload fields), from
+  crates/nebula-daemon/src/hooks/installer.rs and crates/nebula-daemon/src/hooks/mod.rs
+- crates/muster-daemon/src/harness/transcript.rs, from crates/nebula-daemon/src/registry.rs
 
 Nebula is distributed under the following license:
 

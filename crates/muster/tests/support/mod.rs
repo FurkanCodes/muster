@@ -27,10 +27,93 @@ pub(crate) struct Sandbox {
     dir: TempDir,
 }
 
+/// Stands in for Claude Code: records how it was started (its arguments,
+/// then the hook socket and token it was given), then behaves like a shell
+/// so tests can type into it. While the FAKE_CLAUDE_RESUME_FAILS flag file
+/// exists, a resume exits at once, as a real one does when the conversation
+/// is gone.
+const FAKE_CLAUDE: &str = r#"#!/bin/sh
+dir="$FAKE_CLAUDE_DIR/$MUSTER_SESSION"
+mkdir -p "$dir"
+n=$(( $(ls "$dir" | grep -c '\.args$') + 1 ))
+printf '%s\n%s\n' "$MUSTER_HOOK_SOCKET" "$MUSTER_HOOK_TOKEN" > "$dir/launch-$n.env"
+for arg in "$@"; do printf '%s\0' "$arg"; done > "$dir/launch-$n.part"
+mv "$dir/launch-$n.part" "$dir/launch-$n.args"
+if [ "$1" = "--resume" ] && [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_RESUME_FAILS" ]; then exit 1; fi
+exec /bin/sh
+"#;
+
 impl Sandbox {
     pub(crate) fn new() -> Self {
-        Self {
-            dir: tempfile::tempdir().unwrap(),
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("claude"), FAKE_CLAUDE).unwrap();
+        std::fs::set_permissions(
+            bin.join("claude"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
+        std::fs::create_dir_all(dir.path().join("claude-config/projects")).unwrap();
+        Self { dir }
+    }
+
+    /// A flag file the stand-in `claude` checks, such as
+    /// `FAKE_CLAUDE_RESUME_FAILS`.
+    pub(crate) fn fake_claude_flag(&self, name: &str) -> PathBuf {
+        self.dir.path().join("fake-claude").join(name)
+    }
+
+    /// Where Claude Code would keep its transcripts in this sandbox.
+    pub(crate) fn claude_projects(&self) -> PathBuf {
+        self.dir.path().join("claude-config/projects")
+    }
+
+    /// How the stand-in `claude` was started for `session`, oldest first.
+    pub(crate) fn claude_launches(&self, session: muster_core::SessionId) -> Vec<ClaudeLaunch> {
+        let dir = self
+            .dir
+            .path()
+            .join("fake-claude")
+            .join(session.to_string());
+        (1..)
+            .map_while(|n| {
+                let args = std::fs::read(dir.join(format!("launch-{n}.args"))).ok()?;
+                let env = std::fs::read_to_string(dir.join(format!("launch-{n}.env"))).ok()?;
+                let mut env = env.lines().map(str::to_owned);
+                Some(ClaudeLaunch {
+                    args: args
+                        .split(|&byte| byte == 0)
+                        .filter(|arg| !arg.is_empty())
+                        .map(|arg| String::from_utf8_lossy(arg).into_owned())
+                        .collect(),
+                    socket: env.next().unwrap_or_default(),
+                    token: env.next().unwrap_or_default(),
+                })
+            })
+            .collect()
+    }
+
+    /// Waits until the stand-in `claude` has been started `count` times for
+    /// `session`, and returns those launches.
+    pub(crate) fn wait_for_launches(
+        &self,
+        session: muster_core::SessionId,
+        count: usize,
+    ) -> Vec<ClaudeLaunch> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let launches = self.claude_launches(session);
+            if launches.len() >= count {
+                return launches;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "only {} launches",
+                launches.len()
+            );
+            std::thread::sleep(Duration::from_millis(20));
         }
     }
 
@@ -64,6 +147,17 @@ impl Sandbox {
             .env("MUSTER_LOG", "debug")
             // Sessions run a plain, predictable shell.
             .env("SHELL", "/bin/sh")
+            // `claude` is the stand-in, recording into the sandbox.
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    self.dir.path().join("bin").display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
+            .env("FAKE_CLAUDE_DIR", self.dir.path().join("fake-claude"))
+            .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))
             // As if the daemon were started from inside an agent session,
             // which sessions must not inherit.
             .env("CLAUDECODE", "1");
@@ -302,4 +396,58 @@ pub(crate) async fn read_terminal(
     })
     .await;
     (text, next)
+}
+
+/// One start of the stand-in `claude`.
+#[derive(Debug)]
+pub(crate) struct ClaudeLaunch {
+    pub(crate) args: Vec<String>,
+    pub(crate) socket: String,
+    pub(crate) token: String,
+}
+
+impl ClaudeLaunch {
+    /// The value after `flag`, if given.
+    pub(crate) fn value(&self, flag: &str) -> Option<&str> {
+        let at = self.args.iter().position(|arg| arg == flag)?;
+        self.args.get(at + 1).map(String::as_str)
+    }
+
+    /// The command the `event` hook runs, from the `--settings` given.
+    pub(crate) fn hook_command(&self, event: &str) -> String {
+        let settings: serde_json::Value =
+            serde_json::from_str(self.value("--settings").expect("--settings")).unwrap();
+        settings["hooks"][event][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap_or_else(|| panic!("no {event} hook in {settings}"))
+            .to_owned()
+    }
+
+    /// Runs the `event` hook exactly as Claude Code would: its command, in a
+    /// shell, with `payload` on stdin and this launch's environment.
+    pub(crate) fn fire(&self, event: &str, payload: &serde_json::Value) {
+        self.fire_with_token(event, payload, &self.token);
+    }
+
+    /// As `fire`, but carrying `token` instead of this launch's own.
+    pub(crate) fn fire_with_token(&self, event: &str, payload: &serde_json::Value, token: &str) {
+        use std::io::Write as _;
+        let mut child = Command::new("sh")
+            .args(["-c", &self.hook_command(event)])
+            .env("MUSTER_HOOK_SOCKET", &self.socket)
+            .env("MUSTER_HOOK_TOKEN", token)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(payload.to_string().as_bytes())
+            .unwrap();
+        assert!(
+            child.wait().unwrap().success(),
+            "a hook must never fail the agent"
+        );
+    }
 }
