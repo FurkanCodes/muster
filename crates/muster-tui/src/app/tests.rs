@@ -141,7 +141,8 @@ fn selecting_a_session_streams_it_and_moving_away_stops() {
             }),
             Action::Send(ClientFrame::Attach {
                 session: id,
-                from_seq: None
+                from_seq: None,
+                watching: true,
             }),
         ]
     );
@@ -280,6 +281,7 @@ fn a_new_session_starts_claude_with_a_prompt_and_opens_it() {
     assert!(actions.contains(&Action::Send(ClientFrame::Attach {
         session: started.id,
         from_seq: None,
+        watching: true,
     })));
 }
 

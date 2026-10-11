@@ -207,3 +207,41 @@ fn page_keys_scroll_the_preview() {
     press(&mut world.app, KeyCode::End);
     assert_eq!(world.app.screens[&id].scrolled_back(), 0);
 }
+
+#[test]
+fn a_message_taking_lines_from_the_list_keeps_clicks_on_what_is_drawn() {
+    let mut world = world();
+    for n in 0..40 {
+        let session = crate::model::tests::session(world.worktree.id, &format!("S{n}"), 10 + n);
+        world
+            .app
+            .on_frame(ServerFrame::Delta(Delta::SessionUpserted(session)));
+    }
+    for _ in 0..30 {
+        press(&mut world.app, KeyCode::Down);
+    }
+    let selected = world.app.selected.unwrap();
+    // A three-line reason makes the list two lines shorter.
+    world.app.on_disconnected("why ".repeat(70));
+    let screen = render(&world.app);
+    let label = match selected {
+        Row::Session(id) => world.app.model.session(id).unwrap().title.clone(),
+        _ => unreachable!(),
+    };
+    assert!(
+        screen
+            .lines()
+            .any(|line| line.contains(&format!("○ {label} "))),
+        "the selection is still drawn:\n{screen}"
+    );
+    // And a click on the list's top line selects what is drawn there.
+    let top = screen.lines().nth(2).unwrap().to_owned();
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 5, 2));
+    let clicked = match world.app.selected.unwrap() {
+        Row::Session(id) => world.app.model.session(id).unwrap().title.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert!(top.contains(&format!("○ {clicked} ")), "{top} vs {clicked}");
+}

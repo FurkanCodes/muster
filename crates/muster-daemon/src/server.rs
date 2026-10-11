@@ -131,8 +131,15 @@ impl Connection {
                         let _ = outgoing.send(ServerFrame::Reply { req_id, outcome }).await;
                     });
                 }
-                ClientFrame::Attach { session, from_seq } => self.attach(session, from_seq).await,
-                ClientFrame::Detach { session } => self.stop_forwarding(session).await,
+                ClientFrame::Attach {
+                    session,
+                    from_seq,
+                    watching,
+                } => self.attach(session, from_seq, watching).await,
+                ClientFrame::Detach { session } => {
+                    self.stop_forwarding(session).await;
+                    self.terminals.remove(&session);
+                }
                 ClientFrame::Watch { session, watching } => self.watch(session, watching).await,
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await
@@ -153,9 +160,9 @@ impl Connection {
         Ok(())
     }
 
-    async fn attach(&mut self, session: SessionId, from_seq: Option<u64>) {
+    async fn attach(&mut self, session: SessionId, from_seq: Option<u64>, watch: bool) {
         let Some(TerminalLink { current, watching }) =
-            self.supervisor.terminal(session, true).await
+            self.supervisor.terminal(session, watch).await
         else {
             self.stop_forwarding(session).await;
             self.detached(session).await;

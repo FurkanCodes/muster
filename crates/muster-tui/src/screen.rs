@@ -44,16 +44,27 @@ impl Screen {
         self.next_seq
     }
 
-    /// The start of a stream. With `reset`, or when it does not follow on
-    /// from what this screen already shows, the screen starts over.
+    /// The start of a stream. With `reset`, or when there is a gap between
+    /// what this screen shows and the replay, the screen starts over; a
+    /// replay that overlaps it (frames already on their way when the client
+    /// attached again) adds only what is new.
     pub(crate) fn replay(&mut self, seq: u64, data: &[u8], reset: bool) {
-        if reset || self.next_seq != Some(seq) {
-            let (rows, cols) = self.parser.screen().size();
-            self.parser = vt100::Parser::new(rows, cols, SCROLLBACK);
-        }
         self.ended = None;
-        self.parser.process(data);
-        self.next_seq = Some(seq + data.len() as u64);
+        let end = seq + data.len() as u64;
+        match self.next_seq {
+            Some(next) if !reset && (seq..=end).contains(&next) => {
+                let skip = usize::try_from(next - seq).unwrap_or(usize::MAX);
+                self.parser.process(&data[skip.min(data.len())..]);
+            }
+            // Wholly behind what is shown: nothing new.
+            Some(next) if !reset && end < next => return,
+            _ => {
+                let (rows, cols) = self.parser.screen().size();
+                self.parser = vt100::Parser::new(rows, cols, SCROLLBACK);
+                self.parser.process(data);
+            }
+        }
+        self.next_seq = Some(end);
     }
 
     /// Output that follows the replay. Bytes already shown are skipped.
@@ -128,6 +139,21 @@ mod tests {
         screen.scroll(4);
         screen.scroll_to_bottom();
         assert_eq!(screen.scrolled_back(), 0);
+    }
+
+    #[test]
+    fn a_replay_overlapping_the_screen_adds_only_what_is_new() {
+        let mut screen = Screen::new(20, 4);
+        screen.replay(0, b"start ", true);
+        screen.output(6, b"middle ");
+        // Attached again from 6 while the output above was on its way.
+        screen.replay(6, b"middle end", false);
+        assert_eq!(text(&screen).trim(), "start middle end");
+        assert_eq!(screen.next_seq(), Some(16));
+        // Entirely old: changes nothing.
+        screen.replay(0, b"start", false);
+        assert_eq!(text(&screen).trim(), "start middle end");
+        assert_eq!(screen.next_seq(), Some(16));
     }
 
     #[test]

@@ -57,16 +57,13 @@ fn attaching_while_looking_away_says_nobody_watches() {
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     let actions = press(&mut world.app, KeyCode::Down);
     let session = world.session.id;
-    let attach = actions
-        .iter()
-        .position(|a| matches!(a, Action::Send(ClientFrame::Attach { .. })))
-        .expect("an attach");
-    assert_eq!(
-        actions[attach + 1],
-        Action::Send(ClientFrame::Watch {
+    assert!(
+        actions.contains(&Action::Send(ClientFrame::Attach {
             session,
-            watching: false
-        })
+            from_seq: None,
+            watching: false,
+        })),
+        "{actions:?}"
     );
 }
 

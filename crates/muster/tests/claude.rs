@@ -628,3 +628,40 @@ async fn a_claude_that_announces_its_start_is_never_taken_to_be_asking() {
         (SessionStatus::Fresh, false)
     );
 }
+
+#[tokio::test]
+async fn attaching_without_watching_leaves_the_news_for_later() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace, None).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str| launch.fire(event, &payload(&id, event, json!({})));
+    fire("UserPromptSubmit");
+    expect_status(&mut connection, session).await;
+    fire("Stop");
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, true)
+    );
+
+    // A client attaching while its window is out of focus does not see it.
+    let mut viewer = setup.daemon.connect().await;
+    viewer.attach_unwatched(session, None).await.unwrap();
+    viewer.command(Command::Ping).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let snapshot = connection.subscribe().await.unwrap();
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|s| s.id == session && s.unseen)
+    );
+    // Until it looks.
+    viewer.watch(session, true).await.unwrap();
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false)
+    );
+}
