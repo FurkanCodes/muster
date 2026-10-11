@@ -43,11 +43,23 @@ impl Default for Timing {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Launch {
     /// The harness's own session id, when Muster chose it at launch
-    /// (Claude Code's `--session-id`).
+    /// (Claude Code's `--session-id`) or resumed it (`--resume`).
     pub agent_session: Option<String>,
-    /// Whether the launch included a first prompt, so the agent is working
-    /// from the start.
-    pub with_prompt: bool,
+    pub start: Start,
+}
+
+/// What the agent is doing as it starts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Start {
+    /// Waiting for its first prompt.
+    #[default]
+    Idle,
+    /// Given a first prompt at launch, so working from the start.
+    WithPrompt,
+    /// Resumed after a daemon restart: back at its prompt with its earlier
+    /// conversation. `unseen` carries over what the person had not seen,
+    /// including a turn the restart cut short.
+    Resumed { unseen: bool },
 }
 
 /// The main agent ended its turn while subagents were still working, so the
@@ -88,16 +100,22 @@ pub struct SessionMachine {
 impl SessionMachine {
     /// A machine for a session that has just been launched.
     pub fn new(launch: Launch, timing: Timing) -> Self {
+        let (status, unseen) = match launch.start {
+            Start::Idle => (SessionStatus::Fresh, false),
+            Start::WithPrompt => (SessionStatus::Running, false),
+            Start::Resumed { unseen } => (SessionStatus::Finished, unseen),
+        };
+        // A resumed session's id already has a transcript behind it.
+        let resume_id = match launch.start {
+            Start::Resumed { .. } => launch.agent_session.clone(),
+            _ => None,
+        };
         Self {
             timing,
-            status: if launch.with_prompt {
-                SessionStatus::Running
-            } else {
-                SessionStatus::Fresh
-            },
-            unseen: false,
+            status,
+            unseen,
             agent_session: launch.agent_session,
-            resume_id: None,
+            resume_id,
             waits: Vec::new(),
             answered: None,
             subagents: BTreeSet::new(),

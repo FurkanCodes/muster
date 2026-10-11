@@ -272,3 +272,24 @@ async fn a_stop_hangs_up_and_then_kills_a_process_that_ignores_it() {
     };
     assert!(requested);
 }
+
+#[tokio::test]
+async fn questions_to_the_terminal_are_answered() {
+    let (pty, _) = shell(vec![], vec![]);
+    // Turns echo off, asks for device attributes and the cursor position,
+    // and prints the 11 bytes that come back, with ESC made visible.
+    let probe = "stty -echo -icanon min 1; printf '\\033[c\\033[6n'; \
+                 r=$(dd bs=1 count=11 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"answer:$r:$((2*21))\"\n";
+    pty.input(probe.as_bytes().to_vec()).await;
+    let (text, _) = read_until(&pty, None, ":42").await;
+    // The last `answer:` is the output; the first is the echoed command.
+    let answer = text
+        .rsplit("answer:")
+        .next()
+        .and_then(|rest| rest.split(':').next())
+        .unwrap_or_default();
+    // A VT102 claim, then a cursor position on some row of column 1.
+    assert!(answer.starts_with("E[?6cE["), "{answer:?} in {text:?}");
+    assert!(answer.ends_with(";1R"), "{answer:?} in {text:?}");
+}
