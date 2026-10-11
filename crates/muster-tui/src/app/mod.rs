@@ -284,6 +284,9 @@ impl App {
             muster_core::SessionStatus::NeedsYou {
                 reason: muster_core::WaitReason::Question,
             } => "has a question for you",
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Startup,
+            } => "is asking something before it starts",
             muster_core::SessionStatus::Exited { success: false } => "exited with an error",
             muster_core::SessionStatus::Exited { success: true } => "exited",
             _ => "finished",

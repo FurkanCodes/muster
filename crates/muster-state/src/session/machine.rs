@@ -26,6 +26,11 @@ pub struct Timing {
     /// A deferred permission notice arriving this soon after the person
     /// answered is an echo of the prompt they already answered.
     pub echo_window: Duration,
+    /// How long a harness that reports its start may take to do so before
+    /// it is taken to be asking the person something first. Claude Code
+    /// 2.1.296 reports within a second; it says nothing while its trust
+    /// question, a sign-in or first-run setup is on screen.
+    pub start_grace: Duration,
 }
 
 impl Default for Timing {
@@ -35,6 +40,7 @@ impl Default for Timing {
             subagent_quiet: Duration::from_secs(30 * 60),
             heal_window: Duration::from_secs(30),
             echo_window: Duration::from_secs(5),
+            start_grace: Duration::from_secs(10),
         }
     }
 }
@@ -49,6 +55,9 @@ pub struct Launch {
     /// Starts with something the person has not seen: a turn a daemon
     /// restart cut short, or a resume that failed and started over.
     pub unseen: bool,
+    /// The harness reports through hooks, the first of them as it starts;
+    /// until one arrives it has not started.
+    pub reports_start: bool,
 }
 
 /// What the agent is doing as it starts.
@@ -98,11 +107,18 @@ pub struct SessionMachine {
     finished_at: Option<Instant>,
     /// Whether the progress sequence has gone busy since the last finish.
     busy_seen: bool,
+    /// When the harness must have reported its start by, until it has.
+    start_by: Option<Instant>,
+    /// The status and unseen mark from before the harness was taken to be
+    /// asking something first, to go back to once it starts: a start that
+    /// was only slow leaves no news behind, and whoever answered a question
+    /// was watching anyway.
+    before_startup: Option<(SessionStatus, bool)>,
 }
 
 impl SessionMachine {
-    /// A machine for a session that has just been launched.
-    pub fn new(launch: Launch, timing: Timing) -> Self {
+    /// A machine for a session launched at `now`.
+    pub fn new(launch: Launch, timing: Timing, now: Instant) -> Self {
         let status = match launch.start {
             Start::Idle => SessionStatus::Fresh,
             Start::WithPrompt => SessionStatus::Running,
@@ -127,6 +143,8 @@ impl SessionMachine {
             hold: None,
             finished_at: None,
             busy_seen: false,
+            start_by: launch.reports_start.then(|| now + timing.start_grace),
+            before_startup: None,
         }
     }
 
@@ -147,6 +165,14 @@ impl SessionMachine {
 
     /// When the daemon should next send [`Signal::Tick`], if ever.
     pub fn next_deadline(&self) -> Option<Instant> {
+        let start = self.start_by.filter(|_| self.before_startup.is_none());
+        match (start, self.hold_deadline()) {
+            (Some(start), Some(hold)) => Some(start.min(hold)),
+            (start, hold) => start.or(hold),
+        }
+    }
+
+    fn hold_deadline(&self) -> Option<Instant> {
         let hold = self.hold?;
         if let Some(drained_at) = hold.drained_at {
             return Some(drained_at + self.timing.drain_grace);
@@ -171,7 +197,11 @@ impl SessionMachine {
                 Signal::Hook {
                     agent_session,
                     event,
-                } => self.on_hook(agent_session, event, now, &mut effects),
+                } => {
+                    // Any word from the harness means it has started.
+                    self.started();
+                    self.on_hook(agent_session, event, now, &mut effects);
+                }
                 Signal::Progress { busy } => self.on_progress(busy, now),
                 Signal::Exited { success, requested } => self.on_exit(success, requested),
                 Signal::Tick => self.on_tick(now),
@@ -321,6 +351,8 @@ impl SessionMachine {
     }
 
     fn on_exit(&mut self, success: bool, requested: bool) {
+        self.start_by = None;
+        self.before_startup = None;
         self.status = SessionStatus::Exited { success };
         self.unseen = !requested;
         self.waits.clear();
@@ -328,7 +360,34 @@ impl SessionMachine {
         self.hold = None;
     }
 
+    /// The harness reported in: it was not asking before it started, or
+    /// has been answered.
+    fn started(&mut self) {
+        self.start_by = None;
+        if let Some((status, unseen)) = self.before_startup.take()
+            && self.status
+                == (SessionStatus::NeedsYou {
+                    reason: WaitReason::Startup,
+                })
+        {
+            self.status = status;
+            self.unseen = unseen;
+        }
+    }
+
     fn on_tick(&mut self, now: Instant) {
+        if let Some(start_by) = self.start_by
+            && self.before_startup.is_none()
+            && now >= start_by
+            && !self.is_waiting()
+        {
+            // Silent since launch: it is asking the person something first.
+            self.before_startup = Some((self.status, self.unseen));
+            self.status = SessionStatus::NeedsYou {
+                reason: WaitReason::Startup,
+            };
+            self.unseen = true;
+        }
         let Some(hold) = self.hold else {
             return;
         };

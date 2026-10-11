@@ -45,6 +45,9 @@ pub struct DaemonConfig {
     pub history_interval: Duration,
     /// How often workspaces' checked-out branches are looked at.
     pub branch_interval: Duration,
+    /// How long a harness that reports its start may take to before it is
+    /// taken to be asking the person something first.
+    pub start_grace: Duration,
 }
 
 impl DaemonConfig {
@@ -55,6 +58,7 @@ impl DaemonConfig {
             sample_interval: Duration::from_secs(2),
             history_interval: Duration::from_secs(30),
             branch_interval: Duration::from_secs(2),
+            start_grace: muster_state::session::Timing::default().start_grace,
         }
     }
 }
@@ -125,6 +129,10 @@ pub async fn run(
         hook_queue,
         delta_capacity: config.delta_capacity,
         history_every: history_every(config.sample_interval, config.history_interval),
+        timing: muster_state::session::Timing {
+            start_grace: config.start_grace,
+            ..muster_state::session::Timing::default()
+        },
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));

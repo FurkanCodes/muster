@@ -26,7 +26,7 @@ impl Session {
     fn launched(launch: Launch) -> Self {
         let start = Instant::now();
         Self {
-            machine: SessionMachine::new(launch, Timing::default()),
+            machine: SessionMachine::new(launch, Timing::default(), start),
             start,
             now: start,
         }
@@ -120,6 +120,7 @@ fn a_launch_with_a_prompt_is_running() {
         agent_session: None,
         start: Start::WithPrompt,
         unseen: false,
+        reports_start: false,
     });
     assert_eq!(session.status(), SessionStatus::Running);
 }
@@ -194,6 +195,7 @@ fn a_resumed_session_with_news_is_seen_once_watched() {
         agent_session: Some("kept".to_owned()),
         start: Start::Resumed,
         unseen: true,
+        reports_start: false,
     });
     assert_eq!(
         session.send(Signal::Watched { watching: true }),
@@ -207,6 +209,7 @@ fn a_launch_with_news_keeps_it_until_watched() {
         agent_session: None,
         start: Start::Idle,
         unseen: true,
+        reports_start: false,
     });
     assert_eq!(
         (session.status(), session.unseen()),
@@ -484,6 +487,7 @@ fn an_idle_edge_before_any_busy_edge_is_the_startup_state() {
         agent_session: None,
         start: Start::WithPrompt,
         unseen: false,
+        reports_start: false,
     });
     session.send(Signal::Progress { busy: false });
     assert_eq!(session.status(), SessionStatus::Running);
@@ -526,6 +530,7 @@ fn hooks_from_another_harness_session_are_ignored() {
         agent_session: Some("ours".to_owned()),
         start: Start::Idle,
         unseen: false,
+        reports_start: false,
     });
     assert!(
         session
@@ -542,6 +547,7 @@ fn clear_switches_to_the_new_harness_session() {
         agent_session: Some("first".to_owned()),
         start: Start::Idle,
         unseen: false,
+        reports_start: false,
     });
     session.hook_from("second", HookEvent::SessionStarted);
     assert_eq!(session.machine.agent_session(), Some("second"));
@@ -564,6 +570,7 @@ fn the_resume_id_is_saved_once_a_turn_has_run() {
         agent_session: Some("first".to_owned()),
         start: Start::Idle,
         unseen: false,
+        reports_start: false,
     });
     assert!(
         session
@@ -641,6 +648,7 @@ fn a_resumed_session_is_finished_and_keeps_what_was_unseen() {
             agent_session: Some("kept".to_owned()),
             start: Start::Resumed,
             unseen,
+            reports_start: false,
         });
         assert_eq!(session.status(), SessionStatus::Finished);
         assert_eq!(session.unseen(), unseen);
@@ -653,7 +661,129 @@ fn a_resumed_session_does_not_save_its_id_again() {
         agent_session: Some("kept".to_owned()),
         start: Start::Resumed,
         unseen: false,
+        reports_start: false,
     });
     let effects = session.hook_from("kept", HookEvent::PromptSubmitted);
     assert!(!effects.contains(&Effect::SaveResumeId("kept".to_owned())));
+}
+
+// A harness that reports its start
+
+fn reporting(start: Start) -> Session {
+    Session::launched(Launch {
+        agent_session: Some("s".to_owned()),
+        start,
+        unseen: false,
+        reports_start: true,
+    })
+}
+
+const STARTING: SessionStatus = SessionStatus::NeedsYou {
+    reason: WaitReason::Startup,
+};
+
+#[test]
+fn a_harness_silent_past_the_grace_is_asking_before_it_starts() {
+    let mut session = reporting(Start::Idle);
+    let grace = Timing::default().start_grace;
+    assert_eq!(session.machine.next_deadline(), Some(session.start + grace));
+    // Before the deadline, nothing.
+    session.at(1);
+    assert!(session.send(Signal::Tick).is_empty());
+    session.now = session.start + grace;
+    assert_eq!(session.send(Signal::Tick), [status_effect(STARTING, true)]);
+    assert_eq!(session.machine.next_deadline(), None);
+    // It starts: idle as launched, and no news if it was only slow.
+    session.at(30);
+    assert_eq!(
+        session.hook_from("s", HookEvent::SessionStarted),
+        [status_effect(SessionStatus::Fresh, false)]
+    );
+    assert_eq!(session.machine.next_deadline(), None);
+}
+
+#[test]
+fn a_start_in_time_leaves_nothing_to_wait_for() {
+    let mut session = reporting(Start::WithPrompt);
+    session.at(1);
+    assert!(session.hook_from("s", HookEvent::SessionStarted).is_empty());
+    assert_eq!(session.machine.next_deadline(), None);
+    session.at(60);
+    assert!(session.send(Signal::Tick).is_empty());
+    assert_eq!(session.status(), SessionStatus::Running);
+}
+
+#[test]
+fn a_prompt_or_a_resume_goes_back_to_what_it_was_once_started() {
+    let grace = Timing::default().start_grace;
+    for (start, before) in [
+        (Start::WithPrompt, SessionStatus::Running),
+        (Start::Resumed, SessionStatus::Finished),
+    ] {
+        let mut session = reporting(start);
+        session.now = session.start + grace;
+        session.send(Signal::Tick);
+        assert_eq!(session.status(), STARTING);
+        // Any hook says it started, not only the start announcement.
+        session.hook_from("s", subagent_stopped("none"));
+        assert_eq!(session.status(), before, "{start:?}");
+    }
+    let mut session = reporting(Start::WithPrompt);
+    session.now = session.start + grace;
+    session.send(Signal::Tick);
+    assert_eq!(
+        session.hook_from("s", HookEvent::PromptSubmitted),
+        [
+            Effect::SaveResumeId("s".to_owned()),
+            status_effect(SessionStatus::Running, false)
+        ]
+    );
+}
+
+#[test]
+fn quitting_at_the_question_ends_the_wait() {
+    let mut session = reporting(Start::Idle);
+    session.now = session.start + Timing::default().start_grace;
+    session.send(Signal::Tick);
+    session.send(Signal::Exited {
+        success: true,
+        requested: false,
+    });
+    assert_eq!(session.status(), SessionStatus::Exited { success: true });
+    assert_eq!(session.machine.next_deadline(), None);
+}
+
+#[test]
+fn a_question_before_the_start_shown_to_someone_watching_is_not_news() {
+    let mut session = reporting(Start::Idle);
+    session.send(Signal::Watched { watching: true });
+    session.now = session.start + Timing::default().start_grace;
+    assert_eq!(session.send(Signal::Tick), [status_effect(STARTING, false)]);
+}
+
+#[test]
+fn harnesses_that_do_not_report_their_start_are_never_waited_on() {
+    let mut session = Session::fresh();
+    assert_eq!(session.machine.next_deadline(), None);
+    session.at(600);
+    assert!(session.send(Signal::Tick).is_empty());
+    assert_eq!(session.status(), SessionStatus::Fresh);
+}
+
+#[test]
+fn news_from_before_a_slow_start_is_kept() {
+    let mut session = Session::launched(Launch {
+        agent_session: Some("s".to_owned()),
+        start: Start::Resumed,
+        unseen: true,
+        reports_start: true,
+    });
+    session.now = session.start + Timing::default().start_grace;
+    session.send(Signal::Tick);
+    assert_eq!((session.status(), session.unseen()), (STARTING, true));
+    session.hook_from("s", HookEvent::SessionStarted);
+    assert_eq!(
+        (session.status(), session.unseen()),
+        (SessionStatus::Finished, true)
+    );
 }

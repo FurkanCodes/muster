@@ -562,3 +562,69 @@ async fn a_client_looking_away_stops_watching_until_it_looks_back() {
         "the other client still watches"
     );
 }
+
+#[tokio::test]
+async fn a_claude_that_never_announces_its_start_is_asking_before_it_starts() {
+    let sandbox = Sandbox::new().with_env("MUSTER_START_GRACE_MS", "300");
+    std::fs::write(sandbox.fake_claude_flag("FAKE_CLAUDE_SILENT"), "1").unwrap();
+    let root = sandbox.repository("app");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let Reply::ProjectAdded { id: project } = connection
+        .command(Command::AddProject { root, name: None })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    let snapshot = connection.subscribe().await.unwrap();
+    let checkout = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.project == project)
+        .unwrap()
+        .id;
+
+    // Given a first prompt but silent, as at Claude Code's trust question.
+    let session = start_claude(&mut connection, checkout, Some("fix it")).await;
+    let launch = sandbox.wait_for_launches(session, 1).remove(0);
+    let starting = SessionStatus::NeedsYou {
+        reason: WaitReason::Startup,
+    };
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (starting, true)
+    );
+
+    // Answered: it announces its start and gets on with the prompt.
+    let id = launch.value("--session-id").unwrap().to_owned();
+    launch.fire("SessionStart", &payload(&id, "SessionStart", json!({})));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Running, false)
+    );
+}
+
+#[tokio::test]
+async fn a_claude_that_announces_its_start_is_never_taken_to_be_asking() {
+    // Long enough for the stand-in to announce itself under a loaded test run.
+    let sandbox = Sandbox::new().with_env("MUSTER_START_GRACE_MS", "3000");
+    let root = sandbox.repository("app");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    connection
+        .command(Command::AddProject { root, name: None })
+        .await
+        .unwrap();
+    let snapshot = connection.subscribe().await.unwrap();
+    let checkout = snapshot.workspaces[0].id;
+    let session = start_claude(&mut connection, checkout, None).await;
+    sandbox.wait_for_launches(session, 1);
+    tokio::time::sleep(std::time::Duration::from_millis(3500)).await;
+    let snapshot = connection.subscribe().await.unwrap();
+    let stored = snapshot.sessions.iter().find(|s| s.id == session).unwrap();
+    assert_eq!(
+        (stored.status, stored.unseen),
+        (SessionStatus::Fresh, false)
+    );
+}

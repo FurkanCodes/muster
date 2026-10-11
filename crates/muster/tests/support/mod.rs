@@ -34,7 +34,8 @@ pub(crate) struct Sandbox {
 /// so tests can type into it. While the FAKE_CLAUDE_RESUME_FAILS flag file
 /// exists, a resume exits at once, as a real one does when the conversation
 /// is gone; with FAKE_CLAUDE_RESUME_FAILS_LATE, it says so and exits after
-/// a second, long enough for a client to be watching.
+/// a second, long enough for a client to be watching. It announces its
+/// start through the SessionStart hook, unless FAKE_CLAUDE_SILENT exists.
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
 dir="$FAKE_CLAUDE_DIR/$MUSTER_SESSION"
 mkdir -p "$dir"
@@ -45,6 +46,18 @@ mv "$dir/launch-$n.part" "$dir/launch-$n.args"
 if [ "$1" = "--resume" ] && [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_RESUME_FAILS" ]; then exit 1; fi
 if [ "$1" = "--resume" ] && [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_RESUME_FAILS_LATE" ]; then
   echo "resume-failing-$((40+2))"; sleep 1; exit 1
+fi
+# Announce the start as Claude Code does, unless told to stay silent, as
+# Claude Code is while it asks whether to trust the folder.
+id=""; previous=""
+for arg in "$@"; do
+  case "$previous" in --session-id|--resume) id="$arg" ;; esac
+  previous="$arg"
+done
+if [ -n "$MUSTER_HOOK_TOKEN" ] && [ ! -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_SILENT" ]; then
+  printf '{"hook_event_name":"SessionStart","session_id":"%s","source":"startup"}' "$id" |
+    curl -sS -m 3 --unix-socket "$MUSTER_HOOK_SOCKET" -H "Authorization: Bearer $MUSTER_HOOK_TOKEN" \
+      -H "Content-Type: application/json" --data-binary @- http://muster/hooks/claude >/dev/null 2>&1
 fi
 exec /bin/sh
 "#;

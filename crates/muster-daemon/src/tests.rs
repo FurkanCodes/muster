@@ -34,6 +34,7 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity,
         history_every: 1,
+        timing: muster_state::session::Timing::default(),
     })
     .await
     .unwrap()
@@ -216,6 +217,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity: 16,
         history_every: 2,
+        timing: muster_state::session::Timing::default(),
     })
     .await
     .unwrap();

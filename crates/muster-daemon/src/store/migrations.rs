@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -69,6 +69,12 @@ CREATE TABLE resource_samples (
 const V2: &str = r"
 ALTER TABLE sessions ADD COLUMN removed_at INTEGER;
 ";
+
+/// Stored statuses may now say a session waits on the person before its
+/// harness starts (`"reason":"startup"`), which an older Muster cannot read;
+/// the version alone changes, so such a Muster refuses the database plainly
+/// instead of failing on one session.
+const V3: &str = "";
 
 /// The schema version this build creates.
 pub(super) fn latest_version() -> u32 {
