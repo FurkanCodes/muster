@@ -6,8 +6,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, Event, EventStream, KeyboardEnhancementFlags,
-    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange, Event,
+    EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use futures_util::StreamExt;
@@ -26,6 +27,9 @@ pub struct Options {
     pub start_daemon: Option<Box<dyn Fn() -> std::io::Result<()> + Send + Sync>>,
     /// Where `muster` was started, offered when adding a project.
     pub cwd: PathBuf,
+    /// Notify the person of news while their terminal window is not in
+    /// focus.
+    pub notify: bool,
 }
 
 impl std::fmt::Debug for Options {
@@ -34,6 +38,7 @@ impl std::fmt::Debug for Options {
             .field("socket", &self.socket)
             .field("starts_daemon", &self.start_daemon.is_some())
             .field("cwd", &self.cwd)
+            .field("notify", &self.notify)
             .finish()
     }
 }
@@ -65,6 +70,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let mut terminal = HostTerminal::enter()?;
     let size = terminal_size(&terminal.terminal)?;
     let mut app = App::new(options.cwd.clone(), size);
+    app.notify = options.notify;
 
     let (link_events, mut link) = mpsc::unbounded_channel();
     let link_task = tokio::spawn(keep_linked(options, link_events));
@@ -79,8 +85,9 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                 Some(Ok(Event::Key(key))) => app.on_key(key),
                 Some(Ok(Event::Paste(text))) => app.on_paste(&text),
                 Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
+                Some(Ok(Event::FocusGained)) => app.on_focus(true),
+                Some(Ok(Event::FocusLost)) => app.on_focus(false),
                 Some(Ok(Event::Resize(cols, rows))) => app.on_resize(area_size(cols, rows)),
-                Some(Ok(_)) => Vec::new(),
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
                 None => break Ok(()),
             },
@@ -109,6 +116,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
         for action in actions {
             match action {
                 Action::Quit => quit = true,
+                Action::Notify(text) => notify(&text),
                 Action::Send(frame) => {
                     if let Some(connected) = &mut sender
                         && connected.send(&frame).await.is_err()
@@ -214,9 +222,9 @@ fn area_size(cols: u16, rows: u16) -> TermSize {
 }
 
 /// The person's terminal while the UI runs: raw mode, the alternate screen,
-/// bracketed paste, mouse reports, and the kitty keyboard protocol where the
-/// terminal has it (so Shift+Enter reaches Claude Code). Put back on drop
-/// and on panic.
+/// bracketed paste, mouse and focus reports, and the kitty keyboard protocol
+/// where the terminal has it (so Shift+Enter reaches Claude Code). Put back
+/// on drop and on panic.
 struct HostTerminal {
     terminal: DefaultTerminal,
     enhanced_keys: bool,
@@ -228,7 +236,12 @@ impl HostTerminal {
         let mut out = stdout();
         // The mouse scrolls sessions back and picks lines; selecting text
         // in the person's terminal then takes a modifier (Option or Shift).
-        execute!(out, EnableBracketedPaste, MouseReports(true))?;
+        execute!(
+            out,
+            EnableBracketedPaste,
+            MouseReports(true),
+            EnableFocusChange
+        )?;
         let enhanced_keys = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
         if enhanced_keys {
             execute!(
@@ -259,7 +272,29 @@ fn restore_modes(out: &mut Stdout, enhanced_keys: bool) {
     if enhanced_keys {
         let _ = execute!(out, PopKeyboardEnhancementFlags);
     }
-    let _ = execute!(out, DisableBracketedPaste, MouseReports(false));
+    let _ = execute!(
+        out,
+        DisableBracketedPaste,
+        MouseReports(false),
+        DisableFocusChange
+    );
+}
+
+/// Shows `text` as a desktop notification where the terminal supports it
+/// (OSC 9: iTerm2, WezTerm, Ghostty, kitty, Windows Terminal) and rings its
+/// bell, which the others show as a badge or a bounce. The text can carry
+/// an issue's title, so control characters are taken out first: they could
+/// end the sequence and send the terminal commands of their own.
+fn notify(text: &str) {
+    use std::io::Write;
+    let mut out = stdout();
+    let _ = write!(out, "\x1b]9;Muster: {}\x07\x07", printable(text));
+    let _ = out.flush();
+}
+
+/// `text` without control characters.
+fn printable(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
 }
 
 /// Asks the person's terminal for mouse presses, releases and the wheel,
@@ -275,5 +310,16 @@ impl crossterm::Command for MouseReports {
             out,
             "\x1b[?1000{switch}\x1b[?1002{switch}\x1b[?1006{switch}"
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn notifications_carry_no_control_characters() {
+        assert_eq!(
+            super::printable("#7 evil\x1b]0;owned\x07title\u{9b}31m\n"),
+            "#7 evil]0;ownedtitle31m"
+        );
     }
 }

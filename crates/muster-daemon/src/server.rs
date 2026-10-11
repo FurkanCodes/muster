@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::pty::PtyHandle;
-use crate::supervisor::SupervisorHandle;
+use crate::supervisor::{SupervisorHandle, TerminalLink, WatchGuard};
 use crate::terminal::forward_output;
 
 /// Frames queued for one client before the sender waits. A subscriber that
@@ -57,6 +57,7 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle) {
         pump: None,
         terminals: HashMap::new(),
         forwarders: HashMap::new(),
+        watching: HashMap::new(),
     };
     if let Err(error) = session.run().await {
         // The writer sends this last, then closes.
@@ -65,6 +66,7 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle) {
     if let Some(pump) = session.pump.take() {
         pump.abort();
     }
+    session.watching.clear();
     for (_, forwarder) in session.forwarders.drain() {
         forwarder.abort();
     }
@@ -95,6 +97,9 @@ struct Connection {
     terminals: HashMap<SessionId, watch::Receiver<Option<PtyHandle>>>,
     /// One output stream per attached session.
     forwarders: HashMap<SessionId, JoinHandle<()>>,
+    /// The attached sessions this client's person is looking at; dropping
+    /// a guard ends its watch.
+    watching: HashMap<SessionId, WatchGuard>,
 }
 
 impl Connection {
@@ -128,6 +133,7 @@ impl Connection {
                 }
                 ClientFrame::Attach { session, from_seq } => self.attach(session, from_seq).await,
                 ClientFrame::Detach { session } => self.stop_forwarding(session).await,
+                ClientFrame::Watch { session, watching } => self.watch(session, watching).await,
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await
                         && !pty.input(data).await
@@ -148,22 +154,49 @@ impl Connection {
     }
 
     async fn attach(&mut self, session: SessionId, from_seq: Option<u64>) {
-        self.stop_forwarding(session).await;
-        let Some(link) = self.supervisor.terminal(session, true).await else {
+        let Some(TerminalLink { current, watching }) =
+            self.supervisor.terminal(session, true).await
+        else {
+            self.stop_forwarding(session).await;
             self.detached(session).await;
             return;
         };
-        self.terminals.insert(session, link.current.clone());
-        let forwarder = forward_output(session, link, from_seq, self.outgoing.clone());
+        // The new watch is counted before the old one ends, so a re-attach
+        // never looks away for a moment.
+        self.stop_forwarding(session).await;
+        if let Some(guard) = watching {
+            self.watching.insert(session, guard);
+        }
+        self.terminals.insert(session, current.clone());
+        let forwarder = forward_output(session, current, from_seq, self.outgoing.clone());
         self.forwarders.insert(session, tokio::spawn(forwarder));
     }
 
-    /// Stops streaming `session` to this client, and waits until the stream
-    /// has ended, so its watch is over before the next frame is read.
+    /// Stops streaming `session` to this client, and watching it.
     async fn stop_forwarding(&mut self, session: SessionId) {
+        self.watching.remove(&session);
         if let Some(forwarder) = self.forwarders.remove(&session) {
             forwarder.abort();
             let _ = forwarder.await;
+        }
+    }
+
+    /// Starts or stops watching an attached session.
+    async fn watch(&mut self, session: SessionId, watching: bool) {
+        if !watching {
+            self.watching.remove(&session);
+            return;
+        }
+        if !self.forwarders.contains_key(&session) || self.watching.contains_key(&session) {
+            return;
+        }
+        if let Some(guard) = self
+            .supervisor
+            .terminal(session, true)
+            .await
+            .and_then(|link| link.watching)
+        {
+            self.watching.insert(session, guard);
         }
     }
 

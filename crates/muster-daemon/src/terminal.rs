@@ -6,7 +6,6 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{mpsc, watch};
 
 use crate::pty::PtyHandle;
-use crate::supervisor::TerminalLink;
 
 /// How streaming one program's terminal ended.
 enum Ended {
@@ -25,20 +24,16 @@ enum Ended {
 /// that falls behind the live stream is sent a new replay from where it
 /// was, which is marked `reset` if the ring has since dropped those bytes.
 ///
-/// The stream follows the session: when a new program starts in it, the
-/// client is sent that program's terminal from the start, with a reset. It
-/// ends when the session's terminal is released, or the client goes. The
-/// link's watch, if any, lasts as long as the stream.
+/// The stream follows the session: `current` always holds its terminal,
+/// and when a new program starts in it the client is sent that program's
+/// terminal from the start, with a reset. It ends when the session's
+/// terminal is released, or the client goes.
 pub(crate) async fn forward_output(
     session: SessionId,
-    link: TerminalLink,
+    mut current: watch::Receiver<Option<PtyHandle>>,
     from_seq: Option<u64>,
     outgoing: mpsc::Sender<ServerFrame>,
 ) {
-    let TerminalLink {
-        mut current,
-        watching: _watching,
-    } = link;
     let mut from = from_seq;
     loop {
         let pty = current.borrow_and_update().clone();

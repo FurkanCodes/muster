@@ -25,7 +25,7 @@ use muster_core::{SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{Effect, SessionMachine, Signal};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
-pub(crate) use self::terminals::TerminalLink;
+pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
 use crate::harness::{Harness, claude};
 use crate::hooks::HookDelivery;

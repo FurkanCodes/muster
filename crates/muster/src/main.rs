@@ -204,10 +204,16 @@ fn main() -> ExitCode {
 /// Opens the terminal UI.
 async fn ui(paths: Paths) -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+    // MUSTER_NOTIFY=off keeps the UI from notifying.
+    let notify = !matches!(
+        std::env::var("MUSTER_NOTIFY").as_deref(),
+        Ok("off" | "0" | "false" | "no")
+    );
     let options = muster_tui::Options {
         socket: paths.socket(),
         start_daemon: Some(Box::new(move || start_daemon(&paths))),
         cwd,
+        notify,
     };
     match muster_tui::run(options).await {
         Ok(()) => ExitCode::SUCCESS,
