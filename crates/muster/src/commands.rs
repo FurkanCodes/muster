@@ -59,8 +59,20 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
                 .filter(|s| s.workspace == workspace.id)
             {
                 let mark = if session.unseen { "•" } else { " " };
+                let usage = snapshot
+                    .resources
+                    .as_ref()
+                    .and_then(|report| report.sessions.iter().find(|u| u.session == session.id))
+                    .map(|usage| {
+                        format!(
+                            "  {} MB, {}% CPU",
+                            usage.memory_bytes.div_ceil(1_000_000),
+                            usage.cpu_permille.div_ceil(10)
+                        )
+                    })
+                    .unwrap_or_default();
                 println!(
-                    "   {mark} {}  {}  {}",
+                    "   {mark} {}  {}  {}{usage}",
                     session.id,
                     session.title,
                     describe(session.status)

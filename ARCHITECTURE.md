@@ -126,7 +126,7 @@ A harness is **data plus a parser**, following Nebula's descriptor idea.
 ## 9. Scheduler and resources
 
 - **Two pools on macOS.** Worktree sessions use the host's memory; containers use the container runtime's VM. They are measured separately.
-- **Sampling:** sysinfo for each worktree session's process tree and for the host; Docker's stats stream for each container (CPU %, memory used and limit). Every 2 s into an in-memory ring for the live view, downsampled into SQLite every 30 s for history.
+- **Sampling:** every 2 s a sampler task asks the Supervisor which sessions run under which process, measures each one's whole process tree with sysinfo (an agent's tools and builds are its children; a test shows a child's 200 MB counted) and the host's memory on a blocking thread, and hands the report back. The Supervisor keeps the latest in the snapshot, sends it to clients as a `Resources` delta, and stores every fifteenth in SQLite for history. Containers will use Docker's stats stream (M2).
 - **Admission (M3):** the run budget is the container runtime's total memory (from `docker info`) minus a headroom, default 2 GB. Runs start first in, first out, only when active reservations plus their own fit (`PRD-05`). The queue entry carries a reason the TUI shows as it is, for example *"Waiting for 6 GB — 10.5 of 12 GB reserved by #41 and #43."* Hands-on sessions are never queued; a hands-on container session still counts its reservation against the budget.
 
 ## 10. Sources and git host
@@ -201,7 +201,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 
 ## 15. Milestone 1 plan — Cockpit
 
-Steps 1–9 are done; 6 was built before 5 so sessions run in real worktrees from the start, and 9 before 8 because the UI is what makes Muster usable. Harnesses: `shell` (the person's `$SHELL`) and `claude`. End-to-end tests use a stand-in `claude` on `PATH` and fire the exact hook commands from its `--settings`, so resume and hooks are tested for real, unlike Nebula's command override.
+Steps 1–10 are done; 6 was built before 5 so sessions run in real worktrees from the start, and 9 before 8 because the UI is what makes Muster usable. Harnesses: `shell` (the person's `$SHELL`) and `claude`. End-to-end tests use a stand-in `claude` on `PATH` and fire the exact hook commands from its `--settings`, so resume and hooks are tested for real, unlike Nebula's command override.
 
 0. **Container spike, alongside the rest:** run `claude -p --output-format stream-json` in a container with `CLAUDE_CODE_OAUTH_TOKEN`; record fixtures for a success, a failure and a long tool-heavy turn; measure memory. Settles the headless question before M2.
 1. Workspace, CI gates, core types.

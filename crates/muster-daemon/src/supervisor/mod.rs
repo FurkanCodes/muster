@@ -17,7 +17,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use muster_core::protocol::{Command, Delta, ErrorBody, ErrorCode, Reply, Snapshot};
+use muster_core::protocol::{
+    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot,
+};
 use muster_core::{SessionId, SessionStatus};
 use muster_state::session::{Effect, SessionMachine, Signal};
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -44,6 +46,10 @@ enum Request {
     },
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
+    /// The sampler asks which sessions run under which process.
+    RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
+    /// The sampler's measurement.
+    Resources(ResourceReport),
 }
 
 impl std::fmt::Debug for Request {
@@ -53,6 +59,8 @@ impl std::fmt::Debug for Request {
             Self::Command { command, .. } => write!(f, "Command({command:?})"),
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
+            Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
+            Self::Resources(_) => f.write_str("Resources"),
         }
     }
 }
@@ -83,6 +91,22 @@ impl SupervisorHandle {
         answer.await.map_err(|_| stopped())?
     }
 
+    /// The running sessions and their programs' process ids, or `None` once
+    /// the Supervisor has stopped.
+    pub(crate) async fn running_processes(&self) -> Option<Vec<(SessionId, u32)>> {
+        let (reply, answer) = oneshot::channel();
+        self.requests
+            .send(Request::RunningProcesses(reply))
+            .await
+            .ok()?;
+        answer.await.ok()
+    }
+
+    /// Hands over a measurement. `false` once the Supervisor has stopped.
+    pub(crate) async fn record_resources(&self, report: ResourceReport) -> bool {
+        self.requests.send(Request::Resources(report)).await.is_ok()
+    }
+
     /// A session's terminal, if it still has one. With `viewed`, the session
     /// counts as seen.
     pub(crate) async fn terminal(&self, session: SessionId, viewed: bool) -> Option<PtyHandle> {
@@ -110,6 +134,8 @@ pub(crate) struct Settings {
     /// What the hook receiver accepted.
     pub(crate) hook_queue: mpsc::Receiver<HookDelivery>,
     pub(crate) delta_capacity: usize,
+    /// Keep every this-many-th measurement in the store's history.
+    pub(crate) history_every: u32,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -133,6 +159,8 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         live: HashMap::new(),
         hook_tokens: HashMap::new(),
         pty_events,
+        history_every: settings.history_every.max(1),
+        measurements: 0,
     };
     supervisor.recover_sessions().await;
     tokio::spawn(supervisor.run(queue, pty_queue, settings.hook_queue));
@@ -166,6 +194,9 @@ struct Supervisor {
     live: HashMap<SessionId, Live>,
     /// Which session each issued hook token names (`ARC-11`).
     hook_tokens: HashMap<String, SessionId>,
+    history_every: u32,
+    /// Measurements received, to keep every `history_every`-th.
+    measurements: u32,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }
@@ -215,6 +246,16 @@ impl Supervisor {
                 }
             },
             Request::IssueFetched(fetched) => self.start_fetched_issue(*fetched).await,
+            Request::RunningProcesses(reply) => {
+                let running = self
+                    .live
+                    .iter()
+                    .filter(|(_, live)| !live.machine.status().is_exited())
+                    .filter_map(|(id, live)| live.pty.pid().map(|pid| (*id, pid)))
+                    .collect();
+                let _ = reply.send(running);
+            }
+            Request::Resources(report) => self.record_resources(report).await,
             Request::Terminal {
                 session,
                 viewed,
@@ -255,6 +296,33 @@ impl Supervisor {
                 "issue commands are answered off the Supervisor's loop",
             )),
         }
+    }
+
+    /// Keeps the latest measurement, tells clients, and now and then keeps
+    /// one in the store's history.
+    async fn record_resources(&mut self, report: ResourceReport) {
+        self.measurements = self.measurements.wrapping_add(1);
+        if self.measurements.is_multiple_of(self.history_every) {
+            let at = self.clock.now();
+            let samples: Vec<_> = report
+                .sessions
+                .iter()
+                .map(|usage| crate::store::ResourceSample {
+                    session: usage.session,
+                    at,
+                    cpu_permille: usage.cpu_permille,
+                    memory_bytes: usage.memory_bytes,
+                })
+                .collect();
+            self.write(move |store| {
+                samples
+                    .iter()
+                    .try_for_each(|sample| store.record_sample(sample))
+            })
+            .await;
+        }
+        self.state.resources = Some(report.clone());
+        self.broadcast(Delta::Resources(report));
     }
 
     /// A hook arrived: the token says whose it is, never the payload.

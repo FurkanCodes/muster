@@ -33,6 +33,7 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         hook_socket: std::env::temp_dir().join("muster-unit-hooks.sock"),
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity,
+        history_every: 1,
     })
     .await
     .unwrap()
@@ -160,4 +161,87 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
     .await
     .expect("a fresh snapshot");
     assert_eq!(resent.projects.len(), 6);
+}
+
+#[tokio::test]
+async fn every_nth_measurement_is_kept_in_history() {
+    use muster_core::protocol::{ResourceReport, SessionUsage};
+    use muster_core::{
+        Project, ProjectId, Session, SessionId, SessionStatus, Workspace, WorkspaceId,
+        WorkspaceKind,
+    };
+
+    let store = StoreHandle::spawn(Store::open_in_memory().unwrap()).unwrap();
+    let project = Project {
+        id: ProjectId::new(),
+        name: "app".to_owned(),
+        root: PathBuf::from("/src/app"),
+        created_at: Timestamp::from_millis(1),
+    };
+    let workspace = Workspace {
+        id: WorkspaceId::new(),
+        project: project.id,
+        kind: WorkspaceKind::Worktree {
+            path: PathBuf::from("/w/work"),
+            branch: "work".to_owned(),
+        },
+        created_at: Timestamp::from_millis(1),
+    };
+    let session = Session {
+        id: SessionId::new(),
+        workspace: workspace.id,
+        harness: "shell".to_owned(),
+        title: "Shell".to_owned(),
+        status: SessionStatus::Fresh,
+        unseen: false,
+        resume_id: None,
+        created_at: Timestamp::from_millis(1),
+        ended_at: None,
+    };
+    let id = session.id;
+    store
+        .call(move |store| {
+            store.insert_project(&project)?;
+            store.insert_workspace(&workspace)?;
+            store.insert_session(&session)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let supervisor = supervisor::spawn(supervisor::Settings {
+        store: store.clone(),
+        clock: Arc::new(FixedClock),
+        worktrees_dir: std::env::temp_dir().join("muster-unit-worktrees"),
+        hook_socket: std::env::temp_dir().join("muster-unit-hooks.sock"),
+        hook_queue: tokio::sync::mpsc::channel(1).1,
+        delta_capacity: 16,
+        history_every: 2,
+    })
+    .await
+    .unwrap();
+
+    let report = ResourceReport {
+        host_memory_used: 1,
+        host_memory_total: 2,
+        sessions: vec![SessionUsage {
+            session: id,
+            memory_bytes: 1_000,
+            cpu_permille: 5,
+        }],
+    };
+    let kept = || async {
+        // A round trip, so the measurements before it have been handled.
+        supervisor.subscribe().await.unwrap();
+        store
+            .call(move |store| store.samples(id, Timestamp::from_millis(0)))
+            .await
+            .unwrap()
+            .unwrap()
+    };
+    assert!(supervisor.record_resources(report.clone()).await);
+    assert!(kept().await.is_empty(), "the first is not kept");
+    assert!(supervisor.record_resources(report).await);
+    let samples = kept().await;
+    assert_eq!(samples.len(), 1);
+    assert_eq!(samples[0].memory_bytes, 1_000);
 }

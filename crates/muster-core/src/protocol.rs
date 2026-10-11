@@ -262,6 +262,27 @@ pub struct Snapshot {
     pub projects: Vec<Project>,
     pub workspaces: Vec<Workspace>,
     pub sessions: Vec<Session>,
+    /// The latest measurement, once one has been taken.
+    #[serde(default)]
+    pub resources: Option<ResourceReport>,
+}
+
+/// What the machine and each running session use, measured every couple of
+/// seconds (`PRD-05`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceReport {
+    pub host_memory_used: u64,
+    pub host_memory_total: u64,
+    pub sessions: Vec<SessionUsage>,
+}
+
+/// One session's use: its program and every process it started.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionUsage {
+    pub session: SessionId,
+    pub memory_bytes: u64,
+    /// CPU in thousandths of one core: 1500 is one and a half cores.
+    pub cpu_permille: u32,
 }
 
 /// One change to the state.
@@ -278,6 +299,8 @@ pub enum Delta {
         status: SessionStatus,
         unseen: bool,
     },
+    /// A new measurement; replaces the last.
+    Resources(ResourceReport),
 }
 
 /// A failure the client can act on: `code` is for code, `message` for people.
