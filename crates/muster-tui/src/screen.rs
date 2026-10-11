@@ -5,6 +5,10 @@ use muster_core::protocol::{DetachReason, TerminalModes};
 
 /// Lines kept above the visible screen.
 const SCROLLBACK: usize = 2_000;
+/// The start and end of a synchronized update (DEC mode 2026): a program
+/// draws a frame between them, to be shown once it is whole.
+const FRAME_START: &[u8] = b"\x1b[?2026h";
+const FRAME_END: &[u8] = b"\x1b[?2026l";
 
 pub(crate) struct Screen {
     parser: vt100::Parser,
@@ -13,6 +17,12 @@ pub(crate) struct Screen {
     pub(crate) modes: TerminalModes,
     /// Why the stream ended, once it has.
     pub(crate) ended: Option<DetachReason>,
+    /// The program is drawing a frame (a synchronized update), not yet
+    /// whole.
+    in_frame: bool,
+    /// The last bytes of output, for a frame's start or end split across
+    /// two chunks.
+    tail: Vec<u8>,
 }
 
 impl std::fmt::Debug for Screen {
@@ -32,7 +42,34 @@ impl Screen {
             next_seq: None,
             modes: TerminalModes::default(),
             ended: None,
+            in_frame: false,
+            tail: Vec::new(),
         }
+    }
+
+    /// Whether the program is drawing a frame it has not finished: one
+    /// shown now would be half of it.
+    pub(crate) fn in_frame(&self) -> bool {
+        self.in_frame
+    }
+
+    /// Follows the program's synchronized updates through `data`: the last
+    /// start or end in it says where the program is.
+    fn track_frames(&mut self, data: &[u8]) {
+        let mut seen = std::mem::take(&mut self.tail);
+        seen.extend_from_slice(data);
+        let last = |marker: &[u8]| {
+            seen.windows(marker.len())
+                .rposition(|window| window == marker)
+        };
+        match (last(FRAME_START), last(FRAME_END)) {
+            (Some(start), Some(end)) => self.in_frame = start > end,
+            (Some(_), None) => self.in_frame = true,
+            (None, Some(_)) => self.in_frame = false,
+            (None, None) => {}
+        }
+        let keep = seen.len().saturating_sub(FRAME_START.len() - 1);
+        self.tail = seen.split_off(keep);
     }
 
     pub(crate) fn screen(&self) -> &vt100::Screen {
@@ -54,7 +91,9 @@ impl Screen {
         match self.next_seq {
             Some(next) if !reset && (seq..=end).contains(&next) => {
                 let skip = usize::try_from(next - seq).unwrap_or(usize::MAX);
-                self.parser.process(&data[skip.min(data.len())..]);
+                let fresh = &data[skip.min(data.len())..];
+                self.parser.process(fresh);
+                self.track_frames(fresh);
             }
             // Wholly behind what is shown: nothing new.
             Some(next) if !reset && end < next => return,
@@ -62,6 +101,8 @@ impl Screen {
                 let (rows, cols) = self.parser.screen().size();
                 self.parser = vt100::Parser::new(rows, cols, SCROLLBACK);
                 self.parser.process(data);
+                (self.in_frame, self.tail) = (false, Vec::new());
+                self.track_frames(data);
             }
         }
         self.next_seq = Some(end);
@@ -74,6 +115,7 @@ impl Screen {
         });
         if let Some(fresh) = data.get(skip..) {
             self.parser.process(fresh);
+            self.track_frames(fresh);
         }
         self.next_seq = Some(seq + data.len() as u64);
     }
@@ -166,5 +208,33 @@ mod tests {
         assert_eq!(text(&screen).trim(), "newer");
         screen.replay(105, b"fresh", true);
         assert_eq!(text(&screen).trim(), "fresh");
+    }
+
+    #[test]
+    fn a_frame_in_progress_is_known_until_it_ends_also_when_split() {
+        let mut screen = Screen::new(20, 4);
+        screen.replay(0, b"old", true);
+        let feed = |screen: &mut Screen, data: &[u8]| {
+            let seq = screen.next_seq().unwrap();
+            screen.output(seq, data);
+            screen.in_frame()
+        };
+        assert!(!screen.in_frame());
+        assert!(feed(&mut screen, b"\x1b[?2026h\x1b[Hnew"));
+        assert!(
+            feed(&mut screen, b" frame\x1b[?20"),
+            "its end has not all arrived"
+        );
+        assert!(!feed(&mut screen, b"26l"));
+        // A frame that starts across two chunks, and one that starts and
+        // ends in one.
+        assert!(!feed(&mut screen, b"\x1b[?2"));
+        assert!(feed(&mut screen, b"026hx"));
+        assert!(!feed(&mut screen, b"\x1b[?2026l\x1b[?2026hy\x1b[?2026l"));
+        assert_eq!(text(&screen).trim(), "new framexy");
+        // A replay that starts over forgets a frame cut off.
+        assert!(feed(&mut screen, b"\x1b[?2026h"));
+        screen.replay(0, b"fresh", true);
+        assert!(!screen.in_frame());
     }
 }

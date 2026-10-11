@@ -5,7 +5,12 @@
 //! startup and wait for the answer, so the daemon answers. Claude Code
 //! 2.1.291 asks three, captured on a bare terminal: keyboard-protocol support
 //! (`CSI ? u`), device attributes (`CSI c`) and the terminal's version
-//! (`CSI > 0 q`).
+//! (`CSI > 0 q`). Claude Code 2.1.296, once the version is answered, also
+//! asks which private modes the terminal has (DECRQM, `CSI ? Ps $ p`), for
+//! synchronized output (2026) among them: each mode tracked here is answered
+//! as set or reset, any other as not recognized, so nothing waits out a
+//! timeout. Clients honour synchronized output: they draw a frame once the
+//! program has finished it.
 //!
 //! Also tracked, for clients: the kitty keyboard flags the program pushes,
 //! whether it turned bracketed paste on, whether cursor keys are in
@@ -59,10 +64,12 @@ impl Answers {
 enum State {
     Ground,
     Escape,
-    /// Inside a CSI. Parameters collect; an intermediate byte or too many
-    /// parameters poison it, since no question we answer has either.
+    /// Inside a CSI. Parameters collect, then at most one intermediate
+    /// byte, as DECRQM has (`$`); more than that, or too many parameters,
+    /// poison it, since no question we answer has them.
     Csi {
         poisoned: bool,
+        intermediate: Option<u8>,
     },
 }
 
@@ -78,6 +85,9 @@ pub(crate) struct QueryScanner {
     mouse: MouseTracking,
     mouse_encoding: MouseEncoding,
     alternate_screen: bool,
+    /// Inside a synchronized update (`CSI ? 2026 h`): the program is
+    /// drawing a frame.
+    synchronized: bool,
 }
 
 impl Default for QueryScanner {
@@ -92,6 +102,7 @@ impl Default for QueryScanner {
             mouse: MouseTracking::Off,
             mouse_encoding: MouseEncoding::Default,
             alternate_screen: false,
+            synchronized: false,
         }
     }
 }
@@ -144,7 +155,10 @@ impl QueryScanner {
             State::Ground => State::Ground,
             State::Escape if byte == b'[' => {
                 self.params.clear();
-                State::Csi { poisoned: false }
+                State::Csi {
+                    poisoned: false,
+                    intermediate: None,
+                }
             }
             State::Escape => {
                 // RIS (`ESC c`) puts every mode back to its default.
@@ -154,6 +168,7 @@ impl QueryScanner {
                     self.mouse = MouseTracking::Off;
                     self.mouse_encoding = MouseEncoding::Default;
                     self.alternate_screen = false;
+                    self.synchronized = false;
                 }
                 if byte == ESC {
                     State::Escape
@@ -161,15 +176,28 @@ impl QueryScanner {
                     State::Ground
                 }
             }
-            State::Csi { poisoned } => match byte {
-                0x30..=0x3f if self.params.len() < MAX_PARAMS => {
+            State::Csi {
+                poisoned,
+                intermediate,
+            } => match byte {
+                0x30..=0x3f if intermediate.is_none() && self.params.len() < MAX_PARAMS => {
                     self.params.push(byte);
-                    State::Csi { poisoned }
+                    State::Csi {
+                        poisoned,
+                        intermediate,
+                    }
                 }
-                0x20..=0x3f => State::Csi { poisoned: true },
+                0x20..=0x2f if intermediate.is_none() => State::Csi {
+                    poisoned,
+                    intermediate: Some(byte),
+                },
+                0x20..=0x3f => State::Csi {
+                    poisoned: true,
+                    intermediate,
+                },
                 0x40..=0x7e => {
                     if !poisoned {
-                        self.dispatch(byte, end, answers);
+                        self.dispatch(byte, intermediate, end, answers);
                     }
                     State::Ground
                 }
@@ -179,8 +207,30 @@ impl QueryScanner {
         };
     }
 
-    fn dispatch(&mut self, final_byte: u8, end: usize, answers: &mut Answers) {
+    fn dispatch(
+        &mut self,
+        final_byte: u8,
+        intermediate: Option<u8>,
+        end: usize,
+        answers: &mut Answers,
+    ) {
         let params = std::mem::take(&mut self.params);
+        if let Some(intermediate) = intermediate {
+            // DECRQM for a private mode: answered with DECRPM, 1 for set, 2
+            // for reset, 0 for a mode this terminal does not know.
+            if let ((b'$', b'p'), [b'?', mode @ ..]) =
+                ((intermediate, final_byte), params.as_slice())
+                && let Some(number) = number(mode)
+            {
+                let status = match self.private_mode(number) {
+                    Some(true) => 1,
+                    Some(false) => 2,
+                    None => 0,
+                };
+                answers.reply(format!("\x1b[?{number};{status}$y").as_bytes());
+            }
+            return;
+        }
         match (final_byte, params.as_slice()) {
             // Kitty keyboard protocol: query, push, pop, and set.
             (b'u', [b'?']) => {
@@ -232,6 +282,7 @@ impl QueryScanner {
                         b"1005" => self.encode_mouse(MouseEncoding::Utf8, on),
                         b"1006" => self.encode_mouse(MouseEncoding::Sgr, on),
                         b"47" | b"1047" | b"1049" => self.alternate_screen = on,
+                        b"2026" => self.synchronized = on,
                         _ => {}
                     }
                 }
@@ -251,6 +302,23 @@ impl QueryScanner {
 }
 
 impl QueryScanner {
+    /// Whether private mode `number` is set, for the modes tracked here.
+    fn private_mode(&self, number: u32) -> Option<bool> {
+        Some(match number {
+            1 => self.application_cursor,
+            9 => self.mouse == MouseTracking::Press,
+            1000 => self.mouse == MouseTracking::PressRelease,
+            1002 => self.mouse == MouseTracking::ButtonMotion,
+            1003 => self.mouse == MouseTracking::AnyMotion,
+            1005 => self.mouse_encoding == MouseEncoding::Utf8,
+            1006 => self.mouse_encoding == MouseEncoding::Sgr,
+            47 | 1047 | 1049 => self.alternate_screen,
+            2004 => self.bracketed_paste,
+            2026 => self.synchronized,
+            _ => return None,
+        })
+    }
+
     fn track_mouse(&mut self, mode: MouseTracking, on: bool) {
         if on {
             self.mouse = mode;
@@ -422,5 +490,40 @@ mod tests {
                 Reply::Bytes(b"\x1b[?6c".to_vec()),
             ]
         );
+    }
+
+    #[test]
+    fn decrqm_is_answered_for_tracked_modes_and_not_recognized_otherwise() {
+        let mut scanner = QueryScanner::default();
+        // Claude Code's probe: synchronized output, then pixel mouse.
+        assert_eq!(
+            scanner.scan(b"\x1b[?2026$p\x1b[?1016$p").replies,
+            bytes(b"\x1b[?2026;2$y\x1b[?1016;0$y")
+        );
+        scanner.scan(b"\x1b[?2026h\x1b[?2004h");
+        assert_eq!(
+            scanner
+                .scan(b"\x1b[?2026$p\x1b[?2004$p\x1b[?1049$p")
+                .replies,
+            bytes(b"\x1b[?2026;1$y\x1b[?2004;1$y\x1b[?1049;2$y")
+        );
+        scanner.scan(b"\x1b[?2026l");
+        assert_eq!(
+            scanner.scan(b"\x1b[?2026$p").replies,
+            bytes(b"\x1b[?2026;2$y")
+        );
+        // Split across chunks, too.
+        assert_eq!(scanner.scan(b"\x1b[?20"), Answers::default());
+        assert_eq!(scanner.scan(b"26$").replies, Vec::new());
+        assert_eq!(scanner.scan(b"p").replies, bytes(b"\x1b[?2026;2$y"));
+    }
+
+    #[test]
+    fn other_sequences_with_an_intermediate_byte_are_left_alone() {
+        let mut scanner = QueryScanner::default();
+        // The cursor's shape, ANSI-mode DECRQM, two intermediates, and a
+        // parameter after the intermediate.
+        let noise = b"\x1b[2 q\x1b[4$p\x1b[?2026$$p\x1b[?$2026p";
+        assert_eq!(scanner.scan(noise), Answers::default());
     }
 }

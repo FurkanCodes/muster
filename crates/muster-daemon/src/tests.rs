@@ -104,11 +104,11 @@ async fn a_project_can_be_named_and_a_blank_name_is_ignored() {
 }
 
 #[tokio::test]
-async fn only_absolute_paths_to_git_repositories_are_projects() {
+async fn any_folder_named_by_an_absolute_path_is_a_project() {
     let dir = tempfile::tempdir().unwrap();
     let supervisor = start(16).await;
-    let plain = dir.path().join("plain");
-    std::fs::create_dir(&plain).unwrap();
+    let file = dir.path().join("notes.txt");
+    std::fs::write(&file, "text").unwrap();
 
     assert_eq!(
         refused(&supervisor, add(Path::new("relative/app"), None)).await,
@@ -119,9 +119,97 @@ async fn only_absolute_paths_to_git_repositories_are_projects() {
         ErrorCode::BadRequest
     );
     assert_eq!(
-        refused(&supervisor, add(&plain, None)).await,
+        refused(&supervisor, add(&file, None)).await,
         ErrorCode::BadRequest
     );
+
+    // A plain folder, not a git repository: its checkout has no branch.
+    let plain = dir.path().join("plain");
+    std::fs::create_dir(&plain).unwrap();
+    let Reply::ProjectAdded { id } = supervisor.command(add(&plain, None)).await.unwrap() else {
+        panic!("expected ProjectAdded");
+    };
+    let (snapshot, _) = supervisor.subscribe().await.unwrap();
+    assert_eq!(snapshot.projects[0].name, "plain");
+    let checkout = &snapshot.workspaces[0];
+    assert_eq!(checkout.project, id);
+    assert!(checkout.kind.is_checkout() && !checkout.kind.in_git());
+    assert_eq!(
+        checkout.kind.host_path(),
+        Some(plain.canonicalize().unwrap().as_path())
+    );
+}
+
+#[tokio::test]
+async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let plain = dir.path().join("notes");
+    std::fs::create_dir(&plain).unwrap();
+    let supervisor = start(16).await;
+    let Reply::ProjectAdded { id: project } = supervisor.command(add(&plain, None)).await.unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    let (snapshot, _) = supervisor.subscribe().await.unwrap();
+    let checkout = snapshot.workspaces[0].id;
+
+    for (command, says) in [
+        (
+            Command::CreateWorktree {
+                project,
+                branch: Some("work".to_owned()),
+            },
+            "notes is a plain folder, not a git repository; worktrees need one",
+        ),
+        (
+            Command::ListIssues { project },
+            "notes is a plain folder, not a git repository; GitHub issues need one",
+        ),
+        (
+            Command::ViewIssue { project, number: 1 },
+            "GitHub issues need one",
+        ),
+        (
+            Command::CloseIssue { project, number: 1 },
+            "GitHub issues need one",
+        ),
+        (
+            Command::StartFromIssue {
+                project,
+                number: 1,
+                harness: "shell".to_owned(),
+                size: Default::default(),
+                another: false,
+            },
+            "GitHub issues need one",
+        ),
+        (
+            Command::StartRun {
+                project,
+                number: 1,
+                from: None,
+            },
+            "runs need one",
+        ),
+        (
+            Command::OpenPullRequest {
+                workspace: checkout,
+            },
+            "it has no branch to review or push",
+        ),
+        (
+            Command::ReviewWorkspace {
+                workspace: checkout,
+                size: Default::default(),
+            },
+            "it has no branch to review or push",
+        ),
+    ] {
+        let error = supervisor.command(command.clone()).await.unwrap_err();
+        assert_eq!(error.code, ErrorCode::BadRequest, "{command:?}: {error}");
+        assert!(error.message.contains(says), "{command:?}: {error}");
+    }
+    assert!(!plain.join(".git").exists(), "nothing made it a repository");
 }
 
 #[tokio::test]

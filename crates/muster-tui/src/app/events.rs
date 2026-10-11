@@ -1,7 +1,5 @@
 //! What keys and pastes do in each mode.
 
-use std::path::{Path, PathBuf};
-
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use muster_core::WorkspaceId;
 use muster_core::protocol::{ClientFrame, Command};
@@ -11,13 +9,34 @@ use crate::input::{Edit, LineInput};
 use crate::keys::{encode_key, encode_paste};
 use crate::model::Row;
 
-/// Whether `key` is Ctrl+], which leaves a session's terminal. It reaches
-/// no common program, which is why telnet chose it too. A terminal without
-/// the kitty keyboard protocol sends it as byte 0x1d, which crossterm
+/// Whether `key` gives the keys back from a session's terminal to the
+/// list: Ctrl+Q, a letter, so it is there on every keyboard layout, and
+/// used by neither Claude Code nor the shells. Ctrl+], the key before it,
+/// still works; it needs Option on many layouts. A terminal without the
+/// kitty keyboard protocol sends Ctrl+] as byte 0x1d, which crossterm
 /// reports as Ctrl+5, so both are accepted.
 pub(crate) fn leaves_terminal(key: &KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(key.code, KeyCode::Char(']') | KeyCode::Char('5'))
+        && matches!(
+            key.code,
+            KeyCode::Char('q') | KeyCode::Char(']') | KeyCode::Char('5')
+        )
+}
+
+/// The screen Ctrl+1, Ctrl+2 or Ctrl+3 goes to, from anywhere, a session's
+/// terminal included: no program there uses them. Terminals tell them from
+/// plain digits only with the kitty keyboard protocol (without it, Ctrl+3
+/// is Esc), so on the list the plain digits work too.
+pub(crate) fn screen_key(key: &KeyEvent) -> Option<View> {
+    if !key.modifiers.contains(KeyModifiers::CONTROL) {
+        return None;
+    }
+    match key.code {
+        KeyCode::Char('1') => Some(View::Sessions),
+        KeyCode::Char('2') => Some(View::NeedsYou),
+        KeyCode::Char('3') => Some(View::Tickets),
+        _ => None,
+    }
 }
 
 impl App {
@@ -46,8 +65,11 @@ impl App {
                     data: encode_paste(text, screen.modes),
                 })]
             }
-            Mode::Dialog(Dialog::AddProject { path: input })
-            | Mode::Dialog(Dialog::NewWorktree { branch: input, .. })
+            Mode::Dialog(Dialog::AddProject { path, picker }) => {
+                let (path, picker) = (path.clone(), picker.clone());
+                self.picker_paste(path, picker, text)
+            }
+            Mode::Dialog(Dialog::NewWorktree { branch: input, .. })
             | Mode::Dialog(Dialog::NewSession { prompt: input, .. }) => {
                 input.paste(text);
                 Vec::new()
@@ -59,9 +81,12 @@ impl App {
     fn terminal_key(&mut self, session: muster_core::SessionId, key: &KeyEvent) -> Vec<Action> {
         self.note = None;
         if leaves_terminal(key) {
-            self.screen(session).scroll_to_bottom();
-            self.mode = Mode::Browse;
-            return self.settle();
+            return self.leave_terminal(session);
+        }
+        if let Some(view) = screen_key(key) {
+            let mut actions = self.leave_terminal(session);
+            actions.extend(self.show(view));
+            return actions;
         }
         // Claude Code suspends itself on Ctrl+Z and waits for a shell's `fg`;
         // a session has no shell above it, so the key would only freeze it.
@@ -73,7 +98,7 @@ impl App {
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && key.code == KeyCode::Char('z')
         {
-            self.complain("Ctrl+Z would freeze Claude Code here, so it was not sent. Ctrl-] goes back to the list.");
+            self.complain("Ctrl+Z would freeze Claude Code here, so it was not sent. Ctrl-Q goes back to the list.");
             return Vec::new();
         }
         let screen = self.screen(session);
@@ -90,9 +115,16 @@ impl App {
 
     fn browse_key(&mut self, key: &KeyEvent) -> Vec<Action> {
         let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        if let Some(view) = screen_key(key) {
+            return self.show(view);
+        }
         match key.code {
             KeyCode::Char('c') if control => return vec![Action::Quit],
+            // Ctrl+Q leaves a session's terminal; pressed once too often on
+            // the list, it must not quit.
+            KeyCode::Char('q') if control => return Vec::new(),
             KeyCode::Char('q') => return vec![Action::Quit],
+            // The tabs, round and back.
             KeyCode::Tab | KeyCode::BackTab => {
                 let back = key.code == KeyCode::BackTab;
                 let to = match (self.view, back) {
@@ -119,11 +151,7 @@ impl App {
             KeyCode::PageDown => self.page_preview(false),
             KeyCode::End => self.preview_to_bottom(),
             KeyCode::Enter => self.open_selected(),
-            KeyCode::Char('a') => {
-                self.mode = Mode::Dialog(Dialog::AddProject {
-                    path: LineInput::with(&self.cwd.display().to_string()),
-                });
-            }
+            KeyCode::Char('a') => return self.open_add_project(),
             KeyCode::Char('w') => self.new_worktree(),
             KeyCode::Char('i') => {
                 let project = self.selected.and_then(|row| self.model.project_of(row));
@@ -131,6 +159,7 @@ impl App {
                 return self.settle();
             }
             KeyCode::Char('n') => self.new_session(),
+            KeyCode::Char('f') => return self.open_full_screen(),
             KeyCode::Char('s') => self.confirm_stop(),
             KeyCode::Char('r') => return self.restart(),
             KeyCode::Char('x') => return self.remove(),
@@ -186,15 +215,47 @@ impl App {
 
     pub(super) fn open_selected(&mut self) {
         if let Some(session) = self.focused_session() {
+            // Beside the list, at the size it is already shown at.
             self.mode = Mode::Terminal(session);
+            self.full_screen = false;
             self.note = None;
             return;
         }
         match self.selected {
             Some(Row::Worktree(_)) => self.new_session(),
+            // A plain folder has no worktrees: a session in the folder.
+            Some(Row::Project(project)) if self.model.is_plain_folder(project) => {
+                self.new_session();
+            }
             Some(Row::Project(_)) => self.new_worktree(),
             _ => {}
         }
+    }
+
+    /// `f`: the selected session's terminal, with the keys, over the whole
+    /// window.
+    fn open_full_screen(&mut self) -> Vec<Action> {
+        let Some(session) = self.focused_session() else {
+            self.complain("Select a session to open it full screen.");
+            return Vec::new();
+        };
+        self.mode = Mode::Terminal(session);
+        self.full_screen = true;
+        self.note = None;
+        self.fit_attached()
+    }
+
+    /// Gives the keys back to the list. A session that filled the window
+    /// goes back beside it, at that size.
+    pub(super) fn leave_terminal(&mut self, session: muster_core::SessionId) -> Vec<Action> {
+        self.screen(session).scroll_to_bottom();
+        self.mode = Mode::Browse;
+        let was_full = std::mem::take(&mut self.full_screen);
+        let mut actions = self.settle();
+        if was_full {
+            actions.extend(self.fit_attached());
+        }
+        actions
     }
 
     /// `c`: the project's checks in the selected workspace, opened as they
@@ -203,7 +264,7 @@ impl App {
         let Some(workspace) = self.hands_on_workspace("run the checks there") else {
             return Vec::new();
         };
-        let size = self.terminal_size;
+        let size = self.session_size();
         vec![self.command(
             Command::CheckWorkspace { workspace, size },
             Then::OpenSession,
@@ -233,7 +294,7 @@ impl App {
         let Some(workspace) = self.hands_on_workspace("review its change") else {
             return Vec::new();
         };
-        let size = self.terminal_size;
+        let size = self.session_size();
         vec![self.command(
             Command::ReviewWorkspace { workspace, size },
             Then::OpenSession,
@@ -255,6 +316,15 @@ impl App {
 
     fn new_worktree(&mut self) {
         match self.selected.and_then(|row| self.model.project_of(row)) {
+            Some(project) if self.model.is_plain_folder(project) => {
+                let name = self
+                    .model
+                    .project(project)
+                    .map_or("That project", |found| found.name.as_str());
+                self.complain(format!(
+                    "{name} is a plain folder, not a git repository, so it has no worktrees: press n for a session in it."
+                ));
+            }
             Some(project) => {
                 self.mode = Mode::Dialog(Dialog::NewWorktree {
                     project,
@@ -330,7 +400,7 @@ impl App {
         }
         let command = Command::RestartSession {
             session,
-            size: self.terminal_size,
+            size: self.session_size(),
         };
         vec![self.command(command, Then::OpenRestarted)]
     }
@@ -347,7 +417,7 @@ impl App {
                 .map_or("this project", |found| found.name.as_str());
             self.mode = Mode::Dialog(Dialog::Confirm {
                 question: format!(
-                    "Stop tracking {name}? Muster forgets it; its repository and files are not touched."
+                    "Stop tracking {name}? Muster forgets it; nothing in its folder is touched."
                 ),
                 then: Confirmed::RemoveProject(project),
             });
@@ -358,10 +428,10 @@ impl App {
                 return Vec::new();
             };
             if stored.ended_at.is_none() {
-                self.complain(format!(
-                    "{} is still running; stop it first with s.",
-                    stored.title
-                ));
+                self.mode = Mode::Dialog(Dialog::Confirm {
+                    question: format!("Close {}? It stops and leaves the list.", stored.title),
+                    then: Confirmed::CloseSession(session),
+                });
                 return Vec::new();
             }
             let command = Command::RemoveSession { session };
@@ -408,7 +478,7 @@ impl App {
             Dialog::Confirm { then, .. } => match key.code {
                 KeyCode::Char('y') | KeyCode::Enter => {
                     self.mode = Mode::Browse;
-                    vec![self.confirmed(then)]
+                    self.confirmed(then)
                 }
                 KeyCode::Char('n') | KeyCode::Esc => {
                     self.mode = Mode::Browse;
@@ -416,15 +486,7 @@ impl App {
                 }
                 _ => Vec::new(),
             },
-            Dialog::AddProject { mut path } => match path.handle(key) {
-                Edit::Submit => {
-                    self.mode = Mode::Browse;
-                    let root = resolve_path(path.text(), &self.cwd);
-                    let command = Command::AddProject { root, name: None };
-                    vec![self.command(command, Then::SelectProject)]
-                }
-                edit => self.keep_editing(edit, Dialog::AddProject { path }),
-            },
+            Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
             Dialog::NewWorktree {
                 project,
                 mut branch,
@@ -472,7 +534,7 @@ impl App {
                             workspace,
                             harness: harness.id().to_owned(),
                             title: None,
-                            size: self.terminal_size,
+                            size: self.session_size(),
                             prompt,
                         };
                         vec![self.command(command, Then::OpenSession)]
@@ -498,38 +560,36 @@ impl App {
         Vec::new()
     }
 
-    fn confirmed(&mut self, then: Confirmed) -> Action {
-        match then {
+    fn confirmed(&mut self, then: Confirmed) -> Vec<Action> {
+        let action = match then {
             Confirmed::StopSession(session) => self.command(
                 Command::StopSession { session },
                 Then::Say("Stopping the session."),
             ),
+            Confirmed::CloseSession(session) => {
+                self.closing.push(session);
+                self.say("Closing the session…");
+                self.command(Command::StopSession { session }, Then::Closing(session))
+            }
             Confirmed::RemoveWorktree { workspace, force } => self.command(
                 Command::RemoveWorktree { workspace, force },
                 Then::RemovedWorktree(workspace),
             ),
             Confirmed::RemoveProject(project) => self.command(
                 Command::RemoveProject { project },
-                Then::Say("Muster no longer tracks the project; its repository is untouched."),
+                Then::Say("Muster no longer tracks the project; its folder is untouched."),
             ),
-        }
-    }
-}
-
-/// A typed path: `~` is the home directory, and a relative path is taken
-/// from where `muster` was started.
-fn resolve_path(typed: &str, cwd: &Path) -> PathBuf {
-    let typed = typed.trim();
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let path = match (typed.strip_prefix("~"), home) {
-        (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with('/') => {
-            home.join(rest.trim_start_matches('/'))
-        }
-        _ => PathBuf::from(typed),
-    };
-    if path.is_absolute() {
-        path
-    } else {
-        cwd.join(path)
+            Confirmed::CloseTicket { project, number } => {
+                self.say(format!("Closing #{number} on GitHub…"));
+                self.command(
+                    Command::CloseIssue { project, number },
+                    Then::TicketClosed(project, number),
+                )
+            }
+            Confirmed::CleanUpTicket { project, number } => {
+                return self.clean_up_ticket(project, number);
+            }
+        };
+        vec![action]
     }
 }

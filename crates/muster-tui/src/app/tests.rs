@@ -18,6 +18,11 @@ pub(super) const SIZE: TermSize = TermSize {
     rows: 29,
 };
 
+/// The size of a session beside the list in a window of `SIZE`: what is
+/// left of 100 columns by the 34-column list, and of 29 rows by the bottom
+/// bar, inside the pane's border.
+pub(super) const PANE: TermSize = TermSize { cols: 64, rows: 26 };
+
 pub(super) struct World {
     pub(super) app: App,
     pub(super) project: Project,
@@ -126,6 +131,39 @@ fn resource_use_is_shown_for_the_host_and_each_session() {
 }
 
 #[test]
+fn a_session_line_that_cannot_fit_its_usage_leaves_it_to_the_pane() {
+    let mut world = world();
+    let mut claude = world.session.clone();
+    claude.title = "Claude Code".to_owned();
+    claude.status = muster_core::SessionStatus::Finished;
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(claude.clone())));
+    world.app.on_frame(ServerFrame::Delta(Delta::Resources(
+        muster_core::protocol::ResourceReport {
+            host_memory_used: 9_100_000_000,
+            host_memory_total: 16_000_000_000,
+            sessions: vec![muster_core::protocol::SessionUsage {
+                session: claude.id,
+                memory_bytes: 455_000_000,
+                cpu_permille: 9,
+            }],
+        },
+    )));
+    let screen = render(&world.app);
+    // The whole title and status, and no usage cut off at the border.
+    assert!(screen.contains("✓ Claude Code  finished  "), "{screen}");
+    assert!(!screen.contains("455 MB"), "{screen}");
+    // The session's pane says it.
+    world.app.selected = Some(Row::Session(claude.id));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("Claude Code · finished · 455 MB · 1%"),
+        "{screen}"
+    );
+}
+
+#[test]
 fn selecting_a_session_streams_it_and_moving_away_stops() {
     let mut world = world();
     assert_eq!(world.app.selected, Some(Row::Project(world.project.id)));
@@ -137,7 +175,7 @@ fn selecting_a_session_streams_it_and_moving_away_stops() {
         [
             Action::Send(ClientFrame::Resize {
                 session: id,
-                size: SIZE
+                size: PANE
             }),
             Action::Send(ClientFrame::Attach {
                 session: id,
@@ -151,12 +189,16 @@ fn selecting_a_session_streams_it_and_moving_away_stops() {
 }
 
 #[test]
-fn a_terminal_takes_keys_and_ctrl_bracket_leaves_it() {
+fn a_terminal_beside_the_list_takes_keys_and_ctrl_q_gives_them_back() {
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
     press(&mut world.app, KeyCode::Enter);
     assert_eq!(world.app.mode, Mode::Terminal(id));
+    assert!(!world.app.full_screen);
+    let screen = render(&world.app);
+    assert!(screen.contains("Sessions"), "the list stays: {screen}");
+    assert!(screen.contains("Ctrl-Q back to the list"), "{screen}");
 
     assert_eq!(
         press(&mut world.app, KeyCode::Char('q')),
@@ -165,14 +207,45 @@ fn a_terminal_takes_keys_and_ctrl_bracket_leaves_it() {
             data: b"q".to_vec()
         })]
     );
+    assert!(world.app.on_key(ctrl('q')).is_empty(), "nothing to resize");
+    assert_eq!(world.app.mode, Mode::Browse);
+    assert_eq!(world.app.selected, Some(Row::Session(id)));
+    // Pressed once more on the list, it does not quit.
+    assert!(!world.app.on_key(ctrl('q')).contains(&Action::Quit));
+
+    // Ctrl-] still works; without the kitty protocol the terminal sends
+    // 0x1d, which crossterm calls Ctrl+5.
+    press(&mut world.app, KeyCode::Enter);
     world.app.on_key(ctrl(']'));
     assert_eq!(world.app.mode, Mode::Browse);
-
     press(&mut world.app, KeyCode::Enter);
-    // Without the kitty protocol the terminal sends 0x1d, which crossterm
-    // calls Ctrl+5.
     world.app.on_key(ctrl('5'));
     assert_eq!(world.app.mode, Mode::Browse);
+}
+
+#[test]
+fn f_fills_the_window_and_ctrl_q_puts_it_back_beside_the_list() {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    world.app.settle();
+    let resized = |size| Action::Send(ClientFrame::Resize { session: id, size });
+
+    assert_eq!(press(&mut world.app, KeyCode::Char('f')), [resized(SIZE)]);
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    let screen = render(&world.app);
+    assert!(!screen.contains("╭ Sessions"), "no list: {screen}");
+    assert!(screen.contains("Ctrl-Q back to the list"), "{screen}");
+
+    assert_eq!(world.app.on_key(ctrl('q')), [resized(PANE)]);
+    assert_eq!(world.app.mode, Mode::Browse);
+    assert!(!world.app.full_screen);
+
+    // Nothing to fill the window with on a project.
+    world.app.selected = Some(Row::Project(world.project.id));
+    press(&mut world.app, KeyCode::Char('f'));
+    assert_eq!(world.app.mode, Mode::Browse);
+    assert!(world.app.note.as_ref().is_some_and(|note| note.error));
 }
 
 #[test]
@@ -194,7 +267,7 @@ fn output_is_drawn_and_pastes_follow_the_programs_modes() {
     });
     let screen = render(&world.app);
     assert!(screen.contains("$ echo hi"), "{screen}");
-    assert!(screen.contains("Ctrl-] back"), "{screen}");
+    assert!(screen.contains("Ctrl-Q back to the list"), "{screen}");
 
     assert_eq!(
         world.app.on_paste("a\nb"),
@@ -265,7 +338,7 @@ fn a_new_session_starts_claude_with_a_prompt_and_opens_it() {
             workspace: world.worktree.id,
             harness: "claude".to_owned(),
             title: None,
-            size: SIZE,
+            size: PANE,
             prompt: Some("fix the login".to_owned()),
         }
     );
@@ -422,7 +495,7 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
             unseen: true,
         }));
     }
-    press(&mut world.app, KeyCode::Tab);
+    world.app.on_key(ctrl('2'));
     assert_eq!(world.app.view, View::NeedsYou);
     assert_eq!(world.app.needs_list, [other.id, world.session.id]);
     assert_eq!(world.app.needs_selected, Some(other.id));
@@ -436,7 +509,7 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
     assert_eq!(world.app.needs_list, [other.id, world.session.id]);
     press(&mut world.app, KeyCode::Down);
     assert_eq!(world.app.needs_list, [world.session.id]);
-    assert!(render(&world.app).contains("2 Needs you 1 "));
+    assert!(render(&world.app).contains(" Needs you 1 "));
 }
 
 #[test]
@@ -455,10 +528,10 @@ fn losing_the_daemon_is_shown_and_nothing_streams() {
 fn a_project_is_added_from_a_typed_path() {
     let mut world = world();
     press(&mut world.app, KeyCode::Char('a'));
-    let Mode::Dialog(Dialog::AddProject { path }) = &world.app.mode else {
+    let Mode::Dialog(Dialog::AddProject { path, .. }) = &world.app.mode else {
         panic!("expected the add-project dialog");
     };
-    assert_eq!(path.text(), "/src", "starts with where muster was started");
+    assert_eq!(path.text(), "/src/", "starts with where muster was started");
     world.app.on_key(ctrl('u'));
     typed(&mut world.app, "other");
     let (_, sent) = command(&press(&mut world.app, KeyCode::Enter));
@@ -522,4 +595,31 @@ fn before_the_first_snapshot_the_ui_says_it_is_loading() {
     let screen = render(&app);
     assert!(screen.contains("loading…"), "{screen}");
     assert!(!screen.contains("0 sessions"), "{screen}");
+}
+
+#[test]
+fn a_frame_half_drawn_in_the_session_shown_holds_the_drawing() {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    world.app.settle();
+    world.app.on_frame(ServerFrame::Replay {
+        session: id,
+        seq: 0,
+        data: b"$ ".to_vec(),
+        reset: true,
+    });
+    assert!(!world.app.frame_pending());
+    world.app.on_frame(ServerFrame::Output {
+        session: id,
+        seq: 2,
+        data: b"\x1b[?2026h\x1b[Hhalf".to_vec(),
+    });
+    assert!(world.app.frame_pending());
+    world.app.on_frame(ServerFrame::Output {
+        session: id,
+        seq: 16,
+        data: b" whole\x1b[?2026l".to_vec(),
+    });
+    assert!(!world.app.frame_pending());
 }

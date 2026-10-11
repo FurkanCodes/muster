@@ -8,13 +8,13 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 use super::{describe, panel, shorten, status_symbol};
-use crate::app::{App, TicketRow, TicketText, Tickets, View};
+use crate::app::{App, TicketRow, TicketText, Tickets};
 
 /// The most agents shown on a ticket's line; the rest are counted.
 const AGENTS_SHOWN: usize = 4;
 
 pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let block = panel(" Tickets ", app.view == View::Tickets);
+    let block = panel(" Tickets ", app.list_has_keys());
     let rows = app.ticket_rows();
     if rows.is_empty() {
         frame.render_widget(
@@ -220,7 +220,7 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
         } else {
             hints.extend(["⏎ open agent", "a another agent"]);
         }
-        hints.push("b browser");
+        hints.extend(["b browser", "x close on GitHub"]);
     }
     hints.push("r refresh");
     hints

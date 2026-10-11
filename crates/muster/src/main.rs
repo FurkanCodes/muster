@@ -36,7 +36,7 @@ enum Commands {
     },
     /// Show whether the daemon is running and what it is tracking.
     Status,
-    /// Manage the repositories Muster tracks.
+    /// Manage the projects Muster tracks: git repositories, or any folder.
     #[command(subcommand)]
     Project(ProjectCommand),
     /// Manage git worktrees.
@@ -103,6 +103,10 @@ enum IssueCommand {
         #[arg(long)]
         another: bool,
     },
+    /// Close issue NUMBER of PROJECT on GitHub, with your `gh`. Its agents
+    /// and worktrees stay; close and remove them with `muster session` and
+    /// `muster worktree`.
+    Close { project: String, number: u64 },
 }
 
 /// RUN is a run's id, or its issue's number (`42` or `#42`): the run going
@@ -152,14 +156,16 @@ enum RunCommand {
 
 #[derive(Debug, Subcommand)]
 enum ProjectCommand {
-    /// Start tracking the git repository at PATH.
+    /// Start tracking the folder at PATH: a git repository, or any folder.
+    /// A plain folder has sessions and checks in it, but no worktrees,
+    /// tickets, reviews or pull requests until it is a repository.
     Add {
         path: PathBuf,
         /// The name shown in the UI; defaults to the directory's name.
         #[arg(long)]
         name: Option<String>,
     },
-    /// Stop tracking PROJECT (its name, id or path). Its repository is not
+    /// Stop tracking PROJECT (its name, id or path). Its folder is not
     /// touched; its worktrees must be removed first.
     Remove { project: String },
     /// Show PROJECT's settings for runs: its `muster.toml` with your
@@ -277,6 +283,9 @@ fn main() -> ExitCode {
             }
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await
+            }
+            Some(Commands::Issue(IssueCommand::Close { project, number })) => {
+                commands::close_issue(&socket, &project, number).await
             }
             Some(Commands::Issue(IssueCommand::Start {
                 project,

@@ -7,6 +7,7 @@
 //! changed, and once a minute regardless, it asks git for the list
 //! (`git worktree list --porcelain -z`) and hands it to the Supervisor,
 //! which adopts worktrees it does not know and forgets those that are gone.
+//! Projects that are plain folders are left out until they are repositories.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -102,13 +103,16 @@ pub(crate) async fn run(supervisor: SupervisorHandle, every: Duration) {
                 let project = project.clone();
                 tokio::task::spawn_blocking(move || {
                     (
+                        git::is_repository(&project.root),
                         changed_at(&project.root),
                         project.known.iter().any(|path| !path.exists()),
                     )
                 })
                 .await
             };
-            let Ok((stamp, missing)) = looked else {
+            // A plain folder has no worktrees. Git, asked there, would list
+            // those of a repository the folder sits in, which are not its.
+            let Ok((true, stamp, missing)) = looked else {
                 continue;
             };
             let due = match seen.get(&project.project) {

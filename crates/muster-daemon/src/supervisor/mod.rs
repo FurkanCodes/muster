@@ -377,6 +377,9 @@ impl Supervisor {
                 // These talk to GitHub, so they answer from a task of their own.
                 Command::ListIssues { project } => self.list_issues(project, reply),
                 Command::ViewIssue { project, number } => self.view_issue(project, number, reply),
+                Command::CloseIssue { project, number } => {
+                    self.close_issue(project, number, reply);
+                }
                 Command::StartRun {
                     project,
                     number,
@@ -510,6 +513,7 @@ impl Supervisor {
             Command::RunHistory { run } => self.run_history(run).await,
             Command::ListIssues { .. }
             | Command::ViewIssue { .. }
+            | Command::CloseIssue { .. }
             | Command::StartFromIssue { .. }
             | Command::StartRun { .. }
             | Command::TakeOverRun { .. }
@@ -676,6 +680,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::RemoveSession { .. } => "remove session",
         Command::ListIssues { .. } => "list issues",
         Command::ViewIssue { .. } => "view issue",
+        Command::CloseIssue { .. } => "close issue",
         Command::StartRun { .. } => "start run",
         Command::CancelRun { .. } => "cancel run",
         Command::RetryRun { .. } => "retry run",

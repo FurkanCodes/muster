@@ -1,10 +1,12 @@
 //! Restarting and removing sessions, and what the person sees around them.
 
 use crossterm::event::KeyCode;
-use muster_core::protocol::{ClientFrame, Command, Delta, Reply, ServerFrame};
+use muster_core::protocol::{
+    ClientFrame, Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame,
+};
 use muster_core::{Session, SessionStatus, Timestamp};
 
-use super::tests::{SIZE, World, command, press, render, world};
+use super::tests::{PANE, SIZE, World, command, press, render, world};
 use super::{Action, Link, Mode};
 use crate::model::Row;
 
@@ -45,7 +47,7 @@ fn r_restarts_an_ended_session_and_opens_it() {
         sent,
         Command::RestartSession {
             session: id,
-            size: SIZE,
+            size: PANE,
         }
     );
     world.app.on_frame(ServerFrame::Reply {
@@ -129,13 +131,58 @@ fn x_removes_an_ended_session_at_once() {
 }
 
 #[test]
-fn x_on_a_running_session_says_to_stop_it_and_on_a_worktree_asks() {
+fn x_closes_a_running_session_after_asking_once() {
     let mut world = world();
-    world.app.selected = Some(Row::Session(world.session.id));
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
     assert!(no_command(&press(&mut world.app, KeyCode::Char('x'))));
-    let note = world.app.note.clone().expect("a note");
-    assert!(note.text.contains("stop it first"), "{note:?}");
+    assert!(render(&world.app).contains("Close Shell? It stops and leaves the list."));
+    let (req_id, sent) = command(&press(&mut world.app, KeyCode::Char('y')));
+    assert_eq!(sent, Command::StopSession { session: id });
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Ok(Reply::Done),
+    });
 
+    // Once it has ended, it is taken off the list without asking again.
+    let mut ended = world.session.clone();
+    ended.status = SessionStatus::Exited { success: true };
+    ended.ended_at = Some(Timestamp::from_millis(9));
+    let actions = world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended.clone())));
+    assert_eq!(command(&actions).1, Command::RemoveSession { session: id });
+    // Only once.
+    let again = world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
+    assert!(no_command(&again));
+}
+
+#[test]
+fn a_session_that_cannot_be_stopped_is_not_closed() {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    press(&mut world.app, KeyCode::Char('x'));
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('y')));
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Err(ErrorBody::new(ErrorCode::NotFound, "no such session")),
+    });
+    assert!(world.app.note.as_ref().is_some_and(|note| note.error));
+    // Ending later on its own, it stays listed.
+    let mut ended = world.session.clone();
+    ended.ended_at = Some(Timestamp::from_millis(9));
+    let actions = world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
+    assert!(no_command(&actions));
+}
+
+#[test]
+fn x_on_a_worktree_asks() {
+    let mut world = world();
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     press(&mut world.app, KeyCode::Char('x'));
     assert!(matches!(world.app.mode, Mode::Dialog(_)));

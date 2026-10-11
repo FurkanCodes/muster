@@ -20,6 +20,7 @@ impl Supervisor {
         project: ProjectId,
         branch: Option<String>,
     ) -> Result<Reply, ErrorBody> {
+        self.repository_root(project, "worktrees")?;
         let project = self
             .state
             .projects

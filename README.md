@@ -6,12 +6,12 @@
 
 ## What it does
 
-- **Sessions in worktrees, or in your checkout.** Add a repository, create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start Claude Code or a shell in it, or start one in the repository itself. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist. Branches shown follow what is checked out, also when you or an agent switch, and worktrees made or removed with plain git appear and go.
+- **Sessions in worktrees, or in your checkout.** Add a repository (or any folder), create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start Claude Code or a shell in it, or start one in the repository itself. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist. Branches shown follow what is checked out, also when you or an agent switch, and worktrees made or removed with plain git appear and go. A plain folder, not a git repository, works too: sessions and checks run in the folder, and worktrees, tickets, reviews and pull requests come once you make it one (`git init`).
 - **Live status, no screen scraping.** Claude Code reports through hooks passed on its command line (`--settings`), never written into your repository or your Claude settings. Muster shows each session as running, finished, or *needs you* (a permission prompt or a question), with a dot for news you have not seen.
 - **Needs you.** One queue of everything waiting on you: questions first, then news, oldest first. While your terminal window is in the background, Muster tells you as something comes to need you, with a desktop notification where your terminal shows them (iTerm2, WezTerm, Ghostty, kitty) and its bell elsewhere; `MUSTER_NOTIFY=off` turns that off.
-- **A real terminal per session.** Open any session full screen and use it as you would in your own terminal: the daemon answers the program's terminal questions, and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys).
+- **A real terminal per session, beside the list.** Work in any session to the right of the list, or full screen, as you would in your own terminal: the daemon answers the program's terminal questions, and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys).
 - **Survives restarts.** Sessions belong to the daemon. After a daemon restart, Claude Code sessions resume with `--resume`; one that cannot falls back to a fresh start.
-- **Tickets.** A screen of each project's open tickets (GitHub issues, through your `gh`) with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<n>-<title>`, starts Claude Code there, and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file an issue. More agents on the same ticket get worktrees of their own. Muster only reads tickets; nothing changes in the tracker.
+- **Tickets.** A screen of each project's open tickets (GitHub issues, through your `gh`) with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<n>-<title>`, starts Claude Code there, and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file an issue. More agents on the same ticket get worktrees of their own. When the work is done, close the ticket from Muster (`x`, after asking; it is closed with your `gh`) and let it close the ticket's agents and remove its worktrees, keeping the branches. That is the only change Muster makes in the tracker.
 - **The stages by hand.** On any worktree: run the project's checks as a session, have Claude Code review the change in plan mode, or push the branch and open a draft pull request.
 - **Resources.** Memory and CPU for each session's whole process tree, and the machine's memory.
 
@@ -29,36 +29,39 @@ cargo install --locked --path crates/muster
 muster
 ```
 
-`muster` opens the UI and starts the daemon if none is running. Press `a` to add the repository you started it in.
+`muster` opens the UI and starts the daemon if none is running. Press `a` to add a project: the dialog lists the folders where you started it, git repositories marked. Type to narrow them, `↑` `↓` to choose one, `⇥` to open it and `⇧⇥` to go up a folder; `⏎` adds the chosen folder, or the folder typed when none is chosen (at first, the one you started in). Any folder can be a project, a git repository or not.
 
 | Key | In the list |
 |---|---|
-| `↑` `↓` | move (the selected session streams into the preview) |
-| `⏎` | open a session full screen; on a worktree or checkout (`⌂`), start a session; on a project, create a worktree |
+| `↑` `↓` | move (the selected session streams in beside the list) |
+| `⏎` | type in the selected session, beside the list; on a worktree or checkout (`⌂`), start a session; on a project, create a worktree (on a plain folder, start a session in it) |
+| `f` | the selected session full screen |
 | `a` | add a project |
 | `w` | new worktree for the selected project |
 | `n` | new session in the selected worktree, or on a project in its own checkout: Claude Code with an optional first prompt, or a shell (`⇥` switches) |
 | `i` | the Tickets screen, on the selected project |
-| `s` | stop a session |
+| `s` | stop a session; it stays listed, for `r` |
 | `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
-| `x` | remove the selected ended session; or, after asking, the selected worktree, or a project (Muster forgets it; the repository is untouched) |
+| `x` | close the selected session: a running one after asking once (it stops, then leaves the list), an ended one at once; or, after asking, the selected worktree, or a project (Muster forgets it; its files are untouched) |
 | `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `v` | have Claude Code review the selected worktree's change, in plan mode (it changes nothing) |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
-| `1` `2` `3` | show *Sessions*, *Needs you* or *Tickets* (the tabs at the top); `⇥` goes round them |
+| `⇥` `⇧⇥` | the next or previous tab: *Sessions*, *Needs you*, *Tickets* |
+| `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
 | `esc` `⌫` | back to *Sessions* from *Needs you* or *Tickets* |
 | `q` | quit the UI (sessions keep running) |
 
-In a full-screen session every key goes to the program, Esc and Backspace included (Claude Code needs them); **Ctrl-]** comes back to the list.
+While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them); **Ctrl-Q** gives the keys back to the list, and so does a click on it. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
 
 | Key | On the *Tickets* screen |
 |---|---|
 | `⏎` | open the agent on the selected ticket, or start the first: Claude Code in a worktree for it, with the ticket as its first prompt |
 | `a` | start another agent on the ticket, in a worktree of its own |
 | `b` | open the ticket in your browser |
+| `x` | close the ticket on GitHub, after asking; then, if you want, close its agents and remove its worktrees (the branches are kept) |
 | `r` | fetch the tickets again |
 
-The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the preview opens it. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
+The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the session beside it gives it the keys. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
 
 The same things work from scripts:
 
@@ -80,6 +83,10 @@ muster issue list app
 
 ```bash
 muster issue start app 42
+```
+
+```bash
+muster issue close app 42
 ```
 
 ```bash

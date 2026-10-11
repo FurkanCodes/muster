@@ -50,6 +50,10 @@ impl TicketSource for OneIssue {
             }
         })
     }
+
+    fn close(&self, _repo: &Path, _number: u64) -> BoxFuture<'_, Result<(), GitHubError>> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 fn issue() -> Issue {

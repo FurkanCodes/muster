@@ -263,7 +263,7 @@ async fn a_slow_github_call_does_not_hold_up_other_commands() {
 }
 
 #[test]
-fn the_command_line_lists_and_starts_issues() {
+fn the_command_line_lists_starts_and_closes_issues() {
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
     std::fs::write(
@@ -305,6 +305,29 @@ fn the_command_line_lists_and_starts_issues() {
     let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
     assert!(status.contains("muster/issue-3-typo-in-readme"), "{status}");
     assert!(status.contains("#3 Typo in README"), "{status}");
+
+    // Closing it goes to GitHub through the person's gh, and leaves the
+    // work on it alone.
+    let closed = sandbox.run(&["issue", "close", "app", "3"]);
+    assert!(
+        closed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&closed.stderr)
+    );
+    assert!(String::from_utf8_lossy(&closed.stdout).contains("Closed issue #3 on GitHub."));
+    let calls = std::fs::read_to_string(sandbox.fake_gh().join("calls")).unwrap();
+    assert!(calls.lines().any(|call| call == "issue close 3"), "{calls}");
+    let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
+    assert!(status.contains("muster/issue-3-typo-in-readme"), "{status}");
+
+    // GitHub's reason, when it will not.
+    let refused = sandbox.run(&["issue", "close", "app", "99"]);
+    assert!(!refused.status.success());
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("Could not resolve"),
+        "{}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
 }
 
 #[test]

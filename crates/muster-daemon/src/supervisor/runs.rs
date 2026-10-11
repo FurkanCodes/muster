@@ -69,12 +69,12 @@ impl Supervisor {
         from: Option<WorkspaceId>,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let Some(root) = self.project_root(project) else {
-            let _ = reply.send(Err(ErrorBody::new(
-                ErrorCode::NotFound,
-                format!("no project {project}"),
-            )));
-            return;
+        let root = match self.repository_root(project, "runs") {
+            Ok(root) => root,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
+            }
         };
         if let Some(existing) = self.active_run_for(project, number) {
             let _ = reply.send(Err(ErrorBody::new(

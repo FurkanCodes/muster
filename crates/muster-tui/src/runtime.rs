@@ -18,6 +18,7 @@ use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
 use crate::app::{Action, App};
+use crate::folders::{self, Folder};
 use crate::view;
 
 /// How the app finds, and if need be starts, the daemon.
@@ -62,6 +63,9 @@ enum LinkEvent {
 
 /// The redraw rate's upper bound.
 const FRAME: Duration = Duration::from_millis(16);
+/// The longest drawing waits for a program to finish a frame it started
+/// (synchronized output), in case one never does.
+const FRAME_WAIT: Duration = Duration::from_millis(150);
 const CLIENT: &str = concat!("muster-tui ", env!("CARGO_PKG_VERSION"));
 
 /// Runs the UI until the person quits. The daemon, and every session, keep
@@ -75,10 +79,16 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let (link_events, mut link) = mpsc::unbounded_channel();
     let link_task = tokio::spawn(keep_linked(options, link_events));
 
+    // Folders listed for the folder picker, off this loop: a folder on a
+    // slow disk must not stop the UI.
+    let (listed_folders, mut folder_lists) =
+        mpsc::unbounded_channel::<(PathBuf, Result<Vec<Folder>, String>)>();
+
     let mut input = EventStream::new();
     let mut sender: Option<FrameSender> = None;
     let mut redraw = tokio::time::interval(FRAME);
     let mut dirty = true;
+    let mut hold = FrameHold::default();
     let outcome = loop {
         let actions = tokio::select! {
             event = input.next() => match event {
@@ -103,8 +113,9 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                     Vec::new()
                 }
             },
+            Some((dir, folders)) = folder_lists.recv() => app.on_folders(dir, folders),
             _ = redraw.tick() => {
-                if dirty {
+                if dirty && hold.may_draw(app.frame_pending(), Instant::now()) {
                     terminal.terminal.draw(|frame| view::draw(frame, &app))?;
                     dirty = false;
                 }
@@ -118,6 +129,13 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                 Action::Quit => quit = true,
                 Action::Notify(text) => notify(&text),
                 Action::Open(url) => open_in_browser(&url),
+                Action::ListFolders(dir) => {
+                    let listed = listed_folders.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let folders = folders::list(&dir);
+                        let _ = listed.send((dir, folders));
+                    });
+                }
                 Action::Send(frame) => {
                     if let Some(connected) = &mut sender
                         && connected.send(&frame).await.is_err()
@@ -135,6 +153,29 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     link_task.abort();
     drop(terminal);
     outcome
+}
+
+/// Holds drawing while the session shown draws a frame, as a terminal with
+/// synchronized output does, so a frame is seen whole; never longer than
+/// `FRAME_WAIT`.
+#[derive(Debug, Default)]
+struct FrameHold {
+    since: Option<Instant>,
+}
+
+impl FrameHold {
+    fn may_draw(&mut self, frame_pending: bool, now: Instant) -> bool {
+        if !frame_pending {
+            self.since = None;
+            return true;
+        }
+        let since = *self.since.get_or_insert(now);
+        if now.duration_since(since) < FRAME_WAIT {
+            return false;
+        }
+        self.since = None;
+        true
+    }
 }
 
 /// Connects, starting the daemon if needed, and reconnects whenever the
@@ -346,6 +387,21 @@ impl crossterm::Command for MouseReports {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn drawing_waits_for_a_frame_to_finish_but_not_for_ever() {
+        use std::time::{Duration, Instant};
+        let mut hold = super::FrameHold::default();
+        let start = Instant::now();
+        assert!(hold.may_draw(false, start));
+        assert!(!hold.may_draw(true, start));
+        assert!(!hold.may_draw(true, start + Duration::from_millis(100)));
+        // Finished: drawn at once.
+        assert!(hold.may_draw(false, start + Duration::from_millis(110)));
+        // Never finished: drawn anyway once the wait is up.
+        assert!(!hold.may_draw(true, start + Duration::from_millis(200)));
+        assert!(hold.may_draw(true, start + Duration::from_millis(350)));
+    }
+
     #[test]
     fn notifications_carry_no_control_characters() {
         assert_eq!(

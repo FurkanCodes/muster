@@ -63,7 +63,7 @@ exec /bin/sh
 "#;
 
 /// Stands in for the GitHub CLI: answers `issue list` and `issue view N`
-/// from fixture files, keeps one pull request (#17) once one is created,
+/// from fixture files, records `issue close N` for an issue it has, keeps one pull request (#17) once one is created,
 /// with what it is told about it, and records every call. While the GH_SLOW
 /// flag file exists it takes two seconds to answer, like a slow network.
 const FAKE_GH: &str = r#"#!/bin/sh
@@ -75,6 +75,10 @@ case "$1 $2" in
   "issue view")
     if [ -f "$dir/issue-$3.json" ]; then cat "$dir/issue-$3.json"
     else echo "GraphQL: Could not resolve to an Issue with the number of $3." >&2; exit 1; fi ;;
+  "issue close")
+    if [ ! -f "$dir/issue-$3.json" ]; then
+      echo "GraphQL: Could not resolve to an Issue with the number of $3." >&2; exit 1; fi
+    echo "$3" >> "$dir/closed" ;;
   "pr list") if [ -f "$dir/pr.json" ]; then cat "$dir/pr.json"; else echo "[]"; fi ;;
   "pr create")
     cat > "$dir/pr-body"

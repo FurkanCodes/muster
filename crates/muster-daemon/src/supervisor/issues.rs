@@ -33,9 +33,12 @@ impl Supervisor {
         project: ProjectId,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let Some(root) = self.project_root(project) else {
-            let _ = reply.send(Err(no_project(project)));
-            return;
+        let root = match self.repository_root(project, "GitHub issues") {
+            Ok(root) => root,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
+            }
         };
         let tickets = self.tickets.clone();
         tokio::spawn(async move {
@@ -58,9 +61,12 @@ impl Supervisor {
         number: u64,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let Some(root) = self.project_root(project) else {
-            let _ = reply.send(Err(no_project(project)));
-            return;
+        let root = match self.repository_root(project, "GitHub issues") {
+            Ok(root) => root,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
+            }
         };
         let tickets = self.tickets.clone();
         tokio::spawn(async move {
@@ -72,6 +78,35 @@ impl Supervisor {
                     body: detail.body,
                 })
                 .map_err(github_error);
+            let _ = reply.send(outcome);
+        });
+    }
+
+    /// Closes an issue on a task of its own, as the person asked.
+    pub(super) fn close_issue(
+        &self,
+        project: ProjectId,
+        number: u64,
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    ) {
+        let root = match self.repository_root(project, "GitHub issues") {
+            Ok(root) => root,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
+            }
+        };
+        let tickets = self.tickets.clone();
+        tokio::spawn(async move {
+            let outcome = tickets
+                .close(&root, number)
+                .await
+                .map(|()| Reply::Done)
+                .map_err(github_error);
+            match &outcome {
+                Ok(_) => tracing::info!(%project, number, "closed an issue"),
+                Err(error) => tracing::info!(command = "close issue", %error, "command refused"),
+            }
             let _ = reply.send(outcome);
         });
     }
@@ -88,9 +123,12 @@ impl Supervisor {
         another: bool,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let Some(root) = self.project_root(project) else {
-            let _ = reply.send(Err(no_project(project)));
-            return;
+        let root = match self.repository_root(project, "GitHub issues") {
+            Ok(root) => root,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
+            }
         };
         if harness::find(&harness).is_none() {
             let error = ErrorBody::new(

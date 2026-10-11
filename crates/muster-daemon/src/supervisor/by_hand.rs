@@ -225,6 +225,12 @@ impl Supervisor {
             .ok_or_else(|| {
                 ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
             })?;
+        if !found.kind.in_git() {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "that is a plain folder, not a git repository: it has no branch to review or push",
+            ));
+        }
         let branch = found.kind.branch().to_owned();
         if branch.starts_with("detached at ") || branch == "?" {
             return Err(ErrorBody::new(

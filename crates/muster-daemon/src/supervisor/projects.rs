@@ -1,5 +1,10 @@
 //! Adding and removing projects, their own checkouts, and keeping every
 //! workspace's checked-out branch current.
+//!
+//! A project is a folder: a git repository, or a plain folder. A plain
+//! folder has sessions and checks in the folder itself; what needs git
+//! (worktrees, tickets, reviews, pull requests, runs) is refused there,
+//! and becomes possible as soon as the folder is made a repository.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +21,7 @@ impl Supervisor {
         root: PathBuf,
         name: Option<String>,
     ) -> Result<Reply, ErrorBody> {
-        let root = repository_root(&root).await?;
+        let root = folder_root(&root).await?;
         if self
             .state
             .projects
@@ -173,8 +178,32 @@ impl Supervisor {
         }
     }
 
+    /// The root of `project` if it is a git repository, which `what` needs.
+    pub(super) fn repository_root(
+        &self,
+        project: ProjectId,
+        what: &str,
+    ) -> Result<PathBuf, ErrorBody> {
+        let found = self
+            .state
+            .projects
+            .iter()
+            .find(|candidate| candidate.id == project)
+            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no project {project}")))?;
+        if !crate::git::is_repository(&found.root) {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!(
+                    "{} is a plain folder, not a git repository; {what} need one",
+                    found.name
+                ),
+            ));
+        }
+        Ok(found.root.clone())
+    }
+
     /// A workspace for the project's own checkout, on whatever it has
-    /// checked out now.
+    /// checked out now: nothing, in a plain folder.
     async fn checkout_of(&self, project: &Project) -> Workspace {
         let root = project.root.clone();
         let branch = tokio::task::spawn_blocking(move || branches::checked_out(&root))
@@ -234,8 +263,8 @@ impl Supervisor {
     }
 }
 
-/// The canonical path of the git repository at `path`.
-async fn repository_root(path: &Path) -> Result<PathBuf, ErrorBody> {
+/// The canonical path of the folder at `path`: a git repository or not.
+async fn folder_root(path: &Path) -> Result<PathBuf, ErrorBody> {
     if !path.is_absolute() {
         return Err(ErrorBody::new(
             ErrorCode::BadRequest,
@@ -248,13 +277,10 @@ async fn repository_root(path: &Path) -> Result<PathBuf, ErrorBody> {
             format!("cannot open {}: {error}", path.display()),
         )
     })?;
-    let is_repository = tokio::fs::try_exists(root.join(".git"))
-        .await
-        .unwrap_or(false);
-    if !root.is_dir() || !is_repository {
+    if !root.is_dir() {
         return Err(ErrorBody::new(
             ErrorCode::BadRequest,
-            format!("{} is not a git repository", root.display()),
+            format!("{} is not a folder", root.display()),
         ));
     }
     Ok(root)

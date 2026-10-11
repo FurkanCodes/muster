@@ -310,6 +310,24 @@ async fn questions_to_the_terminal_are_answered() {
 }
 
 #[tokio::test]
+async fn a_program_learns_that_synchronized_output_is_supported() {
+    let (pty, _) = shell(vec![], vec![]);
+    // DECRQM for mode 2026, as Claude Code asks it; the 11 bytes back.
+    let probe = "stty -echo -icanon min 1; printf '\\033[?2026$p'; \
+                 r=$(dd bs=1 count=11 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"answer:$r:$((2*21))\"\n";
+    pty.input(probe.as_bytes().to_vec()).await;
+    let (text, _) = read_until(&pty, None, ":42").await;
+    let answer = text
+        .rsplit("answer:")
+        .next()
+        .and_then(|rest| rest.split(':').next())
+        .unwrap_or_default();
+    // Known, and not in a frame now.
+    assert_eq!(answer, "E[?2026;2$y", "{text:?}");
+}
+
+#[tokio::test]
 async fn a_program_that_suspended_itself_is_continued_and_no_other_is() {
     let (pty, _) = shell(vec![], vec![]);
     // A loop that reports continues, like a program waiting for one. The
