@@ -47,6 +47,16 @@ enum Commands {
     /// Work on GitHub issues, through the GitHub CLI (`gh`).
     #[command(subcommand)]
     Issue(IssueCommand),
+    /// Credentials runs need, kept in the macOS Keychain.
+    #[command(subcommand)]
+    Auth(AuthCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum AuthCommand {
+    /// Store the Claude Code token runs' agents use: make one with
+    /// `claude setup-token`, then paste it when asked.
+    Claude,
 }
 
 #[derive(Debug, Subcommand)]
@@ -190,6 +200,7 @@ fn main() -> ExitCode {
             Some(Commands::Session(SessionCommand::Remove { session })) => {
                 commands::remove_session(&socket, &session).await
             }
+            Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await
             }

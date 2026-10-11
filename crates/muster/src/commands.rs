@@ -477,3 +477,38 @@ fn unexpected(reply: &Reply) -> Box<dyn std::error::Error> {
 fn shown(text: &str) -> String {
     muster_core::text::one_line(text)
 }
+
+/// Stores the token runs' agents use in the macOS Keychain. `security`
+/// asks for it itself, on the terminal, so the token is never in a
+/// process's arguments, where any other process could read it.
+pub(crate) fn store_claude_token() -> ExitCode {
+    if !cfg!(target_os = "macos") {
+        println!(
+            "Muster keeps the token in the macOS Keychain. Elsewhere, set \
+             CLAUDE_CODE_OAUTH_TOKEN in the environment the daemon starts in."
+        );
+        return ExitCode::FAILURE;
+    }
+    println!(
+        "Make a token with `claude setup-token`, then paste it below (twice; it is not shown)."
+    );
+    let status = std::process::Command::new("security")
+        .args([
+            "add-generic-password",
+            "-U",
+            "-s",
+            muster_daemon::KEYCHAIN_SERVICE,
+            "-a",
+            muster_daemon::KEYCHAIN_ACCOUNT,
+            "-w",
+        ])
+        .status();
+    match status {
+        Ok(status) if status.success() => {
+            println!("Stored. Runs' agents will use it.");
+            ExitCode::SUCCESS
+        }
+        Ok(_) => crate::fail("the Keychain did not store the token"),
+        Err(error) => crate::fail(format!("could not run `security`: {error}")),
+    }
+}

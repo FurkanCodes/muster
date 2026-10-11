@@ -67,7 +67,7 @@ async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
 }
 
 /// Runs a git command that must succeed and returns what it printed.
-async fn checked(cwd: &Path, args: &[&str]) -> Result<String, GitError> {
+pub(crate) async fn checked(cwd: &Path, args: &[&str]) -> Result<String, GitError> {
     let outcome = run(cwd, args).await?;
     if outcome.success {
         Ok(outcome.stdout)
@@ -142,6 +142,13 @@ pub(crate) async fn remove_worktree(repo: &Path, path: &Path, force: bool) -> Re
     }
     args.push(&path);
     checked(repo, &args).await.map(drop)
+}
+
+/// Whether a git command succeeded, and what it printed; for questions
+/// whose "no" is a failure exit.
+pub(crate) async fn answer(cwd: &Path, args: &[&str]) -> Result<Option<String>, GitError> {
+    let outcome = run(cwd, args).await?;
+    Ok(outcome.success.then_some(outcome.stdout))
 }
 
 /// Git's own list of the repository's worktrees, in its stable porcelain

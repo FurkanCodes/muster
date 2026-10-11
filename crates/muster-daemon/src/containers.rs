@@ -179,7 +179,22 @@ impl Docker {
         env: &[(&str, &str)],
         limit: Duration,
     ) -> Result<ExecOutput, RuntimeError> {
+        self.exec_with(container, argv, env, None, limit).await
+    }
+
+    /// As [`exec`](Self::exec), with `input` on the process's stdin.
+    pub(crate) async fn exec_with(
+        &self,
+        container: &str,
+        argv: &[&str],
+        env: &[(&str, &str)],
+        input: Option<&[u8]>,
+        limit: Duration,
+    ) -> Result<ExecOutput, RuntimeError> {
         let mut args = vec!["exec".to_owned()];
+        if input.is_some() {
+            args.push("--interactive".to_owned());
+        }
         for (name, _) in env {
             args.push("--env".to_owned());
             args.push((*name).to_owned());
@@ -187,11 +202,86 @@ impl Docker {
         args.push(container.to_owned());
         args.extend(argv.iter().map(|arg| (*arg).to_owned()));
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        let output = self.run(&args, env, limit).await?;
+        let output = self.run_with(&args, env, input, limit).await?;
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        if is_not_running(&stderr) {
+            return Err(RuntimeError::NotRunning(stderr));
+        }
         Ok(ExecOutput {
             code: output.status.code(),
             stdout: output.stdout,
-            stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            stderr,
+        })
+    }
+
+    /// Starts `argv` in the container and returns without waiting: it goes
+    /// on after docker, and the daemon, have gone.
+    pub(crate) async fn exec_detached(
+        &self,
+        container: &str,
+        argv: &[&str],
+        env: &[(&str, &str)],
+    ) -> Result<(), RuntimeError> {
+        let mut args = vec!["exec".to_owned(), "--detach".to_owned()];
+        for (name, _) in env {
+            args.push("--env".to_owned());
+            args.push((*name).to_owned());
+        }
+        args.push(container.to_owned());
+        args.extend(argv.iter().map(|arg| (*arg).to_owned()));
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.quick(&args, env).await.map(drop)
+    }
+
+    /// Starts a stopped container again.
+    pub(crate) async fn restart(&self, container: &str) -> Result<(), RuntimeError> {
+        self.quick(&["start", container], &[]).await.map(drop)
+    }
+
+    /// Whether the image `tag` is there.
+    pub(crate) async fn has_image(&self, tag: &str) -> Result<bool, RuntimeError> {
+        match self
+            .quick(&["image", "inspect", "--format", "{{.Id}}", tag], &[])
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(RuntimeError::Failed { stderr, .. })
+                if stderr.contains("No such image") || stderr.contains("No such object") =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Builds `tag` from `dockerfile`, in `context` if given (else with
+    /// none), within `limit`; on failure, the end of docker's output says
+    /// why.
+    pub(crate) async fn build(
+        &self,
+        tag: &str,
+        dockerfile: &str,
+        context: Option<&std::path::Path>,
+        limit: Duration,
+    ) -> Result<(), RuntimeError> {
+        let context = context.map(|path| path.display().to_string());
+        let mut args = vec!["build", "--quiet", "--tag", tag];
+        match &context {
+            Some(context) => args.extend(["--file", "-", context.as_str()]),
+            None => args.push("-"),
+        }
+        let output = self
+            .run_with(&args, &[], Some(dockerfile.as_bytes()), limit)
+            .await?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut tail: Vec<&str> = stderr.lines().rev().take(15).collect();
+        tail.reverse();
+        Err(RuntimeError::Failed {
+            args: format!("build {tag}"),
+            stderr: tail.join("\n"),
         })
     }
 
@@ -228,17 +318,41 @@ impl Docker {
         env: &[(&str, &str)],
         limit: Duration,
     ) -> Result<std::process::Output, RuntimeError> {
+        self.run_with(args, env, None, limit).await
+    }
+
+    async fn run_with(
+        &self,
+        args: &[&str],
+        env: &[(&str, &str)],
+        input: Option<&[u8]>,
+        limit: Duration,
+    ) -> Result<std::process::Output, RuntimeError> {
+        use tokio::io::AsyncWriteExt;
         let mut command = Command::new(&self.program);
         command
             .args(args)
-            .stdin(Stdio::null())
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         for (name, value) in env {
             command.env(name, value);
         }
-        match tokio::time::timeout(limit, command.output()).await {
+        let work = async {
+            let mut child = command.spawn()?;
+            if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+                // A process that stops reading early is its own business.
+                let _ = stdin.write_all(input).await;
+                drop(stdin);
+            }
+            child.wait_with_output().await
+        };
+        match tokio::time::timeout(limit, work).await {
             Err(_) => Err(RuntimeError::TimedOut(
                 args.first().copied().unwrap_or("").to_owned(),
             )),

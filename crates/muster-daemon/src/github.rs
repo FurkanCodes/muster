@@ -161,6 +161,17 @@ pub(crate) async fn view_issue(repo: &Path, number: u64) -> Result<IssueDetail, 
 }
 
 async fn gh(repo: &Path, args: &[&str]) -> Result<String, GitHubError> {
+    gh_with(repo, args, None).await
+}
+
+/// Runs `gh` in `repo` with `input` on its stdin, if any; its output, or
+/// its complaint.
+pub(crate) async fn gh_with(
+    repo: &Path,
+    args: &[&str],
+    input: Option<&str>,
+) -> Result<String, GitHubError> {
+    use tokio::io::AsyncWriteExt;
     let mut command = Command::new("gh");
     command
         .args(args)
@@ -168,11 +179,23 @@ async fn gh(repo: &Path, args: &[&str]) -> Result<String, GitHubError> {
         // Never prompt: there is no one at this terminal.
         .env("GH_PROMPT_DISABLED", "1")
         .env("NO_COLOR", "1")
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    let output = match tokio::time::timeout(TIME_LIMIT, command.output()).await {
+    let work = async {
+        let mut child = command.spawn()?;
+        if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+            let _ = stdin.write_all(input.as_bytes()).await;
+            drop(stdin);
+        }
+        child.wait_with_output().await
+    };
+    let output = match tokio::time::timeout(TIME_LIMIT, work).await {
         Err(_) => return Err(GitHubError::TimedOut),
         Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(GitHubError::Missing);

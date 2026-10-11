@@ -172,6 +172,7 @@ impl Supervisor {
             agent_session: None,
             container: None,
             pr: None,
+            cost_micros: 0,
         };
         self.active_runs.insert(id, ActiveRun { machine, context });
         tracing::info!(run = %id, issue = number, "picked up a run");
@@ -248,8 +249,9 @@ impl Supervisor {
                     let Some(active) = self.active_runs.get(&run) else {
                         continue;
                     };
-                    self.work
-                        .start(active.context.clone(), work, self.run_reports.clone());
+                    let mut context = active.context.clone();
+                    context.cost_micros = active.machine.cost_micros();
+                    self.work.start(context, work, self.run_reports.clone());
                 }
             }
         }
@@ -443,6 +445,7 @@ impl Supervisor {
                 agent_session,
                 container,
                 pr: run.pr.clone(),
+                cost_micros: machine.cost_micros(),
             };
             let work = machine.resume_work();
             let queued = machine.stage() == RunStage::Queued;
