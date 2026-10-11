@@ -12,7 +12,8 @@
 //! instead of misreading each other. Version 2 added restarting and removing
 //! sessions; version 3 projects' own checkouts as workspaces, removing
 //! projects, mouse modes, and watching that follows the client's focus;
-//! version 4 the wait on a harness asking before it starts; version 5 runs.
+//! version 4 the wait on a harness asking before it starts; version 5 runs;
+//! version 6 the person's request for changes on a run.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -26,9 +27,9 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 5;
+pub const MIN_PROTOCOL_VERSION: u32 = 6;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,6 +319,9 @@ pub enum Command {
     TakeOverRun { run: RunId },
     /// Give a run back after driving it: its work goes to the checks.
     HandBackRun { run: RunId },
+    /// Send a run that is ready for the person back to its building agent
+    /// with what to change; its pull request goes back to draft.
+    RequestChanges { run: RunId, comments: String },
     /// A run's timeline, answered with [`Reply::RunHistory`].
     RunHistory { run: RunId },
     /// Work on a GitHub issue: a worktree on `muster/issue-<n>-<title>`

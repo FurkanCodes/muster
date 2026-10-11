@@ -448,6 +448,17 @@ impl Supervisor {
                 self.command_run(run, RunEvent::HandBack, "be handed back")
                     .await
             }
+            Command::RequestChanges { run, comments } => {
+                if comments.trim().is_empty() {
+                    return Err(ErrorBody::new(
+                        ErrorCode::BadRequest,
+                        "say what to change: the agent gets nothing else",
+                    ));
+                }
+                let event = RunEvent::PersonRequestedChanges { comments };
+                self.command_run(run, event, "take a request for changes")
+                    .await
+            }
             Command::RunHistory { run } => self.run_history(run).await,
             Command::ListIssues { .. }
             | Command::StartFromIssue { .. }
@@ -615,6 +626,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::RetryRun { .. } => "retry run",
         Command::TakeOverRun { .. } => "take over run",
         Command::HandBackRun { .. } => "hand back run",
+        Command::RequestChanges { .. } => "request changes",
         Command::RunHistory { .. } => "run history",
         Command::StartFromIssue { .. } => "start from issue",
     }

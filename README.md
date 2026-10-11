@@ -2,7 +2,7 @@
 
 **A terminal cockpit for coding agents.** Run Claude Code and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
-> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), has its foundations in place. See [PRODUCT.md](PRODUCT.md). No release yet.
+> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), runs from the command line; taking a run over by hand and runs in the UI come next. See [PRODUCT.md](PRODUCT.md). No release yet.
 
 ## What it does
 
@@ -79,6 +79,31 @@ After upgrading muster, stop the daemon the old build left running; the next `mu
 ```bash
 muster daemon stop
 ```
+
+## The autopilot (in progress)
+
+Hand Muster an issue and it works on it alone: in a container of its own, Claude Code builds the change on `muster/issue-<n>-<title>`, the project's checks run on it, Muster pushes the branch from your machine and opens a draft pull request, a second Claude Code reviews it, and only then is it marked ready and waiting on you. A failed check or a review asking for changes goes back to the building agent with the evidence, within the project's limits; past them, the run stops and waits on you with the reason.
+
+It needs Docker (Docker Desktop, OrbStack or Colima) running, `gh` signed in, a `muster.toml` in the repository naming its checks, and a Claude Code token for the containers, made with `claude setup-token` and kept in the macOS Keychain:
+
+```toml
+[checks]
+commands = ["cargo test"]
+```
+
+```bash
+muster auth claude
+```
+
+```bash
+muster run start app 42
+```
+
+```bash
+muster run list
+```
+
+`muster run show 42` shows where a run is, why, and its timeline; `muster run retry 42 --notes "…"` sends a run that needs you back to work; `muster run changes 42 "…"` sends a ready one back to its agent with what to change; `muster run cancel 42` ends one. `muster project config app` shows the settings a project's runs use (memory, image, limits, agents) and where they come from.
 
 ## How it is built
 

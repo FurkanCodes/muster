@@ -12,9 +12,6 @@
 //! Docker's init), so it lives between stages and outlives the daemon
 //! (`ARC-04`); work runs in it with `exec`.
 
-// Wired into runs by a later M2 step; until then only its tests use it.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -34,7 +31,7 @@ pub(crate) const LABEL_RUN: &str = "muster.run";
 pub(crate) enum RuntimeError {
     #[error("the docker command is not installed; install Docker Desktop, OrbStack or Colima")]
     Missing,
-    #[error("Docker is not running: {0}")]
+    #[error("Docker is not running; start it, then retry ({0})")]
     NotRunning(String),
     #[error("could not run docker: {0}")]
     Spawn(std::io::Error),
@@ -47,6 +44,10 @@ pub(crate) enum RuntimeError {
 }
 
 /// What the container runtime has to offer.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the scheduler (M3) budgets with it")
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Capacity {
     pub(crate) memory_bytes: u64,
@@ -118,6 +119,10 @@ impl Default for Docker {
 impl Docker {
     /// The runtime's memory and CPUs; fails plainly if Docker is not there
     /// or not running.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the scheduler (M3) budgets with it")
+    )]
     pub(crate) async fn capacity(&self) -> Result<Capacity, RuntimeError> {
         #[derive(Deserialize)]
         struct Info {

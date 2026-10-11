@@ -3,6 +3,7 @@
 //! from scripts.
 
 mod commands;
+mod runs;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -47,6 +48,11 @@ enum Commands {
     /// Work on GitHub issues, through the GitHub CLI (`gh`).
     #[command(subcommand)]
     Issue(IssueCommand),
+    /// Hand issues to the autopilot and follow its runs: each builds in a
+    /// container, passes the project's checks, opens a draft pull request
+    /// and has it reviewed before it asks for you.
+    #[command(subcommand)]
+    Run(RunCommand),
     /// Credentials runs need, kept in the macOS Keychain.
     #[command(subcommand)]
     Auth(AuthCommand),
@@ -80,6 +86,36 @@ enum IssueCommand {
         #[arg(long, default_value = "claude")]
         harness: String,
     },
+}
+
+/// RUN is a run's id, or its issue's number (`42` or `#42`): the run going
+/// on, else the latest.
+#[derive(Debug, Subcommand)]
+enum RunCommand {
+    /// Hand issue NUMBER of PROJECT (its name, id or path) to the
+    /// autopilot. The project's `muster.toml` must name its checks.
+    Start { project: String, number: u64 },
+    /// The runs going on, those waiting on you first.
+    List {
+        /// Include the runs that have ended.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Where RUN is, why, and its timeline.
+    Show { run: String },
+    /// Send RUN, which needs you, back to work with a fresh budget.
+    Retry {
+        run: String,
+        /// Notes for its agent; `-` reads them from stdin.
+        #[arg(long)]
+        notes: Option<String>,
+    },
+    /// Send RUN, which is ready for you, back to its agent with what to
+    /// change (`-` reads it from stdin); its pull request goes back to
+    /// draft.
+    Changes { run: String, comments: String },
+    /// Stop RUN for good: its container goes, its record stays.
+    Cancel { run: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -201,6 +237,7 @@ fn main() -> ExitCode {
                 commands::remove_session(&socket, &session).await
             }
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
+            Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await
             }
@@ -216,6 +253,19 @@ fn main() -> ExitCode {
             Err(error) => fail(error),
         }
     })
+}
+
+async fn run_command(socket: &std::path::Path, command: RunCommand) -> commands::Outcome {
+    match command {
+        RunCommand::Start { project, number } => runs::start(socket, &project, number).await,
+        RunCommand::List { all } => runs::list(socket, all).await,
+        RunCommand::Show { run } => runs::show(socket, &run).await,
+        RunCommand::Retry { run, notes } => runs::retry(socket, &run, notes).await,
+        RunCommand::Changes { run, comments } => {
+            runs::request_changes(socket, &run, comments).await
+        }
+        RunCommand::Cancel { run } => runs::cancel(socket, &run).await,
+    }
 }
 
 /// Opens the terminal UI.
