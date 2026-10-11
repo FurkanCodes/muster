@@ -15,7 +15,7 @@
 //! version 4 the wait on a harness asking before it starts; version 5 runs;
 //! version 6 the person's request for changes on a run; version 7 runs'
 //! containers as workspaces, and taking a run over; version 8 handing a
-//! person's branch to the autopilot.
+//! person's branch to the autopilot; version 9 the checks by hand.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -29,9 +29,9 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 8;
+pub const PROTOCOL_VERSION: u32 = 9;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 8;
+pub const MIN_PROTOCOL_VERSION: u32 = 9;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -295,6 +295,13 @@ pub enum Command {
     },
     /// Stop a running session.
     StopSession { session: SessionId },
+    /// Run the project's checks in a workspace on the host, as a session of
+    /// their own; answered with [`Reply::SessionStarted`]. Starting that
+    /// session again runs them again.
+    CheckWorkspace {
+        workspace: WorkspaceId,
+        size: TermSize,
+    },
     /// Start an ended session's program again, in the same session: Claude
     /// Code resumes its conversation if it had one, a shell starts afresh.
     /// Answered with [`Reply::SessionStarted`]. `size` is used when the

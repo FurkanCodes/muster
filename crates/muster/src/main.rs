@@ -48,6 +48,11 @@ enum Commands {
     /// Work on GitHub issues, through the GitHub CLI (`gh`).
     #[command(subcommand)]
     Issue(IssueCommand),
+    /// Run the project's checks (`[checks]` in its `muster.toml`) in
+    /// WORKTREE (its id or branch, or the project's name for its own
+    /// checkout), showing their output; exits as they did. The run stays
+    /// in the UI as a session; starting it again runs them again.
+    Check { worktree: String },
     /// Hand issues to the autopilot and follow its runs: each builds in a
     /// container, passes the project's checks, opens a draft pull request
     /// and has it reviewed before it asks for you.
@@ -253,6 +258,7 @@ fn main() -> ExitCode {
             }
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
             Some(Commands::Run(command)) => run_command(&socket, command).await,
+            Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await
             }

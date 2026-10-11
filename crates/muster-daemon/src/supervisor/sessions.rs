@@ -9,7 +9,7 @@ use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start};
 
 use super::{Live, Supervisor, store_closed, store_error};
-use crate::harness::{self, Harness, HookEndpoint, Place, claude, transcript};
+use crate::harness::{self, CheckCommands, Harness, HookEndpoint, Place, claude, transcript};
 use crate::pty::{self, PtyEvent};
 
 /// A resumed program that exits sooner than this, unasked, could not
@@ -19,8 +19,14 @@ const RESUME_GRACE: Duration = Duration::from_secs(10);
 /// How a session's program is started.
 #[derive(Debug)]
 pub(super) enum Mode {
-    Fresh { prompt: Option<String> },
-    Resume { agent_session: String },
+    Fresh {
+        prompt: Option<String>,
+    },
+    Resume {
+        agent_session: String,
+    },
+    /// The project's checks, for the harness that runs them.
+    Checks(CheckCommands),
 }
 
 impl Supervisor {
@@ -44,6 +50,13 @@ impl Supervisor {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
                 format!("{} takes no prompt", harness.label),
+            ));
+        }
+        if harness.is_checks() {
+            // They need the project's settings: see `check_workspace`.
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "the checks start with the check command",
             ));
         }
         let start = if prompt.is_some() {
@@ -115,7 +128,11 @@ impl Supervisor {
     /// Where a new session in `workspace` runs: on the host in a worktree
     /// or checkout; in a run's container through docker, where Claude Code
     /// runs only for the person taking the run over.
-    fn place_for(&self, workspace: WorkspaceId, harness: Harness) -> Result<Place, ErrorBody> {
+    pub(super) fn place_for(
+        &self,
+        workspace: WorkspaceId,
+        harness: Harness,
+    ) -> Result<Place, ErrorBody> {
         let found = self
             .state
             .workspaces
@@ -141,6 +158,12 @@ impl Supervisor {
                      (`muster run take-over`); a shell can look around",
                     harness.label
                 ),
+            ));
+        }
+        if harness.is_checks() {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "a run checks its own work; hand it back to have it checked",
             ));
         }
         self.container_place(run, None)
@@ -172,12 +195,13 @@ impl Supervisor {
         // status comes from the terminal and the process.
         let hooked = harness.has_hooks() && place.hears_hooks();
         let on_host = matches!(place, Place::Host(_));
-        let (agent_session, resume, prompt) = match mode {
+        let (agent_session, resume, prompt, checks) = match mode {
             Mode::Fresh { prompt } => {
                 let id = hooked.then(claude::new_session_id).transpose()?;
-                (id, false, prompt)
+                (id, false, prompt, None)
             }
-            Mode::Resume { agent_session } => (Some(agent_session), true, None),
+            Mode::Resume { agent_session } => (Some(agent_session), true, None, None),
+            Mode::Checks(checks) => (None, false, None, Some(checks)),
         };
         let hooks = if hooked {
             Some(HookEndpoint {
@@ -197,6 +221,7 @@ impl Supervisor {
                 hooks: hooks.clone(),
                 place,
                 size,
+                checks,
             },
         );
         let events = self.pty_events.clone();
@@ -272,6 +297,11 @@ impl Supervisor {
         })?;
         let place = self.place_for(stored.workspace, harness)?;
         let (mode, start) = match (&place, resumable(harness, &stored)) {
+            // The checks run again, as the workspace has them now.
+            (Place::Host(path), _) if harness.is_checks() => (
+                Mode::Checks(self.checks_in(stored.workspace, path).await?),
+                Start::WithPrompt,
+            ),
             (Place::Host(_), Some(agent_session)) => {
                 (Mode::Resume { agent_session }, Start::Resumed)
             }

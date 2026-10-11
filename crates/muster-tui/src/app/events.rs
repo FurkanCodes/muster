@@ -137,6 +137,7 @@ impl App {
             KeyCode::Char('r') => return self.restart(),
             KeyCode::Char('x') => return self.remove(),
             KeyCode::Char('p') if self.view == View::Sessions => self.ask_hand_off(),
+            KeyCode::Char('c') if self.view == View::Sessions => return self.check(),
             _ => {}
         }
         Vec::new()
@@ -190,6 +191,24 @@ impl App {
             Some(Row::Project(_)) => self.new_worktree(),
             _ => {}
         }
+    }
+
+    /// `c`: the project's checks in the selected workspace, opened as they
+    /// run.
+    fn check(&mut self) -> Vec<Action> {
+        let Some(workspace) = self.selected.and_then(|row| self.model.worktree_of(row)) else {
+            self.complain("Select a worktree, or a session in one, to run the checks there.");
+            return Vec::new();
+        };
+        if self.model.run_of(workspace).is_some() {
+            self.complain("A run checks its own work; hand it back to have it checked.");
+            return Vec::new();
+        }
+        let size = self.terminal_size;
+        vec![self.command(
+            Command::CheckWorkspace { workspace, size },
+            Then::OpenSession,
+        )]
     }
 
     fn new_worktree(&mut self) {

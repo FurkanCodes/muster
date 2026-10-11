@@ -336,6 +336,7 @@ mod tests {
             }),
             place: crate::harness::Place::Host(PathBuf::from("/w")),
             size: TermSize::default(),
+            checks: None,
         };
         let fresh = arguments(&launch(false, Some("fix the login")));
         assert_eq!(&fresh[..2], ["--session-id", SESSION]);
