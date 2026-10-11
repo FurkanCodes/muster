@@ -78,7 +78,6 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let mut input = EventStream::new();
     let mut sender: Option<FrameSender> = None;
     let mut redraw = tokio::time::interval(FRAME);
-    let mut last_draw = Instant::now();
     let mut dirty = true;
     let outcome = loop {
         let actions = tokio::select! {
@@ -105,13 +104,9 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                 }
             },
             _ = redraw.tick() => {
-                // A run's time goes on while it is shown.
-                let ticking = app.focused_run().is_some() && last_draw.elapsed() >= Duration::from_secs(1);
-                if dirty || ticking {
-                    app.now = wall_clock();
+                if dirty {
                     terminal.terminal.draw(|frame| view::draw(frame, &app))?;
                     dirty = false;
-                    last_draw = Instant::now();
                 }
                 continue;
             }
@@ -122,6 +117,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
             match action {
                 Action::Quit => quit = true,
                 Action::Notify(text) => notify(&text),
+                Action::Open(url) => open_in_browser(&url),
                 Action::Send(frame) => {
                     if let Some(connected) = &mut sender
                         && connected.send(&frame).await.is_err()
@@ -297,6 +293,36 @@ fn notify(text: &str) {
     let _ = out.flush();
 }
 
+/// Opens a web page in the person's browser, with the system's own
+/// command; only a web address, as a ticket's link should be.
+fn open_in_browser(url: &str) {
+    if !is_web_address(url) {
+        return;
+    }
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let _ = std::process::Command::new(program)
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|mut child| {
+            // Reaped in the background: it returns at once.
+            std::thread::spawn(move || child.wait());
+        });
+}
+
+/// Whether `url` is an http or https address and nothing else: a ticket's
+/// link could otherwise name a file or an application to open.
+fn is_web_address(url: &str) -> bool {
+    (url.starts_with("https://") || url.starts_with("http://"))
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
 /// `text` without control characters.
 fn printable(text: &str) -> String {
     text.chars().filter(|c| !c.is_control()).collect()
@@ -318,14 +344,6 @@ impl crossterm::Command for MouseReports {
     }
 }
 
-/// The wall-clock time, for how long things have taken.
-fn wall_clock() -> muster_core::Timestamp {
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_millis());
-    muster_core::Timestamp::from_millis(i64::try_from(millis).unwrap_or(i64::MAX))
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -334,5 +352,22 @@ mod tests {
             super::printable("#7 evil\x1b]0;owned\x07title\u{9b}31m\n"),
             "#7 evil]0;ownedtitle31m"
         );
+    }
+
+    #[test]
+    fn only_web_addresses_are_opened() {
+        assert!(super::is_web_address("https://github.com/o/app/issues/42"));
+        assert!(super::is_web_address(
+            "http://jira.example.com/browse/APP-7"
+        ));
+        for refused in [
+            "file:///etc/passwd",
+            "/Applications/Calculator.app",
+            "javascript:alert(1)",
+            "https://example.com/\nrm",
+            "https://example.com/ two",
+        ] {
+            assert!(!super::is_web_address(refused), "{refused}");
+        }
     }
 }

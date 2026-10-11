@@ -66,12 +66,22 @@ async fn start_issue(
     project: ProjectId,
     number: u64,
 ) -> Result<(WorkspaceId, SessionId), ClientError> {
+    start_agent(connection, project, number, false).await
+}
+
+async fn start_agent(
+    connection: &mut Connection,
+    project: ProjectId,
+    number: u64,
+    another: bool,
+) -> Result<(WorkspaceId, SessionId), ClientError> {
     connection
         .command(Command::StartFromIssue {
             project,
             number,
             harness: "claude".to_owned(),
             size: TermSize::default(),
+            another,
         })
         .await
         .map(|reply| match reply {
@@ -162,6 +172,57 @@ async fn starting_the_same_issue_again_reuses_its_worktree() {
         .unwrap();
     assert_eq!(first, second);
     assert_eq!(connection.subscribe().await.unwrap().sessions.len(), 2);
+}
+
+#[tokio::test]
+async fn another_agent_works_in_a_worktree_of_its_own_and_the_list_shows_them() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let (first, _) = start_agent(&mut connection, setup.project, 42, false)
+        .await
+        .unwrap();
+    let (second, _) = start_agent(&mut connection, setup.project, 42, true)
+        .await
+        .unwrap();
+    let (third, _) = start_agent(&mut connection, setup.project, 42, true)
+        .await
+        .unwrap();
+    let snapshot = connection.subscribe().await.unwrap();
+    let branch = |id: WorkspaceId| {
+        snapshot
+            .workspaces
+            .iter()
+            .find(|w| w.id == id)
+            .unwrap()
+            .kind
+            .branch()
+            .to_owned()
+    };
+    assert_eq!(branch(first), "muster/issue-42-fix-the-login-redirect");
+    assert_eq!(branch(second), "muster/issue-42-fix-the-login-redirect-2");
+    assert_eq!(branch(third), "muster/issue-42-fix-the-login-redirect-3");
+
+    // Its text, as a ticket's details show it.
+    let viewed = connection
+        .command(Command::ViewIssue {
+            project: setup.project,
+            number: 42,
+        })
+        .await
+        .unwrap();
+    let Reply::IssueViewed { issue, body } = viewed else {
+        panic!("expected IssueViewed");
+    };
+    assert_eq!(issue.number, 42);
+    assert!(body.starts_with("After signing in"), "{body}");
+
+    // The command line lists them with their agents.
+    let listed = setup.sandbox.run(&["issue", "list", "app"]);
+    let listed = String::from_utf8_lossy(&listed.stdout);
+    let line = listed.lines().find(|line| line.starts_with("#42")).unwrap();
+    assert!(line.contains("· 3 agents: "), "{listed}");
+    let seven = listed.lines().find(|line| line.starts_with("#7")).unwrap();
+    assert!(!seven.contains("agent"), "{listed}");
 }
 
 #[tokio::test]

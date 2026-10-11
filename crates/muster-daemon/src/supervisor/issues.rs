@@ -1,9 +1,11 @@
-//! Working on GitHub issues (M1 step 8).
+//! Working on GitHub issues: the tickets an agent is assigned to.
 //!
 //! Talking to GitHub takes a while, so it never happens inside the
-//! Supervisor's loop: listing runs on its own task and answers directly;
-//! starting work fetches the issue on its own task, then hands it back to
-//! the Supervisor to create the worktree and the session.
+//! Supervisor's loop: listing and viewing run on a task of their own and
+//! answer directly; starting work fetches the issue on its own task, then
+//! hands it back to the Supervisor to create the worktree and the session.
+//! The first agent on an issue works in its worktree (made, or found as
+//! it is); another works in a worktree of its own, `…-2`, `…-3`.
 
 use muster_core::ProjectId;
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
@@ -19,6 +21,7 @@ pub(super) struct FetchedIssue {
     pub(super) project: ProjectId,
     pub(super) harness: String,
     pub(super) size: TermSize,
+    pub(super) another: bool,
     pub(super) detail: Result<IssueDetail, GitHubError>,
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
@@ -48,14 +51,41 @@ impl Supervisor {
         });
     }
 
+    /// Fetches one issue with its text, on a task of its own.
+    pub(super) fn view_issue(
+        &self,
+        project: ProjectId,
+        number: u64,
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    ) {
+        let Some(root) = self.project_root(project) else {
+            let _ = reply.send(Err(no_project(project)));
+            return;
+        };
+        let tickets = self.tickets.clone();
+        tokio::spawn(async move {
+            let outcome = tickets
+                .view(&root, number)
+                .await
+                .map(|detail| Reply::IssueViewed {
+                    issue: detail.issue,
+                    body: detail.body,
+                })
+                .map_err(github_error);
+            let _ = reply.send(outcome);
+        });
+    }
+
     /// Fetches an issue on a task of its own, then continues in
     /// [`start_fetched_issue`](Self::start_fetched_issue).
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn fetch_issue(
         &self,
         project: ProjectId,
         number: u64,
         harness: String,
         size: TermSize,
+        another: bool,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         let Some(root) = self.project_root(project) else {
@@ -77,6 +107,7 @@ impl Supervisor {
                 project,
                 harness,
                 size,
+                another,
                 detail,
                 reply,
             };
@@ -90,7 +121,14 @@ impl Supervisor {
     pub(super) async fn start_fetched_issue(&mut self, fetched: FetchedIssue) {
         let outcome = match fetched.detail {
             Ok(detail) => {
-                self.start_issue(fetched.project, &detail, fetched.harness, fetched.size)
+                let FetchedIssue {
+                    project,
+                    harness,
+                    size,
+                    another,
+                    ..
+                } = fetched;
+                self.start_issue(project, &detail, harness, size, another)
                     .await
             }
             Err(error) => Err(github_error(error)),
@@ -107,14 +145,17 @@ impl Supervisor {
         detail: &IssueDetail,
         harness: String,
         size: TermSize,
+        another: bool,
     ) -> Result<Reply, ErrorBody> {
         let branch = github::issue_branch(&detail.issue);
-        let workspace = match self.worktree_on(project, &branch).map(|found| found.id) {
-            Some(existing) => existing,
-            None => match self.create_worktree(project, Some(branch)).await? {
-                Reply::WorktreeCreated { id } => id,
-                other => return Err(unexpected(&other)),
-            },
+        let existing = self.worktree_on(project, &branch).map(|found| found.id);
+        let workspace = match (existing, another) {
+            (Some(existing), false) => existing,
+            (None, false) => self.new_worktree(project, branch).await?,
+            (_, true) => {
+                let branch = self.unused_worktree_branch(project, &branch).await?;
+                self.new_worktree(project, branch).await?
+            }
         };
         let takes_prompt = harness::find(&harness).is_some_and(|found| found.takes_prompt());
         let prompt = match takes_prompt.then(github::new_fence).transpose() {
@@ -137,6 +178,45 @@ impl Supervisor {
             }),
             other => Err(unexpected(&other)),
         }
+    }
+
+    async fn new_worktree(
+        &mut self,
+        project: ProjectId,
+        branch: String,
+    ) -> Result<muster_core::WorkspaceId, ErrorBody> {
+        match self.create_worktree(project, Some(branch)).await? {
+            Reply::WorktreeCreated { id } => Ok(id),
+            other => Err(unexpected(&other)),
+        }
+    }
+
+    /// `branch-2`, `-3`… : the first no workspace has and the repository
+    /// does not have yet, for another agent's worktree.
+    async fn unused_worktree_branch(
+        &self,
+        project: ProjectId,
+        branch: &str,
+    ) -> Result<String, ErrorBody> {
+        let root = self
+            .project_root(project)
+            .ok_or_else(|| no_project(project))?;
+        for n in 2..100 {
+            let candidate = format!("{branch}-{n}");
+            let in_use = self.state.workspaces.iter().any(|workspace| {
+                workspace.project == project && workspace.kind.branch() == candidate
+            });
+            let exists = crate::git::branch_exists(&root, &candidate)
+                .await
+                .unwrap_or(true);
+            if !in_use && !exists {
+                return Ok(candidate);
+            }
+        }
+        Err(ErrorBody::new(
+            ErrorCode::Conflict,
+            format!("{branch} already has 99 worktrees"),
+        ))
     }
 
     pub(super) fn project_root(&self, project: ProjectId) -> Option<std::path::PathBuf> {

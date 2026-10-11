@@ -12,6 +12,7 @@ pub mod protocol;
 pub mod run;
 pub mod session;
 pub mod text;
+pub mod tickets;
 pub mod time;
 
 pub use entities::{Issue, Project, Session, Workspace, WorkspaceKind};

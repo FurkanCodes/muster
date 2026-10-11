@@ -6,19 +6,8 @@ use std::collections::HashMap;
 
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
 use muster_core::{
-    Project, ProjectId, Run, RunId, RunStage, Session, SessionId, SessionStatus, Workspace,
-    WorkspaceId,
+    Project, ProjectId, Run, Session, SessionId, SessionStatus, Workspace, WorkspaceId,
 };
-
-/// Something waiting on the person, in the Needs you queue.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Need {
-    Session(SessionId),
-    Run(RunId),
-}
-
-/// How many ended runs the runs list shows, newest first.
-const ENDED_RUNS_SHOWN: usize = 20;
 
 /// One line of the sessions list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -37,8 +26,6 @@ pub(crate) struct Model {
     /// When each session's status last changed, as this client saw it: a
     /// counter, which orders the Needs you queue oldest first.
     changed: HashMap<SessionId, u64>,
-    /// The same for each run's stage.
-    run_changed: HashMap<RunId, u64>,
     clock: u64,
     resources: Option<ResourceReport>,
     /// Whether a snapshot has arrived; until then the model is empty, not
@@ -55,11 +42,6 @@ impl Model {
         for session in &sessions {
             self.clock += 1;
             self.changed.insert(session.id, self.clock);
-        }
-        self.run_changed.clear();
-        for run in &snapshot.runs {
-            self.clock += 1;
-            self.run_changed.insert(run.id, self.clock);
         }
         self.projects = snapshot.projects;
         self.workspaces = snapshot.workspaces;
@@ -116,16 +98,7 @@ impl Model {
                 }
             }
             Delta::Resources(report) => self.resources = Some(report),
-            Delta::RunUpserted(run) => {
-                let moved = self
-                    .run(run.id)
-                    .is_none_or(|known| known.stage != run.stage);
-                if moved {
-                    self.clock += 1;
-                    self.run_changed.insert(run.id, self.clock);
-                }
-                upsert(&mut self.runs, run, |r| r.id);
-            }
+            Delta::RunUpserted(run) => upsert(&mut self.runs, run, |r| r.id),
         }
     }
 
@@ -154,39 +127,29 @@ impl Model {
         &self.sessions
     }
 
-    pub(crate) fn run(&self, id: RunId) -> Option<&Run> {
-        self.runs.iter().find(|run| run.id == id)
-    }
-
-    /// The runs list: those going, what waits on the person first, then
-    /// the latest that ended.
-    pub(crate) fn runs_listed(&self) -> Vec<RunId> {
-        let mut going: Vec<&Run> = self
-            .runs
-            .iter()
-            .filter(|run| !run.stage.is_over())
-            .collect();
-        going.sort_by_key(|run| (run.stage.list_order(), run.created_at, run.id));
-        let mut ended: Vec<&Run> = self.runs.iter().filter(|run| run.stage.is_over()).collect();
-        ended.sort_by_key(|run| std::cmp::Reverse((run.ended_at, run.created_at)));
-        going
-            .into_iter()
-            .chain(ended.into_iter().take(ENDED_RUNS_SHOWN))
-            .map(|run| run.id)
-            .collect()
-    }
-
-    /// The session in which the person drives the run's agent, if they have
-    /// taken it over.
-    pub(crate) fn agent_session_of(&self, run: RunId) -> Option<SessionId> {
-        let workspace = self
+    /// The sessions working on issue `number` of `project`: those in the
+    /// project's worktrees on branches named for it, oldest first.
+    pub(crate) fn agents_on(&self, project: ProjectId, number: u64) -> Vec<&Session> {
+        let workspaces: Vec<WorkspaceId> = self
             .workspaces
             .iter()
-            .find(|workspace| workspace.kind.run() == Some(run))?;
-        self.sessions
+            .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
+            .filter(|workspace| {
+                muster_core::tickets::issue_of_branch(workspace.kind.branch()) == Some(number)
+            })
+            .map(|workspace| workspace.id)
+            .collect();
+        let mut agents: Vec<&Session> = self
+            .sessions
             .iter()
-            .find(|session| session.workspace == workspace.id && session.harness == "claude")
-            .map(|session| session.id)
+            .filter(|session| workspaces.contains(&session.workspace))
+            .collect();
+        agents.sort_by_key(|session| (session.created_at, session.id));
+        agents
+    }
+
+    pub(crate) fn projects(&self) -> &[Project] {
+        &self.projects
     }
 
     pub(crate) fn project(&self, id: ProjectId) -> Option<&Project> {
@@ -255,40 +218,19 @@ impl Model {
         rows
     }
 
-    /// Everything waiting on the person, oldest first within each kind:
-    /// sessions asking something, runs stopped for them, runs ready for
-    /// their review, then sessions with news not yet seen.
-    pub(crate) fn needs_you(&self) -> Vec<Need> {
-        let mut waiting: Vec<(u8, u64, Need)> = self
+    /// Sessions waiting on the person: those asking something first, then
+    /// those with news not yet seen; oldest first within each.
+    pub(crate) fn needs_you(&self) -> Vec<SessionId> {
+        let mut waiting: Vec<&Session> = self
             .sessions
             .iter()
             .filter(|session| needs_attention(session))
-            .map(|session| {
-                let asking = matches!(session.status, SessionStatus::NeedsYou { .. });
-                let changed = self.changed.get(&session.id).copied().unwrap_or(0);
-                (
-                    if asking { 0 } else { 3 },
-                    changed,
-                    Need::Session(session.id),
-                )
-            })
             .collect();
-        waiting.extend(
-            self.runs
-                .iter()
-                .filter(|run| run.stage.waits_on_person())
-                .map(|run| {
-                    let kind = if run.stage == RunStage::NeedsYou {
-                        1
-                    } else {
-                        2
-                    };
-                    let changed = self.run_changed.get(&run.id).copied().unwrap_or(0);
-                    (kind, changed, Need::Run(run.id))
-                }),
-        );
-        waiting.sort_by_key(|(kind, changed, _)| (*kind, *changed));
-        waiting.into_iter().map(|(_, _, need)| need).collect()
+        waiting.sort_by_key(|session| {
+            let asking = matches!(session.status, SessionStatus::NeedsYou { .. });
+            (!asking, self.changed.get(&session.id).copied().unwrap_or(0))
+        });
+        waiting.into_iter().map(|session| session.id).collect()
     }
 
     /// The project a row belongs to.
@@ -457,15 +399,13 @@ pub(crate) mod tests {
             },
             unseen: true,
         });
-        let sessions =
-            |ids: &[SessionId]| ids.iter().map(|id| Need::Session(*id)).collect::<Vec<_>>();
-        assert_eq!(model.needs_you(), sessions(&[three.id, two.id, one.id]));
+        assert_eq!(model.needs_you(), [three.id, two.id, one.id]);
 
         model.apply(Delta::SessionStatus {
             session: two.id,
             status: SessionStatus::Finished,
             unseen: false,
         });
-        assert_eq!(model.needs_you(), sessions(&[three.id, one.id]));
+        assert_eq!(model.needs_you(), [three.id, one.id]);
     }
 }

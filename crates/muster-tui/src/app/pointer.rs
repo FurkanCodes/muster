@@ -106,10 +106,10 @@ impl App {
                     self.needs_selected = Some(self.needs_list[index]);
                 }
             }
-            View::Runs => {
-                let len = self.runs_list.len();
-                if let Some(index) = line_at(list, row, len, self.runs_offset) {
-                    self.runs_selected = Some(self.runs_list[index]);
+            View::Tickets => {
+                let rows = self.ticket_rows();
+                if let Some(index) = line_at(list, row, rows.len(), self.tickets_offset) {
+                    self.tickets_selected = Some(rows[index]);
                 }
             }
         }

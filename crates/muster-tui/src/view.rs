@@ -10,10 +10,10 @@ use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, Pa
 use tui_term::widget::PseudoTerminal;
 
 use crate::app::{App, Link, Mode, View};
-use crate::model::{Need, Row};
+use crate::model::Row;
 
 mod dialogs;
-mod runs;
+mod tickets;
 
 /// The terminal area a session gets when it fills the screen: everything
 /// but the top bar.
@@ -69,11 +69,12 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     match app.view {
         View::Sessions => draw_sessions(frame, app, list),
         View::NeedsYou => draw_needs_you(frame, app, list),
-        View::Runs => runs::draw_runs(frame, app, list),
+        View::Tickets => tickets::draw_tickets(frame, app, list),
     }
-    match app.focused_run() {
-        Some(run) => runs::draw_run_details(frame, app, run, preview),
-        None => draw_preview(frame, app, preview),
+    if app.view == View::Tickets {
+        tickets::draw_ticket_details(frame, app, preview);
+    } else {
+        draw_preview(frame, app, preview);
     }
     draw_bottom_bar(frame, app, bottom);
     if let Mode::Dialog(dialog) = &app.mode {
@@ -101,16 +102,9 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
                     .dim(),
                 );
             }
-            let going = app
-                .runs_list
-                .iter()
-                .filter_map(|run| app.model.run(*run))
-                .filter(|run| !run.stage.is_over())
-                .count();
             spans.push(Span::raw(format!(
-                "  ·  {}  ·  {} going  ·  ",
-                count(app.model.sessions().len(), "session"),
-                count(going, "run")
+                "  ·  {}  ·  ",
+                count(app.model.sessions().len(), "session")
             )));
             let needs = Span::from(format!("{waiting} need you"));
             spans.push(if waiting > 0 {
@@ -171,11 +165,10 @@ fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
 fn hints(app: &App) -> String {
     let session = app.focused_session().and_then(|id| app.model.session(id));
     let mut hints = vec!["↑↓ move"];
-    if let Some(run) = app.focused_run() {
-        hints.extend(runs::hints(app, run));
-    }
-    if app.view == View::Runs {
-        hints.push("n new run");
+    if app.view == View::Tickets {
+        hints.extend(tickets::hints(app));
+        hints.extend(["⇥ sessions", "q quit"]);
+        return hints.join("  ");
     }
     match (app.view, app.selected, session) {
         (_, _, Some(session)) if session.ended_at.is_none() => {
@@ -189,19 +182,19 @@ fn hints(app: &App) -> String {
                 hints.push("x remove");
             }
             if kind.is_some_and(|kind| kind.run().is_none()) {
-                hints.extend(["c check", "v review", "o PR", "p autopilot"]);
+                hints.extend(["c check", "v review", "o PR"]);
             }
-            hints.extend(["w worktree", "i issues"]);
+            hints.extend(["w worktree", "i tickets"]);
         }
         (View::Sessions, Some(Row::Project(_)), None) => {
-            hints.extend(["⏎ worktree", "n session", "i issues", "x remove"]);
+            hints.extend(["⏎ worktree", "n session", "i tickets", "x remove"]);
         }
         _ => {}
     }
     match app.view {
         View::Sessions => hints.extend(["a project", "⇥ needs you", "q quit"]),
-        View::NeedsYou => hints.extend(["⇥ runs", "q quit"]),
-        View::Runs => hints.extend(["⇥ sessions", "q quit"]),
+        View::NeedsYou => hints.extend(["⇥ tickets", "q quit"]),
+        View::Tickets => {}
     }
     hints.join("  ")
 }
@@ -324,26 +317,22 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
         return;
     }
-    let width = usize::from(area.width.saturating_sub(2));
     let items: Vec<ListItem<'_>> = app
         .needs_list
         .iter()
-        .filter_map(|need| match need {
-            Need::Session(id) => {
-                let session = app.model.session(*id)?;
-                let place = app.model.branch(session.workspace).unwrap_or("?");
-                let mut line = session_line(session, "", &session.title);
-                line.spans.push(Span::from(format!("  {place}")).dim());
-                Some(ListItem::new(line))
-            }
-            Need::Run(id) => Some(ListItem::new(runs::run_line(app.model.run(*id)?, width))),
+        .filter_map(|id| app.model.session(*id))
+        .map(|session| {
+            let place = app.model.branch(session.workspace).unwrap_or("?");
+            let mut line = session_line(session, "", &session.title);
+            line.spans.push(Span::from(format!("  {place}")).dim());
+            ListItem::new(line)
         })
         .collect();
     let mut state = ListState::default()
         .with_offset(app.needs_offset)
         .with_selected(
             app.needs_selected
-                .and_then(|need| app.needs_list.iter().position(|n| *n == need)),
+                .and_then(|s| app.needs_list.iter().position(|id| *id == s)),
         );
     let list = List::new(items)
         .block(block)
@@ -545,7 +534,7 @@ pub(super) fn panel<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> 
     }
 }
 
-fn status_symbol(status: SessionStatus) -> (&'static str, Style) {
+pub(super) fn status_symbol(status: SessionStatus) -> (&'static str, Style) {
     match status {
         SessionStatus::Fresh => ("○", Style::default().fg(Color::Gray)),
         SessionStatus::Running => ("●", Style::default().fg(Color::Yellow)),

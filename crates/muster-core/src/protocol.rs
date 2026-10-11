@@ -16,7 +16,8 @@
 //! version 6 the person's request for changes on a run; version 7 runs'
 //! containers as workspaces, and taking a run over; version 8 handing a
 //! person's branch to the autopilot; version 9 the checks by hand; version
-//! 10 a review and a draft pull request by hand.
+//! 10 a review and a draft pull request by hand; version 11 a ticket's
+//! text, and another agent on a ticket.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -30,9 +31,9 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 10;
+pub const PROTOCOL_VERSION: u32 = 11;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 10;
+pub const MIN_PROTOCOL_VERSION: u32 = 11;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,6 +324,9 @@ pub enum Command {
     RemoveSession { session: SessionId },
     /// List a project's open GitHub issues, newest first.
     ListIssues { project: ProjectId },
+    /// One of a project's GitHub issues with its text, answered with
+    /// [`Reply::IssueViewed`].
+    ViewIssue { project: ProjectId, number: u64 },
     /// Hand a GitHub issue to the autopilot: a run that builds, checks,
     /// opens a draft pull request and has it reviewed before asking the
     /// person (`PRODUCT.md` §5). Needs the project's `muster.toml` checks.
@@ -364,6 +368,10 @@ pub enum Command {
         /// A harness id: `claude` or `shell`.
         harness: String,
         size: TermSize,
+        /// Another agent on the issue, in a worktree of its own, rather
+        /// than in the issue's worktree as it is.
+        #[serde(default)]
+        another: bool,
     },
 }
 
@@ -386,6 +394,12 @@ pub enum Reply {
     IssueStarted {
         workspace: WorkspaceId,
         session: SessionId,
+    },
+    /// An issue, with its text: anyone can write it, so it is data, never
+    /// instructions (`PRD-07`).
+    IssueViewed {
+        issue: Issue,
+        body: String,
     },
     RunStarted {
         id: RunId,
