@@ -48,6 +48,46 @@ impl RunStage {
                 | Self::AgentReview
         )
     }
+
+    /// Whether the run waits on the person: it is ready for them, or
+    /// stopped for them (`PRODUCT.md` §6, Needs you).
+    pub const fn waits_on_person(self) -> bool {
+        matches!(self, Self::ReadyForYou | Self::NeedsYou)
+    }
+
+    /// The stage in a word or two, for lists.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Provisioning => "starting",
+            Self::Building => "building",
+            Self::Checking => "checking",
+            Self::OpeningPr => "opening PR",
+            Self::AgentReview => "in review",
+            Self::ReadyForYou => "ready for you",
+            Self::TakenOver => "taken over",
+            Self::NeedsYou => "needs you",
+            Self::Merged => "merged",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    /// The stage as it reads in a sentence: "while it is …".
+    pub const fn phrase(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Provisioning => "starting its container",
+            Self::Building => "building",
+            Self::Checking => "checking",
+            Self::OpeningPr => "opening its pull request",
+            Self::AgentReview => "in review",
+            Self::ReadyForYou => "ready for you",
+            Self::TakenOver => "taken over",
+            Self::NeedsYou => "waiting on you",
+            Self::Merged => "merged",
+            Self::Cancelled => "cancelled",
+        }
+    }
 }
 
 /// The ticket a run works on, as it was when the run picked it up: later
@@ -103,4 +143,37 @@ pub struct RunTransition {
     pub to: RunStage,
     pub reason: String,
     pub at: crate::Timestamp,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stages_say_who_they_wait_on() {
+        let all = [
+            RunStage::Queued,
+            RunStage::Provisioning,
+            RunStage::Building,
+            RunStage::Checking,
+            RunStage::OpeningPr,
+            RunStage::AgentReview,
+            RunStage::ReadyForYou,
+            RunStage::TakenOver,
+            RunStage::NeedsYou,
+            RunStage::Merged,
+            RunStage::Cancelled,
+        ];
+        for stage in all {
+            // A run is at most one of: working alone, waiting on the
+            // person, over.
+            let kinds = [stage.is_active(), stage.waits_on_person(), stage.is_over()];
+            assert!(kinds.iter().filter(|kind| **kind).count() <= 1, "{stage:?}");
+            assert!(!stage.label().is_empty() && !stage.phrase().is_empty());
+        }
+        assert!(RunStage::NeedsYou.waits_on_person());
+        assert!(RunStage::ReadyForYou.waits_on_person());
+        assert!(!RunStage::TakenOver.waits_on_person());
+        assert_eq!(RunStage::Provisioning.phrase(), "starting its container");
+    }
 }

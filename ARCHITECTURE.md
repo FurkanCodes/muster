@@ -42,7 +42,7 @@ The daemon is the only process that owns agent processes and talks to Docker, Gi
 | `muster-daemon` | Supervisor, store, IPC server, PTY host, container runtime, hook receiver, scheduler, sampler, sources, git host, harness drivers and parsers | Every external system behind a trait (`ARC-03`) |
 | `muster-client` | The async framed transport over the socket, and a client connection that performs the handshake; shared by the daemon, the TUI, the binary and the e2e tests | No business logic |
 | `muster-tui` | ratatui client: sessions, needs-you, terminal view, dialogs | Renders state; holds no business logic |
-| `muster` | The binary (clap): no args opens the TUI; `daemon`, `run <issue-url>`, `spawn`, `status`, `doctor` | Thin |
+| `muster` | The binary (clap): no args opens the TUI; `daemon`, `status`, `project`, `worktree`, `session`, `issue`, `run`, `auth` | Thin |
 
 Main dependencies: tokio, portable-pty, vt100 + tui-term, the `docker` command (Docker), rusqlite (bundled), serde + rmp-serde, ratatui + crossterm, axum (hook receiver), clap, octocrab or reqwest (GitHub), keyring (macOS Keychain), sysinfo, tracing, ulid.
 
@@ -144,7 +144,7 @@ A harness is **data plus a parser**, following Nebula's descriptor idea.
 
 - **`TicketSource` trait:** list with a filter, get, comment; Jira adds status write-back in M5.
 - **GitHub source:** the GitHub CLI (`gh … --json`), as Nebula uses, so the person's own `gh` login covers authentication and GitHub Enterprise, and `gh` finds the repository from the checkout's remote. Calls never run on the Supervisor's loop: listing answers from a task of its own, and starting work fetches the issue on a task, then returns to the Supervisor only to create the worktree (`muster/issue-<n>-<title>`, reused if it exists) and the session (a test proves a slow `gh` does not delay other commands). Claude Code gets the issue as its first prompt, set apart between marker lines and named as a description of the work, not instructions (`PRD-07`); the marker lines carry a random tag, so an issue cannot close them early and go on as if it were Muster. Issue text is cleaned of control characters as it arrives, and everything the command line prints from outside (titles, labels, names, paths, git's messages) is cleaned again, so no escape sequence reaches a terminal; the UI draws through ratatui, which drops them. Automatic pickup follows `PRD-07` too: the configured label must have been applied by an allowed account, checked against the issue's event timeline, not just the label's presence (M2).
-- **`GitHost` trait:** push branch, open draft PR, post review with line comments, mark ready, request reviewer, read PR state.
+- **`GitHost` trait** (`githost.rs`, through `gh`): open a draft PR (or find the branch's open one), post a review comment, mark ready or back to draft, read PR state. Pushing is git's, from the host mirror (§8).
 - **Waiting on people:** PR state is polled every 60 s with ETags, which do not count against GitHub's rate limit when nothing changed. Webhooks need a public endpoint and are out of scope (`PRD-10`).
 
 ## 11. Secrets

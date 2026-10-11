@@ -9,9 +9,9 @@ use muster_core::{Project, SessionId, SessionStatus, WaitReason, Workspace};
 
 const CLIENT: &str = concat!("muster ", env!("CARGO_PKG_VERSION"));
 
-type Outcome = Result<(), Box<dyn std::error::Error>>;
+pub(crate) type Outcome = Result<(), Box<dyn std::error::Error>>;
 
-async fn connect(socket: &Path) -> Result<Connection, ClientError> {
+pub(crate) async fn connect(socket: &Path) -> Result<Connection, ClientError> {
     Connection::connect(socket, CLIENT).await
 }
 
@@ -33,8 +33,13 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
         "The daemon is running: muster {} (pid {}, protocol {}).",
         welcome.daemon_version, welcome.daemon_pid, welcome.version
     );
+    let going: Vec<&muster_core::Run> = snapshot
+        .runs
+        .iter()
+        .filter(|run| !run.stage.is_over())
+        .collect();
     println!(
-        "{}, {}, {}.",
+        "{}, {}, {}, {} going.",
         count(snapshot.projects.len(), "project"),
         count(
             snapshot
@@ -44,7 +49,8 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
                 .count(),
             "worktree"
         ),
-        count(snapshot.sessions.len(), "session")
+        count(snapshot.sessions.len(), "session"),
+        count(going.len(), "run")
     );
     for project in &snapshot.projects {
         println!(
@@ -53,6 +59,19 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
             shown(&project.root.display().to_string()),
             project.id
         );
+        for run in going.iter().filter(|run| run.project == project.id) {
+            let reason = run
+                .reason
+                .as_deref()
+                .map(|reason| format!(": {}", shown(reason)))
+                .unwrap_or_default();
+            println!(
+                "  run #{}  {}{reason}  ({})",
+                run.ticket.number,
+                run.stage.label(),
+                run.id
+            );
+        }
         for workspace in snapshot
             .workspaces
             .iter()
@@ -392,7 +411,10 @@ pub(crate) async fn start_issue(
 }
 
 /// A project by id, name or path.
-fn find_project<'a>(snapshot: &'a Snapshot, wanted: &str) -> Result<&'a Project, String> {
+pub(crate) fn find_project<'a>(
+    snapshot: &'a Snapshot,
+    wanted: &str,
+) -> Result<&'a Project, String> {
     let path = std::path::absolute(wanted)
         .ok()
         .and_then(|path| path.canonicalize().ok());
@@ -467,14 +489,14 @@ fn count(n: usize, noun: &str) -> String {
     }
 }
 
-fn unexpected(reply: &Reply) -> Box<dyn std::error::Error> {
+pub(crate) fn unexpected(reply: &Reply) -> Box<dyn std::error::Error> {
     format!("unexpected reply {reply:?}").into()
 }
 
 /// Text from the daemon as it is printed: issue titles and labels can be
 /// written by anyone, and names come from the file system, so control
 /// characters, which a terminal would act on, are taken out.
-fn shown(text: &str) -> String {
+pub(crate) fn shown(text: &str) -> String {
     muster_core::text::one_line(text)
 }
 

@@ -78,12 +78,25 @@ case "$1 $2" in
 esac
 "#;
 
+/// Stands in for the `docker` command: records every call and answers as
+/// Docker does when it is not running, so runs stop for the person with
+/// that reason. Tests against the real Docker do without it.
+const FAKE_DOCKER: &str = r#"#!/bin/sh
+printf '%s\n' "$*" >> "$FAKE_DOCKER_DIR/calls"
+echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2
+exit 1
+"#;
+
 impl Sandbox {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("bin");
         std::fs::create_dir_all(&bin).unwrap();
-        for (name, script) in [("claude", FAKE_CLAUDE), ("gh", FAKE_GH)] {
+        for (name, script) in [
+            ("claude", FAKE_CLAUDE),
+            ("gh", FAKE_GH),
+            ("docker", FAKE_DOCKER),
+        ] {
             std::fs::write(bin.join(name), script).unwrap();
             std::fs::set_permissions(
                 bin.join(name),
@@ -92,6 +105,7 @@ impl Sandbox {
             .unwrap();
         }
         std::fs::create_dir_all(dir.path().join("fake-gh")).unwrap();
+        std::fs::create_dir_all(dir.path().join("fake-docker")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
         std::fs::create_dir_all(dir.path().join("claude-config/projects")).unwrap();
         Self {
@@ -116,6 +130,11 @@ impl Sandbox {
     /// `GH_SLOW` flag and the `calls` it recorded.
     pub(crate) fn fake_gh(&self) -> PathBuf {
         self.dir.path().join("fake-gh")
+    }
+
+    /// The calls the stand-in `docker` was given, one per line.
+    pub(crate) fn docker_calls(&self) -> String {
+        std::fs::read_to_string(self.dir.path().join("fake-docker/calls")).unwrap_or_default()
     }
 
     /// Where Claude Code would keep its transcripts in this sandbox.
@@ -213,6 +232,7 @@ impl Sandbox {
             )
             .env("FAKE_CLAUDE_DIR", self.dir.path().join("fake-claude"))
             .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
+            .env("FAKE_DOCKER_DIR", self.dir.path().join("fake-docker"))
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))
             // As if the daemon were started from inside an agent session,
             // which sessions must not inherit.

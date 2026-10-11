@@ -202,7 +202,7 @@ impl Supervisor {
         if !self.step_run(run, event).await {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,
-                format!("a run cannot {what} while it is {}", stage_name(stage)),
+                format!("a run cannot {what} while it is {}", stage.phrase()),
             ));
         }
         Ok(Reply::Done)
@@ -510,21 +510,4 @@ async fn settings_for_runs(root: PathBuf, overrides: PathBuf) -> Result<ProjectC
         }
     }
     Ok(config)
-}
-
-/// A stage as the person reads it.
-fn stage_name(stage: RunStage) -> &'static str {
-    match stage {
-        RunStage::Queued => "queued",
-        RunStage::Provisioning => "starting its container",
-        RunStage::Building => "building",
-        RunStage::Checking => "checking",
-        RunStage::OpeningPr => "opening its pull request",
-        RunStage::AgentReview => "in review",
-        RunStage::ReadyForYou => "ready for you",
-        RunStage::TakenOver => "taken over",
-        RunStage::NeedsYou => "waiting on you",
-        RunStage::Merged => "merged",
-        RunStage::Cancelled => "cancelled",
-    }
 }

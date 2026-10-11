@@ -520,3 +520,105 @@ async fn a_restarted_daemon_carries_on_with_the_work_under_way() {
     let (snapshot, _) = supervisor.subscribe().await.unwrap();
     assert_eq!(snapshot.runs[0].stage, RunStage::Checking);
 }
+
+/// Answers the run's work, as it is asked for, from pickup to ready; the
+/// work asked for so far is `asked`.
+async fn drive_to_ready(setup: &Setup, run: RunId, deltas: &mut broadcast::Receiver<Delta>) {
+    let report = |event| setup.work.report(run, Report::Event(event));
+    let (_, effect) = setup.work.asked(1).await;
+    setup.work.report(run, Report::Container("c-1".to_owned()));
+    report(RunEvent::ContainerReady {
+        generation: generation(&effect),
+    });
+    let (_, effect) = setup.work.asked(2).await;
+    report(RunEvent::AgentFinished {
+        generation: generation(&effect),
+        outcome: AgentOutcome::Done,
+    });
+    let (_, effect) = setup.work.asked(3).await;
+    report(RunEvent::ChecksFinished {
+        generation: generation(&effect),
+        passed: true,
+        report: String::new(),
+    });
+    let (_, effect) = setup.work.asked(4).await;
+    setup.work.report(
+        run,
+        Report::PullRequest(PullRequest {
+            number: 17,
+            url: "https://github.com/o/app/pull/17".to_owned(),
+        }),
+    );
+    report(RunEvent::PrOpened {
+        generation: generation(&effect),
+        number: 17,
+    });
+    let (_, effect) = setup.work.asked(5).await;
+    report(RunEvent::ReviewSubmitted {
+        generation: generation(&effect),
+        verdict: Verdict::Approve,
+    });
+    wait_for_stage(deltas, run, RunStage::ReadyForYou).await;
+    assert_eq!(setup.work.asked(6).await.1, RunEffect::MarkReady);
+}
+
+#[tokio::test]
+async fn the_person_sends_a_ready_run_back_with_what_to_change() {
+    let setup = setup(CHECKS).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    let changes = |comments: &str| Command::RequestChanges {
+        run,
+        comments: comments.to_owned(),
+    };
+
+    // Only a run that is ready for the person takes changes.
+    setup.work.asked(1).await;
+    let early = setup
+        .supervisor
+        .command(changes("Handle the empty case."))
+        .await
+        .unwrap_err();
+    assert_eq!(early.code, ErrorCode::Conflict);
+    assert_eq!(
+        early.message,
+        "a run cannot take a request for changes while it is starting its container"
+    );
+
+    drive_to_ready(&setup, run, &mut deltas).await;
+    // Saying nothing is no request.
+    let empty = setup.supervisor.command(changes(" \n ")).await.unwrap_err();
+    assert_eq!(empty.code, ErrorCode::BadRequest);
+
+    setup
+        .supervisor
+        .command(changes("Handle the empty case."))
+        .await
+        .unwrap();
+    wait_for_stage(&mut deltas, run, RunStage::Building).await;
+    assert_eq!(setup.work.asked(7).await.1, RunEffect::MarkDraft);
+    let (_, effect) = setup.work.asked(8).await;
+    assert!(
+        matches!(
+            &effect,
+            RunEffect::StartBuilder {
+                attempt: 2,
+                feedback: Some(muster_state::run::Feedback::PersonRequestedChanges { comments }),
+                ..
+            } if comments == "Handle the empty case."
+        ),
+        "{effect:?}"
+    );
+    let Reply::RunHistory { transitions } = setup
+        .supervisor
+        .command(Command::RunHistory { run })
+        .await
+        .unwrap()
+    else {
+        panic!("expected RunHistory");
+    };
+    assert_eq!(
+        transitions.last().unwrap().reason,
+        "you asked for changes; attempt 2"
+    );
+}
