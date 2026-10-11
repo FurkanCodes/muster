@@ -159,8 +159,7 @@ impl Supervisor {
             .map(|session| session.id)
             .collect();
         for session in &released {
-            // Dropping the last handle releases the terminal's output.
-            self.live.remove(session);
+            self.release_terminal(*session);
         }
         self.state
             .sessions

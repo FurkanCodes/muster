@@ -63,8 +63,14 @@ pub(crate) struct SpawnSpec {
 pub(crate) enum PtyEvent {
     /// The progress sequence turned busy or idle.
     Progress { busy: bool },
-    /// The process exited and all its output has been read.
-    Exited { success: bool, requested: bool },
+    /// The process exited and all its output has been read; `end` is the
+    /// position after its last byte and `size` the terminal's last size.
+    Exited {
+        success: bool,
+        requested: bool,
+        end: u64,
+        size: TermSize,
+    },
 }
 
 /// A piece of output, its position, and the input modes in effect after it.
@@ -148,10 +154,12 @@ impl PtyHandle {
     }
 }
 
-/// Starts `spec` in a new terminal. `events` receives what it reports; the
-/// terminal is released when every handle to it has been dropped.
+/// Starts `spec` in a new terminal whose first byte of output is numbered
+/// `first_seq`. `events` receives what it reports; the terminal is released
+/// when every handle to it has been dropped.
 pub(crate) fn spawn(
     spec: SpawnSpec,
+    first_seq: u64,
     events: impl Fn(PtyEvent) + Send + 'static,
 ) -> std::io::Result<PtyHandle> {
     let pair = native_pty_system()
@@ -206,7 +214,7 @@ pub(crate) fn spawn(
     let actor = Actor {
         master: pair.master,
         process_group,
-        ring: Ring::new(RING_CAPACITY),
+        ring: Ring::starting_at(RING_CAPACITY, first_seq),
         live: Some(broadcast::channel(256).0),
         input: Some(input),
         progress: ProgressScanner::default(),
@@ -319,6 +327,8 @@ impl Actor {
                 events(PtyEvent::Exited {
                     success,
                     requested: self.stopping,
+                    end: self.ring.end(),
+                    size: self.size,
                 });
             }
         }

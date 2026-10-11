@@ -84,7 +84,9 @@ pub enum ClientFrame {
     Command { req_id: u64, command: Command },
     /// Stream a session's terminal: a [`ServerFrame::Replay`] from `from_seq`
     /// (or everything the daemon still holds), then [`ServerFrame::Output`]
-    /// as it arrives. Attaching counts as looking at the session.
+    /// as it arrives. The stream follows the session to a new program, with
+    /// a reset. While attached, the session counts as watched: nothing that
+    /// happens in it is news.
     Attach {
         session: SessionId,
         from_seq: Option<u64>,

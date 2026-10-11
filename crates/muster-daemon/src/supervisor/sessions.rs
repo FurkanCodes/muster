@@ -80,7 +80,9 @@ impl Supervisor {
         } else {
             Start::Idle
         };
-        if let Err(error) = self.launch(id, harness, cwd, size, Mode::Fresh { prompt }, start) {
+        if let Err(error) =
+            self.launch(id, harness, cwd, size, Mode::Fresh { prompt }, start, false)
+        {
             // The session was stored before its program was started
             // (`ARC-10`), so record that it never ran.
             self.end_session(id, SessionStatus::Exited { success: false }, true)
@@ -93,7 +95,14 @@ impl Supervisor {
         Ok(Reply::SessionStarted { id })
     }
 
-    /// Starts a session's program and begins tracking it.
+    /// Starts a session's program and begins tracking it. A program started
+    /// again in a session carries on from its last one: the same terminal
+    /// size, and output numbered on from where the last one's ended, past a
+    /// gap of one so that no client's position from before is mistaken for
+    /// one after and every client starts the new program on a clean screen.
+    /// `unseen` starts the session with news for the person, unless someone
+    /// is already watching it.
+    #[allow(clippy::too_many_arguments)]
     fn launch(
         &mut self,
         session: SessionId,
@@ -102,7 +111,11 @@ impl Supervisor {
         size: TermSize,
         mode: Mode,
         start: Start,
+        unseen: bool,
     ) -> std::io::Result<()> {
+        let previous = self.live.get(&session).and_then(|live| live.ended);
+        let size = previous.map_or(size, |(_, size)| size);
+        let first_seq = previous.map_or(0, |(end, _)| end + 1);
         let (agent_session, resume, prompt) = match mode {
             Mode::Fresh { prompt } => {
                 let id = harness
@@ -134,7 +147,7 @@ impl Supervisor {
             },
         );
         let events = self.pty_events.clone();
-        let pty = pty::spawn(spec, move |event| {
+        let pty = pty::spawn(spec, first_seq, move |event| {
             let _ = events.send((session, event));
         })?;
 
@@ -147,21 +160,33 @@ impl Supervisor {
             session::Launch {
                 agent_session,
                 start,
+                unseen,
             },
             Timing::default(),
         );
         self.live.insert(
             session,
             Live {
-                pty,
+                pty: pty.clone(),
                 machine,
                 harness,
                 token,
                 launched: Instant::now(),
                 resumed: resume,
+                ended: None,
             },
         );
+        self.carry_watch(session);
+        self.publish_terminal(session, pty);
         Ok(())
+    }
+
+    /// The status a just-launched session's machine starts in, as the person
+    /// should see it.
+    fn launched_status(&self, session: SessionId) -> Option<(SessionStatus, bool)> {
+        self.live
+            .get(&session)
+            .map(|live| (live.machine.status(), live.machine.unseen()))
     }
 
     pub(super) async fn stop_session(&mut self, session: SessionId) -> Result<Reply, ErrorBody> {
@@ -183,7 +208,15 @@ impl Supervisor {
             PtyEvent::Progress { busy } => {
                 self.step_session(session, Signal::Progress { busy }).await;
             }
-            PtyEvent::Exited { success, requested } => {
+            PtyEvent::Exited {
+                success,
+                requested,
+                end,
+                size,
+            } => {
+                if let Some(live) = self.live.get_mut(&session) {
+                    live.ended = Some((end, size));
+                }
                 self.forget_token(session);
                 let failed_resume = self.live.get(&session).is_some_and(|live| {
                     live.resumed && !requested && live.launched.elapsed() < RESUME_GRACE
@@ -217,9 +250,11 @@ impl Supervisor {
         tracing::warn!(%session, "resume failed; starting the session fresh");
         let size = TermSize::default();
         let mode = Mode::Fresh { prompt: None };
-        match self.launch(session, harness, cwd, size, mode, Start::Idle) {
+        match self.launch(session, harness, cwd, size, mode, Start::Idle, true) {
             Ok(()) => {
-                self.set_status(session, SessionStatus::Fresh, true).await;
+                if let Some((status, unseen)) = self.launched_status(session) {
+                    self.set_status(session, status, unseen).await;
+                }
                 true
             }
             Err(error) => {
@@ -274,12 +309,13 @@ impl Supervisor {
                 SessionStatus::Running | SessionStatus::NeedsYou { .. }
             );
         let mode = Mode::Resume { agent_session };
-        let start = Start::Resumed { unseen };
-        match self.launch(session.id, harness, cwd, TermSize::default(), mode, start) {
+        let size = TermSize::default();
+        match self.launch(session.id, harness, cwd, size, mode, Start::Resumed, unseen) {
             Ok(()) => {
                 tracing::info!(session = %session.id, "resumed");
-                self.set_status(session.id, SessionStatus::Finished, unseen)
-                    .await;
+                if let Some((status, unseen)) = self.launched_status(session.id) {
+                    self.set_status(session.id, status, unseen).await;
+                }
                 true
             }
             Err(error) => {

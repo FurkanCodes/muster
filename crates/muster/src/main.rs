@@ -180,7 +180,9 @@ async fn ui(paths: Paths) -> ExitCode {
 }
 
 /// Starts `muster daemon --detach` in the background, logging to
-/// `daemon.log` in the runtime directory.
+/// `daemon.log` in the runtime directory. The daemon stays this process's
+/// child until the UI exits, so a thread waits for it: a daemon that stops
+/// while the UI runs must not linger as a zombie.
 fn start_daemon(paths: &Paths) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     std::fs::DirBuilder::new()
@@ -191,13 +193,18 @@ fn start_daemon(paths: &Paths) -> std::io::Result<()> {
         .create(true)
         .append(true)
         .open(paths.runtime_dir.join("daemon.log"))?;
-    std::process::Command::new(std::env::current_exe()?)
+    let mut daemon = std::process::Command::new(std::env::current_exe()?)
         .args(["daemon", "--detach"])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(log)
-        .spawn()
-        .map(drop)
+        .spawn()?;
+    std::thread::Builder::new()
+        .name("muster-reap-daemon".to_owned())
+        .spawn(move || {
+            let _ = daemon.wait();
+        })?;
+    Ok(())
 }
 
 async fn daemon(paths: Paths) -> ExitCode {

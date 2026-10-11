@@ -46,6 +46,9 @@ pub struct Launch {
     /// (Claude Code's `--session-id`) or resumed it (`--resume`).
     pub agent_session: Option<String>,
     pub start: Start,
+    /// Starts with something the person has not seen: a turn a daemon
+    /// restart cut short, or a resume that failed and started over.
+    pub unseen: bool,
 }
 
 /// What the agent is doing as it starts.
@@ -56,10 +59,8 @@ pub enum Start {
     Idle,
     /// Given a first prompt at launch, so working from the start.
     WithPrompt,
-    /// Resumed after a daemon restart: back at its prompt with its earlier
-    /// conversation. `unseen` carries over what the person had not seen,
-    /// including a turn the restart cut short.
-    Resumed { unseen: bool },
+    /// Resumed: back at its prompt with its earlier conversation.
+    Resumed,
 }
 
 /// The main agent ended its turn while subagents were still working, so the
@@ -81,6 +82,8 @@ pub struct SessionMachine {
     timing: Timing,
     status: SessionStatus,
     unseen: bool,
+    /// Someone is watching the terminal, so nothing is unseen.
+    watched: bool,
     /// The harness session this process is running; hooks from any other are ignored.
     agent_session: Option<String>,
     /// The id last handed to the daemon for resuming.
@@ -100,20 +103,21 @@ pub struct SessionMachine {
 impl SessionMachine {
     /// A machine for a session that has just been launched.
     pub fn new(launch: Launch, timing: Timing) -> Self {
-        let (status, unseen) = match launch.start {
-            Start::Idle => (SessionStatus::Fresh, false),
-            Start::WithPrompt => (SessionStatus::Running, false),
-            Start::Resumed { unseen } => (SessionStatus::Finished, unseen),
+        let status = match launch.start {
+            Start::Idle => SessionStatus::Fresh,
+            Start::WithPrompt => SessionStatus::Running,
+            Start::Resumed => SessionStatus::Finished,
         };
         // A resumed session's id already has a transcript behind it.
         let resume_id = match launch.start {
-            Start::Resumed { .. } => launch.agent_session.clone(),
+            Start::Resumed => launch.agent_session.clone(),
             _ => None,
         };
         Self {
             timing,
             status,
-            unseen,
+            unseen: launch.unseen,
+            watched: false,
             agent_session: launch.agent_session,
             resume_id,
             waits: Vec::new(),
@@ -159,12 +163,10 @@ impl SessionMachine {
         let before = (self.status, self.unseen);
         let mut effects = Vec::new();
 
-        if self.status.is_exited() {
+        if let Signal::Watched { watching } = signal {
+            self.watched = watching;
+        } else if !self.status.is_exited() {
             // Nothing changes an exited session except being looked at.
-            if signal == Signal::Viewed {
-                self.unseen = false;
-            }
-        } else {
             match signal {
                 Signal::Hook {
                     agent_session,
@@ -172,9 +174,12 @@ impl SessionMachine {
                 } => self.on_hook(agent_session, event, now, &mut effects),
                 Signal::Progress { busy } => self.on_progress(busy, now),
                 Signal::Exited { success, requested } => self.on_exit(success, requested),
-                Signal::Viewed => self.unseen = false,
                 Signal::Tick => self.on_tick(now),
+                Signal::Watched { .. } => {}
             }
+        }
+        if self.watched {
+            self.unseen = false;
         }
 
         if (self.status, self.unseen) != before {

@@ -45,6 +45,17 @@ fn the_ring_drops_the_oldest_bytes_and_says_so() {
 }
 
 #[test]
+fn a_ring_can_continue_an_earlier_numbering() {
+    let mut ring = Ring::starting_at(8, 100);
+    assert_eq!(ring.end(), 100);
+    assert_eq!(ring.push(b"ab"), 100);
+    // A position from before the ring's start is not held.
+    assert!(ring.replay_from(Some(99)).reset);
+    let replay = ring.replay_from(Some(101));
+    assert_eq!((replay.seq, replay.data.as_slice()), (101, &b"b"[..]));
+}
+
+#[test]
 fn a_position_from_nowhere_gets_everything_with_a_reset() {
     let mut ring = Ring::new(4);
     ring.push(b"ab");
@@ -148,7 +159,7 @@ fn shell(env: Vec<(&str, &str)>, env_remove: Vec<&str>) -> (PtyHandle, Events) {
         env_remove: env_remove.into_iter().map(str::to_owned).collect(),
         size: TermSize::default(),
     };
-    (spawn(spec, events.sink()).unwrap(), events)
+    (spawn(spec, 0, events.sink()).unwrap(), events)
 }
 
 /// Collects a session's output from `from` until it contains `marker`.
@@ -248,14 +259,18 @@ async fn the_progress_sequence_is_reported() {
 async fn an_exit_is_reported_after_its_output_and_the_output_stays_readable() {
     let (pty, events) = shell(vec![], vec![]);
     pty.input(b"echo bye-$((2*4)); exit 3\n".to_vec()).await;
-    assert_eq!(
-        events.exit().await,
-        PtyEvent::Exited {
-            success: false,
-            requested: false,
-        }
-    );
+    let PtyEvent::Exited {
+        success,
+        requested,
+        end,
+        ..
+    } = events.exit().await
+    else {
+        unreachable!();
+    };
+    assert!(!success && !requested);
     let after = pty.attach(None).await.unwrap();
+    assert_eq!(after.replay.seq + after.replay.data.len() as u64, end);
     assert!(String::from_utf8_lossy(&after.replay.data).contains("bye-8"));
     assert!(after.live.is_none());
 }

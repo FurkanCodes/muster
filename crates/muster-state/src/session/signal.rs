@@ -54,8 +54,10 @@ pub enum Signal {
     /// The agent process exited. `requested` is true when Muster stopped it
     /// on the person's behalf.
     Exited { success: bool, requested: bool },
-    /// The person looked at the session.
-    Viewed,
+    /// Someone started or stopped watching the session's terminal. While it
+    /// is watched, nothing that happens in it is news: the person sees it
+    /// happen.
+    Watched { watching: bool },
     /// The deadline from [`SessionMachine::next_deadline`](super::SessionMachine::next_deadline) has passed.
     Tick,
 }

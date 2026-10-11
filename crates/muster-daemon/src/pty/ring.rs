@@ -29,11 +29,17 @@ pub(crate) struct Replay {
 }
 
 impl Ring {
+    #[cfg(test)]
     pub(crate) fn new(capacity: usize) -> Self {
+        Self::starting_at(capacity, 0)
+    }
+
+    /// A ring whose first byte will be numbered `start`.
+    pub(crate) fn starting_at(capacity: usize, start: u64) -> Self {
         Self {
             bytes: VecDeque::with_capacity(capacity.min(64 * 1024)),
             capacity,
-            start: 0,
+            start,
         }
     }
 
