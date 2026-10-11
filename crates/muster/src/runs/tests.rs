@@ -201,7 +201,7 @@ fn lists_put_what_waits_on_you_first_and_long_titles_are_cut() {
         RunStage::NeedsYou,
         RunStage::Merged,
     ];
-    stages.sort_by_key(|stage| order(*stage));
+    stages.sort_by_key(|stage| stage.list_order());
     assert_eq!(
         stages,
         [

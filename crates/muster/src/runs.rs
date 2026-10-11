@@ -52,7 +52,7 @@ pub(crate) async fn list(socket: &Path, all: bool) -> Outcome {
         );
         return Ok(());
     }
-    runs.sort_by_key(|run| (order(run.stage), run.created_at));
+    runs.sort_by_key(|run| (run.stage.list_order(), run.created_at));
     let rows: Vec<[String; 6]> = runs
         .iter()
         .map(|run| {
@@ -342,24 +342,6 @@ fn next_steps(run: &Run) -> Option<String> {
                 ))
         )),
         _ => None,
-    }
-}
-
-/// Where a stage sorts in a list: what waits on the person first, then
-/// the work in the order it happens, then what has ended.
-fn order(stage: RunStage) -> u8 {
-    match stage {
-        RunStage::NeedsYou => 0,
-        RunStage::ReadyForYou => 1,
-        RunStage::TakenOver => 2,
-        RunStage::AgentReview => 3,
-        RunStage::OpeningPr => 4,
-        RunStage::Checking => 5,
-        RunStage::Building => 6,
-        RunStage::Provisioning => 7,
-        RunStage::Queued => 8,
-        RunStage::Merged => 9,
-        RunStage::Cancelled => 10,
     }
 }
 

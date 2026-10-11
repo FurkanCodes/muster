@@ -3,9 +3,10 @@
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use muster_core::ProjectId;
 use muster_core::protocol::{ClientFrame, Command};
 
-use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
+use super::{Action, App, Confirmed, Dialog, HarnessChoice, IssueWork, Mode, Then, View};
 use crate::input::{Edit, LineInput};
 use crate::keys::{encode_key, encode_paste};
 use crate::model::Row;
@@ -89,17 +90,35 @@ impl App {
 
     fn browse_key(&mut self, key: &KeyEvent) -> Vec<Action> {
         let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        if !control
+            && let Some(run) = self.focused_run()
+            && let Some(actions) = self.run_key(run, key)
+        {
+            return actions;
+        }
+        if self.view == View::Runs && matches!(key.code, KeyCode::Char('n' | 'i')) {
+            return self.issues_for_a_run();
+        }
         match key.code {
             KeyCode::Char('c') if control => return vec![Action::Quit],
             KeyCode::Char('q') => return vec![Action::Quit],
-            KeyCode::Tab | KeyCode::BackTab => match self.view {
-                View::Sessions => {
-                    // The queue opens on its most urgent session.
-                    self.view = View::NeedsYou;
-                    self.needs_selected = self.needs_list.first().copied();
-                }
-                View::NeedsYou => self.view = View::Sessions,
-            },
+            KeyCode::Tab | KeyCode::BackTab => {
+                let back = key.code == KeyCode::BackTab;
+                self.view = match (self.view, back) {
+                    (View::Sessions, false) | (View::Runs, true) => {
+                        // The queue opens on its most urgent entry.
+                        self.needs_selected = self.needs_list.first().copied();
+                        View::NeedsYou
+                    }
+                    (View::NeedsYou, false) | (View::Sessions, true) => {
+                        // As the queue, the runs open on what most waits on
+                        // the person.
+                        self.runs_selected = self.runs_list.first().copied();
+                        View::Runs
+                    }
+                    (View::Runs, false) | (View::NeedsYou, true) => View::Sessions,
+                };
+            }
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::PageUp => self.page_preview(true),
@@ -142,8 +161,15 @@ impl App {
                 let list = &self.needs_list;
                 let at = self
                     .needs_selected
-                    .and_then(|session| list.iter().position(|s| *s == session));
+                    .and_then(|need| list.iter().position(|n| *n == need));
                 self.needs_selected = step(list.len(), at).map(|index| list[index]);
+            }
+            View::Runs => {
+                let list = &self.runs_list;
+                let at = self
+                    .runs_selected
+                    .and_then(|run| list.iter().position(|r| *r == run));
+                self.runs_selected = step(list.len(), at).map(|index| list[index]);
             }
         }
     }
@@ -152,6 +178,10 @@ impl App {
         if let Some(session) = self.focused_session() {
             self.mode = Mode::Terminal(session);
             self.note = None;
+            return;
+        }
+        if let Some(run) = self.focused_run() {
+            self.open_run(run);
             return;
         }
         match self.selected {
@@ -174,7 +204,13 @@ impl App {
     }
 
     fn open_issues(&mut self) -> Vec<Action> {
-        let Some(project) = self.selected.and_then(|row| self.model.project_of(row)) else {
+        let project = self.selected.and_then(|row| self.model.project_of(row));
+        self.open_issues_of(project)
+    }
+
+    /// The issues dialog for `project`, loading its issues.
+    pub(super) fn open_issues_of(&mut self, project: Option<ProjectId>) -> Vec<Action> {
+        let Some(project) = project else {
             self.complain("Add a project first: press a.");
             return Vec::new();
         };
@@ -182,7 +218,7 @@ impl App {
             project,
             issues: None,
             selected: 0,
-            harness: HarnessChoice::Claude,
+            work: IssueWork::Session(HarnessChoice::Claude),
             error: None,
         });
         vec![self.command(Command::ListIssues { project }, Then::ShowIssues(project))]
@@ -196,8 +232,9 @@ impl App {
                 row => self.model.worktree_of(row),
             }),
             View::NeedsYou => self
-                .needs_selected
+                .focused_session()
                 .and_then(|session| self.model.worktree_of(Row::Session(session))),
+            View::Runs => None,
         };
         match workspace {
             Some(workspace) => {
@@ -363,12 +400,12 @@ impl App {
                 project,
                 issues,
                 selected,
-                harness,
+                work,
                 error,
             } => {
                 let count = issues.as_ref().map_or(0, Vec::len);
                 let mut selected = selected;
-                let mut harness = harness;
+                let mut work = work;
                 match key.code {
                     KeyCode::Esc | KeyCode::Char('q') => {
                         self.mode = Mode::Browse;
@@ -378,23 +415,28 @@ impl App {
                     KeyCode::Down | KeyCode::Char('j') => {
                         selected = (selected + 1).min(count.saturating_sub(1));
                     }
-                    KeyCode::Tab | KeyCode::BackTab => {
-                        harness = match harness {
-                            HarnessChoice::Claude => HarnessChoice::Shell,
-                            HarnessChoice::Shell => HarnessChoice::Claude,
-                        };
-                    }
+                    KeyCode::Tab | KeyCode::BackTab => work = work.next(),
                     KeyCode::Enter => {
                         if let Some(issue) = issues.as_ref().and_then(|list| list.get(selected)) {
-                            let command = Command::StartFromIssue {
-                                project,
-                                number: issue.number,
-                                harness: harness.id().to_owned(),
-                                size: self.terminal_size,
-                            };
+                            let number = issue.number;
                             self.mode = Mode::Browse;
-                            self.say(format!("Starting work on #{}…", issue.number));
-                            return vec![self.command(command, Then::OpenIssueSession)];
+                            return match work {
+                                IssueWork::Session(harness) => {
+                                    let command = Command::StartFromIssue {
+                                        project,
+                                        number,
+                                        harness: harness.id().to_owned(),
+                                        size: self.terminal_size,
+                                    };
+                                    self.say(format!("Starting work on #{number}…"));
+                                    vec![self.command(command, Then::OpenIssueSession)]
+                                }
+                                IssueWork::Autopilot => {
+                                    let command = Command::StartRun { project, number };
+                                    self.say(format!("Handing #{number} to the autopilot…"));
+                                    vec![self.command(command, Then::ShowRun)]
+                                }
+                            };
                         }
                     }
                     _ => {}
@@ -403,10 +445,13 @@ impl App {
                     project,
                     issues,
                     selected,
-                    harness,
+                    work,
                     error,
                 });
                 Vec::new()
+            }
+            dialog @ (Dialog::RunNotes { .. } | Dialog::RunChanges { .. }) => {
+                self.run_dialog_key(dialog, key)
             }
             Dialog::NewSession {
                 workspace,
@@ -461,7 +506,7 @@ impl App {
         }
     }
 
-    fn keep_editing(&mut self, edit: Edit, dialog: Dialog) -> Vec<Action> {
+    pub(super) fn keep_editing(&mut self, edit: Edit, dialog: Dialog) -> Vec<Action> {
         self.mode = match edit {
             Edit::Cancel => Mode::Browse,
             _ => Mode::Dialog(dialog),
@@ -482,6 +527,14 @@ impl App {
             Confirmed::RemoveProject(project) => self.command(
                 Command::RemoveProject { project },
                 Then::Say("Muster no longer tracks the project; its repository is untouched."),
+            ),
+            Confirmed::CancelRun(run) => self.command(
+                Command::CancelRun { run },
+                Then::Say("Cancelled the run; its container goes."),
+            ),
+            Confirmed::HandBackRun(run) => self.command(
+                Command::HandBackRun { run },
+                Then::Say("Handed the run back; the checks run on your work."),
             ),
         }
     }
