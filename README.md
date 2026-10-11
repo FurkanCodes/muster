@@ -46,6 +46,8 @@ muster
 
 In a full-screen session every key goes to the program; **Ctrl-]** comes back to the list.
 
+The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the preview opens it. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
+
 The same things work from scripts:
 
 ```bash

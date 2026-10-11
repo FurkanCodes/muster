@@ -70,6 +70,24 @@ impl Screen {
     pub(crate) fn resize(&mut self, cols: u16, rows: u16) {
         self.parser.screen_mut().set_size(rows.max(2), cols.max(2));
     }
+
+    /// Moves the view `lines` back into the scrollback, or forward with a
+    /// negative count; never past either end. The view stays on the same
+    /// lines as output arrives, until it returns to the bottom.
+    pub(crate) fn scroll(&mut self, lines: isize) {
+        let at = self.scrolled_back();
+        let to = at.saturating_add_signed(lines);
+        self.parser.screen_mut().set_scrollback(to);
+    }
+
+    /// How many lines back the view is; 0 at the bottom.
+    pub(crate) fn scrolled_back(&self) -> usize {
+        self.parser.screen().scrollback()
+    }
+
+    pub(crate) fn scroll_to_bottom(&mut self) {
+        self.parser.screen_mut().set_scrollback(0);
+    }
 }
 
 #[cfg(test)]
@@ -88,6 +106,28 @@ mod tests {
         screen.output(8, b"rld!");
         assert_eq!(text(&screen).trim(), "hello world!");
         assert_eq!(screen.next_seq(), Some(12));
+    }
+
+    #[test]
+    fn the_view_scrolls_back_within_what_was_kept_and_holds_still() {
+        let mut screen = Screen::new(10, 3);
+        let lines: String = (1..=10).map(|n| format!("line{n}\r\n")).collect();
+        screen.replay(0, lines.as_bytes(), true);
+        assert_eq!(screen.scrolled_back(), 0);
+        screen.scroll(2);
+        assert_eq!(screen.scrolled_back(), 2);
+        assert!(text(&screen).starts_with("line7"), "{}", text(&screen));
+        // New output does not move what is being read.
+        screen.output(70, b"line11\r\n");
+        assert!(text(&screen).starts_with("line7"), "{}", text(&screen));
+        // Not past the oldest line kept, nor below the bottom.
+        screen.scroll(1000);
+        assert!(text(&screen).starts_with("line1\n"), "{}", text(&screen));
+        screen.scroll(-2000);
+        assert_eq!(screen.scrolled_back(), 0);
+        screen.scroll(4);
+        screen.scroll_to_bottom();
+        assert_eq!(screen.scrolled_back(), 0);
     }
 
     #[test]

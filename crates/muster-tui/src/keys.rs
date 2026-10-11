@@ -244,6 +244,9 @@ mod tests {
         kitty_flags: 0,
         bracketed_paste: false,
         application_cursor: false,
+        mouse: muster_core::protocol::MouseTracking::Off,
+        mouse_encoding: muster_core::protocol::MouseEncoding::Default,
+        alternate_screen: false,
     };
 
     fn kitty(flags: u8) -> TerminalModes {

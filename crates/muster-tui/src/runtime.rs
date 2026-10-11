@@ -78,6 +78,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
             event = input.next() => match event {
                 Some(Ok(Event::Key(key))) => app.on_key(key),
                 Some(Ok(Event::Paste(text))) => app.on_paste(&text),
+                Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
                 Some(Ok(Event::Resize(cols, rows))) => app.on_resize(area_size(cols, rows)),
                 Some(Ok(_)) => Vec::new(),
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
@@ -213,8 +214,9 @@ fn area_size(cols: u16, rows: u16) -> TermSize {
 }
 
 /// The person's terminal while the UI runs: raw mode, the alternate screen,
-/// bracketed paste, and the kitty keyboard protocol where the terminal has
-/// it (so Shift+Enter reaches Claude Code). Put back on drop and on panic.
+/// bracketed paste, mouse reports, and the kitty keyboard protocol where the
+/// terminal has it (so Shift+Enter reaches Claude Code). Put back on drop
+/// and on panic.
 struct HostTerminal {
     terminal: DefaultTerminal,
     enhanced_keys: bool,
@@ -224,7 +226,9 @@ impl HostTerminal {
     fn enter() -> std::io::Result<Self> {
         let terminal = ratatui::init();
         let mut out = stdout();
-        execute!(out, EnableBracketedPaste)?;
+        // The mouse scrolls sessions back and picks lines; selecting text
+        // in the person's terminal then takes a modifier (Option or Shift).
+        execute!(out, EnableBracketedPaste, MouseReports(true))?;
         let enhanced_keys = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
         if enhanced_keys {
             execute!(
@@ -255,5 +259,21 @@ fn restore_modes(out: &mut Stdout, enhanced_keys: bool) {
     if enhanced_keys {
         let _ = execute!(out, PopKeyboardEnhancementFlags);
     }
-    let _ = execute!(out, DisableBracketedPaste);
+    let _ = execute!(out, DisableBracketedPaste, MouseReports(false));
+}
+
+/// Asks the person's terminal for mouse presses, releases and the wheel,
+/// and movement while a button is held, in SGR encoding; not for every
+/// movement, as crossterm's `EnableMouseCapture` does, which would wake the
+/// UI whenever the pointer crosses its window.
+struct MouseReports(bool);
+
+impl crossterm::Command for MouseReports {
+    fn write_ansi(&self, out: &mut impl std::fmt::Write) -> std::fmt::Result {
+        let switch = if self.0 { 'h' } else { 'l' };
+        write!(
+            out,
+            "\x1b[?1000{switch}\x1b[?1002{switch}\x1b[?1006{switch}"
+        )
+    }
 }

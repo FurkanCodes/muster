@@ -3,9 +3,12 @@
 //! can be tested by feeding it events and drawing it into a test buffer.
 
 mod events;
+mod pointer;
 
 #[cfg(test)]
 mod lifecycle_tests;
+#[cfg(test)]
+mod pointer_tests;
 #[cfg(test)]
 mod project_tests;
 #[cfg(test)]
@@ -148,6 +151,10 @@ pub(crate) struct App {
     /// Where the selected line was, so the selection stays nearby when
     /// that line goes away.
     selected_at: usize,
+    /// The first line shown of the sessions list and of the Needs you
+    /// queue: the view moves only when the selection would leave it.
+    pub(crate) list_offset: usize,
+    pub(crate) needs_offset: usize,
     /// The Needs you queue as shown: a session stays in place while it is
     /// selected, even once looking at it has cleared it, so the list does
     /// not move under the person.
@@ -179,6 +186,8 @@ impl App {
             note: None,
             selected: None,
             selected_at: 0,
+            list_offset: 0,
+            needs_offset: 0,
             needs_list: Vec::new(),
             needs_selected: None,
             screens: HashMap::new(),
@@ -347,9 +356,32 @@ impl App {
         }
     }
 
+    /// Scrolls the lists just enough to show their selections.
+    fn keep_in_view(&mut self) {
+        let full =
+            ratatui::layout::Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        let height = usize::from(
+            crate::view::browse_areas(self, full)
+                .list
+                .height
+                .saturating_sub(2),
+        )
+        .max(1);
+        let rows = self.model.rows();
+        let selected = self
+            .selected
+            .and_then(|row| rows.iter().position(|r| *r == row));
+        self.list_offset = in_view(self.list_offset, selected, rows.len(), height);
+        let needs = self
+            .needs_selected
+            .and_then(|session| self.needs_list.iter().position(|s| *s == session));
+        self.needs_offset = in_view(self.needs_offset, needs, self.needs_list.len(), height);
+    }
+
     /// The terminal area changed size.
     pub(crate) fn on_resize(&mut self, size: TermSize) -> Vec<Action> {
         self.terminal_size = size;
+        self.keep_in_view();
         let mut actions = Vec::new();
         if let Some(session) = self.attached {
             self.screen(session).resize(size.cols, size.rows);
@@ -363,6 +395,7 @@ impl App {
     fn settle(&mut self) -> Vec<Action> {
         self.take_wanted();
         self.keep_selection();
+        self.keep_in_view();
         if let Mode::Terminal(session) = self.mode
             && self.model.session(session).is_none()
         {
@@ -450,4 +483,19 @@ impl App {
         }
         self.needs_list = list;
     }
+}
+
+/// The first line to show of a list of `len` lines, `height` at a time,
+/// moved from `offset` only as far as needed to show `selected`, and never
+/// leaving empty space below the last line.
+fn in_view(offset: usize, selected: Option<usize>, len: usize, height: usize) -> usize {
+    let mut offset = offset.min(len.saturating_sub(height));
+    if let Some(selected) = selected {
+        if selected < offset {
+            offset = selected;
+        } else if selected >= offset + height {
+            offset = selected + 1 - height;
+        }
+    }
+    offset
 }

@@ -38,10 +38,11 @@ impl App {
         match &mut self.mode {
             Mode::Terminal(session) => {
                 let session = *session;
-                let modes = self.screen(session).modes;
+                let screen = self.screen(session);
+                screen.scroll_to_bottom();
                 vec![Action::Send(ClientFrame::Input {
                     session,
-                    data: encode_paste(text, modes),
+                    data: encode_paste(text, screen.modes),
                 })]
             }
             Mode::Dialog(Dialog::AddProject { path: input })
@@ -57,6 +58,7 @@ impl App {
     fn terminal_key(&mut self, session: muster_core::SessionId, key: &KeyEvent) -> Vec<Action> {
         self.note = None;
         if leaves_terminal(key) {
+            self.screen(session).scroll_to_bottom();
             self.mode = Mode::Browse;
             return self.settle();
         }
@@ -73,9 +75,14 @@ impl App {
             self.complain("Ctrl+Z would freeze Claude Code here, so it was not sent. Ctrl-] goes back to the list.");
             return Vec::new();
         }
-        let modes = self.screen(session).modes;
-        encode_key(key, modes)
-            .map(|data| Action::Send(ClientFrame::Input { session, data }))
+        let screen = self.screen(session);
+        let modes = screen.modes;
+        let data = encode_key(key, modes);
+        if data.is_some() {
+            // Typing returns to the newest output, as in a terminal.
+            screen.scroll_to_bottom();
+        }
+        data.map(|data| Action::Send(ClientFrame::Input { session, data }))
             .into_iter()
             .collect()
     }
@@ -95,6 +102,9 @@ impl App {
             },
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
+            KeyCode::PageUp => self.page_preview(true),
+            KeyCode::PageDown => self.page_preview(false),
+            KeyCode::End => self.preview_to_bottom(),
             KeyCode::Enter => self.open_selected(),
             KeyCode::Char('a') => {
                 self.mode = Mode::Dialog(Dialog::AddProject {
@@ -112,7 +122,7 @@ impl App {
         Vec::new()
     }
 
-    fn move_selection(&mut self, by: isize) {
+    pub(super) fn move_selection(&mut self, by: isize) {
         let step = |list_len: usize, at: Option<usize>| -> Option<usize> {
             if list_len == 0 {
                 return None;
@@ -138,7 +148,7 @@ impl App {
         }
     }
 
-    fn open_selected(&mut self) {
+    pub(super) fn open_selected(&mut self) {
         if let Some(session) = self.focused_session() {
             self.mode = Mode::Terminal(session);
             self.note = None;

@@ -8,15 +8,21 @@
 //! (`CSI > 0 q`).
 //!
 //! Also tracked, for clients: the kitty keyboard flags the program pushes,
-//! whether it turned bracketed paste on, and whether cursor keys are in
-//! application mode, which decide how a client encodes keys and pastes. A
-//! client parsing the output could see the last two itself, but not once the
-//! ring has dropped the bytes that set them.
+//! whether it turned bracketed paste on, whether cursor keys are in
+//! application mode, which mouse events it wants and how encoded, and
+//! whether it is on the alternate screen; these decide how a client encodes
+//! keys, pastes and the mouse, and whether it can scroll back. A client
+//! parsing the output could see the modes itself, but not once the ring has
+//! dropped the bytes that set them. Mouse modes follow xterm as the `vt100`
+//! crate reads it: setting one replaces the last, and resetting one turns
+//! tracking off only if it is the one in effect.
 //!
 //! Adapted from Nebula's `pty/kitty.rs` (MIT, Copyright (c) 2026 Cody
 //! Seibert; see NOTICE). Changed: the version query is answered too (Nebula
 //! leaves it unanswered, so a program waits out its timeout), application
 //! cursor mode is tracked, and the scanner is renamed for what it does.
+
+use muster_core::protocol::{MouseEncoding, MouseTracking};
 
 const ESC: u8 = 0x1b;
 /// The deepest kitty flag stack the spec asks implementations to keep.
@@ -69,6 +75,9 @@ pub(crate) struct QueryScanner {
     /// Whether bracketed paste was ever turned on, even within one chunk.
     paste_used: bool,
     application_cursor: bool,
+    mouse: MouseTracking,
+    mouse_encoding: MouseEncoding,
+    alternate_screen: bool,
 }
 
 impl Default for QueryScanner {
@@ -80,6 +89,9 @@ impl Default for QueryScanner {
             bracketed_paste: false,
             paste_used: false,
             application_cursor: false,
+            mouse: MouseTracking::Off,
+            mouse_encoding: MouseEncoding::Default,
+            alternate_screen: false,
         }
     }
 }
@@ -109,6 +121,9 @@ impl QueryScanner {
             kitty_flags: self.kitty_flags(),
             bracketed_paste: self.bracketed_paste,
             application_cursor: self.application_cursor,
+            mouse: self.mouse,
+            mouse_encoding: self.mouse_encoding,
+            alternate_screen: self.alternate_screen,
         }
     }
 
@@ -136,6 +151,9 @@ impl QueryScanner {
                 if byte == b'c' {
                     self.bracketed_paste = false;
                     self.application_cursor = false;
+                    self.mouse = MouseTracking::Off;
+                    self.mouse_encoding = MouseEncoding::Default;
+                    self.alternate_screen = false;
                 }
                 if byte == ESC {
                     State::Escape
@@ -197,7 +215,7 @@ impl QueryScanner {
                 }
             }
             // Private mode set and reset, several at once
-            // (`CSI ? 1 ; 2004 h`): bracketed paste and cursor-key mode.
+            // (`CSI ? 1 ; 2004 h`).
             (b'h' | b'l', [b'?', modes @ ..]) => {
                 let on = final_byte == b'h';
                 for mode in modes.split(|&byte| byte == b';') {
@@ -207,6 +225,13 @@ impl QueryScanner {
                             self.paste_used |= on;
                         }
                         b"1" => self.application_cursor = on,
+                        b"9" => self.track_mouse(MouseTracking::Press, on),
+                        b"1000" => self.track_mouse(MouseTracking::PressRelease, on),
+                        b"1002" => self.track_mouse(MouseTracking::ButtonMotion, on),
+                        b"1003" => self.track_mouse(MouseTracking::AnyMotion, on),
+                        b"1005" => self.encode_mouse(MouseEncoding::Utf8, on),
+                        b"1006" => self.encode_mouse(MouseEncoding::Sgr, on),
+                        b"47" | b"1047" | b"1049" => self.alternate_screen = on,
                         _ => {}
                     }
                 }
@@ -221,6 +246,24 @@ impl QueryScanner {
             // Cursor position: needs the screen.
             (b'n', [b'6']) => answers.replies.push(Reply::CursorPosition { at: end }),
             _ => {}
+        }
+    }
+}
+
+impl QueryScanner {
+    fn track_mouse(&mut self, mode: MouseTracking, on: bool) {
+        if on {
+            self.mouse = mode;
+        } else if self.mouse == mode {
+            self.mouse = MouseTracking::Off;
+        }
+    }
+
+    fn encode_mouse(&mut self, encoding: MouseEncoding, on: bool) {
+        if on {
+            self.mouse_encoding = encoding;
+        } else if self.mouse_encoding == encoding {
+            self.mouse_encoding = MouseEncoding::Default;
         }
     }
 }
@@ -326,6 +369,44 @@ mod tests {
         assert!(!scanner.modes().application_cursor);
         scanner.scan(b"\x1b[?1h\x1bc");
         assert_eq!(scanner.modes(), Default::default());
+    }
+
+    #[test]
+    fn mouse_modes_follow_the_program_as_xterm_does() {
+        let mut scanner = QueryScanner::default();
+        assert_eq!(scanner.modes().mouse, MouseTracking::Off);
+        // vim's choice: button motion, SGR encoding.
+        scanner.scan(b"\x1b[?1002h\x1b[?1006h");
+        let modes = scanner.modes();
+        assert_eq!(modes.mouse, MouseTracking::ButtonMotion);
+        assert_eq!(modes.mouse_encoding, MouseEncoding::Sgr);
+        // Setting another replaces it; resetting one not in effect does not.
+        scanner.scan(b"\x1b[?1000;1005h\x1b[?1002l\x1b[?1006l");
+        let modes = scanner.modes();
+        assert_eq!(modes.mouse, MouseTracking::PressRelease);
+        assert_eq!(modes.mouse_encoding, MouseEncoding::Utf8);
+        scanner.scan(b"\x1b[?1000l\x1b[?1005l");
+        assert_eq!(scanner.modes().mouse, MouseTracking::Off);
+        assert_eq!(scanner.modes().mouse_encoding, MouseEncoding::Default);
+        scanner.scan(b"\x1b[?9h");
+        assert_eq!(scanner.modes().mouse, MouseTracking::Press);
+        scanner.scan(b"\x1b[?1003h\x1bc");
+        assert_eq!(scanner.modes(), Default::default());
+    }
+
+    #[test]
+    fn the_alternate_screen_is_tracked_in_each_form() {
+        let mut scanner = QueryScanner::default();
+        for (on, off) in [
+            (&b"\x1b[?1049h"[..], &b"\x1b[?1049l"[..]),
+            (b"\x1b[?1047h", b"\x1b[?1047l"),
+            (b"\x1b[?47h", b"\x1b[?47l"),
+        ] {
+            scanner.scan(on);
+            assert!(scanner.modes().alternate_screen);
+            scanner.scan(off);
+            assert!(!scanner.modes().alternate_screen);
+        }
     }
 
     #[test]

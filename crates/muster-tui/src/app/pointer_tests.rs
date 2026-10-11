@@ -1,0 +1,209 @@
+//! The mouse: scrolling back, reaching programs that ask for it, and
+//! picking lines.
+
+use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use muster_core::SessionId;
+use muster_core::protocol::{
+    ClientFrame, Delta, MouseEncoding, MouseTracking, ServerFrame, TerminalModes,
+};
+
+use super::tests::{World, press, render, world};
+use super::{Action, Mode};
+use crate::model::Row;
+
+fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+    MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+/// The world's session open full screen, with `lines` of output.
+fn open_with_output(lines: usize) -> (World, SessionId) {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    press(&mut world.app, KeyCode::Enter);
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    let output: String = (1..=lines).map(|n| format!("line{n}\r\n")).collect();
+    world.app.on_frame(ServerFrame::Replay {
+        session: id,
+        seq: 0,
+        data: output.into_bytes(),
+        reset: true,
+    });
+    (world, id)
+}
+
+fn set_modes(world: &mut World, session: SessionId, modes: TerminalModes) {
+    world.app.on_frame(ServerFrame::Modes { session, modes });
+}
+
+fn input(actions: &[Action]) -> Vec<u8> {
+    actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::Send(ClientFrame::Input { data, .. }) => Some(data.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
+#[test]
+fn the_wheel_scrolls_a_session_back_and_typing_returns() {
+    let (mut world, id) = open_with_output(100);
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 10, 10));
+    assert!(input(&actions).is_empty(), "nothing reaches the program");
+    assert_eq!(world.app.screens[&id].scrolled_back(), 3);
+    let screen = render(&world.app);
+    assert!(screen.contains("3 lines back"), "{screen}");
+
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::ScrollDown, 10, 10));
+    assert_eq!(world.app.screens[&id].scrolled_back(), 0);
+
+    world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 10, 10));
+    let typed = press(&mut world.app, KeyCode::Char('x'));
+    assert_eq!(input(&typed), b"x");
+    assert_eq!(world.app.screens[&id].scrolled_back(), 0);
+}
+
+#[test]
+fn a_program_that_asked_for_the_mouse_gets_it_below_the_top_bar() {
+    let (mut world, id) = open_with_output(5);
+    set_modes(
+        &mut world,
+        id,
+        TerminalModes {
+            mouse: MouseTracking::PressRelease,
+            mouse_encoding: MouseEncoding::Sgr,
+            ..TerminalModes::default()
+        },
+    );
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 4, 7));
+    // Row 7 on screen is row 6 of the program's, 1-based 7.
+    assert_eq!(input(&actions), b"\x1b[<64;5;7M");
+    let click = world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 0, 1));
+    assert_eq!(input(&click), b"\x1b[<0;1;1M");
+    // The top bar is not the program's.
+    let top = world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 3, 0));
+    assert!(input(&top).is_empty());
+    assert_eq!(world.app.screens[&id].scrolled_back(), 0);
+}
+
+#[test]
+fn on_the_alternate_screen_the_wheel_sends_arrow_keys() {
+    let (mut world, id) = open_with_output(5);
+    set_modes(
+        &mut world,
+        id,
+        TerminalModes {
+            alternate_screen: true,
+            application_cursor: true,
+            ..TerminalModes::default()
+        },
+    );
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollDown, 4, 7));
+    assert_eq!(input(&actions), b"\x1bOB\x1bOB\x1bOB");
+}
+
+#[test]
+fn in_the_list_the_wheel_moves_and_a_click_selects_or_opens() {
+    let mut world = world();
+    let id = world.session.id;
+    assert_eq!(world.app.selected, Some(Row::Project(world.project.id)));
+    // The list starts below the top bar and its border.
+    world.app.on_mouse(mouse(MouseEventKind::ScrollDown, 3, 5));
+    assert_eq!(world.app.selected, Some(Row::Worktree(world.worktree.id)));
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 5, 4));
+    assert_eq!(world.app.selected, Some(Row::Session(id)));
+    // Below the last line: nothing changes.
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 5, 20));
+    assert_eq!(world.app.selected, Some(Row::Session(id)));
+    // A click on the preview opens the selected session.
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 60, 10));
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+}
+
+#[test]
+fn clicks_follow_a_long_list_scrolled_to_its_selection() {
+    let mut world = world();
+    for n in 0..40 {
+        let session = crate::model::tests::session(world.worktree.id, &format!("S{n}"), 10 + n);
+        world
+            .app
+            .on_frame(ServerFrame::Delta(Delta::SessionUpserted(session)));
+    }
+    let rows = world.app.model.rows();
+    // The whole terminal (the session area and the top bar), less the top
+    // bar, the hints and the list's borders.
+    let height = (29 + 1) - 1 - 1 - 2;
+    // Walk down far, so the list scrolls to keep the selection in view.
+    for _ in 0..35 {
+        press(&mut world.app, KeyCode::Down);
+    }
+    assert_eq!(world.app.selected, Some(rows[35]));
+    let first_shown = 35 - (height - 1);
+    let label = |world: &World, row: Row| match row {
+        Row::Session(id) => world.app.model.session(id).unwrap().title.clone(),
+        _ => String::new(),
+    };
+    let top_line = render(&world.app).lines().nth(2).unwrap().to_owned();
+    assert!(
+        top_line.contains(&label(&world, rows[first_shown])),
+        "{top_line}"
+    );
+
+    // A click on the top line selects what is drawn there, and the view
+    // stays where it is.
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 5, 2));
+    assert_eq!(world.app.selected, Some(rows[first_shown]));
+    let top_line = render(&world.app).lines().nth(2).unwrap().to_owned();
+    assert!(
+        top_line.contains(&label(&world, rows[first_shown])),
+        "{top_line}"
+    );
+    // Moving up past the top scrolls one line, not back to the start.
+    press(&mut world.app, KeyCode::Up);
+    let top_line = render(&world.app).lines().nth(2).unwrap().to_owned();
+    assert!(
+        top_line.contains(&label(&world, rows[first_shown - 1])),
+        "{top_line}"
+    );
+}
+
+#[test]
+fn page_keys_scroll_the_preview() {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    let output: String = (1..=200).map(|n| format!("line{n}\r\n")).collect();
+    world.app.on_frame(ServerFrame::Replay {
+        session: id,
+        seq: 0,
+        data: output.into_bytes(),
+        reset: true,
+    });
+    press(&mut world.app, KeyCode::PageUp);
+    let back = world.app.screens[&id].scrolled_back();
+    assert!(back > 10, "{back}");
+    assert!(render(&world.app).contains("lines back"));
+    press(&mut world.app, KeyCode::End);
+    assert_eq!(world.app.screens[&id].scrolled_back(), 0);
+}
