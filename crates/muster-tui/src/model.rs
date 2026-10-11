@@ -127,18 +127,22 @@ impl Model {
         &self.sessions
     }
 
-    /// The sessions working on issue `number` of `project`: those in the
-    /// project's worktrees on branches named for it, oldest first.
-    pub(crate) fn agents_on(&self, project: ProjectId, number: u64) -> Vec<&Session> {
-        let workspaces: Vec<WorkspaceId> = self
-            .workspaces
+    /// The project's worktrees for issue `number`: on branches named for it.
+    pub(crate) fn worktrees_for(&self, project: ProjectId, number: u64) -> Vec<WorkspaceId> {
+        self.workspaces
             .iter()
             .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
             .filter(|workspace| {
                 muster_core::tickets::issue_of_branch(workspace.kind.branch()) == Some(number)
             })
             .map(|workspace| workspace.id)
-            .collect();
+            .collect()
+    }
+
+    /// The sessions working on issue `number` of `project`: those in the
+    /// project's worktrees on branches named for it, oldest first.
+    pub(crate) fn agents_on(&self, project: ProjectId, number: u64) -> Vec<&Session> {
+        let workspaces = self.worktrees_for(project, number);
         let mut agents: Vec<&Session> = self
             .sessions
             .iter()
@@ -197,6 +201,13 @@ impl Model {
         self.workspaces_of(project)
             .find(|workspace| workspace.kind.is_checkout())
             .map(|workspace| workspace.id)
+    }
+
+    /// Whether a project is a plain folder, not a git repository, as its
+    /// own checkout shows: it has no branch.
+    pub(crate) fn is_plain_folder(&self, project: ProjectId) -> bool {
+        self.workspaces_of(project)
+            .any(|workspace| workspace.kind.is_checkout() && !workspace.kind.in_git())
     }
 
     pub(crate) fn sessions_of(&self, workspace: WorkspaceId) -> impl Iterator<Item = &Session> {

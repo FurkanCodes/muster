@@ -1,5 +1,6 @@
-//! Getting about: the three screens as tabs, numbers to jump between them,
-//! Esc and Backspace back to the main one, ⇥ round them.
+//! Getting about: the three screens as tabs, ⇥ round them, Ctrl and their
+//! numbers straight to one from anywhere, Esc and Backspace back to the
+//! main one.
 
 use crossterm::event::KeyCode;
 use muster_core::protocol::{ClientFrame, Command};
@@ -7,7 +8,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::style::Modifier;
 
-use super::tests::{SIZE, World, press, render, world};
+use super::tests::{SIZE, World, ctrl, press, render, world};
 use super::{Action, Mode, View};
 use crate::model::Row;
 
@@ -39,9 +40,9 @@ fn esc_and_backspace_go_back_to_the_main_screen_and_no_further() {
 }
 
 #[test]
-fn numbers_jump_to_each_screen_from_any_of_them() {
+fn ctrl_and_a_number_jumps_to_each_screen_from_any_of_them() {
     let mut world = world();
-    let actions = press(&mut world.app, KeyCode::Char('3'));
+    let actions = world.app.on_key(ctrl('3'));
     assert_eq!(world.app.view, View::Tickets);
     // The tickets are fetched as the screen shows them.
     assert!(actions.iter().any(|action| matches!(
@@ -52,13 +53,75 @@ fn numbers_jump_to_each_screen_from_any_of_them() {
         })
     )));
     // From the Tickets screen too, whose own keys take the rest.
+    world.app.on_key(ctrl('2'));
+    assert_eq!(world.app.view, View::NeedsYou);
+    world.app.on_key(ctrl('1'));
+    assert_eq!(world.app.view, View::Sessions);
+    // The plain numbers too, on the list, for terminals that cannot tell
+    // Ctrl and a number from the number.
     press(&mut world.app, KeyCode::Char('2'));
     assert_eq!(world.app.view, View::NeedsYou);
     press(&mut world.app, KeyCode::Char('1'));
     assert_eq!(world.app.view, View::Sessions);
-    // ⇥ still goes round.
-    press(&mut world.app, KeyCode::Tab);
+}
+
+#[test]
+fn from_a_session_s_terminal_ctrl_and_a_number_gives_the_keys_back_there() {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    press(&mut world.app, KeyCode::Enter);
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    // A plain number is the program's.
+    assert_eq!(
+        press(&mut world.app, KeyCode::Char('2')),
+        [Action::Send(ClientFrame::Input {
+            session: id,
+            data: b"2".to_vec()
+        })]
+    );
+    world.app.on_key(ctrl('2'));
+    assert_eq!(world.app.mode, Mode::Browse);
     assert_eq!(world.app.view, View::NeedsYou);
+
+    // Ctrl-1 is the way back to the list beside it, as Ctrl-Q is; from
+    // full screen too.
+    world.app.view = View::Sessions;
+    press(&mut world.app, KeyCode::Char('f'));
+    assert!(world.app.full_screen);
+    world.app.on_key(ctrl('1'));
+    assert_eq!(
+        (world.app.mode.clone(), world.app.view),
+        (Mode::Browse, View::Sessions)
+    );
+    assert!(!world.app.full_screen);
+}
+
+#[test]
+fn tab_goes_round_the_tabs_and_in_a_session_reaches_the_program() {
+    let mut world = world();
+    for view in [View::NeedsYou, View::Tickets, View::Sessions] {
+        press(&mut world.app, KeyCode::Tab);
+        assert_eq!(world.app.view, view);
+    }
+    press(&mut world.app, KeyCode::BackTab);
+    assert_eq!(world.app.view, View::Tickets);
+    press(&mut world.app, KeyCode::BackTab);
+    assert_eq!(world.app.view, View::NeedsYou);
+
+    // ⏎ goes into a session, where ⇥ is the program's: completion.
+    world.app.view = View::Sessions;
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    press(&mut world.app, KeyCode::Enter);
+    assert_eq!(
+        press(&mut world.app, KeyCode::Tab),
+        [Action::Send(ClientFrame::Input {
+            session: id,
+            data: b"\t".to_vec()
+        })]
+    );
+    assert_eq!(world.app.view, View::Sessions);
 }
 
 #[test]
@@ -109,10 +172,7 @@ fn the_top_bar_shows_the_screens_as_tabs_with_the_one_shown_marked() {
         let top: String = (0..buffer.area.width)
             .map(|x| buffer[(x, 0)].symbol())
             .collect();
-        assert!(
-            top.contains(" 1 Sessions   2 Needs you   3 Tickets "),
-            "{top}"
-        );
+        assert!(top.contains(" Sessions │ Needs you │ Tickets  ⇥"), "{top}");
         // Each tab's name is marked only while its screen is shown.
         for other in ["Sessions", "Needs you", "Tickets"] {
             let at = top.find(other).unwrap();

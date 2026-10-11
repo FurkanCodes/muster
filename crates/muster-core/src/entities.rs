@@ -8,13 +8,13 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 use crate::time::Timestamp;
 
-/// A git repository Muster knows about.
+/// A folder Muster knows about: a git repository, or a plain folder.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     pub id: ProjectId,
-    /// Shown in the UI; defaults to the repository's directory name.
+    /// Shown in the UI; defaults to the folder's name.
     pub name: String,
-    /// The repository's main checkout.
+    /// The folder: a repository's main checkout, or a plain folder.
     pub root: PathBuf,
     pub created_at: Timestamp,
 }
@@ -31,14 +31,15 @@ pub struct Workspace {
 /// The kinds of workspace.
 ///
 /// `branch` is what is checked out, kept current as it changes: a branch
-/// name, or `detached at <commit>`.
+/// name, or `detached at <commit>`; empty in a plain folder, which is not
+/// a git repository.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceKind {
     /// A git worktree Muster created on the host.
     Worktree { path: PathBuf, branch: String },
-    /// The project's own checkout: the repository the person added, where
-    /// they work too. Muster never removes it.
+    /// The project's own checkout: the repository or plain folder the
+    /// person added, where they work too. Muster never removes it.
     Checkout { path: PathBuf, branch: String },
     /// A run's container, where its agents work on a clone of their own
     /// (`ARCHITECTURE.md` §8). Its sessions are the person taking the run
@@ -63,6 +64,12 @@ impl WorkspaceKind {
             | Self::Checkout { branch, .. }
             | Self::Container { branch, .. } => branch,
         }
+    }
+
+    /// Whether the workspace is in a git repository: a project that is a
+    /// plain folder has none, so its checkout has no branch.
+    pub fn in_git(&self) -> bool {
+        !self.branch().is_empty()
     }
 
     /// Whether this is a project's own checkout.

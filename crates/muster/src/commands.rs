@@ -97,7 +97,12 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
                     format!("  ({})  (the container of run{number})", workspace.id)
                 }
             };
-            println!("  {}{place}", shown(workspace.kind.branch()));
+            let branch = if workspace.kind.in_git() {
+                shown(workspace.kind.branch())
+            } else {
+                "(not a git repository)".to_owned()
+            };
+            println!("  {branch}{place}");
             for session in snapshot
                 .sessions
                 .iter()
@@ -152,7 +157,7 @@ pub(crate) async fn remove_project(socket: &Path, project: &str) -> Outcome {
         .command(Command::RemoveProject { project: id })
         .await?;
     println!(
-        "Muster no longer tracks {}; its repository is untouched.",
+        "Muster no longer tracks {}; its folder is untouched.",
         shown(&name)
     );
     Ok(())
@@ -379,6 +384,17 @@ pub(crate) async fn stop_daemon(socket: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+pub(crate) async fn close_issue(socket: &Path, project: &str, number: u64) -> Outcome {
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let project = find_project(&snapshot, project)?.id;
+    connection
+        .command(Command::CloseIssue { project, number })
+        .await?;
+    println!("Closed issue #{number} on GitHub.");
+    Ok(())
+}
+
 pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
@@ -499,7 +515,7 @@ pub(crate) fn find_worktree<'a>(
     one(
         snapshot.workspaces.iter().filter(|workspace| {
             workspace.id.to_string() == wanted
-                || workspace.kind.branch() == wanted
+                || (workspace.kind.in_git() && workspace.kind.branch() == wanted)
                 || named_project(workspace)
         }),
         "worktree",

@@ -20,13 +20,22 @@ fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
     }
 }
 
-/// The world's session open full screen, with `lines` of output.
-fn open_with_output(lines: usize) -> (World, SessionId) {
+/// The world's session open beside the list, with `lines` of output; full
+/// screen with `full`.
+fn open_with_output(lines: usize, full: bool) -> (World, SessionId) {
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
-    press(&mut world.app, KeyCode::Enter);
+    press(
+        &mut world.app,
+        if full {
+            KeyCode::Char('f')
+        } else {
+            KeyCode::Enter
+        },
+    );
     assert_eq!(world.app.mode, Mode::Terminal(id));
+    assert_eq!(world.app.full_screen, full);
     let output: String = (1..=lines).map(|n| format!("line{n}\r\n")).collect();
     world.app.on_frame(ServerFrame::Replay {
         session: id,
@@ -52,10 +61,18 @@ fn input(actions: &[Action]) -> Vec<u8> {
         .collect()
 }
 
+fn mouse_mode() -> TerminalModes {
+    TerminalModes {
+        mouse: MouseTracking::PressRelease,
+        mouse_encoding: MouseEncoding::Sgr,
+        ..TerminalModes::default()
+    }
+}
+
 #[test]
 fn the_wheel_scrolls_a_session_back_and_typing_returns() {
-    let (mut world, id) = open_with_output(100);
-    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 10, 10));
+    let (mut world, id) = open_with_output(100, false);
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 50, 10));
     assert!(input(&actions).is_empty(), "nothing reaches the program");
     assert_eq!(world.app.screens[&id].scrolled_back(), 3);
     let screen = render(&world.app);
@@ -63,27 +80,52 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns() {
 
     world
         .app
-        .on_mouse(mouse(MouseEventKind::ScrollDown, 10, 10));
+        .on_mouse(mouse(MouseEventKind::ScrollDown, 50, 10));
     assert_eq!(world.app.screens[&id].scrolled_back(), 0);
 
-    world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 10, 10));
+    world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 50, 10));
     let typed = press(&mut world.app, KeyCode::Char('x'));
     assert_eq!(input(&typed), b"x");
     assert_eq!(world.app.screens[&id].scrolled_back(), 0);
 }
 
 #[test]
-fn a_program_that_asked_for_the_mouse_gets_it_below_the_top_bar() {
-    let (mut world, id) = open_with_output(5);
-    set_modes(
-        &mut world,
-        id,
-        TerminalModes {
-            mouse: MouseTracking::PressRelease,
-            mouse_encoding: MouseEncoding::Sgr,
-            ..TerminalModes::default()
-        },
-    );
+fn beside_the_list_the_mouse_reaches_the_program_inside_its_pane() {
+    let (mut world, id) = open_with_output(5, false);
+    set_modes(&mut world, id, mouse_mode());
+    // The pane starts after the 34-column list and its own border, below
+    // the top bar: column 40, row 8 is the program's 5, 6; 1-based 6, 7.
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 40, 8));
+    assert_eq!(input(&actions), b"\x1b[<64;6;7M");
+    let border = world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 34, 8));
+    assert!(input(&border).is_empty(), "the border is Muster's");
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+}
+
+#[test]
+fn a_click_on_the_list_gives_it_the_keys_back() {
+    let (mut world, id) = open_with_output(5, false);
+    set_modes(&mut world, id, mouse_mode());
+    let actions = world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 5, 2));
+    assert!(input(&actions).is_empty(), "the click is not the program's");
+    assert_eq!(world.app.mode, Mode::Browse);
+    assert_eq!(world.app.selected, Some(Row::Project(world.project.id)));
+    // And a click on the session gives it the keys again.
+    world.app.selected = Some(Row::Session(id));
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 60, 10));
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+}
+
+#[test]
+fn full_screen_the_program_gets_the_mouse_below_the_top_bar() {
+    let (mut world, id) = open_with_output(5, true);
+    set_modes(&mut world, id, mouse_mode());
     let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 4, 7));
     // Row 7 on screen is row 6 of the program's, 1-based 7.
     assert_eq!(input(&actions), b"\x1b[<64;5;7M");
@@ -91,6 +133,7 @@ fn a_program_that_asked_for_the_mouse_gets_it_below_the_top_bar() {
         .app
         .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 0, 1));
     assert_eq!(input(&click), b"\x1b[<0;1;1M");
+    assert_eq!(world.app.mode, Mode::Terminal(id), "no list to click");
     // The top bar is not the program's.
     let top = world
         .app
@@ -101,7 +144,7 @@ fn a_program_that_asked_for_the_mouse_gets_it_below_the_top_bar() {
 
 #[test]
 fn on_the_alternate_screen_the_wheel_sends_arrow_keys() {
-    let (mut world, id) = open_with_output(5);
+    let (mut world, id) = open_with_output(5, false);
     set_modes(
         &mut world,
         id,
@@ -111,7 +154,7 @@ fn on_the_alternate_screen_the_wheel_sends_arrow_keys() {
             ..TerminalModes::default()
         },
     );
-    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollDown, 4, 7));
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollDown, 40, 8));
     assert_eq!(input(&actions), b"\x1bOB\x1bOB\x1bOB");
 }
 

@@ -23,6 +23,14 @@ const SCRUBBED: &[&str] = &[
     "GIT_PREFIX",
 ];
 
+/// Whether the folder at `root` is a git repository: it has a `.git`
+/// directory, or a `.git` file naming one, as a worktree does. A project
+/// without one is a plain folder, also when it sits inside another
+/// repository, whose branches and worktrees are not its own.
+pub(crate) fn is_repository(root: &Path) -> bool {
+    root.join(".git").try_exists().unwrap_or(false)
+}
+
 /// Why a git command failed.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum GitError {

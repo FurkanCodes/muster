@@ -2,7 +2,8 @@
 //! that asked for the mouse gets it; otherwise the wheel scrolls back
 //! through the session's output (or, on the alternate screen, which keeps
 //! none, sends arrow keys as terminals do). In the list, the wheel moves the
-//! selection or scrolls the preview, and a click selects or opens.
+//! selection or scrolls the preview, and a click selects or opens. A click
+//! on the list beside a session's terminal gives the list the keys back.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::SessionId;
@@ -29,13 +30,30 @@ impl App {
     }
 
     fn terminal_mouse(&mut self, session: SessionId, event: MouseEvent) -> Vec<Action> {
-        // The top bar is Muster's; the program's screen starts below it.
-        let Some(row) = event.row.checked_sub(1) else {
-            return Vec::new();
+        let window = Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        // Where the program's screen is: below the top bar when it fills
+        // the window, else inside the pane beside the list.
+        let screen = if self.full_screen {
+            crate::view::terminal_area(window)
+        } else {
+            let list = browse_areas(self, window).list;
+            if event.kind == MouseEventKind::Down(MouseButton::Left)
+                && list.contains(Position::new(event.column, event.row))
+            {
+                let mut actions = self.leave_terminal(session);
+                self.select_at(list, event.row);
+                actions.extend(self.settle());
+                return actions;
+            }
+            crate::view::session_area(window)
         };
+        if !screen.contains(Position::new(event.column, event.row)) {
+            return Vec::new();
+        }
+        let (column, row) = (event.column - screen.x, event.row - screen.y);
         let modes = self.screen(session).modes;
         if modes.mouse != MouseTracking::Off {
-            return encode_mouse(event.kind, event.modifiers, event.column, row, modes)
+            return encode_mouse(event.kind, event.modifiers, column, row, modes)
                 .map(|data| Action::Send(ClientFrame::Input { session, data }))
                 .into_iter()
                 .collect();

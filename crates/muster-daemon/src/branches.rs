@@ -16,8 +16,12 @@ use muster_core::WorkspaceId;
 use crate::supervisor::SupervisorHandle;
 
 /// What is checked out in the checkout or worktree at `path`: a branch
-/// name, another ref, or `detached at <commit>`.
+/// name, another ref, or `detached at <commit>`; nothing in a folder that
+/// is not a git repository, which a project can be (until `git init`).
 pub(crate) fn checked_out(path: &Path) -> io::Result<String> {
+    if path.is_dir() && !path.join(".git").try_exists()? {
+        return Ok(String::new());
+    }
     let head = std::fs::read_to_string(head_file(path)?)?;
     describe(&head).ok_or_else(|| {
         io::Error::new(
@@ -157,5 +161,22 @@ mod tests {
             (gone, dir.path().join("deleted"), "x".to_owned()),
         ]);
         assert_eq!(changes, [(moved, "main".to_owned())]);
+    }
+
+    #[test]
+    fn a_plain_folder_has_no_branch_until_it_becomes_a_repository() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("notes");
+        std::fs::create_dir(&folder).unwrap();
+        assert_eq!(checked_out(&folder).unwrap(), "");
+        let id = WorkspaceId::new();
+        assert!(changed(vec![(id, folder.clone(), String::new())]).is_empty());
+
+        git(&folder, &["init", "-q", "--initial-branch", "main"]);
+        assert_eq!(checked_out(&folder).unwrap(), "main", "before any commit");
+        assert_eq!(
+            changed(vec![(id, folder, String::new())]),
+            [(id, "main".to_owned())]
+        );
     }
 }

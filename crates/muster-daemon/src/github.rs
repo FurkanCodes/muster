@@ -99,6 +99,9 @@ pub(crate) trait TicketSource: Send + Sync + std::fmt::Debug {
     fn list(&self, repo: &Path) -> BoxFuture<'_, Result<Vec<Issue>, GitHubError>>;
     /// One issue, with its body.
     fn view(&self, repo: &Path, number: u64) -> BoxFuture<'_, Result<IssueDetail, GitHubError>>;
+    /// Closes an issue, because the person asked: the one change Muster
+    /// makes in a tracker.
+    fn close(&self, repo: &Path, number: u64) -> BoxFuture<'_, Result<(), GitHubError>>;
 }
 
 /// GitHub issues through the person's `gh`.
@@ -114,6 +117,15 @@ impl TicketSource for GitHubIssues {
     fn view(&self, repo: &Path, number: u64) -> BoxFuture<'_, Result<IssueDetail, GitHubError>> {
         let repo = repo.to_owned();
         Box::pin(async move { view_issue(&repo, number).await })
+    }
+
+    fn close(&self, repo: &Path, number: u64) -> BoxFuture<'_, Result<(), GitHubError>> {
+        let repo = repo.to_owned();
+        Box::pin(async move {
+            gh(&repo, &["issue", "close", &number.to_string()])
+                .await
+                .map(drop)
+        })
     }
 }
 

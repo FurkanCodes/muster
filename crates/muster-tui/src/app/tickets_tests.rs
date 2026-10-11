@@ -9,7 +9,7 @@ use muster_core::protocol::{
 };
 use muster_core::{Issue, SessionStatus, Timestamp, Workspace, WorkspaceId, WorkspaceKind};
 
-use super::tests::{SIZE, World, command, press, render, world};
+use super::tests::{PANE, World, command, press, render, world};
 use super::{Action, Mode, TicketRow, View};
 use crate::model::tests::session;
 
@@ -127,7 +127,7 @@ fn a_project_s_tickets_are_listed_and_the_selected_one_shown_with_its_text() {
         "by someone · bug",
         "No agent on it yet",
         "After signing in, users land on /404.",
-        "⏎ start an agent  b browser  r refresh  esc back",
+        "⏎ start an agent  b browser  x close on GitHub  r refresh  ⇥ next tab  esc back",
     ] {
         assert!(screen.contains(shown), "{shown:?} in\n{screen}");
     }
@@ -149,7 +149,7 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
             project: world.project.id,
             number: 42,
             harness: "claude".to_owned(),
-            size: SIZE,
+            size: PANE,
             another: false,
         }
     );
@@ -255,7 +255,7 @@ fn b_opens_the_ticket_in_the_browser_and_other_screens_keys_do_nothing_here() {
             "https://github.com/o/app/issues/42".to_owned()
         )]
     );
-    for key in ['x', 's', 'n', 'w', 'c', 'v', 'o'] {
+    for key in ['s', 'n', 'w', 'c', 'v', 'o'] {
         let actions = press(&mut world.app, KeyCode::Char(key));
         assert!(commands(&actions).is_empty(), "{key}: {actions:?}");
         assert_eq!(world.app.mode, Mode::Browse, "{key}");
@@ -263,12 +263,10 @@ fn b_opens_the_ticket_in_the_browser_and_other_screens_keys_do_nothing_here() {
 }
 
 #[test]
-fn tab_goes_from_sessions_to_needs_you_to_tickets_and_round() {
-    let mut world = world();
-    for view in [View::NeedsYou, View::Tickets, View::Sessions] {
-        press(&mut world.app, KeyCode::Tab);
-        assert_eq!(world.app.view, view);
-    }
+fn tab_goes_from_the_tickets_screen_round_to_sessions_and_back() {
+    let mut world = on_tickets();
+    press(&mut world.app, KeyCode::Tab);
+    assert_eq!(world.app.view, View::Sessions);
     press(&mut world.app, KeyCode::BackTab);
     assert_eq!(world.app.view, View::Tickets);
 }
@@ -294,4 +292,104 @@ fn a_fetch_lost_with_the_daemon_is_asked_again() {
             project: world.project.id
         }]
     );
+}
+
+#[test]
+fn x_closes_a_ticket_on_github_after_asking_and_it_leaves_the_list() {
+    let mut world = on_tickets();
+    assert!(commands(&press(&mut world.app, KeyCode::Char('x'))).is_empty());
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("Close #42 Fix the login redirect on GitHub?"),
+        "{screen}"
+    );
+    let (req_id, sent) = command(&press(&mut world.app, KeyCode::Char('y')));
+    assert_eq!(
+        sent,
+        Command::CloseIssue {
+            project: world.project.id,
+            number: 42
+        }
+    );
+    reply(&mut world, req_id, Ok(Reply::Done));
+    // No work on it, so nothing to clean up after.
+    assert_eq!(world.app.mode, Mode::Browse);
+    let screen = render(&world.app);
+    assert!(!screen.contains("#42 Fix the login redirect"), "{screen}");
+    assert!(screen.contains("Closed #42 on GitHub."), "{screen}");
+    assert!(screen.contains("#7 Dark mode"), "{screen}");
+}
+
+#[test]
+fn a_ticket_github_would_not_close_stays() {
+    let mut world = on_tickets();
+    press(&mut world.app, KeyCode::Char('x'));
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('y')));
+    reply(
+        &mut world,
+        req_id,
+        Err(ErrorBody::new(ErrorCode::BadRequest, "gh: HTTP 403")),
+    );
+    let screen = render(&world.app);
+    assert!(screen.contains("HTTP 403"), "{screen}");
+    assert!(screen.contains("#42 Fix the login redirect"), "{screen}");
+}
+
+#[test]
+fn after_closing_a_ticket_its_agents_and_worktrees_go_if_asked() {
+    let mut world = on_tickets();
+    let (workspace, agent) = agent_for_42(&world, "muster/issue-42-fix-the-login-redirect", 10);
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(
+            workspace.clone(),
+        )));
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(agent.clone())));
+    press(&mut world.app, KeyCode::Char('x'));
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('y')));
+    reply(&mut world, req_id, Ok(Reply::Done));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("Closed #42 on GitHub. Also close its agent and remove its worktree?"),
+        "{screen}"
+    );
+
+    // The agent is stopped; the worktree goes once nothing runs in it.
+    let actions = press(&mut world.app, KeyCode::Char('y'));
+    assert_eq!(
+        commands(&actions),
+        [Command::StopSession { session: agent.id }]
+    );
+    let mut ended = agent.clone();
+    ended.status = SessionStatus::Exited { success: true };
+    ended.ended_at = Some(Timestamp::from_millis(20));
+    let actions = world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
+    assert_eq!(
+        commands(&actions),
+        [Command::RemoveWorktree {
+            workspace: workspace.id,
+            force: false
+        }]
+    );
+}
+
+#[test]
+fn declining_the_clean_up_leaves_the_work_alone() {
+    let mut world = on_tickets();
+    let (workspace, agent) = agent_for_42(&world, "muster/issue-42-fix-the-login-redirect", 10);
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(workspace)));
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(agent)));
+    press(&mut world.app, KeyCode::Char('x'));
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('y')));
+    reply(&mut world, req_id, Ok(Reply::Done));
+    assert!(commands(&press(&mut world.app, KeyCode::Char('n'))).is_empty());
+    assert_eq!(world.app.mode, Mode::Browse);
 }

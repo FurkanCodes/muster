@@ -7,6 +7,7 @@
 //! all to the person's terminal and the daemon.
 
 mod app;
+mod folders;
 mod input;
 mod keys;
 mod model;

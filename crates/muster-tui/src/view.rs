@@ -3,7 +3,7 @@
 use muster_core::protocol::DetachReason;
 use muster_core::{Session, SessionStatus, WaitReason, WorkspaceKind};
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Position, Rect};
+use ratatui::layout::{Constraint, Layout, Margin, Position, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Wrap};
@@ -35,16 +35,37 @@ pub(crate) struct BrowseAreas {
 }
 
 /// The list view's layout in `area`, shared with the app so the mouse
-/// lands where things are drawn.
+/// lands where things are drawn. While a session beside the list has the
+/// keys, the bottom bar keeps to one line, so the session keeps its size.
 pub(crate) fn browse_areas(app: &App, area: Rect) -> BrowseAreas {
+    let bottom = if matches!(app.mode, Mode::Terminal(_)) {
+        1
+    } else {
+        bottom_height(app, area.width)
+    };
+    layout(area, bottom)
+}
+
+/// Where a session's terminal is drawn beside the list in `area`, inside
+/// its border: the size its program is given.
+pub(crate) fn session_area(area: Rect) -> Rect {
+    layout(area, 1).preview.inner(Margin::new(1, 1))
+}
+
+fn layout(area: Rect, bottom: u16) -> BrowseAreas {
     let [top, body, bottom] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
-        Constraint::Length(bottom_height(app, area.width)),
+        Constraint::Length(bottom),
     ])
     .areas(area);
+    // The list takes what its lines need, and the session beside it, where
+    // the person works with Claude Code, the rest.
+    let list_width = u16::try_from((u32::from(body.width) * 3 / 10).clamp(34, 48))
+        .unwrap_or(48)
+        .min(body.width);
     let [list, preview] =
-        Layout::horizontal([Constraint::Percentage(38), Constraint::Percentage(62)]).areas(body);
+        Layout::horizontal([Constraint::Length(list_width), Constraint::Min(0)]).areas(body);
     BrowseAreas {
         top,
         list,
@@ -55,7 +76,9 @@ pub(crate) fn browse_areas(app: &App, area: Rect) -> BrowseAreas {
 
 pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     let area = frame.area();
-    if let Mode::Terminal(session) = app.mode {
+    if let Mode::Terminal(session) = app.mode
+        && app.full_screen
+    {
         draw_terminal(frame, app, session, area);
         return;
     }
@@ -71,7 +94,9 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         View::NeedsYou => draw_needs_you(frame, app, list),
         View::Tickets => tickets::draw_tickets(frame, app, list),
     }
-    if app.view == View::Tickets {
+    if let Mode::Terminal(session) = app.mode {
+        draw_session(frame, app, session, preview, true);
+    } else if app.view == View::Tickets {
         tickets::draw_ticket_details(frame, app, preview);
     } else {
         draw_preview(frame, app, preview);
@@ -85,27 +110,28 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
 fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let waiting = app.model.needs_you().len();
     let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw(" ")];
-    // The screens as tabs, the one shown marked; their numbers jump to them.
-    for (view, number, name) in [
-        (View::Sessions, '1', "Sessions"),
-        (View::NeedsYou, '2', "Needs you"),
-        (View::Tickets, '3', "Tickets"),
-    ] {
-        let current = app.view == view;
-        let mut tab = vec![
-            Span::from(format!(" {number} ")).dim(),
-            Span::raw(format!("{name} ")),
-        ];
+    // The screens as tabs, the one shown lit; ⇥ goes round them.
+    for (at, (view, name)) in [
+        (View::Sessions, "Sessions"),
+        (View::NeedsYou, "Needs you"),
+        (View::Tickets, "Tickets"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if at > 0 {
+            spans.push(Span::from("│").dim());
+        }
+        let mut tab = vec![Span::raw(format!(" {name} "))];
         if view == View::NeedsYou && waiting > 0 {
             tab.push(Span::from(format!("{waiting} ")).red().bold());
         }
-        if current {
-            tab = tab.into_iter().map(|span| span.reversed()).collect();
+        if app.view == view {
+            tab = tab.into_iter().map(|span| span.reversed().bold()).collect();
         }
         spans.extend(tab);
-        spans.push(Span::raw(" "));
     }
-    spans.push(Span::raw(" "));
+    spans.push(Span::from(" ⇥   ").dim());
     match &app.link {
         Link::Connecting => spans.push(Span::from("connecting to the daemon…").dim()),
         Link::Connected { .. } if !app.model.loaded() => {
@@ -181,28 +207,51 @@ fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
 
 /// The keys that do something for what is selected.
 fn hints(app: &App) -> String {
+    if matches!(app.mode, Mode::Terminal(_)) {
+        return "keys go to the session   Ctrl-Q back to the list (or click it)".to_owned();
+    }
     let session = app.focused_session().and_then(|id| app.model.session(id));
     let mut hints = vec!["↑↓ move"];
     if app.view == View::Tickets {
         hints.extend(tickets::hints(app));
-        hints.extend(["esc back", "q quit"]);
+        hints.extend(["⇥ next tab", "esc back", "q quit"]);
         return hints.join("  ");
     }
     match (app.view, app.selected, session) {
         (_, _, Some(session)) if session.ended_at.is_none() => {
-            hints.extend(["⏎ open", "s stop", "n session"]);
+            hints.extend([
+                "⏎ type in it",
+                "f full screen",
+                "x close",
+                "s stop",
+                "n session",
+            ]);
         }
-        (_, _, Some(_)) => hints.extend(["⏎ open", "r restart", "x remove", "n session"]),
+        (_, _, Some(_)) => hints.extend([
+            "⏎ open",
+            "f full screen",
+            "r restart",
+            "x remove",
+            "n session",
+        ]),
         (View::Sessions, Some(Row::Worktree(id)), None) => {
             let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
             hints.push("⏎ session");
             if kind.is_some_and(WorkspaceKind::is_worktree) {
                 hints.push("x remove");
             }
-            if kind.is_some_and(|kind| kind.run().is_none()) {
-                hints.extend(["c check", "v review", "o PR"]);
+            if kind.is_some_and(|kind| !kind.in_git()) {
+                // A plain folder: its checks, and nothing that needs git.
+                hints.push("c check");
+            } else {
+                if kind.is_some_and(|kind| kind.run().is_none()) {
+                    hints.extend(["c check", "v review", "o PR"]);
+                }
+                hints.extend(["w worktree", "i tickets"]);
             }
-            hints.extend(["w worktree", "i tickets"]);
+        }
+        (View::Sessions, Some(Row::Project(id)), None) if app.model.is_plain_folder(id) => {
+            hints.extend(["⏎ session", "x remove"]);
         }
         (View::Sessions, Some(Row::Project(_)), None) => {
             hints.extend(["⏎ worktree", "n session", "i tickets", "x remove"]);
@@ -210,8 +259,8 @@ fn hints(app: &App) -> String {
         _ => {}
     }
     match app.view {
-        View::Sessions => hints.extend(["a project", "q quit"]),
-        View::NeedsYou => hints.extend(["esc back", "q quit"]),
+        View::Sessions => hints.extend(["a project", "⇥ next tab", "q quit"]),
+        View::NeedsYou => hints.extend(["⇥ next tab", "esc back", "q quit"]),
         View::Tickets => {}
     }
     hints.join("  ")
@@ -219,7 +268,7 @@ fn hints(app: &App) -> String {
 
 fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let rows = app.model.rows();
-    let block = panel(" Sessions ", app.view == View::Sessions);
+    let block = panel(" Sessions ", app.list_has_keys());
     if !app.model.loaded() {
         frame.render_widget(
             Paragraph::new("Waiting for the daemon…").block(block).dim(),
@@ -231,7 +280,7 @@ fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
         let text = Text::from(vec![
             Line::from("No projects yet."),
             Line::from(""),
-            Line::from("Press a to add a git repository."),
+            Line::from("Press a to add a project: a git repository, or any folder."),
         ]);
         frame.render_widget(Paragraph::new(text).block(block).dim(), area);
         return;
@@ -268,7 +317,9 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
                 })
                 .dim(),
             ];
-            if let Some(run) = app.model.run_of(id) {
+            if kind.is_some_and(|kind| !kind.in_git()) {
+                spans.push(Span::from("not a git repository").dim());
+            } else if let Some(run) = app.model.run_of(id) {
                 // The stage first: the branch is long, and says less.
                 spans.push(Span::raw(format!("#{} ", run.ticket.number)));
                 spans.push(Span::from(run.stage.label()).dim());
@@ -285,8 +336,17 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
                     .usage(id)
                     .map(|usage| format!("  {}", usage_text(usage)))
                     .unwrap_or_default();
-                // The title gives way, so the status stays in view.
-                let rest = session_line(session, "    ", "").width() + usage.chars().count();
+                // The status stays in view. The title gives way, but not
+                // below a readable length: then the usage goes instead,
+                // which the session's pane also shows.
+                let base = session_line(session, "    ", "").width();
+                let readable = session.title.chars().count().min(READABLE_TITLE);
+                let usage = if width.saturating_sub(base + usage.chars().count()) >= readable {
+                    usage
+                } else {
+                    String::new()
+                };
+                let rest = base + usage.chars().count();
                 let title = shorten(&session.title, width.saturating_sub(rest).max(8));
                 let mut line = session_line(session, "    ", &title);
                 if !usage.is_empty() {
@@ -298,6 +358,10 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
         },
     }
 }
+
+/// The fewest characters of a session's title a list line keeps before it
+/// leaves out the session's usage.
+const READABLE_TITLE: usize = 12;
 
 /// `text`, cut to `max` characters with an ellipsis if it is longer.
 pub(super) fn shorten(text: &str, max: usize) -> String {
@@ -325,7 +389,7 @@ fn session_line<'a>(session: &'a Session, indent: &'a str, title: &str) -> Line<
 }
 
 fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let block = panel(" Needs you ", true);
+    let block = panel(" Needs you ", app.list_has_keys());
     if app.needs_list.is_empty() {
         frame.render_widget(
             Paragraph::new("Nothing is waiting on you.")
@@ -358,37 +422,69 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    if let Some(session) = app.focused_session().and_then(|id| app.model.session(id)) {
-        let back = app
-            .screens
-            .get(&session.id)
-            .map_or(0, crate::screen::Screen::scrolled_back);
-        let title = if back > 0 {
-            format!(
-                " {} · {} · ↑ {back} lines back ",
-                session.title,
-                describe(session.status)
-            )
-        } else {
-            format!(" {} · {} ", session.title, describe(session.status))
-        };
-        let block = panel(title, false);
-        match app.screens.get(&session.id) {
-            Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
-                frame.render_widget(
-                    Paragraph::new(ENDED_WITHOUT_OUTPUT)
-                        .wrap(Wrap { trim: false })
-                        .block(block)
-                        .dim(),
-                    area,
-                );
-            }
-            Some(screen) => {
-                frame.render_widget(PseudoTerminal::new(screen.screen()).block(block), area)
-            }
-            None => frame.render_widget(Paragraph::new("Connecting…").block(block).dim(), area),
+/// A session's terminal beside the list: watched there, or `typing` into
+/// it, when it has the keys, its border lit and its cursor shown.
+fn draw_session(
+    frame: &mut Frame<'_>,
+    app: &App,
+    session: muster_core::SessionId,
+    area: Rect,
+    typing: bool,
+) {
+    let Some(stored) = app.model.session(session) else {
+        return;
+    };
+    let back = app
+        .screens
+        .get(&session)
+        .map_or(0, crate::screen::Screen::scrolled_back);
+    let mut title = format!(" {} · {} ", stored.title, describe(stored.status));
+    if let Some(usage) = app.model.usage(session) {
+        title.push_str(&format!("· {} ", usage_text(usage)));
+    }
+    if back > 0 {
+        title.push_str(&format!("· ↑ {back} lines back "));
+    } else if typing {
+        title.push_str("· Ctrl-Q back to the list ");
+    }
+    let block = panel(title, typing);
+    match app.screens.get(&session) {
+        Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
+            frame.render_widget(
+                Paragraph::new(ENDED_WITHOUT_OUTPUT)
+                    .wrap(Wrap { trim: false })
+                    .block(block)
+                    .dim(),
+                area,
+            );
         }
+        Some(screen) => {
+            let inner = block.inner(area);
+            frame.render_widget(PseudoTerminal::new(screen.screen()).block(block), area);
+            if typing {
+                show_cursor(frame, screen, inner);
+            }
+        }
+        None => frame.render_widget(Paragraph::new("Connecting…").block(block).dim(), area),
+    }
+}
+
+/// Puts the person's cursor where the program's is, in `area`, unless the
+/// program hides it or the person is looking back.
+fn show_cursor(frame: &mut Frame<'_>, screen: &crate::screen::Screen, area: Rect) {
+    if screen.screen().hide_cursor() || screen.scrolled_back() > 0 {
+        return;
+    }
+    let (row, col) = screen.screen().cursor_position();
+    frame.set_cursor_position(Position {
+        x: area.x + col.min(area.width.saturating_sub(1)),
+        y: area.y + row.min(area.height.saturating_sub(1)),
+    });
+}
+
+fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    if let Some(session) = app.focused_session() {
+        draw_session(frame, app, session, area, false);
         return;
     }
     let text = match app
@@ -401,7 +497,12 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
             Some(workspace) => {
                 let sessions = app.model.sessions_of(id).count();
                 let mut lines = Vec::new();
-                if workspace.kind.is_checkout() {
+                if !workspace.kind.in_git() {
+                    lines.push(
+                        Line::from("The project's own folder, where you work too. It is not a git repository.")
+                            .dim(),
+                    );
+                } else if workspace.kind.is_checkout() {
                     lines.push(Line::from("The project's own checkout, where you work too.").dim());
                 }
                 if let Some(run) = app.model.run_of(id) {
@@ -414,11 +515,13 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
                         .dim(),
                     );
                 }
-                lines.extend([
-                    Line::from(vec![
+                if workspace.kind.in_git() {
+                    lines.push(Line::from(vec![
                         Span::from("Branch  ").dim(),
                         Span::raw(workspace.kind.branch().to_owned()),
-                    ]),
+                    ]));
+                }
+                lines.extend([
                     Line::from(vec![
                         Span::from("Path    ").dim(),
                         Span::raw(workspace.kind.host_path().map_or_else(
@@ -449,6 +552,18 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
             None => Text::default(),
         },
         Some(Row::Project(id)) => match app.model.project(id) {
+            Some(project) if app.model.is_plain_folder(id) => Text::from(vec![
+                Line::from(vec![
+                    Span::from("Folder  ").dim(),
+                    Span::raw(project.root.display().to_string()),
+                ]),
+                Line::from(""),
+                Line::from("Press n or ⏎ to start a session in the folder.").dim(),
+                Line::from(
+                    "It is not a git repository, so it has no worktrees or tickets; git init there makes it one.",
+                )
+                .dim(),
+            ]),
             Some(project) => {
                 let worktrees = app
                     .model
@@ -514,7 +629,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
             ))
             .yellow(),
         ),
-        None => spans.push(Span::from("   Ctrl-] back").dim()),
+        None => spans.push(Span::from("   Ctrl-Q back to the list").dim()),
     }
     frame.render_widget(Line::from(spans), top);
     match app.screens.get(&session) {
@@ -528,13 +643,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
         }
         Some(screen) => {
             frame.render_widget(PseudoTerminal::new(screen.screen()), body);
-            if !screen.screen().hide_cursor() && screen.scrolled_back() == 0 {
-                let (row, col) = screen.screen().cursor_position();
-                frame.set_cursor_position(Position {
-                    x: body.x + col.min(body.width.saturating_sub(1)),
-                    y: body.y + row.min(body.height.saturating_sub(1)),
-                });
-            }
+            show_cursor(frame, screen, body);
         }
         None => frame.render_widget(Paragraph::new("Connecting…").dim(), body),
     }

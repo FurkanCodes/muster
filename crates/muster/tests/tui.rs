@@ -167,21 +167,34 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     ui.keys(b"\r");
     ui.wait_for("⎇ ui-work");
 
-    // n, Tab, Enter: a shell in it, which opens full screen.
+    // n, Tab, Enter: a shell in it, which opens beside the list with the
+    // keys.
     ui.keys(b"n");
     ui.wait_for("New session");
     ui.keys(b"\t");
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-] back");
+    ui.wait_for("Ctrl-Q back to the list");
 
     // Typing reaches the shell, and its output comes back.
     ui.keys(b"echo ui-$((6*7))\r");
     ui.wait_for("ui-42");
+    assert!(
+        ui.text().contains("⎇ ui-work"),
+        "the list stays: {}",
+        ui.text()
+    );
 
-    // Ctrl-] goes back to the list, where the session is listed.
-    ui.keys(&[0x1d]);
-    ui.wait_for("Sessions");
+    // Ctrl-Q gives the list the keys back; the session is listed.
+    ui.keys(&[0x11]);
+    ui.wait_for("f full screen");
     ui.wait_for("Shell");
+
+    // f fills the window with it, and Ctrl-Q puts it back.
+    ui.keys(b"f");
+    ui.wait_for("Ctrl-Q back to the list");
+    assert!(!ui.text().contains("╭ Sessions"), "{}", ui.text());
+    ui.keys(&[0x11]);
+    ui.wait_for("╭ Sessions");
 
     // q quits the UI; the daemon and the session keep running.
     ui.keys(b"q");
@@ -192,6 +205,132 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     assert!(stdout.contains("1 session"), "{stdout}");
     assert!(stdout.contains("Shell"), "{stdout}");
     assert!(!stdout.contains("exited"), "{stdout}");
+}
+
+#[test]
+fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let _stop = StopDaemon(sandbox.paths().socket());
+    let mut ui = Ui::start(&sandbox, &root);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+    ui.keys(b"n");
+    ui.wait_for("New session");
+    ui.keys(b"\t");
+    ui.keys(b"\r");
+    ui.wait_for("Ctrl-Q back to the list");
+    ui.keys(b"echo first-$((6*7))\r");
+    ui.wait_for("first-42");
+
+    // Ctrl-Q out to the list; ⇥ round the tabs and back to Sessions.
+    ui.keys(&[0x11]);
+    ui.wait_for("x close");
+    ui.keys(b"\t");
+    ui.wait_for("Nothing is waiting on you.");
+    ui.keys(b"\t\t");
+    ui.wait_for("x close");
+
+    // Ctrl-2, as a terminal with the kitty keyboard protocol sends it,
+    // straight to Needs you; Ctrl-1 back.
+    ui.keys(b"\x1b[50;5u");
+    ui.wait_for("Nothing is waiting on you.");
+    ui.keys(b"\x1b[49;5u");
+    ui.wait_for("x close");
+
+    // ⏎ back into the session.
+    ui.keys(b"\r");
+    ui.wait_for("Ctrl-Q back to the list");
+    ui.keys(b"echo second-$((6*7))\r");
+    ui.wait_for("second-42");
+
+    // x closes it: asked once, then stopped and gone from the list.
+    ui.keys(&[0x11]);
+    ui.wait_for("x close");
+    ui.keys(b"x");
+    ui.wait_for("Close Shell? It stops and leaves the list.");
+    ui.keys(b"y");
+    ui.wait_for("Closed the session.");
+    let status = sandbox.run(&["status"]);
+    let stdout = String::from_utf8_lossy(&status.stdout);
+    assert!(stdout.contains("0 sessions"), "{stdout}");
+}
+
+#[test]
+fn a_plain_folder_is_added_from_the_ui_and_a_session_runs_in_it() {
+    let sandbox = Sandbox::new();
+    let folder = sandbox.root().join("Desktop").join("notes");
+    std::fs::create_dir_all(&folder).unwrap();
+    let folder = folder.canonicalize().unwrap();
+    let _stop = StopDaemon(sandbox.paths().socket());
+
+    // a: add the folder the UI was started in, though it is no repository.
+    let mut ui = Ui::start(&sandbox, &folder);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.wait_for("or any folder");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+    ui.wait_for("⌂ not a git repository");
+
+    // w: no worktrees in a plain folder, and it says so.
+    ui.keys(b"w");
+    ui.wait_for("plain folder, not a git repository");
+
+    // Enter on the project: a session in the folder.
+    ui.keys(b"\r");
+    ui.wait_for("In notes");
+    ui.keys(b"\t");
+    ui.keys(b"\r");
+    ui.wait_for("Ctrl-Q back to the list");
+    ui.keys(b"pwd; echo folder-$((6*7))\r");
+    ui.wait_for("folder-42");
+    assert!(ui.text().contains("Desktop/notes"), "{}", ui.text());
+
+    ui.keys(&[0x11]);
+    ui.wait_for("f full screen");
+    ui.keys(b"q");
+    assert!(ui.wait_for_exit());
+    assert!(!folder.join(".git").exists(), "Muster made no repository");
+}
+
+#[test]
+fn the_folder_to_add_is_found_by_browsing_folders() {
+    let sandbox = Sandbox::new();
+    let repo = sandbox.repository("app");
+    let repos = repo.parent().unwrap().to_owned();
+    std::fs::create_dir_all(repos.join("notes").join("drafts")).unwrap();
+    let _stop = StopDaemon(sandbox.paths().socket());
+
+    // a: the folders where the UI was started, repositories marked.
+    let mut ui = Ui::start(&sandbox, &repos);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.wait_for("app/  git");
+    ui.wait_for("notes/");
+
+    // Typing narrows them; ⇥ opens the chosen one, ⇧⇥ comes back up.
+    ui.keys(b"no");
+    ui.wait_for("› notes/");
+    ui.keys(b"\t");
+    ui.wait_for("drafts/");
+    ui.keys(b"\x1b[Z");
+    ui.wait_for("app/  git");
+
+    // ⏎ adds the chosen folder.
+    ui.keys(b"no");
+    ui.wait_for("› notes/");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+    ui.wait_for("⌂ not a git repository");
+    let status = sandbox.run(&["status"]);
+    let stdout = String::from_utf8_lossy(&status.stdout);
+    assert!(
+        stdout.contains(&repos.join("notes").display().to_string()),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -241,18 +380,19 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
 
-    // n on the project: a shell in its own checkout, full screen.
+    // n on the project: a shell in its own checkout, beside the list.
     ui.keys(b"n");
     ui.wait_for("New session");
     ui.keys(b"\t");
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-] back");
+    ui.wait_for("Ctrl-Q back to the list");
     ui.keys(b"seq 1 300\r");
     ui.wait_for("300");
 
-    // Two turns of the wheel, as the terminal reports them (SGR).
-    ui.keys(b"\x1b[<64;20;10M");
-    ui.keys(b"\x1b[<64;20;10M");
+    // Two turns of the wheel over the session, as the terminal reports
+    // them (SGR).
+    ui.keys(b"\x1b[<64;60;10M");
+    ui.keys(b"\x1b[<64;60;10M");
     ui.wait_for("6 lines back");
     // Typing returns to the newest output.
     ui.keys(b"echo back-$((6*7))\r");
@@ -296,14 +436,14 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
 
     // ⏎: an agent on it, opened as it starts, with the ticket to work on.
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-] back");
-    ui.keys(&[0x1d]);
+    ui.wait_for("Ctrl-Q back to the list");
+    ui.keys(&[0x11]);
     ui.wait_for("⏎ open agent  a another agent");
 
     // a: another, in a worktree of its own.
     ui.keys(b"a");
-    ui.wait_for("Ctrl-] back");
-    ui.keys(&[0x1d]);
+    ui.wait_for("Ctrl-Q back to the list");
+    ui.keys(&[0x11]);
     ui.wait_for("muster/issue-42-fix-the-login-redirect-2");
 
     let listed = sandbox.run(&["issue", "list", "app"]);
@@ -311,5 +451,29 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
     assert!(
         listed.contains("#42") && listed.contains("2 agents"),
         "{listed}"
+    );
+
+    // x: closed on GitHub after asking, then its agents stopped and its
+    // worktrees removed, if the person wants; the branches stay.
+    ui.keys(b"x");
+    ui.wait_for("Close #42 Fix the login redirect on GitHub?");
+    ui.keys(b"y");
+    ui.wait_for("Also close its 2 agents");
+    ui.keys(b"y");
+    let closed = std::fs::read_to_string(gh.join("closed")).unwrap();
+    assert_eq!(closed.trim(), "42");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
+        if status.contains("0 worktrees") && status.contains("0 sessions") {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{status}\n{}", ui.text());
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let branches = support::git(&root, &["branch", "--list", "--format=%(refname:short)"]);
+    assert!(
+        branches.contains("muster/issue-42-fix-the-login-redirect-2"),
+        "{branches}"
     );
 }

@@ -911,6 +911,7 @@ dependencies = [
  "muster-client",
  "muster-core",
  "ratatui",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tui-term",

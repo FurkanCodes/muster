@@ -16,5 +16,8 @@ tokio.workspace = true
 tui-term.workspace = true
 vt100.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true

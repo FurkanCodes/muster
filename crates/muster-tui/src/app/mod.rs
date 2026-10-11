@@ -3,9 +3,11 @@
 //! can be tested by feeding it events and drawing it into a test buffer.
 
 mod events;
+mod picker;
 mod pointer;
 mod tickets;
 
+pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
 #[cfg(test)]
@@ -13,9 +15,13 @@ mod by_hand_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]
+mod folder_tests;
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
 mod navigation_tests;
+#[cfg(test)]
+mod picker_tests;
 #[cfg(test)]
 mod pointer_tests;
 #[cfg(test)]
@@ -46,6 +52,9 @@ pub(crate) enum Action {
     Notify(String),
     /// Open a web page in the person's browser.
     Open(String),
+    /// List the folders in this folder, for the folder picker
+    /// ([`App::on_folders`]).
+    ListFolders(PathBuf),
     Quit,
 }
 
@@ -79,6 +88,7 @@ pub(crate) enum Mode {
 pub(crate) enum Dialog {
     AddProject {
         path: LineInput,
+        picker: FolderPicker,
     },
     NewWorktree {
         project: ProjectId,
@@ -120,7 +130,22 @@ impl HarnessChoice {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Confirmed {
     StopSession(SessionId),
-    RemoveWorktree { workspace: WorkspaceId, force: bool },
+    /// Stop it and take it off the list once it has ended.
+    CloseSession(SessionId),
+    /// Close the ticket on GitHub.
+    CloseTicket {
+        project: ProjectId,
+        number: u64,
+    },
+    /// Close a closed ticket's agents and remove its worktrees.
+    CleanUpTicket {
+        project: ProjectId,
+        number: u64,
+    },
+    RemoveWorktree {
+        workspace: WorkspaceId,
+        force: bool,
+    },
     RemoveProject(ProjectId),
 }
 
@@ -148,6 +173,11 @@ enum Then {
     OpenIssueSession,
     /// Say which pull request was opened.
     ShowPullRequest,
+    /// A session being closed was asked to stop; if it cannot be, it is
+    /// not closed either.
+    Closing(SessionId),
+    /// Drop the ticket from the list, and offer to clean up after it.
+    TicketClosed(ProjectId, u64),
     Say(&'static str),
 }
 
@@ -189,8 +219,18 @@ pub(crate) struct App {
     wanted: Option<(Row, bool)>,
     pending: HashMap<u64, Then>,
     next_req: u64,
-    /// The size a session's terminal is drawn at when it fills the screen.
+    /// The window below the top bar: a session filling the window is drawn
+    /// at this size; beside the list, at the pane's (`session_size`).
     pub(crate) terminal_size: TermSize,
+    /// Whether the session with the keys fills the window, rather than
+    /// sitting beside the list.
+    pub(crate) full_screen: bool,
+    /// Sessions closed while running: asked to stop, and taken off the
+    /// list as soon as they have ended.
+    closing: Vec<SessionId>,
+    /// Worktrees to remove as soon as nothing runs in them: a closed
+    /// ticket's, being cleaned up after.
+    removing: Vec<WorkspaceId>,
     /// Where `muster` was started, offered when adding a project.
     cwd: PathBuf,
     /// Whether the person's terminal window has focus, once it has said;
@@ -224,6 +264,9 @@ impl App {
             pending: HashMap::new(),
             next_req: 1,
             terminal_size,
+            full_screen: false,
+            closing: Vec::new(),
+            removing: Vec::new(),
             cwd,
             focused: None,
             notify: true,
@@ -412,6 +455,11 @@ impl App {
                 self.say("Removed the worktree; its branch is kept.")
             }
             (Ok(_), Then::Say(text)) => self.say(text),
+            (Ok(_), Then::TicketClosed(project, number)) => self.ticket_closed(project, number),
+            (Err(error), Then::Closing(session)) => {
+                self.closing.retain(|closing| *closing != session);
+                self.complain(error.message);
+            }
             (Ok(_), _) => {}
             (Err(error), Then::RemovedWorktree(workspace))
                 if error.code == ErrorCode::Conflict && error.message.contains("uncommitted") =>
@@ -456,10 +504,18 @@ impl App {
     // Terminals.
 
     fn screen(&mut self, session: SessionId) -> &mut Screen {
-        let size = self.terminal_size;
+        let size = self.session_size();
         self.screens
             .entry(session)
             .or_insert_with(|| Screen::new(size.cols, size.rows))
+    }
+
+    /// Whether the session shown is drawing a frame it has not finished (a
+    /// synchronized update): drawn now, it would show half of one.
+    pub(crate) fn frame_pending(&self) -> bool {
+        self.attached
+            .and_then(|session| self.screens.get(&session))
+            .is_some_and(Screen::in_frame)
     }
 
     /// The session shown: open in the terminal, or selected in a list.
@@ -515,12 +571,46 @@ impl App {
     pub(crate) fn on_resize(&mut self, size: TermSize) -> Vec<Action> {
         self.terminal_size = size;
         self.keep_in_view();
-        let mut actions = Vec::new();
-        if let Some(session) = self.attached {
-            self.screen(session).resize(size.cols, size.rows);
-            actions.push(Action::Send(ClientFrame::Resize { session, size }));
+        self.fit_attached()
+    }
+
+    /// The size sessions' programs are given: the pane beside the list, or
+    /// the window below the top bar while one fills it. Programs draw for
+    /// their terminal's size, so it is always the size they are shown at.
+    pub(crate) fn session_size(&self) -> TermSize {
+        if self.full_screen && matches!(self.mode, Mode::Terminal(_)) {
+            return self.terminal_size;
         }
-        actions
+        let window =
+            ratatui::layout::Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        let pane = crate::view::session_area(window);
+        TermSize {
+            cols: pane.width.max(1),
+            rows: pane.height.max(1),
+        }
+    }
+
+    /// Whether the list has the keys, rather than a session's terminal.
+    pub(crate) fn list_has_keys(&self) -> bool {
+        !matches!(self.mode, Mode::Terminal(_))
+    }
+
+    /// Gives the streamed session's program the size it is shown at now.
+    pub(super) fn fit_attached(&mut self) -> Vec<Action> {
+        let Some(session) = self.attached else {
+            return Vec::new();
+        };
+        let size = self.session_size();
+        self.screen(session).resize(size.cols, size.rows);
+        let running = self
+            .model
+            .session(session)
+            .is_some_and(|stored| stored.ended_at.is_none());
+        if running {
+            vec![Action::Send(ClientFrame::Resize { session, size })]
+        } else {
+            Vec::new()
+        }
     }
 
     /// Brings the selection and the streamed terminal in line with the
@@ -534,11 +624,14 @@ impl App {
             && self.model.session(session).is_none()
         {
             self.mode = Mode::Browse;
+            self.full_screen = false;
         }
         if !matches!(self.link, Link::Connected { .. }) {
             return Vec::new();
         }
         let mut actions = self.fetch_tickets();
+        actions.extend(self.remove_closed());
+        actions.extend(self.remove_idle_worktrees());
         let focus = self
             .focused_session()
             .filter(|s| self.model.session(*s).is_some());
@@ -549,7 +642,7 @@ impl App {
             actions.push(Action::Send(ClientFrame::Detach { session: old }));
         }
         if let Some(session) = focus {
-            let size = self.terminal_size;
+            let size = self.session_size();
             let screen = self.screen(session);
             screen.resize(size.cols, size.rows);
             let from_seq = screen.next_seq();
@@ -569,6 +662,32 @@ impl App {
             self.attached = Some(session);
         }
         actions
+    }
+
+    /// Takes closed sessions off the list once their programs have ended.
+    fn remove_closed(&mut self) -> Vec<Action> {
+        let (ended, waiting): (Vec<SessionId>, Vec<SessionId>) = std::mem::take(&mut self.closing)
+            .into_iter()
+            .partition(|session| {
+                self.model
+                    .session(*session)
+                    .is_none_or(|stored| stored.ended_at.is_some())
+            });
+        self.closing = waiting;
+        // One already gone from the state needs nothing more.
+        let ended: Vec<SessionId> = ended
+            .into_iter()
+            .filter(|session| self.model.session(*session).is_some())
+            .collect();
+        ended
+            .into_iter()
+            .map(|session| {
+                self.command(
+                    Command::RemoveSession { session },
+                    Then::Say("Closed the session."),
+                )
+            })
+            .collect()
     }
 
     /// Selects what a reply named, once the state shows it.
