@@ -140,6 +140,27 @@ impl App {
         actions
     }
 
+    /// `p`: hands the selected workspace's committed work to the autopilot,
+    /// asking which issue it is for.
+    pub(super) fn ask_hand_off(&mut self) {
+        let Some(workspace) = self.selected.and_then(|row| self.model.worktree_of(row)) else {
+            return self.complain("Select a worktree, or a session in one, to hand its work over.");
+        };
+        let Some(found) = self.model.workspace(workspace) else {
+            return;
+        };
+        if found.kind.run().is_some() {
+            return self.complain("That is a run's container; its work is the run's already.");
+        }
+        let number = issue_in_branch(found.kind.branch())
+            .map(|number| number.to_string())
+            .unwrap_or_default();
+        self.mode = Mode::Dialog(Dialog::HandOff {
+            workspace,
+            number: LineInput::with(&number),
+        });
+    }
+
     /// Keys in the dialogs that ask what to tell a run's agent.
     pub(super) fn run_dialog_key(&mut self, dialog: Dialog, key: &KeyEvent) -> Vec<Action> {
         match dialog {
@@ -171,6 +192,33 @@ impl App {
                     edit => self.keep_editing(edit, Dialog::RunChanges { run, comments }),
                 }
             }
+            Dialog::HandOff {
+                workspace,
+                mut number,
+            } => match number.handle(key) {
+                Edit::Submit => {
+                    let parsed = number.text().trim().trim_start_matches('#').parse::<u64>();
+                    let project = self.model.workspace(workspace).map(|found| found.project);
+                    match (parsed, project) {
+                        (Ok(issue), Some(project)) => {
+                            self.mode = Mode::Browse;
+                            self.say(format!("Handing the work to the autopilot as #{issue}…"));
+                            let command = Command::StartRun {
+                                project,
+                                number: issue,
+                                from: Some(workspace),
+                            };
+                            vec![self.command(command, Then::ShowRun)]
+                        }
+                        _ => {
+                            self.complain("Type the number of the issue the work is for.");
+                            self.mode = Mode::Dialog(Dialog::HandOff { workspace, number });
+                            Vec::new()
+                        }
+                    }
+                }
+                edit => self.keep_editing(edit, Dialog::HandOff { workspace, number }),
+            },
             other => {
                 self.mode = Mode::Dialog(other);
                 Vec::new()
@@ -231,5 +279,25 @@ fn run_waits(run: &Run) -> Option<String> {
             None => format!("The run on #{number} is ready for you"),
         }),
         _ => None,
+    }
+}
+
+/// The issue a branch Muster named for one is about: `muster/issue-42-…`.
+fn issue_in_branch(branch: &str) -> Option<u64> {
+    let rest = branch.split("issue-").nth(1)?;
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_issue_branch_names_its_issue() {
+        assert_eq!(issue_in_branch("muster/issue-42-fix-the-login"), Some(42));
+        assert_eq!(issue_in_branch("muster/issue-7"), Some(7));
+        assert_eq!(issue_in_branch("feature/login"), None);
+        assert_eq!(issue_in_branch("muster/issue-x"), None);
     }
 }

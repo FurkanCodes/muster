@@ -217,11 +217,18 @@ impl Inner {
         let mirror = {
             let lock = self.mirror_lock(context.project);
             let _held = lock.lock().await;
-            mirror::refresh(&self.data_dir, context.project, &context.root)
+            let mirror = mirror::refresh(&self.data_dir, context.project, &context.root)
                 .await
                 .map_err(|error| {
                     format!("could not update Muster's copy of the repository: {error}")
-                })?
+                })?;
+            if context.from_branch {
+                mirror
+                    .take_local(&context.root, &context.branch)
+                    .await
+                    .map_err(|error| format!("could not take {}: {error}", context.branch))?;
+            }
+            mirror
         };
         let image = match &self.image {
             Some(image) => image.clone(),
@@ -364,6 +371,9 @@ impl Inner {
                 &context.config.agents.instructions,
                 &fence,
             );
+            if context.from_branch {
+                prompt.push_str(&prompts::carry_on(&base));
+            }
             if let Some(feedback) = feedback {
                 prompt.push_str("\n\nThis is not the first attempt. ");
                 prompt.push_str(&prompts::builder_again(feedback));

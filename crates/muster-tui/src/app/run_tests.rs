@@ -309,7 +309,8 @@ fn an_issue_is_handed_to_the_autopilot_from_the_issues_dialog() {
         started,
         Command::StartRun {
             project: world.project.id,
-            number: 42
+            number: 42,
+            from: None
         }
     );
     let picked = run(world.project.id, 42, RunStage::Queued);
@@ -392,4 +393,64 @@ fn runs_waiting_on_the_person_join_needs_you_and_tell_them_while_away() {
         "{screen}"
     );
     assert!(screen.contains("r retry"), "{screen}");
+}
+
+#[test]
+fn p_hands_a_worktree_s_work_to_the_autopilot_for_the_issue_it_names() {
+    let mut world = world();
+    let mut issue_tree = crate::model::tests::worktree(world.project.id, "muster/issue-42-fix");
+    issue_tree.created_at = Timestamp::from_millis(5);
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(
+            issue_tree.clone(),
+        )));
+    world.app.selected = Some(crate::model::Row::Worktree(issue_tree.id));
+    assert!(render(&world.app).contains("p autopilot"));
+    press(&mut world.app, KeyCode::Char('p'));
+    let Mode::Dialog(Dialog::HandOff { number, .. }) = &world.app.mode else {
+        panic!("expected the hand-off dialog, got {:?}", world.app.mode);
+    };
+    assert_eq!(number.text(), "42", "the issue its branch names");
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("The work committed on muster/issue-42-fix goes to a run"),
+        "{screen}"
+    );
+    let actions = press(&mut world.app, KeyCode::Enter);
+    let (req_id, sent) = command(&actions);
+    assert_eq!(
+        sent,
+        Command::StartRun {
+            project: world.project.id,
+            number: 42,
+            from: Some(issue_tree.id)
+        }
+    );
+    // Refused (uncommitted work, say): the daemon's words.
+    reply(
+        &mut world,
+        req_id,
+        Err(ErrorBody::new(
+            ErrorCode::Conflict,
+            "/w/x has 2 uncommitted change(s); commit them first",
+        )),
+    );
+    assert!(world.app.note.clone().unwrap().text.contains("uncommitted"));
+
+    // A branch that names no issue asks for one; `#7` will do.
+    world.app.selected = Some(crate::model::Row::Worktree(world.worktree.id));
+    press(&mut world.app, KeyCode::Char('p'));
+    let actions = press(&mut world.app, KeyCode::Enter);
+    assert!(actions.is_empty());
+    assert!(matches!(
+        world.app.mode,
+        Mode::Dialog(Dialog::HandOff { .. })
+    ));
+    typed(&mut world.app, "#7");
+    let actions = press(&mut world.app, KeyCode::Enter);
+    assert!(matches!(
+        command(&actions).1,
+        Command::StartRun { number: 7, from: Some(id), .. } if id == world.worktree.id
+    ));
 }

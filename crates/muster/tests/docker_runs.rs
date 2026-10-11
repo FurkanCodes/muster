@@ -410,3 +410,57 @@ async fn real_docker_lets_a_person_take_a_run_over_in_its_container_and_hand_it_
             .all(|workspace| workspace.kind.run().is_none())
     );
 }
+
+#[tokio::test]
+async fn real_docker_takes_a_person_s_branch_from_the_checks_to_a_ready_pull_request() {
+    if !docker_tests() {
+        return;
+    }
+    let toml = "[checks]\ncommands = [\"grep -q person fix.txt\"]\n";
+    let (sandbox, root, remote) = sandbox(toml, None);
+    let mut cleanup = Cleanup(None);
+    let daemon = sandbox.start();
+    cleanup.0 = Some(add_project(&daemon, &root).await);
+
+    // The person's work, committed on a worktree's branch only they have.
+    muster(&sandbox, &["worktree", "add", "app", "--branch", "by-hand"]);
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    let tree = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.kind.branch() == "by-hand")
+        .and_then(|workspace| workspace.kind.host_path())
+        .unwrap()
+        .to_owned();
+    std::fs::write(tree.join("fix.txt"), "person\n").unwrap();
+    git(&tree, &["add", "fix.txt"]);
+    git(&tree, &["commit", "--quiet", "--message", "By hand"]);
+
+    muster(
+        &sandbox,
+        &["run", "start", "app", "42", "--from", "by-hand"],
+    );
+    let (run, timeline) =
+        wait_for_stage(&daemon, RunStage::ReadyForYou, Duration::from_secs(120)).await;
+    let steps: Vec<(RunStage, &str)> = timeline
+        .iter()
+        .map(|step| (step.to, step.reason.as_str()))
+        .collect();
+    assert_eq!(
+        steps,
+        [
+            (RunStage::Provisioning, "there is room to run"),
+            (RunStage::Checking, "its container is ready with your work"),
+            (RunStage::OpeningPr, "the checks passed"),
+            (RunStage::AgentReview, "pull request #17 is open"),
+            (RunStage::ReadyForYou, "the reviewer approved"),
+        ]
+    );
+    assert_eq!(run.attempt, 0, "no agent built anything");
+    assert_eq!(
+        git(&remote, &["log", "--format=%s", "-1", "by-hand"]),
+        "By hand"
+    );
+    let calls = std::fs::read_to_string(sandbox.fake_gh().join("calls")).unwrap();
+    assert!(calls.contains("--head by-hand"), "{calls}");
+}

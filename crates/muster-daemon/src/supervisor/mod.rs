@@ -369,9 +369,11 @@ impl Supervisor {
             Request::Command { command, reply } => match command {
                 // These talk to GitHub, so they answer from a task of their own.
                 Command::ListIssues { project } => self.list_issues(project, reply),
-                Command::StartRun { project, number } => {
-                    self.fetch_run_ticket(project, number, reply);
-                }
+                Command::StartRun {
+                    project,
+                    number,
+                    from,
+                } => self.fetch_run_ticket(project, number, from, reply),
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }

@@ -14,7 +14,8 @@
 //! projects, mouse modes, and watching that follows the client's focus;
 //! version 4 the wait on a harness asking before it starts; version 5 runs;
 //! version 6 the person's request for changes on a run; version 7 runs'
-//! containers as workspaces, and taking a run over.
+//! containers as workspaces, and taking a run over; version 8 handing a
+//! person's branch to the autopilot.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -28,9 +29,9 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 7;
+pub const PROTOCOL_VERSION: u32 = 8;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 7;
+pub const MIN_PROTOCOL_VERSION: u32 = 8;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -306,7 +307,14 @@ pub enum Command {
     /// Hand a GitHub issue to the autopilot: a run that builds, checks,
     /// opens a draft pull request and has it reviewed before asking the
     /// person (`PRODUCT.md` §5). Needs the project's `muster.toml` checks.
-    StartRun { project: ProjectId, number: u64 },
+    /// With `from`, the run takes over the work on that workspace's
+    /// branch, as committed, and starts at the checks (`PRD-08`).
+    StartRun {
+        project: ProjectId,
+        number: u64,
+        #[serde(default)]
+        from: Option<WorkspaceId>,
+    },
     /// Stop a run for good; its container goes, its record stays.
     CancelRun { run: RunId },
     /// Send a run that needs the person back to work, with a fresh budget

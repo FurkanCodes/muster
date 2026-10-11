@@ -25,6 +25,7 @@ fn context(root: PathBuf) -> RunContext {
             memory_bytes: 700 << 20,
             ..ProjectConfig::default()
         },
+        from_branch: false,
         agent_session: None,
         container: None,
         pr: None,
@@ -57,6 +58,32 @@ fn a_run_s_container_is_limited_labelled_and_reads_the_mirror_only() {
             .iter()
             .skip(1)
             .all(|mount| matches!(mount.source, MountSource::Volume(_)))
+    );
+}
+
+#[tokio::test]
+async fn a_run_on_the_base_branch_itself_is_refused_before_any_container() {
+    let dir = tempfile::tempdir().unwrap();
+    let checkout = repository(dir.path(), "app");
+    let project = ProjectId::new();
+    let mirror = mirror::refresh(&dir.path().join("data"), project, &checkout)
+        .await
+        .unwrap();
+    let mut context = context(checkout);
+    context.project = project;
+    context.branch = "main".to_owned();
+    // No Docker is reached: the stand-in program does not exist.
+    let docker = Docker::with_program("muster-test-no-such-docker");
+    let identity = Identity {
+        name: "Test Person".to_owned(),
+        email: "test@example.com".to_owned(),
+    };
+    let error = provision(&docker, &context, &mirror, "image", &identity)
+        .await
+        .unwrap_err();
+    assert!(
+        error.contains("main is the branch runs start from"),
+        "{error}"
     );
 }
 

@@ -68,6 +68,10 @@ pub struct RunMachine {
     cost_micros: u64,
     /// The cost when the current budget began.
     cost_at_budget: u64,
+    /// The run took over a person's branch (`PRD-08`): its first container
+    /// goes to the checks with their work rather than to the building agent.
+    #[serde(default)]
+    from_branch: bool,
 }
 
 impl RunMachine {
@@ -92,7 +96,22 @@ impl RunMachine {
             active_spent: Duration::ZERO,
             cost_micros: 0,
             cost_at_budget: 0,
+            from_branch: false,
         }
+    }
+
+    /// A run handed the work on a person's branch: it starts at the checks,
+    /// and goes to the building agent only if they fail (`PRODUCT.md` §5).
+    pub fn handed_off(limits: Limits) -> Self {
+        Self {
+            from_branch: true,
+            ..Self::new(limits)
+        }
+    }
+
+    /// Whether the run took over a person's branch.
+    pub fn from_branch(&self) -> bool {
+        self.from_branch
     }
 
     pub fn stage(&self) -> RunStage {
@@ -267,13 +286,20 @@ impl RunMachine {
             (RunStage::Provisioning, RunEvent::ContainerReady { .. }) => {
                 self.has_container = true;
                 let feedback = self.pending_feedback.take();
-                self.enter(
-                    RunStage::Building,
-                    "its container is ready",
-                    feedback,
-                    now,
-                    effects,
-                );
+                if self.from_branch && self.attempt == 0 && feedback.is_none() {
+                    // The person's work, as they handed it over, goes to
+                    // the checks first.
+                    let reason = "its container is ready with your work";
+                    self.enter(RunStage::Checking, reason, None, now, effects);
+                } else {
+                    self.enter(
+                        RunStage::Building,
+                        "its container is ready",
+                        feedback,
+                        now,
+                        effects,
+                    );
+                }
             }
             (RunStage::Building, RunEvent::AgentFinished { outcome, .. }) => match outcome {
                 AgentOutcome::Done => {

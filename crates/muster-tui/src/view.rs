@@ -183,13 +183,13 @@ fn hints(app: &App) -> String {
         }
         (_, _, Some(_)) => hints.extend(["⏎ open", "r restart", "x remove", "n session"]),
         (View::Sessions, Some(Row::Worktree(id)), None) => {
-            let worktree = app
-                .model
-                .workspace(id)
-                .is_some_and(|workspace| workspace.kind.is_worktree());
+            let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
             hints.push("⏎ session");
-            if worktree {
+            if kind.is_some_and(WorkspaceKind::is_worktree) {
                 hints.push("x remove");
+            }
+            if kind.is_some_and(|kind| kind.run().is_none()) {
+                hints.push("p autopilot");
             }
             hints.extend(["w worktree", "i issues"]);
         }

@@ -446,7 +446,10 @@ pub(crate) fn find_project<'a>(
 
 /// A workspace by id or branch, or a project's own checkout by the
 /// project's name.
-fn find_worktree<'a>(snapshot: &'a Snapshot, wanted: &str) -> Result<&'a Workspace, String> {
+pub(crate) fn find_worktree<'a>(
+    snapshot: &'a Snapshot,
+    wanted: &str,
+) -> Result<&'a Workspace, String> {
     let named_project = |workspace: &Workspace| {
         workspace.kind.is_checkout()
             && snapshot

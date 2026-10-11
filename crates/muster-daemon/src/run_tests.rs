@@ -222,6 +222,7 @@ async fn start(setup: &Setup) -> RunId {
         .command(Command::StartRun {
             project: setup.project,
             number: 42,
+            from: None,
         })
         .await
         .unwrap()
@@ -378,6 +379,7 @@ async fn runs_need_checks_one_at_a_time_per_issue_and_an_issue_that_exists() {
         .command(Command::StartRun {
             project: setup.project,
             number: 42,
+            from: None,
         })
         .await
         .unwrap_err();
@@ -395,6 +397,7 @@ async fn runs_need_checks_one_at_a_time_per_issue_and_an_issue_that_exists() {
         .command(Command::StartRun {
             project: setup.project,
             number: 42,
+            from: None,
         })
         .await
         .unwrap_err();
@@ -404,6 +407,7 @@ async fn runs_need_checks_one_at_a_time_per_issue_and_an_issue_that_exists() {
         .command(Command::StartRun {
             project: setup.project,
             number: 7,
+            from: None,
         })
         .await
         .unwrap_err();
@@ -668,3 +672,6 @@ async fn the_person_sends_a_ready_run_back_with_what_to_change() {
 
 #[path = "take_over_tests.rs"]
 mod take_over_tests;
+
+#[path = "hand_off_tests.rs"]
+mod hand_off_tests;

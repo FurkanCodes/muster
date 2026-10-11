@@ -151,6 +151,18 @@ pub(crate) async fn answer(cwd: &Path, args: &[&str]) -> Result<Option<String>, 
     Ok(outcome.success.then_some(outcome.stdout))
 }
 
+/// What is changed or untracked in the work tree at `path`, one line per
+/// path as git's porcelain status lists it (the whole output trimmed);
+/// nothing when all is committed.
+pub(crate) async fn uncommitted(path: &Path) -> Result<Vec<String>, GitError> {
+    Ok(checked(path, &["status", "--porcelain"])
+        .await?
+        .lines()
+        .map(str::to_owned)
+        .filter(|line| !line.trim().is_empty())
+        .collect())
+}
+
 /// Git's own list of the repository's worktrees, in its stable porcelain
 /// form with NUL separators (see `worktree_sync::parse`).
 pub(crate) async fn list_worktrees(repo: &Path) -> Result<String, GitError> {
@@ -256,6 +268,18 @@ pub(crate) mod tests {
             "something odd · and more"
         );
         assert_eq!(reason("\n  \n"), "git gave no reason");
+    }
+
+    #[tokio::test]
+    async fn uncommitted_work_is_listed_and_committed_work_is_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = repository(dir.path(), "app");
+        assert!(uncommitted(&repo).await.unwrap().is_empty());
+        std::fs::write(repo.join("README.md"), "changed\n").unwrap();
+        std::fs::write(repo.join("new.txt"), "new\n").unwrap();
+        let listed = uncommitted(&repo).await.unwrap();
+        assert_eq!(listed.len(), 2, "{listed:?}");
+        assert!(listed[0].ends_with("README.md") && listed[1] == "?? new.txt");
     }
 
     #[tokio::test]
