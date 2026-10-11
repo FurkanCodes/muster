@@ -2,7 +2,7 @@
 
 **A terminal cockpit for coding agents.** Run Claude Code and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
-> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), runs from the command line, including taking a run over by hand; runs in the UI come next. See [PRODUCT.md](PRODUCT.md). No release yet.
+> Status: milestone 1 (the cockpit) is built, tested and dogfooded. Milestone 2, the autopilot (a ticket in, a reviewed pull request out, in containers), runs from the UI and the command line, including taking a run over by hand; it waits on its first run against a real repository. See [PRODUCT.md](PRODUCT.md). No release yet.
 
 ## What it does
 
@@ -41,10 +41,20 @@ muster
 | `s` | stop a session |
 | `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
 | `x` | remove the selected ended session; or, after asking, the selected worktree, or a project (Muster forgets it; the repository is untouched) |
-| `⇥` | switch between all sessions and *Needs you* |
+| `⇥` | switch between all sessions, *Needs you* and *Runs* |
 | `q` | quit the UI (sessions keep running) |
 
 In a full-screen session every key goes to the program; **Ctrl-]** comes back to the list.
+
+| Key | On a run (in *Runs*, or in *Needs you*) |
+|---|---|
+| `n` | hand one of the project's issues to the autopilot (in *Runs*; in the issues dialog `⇥` chooses Claude Code, a shell or the autopilot) |
+| `t` | take the run over: its agent is yours, in a session in its container |
+| `⏎` | open the agent you took over |
+| `h` | hand the run back: your work goes to the checks |
+| `r` | send a run that needs you back to work, with notes for its agent |
+| `c` | send a ready run back to its agent with what to change |
+| `x` | cancel the run |
 
 The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the preview opens it. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
 

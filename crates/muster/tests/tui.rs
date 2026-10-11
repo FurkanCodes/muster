@@ -259,3 +259,69 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     ui.wait_for("back-42");
     assert!(!ui.text().contains("lines back"), "{}", ui.text());
 }
+
+#[test]
+fn a_run_is_handed_over_followed_and_sent_back_to_work_from_the_ui() {
+    // Docker is a stand-in that is not running, so the run stops for the
+    // person at once: enough to follow it and act on it.
+    let sandbox = Sandbox::new().with_env("MUSTER_RUN_IMAGE", "muster-e2e:absent");
+    let root = sandbox.repository("app");
+    std::fs::write(
+        root.join("muster.toml"),
+        "[checks]\ncommands = [\"true\"]\n",
+    )
+    .unwrap();
+    let gh = sandbox.fake_gh();
+    let issue = serde_json::json!({
+        "number": 42, "title": "Fix the login redirect",
+        "url": "https://github.com/o/app/issues/42", "labels": [], "author": {"login": "someone"}
+    });
+    std::fs::write(
+        gh.join("issues.json"),
+        serde_json::json!([issue]).to_string(),
+    )
+    .unwrap();
+    let mut detail = issue.clone();
+    detail["body"] = serde_json::Value::from("After signing in, users land on /404.");
+    std::fs::write(gh.join("issue-42.json"), detail.to_string()).unwrap();
+    let _stop = StopDaemon(sandbox.paths().socket());
+
+    let mut ui = Ui::start(&sandbox, &root);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+
+    // ⇥ ⇥: the runs view, empty; n: the project's issues, for a run.
+    ui.keys(b"\t\t");
+    ui.wait_for("No runs yet");
+    ui.keys(b"n");
+    ui.wait_for("Fix the login redirect");
+    ui.wait_for("⏎ hand to the autopilot");
+    ui.keys(b"\r");
+
+    // It stops for the person, with why and its timeline.
+    ui.wait_for("▲ #42 needs you");
+    ui.wait_for("Docker is not running");
+    ui.wait_for("there is room to run");
+    ui.wait_for("1 need you");
+
+    // r: back to work with notes; it stops again at the same place.
+    ui.keys(b"r");
+    ui.wait_for("Back to work");
+    ui.keys(b"Docker is up now");
+    ui.keys(b"\r");
+    ui.wait_for("Sent the run back to work.");
+    ui.wait_for("you sent it back to work");
+
+    // x, y: cancelled, and listed as ended.
+    ui.keys(b"x");
+    ui.wait_for("Cancel the run on #42?");
+    ui.keys(b"y");
+    ui.wait_for("✕ #42 cancelled");
+    ui.wait_for("0 runs going");
+    let shown = sandbox.run(&["run", "show", "42"]);
+    let shown = String::from_utf8_lossy(&shown.stdout);
+    assert!(shown.contains("stage         cancelled"), "{shown}");
+    assert!(shown.contains("you sent it back to work"), "{shown}");
+}

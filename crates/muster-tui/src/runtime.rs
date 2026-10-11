@@ -78,6 +78,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let mut input = EventStream::new();
     let mut sender: Option<FrameSender> = None;
     let mut redraw = tokio::time::interval(FRAME);
+    let mut last_draw = Instant::now();
     let mut dirty = true;
     let outcome = loop {
         let actions = tokio::select! {
@@ -104,9 +105,13 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                 }
             },
             _ = redraw.tick() => {
-                if dirty {
+                // A run's time goes on while it is shown.
+                let ticking = app.focused_run().is_some() && last_draw.elapsed() >= Duration::from_secs(1);
+                if dirty || ticking {
+                    app.now = wall_clock();
                     terminal.terminal.draw(|frame| view::draw(frame, &app))?;
                     dirty = false;
+                    last_draw = Instant::now();
                 }
                 continue;
             }
@@ -311,6 +316,14 @@ impl crossterm::Command for MouseReports {
             "\x1b[?1000{switch}\x1b[?1002{switch}\x1b[?1006{switch}"
         )
     }
+}
+
+/// The wall-clock time, for how long things have taken.
+fn wall_clock() -> muster_core::Timestamp {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis());
+    muster_core::Timestamp::from_millis(i64::try_from(millis).unwrap_or(i64::MAX))
 }
 
 #[cfg(test)]

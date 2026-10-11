@@ -106,6 +106,12 @@ impl App {
                     self.needs_selected = Some(self.needs_list[index]);
                 }
             }
+            View::Runs => {
+                let len = self.runs_list.len();
+                if let Some(index) = line_at(list, row, len, self.runs_offset) {
+                    self.runs_selected = Some(self.runs_list[index]);
+                }
+            }
         }
     }
 

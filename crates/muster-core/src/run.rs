@@ -55,6 +55,25 @@ impl RunStage {
         matches!(self, Self::ReadyForYou | Self::NeedsYou)
     }
 
+    /// Where the stage sorts in a list of runs: what waits on the person
+    /// first, then the work in the order it happens back to front, then
+    /// what has ended.
+    pub const fn list_order(self) -> u8 {
+        match self {
+            Self::NeedsYou => 0,
+            Self::ReadyForYou => 1,
+            Self::TakenOver => 2,
+            Self::AgentReview => 3,
+            Self::OpeningPr => 4,
+            Self::Checking => 5,
+            Self::Building => 6,
+            Self::Provisioning => 7,
+            Self::Queued => 8,
+            Self::Merged => 9,
+            Self::Cancelled => 10,
+        }
+    }
+
     /// The stage in a word or two, for lists.
     pub const fn label(self) -> &'static str {
         match self {

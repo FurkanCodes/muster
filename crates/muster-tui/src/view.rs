@@ -6,13 +6,14 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap,
-};
+use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Wrap};
 use tui_term::widget::PseudoTerminal;
 
-use crate::app::{App, Dialog, HarnessChoice, Link, Mode, View};
-use crate::model::Row;
+use crate::app::{App, Link, Mode, View};
+use crate::model::{Need, Row};
+
+mod dialogs;
+mod runs;
 
 /// The terminal area a session gets when it fills the screen: everything
 /// but the top bar.
@@ -68,11 +69,15 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     match app.view {
         View::Sessions => draw_sessions(frame, app, list),
         View::NeedsYou => draw_needs_you(frame, app, list),
+        View::Runs => runs::draw_runs(frame, app, list),
     }
-    draw_preview(frame, app, preview);
+    match app.focused_run() {
+        Some(run) => runs::draw_run_details(frame, app, run, preview),
+        None => draw_preview(frame, app, preview),
+    }
     draw_bottom_bar(frame, app, bottom);
     if let Mode::Dialog(dialog) = &app.mode {
-        draw_dialog(frame, app, dialog, area);
+        dialogs::draw_dialog(frame, app, dialog, area);
     }
 }
 
@@ -96,9 +101,16 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
                     .dim(),
                 );
             }
+            let going = app
+                .runs_list
+                .iter()
+                .filter_map(|run| app.model.run(*run))
+                .filter(|run| !run.stage.is_over())
+                .count();
             spans.push(Span::raw(format!(
-                "  ·  {}  ·  ",
-                count(app.model.sessions().len(), "session")
+                "  ·  {}  ·  {} going  ·  ",
+                count(app.model.sessions().len(), "session"),
+                count(going, "run")
             )));
             let needs = Span::from(format!("{waiting} need you"));
             spans.push(if waiting > 0 {
@@ -159,6 +171,12 @@ fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
 fn hints(app: &App) -> String {
     let session = app.focused_session().and_then(|id| app.model.session(id));
     let mut hints = vec!["↑↓ move"];
+    if let Some(run) = app.focused_run() {
+        hints.extend(runs::hints(app, run));
+    }
+    if app.view == View::Runs {
+        hints.push("n new run");
+    }
     match (app.view, app.selected, session) {
         (_, _, Some(session)) if session.ended_at.is_none() => {
             hints.extend(["⏎ open", "s stop", "n session"]);
@@ -180,10 +198,10 @@ fn hints(app: &App) -> String {
         }
         _ => {}
     }
-    if app.view == View::Sessions {
-        hints.extend(["a project", "⇥ needs you", "q quit"]);
-    } else {
-        hints.extend(["⇥ all sessions", "q quit"]);
+    match app.view {
+        View::Sessions => hints.extend(["a project", "⇥ needs you", "q quit"]),
+        View::NeedsYou => hints.extend(["⇥ runs", "q quit"]),
+        View::Runs => hints.extend(["⇥ sessions", "q quit"]),
     }
     hints.join("  ")
 }
@@ -271,7 +289,7 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
 }
 
 /// `text`, cut to `max` characters with an ellipsis if it is longer.
-fn shorten(text: &str, max: usize) -> String {
+pub(super) fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_owned();
     }
@@ -306,22 +324,26 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
         return;
     }
+    let width = usize::from(area.width.saturating_sub(2));
     let items: Vec<ListItem<'_>> = app
         .needs_list
         .iter()
-        .filter_map(|id| app.model.session(*id))
-        .map(|session| {
-            let place = app.model.branch(session.workspace).unwrap_or("?");
-            let mut line = session_line(session, "", &session.title);
-            line.spans.push(Span::from(format!("  {place}")).dim());
-            ListItem::new(line)
+        .filter_map(|need| match need {
+            Need::Session(id) => {
+                let session = app.model.session(*id)?;
+                let place = app.model.branch(session.workspace).unwrap_or("?");
+                let mut line = session_line(session, "", &session.title);
+                line.spans.push(Span::from(format!("  {place}")).dim());
+                Some(ListItem::new(line))
+            }
+            Need::Run(id) => Some(ListItem::new(runs::run_line(app.model.run(*id)?, width))),
         })
         .collect();
     let mut state = ListState::default()
         .with_offset(app.needs_offset)
         .with_selected(
             app.needs_selected
-                .and_then(|s| app.needs_list.iter().position(|id| *id == s)),
+                .and_then(|need| app.needs_list.iter().position(|n| *n == need)),
         );
     let list = List::new(items)
         .block(block)
@@ -511,230 +533,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
     }
 }
 
-/// What the issues dialog shows.
-struct IssuesView<'a> {
-    project: muster_core::ProjectId,
-    issues: Option<&'a Vec<muster_core::Issue>>,
-    selected: usize,
-    harness: HarnessChoice,
-    error: Option<&'a String>,
-}
-
-fn draw_issues(frame: &mut Frame<'_>, app: &App, area: Rect, shown: IssuesView<'_>) {
-    let width = area.width.saturating_sub(4).min(96);
-    let height = area.height.saturating_sub(4).min(22);
-    let rect = Rect {
-        x: area.x + (area.width.saturating_sub(width)) / 2,
-        y: area.y + (area.height.saturating_sub(height)) / 2,
-        width,
-        height,
-    };
-    frame.render_widget(Clear, rect);
-    let name = app
-        .model
-        .project(shown.project)
-        .map_or("?", |found| found.name.as_str());
-    let block = Block::default()
-        .title(format!(" Issues of {name} "))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded);
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
-    let [list_area, footer] =
-        Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).areas(inner);
-    match (shown.issues, shown.error) {
-        (_, Some(error)) => frame.render_widget(
-            Paragraph::new(error.clone())
-                .wrap(Wrap { trim: false })
-                .red(),
-            list_area,
-        ),
-        (None, None) => frame.render_widget(Paragraph::new("Loading…").dim(), list_area),
-        (Some(list), None) if list.is_empty() => {
-            frame.render_widget(Paragraph::new("No open issues.").dim(), list_area);
-        }
-        (Some(list), None) => {
-            let items: Vec<ListItem<'_>> = list
-                .iter()
-                .map(|issue| {
-                    let mut spans = vec![
-                        Span::from(format!("#{:<5} ", issue.number)).dim(),
-                        Span::raw(issue.title.clone()),
-                    ];
-                    if !issue.labels.is_empty() {
-                        spans.push(Span::from(format!("  {}", issue.labels.join(", "))).cyan());
-                    }
-                    ListItem::new(Line::from(spans))
-                })
-                .collect();
-            let mut state = ListState::default().with_selected(Some(shown.selected));
-            frame.render_stateful_widget(
-                List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
-                list_area,
-                &mut state,
-            );
-        }
-    }
-    let choice = |option: HarnessChoice| {
-        let label = format!(" {} ", option.label());
-        if option == shown.harness {
-            Span::from(label).reversed()
-        } else {
-            Span::from(label).dim()
-        }
-    };
-    frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(vec![
-                Span::raw("Run  "),
-                choice(HarnessChoice::Claude),
-                Span::raw(" "),
-                choice(HarnessChoice::Shell),
-            ]),
-            Line::from("↑↓ choose  ⏎ start work  ⇥ switch  esc close").dim(),
-        ]),
-        footer,
-    );
-}
-
-fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
-    if let Dialog::Issues {
-        project,
-        issues,
-        selected,
-        harness,
-        error,
-    } = dialog
-    {
-        let shown = IssuesView {
-            project: *project,
-            issues: issues.as_ref(),
-            selected: *selected,
-            harness: *harness,
-            error: error.as_ref(),
-        };
-        draw_issues(frame, app, area, shown);
-        return;
-    }
-    let width = area.width.saturating_sub(4).min(72);
-    let (title, lines, input) = match dialog {
-        Dialog::AddProject { path } => (
-            " Add a project ",
-            vec![Line::from("Path to a git repository:")],
-            Some(path),
-        ),
-        Dialog::NewWorktree { branch, .. } => (
-            " New worktree ",
-            vec![Line::from(
-                "Branch (checked out if it exists; empty for muster/<random>):",
-            )],
-            Some(branch),
-        ),
-        Dialog::NewSession {
-            workspace,
-            harness,
-            prompt,
-        } => {
-            let place = app.model.branch(*workspace).unwrap_or("?");
-            let choice = |option: HarnessChoice| {
-                let label = format!(" {} ", option.label());
-                if option == *harness {
-                    Span::from(label).reversed()
-                } else {
-                    Span::from(label).dim()
-                }
-            };
-            let mut lines = vec![
-                Line::from(format!("In {place}")).dim(),
-                Line::from(vec![
-                    Span::raw("Run  "),
-                    choice(HarnessChoice::Claude),
-                    Span::raw(" "),
-                    choice(HarnessChoice::Shell),
-                    Span::from("   ⇥ switch").dim(),
-                ]),
-            ];
-            match harness {
-                HarnessChoice::Claude => {
-                    lines.push(Line::from("First prompt (optional):"));
-                    (" New session ", lines, Some(prompt))
-                }
-                HarnessChoice::Shell => (" New session ", lines, None),
-            }
-        }
-        Dialog::Confirm { question, .. } => (
-            " Confirm ",
-            vec![
-                Line::from(question.clone()),
-                Line::from(""),
-                Line::from("y yes   n no").dim(),
-            ],
-            None,
-        ),
-        Dialog::Issues { .. } => return,
-    };
-    let inner_width = width.saturating_sub(2).max(1);
-    // Text wraps rather than being cut off; an input takes its line, a
-    // blank one and its hint.
-    let text_height: u16 = lines
-        .iter()
-        .map(|line| wrapped_height(line.width(), inner_width))
-        .sum();
-    let height = 2 + text_height + if input.is_some() { 3 } else { 0 };
-    let rect = Rect {
-        x: area.x + (area.width.saturating_sub(width)) / 2,
-        y: area.y + (area.height.saturating_sub(height)) / 2,
-        width,
-        height: height.min(area.height),
-    };
-    frame.render_widget(Clear, rect);
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded);
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
-    let [text_area, input_area] =
-        Layout::vertical([Constraint::Length(text_height), Constraint::Min(0)]).areas(inner);
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), text_area);
-    if let Some(input) = input {
-        let (shown, column) = input_window(input.text(), input.before_cursor(), inner_width);
-        frame.render_widget(
-            Paragraph::new(vec![
-                Line::from(shown).bold(),
-                Line::from(""),
-                Line::from("⏎ confirm   esc cancel").dim(),
-            ]),
-            input_area,
-        );
-        if input_area.height > 0 {
-            frame.set_cursor_position(Position {
-                x: input_area.x + column,
-                y: input_area.y,
-            });
-        }
-    }
-}
-
-/// How many lines text `width` columns wide takes when wrapped at `columns`.
-fn wrapped_height(width: usize, columns: u16) -> u16 {
-    let lines = width.div_ceil(usize::from(columns.max(1))).max(1);
-    u16::try_from(lines).unwrap_or(u16::MAX)
-}
-
-/// The part of an input's `text` that fits in `columns`, scrolled so the
-/// cursor (after `before_cursor`) stays in view, and the cursor's column
-/// within it.
-fn input_window(text: &str, before_cursor: &str, columns: u16) -> (String, u16) {
-    let columns = usize::from(columns.max(1));
-    let cursor = before_cursor.chars().count();
-    // The cursor sits after the last character shown, so keep a column for it.
-    let start = (cursor + 1).saturating_sub(columns);
-    let shown: String = text.chars().skip(start).take(columns).collect();
-    (shown, u16::try_from(cursor - start).unwrap_or(0))
-}
-
-fn panel<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> {
+pub(super) fn panel<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)

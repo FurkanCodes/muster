@@ -10,8 +10,8 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 use super::{Action, App, Dialog, HarnessChoice, Link, Mode, View};
-use crate::model::Row;
 use crate::model::tests::{project, session, worktree};
+use crate::model::{Need, Row};
 
 pub(super) const SIZE: TermSize = TermSize {
     cols: 100,
@@ -424,8 +424,11 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
     }
     press(&mut world.app, KeyCode::Tab);
     assert_eq!(world.app.view, View::NeedsYou);
-    assert_eq!(world.app.needs_list, [other.id, world.session.id]);
-    assert_eq!(world.app.needs_selected, Some(other.id));
+    assert_eq!(
+        world.app.needs_list,
+        [Need::Session(other.id), Need::Session(world.session.id)]
+    );
+    assert_eq!(world.app.needs_selected, Some(Need::Session(other.id)));
 
     // Looking at it clears it, yet it stays until the selection moves on.
     world.app.on_frame(ServerFrame::Delta(Delta::SessionStatus {
@@ -433,9 +436,12 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
         status: SessionStatus::Running,
         unseen: false,
     }));
-    assert_eq!(world.app.needs_list, [other.id, world.session.id]);
+    assert_eq!(
+        world.app.needs_list,
+        [Need::Session(other.id), Need::Session(world.session.id)]
+    );
     press(&mut world.app, KeyCode::Down);
-    assert_eq!(world.app.needs_list, [world.session.id]);
+    assert_eq!(world.app.needs_list, [Need::Session(world.session.id)]);
     assert!(render(&world.app).contains("1 need you"));
 }
 
