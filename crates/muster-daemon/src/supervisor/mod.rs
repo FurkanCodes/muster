@@ -238,9 +238,11 @@ impl Supervisor {
                     size,
                 } => self.fetch_issue(project, number, harness, size, reply),
                 command => {
+                    let name = command_name(&command);
                     let outcome = self.handle(command).await;
                     if let Err(error) = &outcome {
-                        tracing::debug!(%error, "command refused");
+                        // Logged so a refusal can be understood afterwards.
+                        tracing::info!(command = name, %error, "command refused");
                     }
                     let _ = reply.send(outcome);
                 }
@@ -428,6 +430,20 @@ impl Supervisor {
     fn broadcast(&self, delta: Delta) {
         // Nobody listening is fine; the change is already stored.
         let _ = self.deltas.send(delta);
+    }
+}
+
+/// A command's name for the log, without its contents (a prompt can be long).
+fn command_name(command: &Command) -> &'static str {
+    match command {
+        Command::Ping => "ping",
+        Command::AddProject { .. } => "add project",
+        Command::CreateWorktree { .. } => "create worktree",
+        Command::RemoveWorktree { .. } => "remove worktree",
+        Command::StartSession { .. } => "start session",
+        Command::StopSession { .. } => "stop session",
+        Command::ListIssues { .. } => "list issues",
+        Command::StartFromIssue { .. } => "start from issue",
     }
 }
 

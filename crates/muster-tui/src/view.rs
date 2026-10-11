@@ -32,7 +32,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     let [top, body, bottom] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
-        Constraint::Length(1),
+        Constraint::Length(bottom_height(app, area.width)),
     ])
     .areas(area);
     draw_top_bar(frame, app, top);
@@ -84,21 +84,43 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     frame.render_widget(Line::from(spans), area);
 }
 
-fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let line = match &app.note {
-        Some(note) if note.error => Line::from(format!(" {}", note.text)).red(),
-        Some(note) => Line::from(format!(" {}", note.text)).green(),
-        None => {
-            let hints = match app.view {
-                View::Sessions => {
-                    "↑↓ move  ⏎ open  a project  w worktree  n session  i issues  s stop  x remove  ⇥ needs you  q quit"
-                }
-                View::NeedsYou => "↑↓ move  ⏎ open  n session  s stop  ⇥ all sessions  q quit",
-            };
-            Line::from(format!(" {hints}")).dim()
-        }
+/// The most lines a message gets under the list.
+const MAX_NOTE_LINES: u16 = 3;
+
+/// A message on one line: the daemon's messages can carry line breaks.
+fn note_text(text: &str) -> String {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    format!(" {}", lines.join(" · "))
+}
+
+/// How many lines the bottom bar needs: hints take one, a long message up
+/// to three, so the reason in an error is not cut off.
+fn bottom_height(app: &App, width: u16) -> u16 {
+    let Some(note) = &app.note else {
+        return 1;
     };
-    frame.render_widget(line, area);
+    let length = u16::try_from(note_text(&note.text).chars().count()).unwrap_or(u16::MAX);
+    length.div_ceil(width.max(1)).clamp(1, MAX_NOTE_LINES)
+}
+
+fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    if let Some(note) = &app.note {
+        let text = Line::from(note_text(&note.text));
+        let text = if note.error { text.red() } else { text.green() };
+        frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), area);
+        return;
+    }
+    let hints = match app.view {
+        View::Sessions => {
+            "↑↓ move  ⏎ open  a project  w worktree  n session  i issues  s stop  x remove  ⇥ needs you  q quit"
+        }
+        View::NeedsYou => "↑↓ move  ⏎ open  n session  s stop  ⇥ all sessions  q quit",
+    };
+    frame.render_widget(Line::from(format!(" {hints}")).dim(), area);
 }
 
 fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
