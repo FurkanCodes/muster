@@ -1,12 +1,14 @@
 //! The socket server: one reader loop and one writer task per connection, so
 //! replies and pushed frames never interleave mid-frame (`ARCHITECTURE.md` §6).
 
+use std::collections::HashMap;
 use std::future::Future;
 
 use muster_client::{FramedRead, FramedWrite, TransportError};
+use muster_core::SessionId;
 use muster_core::protocol::{
-    ClientFrame, ErrorBody, ErrorCode, Incompatible, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
-    ServerFrame, Welcome, negotiate,
+    ClientFrame, DetachReason, ErrorBody, ErrorCode, Incompatible, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION, ServerFrame, Welcome, negotiate,
 };
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
@@ -14,7 +16,9 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::pty::PtyHandle;
 use crate::supervisor::SupervisorHandle;
+use crate::terminal::forward_output;
 
 /// Frames queued for one client before the sender waits. A subscriber that
 /// stops reading makes its delta pump wait, falls behind the broadcast, and
@@ -51,6 +55,8 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle) {
         outgoing,
         supervisor,
         pump: None,
+        terminals: HashMap::new(),
+        forwarders: HashMap::new(),
     };
     if let Err(error) = session.run().await {
         // The writer sends this last, then closes.
@@ -58,6 +64,9 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle) {
     }
     if let Some(pump) = session.pump.take() {
         pump.abort();
+    }
+    for (_, forwarder) in session.forwarders.drain() {
+        forwarder.abort();
     }
     drop(session);
     let _ = writer.await;
@@ -81,6 +90,10 @@ struct Connection {
     outgoing: mpsc::Sender<ServerFrame>,
     supervisor: SupervisorHandle,
     pump: Option<JoinHandle<()>>,
+    /// Terminals this client has used, so keystrokes skip the Supervisor.
+    terminals: HashMap<SessionId, PtyHandle>,
+    /// One output stream per attached session.
+    forwarders: HashMap<SessionId, JoinHandle<()>>,
 }
 
 impl Connection {
@@ -112,9 +125,75 @@ impl Connection {
                         let _ = outgoing.send(ServerFrame::Reply { req_id, outcome }).await;
                     });
                 }
+                ClientFrame::Attach { session, from_seq } => self.attach(session, from_seq).await,
+                ClientFrame::Detach { session } => {
+                    if let Some(forwarder) = self.forwarders.remove(&session) {
+                        forwarder.abort();
+                    }
+                }
+                ClientFrame::Input { session, data } => {
+                    if let Some(pty) = self.terminal(session).await
+                        && !pty.input(data).await
+                    {
+                        self.forget(session).await;
+                    }
+                }
+                ClientFrame::Resize { session, size } => {
+                    if let Some(pty) = self.terminal(session).await
+                        && !pty.resize(size).await
+                    {
+                        self.forget(session).await;
+                    }
+                }
             }
         }
         Ok(())
+    }
+
+    async fn attach(&mut self, session: SessionId, from_seq: Option<u64>) {
+        if let Some(old) = self.forwarders.remove(&session) {
+            old.abort();
+        }
+        let Some(pty) = self.supervisor.terminal(session, true).await else {
+            self.detached(session).await;
+            return;
+        };
+        self.terminals.insert(session, pty.clone());
+        let forwarder = forward_output(session, pty, from_seq, self.outgoing.clone());
+        self.forwarders.insert(session, tokio::spawn(forwarder));
+    }
+
+    /// The session's terminal, asking the Supervisor only the first time.
+    async fn terminal(&mut self, session: SessionId) -> Option<PtyHandle> {
+        if let Some(pty) = self.terminals.get(&session) {
+            return Some(pty.clone());
+        }
+        match self.supervisor.terminal(session, false).await {
+            Some(pty) => {
+                self.terminals.insert(session, pty.clone());
+                Some(pty)
+            }
+            None => {
+                self.detached(session).await;
+                None
+            }
+        }
+    }
+
+    /// The terminal was released: tell the client and stop using it.
+    async fn forget(&mut self, session: SessionId) {
+        self.terminals.remove(&session);
+        self.detached(session).await;
+    }
+
+    async fn detached(&self, session: SessionId) {
+        let _ = self
+            .outgoing
+            .send(ServerFrame::Detached {
+                session,
+                reason: DetachReason::NotRunning,
+            })
+            .await;
     }
 
     /// Handles the hello. `false` means the client was turned away politely.

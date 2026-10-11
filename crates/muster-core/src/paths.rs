@@ -1,7 +1,8 @@
 //! Where the daemon keeps its socket and its data.
 //!
 //! Resolution is a pure function of the environment so tests can point every
-//! daemon at its own directories (`MUSTER_RUNTIME_DIR`, `MUSTER_DATA_DIR`).
+//! daemon at its own directories (`MUSTER_RUNTIME_DIR`, `MUSTER_DATA_DIR`,
+//! `MUSTER_WORKTREES_DIR`).
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -17,6 +18,9 @@ pub struct Paths {
     pub runtime_dir: PathBuf,
     /// Lasting state: the database.
     pub data_dir: PathBuf,
+    /// Where new git worktrees go. Kept out of the data directory because on
+    /// macOS that path contains a space, which some build scripts mishandle.
+    pub worktrees_dir: PathBuf,
 }
 
 /// Why the directories could not be worked out.
@@ -36,7 +40,9 @@ impl Paths {
     ///
     /// - runtime: `MUSTER_RUNTIME_DIR`, else `$XDG_RUNTIME_DIR/muster`, else
     ///   `${TMPDIR:-/tmp}/muster-<uid>`;
-    /// - data: `MUSTER_DATA_DIR`, else the platform's data directory.
+    /// - data: `MUSTER_DATA_DIR`, else the platform's data directory;
+    /// - worktrees: `MUSTER_WORKTREES_DIR`, else `$HOME/.muster/worktrees`,
+    ///   else a `worktrees` directory in the data directory.
     pub fn resolve(env: impl Fn(&str) -> Option<OsString>, uid: u32) -> Result<Self, PathsError> {
         let var = |key: &str| {
             env(key)
@@ -57,9 +63,14 @@ impl Paths {
             None => default_data_dir(&var)?,
         };
 
+        let worktrees_dir = var("MUSTER_WORKTREES_DIR")
+            .or_else(|| var("HOME").map(|home| home.join(".muster/worktrees")))
+            .unwrap_or_else(|| data_dir.join("worktrees"));
+
         let paths = Self {
             runtime_dir,
             data_dir,
+            worktrees_dir,
         };
         let socket = paths.socket();
         if socket.as_os_str().len() > MAX_SOCKET_PATH_LEN {
@@ -122,6 +133,18 @@ mod tests {
         assert_eq!(paths.socket(), PathBuf::from("/r/daemon.sock"));
         assert_eq!(paths.lock_file(), PathBuf::from("/r/daemon.lock"));
         assert_eq!(paths.database(), PathBuf::from("/d/muster.db"));
+        assert_eq!(
+            paths.worktrees_dir,
+            PathBuf::from("/home/u/.muster/worktrees")
+        );
+    }
+
+    #[test]
+    fn worktrees_follow_their_variable_then_home_then_data() {
+        let set = resolve(&[("MUSTER_WORKTREES_DIR", "/w"), ("HOME", "/h")]).unwrap();
+        assert_eq!(set.worktrees_dir, PathBuf::from("/w"));
+        let no_home = resolve(&[("MUSTER_DATA_DIR", "/d")]).unwrap();
+        assert_eq!(no_home.worktrees_dir, PathBuf::from("/d/worktrees"));
     }
 
     #[test]

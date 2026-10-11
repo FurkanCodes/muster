@@ -26,9 +26,14 @@ impl Clock for FixedClock {
 
 async fn start(delta_capacity: usize) -> SupervisorHandle {
     let store = StoreHandle::spawn(Store::open_in_memory().unwrap()).unwrap();
-    supervisor::spawn(store, Arc::new(FixedClock), delta_capacity)
-        .await
-        .unwrap()
+    supervisor::spawn(supervisor::Settings {
+        store,
+        clock: Arc::new(FixedClock),
+        worktrees_dir: std::env::temp_dir().join("muster-unit-worktrees"),
+        delta_capacity,
+    })
+    .await
+    .unwrap()
 }
 
 /// Makes a directory that looks like a git repository.

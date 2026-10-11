@@ -54,7 +54,7 @@ Main dependencies: tokio, portable-pty, vt100 + tui-term, bollard (Docker API), 
 - **Lifecycle.** The TUI auto-starts the daemon (`setsid`, no controlling terminal) when the socket does not answer. `muster daemon --foreground` runs it attached for development. Runtime and data directories come from `MUSTER_RUNTIME_DIR` and `MUSTER_DATA_DIR` when set, so every test gets its own.
 - **Restart** (`PRD-09`):
   - *Containers* outlive the daemon (`ARC-04`). On boot the daemon lists containers labelled `muster.workspace=<id>`, matches them with SQLite, and re-attaches each stream from the last stored offset. A missing container moves its run to *Needs you* with that reason.
-  - *Worktree sessions* die with the daemon, because it holds their PTYs. On boot each one is relaunched with the harness's resume (`claude --resume <session-id>`) in the same worktree. A resume that exits within 10 s falls back to a fresh session with a note, as Nebula does.
+  - *Worktree sessions* die with the daemon, because it holds their PTYs. On boot each one is relaunched with the harness's resume (`claude --resume <session-id>`) in the same worktree. A resume that exits within 10 s falls back to a fresh session with a note, as Nebula does. Until resume exists (M1 step 7), and for harnesses without one such as `shell`, they are recorded as exited with an error and marked unseen.
 
 ## 5. Sessions
 
@@ -62,9 +62,11 @@ Main dependencies: tokio, portable-pty, vt100 + tui-term, bollard (Docker API), 
 
 - **PTY host:** portable-pty spawns the harness in the worktree as the user, with the user's environment minus variables of any parent agent session. One reader thread per PTY feeds a bounded channel (backpressure); a pump batches output (up to 8 KiB or 5 ms, sent at once after a quiet spell so typed echo is never delayed) into a 1 MiB ring numbered by byte offset and broadcasts it.
 - **Attach:** `Attach { session, from_seq }` replays the ring and continues live; a client that falls off the ring gets the whole ring and resets its parser. The forwarder rebinds when a session is relaunched under the same id.
-- **Stop:** SIGHUP, then SIGKILL to every process group under the child after 3 s. A natural exit is told apart from a deliberate stop.
-- **No inherited descriptors:** an agent must not inherit the daemon's sockets or files. macOS cannot create a socket close-on-exec in one step, so a spawn racing a `bind` can leak a listening socket into the child, which then keeps a dead socket accepting connections (seen in the e2e tests). The child closes every descriptor above stderr before `exec`.
-- **Worktrees:** created with `git worktree add` under Muster's data directory (configurable), on a branch the user names or `muster/<slug>`. The worktree's metadata in the repo's `.git` is git's own mechanism; Muster writes nothing else into the user's repository (`ARC-05`).
+- **Stop:** SIGHUP to the child's process group, then SIGKILL to it after 3 s. A natural exit is told apart from a deliberate stop. Processes that moved to another process group are not reached yet.
+- **Exit:** announced only once all output is in the ring, waiting at most 2 s after the process exits, since a background job can hold the terminal open. The terminal's output stays readable after the exit until its worktree is removed.
+- **No inherited descriptors:** an agent must not inherit the daemon's sockets or files. macOS cannot create a socket close-on-exec in one step, so a spawn racing a `bind` can leak a listening socket into the child, which then keeps a dead socket accepting connections (seen in the e2e tests). portable-pty closes every descriptor above stderr in the child before `exec`; a test asks `lsof` what an idle shell holds.
+- **Worktrees:** created with `git worktree add` under `~/.muster/worktrees/<repository>/<branch>` (`MUSTER_WORKTREES_DIR` overrides it), on the branch the user names — checked out if it exists, created from the current commit if not — or on `muster/<six random characters>`. They stay out of the data directory because on macOS its path contains a space, which some build scripts mishandle. Removing a worktree deletes its directory and keeps its branch; uncommitted changes need `force`, and running sessions block it. The worktree's metadata in the repo's `.git` is git's own mechanism; Muster writes nothing else into the user's repository (`ARC-05`).
+- **Git:** run without a shell, with a 2-minute limit and without inherited `GIT_DIR`-style variables. It runs while the Supervisor waits, so a slow checkout delays other commands and status updates, though never keystrokes; moving it off the Supervisor is a later step if it hurts.
 
 ### Hands-on in a container (M2)
 
@@ -189,6 +191,8 @@ Following Nebula's strategy, which is the best part of its codebase.
 - **ARC-11** A session's identity comes from its own secret token, never from an id the caller supplies.
 
 ## 15. Milestone 1 plan — Cockpit
+
+Steps 1–6 are done; 6 was built before 5 so sessions run in real worktrees from the start. A built-in `shell` harness (the person's `$SHELL`) stands in until step 7 adds Claude Code.
 
 0. **Container spike, alongside the rest:** run `claude -p --output-format stream-json` in a container with `CLAUDE_CODE_OAUTH_TOKEN`; record fixtures for a success, a failure and a long tool-heavy turn; measure memory. Settles the headless question before M2.
 1. Workspace, CI gates, core types.

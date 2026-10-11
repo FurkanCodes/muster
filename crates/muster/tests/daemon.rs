@@ -246,7 +246,10 @@ fn the_command_line_reports_status_and_adds_projects() {
     let stdout = String::from_utf8_lossy(&status.stdout);
     assert!(status.status.success());
     assert!(stdout.contains("The daemon is running"), "{stdout}");
-    assert!(stdout.contains("1 projects"), "{stdout}");
+    assert!(
+        stdout.contains("1 project, 0 worktrees, 0 sessions"),
+        "{stdout}"
+    );
     assert!(stdout.contains("App"), "{stdout}");
 
     let again = sandbox.run(&["project", "add", root.to_str().unwrap()]);

@@ -11,7 +11,7 @@ mod tests;
 use std::path::Path;
 
 use muster_core::protocol::Snapshot;
-use muster_core::{Project, Session, SessionId, SessionStatus, Timestamp, Workspace};
+use muster_core::{Project, Session, SessionId, SessionStatus, Timestamp, Workspace, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub use handle::{StoreClosed, StoreHandle};
@@ -114,6 +114,17 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    /// Marks a workspace removed. Its sessions and their history are kept.
+    pub fn remove_workspace(&mut self, workspace: WorkspaceId, at: Timestamp) -> Result<()> {
+        match self.conn.execute(
+            "UPDATE workspaces SET removed_at = ?2 WHERE id = ?1 AND removed_at IS NULL",
+            params![id_text(workspace), at.as_millis()],
+        )? {
+            0 => Err(StoreError::NotFound(workspace.to_string())),
+            _ => Ok(()),
+        }
     }
 
     pub fn insert_session(&mut self, session: &Session) -> Result<()> {

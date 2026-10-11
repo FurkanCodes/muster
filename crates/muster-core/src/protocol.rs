@@ -6,6 +6,9 @@
 //! - a new variant is sent only to a peer whose agreed version knows it;
 //! - removing or renaming anything also raises [`MIN_PROTOCOL_VERSION`].
 //!
+//! Protocol 1 has not been released; until the first release it changes
+//! without a version bump.
+//!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
 
@@ -14,7 +17,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::entities::{Project, Session, Workspace};
-use crate::ids::{ProjectId, SessionId};
+use crate::ids::{ProjectId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
@@ -79,6 +82,23 @@ pub enum ClientFrame {
     /// Ask the daemon to do something; answered by a [`ServerFrame::Reply`]
     /// with the same `req_id`.
     Command { req_id: u64, command: Command },
+    /// Stream a session's terminal: a [`ServerFrame::Replay`] from `from_seq`
+    /// (or everything the daemon still holds), then [`ServerFrame::Output`]
+    /// as it arrives. Attaching counts as looking at the session.
+    Attach {
+        session: SessionId,
+        from_seq: Option<u64>,
+    },
+    /// Stop streaming a session's terminal.
+    Detach { session: SessionId },
+    /// Keystrokes or pasted text for a session's terminal.
+    Input {
+        session: SessionId,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    /// The client's view of a session's terminal changed size.
+    Resize { session: SessionId, size: TermSize },
 }
 
 /// Everything the daemon sends.
@@ -97,6 +117,52 @@ pub enum ServerFrame {
     },
     /// A problem with the connection itself. The daemon closes it after this.
     Error(ErrorBody),
+    /// The start of an attached terminal stream: the bytes from `seq` on.
+    /// With `reset`, the client must clear its screen first, because the
+    /// bytes it last saw are no longer held.
+    Replay {
+        session: SessionId,
+        seq: u64,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+        reset: bool,
+    },
+    /// Terminal output that follows the replay; `seq` is the position of its
+    /// first byte in everything the session has written.
+    Output {
+        session: SessionId,
+        seq: u64,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    /// A terminal stream ended.
+    Detached {
+        session: SessionId,
+        reason: DetachReason,
+    },
+}
+
+/// Why a terminal stream ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DetachReason {
+    /// The session's process exited; everything it wrote has been sent.
+    Exited,
+    /// The session is unknown, or its terminal is no longer held.
+    NotRunning,
+}
+
+/// A terminal's size in character cells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TermSize {
+    pub cols: u16,
+    pub rows: u16,
+}
+
+impl Default for TermSize {
+    fn default() -> Self {
+        Self { cols: 80, rows: 24 }
+    }
 }
 
 /// Something a client asks the daemon to do.
@@ -110,13 +176,44 @@ pub enum Command {
         /// Defaults to the repository's directory name.
         name: Option<String>,
     },
+    /// Create a git worktree for a project: on `branch` if it exists,
+    /// otherwise on a new branch of that name (default `muster/<random>`)
+    /// from the project's current commit.
+    CreateWorktree {
+        project: ProjectId,
+        branch: Option<String>,
+    },
+    /// Remove a worktree's directory. Its branch is kept. A worktree with
+    /// uncommitted changes is removed only with `force`; one with running
+    /// sessions never is.
+    RemoveWorktree { workspace: WorkspaceId, force: bool },
+    /// Start a session in a workspace.
+    StartSession {
+        workspace: WorkspaceId,
+        /// A harness id, such as `shell`.
+        harness: String,
+        title: Option<String>,
+        size: TermSize,
+    },
+    /// Stop a running session.
+    StopSession { session: SessionId },
 }
 
 /// A successful answer to a [`Command`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Reply {
     Pong,
-    ProjectAdded { id: ProjectId },
+    ProjectAdded {
+        id: ProjectId,
+    },
+    WorktreeCreated {
+        id: WorkspaceId,
+    },
+    SessionStarted {
+        id: SessionId,
+    },
+    /// The command was carried out and has nothing to report.
+    Done,
 }
 
 /// The daemon's whole state, as a client needs it.
@@ -132,6 +229,9 @@ pub struct Snapshot {
 pub enum Delta {
     ProjectUpserted(Project),
     WorkspaceUpserted(Workspace),
+    WorkspaceRemoved {
+        id: WorkspaceId,
+    },
     SessionUpserted(Session),
     SessionStatus {
         session: SessionId,

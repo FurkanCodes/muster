@@ -4,8 +4,10 @@ use std::collections::VecDeque;
 use std::io;
 use std::path::Path;
 
+use muster_core::SessionId;
 use muster_core::protocol::{
-    ClientFrame, Command, ErrorBody, Hello, Incompatible, Reply, ServerFrame, Snapshot, Welcome,
+    ClientFrame, Command, ErrorBody, Hello, Incompatible, Reply, ServerFrame, Snapshot, TermSize,
+    Welcome,
 };
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
@@ -33,7 +35,8 @@ pub enum ClientError {
 }
 
 /// An open, greeted connection. Requests are answered in turn; frames the
-/// daemon pushes meanwhile wait for [`next_event`](Self::next_event).
+/// daemon pushes meanwhile (state changes and terminal output) wait for
+/// [`next_event`](Self::next_event).
 #[derive(Debug)]
 pub struct Connection {
     reader: FramedRead<OwnedReadHalf>,
@@ -113,8 +116,40 @@ impl Connection {
         }
     }
 
-    /// The next snapshot or delta the daemon pushed, or `None` once the
-    /// daemon has closed the connection.
+    /// Streams a session's terminal from `from_seq` (or everything the
+    /// daemon holds): a `Replay`, then `Output` frames, then `Detached`, all
+    /// through [`next_event`](Self::next_event).
+    pub async fn attach(
+        &mut self,
+        session: SessionId,
+        from_seq: Option<u64>,
+    ) -> Result<(), ClientError> {
+        self.send(ClientFrame::Attach { session, from_seq }).await
+    }
+
+    pub async fn detach(&mut self, session: SessionId) -> Result<(), ClientError> {
+        self.send(ClientFrame::Detach { session }).await
+    }
+
+    /// Types into a session's terminal.
+    pub async fn input(&mut self, session: SessionId, data: &[u8]) -> Result<(), ClientError> {
+        self.send(ClientFrame::Input {
+            session,
+            data: data.to_vec(),
+        })
+        .await
+    }
+
+    pub async fn resize(&mut self, session: SessionId, size: TermSize) -> Result<(), ClientError> {
+        self.send(ClientFrame::Resize { session, size }).await
+    }
+
+    async fn send(&mut self, frame: ClientFrame) -> Result<(), ClientError> {
+        Ok(self.writer.send(&frame).await?)
+    }
+
+    /// The next frame the daemon pushed (a snapshot, a delta, or terminal
+    /// output), or `None` once the daemon has closed the connection.
     pub async fn next_event(&mut self) -> Result<Option<ServerFrame>, ClientError> {
         if let Some(frame) = self.pending.pop_front() {
             return Ok(Some(frame));
@@ -136,7 +171,11 @@ impl Connection {
     /// Keeps a pushed frame for `next_event`.
     fn hold(&mut self, frame: ServerFrame) -> Result<(), ClientError> {
         match frame {
-            ServerFrame::Snapshot(_) | ServerFrame::Delta(_) => {
+            ServerFrame::Snapshot(_)
+            | ServerFrame::Delta(_)
+            | ServerFrame::Replay { .. }
+            | ServerFrame::Output { .. }
+            | ServerFrame::Detached { .. } => {
                 self.pending.push_back(frame);
                 Ok(())
             }

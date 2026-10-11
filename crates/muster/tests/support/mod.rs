@@ -1,5 +1,8 @@
 //! Runs the real `muster` binary as a daemon in its own directories.
 
+// Each test file compiles its own copy of this module and uses a different part.
+#![allow(dead_code)]
+
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -35,13 +38,18 @@ impl Sandbox {
         Paths {
             runtime_dir: self.dir.path().join("run"),
             data_dir: self.dir.path().join("data"),
+            worktrees_dir: self.dir.path().join("worktrees"),
         }
     }
 
-    /// A directory that looks like a git repository.
+    /// A git repository with one commit on `main`.
     pub(crate) fn repository(&self, name: &str) -> PathBuf {
         let root = self.dir.path().join("repos").join(name);
-        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "--quiet", "--initial-branch", "main"]);
+        std::fs::write(root.join("README.md"), "test\n").unwrap();
+        git(&root, &["add", "README.md"]);
+        git(&root, &["commit", "--quiet", "--message", "first"]);
         root.canonicalize().unwrap()
     }
 
@@ -52,7 +60,16 @@ impl Sandbox {
         command
             .env("MUSTER_RUNTIME_DIR", &paths.runtime_dir)
             .env("MUSTER_DATA_DIR", &paths.data_dir)
-            .env("MUSTER_LOG", "debug");
+            .env("MUSTER_WORKTREES_DIR", &paths.worktrees_dir)
+            .env("MUSTER_LOG", "debug")
+            // Sessions run a plain, predictable shell.
+            .env("SHELL", "/bin/sh")
+            // As if the daemon were started from inside an agent session,
+            // which sessions must not inherit.
+            .env("CLAUDECODE", "1");
+        for (key, value) in GIT_ENV {
+            command.env(key, value);
+        }
         command
     }
 
@@ -202,4 +219,87 @@ pub(crate) fn answers_hello(socket: &Path) -> bool {
             Err(_) => return false,
         }
     }
+}
+
+/// Keeps git away from the user's own configuration, hooks and signing.
+const GIT_ENV: [(&str, &str); 6] = [
+    ("GIT_CONFIG_GLOBAL", "/dev/null"),
+    ("GIT_CONFIG_NOSYSTEM", "1"),
+    ("GIT_AUTHOR_NAME", "Test"),
+    ("GIT_AUTHOR_EMAIL", "test@example.com"),
+    ("GIT_COMMITTER_NAME", "Test"),
+    ("GIT_COMMITTER_EMAIL", "test@example.com"),
+];
+
+/// Runs git in `dir` and returns what it printed; panics if it fails.
+pub(crate) fn git(dir: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .envs(GIT_ENV)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+/// Waits for a pushed frame that `wanted` accepts, skipping the rest.
+pub(crate) async fn expect_event<T>(
+    connection: &mut Connection,
+    mut wanted: impl FnMut(&ServerFrame) -> Option<T>,
+) -> T {
+    let found = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match connection.next_event().await.unwrap() {
+                Some(frame) => {
+                    if let Some(found) = wanted(&frame) {
+                        return found;
+                    }
+                }
+                None => panic!("the daemon closed the connection"),
+            }
+        }
+    })
+    .await;
+    found.expect("the expected frame arrived in time")
+}
+
+/// Collects a session's terminal output until it contains `marker`, and
+/// returns it with the sequence number of the next byte.
+pub(crate) async fn read_terminal(
+    connection: &mut Connection,
+    session: muster_core::SessionId,
+    marker: &str,
+) -> (String, u64) {
+    let mut text = String::new();
+    let mut next = 0;
+    expect_event(connection, |frame| {
+        match frame {
+            ServerFrame::Replay {
+                session: s,
+                seq,
+                data,
+                ..
+            }
+            | ServerFrame::Output {
+                session: s,
+                seq,
+                data,
+            } if *s == session => {
+                text.push_str(&String::from_utf8_lossy(data));
+                next = seq + data.len() as u64;
+            }
+            ServerFrame::Detached { session: s, reason } if *s == session => {
+                panic!("detached ({reason:?}) before {marker:?} appeared in {text:?}")
+            }
+            _ => {}
+        }
+        text.contains(marker).then_some(())
+    })
+    .await;
+    (text, next)
 }

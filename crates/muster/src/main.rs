@@ -1,13 +1,13 @@
 //! The `muster` command. With no arguments it will open the terminal UI; its
 //! subcommands run the daemon and drive it from scripts.
 
+mod commands;
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use muster_client::{ClientError, Connection};
 use muster_core::Paths;
-use muster_core::protocol::{Command, Reply};
 use muster_daemon::DaemonConfig;
 
 #[derive(Debug, Parser)]
@@ -29,6 +29,12 @@ enum Commands {
     /// Manage the repositories Muster tracks.
     #[command(subcommand)]
     Project(ProjectCommand),
+    /// Manage git worktrees.
+    #[command(subcommand)]
+    Worktree(WorktreeCommand),
+    /// Start and stop sessions.
+    #[command(subcommand)]
+    Session(SessionCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -42,7 +48,39 @@ enum ProjectCommand {
     },
 }
 
-const CLIENT: &str = concat!("muster ", env!("CARGO_PKG_VERSION"));
+#[derive(Debug, Subcommand)]
+enum WorktreeCommand {
+    /// Create a worktree for PROJECT (its name, id or path).
+    Add {
+        project: String,
+        /// The branch to check out, created from the project's current
+        /// commit if it does not exist. Defaults to `muster/<random>`.
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// Remove WORKTREE (its id or branch). Its branch is kept.
+    Remove {
+        worktree: String,
+        /// Remove it even if it has uncommitted changes, discarding them.
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum SessionCommand {
+    /// Start a session in WORKTREE (its id or branch).
+    Start {
+        worktree: String,
+        /// What to run.
+        #[arg(long, default_value = "shell")]
+        harness: String,
+        #[arg(long)]
+        title: Option<String>,
+    },
+    /// Stop SESSION (its id).
+    Stop { session: String },
+}
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -55,18 +93,37 @@ fn main() -> ExitCode {
         Err(error) => return fail(error),
     };
     runtime.block_on(async {
-        match cli.command {
-            Some(Commands::Daemon) => daemon(paths).await,
-            Some(Commands::Status) => status(paths).await,
+        let socket = paths.socket();
+        let outcome = match cli.command {
+            Some(Commands::Daemon) => return daemon(paths).await,
+            Some(Commands::Status) => return commands::status(&socket).await,
             Some(Commands::Project(ProjectCommand::Add { path, name })) => {
-                add_project(paths, path, name).await
+                commands::add_project(&socket, &path, name).await
+            }
+            Some(Commands::Worktree(WorktreeCommand::Add { project, branch })) => {
+                commands::add_worktree(&socket, &project, branch).await
+            }
+            Some(Commands::Worktree(WorktreeCommand::Remove { worktree, force })) => {
+                commands::remove_worktree(&socket, &worktree, force).await
+            }
+            Some(Commands::Session(SessionCommand::Start {
+                worktree,
+                harness,
+                title,
+            })) => commands::start_session(&socket, &worktree, harness, title).await,
+            Some(Commands::Session(SessionCommand::Stop { session })) => {
+                commands::stop_session(&socket, &session).await
             }
             None => {
                 eprintln!(
                     "The terminal UI is not built yet. Run `muster --help` for what works today."
                 );
-                ExitCode::from(2)
+                return ExitCode::from(2);
             }
+        };
+        match outcome {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => fail(error),
         }
     })
 }
@@ -101,56 +158,6 @@ async fn shutdown_signal() {
         _ => {
             let _ = tokio::signal::ctrl_c().await;
         }
-    }
-}
-
-async fn status(paths: Paths) -> ExitCode {
-    let mut connection = match Connection::connect(&paths.socket(), CLIENT).await {
-        Ok(connection) => connection,
-        Err(ClientError::Unreachable { .. }) => {
-            println!("The daemon is not running. Start it with `muster daemon`.");
-            return ExitCode::FAILURE;
-        }
-        Err(error) => return fail(error),
-    };
-    let snapshot = match connection.subscribe().await {
-        Ok(snapshot) => snapshot,
-        Err(error) => return fail(error),
-    };
-    let welcome = connection.welcome();
-    println!(
-        "The daemon is running: muster {} (pid {}, protocol {}).",
-        welcome.daemon_version, welcome.daemon_pid, welcome.version
-    );
-    println!(
-        "{} projects, {} sessions.",
-        snapshot.projects.len(),
-        snapshot.sessions.len()
-    );
-    for project in &snapshot.projects {
-        println!("  {}  {}", project.name, project.root.display());
-    }
-    ExitCode::SUCCESS
-}
-
-async fn add_project(paths: Paths, path: PathBuf, name: Option<String>) -> ExitCode {
-    // The daemon runs elsewhere, so it needs a path that does not depend on
-    // this shell's working directory.
-    let root = match std::path::absolute(&path) {
-        Ok(root) => root,
-        Err(error) => return fail(error),
-    };
-    let reply = match Connection::connect(&paths.socket(), CLIENT).await {
-        Ok(mut connection) => connection.command(Command::AddProject { root, name }).await,
-        Err(error) => Err(error),
-    };
-    match reply {
-        Ok(Reply::ProjectAdded { id }) => {
-            println!("Added {} as {id}.", path.display());
-            ExitCode::SUCCESS
-        }
-        Ok(other) => fail(format!("unexpected reply {other:?}")),
-        Err(error) => fail(error),
     }
 }
 

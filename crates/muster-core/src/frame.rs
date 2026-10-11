@@ -110,7 +110,24 @@ mod tests {
             },
             unseen: true,
         }));
+        round_trip(ServerFrame::Output {
+            session: SessionId::new(),
+            seq: 1 << 40,
+            data: b"\x1b[31mred\x1b[0m".to_vec(),
+        });
         round_trip(Timestamp::from_millis(1_760_000_000_000));
+    }
+
+    #[test]
+    fn terminal_bytes_are_sent_as_binary_not_as_a_list_of_numbers() {
+        let data = vec![0xff; 1000];
+        let frame = encode(&ServerFrame::Output {
+            session: SessionId::new(),
+            seq: 0,
+            data,
+        })
+        .unwrap();
+        assert!(frame.len() < 1100, "{} bytes", frame.len());
     }
 
     #[test]

@@ -159,6 +159,19 @@ fn a_workspace_needs_an_existing_project() {
 }
 
 #[test]
+fn a_removed_workspace_leaves_the_snapshot_with_its_sessions() {
+    let (mut store, _, workspace, _) = populated();
+    store.remove_workspace(workspace.id, at(50)).unwrap();
+    let snapshot = store.snapshot().unwrap();
+    assert!(snapshot.workspaces.is_empty());
+    assert!(snapshot.sessions.is_empty());
+    assert!(matches!(
+        store.remove_workspace(workspace.id, at(60)),
+        Err(StoreError::NotFound(_))
+    ));
+}
+
+#[test]
 fn a_status_change_updates_the_session_and_its_history_together() {
     let (mut store, _, _, session) = populated();
     let waiting = SessionStatus::NeedsYou {

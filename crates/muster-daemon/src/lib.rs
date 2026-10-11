@@ -4,8 +4,12 @@
 pub mod clock;
 pub mod store;
 
+mod git;
+mod harness;
+mod pty;
 mod server;
 mod supervisor;
+mod terminal;
 
 #[cfg(test)]
 mod tests;
@@ -96,7 +100,13 @@ pub async fn run(
     let store = StoreHandle::spawn(store)
         .map_err(io_error("cannot start the store for", &paths.database()))?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
-    let supervisor = supervisor::spawn(store, clock, config.delta_capacity).await?;
+    let supervisor = supervisor::spawn(supervisor::Settings {
+        store,
+        clock,
+        worktrees_dir: paths.worktrees_dir.clone(),
+        delta_capacity: config.delta_capacity,
+    })
+    .await?;
 
     tracing::info!(socket = %socket.display(), pid = std::process::id(), "daemon ready");
     server::serve(listener, supervisor, shutdown).await;

@@ -6,6 +6,7 @@ publish.workspace = true
 
 [dependencies]
 rmp-serde.workspace = true
+serde_bytes.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 ulid.workspace = true
