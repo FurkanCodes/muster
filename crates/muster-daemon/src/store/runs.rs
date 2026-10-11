@@ -16,6 +16,19 @@ use super::{Result, Store, StoreError};
 pub struct StoredRun {
     pub run: Run,
     pub machine: RunMachine,
+    /// The building agent's harness session, once it has one.
+    pub agent_session: Option<String>,
+    /// Its container, once started.
+    pub container: Option<String>,
+}
+
+/// What changes in a run between transitions.
+#[derive(Clone, Debug)]
+pub struct RunProgress<'a> {
+    pub machine: &'a RunMachine,
+    pub pr: Option<&'a PullRequest>,
+    pub agent_session: Option<&'a str>,
+    pub container: Option<&'a str>,
 }
 
 /// What changes in a run with a transition.
@@ -91,17 +104,19 @@ impl Store {
         Ok(())
     }
 
-    /// Stores a run's machine and pull request when they change without a
-    /// transition: a cost reported, a pull request found.
-    pub fn save_run(
-        &mut self,
-        run: RunId,
-        machine: &RunMachine,
-        pr: Option<&PullRequest>,
-    ) -> Result<()> {
+    /// Stores what changed in a run without a transition: a cost reported,
+    /// a pull request found, the agent's session, the container.
+    pub fn save_run(&mut self, run: RunId, progress: &RunProgress<'_>) -> Result<()> {
         match self.conn.execute(
-            "UPDATE runs SET machine = ?2, pr = ?3 WHERE id = ?1",
-            params![id_text(run), json(machine)?, pr.map(json).transpose()?],
+            "UPDATE runs SET machine = ?2, pr = ?3, agent_session = ?4, container = ?5
+             WHERE id = ?1",
+            params![
+                id_text(run),
+                json(progress.machine)?,
+                progress.pr.map(json).transpose()?,
+                progress.agent_session,
+                progress.container,
+            ],
         )? {
             0 => Err(StoreError::NotFound(run.to_string())),
             _ => Ok(()),
@@ -112,7 +127,7 @@ impl Store {
     pub fn runs(&self) -> Result<Vec<StoredRun>> {
         let mut statement = self.conn.prepare(
             "SELECT id, project_id, ticket, branch, stage, reason, pr, machine, created_at,
-                    ended_at
+                    ended_at, agent_session, container
              FROM runs ORDER BY created_at, id",
         )?;
         let rows = statement.query_map([], stored_run)?;
@@ -124,7 +139,7 @@ impl Store {
         self.conn
             .query_row(
                 "SELECT id, project_id, ticket, branch, stage, reason, pr, machine, created_at,
-                        ended_at
+                        ended_at, agent_session, container
                  FROM runs WHERE id = ?1",
                 [id_text(run)],
                 stored_run,
@@ -162,6 +177,7 @@ fn stored_run(row: &Row<'_>) -> rusqlite::Result<Result<StoredRun>> {
     let (pr, machine): (Option<String>, String) = (row.get(6)?, row.get(7)?);
     let created_at = Timestamp::from_millis(row.get(8)?);
     let ended_at = row.get::<_, Option<i64>>(9)?.map(Timestamp::from_millis);
+    let (agent_session, container): (Option<String>, Option<String>) = (row.get(10)?, row.get(11)?);
     Ok((|| {
         let machine: RunMachine = parse(&machine)?;
         let ticket: Ticket = parse(&ticket)?;
@@ -187,6 +203,8 @@ fn stored_run(row: &Row<'_>) -> rusqlite::Result<Result<StoredRun>> {
                 ended_at,
             },
             machine,
+            agent_session,
+            container,
         })
     })())
 }

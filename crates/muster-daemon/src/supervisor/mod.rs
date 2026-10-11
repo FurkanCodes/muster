@@ -10,6 +10,7 @@
 
 mod issues;
 mod projects;
+mod runs;
 mod sessions;
 mod terminals;
 mod worktrees;
@@ -21,15 +22,18 @@ use std::sync::Arc;
 use muster_core::protocol::{
     Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot, TermSize,
 };
-use muster_core::{SessionId, SessionStatus, WorkspaceId};
+use muster_core::{RunId, SessionId, SessionStatus, WorkspaceId};
+use muster_state::run::RunEvent;
 use muster_state::session::{Effect, SessionMachine, Signal, Timing};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
+use crate::github::TicketSource;
 use crate::harness::{Harness, claude};
 use crate::hooks::HookDelivery;
 use crate::pty::{PtyEvent, PtyHandle};
+use crate::runs::{Report, Reports, RunWork};
 use crate::store::{StoreClosed, StoreError, StoreHandle};
 
 type Subscription = (Snapshot, broadcast::Receiver<Delta>);
@@ -48,6 +52,10 @@ enum Request {
     },
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
+    /// A ticket fetched off the loop, back to start a run on it.
+    RunTicketFetched(Box<runs::FetchedRun>),
+    /// Time to look at runs' pull requests.
+    CheckPullRequests,
     /// The sampler asks which sessions run under which process.
     RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
     /// The branch watcher asks where each workspace is and what it had
@@ -73,6 +81,8 @@ impl std::fmt::Debug for Request {
             Self::Command { command, .. } => write!(f, "Command({command:?})"),
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
+            Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
+            Self::CheckPullRequests => f.write_str("CheckPullRequests"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
             Self::Branches(_) => f.write_str("Branches"),
@@ -160,6 +170,12 @@ impl SupervisorHandle {
             .is_ok()
     }
 
+    /// Asks for runs' pull requests to be looked at. `false` once the
+    /// Supervisor has stopped.
+    pub(crate) async fn check_pull_requests(&self) -> bool {
+        self.requests.send(Request::CheckPullRequests).await.is_ok()
+    }
+
     /// Hands over a measurement. `false` once the Supervisor has stopped.
     pub(crate) async fn record_resources(&self, report: ResourceReport) -> bool {
         self.requests.send(Request::Resources(report)).await.is_ok()
@@ -196,19 +212,26 @@ pub(crate) struct Settings {
     pub(crate) history_every: u32,
     /// The session machines' time windows.
     pub(crate) timing: Timing,
+    /// Does runs' work.
+    pub(crate) work: Arc<dyn RunWork>,
+    /// Where issues come from.
+    pub(crate) tickets: Arc<dyn TicketSource>,
+    /// The person's settings, such as projects' overrides.
+    pub(crate) config_dir: PathBuf,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
 /// daemon left running, and starts the Supervisor.
 pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreError> {
-    let state = settings
+    let (state, stored_runs) = settings
         .store
-        .call(|store| store.snapshot())
+        .call(|store| Ok::<_, StoreError>((store.snapshot()?, store.runs()?)))
         .await
         .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))??;
     let (requests, queue) = mpsc::channel(256);
     let (pty_events, pty_queue) = mpsc::unbounded_channel();
     let (unwatched, unwatched_queue) = mpsc::unbounded_channel();
+    let (run_reports, run_report_queue) = mpsc::unbounded_channel();
     let mut supervisor = Supervisor {
         requests: requests.clone(),
         store: settings.store,
@@ -226,10 +249,22 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         history_every: settings.history_every.max(1),
         measurements: 0,
         timing: settings.timing,
+        active_runs: HashMap::new(),
+        work: settings.work,
+        tickets: settings.tickets,
+        run_reports,
+        config_dir: settings.config_dir,
     };
     supervisor.ensure_checkouts().await;
     supervisor.recover_sessions().await;
-    tokio::spawn(supervisor.run(queue, pty_queue, settings.hook_queue, unwatched_queue));
+    supervisor.resume_runs(stored_runs).await;
+    tokio::spawn(supervisor.run(
+        queue,
+        pty_queue,
+        settings.hook_queue,
+        unwatched_queue,
+        run_report_queue,
+    ));
     Ok(SupervisorHandle { requests })
 }
 
@@ -274,6 +309,13 @@ struct Supervisor {
     /// Measurements received, to keep every `history_every`-th.
     measurements: u32,
     timing: Timing,
+    /// Runs in progress, with their machines.
+    active_runs: HashMap<RunId, runs::ActiveRun>,
+    work: Arc<dyn RunWork>,
+    tickets: Arc<dyn TicketSource>,
+    /// Where runs' work reports.
+    run_reports: Reports,
+    config_dir: PathBuf,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }
@@ -285,6 +327,7 @@ impl Supervisor {
         mut pty_queue: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
         mut hook_queue: mpsc::Receiver<HookDelivery>,
         mut unwatched: mpsc::UnboundedReceiver<SessionId>,
+        mut run_reports: mpsc::UnboundedReceiver<(RunId, Report)>,
     ) {
         loop {
             let deadline = self.next_deadline();
@@ -297,6 +340,7 @@ impl Supervisor {
                 Some((session, event)) = pty_queue.recv() => self.on_pty_event(session, event).await,
                 Some(delivery) = hook_queue.recv() => self.on_hook(delivery).await,
                 Some(session) = unwatched.recv() => self.unwatch(session).await,
+                Some((run, report)) = run_reports.recv() => self.on_run_report(run, report).await,
                 () = tokio::time::sleep_until(wake_at), if deadline.is_some() => self.tick().await,
             }
         }
@@ -310,6 +354,9 @@ impl Supervisor {
             Request::Command { command, reply } => match command {
                 // These talk to GitHub, so they answer from a task of their own.
                 Command::ListIssues { project } => self.list_issues(project, reply),
+                Command::StartRun { project, number } => {
+                    self.fetch_run_ticket(project, number, reply);
+                }
                 Command::StartFromIssue {
                     project,
                     number,
@@ -327,6 +374,8 @@ impl Supervisor {
                 }
             },
             Request::IssueFetched(fetched) => self.start_fetched_issue(*fetched).await,
+            Request::RunTicketFetched(fetched) => self.start_fetched_run(*fetched).await,
+            Request::CheckPullRequests => self.check_pull_requests(),
             Request::RunningProcesses(reply) => {
                 let running = self
                     .live
@@ -383,9 +432,28 @@ impl Supervisor {
             Command::StopSession { session } => self.stop_session(session).await,
             Command::RestartSession { session, size } => self.restart_session(session, size).await,
             Command::RemoveSession { session } => self.remove_session(session).await,
-            Command::ListIssues { .. } | Command::StartFromIssue { .. } => Err(ErrorBody::new(
+            Command::CancelRun { run } => {
+                self.command_run(run, RunEvent::Cancel, "be cancelled")
+                    .await
+            }
+            Command::RetryRun { run, notes } => {
+                self.command_run(run, RunEvent::Retry { notes }, "be sent back to work")
+                    .await
+            }
+            Command::TakeOverRun { run } => {
+                self.command_run(run, RunEvent::TakeOver, "be taken over")
+                    .await
+            }
+            Command::HandBackRun { run } => {
+                self.command_run(run, RunEvent::HandBack, "be handed back")
+                    .await
+            }
+            Command::RunHistory { run } => self.run_history(run).await,
+            Command::ListIssues { .. }
+            | Command::StartFromIssue { .. }
+            | Command::StartRun { .. } => Err(ErrorBody::new(
                 ErrorCode::Internal,
-                "issue commands are answered off the Supervisor's loop",
+                "GitHub commands are answered off the Supervisor's loop",
             )),
         }
     }
@@ -435,12 +503,17 @@ impl Supervisor {
         }
     }
 
-    /// The earliest moment a session machine wants to be woken.
+    /// The earliest moment a session or run machine wants to be woken.
     fn next_deadline(&self) -> Option<std::time::Instant> {
-        self.live
+        let sessions = self
+            .live
             .values()
             .filter_map(|live| live.machine.next_deadline())
-            .min()
+            .min();
+        match (sessions, self.next_run_deadline()) {
+            (Some(one), Some(other)) => Some(one.min(other)),
+            (one, other) => one.or(other),
+        }
     }
 
     async fn tick(&mut self) {
@@ -454,6 +527,7 @@ impl Supervisor {
         for session in due {
             self.step_session(session, Signal::Tick).await;
         }
+        self.tick_runs(now).await;
     }
 
     /// Feeds a session's machine and carries out what it decides.
@@ -536,6 +610,12 @@ fn command_name(command: &Command) -> &'static str {
         Command::RestartSession { .. } => "restart session",
         Command::RemoveSession { .. } => "remove session",
         Command::ListIssues { .. } => "list issues",
+        Command::StartRun { .. } => "start run",
+        Command::CancelRun { .. } => "cancel run",
+        Command::RetryRun { .. } => "retry run",
+        Command::TakeOverRun { .. } => "take over run",
+        Command::HandBackRun { .. } => "hand back run",
+        Command::RunHistory { .. } => "run history",
         Command::StartFromIssue { .. } => "start from issue",
     }
 }

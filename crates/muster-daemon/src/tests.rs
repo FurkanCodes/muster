@@ -35,6 +35,9 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         delta_capacity,
         history_every: 1,
         timing: muster_state::session::Timing::default(),
+        work: std::sync::Arc::new(crate::runs::NotYetBuilt),
+        tickets: std::sync::Arc::new(crate::github::GitHubIssues),
+        config_dir: std::env::temp_dir(),
     })
     .await
     .unwrap()
@@ -218,6 +221,9 @@ async fn every_nth_measurement_is_kept_in_history() {
         delta_capacity: 16,
         history_every: 2,
         timing: muster_state::session::Timing::default(),
+        work: std::sync::Arc::new(crate::runs::NotYetBuilt),
+        tickets: std::sync::Arc::new(crate::github::GitHubIssues),
+        config_dir: std::env::temp_dir(),
     })
     .await
     .unwrap();
