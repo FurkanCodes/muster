@@ -237,6 +237,9 @@ mod tests {
     const SUCCESS: &str = include_str!("fixtures/claude-success.jsonl");
     const TOOLS: &str = include_str!("fixtures/claude-tools.jsonl");
     const MAX_TURNS: &str = include_str!("fixtures/claude-max_turns.jsonl");
+    /// Claude Code 2.1.296 in Muster's base image with no credential: a
+    /// "success" flagged as an error.
+    const NOT_LOGGED_IN: &str = include_str!("fixtures/claude-not-logged-in.jsonl");
 
     fn events(output: &str) -> Vec<AgentEvent> {
         let mut lines = Lines::default();
@@ -306,6 +309,25 @@ mod tests {
         assert_eq!(end.outcome, TurnOutcome::Success);
         assert_eq!(end.denials, 1);
         assert_eq!(end.turns, Some(3));
+    }
+
+    #[test]
+    fn an_agent_with_no_credential_fails_with_what_it_said() {
+        let events = events(NOT_LOGGED_IN);
+        assert!(matches!(
+            &events[0],
+            AgentEvent::SessionStarted { session_id, .. }
+                if session_id == "00000000-0000-4000-8000-000000000004"
+        ));
+        let end = end(&events);
+        assert_eq!(
+            end.outcome,
+            TurnOutcome::Error {
+                kind: "success".to_owned(),
+                message: "Not logged in · Please run /login".to_owned(),
+            }
+        );
+        assert_eq!(end.result, None);
     }
 
     #[test]
