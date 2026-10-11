@@ -135,11 +135,29 @@ pub enum ServerFrame {
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     },
+    /// How the session's program wants its keys and pastes encoded. Sent
+    /// after the replay and whenever it changes.
+    Modes {
+        session: SessionId,
+        modes: TerminalModes,
+    },
     /// A terminal stream ended.
     Detached {
         session: SessionId,
         reason: DetachReason,
     },
+}
+
+/// Input modes a program sets on its terminal, which decide how a client
+/// turns key presses and pastes into bytes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TerminalModes {
+    /// The kitty keyboard protocol flags in effect; 0 means legacy keys.
+    pub kitty_flags: u8,
+    /// Pastes are wrapped in `ESC [200~` … `ESC [201~`.
+    pub bracketed_paste: bool,
+    /// Cursor keys send `ESC O A` rather than `ESC [ A` (DECCKM).
+    pub application_cursor: bool,
 }
 
 /// Why a terminal stream ended.

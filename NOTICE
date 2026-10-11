@@ -5,6 +5,7 @@ Muster includes code adapted from Nebula (https://github.com/AgentSystemLabs/neb
 - crates/muster-daemon/src/harness/claude.rs (hook events and payload fields), from
   crates/nebula-daemon/src/hooks/installer.rs and crates/nebula-daemon/src/hooks/mod.rs
 - crates/muster-daemon/src/harness/transcript.rs, from crates/nebula-daemon/src/registry.rs
+- crates/muster-tui/src/keys.rs, from crates/nebula-tui/src/keys.rs
 
 Nebula is distributed under the following license:
 

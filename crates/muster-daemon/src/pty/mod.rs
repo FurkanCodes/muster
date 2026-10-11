@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use muster_core::protocol::TermSize;
+use muster_core::protocol::{TermSize, TerminalModes};
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -67,11 +67,12 @@ pub(crate) enum PtyEvent {
     Exited { success: bool, requested: bool },
 }
 
-/// A piece of output and its position.
+/// A piece of output, its position, and the input modes in effect after it.
 #[derive(Clone, Debug)]
 pub(crate) struct Chunk {
     pub(crate) seq: u64,
     pub(crate) data: Arc<[u8]>,
+    pub(crate) modes: TerminalModes,
 }
 
 /// What an attaching client receives: the replay, then live output until the
@@ -79,6 +80,8 @@ pub(crate) struct Chunk {
 #[derive(Debug)]
 pub(crate) struct Attachment {
     pub(crate) replay: Replay,
+    /// The input modes in effect at the end of the replay.
+    pub(crate) modes: TerminalModes,
     pub(crate) live: Option<broadcast::Receiver<Chunk>>,
 }
 
@@ -330,6 +333,7 @@ impl Actor {
             let _ = live.send(Chunk {
                 seq,
                 data: data.into(),
+                modes: self.queries.modes(),
             });
         }
     }
@@ -366,6 +370,7 @@ impl Actor {
             Command::Attach { from_seq, reply } => {
                 let _ = reply.send(Attachment {
                     replay: self.ring.replay_from(from_seq),
+                    modes: self.queries.modes(),
                     live: self.live.as_ref().map(broadcast::Sender::subscribe),
                 });
             }

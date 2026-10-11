@@ -1,5 +1,6 @@
-//! The `muster` command. With no arguments it will open the terminal UI; its
-//! subcommands run the daemon and drive it from scripts.
+//! The `muster` command. With no arguments it opens the terminal UI, starting
+//! the daemon if none is running; its subcommands run the daemon and drive it
+//! from scripts.
 
 mod commands;
 
@@ -23,7 +24,12 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Run the daemon in this terminal until interrupted.
-    Daemon,
+    Daemon {
+        /// Leave the terminal's session, as the UI does when it starts the
+        /// daemon, so closing the terminal does not stop it.
+        #[arg(long)]
+        detach: bool,
+    },
     /// Show whether the daemon is running and what it is tracking.
     Status,
     /// Manage the repositories Muster tracks.
@@ -98,7 +104,13 @@ fn main() -> ExitCode {
     runtime.block_on(async {
         let socket = paths.socket();
         let outcome = match cli.command {
-            Some(Commands::Daemon) => return daemon(paths).await,
+            Some(Commands::Daemon { detach }) => {
+                if detach {
+                    // Fails only if already a session leader, which is fine.
+                    let _ = nix::unistd::setsid();
+                }
+                return daemon(paths).await;
+            }
             Some(Commands::Status) => return commands::status(&socket).await,
             Some(Commands::Project(ProjectCommand::Add { path, name })) => {
                 commands::add_project(&socket, &path, name).await
@@ -118,18 +130,48 @@ fn main() -> ExitCode {
             Some(Commands::Session(SessionCommand::Stop { session })) => {
                 commands::stop_session(&socket, &session).await
             }
-            None => {
-                eprintln!(
-                    "The terminal UI is not built yet. Run `muster --help` for what works today."
-                );
-                return ExitCode::from(2);
-            }
+            None => return ui(paths).await,
         };
         match outcome {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => fail(error),
         }
     })
+}
+
+/// Opens the terminal UI.
+async fn ui(paths: Paths) -> ExitCode {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+    let options = muster_tui::Options {
+        socket: paths.socket(),
+        start_daemon: Some(Box::new(move || start_daemon(&paths))),
+        cwd,
+    };
+    match muster_tui::run(options).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => fail(error),
+    }
+}
+
+/// Starts `muster daemon --detach` in the background, logging to
+/// `daemon.log` in the runtime directory.
+fn start_daemon(paths: &Paths) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&paths.runtime_dir)?;
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(paths.runtime_dir.join("daemon.log"))?;
+    std::process::Command::new(std::env::current_exe()?)
+        .args(["daemon", "--detach"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(log)
+        .spawn()
+        .map(drop)
 }
 
 async fn daemon(paths: Paths) -> ExitCode {

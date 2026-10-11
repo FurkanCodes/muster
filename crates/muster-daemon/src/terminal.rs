@@ -1,14 +1,14 @@
 //! Streaming one session's terminal to one client.
 
 use muster_core::SessionId;
-use muster_core::protocol::{DetachReason, ServerFrame};
+use muster_core::protocol::{DetachReason, ServerFrame, TerminalModes};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 
 use crate::pty::PtyHandle;
 
-/// Sends a replay from `from_seq`, then live output, then `Detached` when the
-/// process exits. A client that falls behind the live stream is sent a new
+/// Sends a replay from `from_seq` and the input modes, then live output and
+/// any change of modes, then `Detached` when the process exits. A client that falls behind the live stream is sent a new
 /// replay from where it was, which is marked `reset` if the ring has since
 /// dropped those bytes.
 pub(crate) async fn forward_output(
@@ -41,6 +41,10 @@ pub(crate) async fn forward_output(
         if sent.is_err() {
             return;
         }
+        let mut modes = attachment.modes;
+        if !send_modes(&outgoing, session, modes).await {
+            return;
+        }
         let Some(mut live) = attachment.live else {
             let _ = outgoing
                 .send(ServerFrame::Detached {
@@ -68,6 +72,12 @@ pub(crate) async fn forward_output(
                         return;
                     }
                     next = end;
+                    if chunk.modes != modes {
+                        modes = chunk.modes;
+                        if !send_modes(&outgoing, session, modes).await {
+                            return;
+                        }
+                    }
                 }
                 Err(RecvError::Lagged(_)) => {
                     from = Some(next);
@@ -85,4 +95,16 @@ pub(crate) async fn forward_output(
             }
         }
     }
+}
+
+/// Tells the client the modes; `false` once it is gone.
+async fn send_modes(
+    outgoing: &mpsc::Sender<ServerFrame>,
+    session: SessionId,
+    modes: TerminalModes,
+) -> bool {
+    outgoing
+        .send(ServerFrame::Modes { session, modes })
+        .await
+        .is_ok()
 }
