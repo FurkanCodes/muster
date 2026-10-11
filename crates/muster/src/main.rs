@@ -295,6 +295,10 @@ async fn shutdown_signal() {
 }
 
 fn fail(error: impl std::fmt::Display) -> ExitCode {
-    eprintln!("muster: {error}");
+    // A message can quote git, a path or an issue: no control characters.
+    eprintln!(
+        "muster: {}",
+        muster_core::text::multi_line(&error.to_string())
+    );
     ExitCode::FAILURE
 }

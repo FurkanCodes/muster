@@ -56,7 +56,10 @@ fn describe(head: &str) -> Option<String> {
     if let Some(reference) = head.strip_prefix("ref:") {
         let reference = reference.trim();
         let name = reference.strip_prefix("refs/heads/").unwrap_or(reference);
-        return (!name.is_empty()).then(|| name.to_owned());
+        // Git allows no control characters in a ref; a HEAD with one is not
+        // git's, and its text is not shown.
+        let valid = !name.is_empty() && !name.contains(char::is_control);
+        return valid.then(|| name.to_owned());
     }
     let is_commit = matches!(head.len(), 40 | 64) && head.chars().all(|c| c.is_ascii_hexdigit());
     is_commit.then(|| format!("detached at {}", &head[..7]))
@@ -112,7 +115,7 @@ mod tests {
             describe("0123456789abcdef0123456789abcdef01234567\n").as_deref(),
             Some("detached at 0123456")
         );
-        for nonsense in ["", "ref: ", "hello", "0123456"] {
+        for nonsense in ["", "ref: ", "hello", "0123456", "ref: refs/heads/a\x1b[2J"] {
             assert_eq!(describe(nonsense), None, "{nonsense:?}");
         }
     }

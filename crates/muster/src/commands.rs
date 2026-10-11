@@ -49,8 +49,8 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
     for project in &snapshot.projects {
         println!(
             "\n{}  {}  ({})",
-            project.name,
-            project.root.display(),
+            shown(&project.name),
+            shown(&project.root.display().to_string()),
             project.id
         );
         for workspace in snapshot
@@ -65,8 +65,8 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
             };
             println!(
                 "  {}  {}  ({}){place}",
-                workspace.kind.branch(),
-                workspace.kind.path().display(),
+                shown(workspace.kind.branch()),
+                shown(&workspace.kind.path().display().to_string()),
                 workspace.id
             );
             for session in snapshot
@@ -90,7 +90,7 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
                 println!(
                     "   {mark} {}  {}  {}{usage}",
                     session.id,
-                    session.title,
+                    shown(&session.title),
                     describe(session.status)
                 );
             }
@@ -110,7 +110,7 @@ pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>
     let Reply::ProjectAdded { id } = reply else {
         return Err(unexpected(&reply));
     };
-    println!("Added {} as {id}.", path.display());
+    println!("Added {} as {id}.", shown(&path.display().to_string()));
     Ok(())
 }
 
@@ -122,7 +122,10 @@ pub(crate) async fn remove_project(socket: &Path, project: &str) -> Outcome {
     connection
         .command(Command::RemoveProject { project: id })
         .await?;
-    println!("Muster no longer tracks {name}; its repository is untouched.");
+    println!(
+        "Muster no longer tracks {}; its repository is untouched.",
+        shown(&name)
+    );
     Ok(())
 }
 
@@ -147,8 +150,8 @@ pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<St
     {
         Some(workspace) => println!(
             "Created {} at {} ({id}).",
-            workspace.kind.branch(),
-            workspace.kind.path().display()
+            shown(workspace.kind.branch()),
+            shown(&workspace.kind.path().display().to_string())
         ),
         None => println!("Created {id}."),
     }
@@ -271,9 +274,9 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
         let labels = if issue.labels.is_empty() {
             String::new()
         } else {
-            format!("  [{}]", issue.labels.join(", "))
+            format!("  [{}]", shown(&issue.labels.join(", ")))
         };
-        println!("#{:<6} {}{labels}", issue.number, issue.title);
+        println!("#{:<6} {}{labels}", issue.number, shown(&issue.title));
     }
     Ok(())
 }
@@ -377,4 +380,11 @@ fn count(n: usize, noun: &str) -> String {
 
 fn unexpected(reply: &Reply) -> Box<dyn std::error::Error> {
     format!("unexpected reply {reply:?}").into()
+}
+
+/// Text from the daemon as it is printed: issue titles and labels can be
+/// written by anyone, and names come from the file system, so control
+/// characters, which a terminal would act on, are taken out.
+fn shown(text: &str) -> String {
+    muster_core::text::one_line(text)
 }

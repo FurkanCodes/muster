@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
+use muster_core::text::one_line;
 use muster_core::{Project, ProjectId, Workspace, WorkspaceId, WorkspaceKind};
 
 use super::{Supervisor, store_closed, store_error};
@@ -27,13 +28,17 @@ impl Supervisor {
                 format!("{} is already a project", root.display()),
             ));
         }
+        // A name given, else the directory's, each only if something is left
+        // once control characters are gone.
+        let usable = |name: &str| Some(one_line(name).trim().to_owned()).filter(|n| !n.is_empty());
         let name = name
-            .filter(|name| !name.trim().is_empty())
+            .as_deref()
+            .and_then(usable)
             .or_else(|| {
                 root.file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
+                    .and_then(|dir| usable(&dir.to_string_lossy()))
             })
-            .unwrap_or_else(|| root.display().to_string());
+            .unwrap_or_else(|| one_line(&root.display().to_string()));
         let project = Project {
             id: ProjectId::new(),
             name,

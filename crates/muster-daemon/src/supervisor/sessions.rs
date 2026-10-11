@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
+use muster_core::text::one_line;
 use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start, Timing};
 
@@ -53,7 +54,8 @@ impl Supervisor {
             workspace,
             harness: harness.id.to_owned(),
             title: title
-                .filter(|title| !title.trim().is_empty())
+                .map(|title| one_line(&title).trim().to_owned())
+                .filter(|title| !title.is_empty())
                 .unwrap_or_else(|| harness.label.to_owned()),
             status: if prompt.is_some() {
                 SessionStatus::Running
