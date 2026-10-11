@@ -88,6 +88,63 @@ impl Store {
         Ok(())
     }
 
+    /// Stores a new project together with its own checkout's workspace, in
+    /// one transaction.
+    pub fn add_project(&mut self, project: &Project, checkout: &Workspace) -> Result<()> {
+        let root = path_text(&project.root)?;
+        if self.project_by_root(&project.root)?.is_some() {
+            return Err(StoreError::Conflict(format!("a project at {root}")));
+        }
+        let (kind, path, branch) = rows::workspace_columns(checkout)?;
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "INSERT INTO projects (id, name, root, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                id_text(project.id),
+                project.name,
+                root,
+                project.created_at.as_millis()
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO workspaces (id, project_id, kind, path, branch, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                id_text(checkout.id),
+                id_text(checkout.project),
+                kind,
+                path,
+                branch,
+                checkout.created_at.as_millis()
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Forgets a project and everything stored about it: its workspaces,
+    /// their sessions and those sessions' history.
+    pub fn delete_project(&mut self, project: muster_core::ProjectId) -> Result<()> {
+        match self
+            .conn
+            .execute("DELETE FROM projects WHERE id = ?1", [id_text(project)])?
+        {
+            0 => Err(StoreError::NotFound(project.to_string())),
+            _ => Ok(()),
+        }
+    }
+
+    /// Records what a workspace now has checked out.
+    pub fn update_branch(&mut self, workspace: WorkspaceId, branch: &str) -> Result<()> {
+        match self.conn.execute(
+            "UPDATE workspaces SET branch = ?2 WHERE id = ?1",
+            params![id_text(workspace), branch],
+        )? {
+            0 => Err(StoreError::NotFound(workspace.to_string())),
+            _ => Ok(()),
+        }
+    }
+
     pub fn project_by_root(&self, root: &Path) -> Result<Option<Project>> {
         self.conn
             .query_row(

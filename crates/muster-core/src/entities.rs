@@ -1,6 +1,6 @@
 //! The things the daemon stores and clients draw (`ARCHITECTURE.md` §2).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -29,11 +29,38 @@ pub struct Workspace {
 }
 
 /// The kinds of workspace. Containers arrive in M2.
+///
+/// `branch` is what is checked out, kept current as it changes: a branch
+/// name, or `detached at <commit>`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceKind {
-    /// A git worktree on the host.
+    /// A git worktree Muster created on the host.
     Worktree { path: PathBuf, branch: String },
+    /// The project's own checkout: the repository the person added, where
+    /// they work too. Muster never removes it.
+    Checkout { path: PathBuf, branch: String },
+}
+
+impl WorkspaceKind {
+    /// Where the workspace's files are.
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Worktree { path, .. } | Self::Checkout { path, .. } => path,
+        }
+    }
+
+    /// What is checked out there.
+    pub fn branch(&self) -> &str {
+        match self {
+            Self::Worktree { branch, .. } | Self::Checkout { branch, .. } => branch,
+        }
+    }
+
+    /// Whether this is a project's own checkout.
+    pub fn is_checkout(&self) -> bool {
+        matches!(self, Self::Checkout { .. })
+    }
 }
 
 /// A GitHub issue, as listed for the person to pick from.

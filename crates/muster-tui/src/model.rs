@@ -5,9 +5,7 @@
 use std::collections::HashMap;
 
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
-use muster_core::{
-    Project, ProjectId, Session, SessionId, SessionStatus, Workspace, WorkspaceId, WorkspaceKind,
-};
+use muster_core::{Project, ProjectId, Session, SessionId, SessionStatus, Workspace, WorkspaceId};
 
 /// One line of the sessions list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -56,6 +54,16 @@ impl Model {
     pub(crate) fn apply(&mut self, delta: Delta) {
         match delta {
             Delta::ProjectUpserted(project) => upsert(&mut self.projects, project, |p| p.id),
+            Delta::ProjectRemoved { id } => {
+                let gone: Vec<WorkspaceId> = self
+                    .workspaces_of(id)
+                    .map(|workspace| workspace.id)
+                    .collect();
+                self.sessions
+                    .retain(|session| !gone.contains(&session.workspace));
+                self.workspaces.retain(|workspace| workspace.project != id);
+                self.projects.retain(|project| project.id != id);
+            }
             Delta::WorkspaceUpserted(workspace) => {
                 upsert(&mut self.workspaces, workspace, |w| w.id);
             }
@@ -126,10 +134,28 @@ impl Model {
         self.sessions.iter().find(|session| session.id == id)
     }
 
+    /// A project's workspaces: its own checkout first, then its worktrees
+    /// oldest first.
     pub(crate) fn workspaces_of(&self, project: ProjectId) -> impl Iterator<Item = &Workspace> {
-        self.workspaces
+        let mine = move |workspace: &&Workspace| workspace.project == project;
+        let checkouts = self
+            .workspaces
             .iter()
-            .filter(move |workspace| workspace.project == project)
+            .filter(mine)
+            .filter(|workspace| workspace.kind.is_checkout());
+        let worktrees = self
+            .workspaces
+            .iter()
+            .filter(mine)
+            .filter(|workspace| !workspace.kind.is_checkout());
+        checkouts.chain(worktrees)
+    }
+
+    /// A project's own checkout.
+    pub(crate) fn checkout_of(&self, project: ProjectId) -> Option<WorkspaceId> {
+        self.workspaces_of(project)
+            .find(|workspace| workspace.kind.is_checkout())
+            .map(|workspace| workspace.id)
     }
 
     pub(crate) fn sessions_of(&self, workspace: WorkspaceId) -> impl Iterator<Item = &Session> {
@@ -187,12 +213,9 @@ impl Model {
         }
     }
 
-    /// The branch of a worktree.
+    /// What a workspace has checked out.
     pub(crate) fn branch(&self, workspace: WorkspaceId) -> Option<&str> {
-        self.workspace(workspace).map(|found| {
-            let WorkspaceKind::Worktree { branch, .. } = &found.kind;
-            branch.as_str()
-        })
+        self.workspace(workspace).map(|found| found.kind.branch())
     }
 }
 
@@ -216,7 +239,7 @@ fn upsert<T, K: PartialEq>(items: &mut Vec<T>, item: T, key: impl Fn(&T) -> K) {
 pub(crate) mod tests {
     use std::path::PathBuf;
 
-    use muster_core::{Timestamp, WaitReason};
+    use muster_core::{Timestamp, WaitReason, WorkspaceKind};
 
     use super::*;
 

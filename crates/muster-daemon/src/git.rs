@@ -156,30 +156,33 @@ pub(crate) mod tests {
 
     use super::*;
 
-    /// Creates a git repository with one commit, ignoring the user's own git
-    /// configuration so tests behave the same everywhere.
+    /// Runs git in `dir`, ignoring the user's own git configuration so tests
+    /// behave the same everywhere; panics if it fails.
+    pub(crate) fn git(dir: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    }
+
+    /// Creates a git repository with one commit on `main`.
     pub(crate) fn repository(parent: &Path, name: &str) -> PathBuf {
         let root = parent.join(name);
         std::fs::create_dir_all(&root).unwrap();
-        let git = |args: &[&str]| {
-            let status = Command::new("git")
-                .args(args)
-                .current_dir(&root)
-                .env("GIT_CONFIG_GLOBAL", "/dev/null")
-                .env("GIT_CONFIG_NOSYSTEM", "1")
-                .env("GIT_AUTHOR_NAME", "Test")
-                .env("GIT_AUTHOR_EMAIL", "test@example.com")
-                .env("GIT_COMMITTER_NAME", "Test")
-                .env("GIT_COMMITTER_EMAIL", "test@example.com")
-                .stdout(std::process::Stdio::null())
-                .status()
-                .unwrap();
-            assert!(status.success(), "git {args:?}");
-        };
-        git(&["init", "--quiet", "--initial-branch", "main"]);
+        git(&root, &["init", "--quiet", "--initial-branch", "main"]);
         std::fs::write(root.join("README.md"), "test\n").unwrap();
-        git(&["add", "README.md"]);
-        git(&["commit", "--quiet", "--message", "first"]);
+        git(&root, &["add", "README.md"]);
+        git(&root, &["commit", "--quiet", "--message", "first"]);
         root.canonicalize().unwrap()
     }
 

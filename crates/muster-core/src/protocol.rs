@@ -10,7 +10,7 @@
 //! cannot read, but each such change still bumps both versions, so a daemon
 //! left running by an older build and a newer client say they do not match
 //! instead of misreading each other. Version 2 added restarting and removing
-//! sessions.
+//! sessions, projects' own checkouts as workspaces, and removing projects.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -203,12 +203,16 @@ impl Default for TermSize {
 pub enum Command {
     /// Check the daemon is answering.
     Ping,
-    /// Start tracking a git repository.
+    /// Start tracking a git repository. Its own checkout becomes the
+    /// project's first workspace.
     AddProject {
         root: PathBuf,
         /// Defaults to the repository's directory name.
         name: Option<String>,
     },
+    /// Stop tracking a project. Its repository is not touched. Refused while
+    /// it has worktrees (remove them first) or running sessions.
+    RemoveProject { project: ProjectId },
     /// Create a git worktree for a project: on `branch` if it exists,
     /// otherwise on a new branch of that name (default `muster/<random>`)
     /// from the project's current commit.
@@ -218,7 +222,7 @@ pub enum Command {
     },
     /// Remove a worktree's directory. Its branch is kept. A worktree with
     /// uncommitted changes is removed only with `force`; one with running
-    /// sessions never is.
+    /// sessions never is, nor a project's own checkout.
     RemoveWorktree { workspace: WorkspaceId, force: bool },
     /// Start a session in a workspace.
     StartSession {
@@ -311,6 +315,10 @@ pub struct SessionUsage {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Delta {
     ProjectUpserted(Project),
+    /// A project, and with it its workspaces and their sessions, left.
+    ProjectRemoved {
+        id: ProjectId,
+    },
     WorkspaceUpserted(Workspace),
     WorkspaceRemoved {
         id: WorkspaceId,

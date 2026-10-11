@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
-use muster_core::{Session, SessionId, SessionStatus, WorkspaceId, WorkspaceKind};
+use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start, Timing};
 
 use super::{Live, Supervisor, store_closed, store_error};
@@ -276,7 +276,6 @@ impl Supervisor {
             .await
             .map_err(store_closed)?
             .map_err(store_error)?;
-        self.forget_token(session);
         self.release_terminal(session);
         self.state.sessions.retain(|stored| stored.id != session);
         self.broadcast(Delta::SessionRemoved { id: session });
@@ -435,7 +434,7 @@ impl Supervisor {
     }
 
     /// Stops accepting hooks for `session`.
-    fn forget_token(&mut self, session: SessionId) {
+    pub(super) fn forget_token(&mut self, session: SessionId) {
         if let Some(token) = self
             .live
             .get_mut(&session)
@@ -450,10 +449,7 @@ impl Supervisor {
             .workspaces
             .iter()
             .find(|candidate| candidate.id == workspace)
-            .map(|found| {
-                let WorkspaceKind::Worktree { path, .. } = &found.kind;
-                path.clone()
-            })
+            .map(|found| found.kind.path().to_owned())
     }
 
     fn session_path(&self, session: SessionId) -> Option<PathBuf> {

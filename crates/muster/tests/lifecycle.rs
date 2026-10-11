@@ -369,6 +369,7 @@ fn daemon_stop_reaches_a_daemon_from_an_older_build() {
             stream.write_all(&frame::encode(&welcome).unwrap()).unwrap();
         }
         let _ = process.kill();
+        let _ = process.wait();
         false
     });
 

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Reply, Snapshot, TermSize};
-use muster_core::{Project, SessionId, SessionStatus, WaitReason, Workspace, WorkspaceKind};
+use muster_core::{Project, SessionId, SessionStatus, WaitReason, Workspace};
 
 const CLIENT: &str = concat!("muster ", env!("CARGO_PKG_VERSION"));
 
@@ -36,7 +36,14 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
     println!(
         "{}, {}, {}.",
         count(snapshot.projects.len(), "project"),
-        count(snapshot.workspaces.len(), "worktree"),
+        count(
+            snapshot
+                .workspaces
+                .iter()
+                .filter(|workspace| !workspace.kind.is_checkout())
+                .count(),
+            "worktree"
+        ),
         count(snapshot.sessions.len(), "session")
     );
     for project in &snapshot.projects {
@@ -51,8 +58,17 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
             .iter()
             .filter(|w| w.project == project.id)
         {
-            let WorkspaceKind::Worktree { path, branch } = &workspace.kind;
-            println!("  {branch}  {}  ({})", path.display(), workspace.id);
+            let place = if workspace.kind.is_checkout() {
+                "  (the project's checkout)"
+            } else {
+                ""
+            };
+            println!(
+                "  {}  {}  ({}){place}",
+                workspace.kind.branch(),
+                workspace.kind.path().display(),
+                workspace.id
+            );
             for session in snapshot
                 .sessions
                 .iter()
@@ -98,6 +114,18 @@ pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>
     Ok(())
 }
 
+pub(crate) async fn remove_project(socket: &Path, project: &str) -> Outcome {
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let found = find_project(&snapshot, project)?;
+    let (id, name) = (found.id, found.name.clone());
+    connection
+        .command(Command::RemoveProject { project: id })
+        .await?;
+    println!("Muster no longer tracks {name}; its repository is untouched.");
+    Ok(())
+}
+
 pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<String>) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
@@ -117,10 +145,11 @@ pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<St
         .iter()
         .find(|workspace| workspace.id == id)
     {
-        Some(Workspace {
-            kind: WorkspaceKind::Worktree { path, branch },
-            ..
-        }) => println!("Created {branch} at {} ({id}).", path.display()),
+        Some(workspace) => println!(
+            "Created {} at {} ({id}).",
+            workspace.kind.branch(),
+            workspace.kind.path().display()
+        ),
         None => println!("Created {id}."),
     }
     Ok(())
@@ -289,12 +318,21 @@ fn find_project<'a>(snapshot: &'a Snapshot, wanted: &str) -> Result<&'a Project,
     )
 }
 
-/// A worktree by id or branch.
+/// A workspace by id or branch, or a project's own checkout by the
+/// project's name.
 fn find_worktree<'a>(snapshot: &'a Snapshot, wanted: &str) -> Result<&'a Workspace, String> {
+    let named_project = |workspace: &Workspace| {
+        workspace.kind.is_checkout()
+            && snapshot
+                .projects
+                .iter()
+                .any(|project| project.id == workspace.project && project.name == wanted)
+    };
     one(
         snapshot.workspaces.iter().filter(|workspace| {
-            let WorkspaceKind::Worktree { branch, .. } = &workspace.kind;
-            workspace.id.to_string() == wanted || branch == wanted
+            workspace.id.to_string() == wanted
+                || workspace.kind.branch() == wanted
+                || named_project(workspace)
         }),
         "worktree",
         wanted,

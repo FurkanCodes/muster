@@ -12,7 +12,7 @@ use muster_client::{ClientError, Connection};
 use muster_core::protocol::{
     Command, Delta, DetachReason, ErrorCode, Reply, ServerFrame, TermSize,
 };
-use muster_core::{SessionId, SessionStatus, WorkspaceId, WorkspaceKind};
+use muster_core::{SessionId, SessionStatus, WorkspaceId};
 
 use support::{Daemon, Sandbox, expect_event, read_terminal};
 
@@ -47,7 +47,12 @@ async fn setup() -> Setup {
         panic!("expected WorktreeCreated");
     };
     let snapshot = connection.subscribe().await.unwrap();
-    let WorkspaceKind::Worktree { path, .. } = snapshot.workspaces[0].kind.clone();
+    let path = snapshot
+        .workspaces
+        .iter()
+        .find(|found| found.id == workspace)
+        .map(|found| found.kind.path().to_owned())
+        .unwrap();
     Setup {
         _sandbox: sandbox,
         daemon,

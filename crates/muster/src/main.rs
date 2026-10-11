@@ -81,6 +81,9 @@ enum ProjectCommand {
         #[arg(long)]
         name: Option<String>,
     },
+    /// Stop tracking PROJECT (its name, id or path). Its repository is not
+    /// touched; its worktrees must be removed first.
+    Remove { project: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -104,7 +107,8 @@ enum WorktreeCommand {
 
 #[derive(Debug, Subcommand)]
 enum SessionCommand {
-    /// Start a session in WORKTREE (its id or branch).
+    /// Start a session in WORKTREE (its id or branch, or a project's name
+    /// for the project's own checkout).
     Start {
         worktree: String,
         /// What to run: `shell` or `claude`.
@@ -155,6 +159,9 @@ fn main() -> ExitCode {
             Some(Commands::Status) => return commands::status(&socket).await,
             Some(Commands::Project(ProjectCommand::Add { path, name })) => {
                 commands::add_project(&socket, &path, name).await
+            }
+            Some(Commands::Project(ProjectCommand::Remove { project })) => {
+                commands::remove_project(&socket, &project).await
             }
             Some(Commands::Worktree(WorktreeCommand::Add { project, branch })) => {
                 commands::add_worktree(&socket, &project, branch).await
@@ -252,6 +259,9 @@ async fn daemon(paths: Paths) -> ExitCode {
     }
     if let Some(ms) = millis("MUSTER_HISTORY_MS") {
         config.history_interval = std::time::Duration::from_millis(ms.max(10));
+    }
+    if let Some(ms) = millis("MUSTER_BRANCH_MS") {
+        config.branch_interval = std::time::Duration::from_millis(ms.max(10));
     }
     match muster_daemon::run(config, shutdown_signal()).await {
         Ok(()) => ExitCode::SUCCESS,

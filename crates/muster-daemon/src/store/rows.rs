@@ -45,6 +45,7 @@ pub(super) fn status_json(status: SessionStatus) -> Result<String> {
 pub(super) fn workspace_columns(workspace: &Workspace) -> Result<(&'static str, &str, &str)> {
     match &workspace.kind {
         WorkspaceKind::Worktree { path, branch } => Ok(("worktree", path_text(path)?, branch)),
+        WorkspaceKind::Checkout { path, branch } => Ok(("checkout", path_text(path)?, branch)),
     }
 }
 
@@ -83,6 +84,10 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
     Ok((|| {
         let kind = match kind.as_str() {
             "worktree" => WorkspaceKind::Worktree {
+                path: PathBuf::from(path),
+                branch,
+            },
+            "checkout" => WorkspaceKind::Checkout {
                 path: PathBuf::from(path),
                 branch,
             },

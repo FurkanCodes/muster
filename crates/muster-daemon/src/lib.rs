@@ -4,6 +4,7 @@
 pub mod clock;
 pub mod store;
 
+mod branches;
 mod git;
 mod github;
 mod harness;
@@ -42,6 +43,8 @@ pub struct DaemonConfig {
     pub sample_interval: Duration,
     /// How often a measurement is kept in the store's history.
     pub history_interval: Duration,
+    /// How often workspaces' checked-out branches are looked at.
+    pub branch_interval: Duration,
 }
 
 impl DaemonConfig {
@@ -51,6 +54,7 @@ impl DaemonConfig {
             delta_capacity: 1024,
             sample_interval: Duration::from_secs(2),
             history_interval: Duration::from_secs(30),
+            branch_interval: Duration::from_secs(2),
         }
     }
 }
@@ -124,6 +128,7 @@ pub async fn run(
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
+    let branch_watcher = tokio::spawn(branches::run(supervisor.clone(), config.branch_interval));
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
     let hook_server = tokio::spawn(hooks::serve(hook_listener, hook_deliveries, async {
@@ -134,6 +139,7 @@ pub async fn run(
     server::serve(listener, supervisor, shutdown).await;
 
     sampler.abort();
+    branch_watcher.abort();
     let _ = stop_hooks.send(());
     let _ = hook_server.await;
     let _ = std::fs::remove_file(&hook_socket);

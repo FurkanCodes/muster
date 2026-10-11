@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, ErrorCode, Reply, TermSize};
-use muster_core::{ProjectId, SessionId, WorkspaceId, WorkspaceKind};
+use muster_core::{ProjectId, SessionId, WorkspaceId};
 use serde_json::json;
 
 use support::{Daemon, Sandbox};
@@ -125,8 +125,11 @@ async fn starting_an_issue_makes_its_worktree_and_hands_claude_the_issue_as_data
         .iter()
         .find(|w| w.id == workspace)
         .unwrap();
-    let WorkspaceKind::Worktree { branch, .. } = &worktree.kind;
-    assert_eq!(branch, "muster/issue-42-fix-the-login-redirect");
+    assert!(!worktree.kind.is_checkout());
+    assert_eq!(
+        worktree.kind.branch(),
+        "muster/issue-42-fix-the-login-redirect"
+    );
     let stored = snapshot.sessions.iter().find(|s| s.id == session).unwrap();
     assert_eq!(stored.title, "#42 Fix the login redirect");
 
