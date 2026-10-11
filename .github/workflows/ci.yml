@@ -43,8 +43,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Pull the test image
         run: docker pull alpine:3
-      - name: Container tests
-        run: cargo test --locked -p muster-daemon containers
+      - name: Daemon tests with real Docker
+        run: cargo test --locked -p muster-daemon
         env:
           MUSTER_DOCKER_TESTS: "1"
           MUSTER_TEST_IMAGE: alpine:3

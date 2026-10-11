@@ -8,9 +8,13 @@
 //! overtaken. Every piece of work must be safe to ask for again: after a
 //! restart the Supervisor asks again for whatever was under way.
 
-// The work itself lands in the next M2 steps; until then some of what it
-// needs is only used by tests.
-#![allow(dead_code)]
+pub(crate) mod credentials;
+pub(crate) mod image;
+pub(crate) mod job;
+pub(crate) mod mirror;
+pub(crate) mod prompts;
+pub(crate) mod provision;
+pub(crate) mod work;
 
 use std::path::PathBuf;
 
@@ -34,6 +38,8 @@ pub(crate) struct RunContext {
     /// The run's container, once started.
     pub(crate) container: Option<String>,
     pub(crate) pr: Option<PullRequest>,
+    /// What the run has cost so far, for the work to add to.
+    pub(crate) cost_micros: u64,
 }
 
 /// What work reports back.
@@ -64,11 +70,13 @@ pub(crate) trait RunWork: Send + Sync + std::fmt::Debug {
     fn check_pull_request(&self, context: RunContext, reports: Reports);
 }
 
-/// Work this build cannot do yet: every piece of it fails plainly, so a run
-/// stops for the person with the reason instead of waiting for ever.
+/// Work that cannot be done: every piece of it fails plainly. For tests
+/// that need a Supervisor but no runs.
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct NotYetBuilt;
 
+#[cfg(test)]
 impl RunWork for NotYetBuilt {
     fn start(&self, context: RunContext, effect: RunEffect, reports: Reports) {
         let generation = match effect {

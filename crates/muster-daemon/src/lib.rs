@@ -8,6 +8,7 @@ pub mod store;
 mod branches;
 mod containers;
 mod git;
+mod githost;
 mod github;
 mod harness;
 mod hooks;
@@ -34,6 +35,8 @@ use std::time::Duration;
 
 use muster_core::Paths;
 use tokio::net::UnixListener;
+
+pub use crate::runs::credentials::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
 
 use crate::clock::{Clock, SystemClock};
 use crate::store::{Store, StoreError, StoreHandle};
@@ -147,7 +150,7 @@ pub async fn run(
             start_grace: config.start_grace,
             ..muster_state::session::Timing::default()
         },
-        work: Arc::new(runs::NotYetBuilt),
+        work: Arc::new(run_work(paths)),
         tickets: Arc::new(github::GitHubIssues),
         config_dir: paths.config_dir.clone(),
     })
@@ -178,6 +181,20 @@ pub async fn run(
     let _ = std::fs::remove_file(&socket);
     tracing::info!("daemon stopped");
     Ok(())
+}
+
+/// Runs' work with Docker, git and GitHub; `MUSTER_RUN_IMAGE` names an
+/// image to use instead of building one.
+fn run_work(paths: &Paths) -> runs::work::DockerWork {
+    runs::work::DockerWork::new(
+        paths.data_dir.clone(),
+        Arc::new(githost::GitHub),
+        Arc::new(runs::credentials::PersonsCredentials),
+        Duration::from_millis(500),
+        std::env::var("MUSTER_RUN_IMAGE")
+            .ok()
+            .filter(|image| !image.trim().is_empty()),
+    )
 }
 
 /// Asks every `every` for runs' pull requests to be looked at, until the
