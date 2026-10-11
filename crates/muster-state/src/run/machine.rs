@@ -231,8 +231,13 @@ impl RunMachine {
             RunEvent::Tick => {
                 if self.next_deadline().is_some_and(|deadline| now >= deadline) {
                     effects.push(RunEffect::StopWork);
-                    let minutes = self.limits.run_timeout.as_secs().div_ceil(60);
-                    let reason = format!("it reached its time limit ({minutes} min)");
+                    let limit = self.limits.run_timeout.as_secs();
+                    let shown = if limit < 60 {
+                        format!("{limit} s")
+                    } else {
+                        format!("{} min", limit.div_ceil(60))
+                    };
+                    let reason = format!("it reached its time limit ({shown})");
                     self.needs_you(reason, now, &mut effects);
                 }
             }

@@ -13,11 +13,14 @@ mod harness;
 mod hooks;
 mod pty;
 mod resources;
+mod runs;
 mod server;
 mod supervisor;
 mod terminal;
 mod worktree_sync;
 
+#[cfg(test)]
+mod run_tests;
 #[cfg(test)]
 mod tests;
 
@@ -54,6 +57,9 @@ pub struct DaemonConfig {
     /// How long a harness that reports its start may take to before it is
     /// taken to be asking the person something first.
     pub start_grace: Duration,
+    /// How often runs' pull requests are looked at (`ARCHITECTURE.md` §10:
+    /// GitHub has no way to tell a local daemon, so it asks).
+    pub pr_interval: Duration,
 }
 
 impl DaemonConfig {
@@ -66,6 +72,7 @@ impl DaemonConfig {
             branch_interval: Duration::from_secs(2),
             worktree_interval: Duration::from_secs(3),
             start_grace: muster_state::session::Timing::default().start_grace,
+            pr_interval: Duration::from_secs(60),
         }
     }
 }
@@ -140,6 +147,9 @@ pub async fn run(
             start_grace: config.start_grace,
             ..muster_state::session::Timing::default()
         },
+        work: Arc::new(runs::NotYetBuilt),
+        tickets: Arc::new(github::GitHubIssues),
+        config_dir: paths.config_dir.clone(),
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
@@ -148,6 +158,7 @@ pub async fn run(
         supervisor.clone(),
         config.worktree_interval,
     ));
+    let pr_watch = tokio::spawn(watch_pull_requests(supervisor.clone(), config.pr_interval));
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
     let hook_server = tokio::spawn(hooks::serve(hook_listener, hook_deliveries, async {
@@ -160,12 +171,28 @@ pub async fn run(
     sampler.abort();
     branch_watcher.abort();
     worktree_sync.abort();
+    pr_watch.abort();
     let _ = stop_hooks.send(());
     let _ = hook_server.await;
     let _ = std::fs::remove_file(&hook_socket);
     let _ = std::fs::remove_file(&socket);
     tracing::info!("daemon stopped");
     Ok(())
+}
+
+/// Asks every `every` for runs' pull requests to be looked at, until the
+/// Supervisor stops.
+async fn watch_pull_requests(supervisor: supervisor::SupervisorHandle, every: Duration) {
+    let mut ticks = tokio::time::interval(every);
+    ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // The first tick is at once; the first look waits a whole interval.
+    ticks.tick().await;
+    loop {
+        ticks.tick().await;
+        if !supervisor.check_pull_requests().await {
+            return;
+        }
+    }
 }
 
 /// How many measurements pass between those kept in history.

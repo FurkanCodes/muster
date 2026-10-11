@@ -34,8 +34,10 @@ impl Supervisor {
             let _ = reply.send(Err(no_project(project)));
             return;
         };
+        let tickets = self.tickets.clone();
         tokio::spawn(async move {
-            let outcome = github::list_issues(&root)
+            let outcome = tickets
+                .list(&root)
                 .await
                 .map(|issues| Reply::Issues { issues })
                 .map_err(github_error);
@@ -68,9 +70,9 @@ impl Supervisor {
             let _ = reply.send(Err(error));
             return;
         }
-        let requests = self.requests.clone();
+        let (requests, tickets) = (self.requests.clone(), self.tickets.clone());
         tokio::spawn(async move {
-            let detail = github::view_issue(&root, number).await;
+            let detail = tickets.view(&root, number).await;
             let fetched = FetchedIssue {
                 project,
                 harness,
@@ -137,7 +139,7 @@ impl Supervisor {
         }
     }
 
-    fn project_root(&self, project: ProjectId) -> Option<std::path::PathBuf> {
+    pub(super) fn project_root(&self, project: ProjectId) -> Option<std::path::PathBuf> {
         self.state
             .projects
             .iter()

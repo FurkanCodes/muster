@@ -12,7 +12,7 @@
 //! instead of misreading each other. Version 2 added restarting and removing
 //! sessions; version 3 projects' own checkouts as workspaces, removing
 //! projects, mouse modes, and watching that follows the client's focus;
-//! version 4 the wait on a harness asking before it starts.
+//! version 4 the wait on a harness asking before it starts; version 5 runs.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -22,13 +22,13 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::entities::{Issue, Project, Session, Workspace};
-use crate::ids::{ProjectId, SessionId, WorkspaceId};
+use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 4;
+pub const MIN_PROTOCOL_VERSION: u32 = 5;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -301,6 +301,25 @@ pub enum Command {
     RemoveSession { session: SessionId },
     /// List a project's open GitHub issues, newest first.
     ListIssues { project: ProjectId },
+    /// Hand a GitHub issue to the autopilot: a run that builds, checks,
+    /// opens a draft pull request and has it reviewed before asking the
+    /// person (`PRODUCT.md` §5). Needs the project's `muster.toml` checks.
+    StartRun { project: ProjectId, number: u64 },
+    /// Stop a run for good; its container goes, its record stays.
+    CancelRun { run: RunId },
+    /// Send a run that needs the person back to work, with a fresh budget
+    /// and, if given, notes for its agent.
+    RetryRun {
+        run: RunId,
+        #[serde(default)]
+        notes: Option<String>,
+    },
+    /// Drive a run's building agent by hand.
+    TakeOverRun { run: RunId },
+    /// Give a run back after driving it: its work goes to the checks.
+    HandBackRun { run: RunId },
+    /// A run's timeline, answered with [`Reply::RunHistory`].
+    RunHistory { run: RunId },
     /// Work on a GitHub issue: a worktree on `muster/issue-<n>-<title>`
     /// (reused if it exists) and a session in it. Claude Code gets the issue
     /// as its first prompt, marked as data rather than instructions.
@@ -332,6 +351,12 @@ pub enum Reply {
     IssueStarted {
         workspace: WorkspaceId,
         session: SessionId,
+    },
+    RunStarted {
+        id: RunId,
+    },
+    RunHistory {
+        transitions: Vec<crate::RunTransition>,
     },
     /// The command was carried out and has nothing to report.
     Done,
@@ -392,6 +417,8 @@ pub enum Delta {
     },
     /// A new measurement; replaces the last.
     Resources(ResourceReport),
+    /// A run was picked up or changed.
+    RunUpserted(crate::Run),
 }
 
 /// A failure the client can act on: `code` is for code, `message` for people.

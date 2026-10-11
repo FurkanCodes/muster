@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
-use muster_core::{Project, ProjectId, Session, SessionId, SessionStatus, Workspace, WorkspaceId};
+use muster_core::{
+    Project, ProjectId, Run, Session, SessionId, SessionStatus, Workspace, WorkspaceId,
+};
 
 /// One line of the sessions list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -20,6 +22,7 @@ pub(crate) struct Model {
     projects: Vec<Project>,
     workspaces: Vec<Workspace>,
     sessions: Vec<Session>,
+    runs: Vec<Run>,
     /// When each session's status last changed, as this client saw it: a
     /// counter, which orders the Needs you queue oldest first.
     changed: HashMap<SessionId, u64>,
@@ -43,6 +46,7 @@ impl Model {
         self.projects = snapshot.projects;
         self.workspaces = snapshot.workspaces;
         self.sessions = sessions;
+        self.runs = snapshot.runs;
         self.resources = snapshot.resources;
         self.loaded = true;
     }
@@ -94,6 +98,7 @@ impl Model {
                 }
             }
             Delta::Resources(report) => self.resources = Some(report),
+            Delta::RunUpserted(run) => upsert(&mut self.runs, run, |r| r.id),
         }
     }
 
@@ -120,6 +125,12 @@ impl Model {
 
     pub(crate) fn sessions(&self) -> &[Session] {
         &self.sessions
+    }
+
+    /// Every run, oldest first.
+    #[allow(dead_code)]
+    pub(crate) fn runs(&self) -> &[Run] {
+        &self.runs
     }
 
     pub(crate) fn project(&self, id: ProjectId) -> Option<&Project> {

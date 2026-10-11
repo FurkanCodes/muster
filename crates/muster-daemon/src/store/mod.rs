@@ -17,7 +17,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 pub use handle::{StoreClosed, StoreHandle};
 pub use rows::{ResourceSample, StatusChange};
-pub use runs::{RunUpdate, StoredRun};
+pub use runs::{RunProgress, RunUpdate, StoredRun};
 
 use rows::{id_text, path_text, status_json};
 

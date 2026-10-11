@@ -7,7 +7,7 @@ use muster_core::{
 use rusqlite::Connection;
 
 use super::migrations::{MIGRATIONS, latest_version};
-use super::{ResourceSample, RunUpdate, StatusChange, Store, StoreError, StoreHandle};
+use super::{ResourceSample, RunProgress, RunUpdate, StatusChange, Store, StoreError, StoreHandle};
 
 fn at(millis: i64) -> Timestamp {
     Timestamp::from_millis(millis)
@@ -380,7 +380,10 @@ fn a_run_is_stored_with_its_machine_and_its_timeline() {
     let (mut store, project, _, _) = populated();
     let (stored_run, mut machine) = run(project.id);
     store.insert_run(&stored_run, &machine).unwrap();
-    assert_eq!(store.snapshot().unwrap().runs, std::slice::from_ref(&stored_run));
+    assert_eq!(
+        store.snapshot().unwrap().runs,
+        std::slice::from_ref(&stored_run)
+    );
 
     let now = std::time::Instant::now();
     machine.step(RunEvent::SlotGranted, now);
@@ -410,7 +413,15 @@ fn a_run_is_stored_with_its_machine_and_its_timeline() {
     };
     machine.step(RunEvent::CostReported { micros: 250_000 }, now);
     store
-        .save_run(stored_run.id, &machine.save(now), Some(&pr))
+        .save_run(
+            stored_run.id,
+            &RunProgress {
+                machine: &machine.save(now),
+                pr: Some(&pr),
+                agent_session: Some("agent-1"),
+                container: Some("c-1"),
+            },
+        )
         .unwrap();
     let second = RunTransition {
         from: RunStage::Provisioning,
@@ -439,9 +450,17 @@ fn a_run_is_stored_with_its_machine_and_its_timeline() {
     assert_eq!(found.run.ended_at, Some(at(7)));
     assert_eq!(found.run.ticket, stored_run.ticket);
     assert_eq!(found.machine.generation(), machine.generation());
+    assert_eq!(found.agent_session.as_deref(), Some("agent-1"));
+    assert_eq!(found.container.as_deref(), Some("c-1"));
     assert_eq!(store.run_history(stored_run.id).unwrap(), [first, second]);
+    let progress = RunProgress {
+        machine: &machine,
+        pr: None,
+        agent_session: None,
+        container: None,
+    };
     assert!(matches!(
-        store.save_run(muster_core::RunId::new(), &machine, None),
+        store.save_run(muster_core::RunId::new(), &progress),
         Err(StoreError::NotFound(_))
     ));
 }

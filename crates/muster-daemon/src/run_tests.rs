@@ -1,0 +1,522 @@
+//! In-process tests of runs: the Supervisor stepping run machines, storing
+//! transitions, handing work to a fake [`RunWork`] and taking its reports.
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use muster_core::protocol::{Command, Delta, ErrorCode, Reply};
+use muster_core::{Issue, ProjectId, PullRequest, RunId, RunStage, Timestamp};
+use muster_state::run::{AgentOutcome, RunEffect, RunEvent, Verdict};
+use tokio::sync::{broadcast, mpsc};
+use tokio::time::timeout;
+
+use crate::clock::Clock;
+use crate::github::{BoxFuture, GitHubError, IssueDetail, TicketSource};
+use crate::runs::{Report, Reports, RunContext, RunWork};
+use crate::store::{Store, StoreHandle};
+use crate::supervisor::{self, SupervisorHandle};
+
+#[derive(Debug)]
+struct FixedClock;
+
+impl Clock for FixedClock {
+    fn now(&self) -> Timestamp {
+        Timestamp::from_millis(42)
+    }
+}
+
+/// Issue 42, and no other.
+#[derive(Debug)]
+struct OneIssue;
+
+impl TicketSource for OneIssue {
+    fn list(&self, _repo: &Path) -> BoxFuture<'_, Result<Vec<Issue>, GitHubError>> {
+        Box::pin(async { Ok(vec![issue()]) })
+    }
+
+    fn view(&self, _repo: &Path, number: u64) -> BoxFuture<'_, Result<IssueDetail, GitHubError>> {
+        Box::pin(async move {
+            if number == 42 {
+                Ok(IssueDetail {
+                    issue: issue(),
+                    body: "Users land on /404.".to_owned(),
+                })
+            } else {
+                Err(GitHubError::Failed(format!(
+                    "Could not resolve to an Issue with the number of {number}."
+                )))
+            }
+        })
+    }
+}
+
+fn issue() -> Issue {
+    Issue {
+        number: 42,
+        title: "Fix the login redirect".to_owned(),
+        url: "https://github.com/o/app/issues/42".to_owned(),
+        labels: vec!["bug".to_owned()],
+        author: Some("someone".to_owned()),
+    }
+}
+
+/// Records the work asked for and keeps the reports channel, so a test can
+/// answer as the work would.
+#[derive(Debug, Default)]
+struct FakeWork {
+    asked: Mutex<Vec<(RunContext, RunEffect)>>,
+    pr_checks: Mutex<Vec<RunId>>,
+    reports: Mutex<Option<Reports>>,
+}
+
+impl RunWork for FakeWork {
+    fn start(&self, context: RunContext, effect: RunEffect, reports: Reports) {
+        self.asked.lock().unwrap().push((context, effect));
+        *self.reports.lock().unwrap() = Some(reports);
+    }
+
+    fn check_pull_request(&self, context: RunContext, reports: Reports) {
+        self.pr_checks.lock().unwrap().push(context.run);
+        *self.reports.lock().unwrap() = Some(reports);
+    }
+}
+
+impl FakeWork {
+    /// Waits for the `n`-th piece of work asked for (from 1).
+    async fn asked(&self, n: usize) -> (RunContext, RunEffect) {
+        timeout(Duration::from_secs(5), async {
+            loop {
+                if let Some(found) = self.asked.lock().unwrap().get(n - 1).cloned() {
+                    return found;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "work {n} was never asked for: {:?}",
+                self.asked.lock().unwrap()
+            )
+        })
+    }
+
+    fn count(&self) -> usize {
+        self.asked.lock().unwrap().len()
+    }
+
+    fn report(&self, run: RunId, report: Report) {
+        let reports = self
+            .reports
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("work was asked for");
+        reports.send((run, report)).unwrap();
+    }
+}
+
+struct Setup {
+    _dir: tempfile::TempDir,
+    root: PathBuf,
+    database: PathBuf,
+    work: Arc<FakeWork>,
+    supervisor: SupervisorHandle,
+    project: ProjectId,
+}
+
+const CHECKS: &str = "[checks]\ncommands = [\"make test\"]\n";
+
+async fn spawn(database: &Path, work: Arc<FakeWork>, config_dir: &Path) -> SupervisorHandle {
+    let store = StoreHandle::spawn(Store::open(database).unwrap()).unwrap();
+    supervisor::spawn(supervisor::Settings {
+        store,
+        clock: Arc::new(FixedClock),
+        worktrees_dir: config_dir.join("worktrees"),
+        hook_socket: config_dir.join("hooks.sock"),
+        hook_queue: mpsc::channel(1).1,
+        delta_capacity: 256,
+        history_every: 1,
+        timing: muster_state::session::Timing::default(),
+        work,
+        tickets: Arc::new(OneIssue),
+        config_dir: config_dir.to_owned(),
+    })
+    .await
+    .unwrap()
+}
+
+async fn setup(muster_toml: &str) -> Setup {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("app");
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    std::fs::write(root.join("muster.toml"), muster_toml).unwrap();
+    let root = root.canonicalize().unwrap();
+    let database = dir.path().join("muster.db");
+    let work = Arc::new(FakeWork::default());
+    let supervisor = spawn(&database, work.clone(), dir.path()).await;
+    let Reply::ProjectAdded { id: project } = supervisor
+        .command(Command::AddProject {
+            root: root.clone(),
+            name: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    Setup {
+        _dir: dir,
+        root,
+        database,
+        work,
+        supervisor,
+        project,
+    }
+}
+
+async fn start(setup: &Setup) -> RunId {
+    match setup
+        .supervisor
+        .command(Command::StartRun {
+            project: setup.project,
+            number: 42,
+        })
+        .await
+        .unwrap()
+    {
+        Reply::RunStarted { id } => id,
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+/// Waits for the run's stage, as clients are told it.
+async fn wait_for_stage(deltas: &mut broadcast::Receiver<Delta>, run: RunId, stage: RunStage) {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if let Ok(Delta::RunUpserted(shown)) = deltas.recv().await
+                && shown.id == run
+                && shown.stage == stage
+            {
+                return;
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("the run never reached {stage:?}"));
+}
+
+fn generation(effect: &RunEffect) -> u64 {
+    match effect {
+        RunEffect::StartContainer { generation }
+        | RunEffect::StartBuilder { generation, .. }
+        | RunEffect::RunChecks { generation }
+        | RunEffect::PublishBranch { generation }
+        | RunEffect::StartReviewer { generation } => *generation,
+        other => panic!("{other:?} names no generation"),
+    }
+}
+
+#[tokio::test]
+async fn a_run_goes_through_every_stage_and_its_timeline_is_stored() {
+    let setup = setup(CHECKS).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    wait_for_stage(&mut deltas, run, RunStage::Provisioning).await;
+
+    let (context, effect) = setup.work.asked(1).await;
+    assert!(matches!(effect, RunEffect::StartContainer { .. }));
+    assert_eq!(context.ticket.number, 42);
+    assert_eq!(context.ticket.body, "Users land on /404.");
+    assert_eq!(context.branch, "muster/issue-42-fix-the-login-redirect");
+    assert_eq!(context.root, setup.root);
+    assert_eq!(context.config.checks.commands, ["make test"]);
+
+    let report = |event| setup.work.report(run, Report::Event(event));
+    setup.work.report(run, Report::Container("c-1".to_owned()));
+    report(RunEvent::ContainerReady {
+        generation: generation(&effect),
+    });
+    let (_, effect) = setup.work.asked(2).await;
+    assert!(matches!(effect, RunEffect::StartBuilder { attempt: 1, .. }));
+    setup
+        .work
+        .report(run, Report::AgentSession("agent-1".to_owned()));
+    report(RunEvent::AgentFinished {
+        generation: generation(&effect),
+        outcome: AgentOutcome::Done,
+    });
+    let (context, effect) = setup.work.asked(3).await;
+    assert!(matches!(effect, RunEffect::RunChecks { .. }));
+    assert_eq!(context.container.as_deref(), Some("c-1"));
+    assert_eq!(context.agent_session.as_deref(), Some("agent-1"));
+
+    report(RunEvent::ChecksFinished {
+        generation: generation(&effect),
+        passed: true,
+        report: String::new(),
+    });
+    let (_, effect) = setup.work.asked(4).await;
+    assert!(matches!(effect, RunEffect::PublishBranch { .. }));
+    let pr = PullRequest {
+        number: 17,
+        url: "https://github.com/o/app/pull/17".to_owned(),
+    };
+    setup.work.report(run, Report::PullRequest(pr.clone()));
+    report(RunEvent::PrOpened {
+        generation: generation(&effect),
+        number: 17,
+    });
+    let (_, effect) = setup.work.asked(5).await;
+    assert!(matches!(effect, RunEffect::StartReviewer { .. }));
+    report(RunEvent::ReviewSubmitted {
+        generation: generation(&effect),
+        verdict: Verdict::Approve,
+    });
+    wait_for_stage(&mut deltas, run, RunStage::ReadyForYou).await;
+    let (_, effect) = setup.work.asked(6).await;
+    assert_eq!(effect, RunEffect::MarkReady);
+
+    // Its pull request is looked at, and its merge ends the run.
+    setup.supervisor.check_pull_requests().await;
+    timeout(Duration::from_secs(5), async {
+        while setup.work.pr_checks.lock().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    report(RunEvent::PrMerged);
+    wait_for_stage(&mut deltas, run, RunStage::Merged).await;
+    let (_, effect) = setup.work.asked(7).await;
+    assert_eq!(effect, RunEffect::RemoveContainer);
+
+    let (snapshot, _) = setup.supervisor.subscribe().await.unwrap();
+    let shown = &snapshot.runs[0];
+    assert_eq!(shown.pr, Some(pr));
+    assert_eq!(shown.attempt, 1);
+    assert_eq!(shown.ended_at, Some(Timestamp::from_millis(42)));
+    let Reply::RunHistory { transitions } = setup
+        .supervisor
+        .command(Command::RunHistory { run })
+        .await
+        .unwrap()
+    else {
+        panic!("expected RunHistory");
+    };
+    let stages: Vec<_> = transitions.iter().map(|t| t.to).collect();
+    assert_eq!(
+        stages,
+        [
+            RunStage::Provisioning,
+            RunStage::Building,
+            RunStage::Checking,
+            RunStage::OpeningPr,
+            RunStage::AgentReview,
+            RunStage::ReadyForYou,
+            RunStage::Merged,
+        ]
+    );
+    assert_eq!(transitions[2].reason, "the agent is done");
+
+    // Over is over: the person's commands are refused, plainly.
+    let refused = setup
+        .supervisor
+        .command(Command::CancelRun { run })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::Conflict);
+    assert!(refused.message.contains("has ended"), "{}", refused.message);
+}
+
+#[tokio::test]
+async fn runs_need_checks_one_at_a_time_per_issue_and_an_issue_that_exists() {
+    let setup = setup("").await;
+    let refused = setup
+        .supervisor
+        .command(Command::StartRun {
+            project: setup.project,
+            number: 42,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::BadRequest);
+    assert!(
+        refused.message.contains("runs need checks"),
+        "{}",
+        refused.message
+    );
+
+    let setup = self::setup(CHECKS).await;
+    start(&setup).await;
+    let twice = setup
+        .supervisor
+        .command(Command::StartRun {
+            project: setup.project,
+            number: 42,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(twice.code, ErrorCode::Conflict);
+    let missing = setup
+        .supervisor
+        .command(Command::StartRun {
+            project: setup.project,
+            number: 7,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, ErrorCode::BadRequest);
+    let unknown = setup
+        .supervisor
+        .command(Command::CancelRun { run: RunId::new() })
+        .await
+        .unwrap_err();
+    assert_eq!(unknown.code, ErrorCode::NotFound);
+}
+
+#[tokio::test]
+async fn the_persons_commands_apply_only_when_they_make_sense() {
+    let setup = setup(CHECKS).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    let (_, effect) = setup.work.asked(1).await;
+
+    // Nothing to retry or hand back yet.
+    for command in [
+        Command::RetryRun { run, notes: None },
+        Command::HandBackRun { run },
+        Command::TakeOverRun { run },
+    ] {
+        let refused = setup.supervisor.command(command).await.unwrap_err();
+        assert_eq!(refused.code, ErrorCode::Conflict);
+        assert!(
+            refused.message.contains("starting its container"),
+            "{}",
+            refused.message
+        );
+    }
+
+    // A failure stops for the person; a retry sends it back with notes.
+    setup.work.report(
+        run,
+        Report::Event(RunEvent::InfraFailed {
+            generation: generation(&effect),
+            reason: "docker went away".to_owned(),
+            container_lost: false,
+        }),
+    );
+    wait_for_stage(&mut deltas, run, RunStage::NeedsYou).await;
+    let (snapshot, _) = setup.supervisor.subscribe().await.unwrap();
+    assert_eq!(snapshot.runs[0].reason.as_deref(), Some("docker went away"));
+    setup
+        .supervisor
+        .command(Command::RetryRun {
+            run,
+            notes: Some("try again".to_owned()),
+        })
+        .await
+        .unwrap();
+    wait_for_stage(&mut deltas, run, RunStage::Provisioning).await;
+    let (_, effect) = setup.work.asked(3).await;
+    assert!(matches!(effect, RunEffect::StartContainer { .. }));
+
+    setup
+        .supervisor
+        .command(Command::CancelRun { run })
+        .await
+        .unwrap();
+    wait_for_stage(&mut deltas, run, RunStage::Cancelled).await;
+}
+
+#[tokio::test]
+async fn reports_on_overtaken_work_change_nothing() {
+    let setup = setup(CHECKS).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    let (_, first) = setup.work.asked(1).await;
+    setup.work.report(
+        run,
+        Report::Event(RunEvent::ContainerReady {
+            generation: generation(&first),
+        }),
+    );
+    wait_for_stage(&mut deltas, run, RunStage::Building).await;
+    // The same report again, now overtaken.
+    setup.work.report(
+        run,
+        Report::Event(RunEvent::ContainerReady {
+            generation: generation(&first),
+        }),
+    );
+    setup.supervisor.command(Command::Ping).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(setup.work.count(), 2);
+}
+
+#[tokio::test]
+async fn a_run_over_its_time_stops_its_work_for_the_person() {
+    let setup = setup(&format!("{CHECKS}[limits]\nrun_timeout = \"1s\"\n")).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    setup.work.asked(1).await;
+    wait_for_stage(&mut deltas, run, RunStage::NeedsYou).await;
+    let (_, effect) = setup.work.asked(2).await;
+    assert_eq!(effect, RunEffect::StopWork);
+    let (snapshot, _) = setup.supervisor.subscribe().await.unwrap();
+    assert_eq!(
+        snapshot.runs[0].reason.as_deref(),
+        Some("it reached its time limit (1 s)")
+    );
+}
+
+#[tokio::test]
+async fn a_restarted_daemon_carries_on_with_the_work_under_way() {
+    let setup = setup(CHECKS).await;
+    let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
+    let run = start(&setup).await;
+    let (_, effect) = setup.work.asked(1).await;
+    setup.work.report(run, Report::Container("c-1".to_owned()));
+    setup.work.report(
+        run,
+        Report::Event(RunEvent::ContainerReady {
+            generation: generation(&effect),
+        }),
+    );
+    let (_, building) = setup.work.asked(2).await;
+    setup
+        .work
+        .report(run, Report::AgentSession("agent-1".to_owned()));
+    wait_for_stage(&mut deltas, run, RunStage::Building).await;
+    setup.supervisor.command(Command::Ping).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // A new daemon on the same store.
+    let Setup {
+        _dir: dir,
+        database,
+        supervisor,
+        ..
+    } = setup;
+    drop(supervisor);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let work = Arc::new(FakeWork::default());
+    let supervisor = spawn(&database, work.clone(), dir.path()).await;
+
+    let (context, effect) = work.asked(1).await;
+    assert_eq!(effect, building, "the same work, under the same generation");
+    assert_eq!(context.container.as_deref(), Some("c-1"));
+    assert_eq!(context.agent_session.as_deref(), Some("agent-1"));
+    work.report(
+        run,
+        Report::Event(RunEvent::AgentFinished {
+            generation: generation(&effect),
+            outcome: AgentOutcome::Done,
+        }),
+    );
+    let (_, effect) = work.asked(2).await;
+    assert!(matches!(effect, RunEffect::RunChecks { .. }));
+    let (snapshot, _) = supervisor.subscribe().await.unwrap();
+    assert_eq!(snapshot.runs[0].stage, RunStage::Checking);
+}

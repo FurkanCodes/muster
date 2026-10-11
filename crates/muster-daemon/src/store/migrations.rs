@@ -88,6 +88,9 @@ CREATE TABLE runs (
     reason      TEXT,
     pr          TEXT CHECK (pr IS NULL OR json_valid(pr)),
     machine     TEXT NOT NULL CHECK (json_valid(machine)),
+    -- The building agent's harness session, to resume it or take it over.
+    agent_session  TEXT,
+    container   TEXT,
     created_at  INTEGER NOT NULL,
     ended_at    INTEGER
 ) STRICT;

@@ -56,7 +56,7 @@ enum LinkEvent {
         sender: FrameSender,
         welcome: Welcome,
     },
-    Frame(ServerFrame),
+    Frame(Box<ServerFrame>),
     Lost(String),
 }
 
@@ -96,7 +96,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                     sender = Some(connected);
                     app.on_connected(welcome.daemon_version)
                 }
-                LinkEvent::Frame(frame) => app.on_frame(frame),
+                LinkEvent::Frame(frame) => app.on_frame(*frame),
                 LinkEvent::Lost(reason) => {
                     sender = None;
                     app.on_disconnected(reason);
@@ -153,7 +153,7 @@ async fn keep_linked(options: Options, events: mpsc::UnboundedSender<LinkEvent>)
                 let reason = loop {
                     match receiver.next().await {
                         Ok(Some(frame)) => {
-                            if events.send(LinkEvent::Frame(frame)).is_err() {
+                            if events.send(LinkEvent::Frame(Box::new(frame))).is_err() {
                                 return;
                             }
                         }

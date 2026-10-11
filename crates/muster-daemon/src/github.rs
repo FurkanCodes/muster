@@ -88,6 +88,35 @@ impl GhIssue {
     }
 }
 
+/// A future some trait methods return, so the traits can be used as objects.
+pub(crate) type BoxFuture<'a, T> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
+/// Where tickets come from (`ARCHITECTURE.md` §10, `ARC-03`): GitHub
+/// issues through `gh` in use, a fake in tests.
+pub(crate) trait TicketSource: Send + Sync + std::fmt::Debug {
+    /// The open issues of the repository at `repo`, newest first.
+    fn list(&self, repo: &Path) -> BoxFuture<'_, Result<Vec<Issue>, GitHubError>>;
+    /// One issue, with its body.
+    fn view(&self, repo: &Path, number: u64) -> BoxFuture<'_, Result<IssueDetail, GitHubError>>;
+}
+
+/// GitHub issues through the person's `gh`.
+#[derive(Debug, Default)]
+pub(crate) struct GitHubIssues;
+
+impl TicketSource for GitHubIssues {
+    fn list(&self, repo: &Path) -> BoxFuture<'_, Result<Vec<Issue>, GitHubError>> {
+        let repo = repo.to_owned();
+        Box::pin(async move { list_issues(&repo).await })
+    }
+
+    fn view(&self, repo: &Path, number: u64) -> BoxFuture<'_, Result<IssueDetail, GitHubError>> {
+        let repo = repo.to_owned();
+        Box::pin(async move { view_issue(&repo, number).await })
+    }
+}
+
 /// The repository's open issues, newest first.
 pub(crate) async fn list_issues(repo: &Path) -> Result<Vec<Issue>, GitHubError> {
     let json = gh(
