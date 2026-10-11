@@ -132,7 +132,7 @@ A harness is **data plus a parser**, following Nebula's descriptor idea.
 ## 10. Sources and git host
 
 - **`TicketSource` trait:** list with a filter, get, comment; Jira adds status write-back in M5.
-- **GitHub source:** REST through octocrab or reqwest, with the token from `gh auth token`, so the user signs in once with `gh`. Automatic pickup follows `PRD-07`: the configured label must have been applied by an allowed account, checked against the issue's event timeline, not just the label's presence. Starting a hands-on session from an issue passes the issue as context, as Nebula does.
+- **GitHub source:** the GitHub CLI (`gh … --json`), as Nebula uses, so the person's own `gh` login covers authentication and GitHub Enterprise, and `gh` finds the repository from the checkout's remote. Calls never run on the Supervisor's loop: listing answers from a task of its own, and starting work fetches the issue on a task, then returns to the Supervisor only to create the worktree (`muster/issue-<n>-<title>`, reused if it exists) and the session (a test proves a slow `gh` does not delay other commands). Claude Code gets the issue as its first prompt, set apart between marker lines and named as a description of the work, not instructions (`PRD-07`). Automatic pickup follows `PRD-07` too: the configured label must have been applied by an allowed account, checked against the issue's event timeline, not just the label's presence (M2).
 - **`GitHost` trait:** push branch, open draft PR, post review with line comments, mark ready, request reviewer, read PR state.
 - **Waiting on people:** PR state is polled every 60 s with ETags, which do not count against GitHub's rate limit when nothing changed. Webhooks need a public endpoint and are out of scope (`PRD-10`).
 
@@ -201,7 +201,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 
 ## 15. Milestone 1 plan — Cockpit
 
-Steps 1–7 and 9 are done; 6 was built before 5 so sessions run in real worktrees from the start, and 9 before 8 because the UI is what makes Muster usable. Harnesses: `shell` (the person's `$SHELL`) and `claude`. End-to-end tests use a stand-in `claude` on `PATH` and fire the exact hook commands from its `--settings`, so resume and hooks are tested for real, unlike Nebula's command override.
+Steps 1–9 are done; 6 was built before 5 so sessions run in real worktrees from the start, and 9 before 8 because the UI is what makes Muster usable. Harnesses: `shell` (the person's `$SHELL`) and `claude`. End-to-end tests use a stand-in `claude` on `PATH` and fire the exact hook commands from its `--settings`, so resume and hooks are tested for real, unlike Nebula's command override.
 
 0. **Container spike, alongside the rest:** run `claude -p --output-format stream-json` in a container with `CLAUDE_CODE_OAUTH_TOKEN`; record fixtures for a success, a failure and a long tool-heavy turn; measure memory. Settles the headless question before M2.
 1. Workspace, CI gates, core types.

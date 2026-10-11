@@ -449,3 +449,74 @@ fn a_project_is_added_from_a_typed_path() {
     );
     let _ = WorkspaceId::new();
 }
+
+#[test]
+fn issues_load_into_a_picker_and_start_work_that_opens() {
+    let mut world = world();
+    let actions = press(&mut world.app, KeyCode::Char('i'));
+    let (req_id, sent) = command(&actions);
+    assert_eq!(
+        sent,
+        Command::ListIssues {
+            project: world.project.id
+        }
+    );
+    assert!(render(&world.app).contains("Loading…"));
+
+    let issue = |number: u64, title: &str| muster_core::Issue {
+        number,
+        title: title.to_owned(),
+        url: format!("https://github.com/o/r/issues/{number}"),
+        labels: vec!["bug".to_owned()],
+        author: None,
+    };
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Ok(Reply::Issues {
+            issues: vec![issue(42, "Fix the login redirect"), issue(7, "Dark mode")],
+        }),
+    });
+    let screen = render(&world.app);
+    assert!(screen.contains("#42"), "{screen}");
+    assert!(screen.contains("Fix the login redirect"), "{screen}");
+
+    press(&mut world.app, KeyCode::Down);
+    let (req_id, sent) = command(&press(&mut world.app, KeyCode::Enter));
+    assert_eq!(
+        sent,
+        Command::StartFromIssue {
+            project: world.project.id,
+            number: 7,
+            harness: "claude".to_owned(),
+            size: SIZE,
+        }
+    );
+    let started = session(world.worktree.id, "#7 Dark mode", 9);
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Ok(Reply::IssueStarted {
+            workspace: world.worktree.id,
+            session: started.id,
+        }),
+    });
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(started.clone())));
+    assert_eq!(world.app.mode, Mode::Terminal(started.id));
+}
+
+#[test]
+fn an_issue_listing_error_is_shown_in_the_picker() {
+    let mut world = world();
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('i')));
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Err(ErrorBody::new(
+            ErrorCode::BadRequest,
+            "the GitHub CLI (gh) is not installed; install it and run `gh auth login`",
+        )),
+    });
+    assert!(render(&world.app).contains("not installed"));
+    press(&mut world.app, KeyCode::Esc);
+    assert_eq!(world.app.mode, Mode::Browse);
+}

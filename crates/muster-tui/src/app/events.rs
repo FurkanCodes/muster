@@ -88,6 +88,7 @@ impl App {
                 });
             }
             KeyCode::Char('w') => self.new_worktree(),
+            KeyCode::Char('i') => return self.open_issues(),
             KeyCode::Char('n') => self.new_session(),
             KeyCode::Char('s') => self.confirm_stop(),
             KeyCode::Char('x') => self.confirm_remove(),
@@ -145,6 +146,21 @@ impl App {
             }
             None => self.complain("Add a project first: press a."),
         }
+    }
+
+    fn open_issues(&mut self) -> Vec<Action> {
+        let Some(project) = self.selected.and_then(|row| self.model.project_of(row)) else {
+            self.complain("Add a project first: press a.");
+            return Vec::new();
+        };
+        self.mode = Mode::Dialog(Dialog::Issues {
+            project,
+            issues: None,
+            selected: 0,
+            harness: HarnessChoice::Claude,
+            error: None,
+        });
+        vec![self.command(Command::ListIssues { project }, Then::ShowIssues(project))]
     }
 
     fn new_session(&mut self) {
@@ -234,6 +250,55 @@ impl App {
                 }
                 edit => self.keep_editing(edit, Dialog::NewWorktree { project, branch }),
             },
+            Dialog::Issues {
+                project,
+                issues,
+                selected,
+                harness,
+                error,
+            } => {
+                let count = issues.as_ref().map_or(0, Vec::len);
+                let mut selected = selected;
+                let mut harness = harness;
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        self.mode = Mode::Browse;
+                        return Vec::new();
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => selected = selected.saturating_sub(1),
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        selected = (selected + 1).min(count.saturating_sub(1));
+                    }
+                    KeyCode::Tab | KeyCode::BackTab => {
+                        harness = match harness {
+                            HarnessChoice::Claude => HarnessChoice::Shell,
+                            HarnessChoice::Shell => HarnessChoice::Claude,
+                        };
+                    }
+                    KeyCode::Enter => {
+                        if let Some(issue) = issues.as_ref().and_then(|list| list.get(selected)) {
+                            let command = Command::StartFromIssue {
+                                project,
+                                number: issue.number,
+                                harness: harness.id().to_owned(),
+                                size: self.terminal_size,
+                            };
+                            self.mode = Mode::Browse;
+                            self.say(format!("Starting work on #{}…", issue.number));
+                            return vec![self.command(command, Then::OpenIssueSession)];
+                        }
+                    }
+                    _ => {}
+                }
+                self.mode = Mode::Dialog(Dialog::Issues {
+                    project,
+                    issues,
+                    selected,
+                    harness,
+                    error,
+                });
+                Vec::new()
+            }
             Dialog::NewSession {
                 workspace,
                 harness,

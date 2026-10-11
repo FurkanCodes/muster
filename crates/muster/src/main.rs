@@ -41,6 +41,24 @@ enum Commands {
     /// Start and stop sessions.
     #[command(subcommand)]
     Session(SessionCommand),
+    /// Work on GitHub issues, through the GitHub CLI (`gh`).
+    #[command(subcommand)]
+    Issue(IssueCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum IssueCommand {
+    /// List PROJECT's open issues (its name, id or path).
+    List { project: String },
+    /// Start work on issue NUMBER of PROJECT: a worktree for it and a
+    /// session with the issue as its first prompt.
+    Start {
+        project: String,
+        number: u64,
+        /// What to run: `claude` or `shell`.
+        #[arg(long, default_value = "claude")]
+        harness: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -130,6 +148,14 @@ fn main() -> ExitCode {
             Some(Commands::Session(SessionCommand::Stop { session })) => {
                 commands::stop_session(&socket, &session).await
             }
+            Some(Commands::Issue(IssueCommand::List { project })) => {
+                commands::list_issues(&socket, &project).await
+            }
+            Some(Commands::Issue(IssueCommand::Start {
+                project,
+                number,
+                harness,
+            })) => commands::start_issue(&socket, &project, number, harness).await,
             None => return ui(paths).await,
         };
         match outcome {

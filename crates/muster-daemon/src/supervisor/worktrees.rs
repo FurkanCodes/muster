@@ -170,7 +170,7 @@ impl Supervisor {
     }
 
     /// The live worktree of `project` on `branch`, if any.
-    fn worktree_on(&self, project: ProjectId, branch: &str) -> Option<&Workspace> {
+    pub(super) fn worktree_on(&self, project: ProjectId, branch: &str) -> Option<&Workspace> {
         self.state.workspaces.iter().find(|workspace| {
             workspace.project == project
                 && matches!(&workspace.kind, WorkspaceKind::Worktree { branch: used, .. } if used == branch)
