@@ -14,6 +14,7 @@ mod resources;
 mod server;
 mod supervisor;
 mod terminal;
+mod worktree_sync;
 
 #[cfg(test)]
 mod tests;
@@ -45,6 +46,9 @@ pub struct DaemonConfig {
     pub history_interval: Duration,
     /// How often workspaces' checked-out branches are looked at.
     pub branch_interval: Duration,
+    /// How often projects are looked at for worktrees made or removed
+    /// outside Muster.
+    pub worktree_interval: Duration,
     /// How long a harness that reports its start may take to before it is
     /// taken to be asking the person something first.
     pub start_grace: Duration,
@@ -58,6 +62,7 @@ impl DaemonConfig {
             sample_interval: Duration::from_secs(2),
             history_interval: Duration::from_secs(30),
             branch_interval: Duration::from_secs(2),
+            worktree_interval: Duration::from_secs(3),
             start_grace: muster_state::session::Timing::default().start_grace,
         }
     }
@@ -137,6 +142,10 @@ pub async fn run(
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
     let branch_watcher = tokio::spawn(branches::run(supervisor.clone(), config.branch_interval));
+    let worktree_sync = tokio::spawn(worktree_sync::run(
+        supervisor.clone(),
+        config.worktree_interval,
+    ));
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
     let hook_server = tokio::spawn(hooks::serve(hook_listener, hook_deliveries, async {
@@ -148,6 +157,7 @@ pub async fn run(
 
     sampler.abort();
     branch_watcher.abort();
+    worktree_sync.abort();
     let _ = stop_hooks.send(());
     let _ = hook_server.await;
     let _ = std::fs::remove_file(&hook_socket);

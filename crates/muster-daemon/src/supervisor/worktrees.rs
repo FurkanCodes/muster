@@ -12,6 +12,7 @@ use muster_core::{ProjectId, Workspace, WorkspaceId, WorkspaceKind};
 
 use super::{Supervisor, store_closed, store_error};
 use crate::git::{self, GitError};
+use crate::worktree_sync::{Listed, ProjectWorktrees};
 
 impl Supervisor {
     pub(super) async fn create_worktree(
@@ -156,6 +157,144 @@ impl Supervisor {
             .map_err(store_closed)?
             .map_err(store_error)?;
 
+        self.drop_workspace(workspace);
+        Ok(Reply::Done)
+    }
+
+    /// Each project's root and where its worktrees are, for the sync.
+    pub(super) fn projects_for_sync(&self) -> Vec<ProjectWorktrees> {
+        self.state
+            .projects
+            .iter()
+            .map(|project| ProjectWorktrees {
+                project: project.id,
+                root: project.root.clone(),
+                known: self
+                    .state
+                    .workspaces
+                    .iter()
+                    .filter(|workspace| {
+                        workspace.project == project.id && !workspace.kind.is_checkout()
+                    })
+                    .map(|workspace| workspace.kind.path().to_owned())
+                    .collect(),
+            })
+            .collect()
+    }
+
+    /// Brings a project's worktrees in line with git's list, which may be a
+    /// moment old: a worktree made outside Muster is adopted if its
+    /// directory is there and no workspace has its path; one removed
+    /// outside Muster is forgotten if its directory is gone and nothing
+    /// runs in it. Checking the directories keeps a stale list from undoing
+    /// what Muster has just done.
+    pub(super) async fn sync_worktrees(&mut self, project: ProjectId, listed: Vec<Listed>) {
+        let Some(root) = self
+            .state
+            .projects
+            .iter()
+            .find(|candidate| candidate.id == project)
+            .map(|found| found.root.clone())
+        else {
+            return;
+        };
+        let present: Vec<PathBuf> = listed
+            .iter()
+            .filter(|entry| !entry.prunable)
+            .map(|entry| entry.path.clone())
+            .collect();
+
+        for entry in listed.into_iter().filter(|entry| !entry.prunable) {
+            let path = tokio::fs::canonicalize(&entry.path)
+                .await
+                .unwrap_or(entry.path);
+            let taken = path == root
+                || self.state.projects.iter().any(|other| other.root == path)
+                || self
+                    .state
+                    .workspaces
+                    .iter()
+                    .any(|workspace| workspace.kind.path() == path);
+            if taken || !tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_dir()) {
+                continue;
+            }
+            self.adopt_worktree(project, path, entry.branch).await;
+        }
+
+        let gone: Vec<(WorkspaceId, PathBuf)> = self
+            .state
+            .workspaces
+            .iter()
+            .filter(|workspace| workspace.project == project && !workspace.kind.is_checkout())
+            .filter(|workspace| !present.contains(&workspace.kind.path().to_path_buf()))
+            .map(|workspace| (workspace.id, workspace.kind.path().to_owned()))
+            .collect();
+        for (workspace, path) in gone {
+            let exists = tokio::fs::try_exists(&path).await.unwrap_or(true);
+            if exists || self.running_sessions_in(workspace) > 0 {
+                continue;
+            }
+            tracing::info!(%workspace, path = %path.display(), "a worktree was removed outside Muster");
+            self.forget_worktree(workspace).await;
+            // Git still holds the gone worktree's record, which keeps its
+            // branch checked out; its own cleanup lets the branch go.
+            if let Err(error) = git::prune_worktrees(&root).await {
+                tracing::warn!(%error, "could not prune worktrees");
+            }
+        }
+    }
+
+    /// Starts tracking a worktree made outside Muster.
+    async fn adopt_worktree(&mut self, project: ProjectId, path: PathBuf, branch: String) {
+        let workspace = Workspace {
+            id: WorkspaceId::new(),
+            project,
+            kind: WorkspaceKind::Worktree {
+                path: path.clone(),
+                branch: muster_core::text::one_line(&branch),
+            },
+            created_at: self.clock.now(),
+        };
+        let stored = workspace.clone();
+        match self
+            .store
+            .call(move |store| store.insert_workspace(&stored))
+            .await
+        {
+            Ok(Ok(())) => {
+                tracing::info!(path = %path.display(), "adopted a worktree made outside Muster");
+                self.state.workspaces.push(workspace.clone());
+                self.broadcast(Delta::WorkspaceUpserted(workspace));
+            }
+            Ok(Err(error)) => tracing::error!(%error, "could not adopt a worktree"),
+            Err(_) => tracing::error!("could not adopt a worktree: the store stopped"),
+        }
+    }
+
+    /// Stops tracking a worktree that is already gone from disk.
+    async fn forget_worktree(&mut self, workspace: WorkspaceId) {
+        let at = self.clock.now();
+        match self
+            .store
+            .call(move |store| store.remove_workspace(workspace, at))
+            .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                tracing::error!(%error, "could not forget a worktree");
+                return;
+            }
+            Err(_) => {
+                tracing::error!("could not forget a worktree: the store stopped");
+                return;
+            }
+        }
+        self.drop_workspace(workspace);
+    }
+
+    /// Takes a removed workspace and its sessions out of the state, and
+    /// tells clients.
+    fn drop_workspace(&mut self, workspace: WorkspaceId) {
         self.state.workspaces.retain(|kept| kept.id != workspace);
         let released: Vec<_> = self
             .state
@@ -164,14 +303,13 @@ impl Supervisor {
             .filter(|session| session.workspace == workspace)
             .map(|session| session.id)
             .collect();
-        for session in &released {
-            self.release_terminal(*session);
+        for session in released {
+            self.release_terminal(session);
         }
         self.state
             .sessions
             .retain(|session| session.workspace != workspace);
         self.broadcast(Delta::WorkspaceRemoved { id: workspace });
-        Ok(Reply::Done)
     }
 
     /// The live worktree Muster made for `project` on `branch`, if any.
