@@ -1,0 +1,10 @@
+[package]
+name = "muster-tui"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
