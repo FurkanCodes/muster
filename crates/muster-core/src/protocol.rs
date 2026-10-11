@@ -15,7 +15,8 @@
 //! version 4 the wait on a harness asking before it starts; version 5 runs;
 //! version 6 the person's request for changes on a run; version 7 runs'
 //! containers as workspaces, and taking a run over; version 8 handing a
-//! person's branch to the autopilot; version 9 the checks by hand.
+//! person's branch to the autopilot; version 9 the checks by hand; version
+//! 10 a review and a draft pull request by hand.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -29,9 +30,9 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 9;
+pub const PROTOCOL_VERSION: u32 = 10;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 9;
+pub const MIN_PROTOCOL_VERSION: u32 = 10;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -302,6 +303,17 @@ pub enum Command {
         workspace: WorkspaceId,
         size: TermSize,
     },
+    /// Have Claude Code review a workspace's change against the branch it
+    /// is to merge into, in plan mode (it changes nothing), as a session;
+    /// answered with [`Reply::SessionStarted`].
+    ReviewWorkspace {
+        workspace: WorkspaceId,
+        size: TermSize,
+    },
+    /// Push a workspace's branch, as committed, with the person's own git,
+    /// and open a draft pull request from it, or find the one open;
+    /// answered with [`Reply::PullRequestOpened`].
+    OpenPullRequest { workspace: WorkspaceId },
     /// Start an ended session's program again, in the same session: Claude
     /// Code resumes its conversation if it had one, a shell starts afresh.
     /// Answered with [`Reply::SessionStarted`]. `size` is used when the
@@ -380,6 +392,10 @@ pub enum Reply {
     },
     RunHistory {
         transitions: Vec<crate::RunTransition>,
+    },
+    /// A pull request from a workspace's branch, opened or found open.
+    PullRequestOpened {
+        pr: crate::PullRequest,
     },
     /// The run is the person's; `session` is its agent, in its container.
     RunTakenOver {

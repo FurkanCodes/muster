@@ -184,6 +184,8 @@ async fn spawn_with(
         config_dir: config_dir.to_owned(),
         credentials: Arc::new(FixedCredentials(secret)),
         docker: docker.display().to_string(),
+        // Never reached here: pull requests by hand are tested end to end.
+        git_host: Arc::new(crate::githost::GitHub),
     })
     .await
     .unwrap()

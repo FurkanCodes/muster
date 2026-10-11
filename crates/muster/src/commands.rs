@@ -619,3 +619,39 @@ async fn run_checks(socket: &Path, worktree: &str) -> Result<bool, Box<dyn std::
     }
     Err("the checks ended without saying how".into())
 }
+
+pub(crate) async fn review(socket: &Path, worktree: &str) -> Outcome {
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let workspace = find_worktree(&snapshot, worktree)?;
+    let (id, branch) = (workspace.id, workspace.kind.branch().to_owned());
+    let reply = connection
+        .command(Command::ReviewWorkspace {
+            workspace: id,
+            size: TermSize::default(),
+        })
+        .await?;
+    let Reply::SessionStarted { id: session } = reply else {
+        return Err(unexpected(&reply));
+    };
+    println!(
+        "Claude Code reviews the change on {} in session {session}, changing nothing; \
+         `muster` shows it.",
+        shown(&branch)
+    );
+    Ok(())
+}
+
+pub(crate) async fn open_pull_request(socket: &Path, worktree: &str) -> Outcome {
+    let mut connection = connect(socket).await?;
+    let snapshot = connection.subscribe().await?;
+    let workspace = find_worktree(&snapshot, worktree)?.id;
+    let reply = connection
+        .command(Command::OpenPullRequest { workspace })
+        .await?;
+    let Reply::PullRequestOpened { pr } = reply else {
+        return Err(unexpected(&reply));
+    };
+    println!("Draft pull request #{}: {}", pr.number, shown(&pr.url));
+    Ok(())
+}

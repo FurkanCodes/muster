@@ -124,6 +124,19 @@ pub(crate) fn reviewer(ticket: &Ticket, branch: &str, base: &str, fence: &str) -
     )
 }
 
+/// A review by hand of the change on `branch`, against `base` (a ref git
+/// knows there, such as `origin/main`): Claude Code reads it in plan mode
+/// and reports to the person.
+pub(crate) fn review_by_hand(branch: &str, base: &str) -> String {
+    format!(
+        "Review the change on the branch `{branch}` before it goes further. Read it with \
+         `git diff {base}...HEAD` and `git log {base}..HEAD`, and the files around it as you \
+         need; do not change anything. Judge whether it is correct and complete, with tests \
+         where the project has them. Point out real problems with their file and line, not \
+         matters of taste, and end with your verdict: approve, or what must change."
+    )
+}
+
 /// A reviewer's verdict, as the daemon reads it from the end of its reply.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub(crate) struct ReviewVerdict {

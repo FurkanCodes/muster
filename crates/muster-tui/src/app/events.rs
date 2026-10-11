@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use muster_core::ProjectId;
 use muster_core::protocol::{ClientFrame, Command};
+use muster_core::{ProjectId, WorkspaceId};
 
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, IssueWork, Mode, Then, View};
 use crate::input::{Edit, LineInput};
@@ -68,7 +68,7 @@ impl App {
         let is_claude = self
             .model
             .session(session)
-            .is_some_and(|stored| stored.harness == "claude");
+            .is_some_and(|stored| matches!(stored.harness.as_str(), "claude" | "review"));
         if is_claude
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && key.code == KeyCode::Char('z')
@@ -138,6 +138,8 @@ impl App {
             KeyCode::Char('x') => return self.remove(),
             KeyCode::Char('p') if self.view == View::Sessions => self.ask_hand_off(),
             KeyCode::Char('c') if self.view == View::Sessions => return self.check(),
+            KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
+            KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
             _ => {}
         }
         Vec::new()
@@ -196,18 +198,56 @@ impl App {
     /// `c`: the project's checks in the selected workspace, opened as they
     /// run.
     fn check(&mut self) -> Vec<Action> {
-        let Some(workspace) = self.selected.and_then(|row| self.model.worktree_of(row)) else {
-            self.complain("Select a worktree, or a session in one, to run the checks there.");
+        let Some(workspace) = self.hands_on_workspace("run the checks there") else {
             return Vec::new();
         };
-        if self.model.run_of(workspace).is_some() {
-            self.complain("A run checks its own work; hand it back to have it checked.");
-            return Vec::new();
-        }
         let size = self.terminal_size;
         vec![self.command(
             Command::CheckWorkspace { workspace, size },
             Then::OpenSession,
+        )]
+    }
+
+    /// The workspace selected for a stage by hand: a worktree or checkout,
+    /// or one a session runs in; not a run's container, whose run does its
+    /// own.
+    fn hands_on_workspace(&mut self, what: &str) -> Option<WorkspaceId> {
+        let Some(workspace) = self.selected.and_then(|row| self.model.worktree_of(row)) else {
+            self.complain(format!(
+                "Select a worktree, or a session in one, to {what}."
+            ));
+            return None;
+        };
+        if self.model.run_of(workspace).is_some() {
+            self.complain("A run does that itself; hand it back to have it done.");
+            return None;
+        }
+        Some(workspace)
+    }
+
+    /// `v`: Claude Code reviews the selected workspace's change, opened as
+    /// it starts.
+    fn review(&mut self) -> Vec<Action> {
+        let Some(workspace) = self.hands_on_workspace("review its change") else {
+            return Vec::new();
+        };
+        let size = self.terminal_size;
+        vec![self.command(
+            Command::ReviewWorkspace { workspace, size },
+            Then::OpenSession,
+        )]
+    }
+
+    /// `o`: pushes the selected workspace's branch and opens a draft pull
+    /// request from it.
+    fn open_pull_request(&mut self) -> Vec<Action> {
+        let Some(workspace) = self.hands_on_workspace("open a pull request from it") else {
+            return Vec::new();
+        };
+        self.say("Pushing the branch and opening a draft pull request…");
+        vec![self.command(
+            Command::OpenPullRequest { workspace },
+            Then::ShowPullRequest,
         )]
     }
 

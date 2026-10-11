@@ -92,3 +92,121 @@ async fn the_checks_run_in_a_workspace_show_their_output_and_say_how_they_went()
     assert!(passed.status.success());
     assert!(String::from_utf8_lossy(&passed.stdout).contains("All checks passed."));
 }
+
+#[tokio::test]
+async fn a_review_by_hand_is_claude_code_in_plan_mode_on_the_change() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let daemon = sandbox.start();
+    assert!(
+        sandbox
+            .run(&["project", "add", root.to_str().unwrap()])
+            .status
+            .success()
+    );
+    let added = sandbox.run(&["worktree", "add", "app", "--branch", "feature"]);
+    assert!(added.status.success());
+
+    let reviewed = sandbox.run(&["review", "feature"]);
+    let said = String::from_utf8_lossy(&reviewed.stdout);
+    assert!(
+        reviewed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&reviewed.stderr)
+    );
+    assert!(
+        said.starts_with("Claude Code reviews the change on feature in session ses_"),
+        "{said}"
+    );
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    let session = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.harness == "review")
+        .unwrap();
+    assert_eq!(session.title, "Review");
+    let launch = sandbox.wait_for_launches(session.id, 1).remove(0);
+    assert_eq!(launch.args[..2], ["--permission-mode", "plan"]);
+    assert!(launch.value("--session-id").is_some());
+    let prompt = launch.args.last().unwrap();
+    assert!(prompt.contains("`git diff main...HEAD`"), "{prompt}");
+    assert!(prompt.contains("do not change anything"), "{prompt}");
+}
+
+#[tokio::test]
+async fn a_draft_pull_request_by_hand_pushes_the_branch_and_opens_or_finds_it() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let remote = root.parent().unwrap().join("remote.git");
+    support::git(
+        root.parent().unwrap(),
+        &[
+            "clone",
+            "--bare",
+            "--quiet",
+            root.to_str().unwrap(),
+            remote.to_str().unwrap(),
+        ],
+    );
+    support::git(
+        &root,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    let _daemon = sandbox.start();
+    assert!(
+        sandbox
+            .run(&["project", "add", root.to_str().unwrap()])
+            .status
+            .success()
+    );
+    assert!(
+        sandbox
+            .run(&["worktree", "add", "app", "--branch", "feature"])
+            .status
+            .success()
+    );
+    let tree = sandbox.root().join("worktrees/app/feature");
+    std::fs::write(tree.join("fix.txt"), "fixed\n").unwrap();
+    support::git(&tree, &["add", "fix.txt"]);
+    support::git(
+        &tree,
+        &["commit", "--quiet", "--message", "Fix the login redirect"],
+    );
+
+    let opened = sandbox.run(&["pr", "feature"]);
+    let said = String::from_utf8_lossy(&opened.stdout);
+    assert!(
+        opened.status.success(),
+        "{}",
+        String::from_utf8_lossy(&opened.stderr)
+    );
+    assert_eq!(
+        said,
+        "Draft pull request #17: https://github.com/o/app/pull/17\n"
+    );
+    assert_eq!(
+        support::git(&remote, &["log", "-1", "--format=%s", "feature"]),
+        "Fix the login redirect"
+    );
+    let calls = std::fs::read_to_string(sandbox.fake_gh().join("calls")).unwrap();
+    assert!(
+        calls.contains(
+            "pr create --draft --base main --head feature --title Fix the login redirect"
+        ),
+        "{calls}"
+    );
+    // Asked again, it finds the one open rather than opening another.
+    let again = sandbox.run(&["pr", "feature"]);
+    assert!(again.status.success());
+    let calls = std::fs::read_to_string(sandbox.fake_gh().join("calls")).unwrap();
+    assert_eq!(calls.matches("pr create").count(), 1, "{calls}");
+
+    // The branch a pull request would merge into is refused.
+    let base = sandbox.run(&["pr", "app"]);
+    assert!(!base.status.success());
+    let said = String::from_utf8_lossy(&base.stderr);
+    assert!(
+        said.contains("main is the branch a pull request would merge into"),
+        "{said}"
+    );
+}

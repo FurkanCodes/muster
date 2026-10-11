@@ -31,6 +31,9 @@ enum Kind {
     Claude,
     /// The project's checks, run by hand in a workspace.
     Checks,
+    /// Claude Code reviewing a workspace's change in plan mode, which
+    /// changes nothing.
+    Review,
 }
 
 const SHELL: Harness = Harness {
@@ -51,9 +54,15 @@ const CHECKS: Harness = Harness {
     kind: Kind::Checks,
 };
 
+const REVIEW: Harness = Harness {
+    id: "review",
+    label: "Review",
+    kind: Kind::Review,
+};
+
 /// The harness called `id`, if Muster knows it.
 pub(crate) fn find(id: &str) -> Option<Harness> {
-    [SHELL, CLAUDE, CHECKS]
+    [SHELL, CLAUDE, CHECKS, REVIEW]
         .into_iter()
         .find(|harness| harness.id == id)
 }
@@ -94,7 +103,7 @@ printf '\033[1;32mAll checks passed.\033[0m\n'
 impl Harness {
     /// Whether it is a coding agent, rather than a shell.
     pub(crate) fn is_agent(self) -> bool {
-        self.kind == Kind::Claude
+        matches!(self.kind, Kind::Claude | Kind::Review)
     }
 
     /// Whether it runs the project's checks.
@@ -105,23 +114,23 @@ impl Harness {
     /// Whether the program reports its state through hooks, and so needs a
     /// session id and a hook token at launch.
     pub(crate) fn has_hooks(self) -> bool {
-        self.kind == Kind::Claude
+        self.is_agent()
     }
 
     /// Whether it can take a first prompt on its command line.
     pub(crate) fn takes_prompt(self) -> bool {
-        self.kind == Kind::Claude
+        self.is_agent()
     }
 
     /// Whether a session can be resumed after the daemon restarts.
     pub(crate) fn can_resume(self) -> bool {
-        self.kind == Kind::Claude
+        self.is_agent()
     }
 
     /// Whether the program suspends itself on Ctrl+Z and waits to be
     /// continued (see `PtyHandle::resume_if_suspended`).
     pub(crate) fn suspends_itself(self) -> bool {
-        self.kind == Kind::Claude
+        self.is_agent()
     }
 }
 
@@ -260,6 +269,12 @@ fn on_host(
             Vec::new(),
         ),
         Kind::Claude => ("claude".to_owned(), claude::arguments(launch)),
+        Kind::Review => {
+            // Plan mode, resumed or not: a review changes nothing.
+            let mut args = vec!["--permission-mode".to_owned(), "plan".to_owned()];
+            args.extend(claude::arguments(launch));
+            ("claude".to_owned(), args)
+        }
         Kind::Checks => {
             let checks = launch.checks.clone().unwrap_or(CheckCommands {
                 commands: Vec::new(),
@@ -304,7 +319,8 @@ fn in_container(
         args.extend(["--env".to_owned(), name.clone()]);
     }
     let kind = match harness.kind {
-        Kind::Claude => "claude",
+        // A review never runs in a container (`place_for` refuses agents).
+        Kind::Claude | Kind::Review => "claude",
         // Checks never run in a container by hand (`place_for` refuses):
         // a run checks its own work.
         Kind::Shell | Kind::Checks => "shell",
@@ -403,6 +419,7 @@ mod tests {
         assert_eq!(find("shell"), Some(SHELL));
         assert_eq!(find("claude"), Some(CLAUDE));
         assert_eq!(find("checks"), Some(CHECKS));
+        assert_eq!(find("review"), Some(REVIEW));
         assert_eq!(find("nonsense"), None);
     }
 
@@ -473,6 +490,33 @@ mod tests {
         assert_eq!(spec.args[0], "-c");
         assert_eq!(spec.args[2..], ["sh", "1800", "cargo test", "cargo clippy"]);
         assert_eq!(spec.cwd, PathBuf::from("/work"));
+    }
+
+    #[test]
+    fn a_review_is_claude_code_in_plan_mode_resumed_or_not() {
+        let launch = |resume| Launch {
+            session: SessionId::new(),
+            agent_session: Some("id".to_owned()),
+            resume,
+            prompt: Some("Review the change".to_owned()),
+            hooks: None,
+            place: Place::Host(PathBuf::from("/work")),
+            size: TermSize::default(),
+            checks: None,
+        };
+        let fresh = spawn_spec(REVIEW, launch(false));
+        assert_eq!(fresh.program, "claude");
+        assert_eq!(fresh.args[..2], ["--permission-mode", "plan"]);
+        assert_eq!(
+            fresh.args.last().map(String::as_str),
+            Some("Review the change")
+        );
+        let resumed = spawn_spec(REVIEW, launch(true));
+        assert_eq!(
+            resumed.args[..4],
+            ["--permission-mode", "plan", "--resume", "id"]
+        );
+        assert!(REVIEW.is_agent() && REVIEW.can_resume() && REVIEW.has_hooks());
     }
 
     #[test]

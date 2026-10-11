@@ -200,6 +200,8 @@ enum Then {
     OpenTakenOver,
     /// Keep the run's timeline.
     RunHistory(RunId),
+    /// Say which pull request was opened.
+    ShowPullRequest,
     Say(&'static str),
 }
 
@@ -464,6 +466,12 @@ impl App {
             (Ok(Reply::RunTakenOver { session, .. }), Then::OpenTakenOver) => {
                 self.wanted = Some((Row::Session(session), true));
                 self.note = None;
+            }
+            (Ok(Reply::PullRequestOpened { pr }), Then::ShowPullRequest) => {
+                self.say(format!(
+                    "Draft pull request #{} is open: {}",
+                    pr.number, pr.url
+                ));
             }
             (Ok(Reply::RunHistory { transitions }), Then::RunHistory(run)) => {
                 self.run_history.insert(run, transitions);
