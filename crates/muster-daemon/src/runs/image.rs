@@ -3,7 +3,9 @@
 //! image, built once: Node, git and Claude Code, in the version the person
 //! has, run as an unprivileged user, since Claude Code refuses to skip its
 //! permission prompts as root. (`MUSTER_RUN_IMAGE` names a ready image
-//! instead; see `DockerWork::with_image`.)
+//! instead.) Checked by hand against Claude Code 2.1.296: it builds, runs
+//! as `muster` with the state and work directories writable, and accepts
+//! `--dangerously-skip-permissions` there.
 
 use std::path::Path;
 use std::time::Duration;
@@ -24,6 +26,8 @@ RUN useradd --create-home --shell /bin/bash muster \
  && mkdir -p /work /cache && chown muster:muster /work /cache
 USER muster
 WORKDIR /work
+# The version is the person's; an unprivileged user cannot update it anyway.
+ENV DISABLE_AUTOUPDATER=1
 "#;
 
 /// The image for a run of the project at `root`, built if need be.
@@ -110,5 +114,6 @@ mod tests {
             recipe.contains("USER muster"),
             "agents must not run as root"
         );
+        assert!(recipe.contains("ENV DISABLE_AUTOUPDATER=1"));
     }
 }
