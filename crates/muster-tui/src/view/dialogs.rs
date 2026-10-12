@@ -54,22 +54,17 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
                     Span::from(label).dim()
                 }
             };
-            let mut lines = vec![
-                Line::from(format!("In {place}")).dim(),
-                Line::from(vec![
-                    Span::raw("Run  "),
-                    choice(HarnessChoice::Claude),
-                    Span::raw(" "),
-                    choice(HarnessChoice::Shell),
-                    Span::from("   ⇥ switch").dim(),
-                ]),
-            ];
-            match harness {
-                HarnessChoice::Claude => {
-                    lines.push(Line::from("First prompt (optional):"));
-                    (" New session ", lines, Some(prompt))
-                }
-                HarnessChoice::Shell => (" New session ", lines, None),
+            let mut run = vec![Span::raw("Run ")];
+            for option in HarnessChoice::ALL {
+                run.push(choice(option));
+            }
+            let mut lines = vec![Line::from(format!("In {place}")).dim(), Line::from(run)];
+            hint = "⇥ ⇧⇥ choose   ⏎ start   esc cancel";
+            if harness.is_agent() {
+                lines.push(Line::from("First prompt (optional):"));
+                (" New session ", lines, Some(prompt))
+            } else {
+                (" New session ", lines, None)
             }
         }
         Dialog::Confirm { question, .. } => (

@@ -9,7 +9,7 @@ use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start};
 
 use super::{Live, Supervisor, store_closed, store_error};
-use crate::harness::{self, CheckCommands, Harness, HookEndpoint, Place, claude, transcript};
+use crate::harness::{self, CheckCommands, Harness, HookEndpoint, Place, TitleState, claude};
 use crate::pty::{self, PtyEvent};
 
 /// A resumed program that exits sooner than this, unasked, could not
@@ -197,7 +197,8 @@ impl Supervisor {
         let on_host = matches!(place, Place::Host(_));
         let (agent_session, resume, prompt, checks) = match mode {
             Mode::Fresh { prompt } => {
-                let id = hooked.then(claude::new_session_id).transpose()?;
+                let chosen = hooked && harness.chooses_session_id();
+                let id = chosen.then(claude::new_session_id).transpose()?;
                 (id, false, prompt, None)
             }
             Mode::Resume { agent_session } => (Some(agent_session), true, None, None),
@@ -211,6 +212,16 @@ impl Supervisor {
         } else {
             None
         };
+        // The files of Muster's own it hears some harnesses through. If they
+        // cannot be written the session still starts, with less status.
+        let support = self.hook_socket.parent().map(|dir| dir.join("harness"));
+        let support = support.filter(|dir| match harness.prepare_support(dir) {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::warn!(%error, harness = harness.id, "could not write the files its hooks need");
+                false
+            }
+        });
         let spec = harness::spawn_spec(
             harness,
             harness::Launch {
@@ -222,6 +233,7 @@ impl Supervisor {
                 place,
                 size,
                 checks,
+                support: hooked.then_some(support).flatten(),
             },
         );
         let events = self.pty_events.clone();
@@ -239,7 +251,7 @@ impl Supervisor {
                 agent_session,
                 start,
                 unseen,
-                reports_start: hooked,
+                reports_start: hooked && harness.reports_start(),
             },
             self.timing,
             Instant::now(),
@@ -256,6 +268,7 @@ impl Supervisor {
                 // conversation when it has none to resume.
                 resumed: resume && on_host,
                 ended: None,
+                title: None,
             },
         );
         self.carry_watch(session);
@@ -411,11 +424,45 @@ impl Supervisor {
         Ok(Reply::Done)
     }
 
+    /// A session's program set its window title. For a harness whose title
+    /// says how it is doing, a change of what it says is a signal: working
+    /// or ready as the progress sequence would say it, and, for one whose
+    /// title is its only word of waiting on the person, the wait and its
+    /// end; its first title also says it has started.
+    async fn on_title(&mut self, session: SessionId, title: &str) {
+        let Some(live) = self.live.get_mut(&session) else {
+            return;
+        };
+        let Some(state) = live.harness.read_title(title) else {
+            return;
+        };
+        let before = live.title.replace(state);
+        if before == Some(state) {
+            return;
+        }
+        let waiting = state == TitleState::Waiting;
+        let mut signals = Vec::new();
+        if live.harness.title_reports_waits()
+            && (before.is_none() || (before == Some(TitleState::Waiting)) != waiting)
+        {
+            signals.push(Signal::Waiting { waiting });
+        }
+        match state {
+            TitleState::Working => signals.push(Signal::Progress { busy: true }),
+            TitleState::Ready => signals.push(Signal::Progress { busy: false }),
+            TitleState::Waiting => {}
+        }
+        for signal in signals {
+            self.step_session(session, signal).await;
+        }
+    }
+
     pub(super) async fn on_pty_event(&mut self, session: SessionId, event: PtyEvent) {
         match event {
             PtyEvent::Progress { busy } => {
                 self.step_session(session, Signal::Progress { busy }).await;
             }
+            PtyEvent::Title(title) => self.on_title(session, &title).await,
             PtyEvent::Exited {
                 success,
                 requested,
@@ -616,9 +663,7 @@ impl Supervisor {
 /// resume is tried; if it fails the session starts fresh.
 fn resumable(harness: Harness, session: &Session) -> Option<String> {
     let agent_session = session.resume_id.clone().filter(|_| harness.can_resume())?;
-    let transcript = transcript::projects_dir()
-        .and_then(|projects| transcript::exists(&projects, &agent_session));
-    if transcript == Some(false) {
+    if harness.has_conversation(&agent_session) == Some(false) {
         tracing::info!(session = %session.id, "no transcript to resume");
         return None;
     }

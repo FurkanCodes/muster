@@ -20,10 +20,6 @@ use serde_json::{Value, json};
 
 use super::Launch;
 
-/// How long a hook waits for the daemon. Hooks run inside the agent's turn,
-/// so a hung daemon must cost seconds, not a stuck session.
-const HOOK_TIMEOUT_SECONDS: u32 = 3;
-
 /// The question tool whose start and end bracket a wait on the person.
 const QUESTION_TOOL: &str = "AskUserQuestion";
 
@@ -50,12 +46,7 @@ const EVENTS: &[(&str, Option<&str>)] = &[
 /// never fails the agent's turn, and prints nothing (a hook's output can
 /// reach the model).
 pub(crate) fn hook_command() -> String {
-    format!(
-        "[ -n \"$MUSTER_HOOK_TOKEN\" ] && [ -S \"$MUSTER_HOOK_SOCKET\" ] || exit 0; \
-         curl -sS -m {HOOK_TIMEOUT_SECONDS} --unix-socket \"$MUSTER_HOOK_SOCKET\" \
-         -H \"Authorization: Bearer $MUSTER_HOOK_TOKEN\" -H \"Content-Type: application/json\" \
-         --data-binary @- http://muster/hooks/claude >/dev/null 2>&1 || true"
-    )
+    super::hook_command("claude", None)
 }
 
 /// The `--settings` value carrying the hooks.
@@ -337,6 +328,7 @@ mod tests {
             place: crate::harness::Place::Host(PathBuf::from("/w")),
             size: TermSize::default(),
             checks: None,
+            support: None,
         };
         let fresh = arguments(&launch(false, Some("fix the login")));
         assert_eq!(&fresh[..2], ["--session-id", SESSION]);

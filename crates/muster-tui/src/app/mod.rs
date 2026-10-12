@@ -3,11 +3,13 @@
 //! can be tested by feeding it events and drawing it into a test buffer.
 
 mod events;
+mod harness_choice;
 mod motion;
 mod picker;
 mod pointer;
 mod tickets;
 
+pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
@@ -106,28 +108,6 @@ pub(crate) enum Dialog {
         question: String,
         then: Confirmed,
     },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HarnessChoice {
-    Claude,
-    Shell,
-}
-
-impl HarnessChoice {
-    pub(crate) fn id(self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::Shell => "shell",
-        }
-    }
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Claude => "Claude Code",
-            Self::Shell => "Shell",
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -249,6 +229,9 @@ pub(crate) struct App {
     /// Sessions whose lines flash for a change of status, with the step
     /// each flash began.
     flashes: HashMap<SessionId, u64>,
+    /// The harness last started from the new-session dialog, which it
+    /// offers first next time.
+    last_harness: HarnessChoice,
 }
 
 impl App {
@@ -284,6 +267,7 @@ impl App {
             motion: true,
             step: 0,
             flashes: HashMap::new(),
+            last_harness: HarnessChoice::Claude,
         }
     }
 
@@ -397,6 +381,9 @@ impl App {
             muster_core::SessionStatus::NeedsYou {
                 reason: muster_core::WaitReason::Startup,
             } => "is asking something before it starts",
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Action,
+            } => "needs you",
             muster_core::SessionStatus::Exited { success: false } => "exited with an error",
             muster_core::SessionStatus::Exited { success: true } => "exited",
             _ => "finished",

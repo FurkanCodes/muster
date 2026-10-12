@@ -43,6 +43,11 @@ pub enum WaitReason {
     /// The agent has not started: it is asking something first, such as
     /// whether to trust the folder or to sign in.
     Startup,
+    /// The agent's own display says it waits on the person, without saying
+    /// for what: a harness that reports no hooks, such as Codex, whose
+    /// window title reads "Action Required" for a permission and a
+    /// question alike.
+    Action,
 }
 
 #[cfg(test)]

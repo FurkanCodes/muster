@@ -203,6 +203,15 @@ impl SessionMachine {
                     self.on_hook(agent_session, event, now, &mut effects);
                 }
                 Signal::Progress { busy } => self.on_progress(busy, now),
+                Signal::Waiting { waiting } => {
+                    // Its display is up: it has started.
+                    self.started();
+                    if waiting {
+                        self.wait_for(Origin::Main, WaitReason::Action);
+                    } else {
+                        self.answer(&Origin::Main, WaitReason::Action, now);
+                    }
+                }
                 Signal::Exited { success, requested } => self.on_exit(success, requested),
                 Signal::Tick => self.on_tick(now),
                 Signal::Watched { .. } => {}

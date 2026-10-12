@@ -33,7 +33,7 @@ pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
 use crate::githost::GitHost;
 use crate::github::TicketSource;
-use crate::harness::{Harness, claude};
+use crate::harness::Harness;
 use crate::hooks::HookDelivery;
 use crate::pty::{PtyEvent, PtyHandle};
 use crate::runs::credentials::Credentials;
@@ -302,6 +302,9 @@ struct Live {
     /// Where its output ended and the size its terminal had, once it has
     /// exited; a program started again in the session carries on from there.
     ended: Option<(u64, TermSize)>,
+    /// What its window title last said, for a harness whose title says how
+    /// it is doing.
+    title: Option<crate::harness::TitleState>,
 }
 
 #[derive(Debug)]
@@ -557,7 +560,15 @@ impl Supervisor {
             tracing::debug!("ignored a hook with an unknown token");
             return;
         };
-        if let Some((agent_session, event)) = claude::translate(&delivery.payload) {
+        let Some(harness) = self.live.get(&session).map(|live| live.harness) else {
+            return;
+        };
+        if harness.hook_route() != Some(delivery.harness.as_str()) {
+            tracing::debug!("ignored a hook posted for another harness");
+            return;
+        }
+        let event = delivery.event.as_deref();
+        if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
             self.step_session(
                 session,
                 Signal::Hook {

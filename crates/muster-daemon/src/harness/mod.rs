@@ -1,17 +1,29 @@
 //! What to run for a session (`ARCHITECTURE.md` §7).
 //!
-//! Two harnesses so far: `shell`, the person's own shell in the workspace,
-//! and `claude`, Claude Code. A harness says how to start, resume and hear
-//! from its program; the daemon does the rest.
+//! The harnesses: `shell`, the person's own shell in the workspace; the
+//! coding agents `claude` (Claude Code), `codex` (Codex), `gemini` (Gemini
+//! CLI), `opencode` (OpenCode) and `copilot` (GitHub Copilot CLI); and two
+//! Muster runs by hand, `checks` and `review`. A harness says how to start,
+//! resume and hear from its program; the daemon does the rest. Each agent
+//! is heard the way it allows without editing the person's config
+//! (`PRD-13`): hooks passed at launch, a plugin or settings file of Muster's
+//! own that it is pointed at, or what it shows in its window title.
 
 pub(crate) mod claude;
 pub(crate) mod claude_stream;
+pub(crate) mod codex;
+pub(crate) mod copilot;
+pub(crate) mod gemini;
+pub(crate) mod opencode;
+mod scrub;
+pub(crate) mod support;
 pub(crate) mod transcript;
 
 use std::path::PathBuf;
 
 use muster_core::SessionId;
 use muster_core::protocol::TermSize;
+use muster_state::session::HookEvent;
 
 use crate::pty::SpawnSpec;
 use crate::runs::credentials::Secret;
@@ -26,9 +38,13 @@ pub(crate) struct Harness {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Kind {
+pub(crate) enum Kind {
     Shell,
     Claude,
+    Codex,
+    Gemini,
+    OpenCode,
+    Copilot,
     /// The project's checks, run by hand in a workspace.
     Checks,
     /// Claude Code reviewing a workspace's change in plan mode, which
@@ -48,6 +64,30 @@ const CLAUDE: Harness = Harness {
     kind: Kind::Claude,
 };
 
+const CODEX: Harness = Harness {
+    id: "codex",
+    label: "Codex",
+    kind: Kind::Codex,
+};
+
+const GEMINI: Harness = Harness {
+    id: "gemini",
+    label: "Gemini CLI",
+    kind: Kind::Gemini,
+};
+
+const OPENCODE: Harness = Harness {
+    id: "opencode",
+    label: "OpenCode",
+    kind: Kind::OpenCode,
+};
+
+const COPILOT: Harness = Harness {
+    id: "copilot",
+    label: "Copilot CLI",
+    kind: Kind::Copilot,
+};
+
 const CHECKS: Harness = Harness {
     id: "checks",
     label: "Checks",
@@ -62,9 +102,11 @@ const REVIEW: Harness = Harness {
 
 /// The harness called `id`, if Muster knows it.
 pub(crate) fn find(id: &str) -> Option<Harness> {
-    [SHELL, CLAUDE, CHECKS, REVIEW]
-        .into_iter()
-        .find(|harness| harness.id == id)
+    [
+        SHELL, CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, CHECKS, REVIEW,
+    ]
+    .into_iter()
+    .find(|harness| harness.id == id)
 }
 
 /// What the project's checks are, for a session that runs them.
@@ -100,10 +142,27 @@ done
 printf '\033[1;32mAll checks passed.\033[0m\n'
 "#;
 
+/// What a harness's window title says about it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TitleState {
+    Working,
+    Ready,
+    /// Waiting on the person, for what it does not say.
+    Waiting,
+}
+
 impl Harness {
     /// Whether it is a coding agent, rather than a shell.
     pub(crate) fn is_agent(self) -> bool {
-        matches!(self.kind, Kind::Claude | Kind::Review)
+        matches!(
+            self.kind,
+            Kind::Claude
+                | Kind::Review
+                | Kind::Codex
+                | Kind::Gemini
+                | Kind::OpenCode
+                | Kind::Copilot
+        )
     }
 
     /// Whether it runs the project's checks.
@@ -111,10 +170,31 @@ impl Harness {
         self.kind == Kind::Checks
     }
 
-    /// Whether the program reports its state through hooks, and so needs a
-    /// session id and a hook token at launch.
+    /// Whether the program reports its state to the hook socket, and so
+    /// needs a hook token at launch.
     pub(crate) fn has_hooks(self) -> bool {
         self.is_agent()
+    }
+
+    /// Whether Muster chooses the agent's session id at launch, as Claude
+    /// Code, Gemini CLI and Copilot CLI let it. Codex and OpenCode choose
+    /// their own, which their reports then carry.
+    pub(crate) fn chooses_session_id(self) -> bool {
+        matches!(
+            self.kind,
+            Kind::Claude | Kind::Review | Kind::Gemini | Kind::Copilot
+        )
+    }
+
+    /// Whether the program says it has started soon after launch, so that
+    /// silence past a grace means it is asking something first, such as
+    /// whether to trust the folder. Copilot CLI says so only with its first
+    /// prompt.
+    pub(crate) fn reports_start(self) -> bool {
+        matches!(
+            self.kind,
+            Kind::Claude | Kind::Review | Kind::Codex | Kind::Gemini | Kind::OpenCode
+        )
     }
 
     /// Whether it can take a first prompt on its command line.
@@ -131,6 +211,67 @@ impl Harness {
     /// continued (see `PtyHandle::resume_if_suspended`).
     pub(crate) fn suspends_itself(self) -> bool {
         self.is_agent()
+    }
+
+    /// The hook socket's address for its reports: `/hooks/<route>`.
+    pub(crate) fn hook_route(self) -> Option<&'static str> {
+        match self.kind {
+            Kind::Claude | Kind::Review => Some("claude"),
+            Kind::Codex => Some("codex"),
+            Kind::Gemini => Some("gemini"),
+            Kind::OpenCode => Some("opencode"),
+            Kind::Copilot => Some("copilot"),
+            Kind::Shell | Kind::Checks => None,
+        }
+    }
+
+    /// What a report posted to its route (and `event`, for a harness that
+    /// names it in the address) means to the session machine, with the
+    /// agent session it came from.
+    pub(crate) fn translate(
+        self,
+        event: Option<&str>,
+        body: &[u8],
+    ) -> Option<(Option<String>, HookEvent)> {
+        match self.kind {
+            Kind::Claude | Kind::Review => claude::translate(&claude::HookPayload::parse(body)?),
+            Kind::Codex => codex::translate(body),
+            Kind::Gemini => gemini::translate(body),
+            Kind::OpenCode => opencode::translate(body),
+            Kind::Copilot => copilot::translate(event?, body),
+            Kind::Shell | Kind::Checks => None,
+        }
+    }
+
+    /// What its window title says, for a harness whose title says how it
+    /// is doing.
+    pub(crate) fn read_title(self, title: &str) -> Option<TitleState> {
+        match self.kind {
+            Kind::Codex => codex::read_title(title),
+            Kind::Gemini => gemini::read_title(title),
+            _ => None,
+        }
+    }
+
+    /// Whether its title is its only word of waiting on the person, and of
+    /// its start: Codex's, which runs no hooks Muster could pass it.
+    pub(crate) fn title_reports_waits(self) -> bool {
+        self.kind == Kind::Codex
+    }
+
+    /// Whether the agent still has `agent_session`'s conversation to resume:
+    /// `None` if it cannot tell, and the resume is tried.
+    pub(crate) fn has_conversation(self, agent_session: &str) -> Option<bool> {
+        match self.kind {
+            Kind::Claude | Kind::Review => transcript::projects_dir()
+                .and_then(|projects| transcript::exists(&projects, agent_session)),
+            _ => None,
+        }
+    }
+
+    /// Writes the files of Muster's own it reads its hooks from into `dir`.
+    pub(crate) fn prepare_support(self, dir: &std::path::Path) -> std::io::Result<()> {
+        support::prepare(self.kind, dir)
     }
 }
 
@@ -169,8 +310,8 @@ impl Place {
 #[derive(Clone, Debug)]
 pub(crate) struct Launch {
     pub(crate) session: SessionId,
-    /// The harness's own session id: chosen by Muster for a new session,
-    /// the saved one for a resumed session.
+    /// The harness's own session id: chosen by Muster for a new session of
+    /// a harness that lets it, the saved one for a resumed session.
     pub(crate) agent_session: Option<String>,
     pub(crate) resume: bool,
     pub(crate) prompt: Option<String>,
@@ -179,6 +320,9 @@ pub(crate) struct Launch {
     pub(crate) size: TermSize,
     /// The checks, for the harness that runs them.
     pub(crate) checks: Option<CheckCommands>,
+    /// The folder holding the files of Muster's own a harness reads its
+    /// hooks from ([`support`]), once written.
+    pub(crate) support: Option<PathBuf>,
 }
 
 /// Runs a session's program in a container: `$1` the session, `$2` the
@@ -230,6 +374,34 @@ esac
 /// Stops a session's program in a container: `$1` the session.
 pub(crate) const STOP_IN_CONTAINER: &str = r#"stop_session "$1""#;
 
+/// How long a hook waits for the daemon. Hooks run inside the agent's turn,
+/// so a hung daemon must cost seconds, not a stuck session.
+const HOOK_TIMEOUT_SECONDS: u32 = 3;
+
+/// The `curl` that posts its standard input to the hook socket at
+/// `/hooks/<route>[/<event>]` with the session's token. It prints nothing
+/// (a hook's output can reach the model) and never fails.
+pub(crate) fn hook_curl(route: &str, event: Option<&str>) -> String {
+    let address = match event {
+        Some(event) => format!("http://muster/hooks/{route}/{event}"),
+        None => format!("http://muster/hooks/{route}"),
+    };
+    format!(
+        "curl -sS -m {HOOK_TIMEOUT_SECONDS} --unix-socket \"$MUSTER_HOOK_SOCKET\" \
+         -H \"Authorization: Bearer $MUSTER_HOOK_TOKEN\" -H \"Content-Type: application/json\" \
+         --data-binary @- {address} >/dev/null 2>&1 || true"
+    )
+}
+
+/// The command a hook runs with its payload on standard input: inert
+/// outside a Muster session, and it never fails the agent's turn.
+pub(crate) fn hook_command(route: &str, event: Option<&str>) -> String {
+    format!(
+        "[ -n \"$MUSTER_HOOK_TOKEN\" ] && [ -S \"$MUSTER_HOOK_SOCKET\" ] || exit 0; {}",
+        hook_curl(route, event)
+    )
+}
+
 /// How to start `harness` for `launch`.
 pub(crate) fn spawn_spec(harness: Harness, launch: Launch) -> SpawnSpec {
     let env = vec![
@@ -260,12 +432,13 @@ fn on_host(
         ));
         env.push(("MUSTER_HOOK_TOKEN".to_owned(), hooks.token.clone()));
     }
+    let place = cwd.to_string_lossy().into_owned();
+    // The files of Muster's own, where hooks are heard.
+    let support = launch.support.as_deref().filter(|_| launch.hooks.is_some());
+    let own = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
     let (program, args) = match harness.kind {
         Kind::Shell => (
-            std::env::var("SHELL")
-                .ok()
-                .filter(|shell| !shell.is_empty())
-                .unwrap_or_else(|| "/bin/sh".to_owned()),
+            own("SHELL").unwrap_or_else(|| "/bin/sh".to_owned()),
             Vec::new(),
         ),
         Kind::Claude => ("claude".to_owned(), claude::arguments(launch)),
@@ -274,6 +447,39 @@ fn on_host(
             let mut args = vec!["--permission-mode".to_owned(), "plan".to_owned()];
             args.extend(claude::arguments(launch));
             ("claude".to_owned(), args)
+        }
+        Kind::Codex => ("codex".to_owned(), codex::arguments(launch, &place)),
+        Kind::Gemini => {
+            // A defaults file the person named stays theirs.
+            if let Some(dir) = support.filter(|_| own(gemini::DEFAULTS_VARIABLE).is_none()) {
+                let defaults = support::gemini_defaults(dir);
+                env.push((
+                    gemini::DEFAULTS_VARIABLE.to_owned(),
+                    defaults.to_string_lossy().into_owned(),
+                ));
+            }
+            ("gemini".to_owned(), gemini::arguments(launch))
+        }
+        Kind::OpenCode => {
+            if let Some(dir) = support {
+                let plugin = support::opencode_plugin(dir);
+                let content = opencode::config_content(
+                    own(opencode::CONFIG_VARIABLE).as_deref(),
+                    &plugin.to_string_lossy(),
+                );
+                if let Some(content) = content {
+                    env.push((opencode::CONFIG_VARIABLE.to_owned(), content));
+                }
+            }
+            ("opencode".to_owned(), opencode::arguments(launch, &place))
+        }
+        Kind::Copilot => {
+            let plugin =
+                support.map(|dir| support::copilot_plugin(dir).to_string_lossy().into_owned());
+            (
+                "copilot".to_owned(),
+                copilot::arguments(launch, plugin.as_deref()),
+            )
         }
         Kind::Checks => {
             let checks = launch.checks.clone().unwrap_or(CheckCommands {
@@ -295,7 +501,7 @@ fn on_host(
         args,
         cwd,
         env,
-        env_remove: scrubbed(std::env::vars().map(|(key, _)| key)),
+        env_remove: scrub::scrubbed(std::env::vars().map(|(key, _)| key)),
         size: launch.size,
     }
 }
@@ -321,9 +527,14 @@ fn in_container(
     let kind = match harness.kind {
         // A review never runs in a container (`place_for` refuses agents).
         Kind::Claude | Kind::Review => "claude",
-        // Checks never run in a container by hand (`place_for` refuses):
-        // a run checks its own work.
-        Kind::Shell | Kind::Checks => "shell",
+        // Other agents never run in a container either (`place_for`), and
+        // checks never by hand: a run checks its own work.
+        Kind::Shell
+        | Kind::Checks
+        | Kind::Codex
+        | Kind::Gemini
+        | Kind::OpenCode
+        | Kind::Copilot => "shell",
     };
     args.extend([
         container.to_owned(),
@@ -341,62 +552,9 @@ fn in_container(
         // Docker's client needs no particular directory.
         cwd: PathBuf::from("/"),
         env,
-        env_remove: scrubbed(std::env::vars().map(|(key, _)| key)),
+        env_remove: scrub::scrubbed(std::env::vars().map(|(key, _)| key)),
         size: launch.size,
     }
-}
-
-/// Variables a Claude Code session, or the app hosting it, sets for what it
-/// runs: they say a program runs inside that session (one inheriting
-/// `CLAUDE_CODE_CHILD_SESSION` stops saving its transcript, so it could not
-/// be resumed), reach for its sockets, or carry its account and effort.
-/// Seen in Claude Code 2.1.296 and its desktop app.
-const PARENT_SESSION: &[&str] = &[
-    "CLAUDECODE",
-    "CLAUDE_PID",
-    "CLAUDE_EFFORT",
-    "CLAUDE_PREVIEW_CLASSIFIER_FLOOR",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_SESSION_ID",
-    "CLAUDE_CODE_CHILD_SESSION",
-    "CLAUDE_CODE_SESSION_ATTENDED",
-    "CLAUDE_CODE_HOST_SESSION_ID",
-    "CLAUDE_CODE_MESSAGING_SOCKET",
-    "CLAUDE_CODE_MESSAGING_TOKEN",
-    "CLAUDE_CODE_EXECPATH",
-    "CLAUDE_CODE_DESKTOP_APP_VERSION",
-    "CLAUDE_CODE_ORGANIZATION_UUID",
-    "CLAUDE_CODE_ACCOUNT_UUID",
-    "CLAUDE_CODE_USER_EMAIL",
-    "CLAUDE_CODE_OAUTH_SCOPES",
-    "CLAUDE_CODE_SIMPLE",
-    "CLAUDE_CODE_DISABLE_CRON",
-    "CLAUDE_CODE_TERMINAL_MCP_TOOLS",
-    "CLAUDE_CODE_EAGER_FLUSH",
-    "CLAUDE_CODE_REPORT_FINDINGS",
-    "CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES",
-    "CLAUDE_CODE_ENABLE_ASK_USER_QUESTION_TOOL",
-    "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
-];
-
-/// Prefixes of the same, for families of them.
-const PARENT_SESSION_PREFIXES: &[&str] = &["CLAUDE_AGENT_SDK_", "CLAUDE_CODE_SDK_"];
-
-/// The daemon's variables a session must not inherit: those of a Claude
-/// Code session the daemon happened to be started from, and those naming
-/// the terminal tab it was started in. The person's own settings stay,
-/// `CLAUDE_CODE_USE_BEDROCK` or `CLAUDE_CODE_OAUTH_TOKEN` among them: a
-/// session runs as if started in their terminal (`PRD-06`).
-fn scrubbed(keys: impl Iterator<Item = String>) -> Vec<String> {
-    keys.filter(|key| {
-        PARENT_SESSION.contains(&key.as_str())
-            || PARENT_SESSION_PREFIXES
-                .iter()
-                .any(|prefix| key.starts_with(prefix))
-            || key == "TERM_SESSION_ID"
-            || key == "ITERM_SESSION_ID"
-    })
-    .collect()
 }
 
 /// A secret that names one session to the hook receiver (`ARC-11`).
@@ -411,140 +569,4 @@ pub(crate) fn new_token() -> std::io::Result<String> {
 mod in_container_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_known_harnesses_are_found() {
-        assert_eq!(find("shell"), Some(SHELL));
-        assert_eq!(find("claude"), Some(CLAUDE));
-        assert_eq!(find("checks"), Some(CHECKS));
-        assert_eq!(find("review"), Some(REVIEW));
-        assert_eq!(find("nonsense"), None);
-    }
-
-    #[test]
-    fn parent_session_and_terminal_variables_are_scrubbed_and_settings_kept() {
-        let keys = [
-            "CLAUDECODE",
-            "CLAUDE_CODE_ENTRYPOINT",
-            "CLAUDE_CODE_CHILD_SESSION",
-            "CLAUDE_PID",
-            "CLAUDE_EFFORT",
-            "CLAUDE_AGENT_SDK_VERSION",
-            "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
-            "TERM_SESSION_ID",
-            // The person's own settings.
-            "PATH",
-            "HOME",
-            "CLAUDE_CONFIG_DIR",
-            "CLAUDE_CODE_USE_BEDROCK",
-            "CLAUDE_CODE_USE_VERTEX",
-            "CLAUDE_CODE_OAUTH_TOKEN",
-            "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
-            "ANTHROPIC_API_KEY",
-        ]
-        .map(str::to_owned);
-        assert_eq!(
-            scrubbed(keys.into_iter()),
-            [
-                "CLAUDECODE",
-                "CLAUDE_CODE_ENTRYPOINT",
-                "CLAUDE_CODE_CHILD_SESSION",
-                "CLAUDE_PID",
-                "CLAUDE_EFFORT",
-                "CLAUDE_AGENT_SDK_VERSION",
-                "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH",
-                "TERM_SESSION_ID",
-            ]
-        );
-    }
-
-    #[test]
-    fn tokens_are_long_random_and_distinct() {
-        let (one, two) = (new_token().unwrap(), new_token().unwrap());
-        assert_eq!(one.len(), 64);
-        assert!(one.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_ne!(one, two);
-    }
-
-    #[test]
-    fn checks_run_in_a_shell_with_their_limit_and_commands() {
-        let spec = spawn_spec(
-            CHECKS,
-            Launch {
-                session: SessionId::new(),
-                agent_session: None,
-                resume: false,
-                prompt: None,
-                hooks: None,
-                place: Place::Host(PathBuf::from("/work")),
-                size: TermSize::default(),
-                checks: Some(CheckCommands {
-                    commands: vec!["cargo test".to_owned(), "cargo clippy".to_owned()],
-                    limit: std::time::Duration::from_secs(1800),
-                }),
-            },
-        );
-        assert_eq!(spec.program, "/bin/sh");
-        assert_eq!(spec.args[0], "-c");
-        assert_eq!(spec.args[2..], ["sh", "1800", "cargo test", "cargo clippy"]);
-        assert_eq!(spec.cwd, PathBuf::from("/work"));
-    }
-
-    #[test]
-    fn a_review_is_claude_code_in_plan_mode_resumed_or_not() {
-        let launch = |resume| Launch {
-            session: SessionId::new(),
-            agent_session: Some("id".to_owned()),
-            resume,
-            prompt: Some("Review the change".to_owned()),
-            hooks: None,
-            place: Place::Host(PathBuf::from("/work")),
-            size: TermSize::default(),
-            checks: None,
-        };
-        let fresh = spawn_spec(REVIEW, launch(false));
-        assert_eq!(fresh.program, "claude");
-        assert_eq!(fresh.args[..2], ["--permission-mode", "plan"]);
-        assert_eq!(
-            fresh.args.last().map(String::as_str),
-            Some("Review the change")
-        );
-        let resumed = spawn_spec(REVIEW, launch(true));
-        assert_eq!(
-            resumed.args[..4],
-            ["--permission-mode", "plan", "--resume", "id"]
-        );
-        assert!(REVIEW.is_agent() && REVIEW.can_resume() && REVIEW.has_hooks());
-    }
-
-    #[test]
-    fn hooks_reach_the_program_through_its_environment() {
-        let spec = spawn_spec(
-            CLAUDE,
-            Launch {
-                session: SessionId::new(),
-                agent_session: Some("id".to_owned()),
-                resume: false,
-                prompt: None,
-                hooks: Some(HookEndpoint {
-                    socket: PathBuf::from("/run/hooks.sock"),
-                    token: "secret".to_owned(),
-                }),
-                place: Place::Host(PathBuf::from("/work")),
-                size: TermSize::default(),
-                checks: None,
-            },
-        );
-        assert_eq!(spec.program, "claude");
-        let value = |key: &str| {
-            spec.env
-                .iter()
-                .find(|(name, _)| name == key)
-                .map(|(_, value)| value.as_str())
-        };
-        assert_eq!(value("MUSTER_HOOK_SOCKET"), Some("/run/hooks.sock"));
-        assert_eq!(value("MUSTER_HOOK_TOKEN"), Some("secret"));
-    }
-}
+mod tests;

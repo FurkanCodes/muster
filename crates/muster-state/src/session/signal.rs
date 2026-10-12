@@ -49,8 +49,12 @@ pub enum Signal {
         agent_session: Option<String>,
         event: HookEvent,
     },
-    /// The terminal progress sequence (OSC 9;4) turned busy or idle. Edges only.
+    /// The terminal progress sequence (OSC 9;4) turned busy or idle, or a
+    /// harness's own display (its window title) said the same. Edges only.
     Progress { busy: bool },
+    /// The harness's own display (its window title) began or stopped saying
+    /// that it waits on the person, without saying for what. Edges only.
+    Waiting { waiting: bool },
     /// The agent process exited. `requested` is true when Muster stopped it
     /// on the person's behalf.
     Exited { success: bool, requested: bool },
