@@ -503,3 +503,73 @@ async fn live_jira_lists_and_views_through_muster_s_own_code() {
         );
     }
 }
+
+/// The person's Jira projects, keys and names only, read-only: `cargo
+/// test -- --ignored live_jira_projects`.
+#[tokio::test]
+#[ignore = "reads the person's Jira through their Atlassian sign-in"]
+async fn live_jira_projects() {
+    let secrets = crate::secrets::Keychain::default();
+    let http = crate::service::http_client();
+    let session = oauth::session(&secrets, MCP_ACCOUNT)
+        .await
+        .expect("signed in");
+    let token = oauth::access_token(&http, &secrets, MCP_ACCOUNT, session)
+        .await
+        .unwrap();
+    let mut mcp = Mcp::connect(http, MCP_URL, token, "Atlassian", "muster auth jira")
+        .await
+        .unwrap();
+    let tool = mcp.tool(&["getAccessibleAtlassianResources"]).unwrap();
+    let resources = mcp.call(&tool, json!({})).await.unwrap();
+    let cloud = resources
+        .pointer("/data/resources/0/cloudId")
+        .cloned()
+        .unwrap_or_default();
+    let list = mcp.tool(&["listJiraProjects"]).unwrap();
+    let args = list.args(&[
+        (&["cloudId"], cloud),
+        (&["maxResults", "limit"], json!(100)),
+    ]);
+    let found = mcp.call(&list, args).await.unwrap();
+    let found = unwrapped(&found);
+    let projects = found
+        .get("projects")
+        .or_else(|| found.get("values"))
+        .and_then(Value::as_array)
+        .cloned()
+        .or_else(|| found.as_array().cloned())
+        .unwrap_or_default();
+    for project in projects {
+        println!("project: {} {}", project["key"], project["name"]);
+    }
+}
+
+/// How many tickets a query of the person's lists, read-only: `MUSTER_JQL=…
+/// cargo test -- --ignored live_jira_query`. It prints the count and keys.
+#[tokio::test]
+#[ignore = "reads the person's Jira through their Atlassian sign-in"]
+async fn live_jira_query() {
+    let jql = std::env::var("MUSTER_JQL").expect("MUSTER_JQL");
+    let secrets = crate::secrets::Keychain::default();
+    let http = crate::service::http_client();
+    let session = oauth::session(&secrets, MCP_ACCOUNT)
+        .await
+        .expect("signed in");
+    let token = oauth::access_token(&http, &secrets, MCP_ACCOUNT, session)
+        .await
+        .unwrap();
+    let mcp = Mcp::connect(http, MCP_URL, token, "Atlassian", "muster auth jira")
+        .await
+        .unwrap();
+    let jira = Jira {
+        site: Site::parse("acme.atlassian.net").unwrap(),
+        jql,
+        access: Access::Mcp {
+            mcp: Mutex::new(mcp),
+        },
+    };
+    let listed = jira.list().await.unwrap();
+    let keys: Vec<&str> = listed.iter().map(|issue| issue.key.as_str()).collect();
+    println!("listed: {} {keys:?}", listed.len());
+}
