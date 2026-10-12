@@ -48,7 +48,7 @@ pub use crate::runs::credentials::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
 /// handed to `security` on its standard input, never a command line.
 pub async fn keep_secret(account: &str, value: &str) -> std::io::Result<()> {
     use crate::secrets::Secrets as _;
-    secrets::Keychain
+    secrets::Keychain::default()
         .set(account, &secrets::Token::new(value))
         .await
 }
@@ -95,9 +95,14 @@ pub async fn sign_in(service: SignIn, open: impl FnOnce(&str)) -> Result<(), Str
             scopes: &["read", "write"],
         },
     };
-    oauth::sign_in(&service::http_client(), &secrets::Keychain, &provider, open)
-        .await
-        .map_err(|error| error.to_string())
+    oauth::sign_in(
+        &service::http_client(),
+        &secrets::Keychain::default(),
+        &provider,
+        open,
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 /// A Jira site as written, read: its host, and whether it is Jira Cloud.
@@ -241,14 +246,14 @@ pub async fn run(
         },
         work: Arc::new(run_work(paths, credentials.clone(), git_host.clone())),
         trackers: Arc::new(trackers::choose::ServiceTrackers {
-            secrets: Arc::new(secrets::Keychain),
+            secrets: Arc::new(secrets::Keychain::default()),
             http: service::http_client(),
         }),
         config_dir: paths.config_dir.clone(),
         credentials,
         docker: "docker".to_owned(),
         hosts: Arc::new(githost::choose::ServiceHosts {
-            secrets: Arc::new(secrets::Keychain),
+            secrets: Arc::new(secrets::Keychain::default()),
             http: service::http_client(),
         }),
     })
