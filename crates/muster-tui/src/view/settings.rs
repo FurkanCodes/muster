@@ -1,0 +1,198 @@
+//! The Settings screen: each project with the settings the person can
+//! change here, and what the selected one does and where it is kept.
+
+use muster_core::ProjectId;
+use muster_core::settings::{ProjectSettings, SettingSource};
+use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
+
+use super::{panel, shorten};
+use crate::app::{App, SettingRow, Settings};
+
+/// What the only-my-tickets setting is called in the list.
+const ONLY_MINE: &str = "Only my tickets";
+
+pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let block = panel(" Settings ", app.list_has_keys());
+    let rows = app.setting_rows();
+    if rows.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No projects yet: add one in the sessions view with a.")
+                .wrap(Wrap { trim: false })
+                .block(block)
+                .dim(),
+            area,
+        );
+        return;
+    }
+    let width = usize::from(area.width.saturating_sub(2));
+    let items: Vec<ListItem<'_>> = rows
+        .iter()
+        .map(|row| ListItem::new(row_line(app, *row, width)))
+        .collect();
+    let mut state = ListState::default()
+        .with_offset(app.settings_offset)
+        .with_selected(
+            app.settings_selected
+                .and_then(|selected| rows.iter().position(|row| *row == selected)),
+        );
+    let list = List::new(items)
+        .block(block)
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    frame.render_stateful_widget(list, area, &mut state);
+}
+
+/// A project's heading, or a setting with its value at the line's end.
+fn row_line(app: &App, row: SettingRow, width: usize) -> Line<'static> {
+    let settings = app.settings.get(&row.project());
+    match row {
+        SettingRow::Project(project) => {
+            let mut spans = vec![Span::from(project_name(app, project)).bold()];
+            match settings {
+                None | Some(Settings::Loading) => spans.push(Span::from("  reading…").dim()),
+                Some(Settings::Failed(_)) => spans.push(Span::from("  cannot be read").red()),
+                Some(Settings::Loaded(_)) => {}
+            }
+            Line::from(spans)
+        }
+        SettingRow::OnlyMine(_) => {
+            let value = match settings {
+                Some(Settings::Loaded(found)) if found.only_mine.on => {
+                    Span::from("on").green().bold()
+                }
+                Some(Settings::Loaded(_)) => Span::from("off").dim(),
+                Some(Settings::Failed(_)) => Span::from("?").red(),
+                None | Some(Settings::Loading) => Span::from("…").dim(),
+            };
+            let label = format!("  {ONLY_MINE}");
+            let room = width.saturating_sub(value.content.chars().count() + 1);
+            let label = shorten(&label, room);
+            let gap = room.saturating_sub(label.chars().count()) + 1;
+            Line::from(vec![Span::raw(label), Span::raw(" ".repeat(gap)), value])
+        }
+    }
+}
+
+fn project_name(app: &App, project: ProjectId) -> String {
+    app.model
+        .project(project)
+        .map_or_else(|| "?".to_owned(), |found| found.name.clone())
+}
+
+/// The selected setting: what it does, where its value comes from and
+/// where a change goes; or the selected project's settings as a whole.
+pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let text = match app.settings_selected {
+        Some(row) => match app.settings.get(&row.project()) {
+            Some(Settings::Loaded(settings)) => match row {
+                SettingRow::OnlyMine(_) => only_mine_text(settings),
+                SettingRow::Project(project) => project_text(app, project, settings),
+            },
+            Some(Settings::Failed(error)) => Text::from(vec![
+                Line::from(project_name(app, row.project())).bold(),
+                Line::from(""),
+                Line::from("Its settings cannot be read:").red(),
+                Line::from(error.clone()),
+                Line::from(""),
+                Line::from("Fix the file it names, then r reads them again.").dim(),
+            ]),
+            None | Some(Settings::Loading) => Text::from("Reading its settings…").dim(),
+        },
+        None => Text::from("Select a setting to see it here.").dim(),
+    };
+    frame.render_widget(
+        Paragraph::new(text)
+            .wrap(Wrap { trim: false })
+            .block(panel(" Setting ", false)),
+        area,
+    );
+}
+
+fn only_mine_text(settings: &ProjectSettings) -> Text<'static> {
+    let toggle = settings.only_mine;
+    let (state, does, key) = if toggle.on {
+        (
+            Span::from("on").green().bold(),
+            "The Tickets screen lists only the open tickets assigned to you.",
+            "⏎ or space turns it off, to list every open ticket.",
+        )
+    } else {
+        (
+            Span::from("off").bold(),
+            "The Tickets screen lists every open ticket.",
+            "⏎ or space turns it on, to list only those assigned to you.",
+        )
+    };
+    let from = match toggle.from {
+        SettingSource::Yours => "your settings",
+        SettingSource::Project => "the project's muster.toml",
+        SettingSource::Default => "nothing yet: off unless set",
+    };
+    Text::from(vec![
+        Line::from(vec![Span::from(format!("{ONLY_MINE}  ")).bold(), state]),
+        Line::from(does),
+        Line::from(""),
+        detail("Tickets from", settings.tickets_from.clone()),
+        detail(
+            "Assigned to",
+            "whoever is signed in: your gh or glab login, your Jira or Linear sign-in".to_owned(),
+        ),
+        detail("Set by", from.to_owned()),
+        detail("Saved in", settings.file.display().to_string()),
+        Line::from(""),
+        Line::from(key).dim(),
+        Line::from(
+            "A change goes in your own settings file, never in the repository, and the tickets \
+             are fetched again.",
+        )
+        .dim(),
+    ])
+}
+
+fn project_text(app: &App, project: ProjectId, settings: &ProjectSettings) -> Text<'static> {
+    let root = app
+        .model
+        .project(project)
+        .map(|found| found.root.display().to_string())
+        .unwrap_or_default();
+    Text::from(vec![
+        Line::from(project_name(app, project)).bold(),
+        Line::from(root).dim(),
+        Line::from(""),
+        detail("Tickets from", settings.tickets_from.clone()),
+        detail("Your settings", settings.file.display().to_string()),
+        Line::from(""),
+        Line::from(
+            "Its settings are the muster.toml in its folder, with yours over it. What you change \
+             here goes in yours.",
+        )
+        .dim(),
+    ])
+}
+
+/// A labelled line of details.
+fn detail(label: &str, value: String) -> Line<'static> {
+    Line::from(vec![
+        Span::from(format!("{label:<14}")).dim(),
+        Span::raw(value),
+    ])
+}
+
+/// The keys that apply on the Settings screen, for what is selected.
+pub(super) fn hints(app: &App) -> Vec<&'static str> {
+    let mut hints = Vec::new();
+    if let Some(SettingRow::OnlyMine(project)) = app.settings_selected
+        && let Some(Settings::Loaded(settings)) = app.settings.get(&project)
+    {
+        hints.push(if settings.only_mine.on {
+            "⏎ turn off"
+        } else {
+            "⏎ turn on"
+        });
+    }
+    hints.push("r read again");
+    hints
+}

@@ -108,6 +108,8 @@ enum Access {
 pub(crate) struct Jira {
     site: Site,
     jql: String,
+    /// Whether `jql` asks only for those assigned to the person.
+    mine: bool,
     access: Access,
 }
 
@@ -211,7 +213,12 @@ impl Jira {
                 token: Token::new(kept.token),
             }
         };
-        Ok(Arc::new(Self { site, jql, access }))
+        Ok(Arc::new(Self {
+            site,
+            jql,
+            mine: tickets.mine,
+            access,
+        }))
     }
 
     fn browse(&self, key: &str) -> String {
@@ -553,6 +560,10 @@ fn read_issues(found: &Value, browse: impl Fn(&str) -> String) -> Vec<Issue> {
 impl TicketSource for Jira {
     fn describe(&self) -> String {
         format!("Jira ({})", self.site.host)
+    }
+
+    fn only_mine(&self) -> bool {
+        self.mine
     }
 
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {

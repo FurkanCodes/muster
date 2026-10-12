@@ -265,6 +265,10 @@ impl TicketSource for Linear {
         format!("Linear ({})", self.team)
     }
 
+    fn only_mine(&self) -> bool {
+        self.mine
+    }
+
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
             let mut found: Vec<(String, Issue)> = match &self.access {

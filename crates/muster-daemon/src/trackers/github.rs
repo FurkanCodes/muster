@@ -85,6 +85,10 @@ impl TicketSource for GitHubIssues {
         TrackerKind::GitHub.name().to_owned()
     }
 
+    fn only_mine(&self) -> bool {
+        self.mine
+    }
+
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
             let mut args = vec![

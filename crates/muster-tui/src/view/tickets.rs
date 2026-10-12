@@ -56,11 +56,17 @@ fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                 .map_or_else(|| "?".to_owned(), |found| found.name.clone());
             let state = match app.tickets.get(&project) {
                 None | Some(Tickets::Loading) => Span::from("  fetching…").dim(),
-                Some(Tickets::Loaded(tickets, _)) if tickets.is_empty() => {
-                    Span::from("  no open tickets").dim()
+                Some(Tickets::Loaded(tickets, _, mine)) if tickets.is_empty() => {
+                    Span::from(if *mine {
+                        "  none of yours open"
+                    } else {
+                        "  no open tickets"
+                    })
+                    .dim()
                 }
-                Some(Tickets::Loaded(tickets, _)) => {
-                    Span::from(format!("  {} open", tickets.len())).dim()
+                Some(Tickets::Loaded(tickets, _, mine)) => {
+                    let yours = if *mine { " of yours" } else { "" };
+                    Span::from(format!("  {}{yours} open", tickets.len())).dim()
                 }
                 Some(Tickets::Failed(error)) => {
                     Span::from(format!("  {}", shorten(error, width.saturating_sub(4)))).red()
@@ -129,13 +135,20 @@ fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
             lines.push(Line::from("Its tickets could not be fetched:").red());
             lines.push(Line::from(error.clone()));
         }
-        Some(Tickets::Loaded(_, tracker)) => {
+        Some(Tickets::Loaded(_, tracker, mine)) => {
+            let whose = if *mine { " assigned to you" } else { "" };
             lines.push(
                 Line::from(format!(
-                    "Its open tickets from {tracker}, newest first. ⏎ on one starts an agent on it."
+                    "Its open tickets{whose} from {tracker}, newest first. ⏎ on one starts an agent on it."
                 ))
                 .dim(),
             );
+            let change = if *mine {
+                "Settings (4) can list every open ticket instead."
+            } else {
+                "Settings (4) can list only those assigned to you."
+            };
+            lines.push(Line::from(change).dim());
         }
         Some(Tickets::Loading) | None => {
             lines.push(Line::from("Fetching its tickets…").dim());

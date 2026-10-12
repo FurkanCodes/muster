@@ -74,6 +74,7 @@ Terminal UI first (ratatui). The daemon exposes the same API to any client, so a
 - **Sessions** (home) — projects, then their worktrees, then session cards with live status: running, finished, waiting for you. The selected session's live terminal is beside the list, one key (or a click) from typing in it, and one from full screen. Start a session from a prompt, in a new worktree or the project's checkout (in a plain folder, the folder).
 - **Tickets** — each project's open tickets, with the agents on each and how they are doing. The selected ticket shows its text and its agents. Assign an agent to a ticket (a worktree for it and Claude Code with the ticket as its first prompt), open the agent on it, or add another in a worktree of its own.
 - **Needs you** — one queue for everything waiting on a person, oldest first: sessions asking a question, or finished and not yet seen. This is where the user starts their day.
+- **Settings** — each project's settings that the person changes as they go, starting with *only my tickets*: whether the Tickets screen lists only the tickets assigned to the person, in whichever tracker the project's tickets are. A change goes into the person's own settings for the project, never into its repository (`PRD-13`).
 - **Resources** — host memory and CPU, and each session's usage.
 
 ## 7. Integrations

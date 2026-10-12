@@ -102,10 +102,16 @@ async fn open_issues_are_listed() {
         })
         .await
         .unwrap();
-    let Reply::Issues { issues, tracker } = reply else {
+    let Reply::Issues {
+        issues,
+        tracker,
+        mine,
+    } = reply
+    else {
         panic!("expected Issues");
     };
     assert_eq!(tracker, "GitHub issues");
+    assert!(!mine, "every open ticket, unless the person asks");
     let summary: Vec<_> = issues
         .iter()
         .map(|issue| {

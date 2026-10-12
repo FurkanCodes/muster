@@ -71,6 +71,10 @@ impl TicketSource for GitLabIssues {
         TrackerKind::GitLab.name().to_owned()
     }
 
+    fn only_mine(&self) -> bool {
+        self.mine
+    }
+
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
             // Open ones, newest first, are what it lists unasked.

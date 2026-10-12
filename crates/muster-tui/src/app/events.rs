@@ -29,7 +29,9 @@ pub(crate) fn leaves_terminal(key: &KeyEvent) -> bool {
 /// The screen Ctrl+1, Ctrl+2 or Ctrl+3 goes to, from anywhere, a session's
 /// terminal included: no program there uses them. Terminals tell them from
 /// plain digits only with the kitty keyboard protocol (without it, Ctrl+3
-/// is Esc), so on the list the plain digits work too.
+/// is Esc), so on the list the plain digits work too. Settings, the fourth,
+/// is `4` on the list only: without the kitty protocol Ctrl+4 and Ctrl+\
+/// are one byte, which a session's program may want (a shell's quit key).
 pub(crate) fn screen_key(key: &KeyEvent) -> Option<View> {
     if !key.modifiers.contains(KeyModifiers::CONTROL) {
         return None;
@@ -133,22 +135,18 @@ impl App {
             KeyCode::Char('q') => return vec![Action::Quit],
             // The tabs, round and back.
             KeyCode::Tab | KeyCode::BackTab => {
-                let back = key.code == KeyCode::BackTab;
-                let to = match (self.view, back) {
-                    (View::Sessions, false) | (View::Tickets, true) => View::NeedsYou,
-                    (View::NeedsYou, false) | (View::Sessions, true) => View::Tickets,
-                    (View::Tickets, false) | (View::NeedsYou, true) => View::Sessions,
-                };
-                return self.show(to);
+                return self.show(self.view.next(key.code == KeyCode::BackTab));
             }
             KeyCode::Char('1') => return self.show(View::Sessions),
             KeyCode::Char('2') => return self.show(View::NeedsYou),
             KeyCode::Char('3') => return self.show(View::Tickets),
+            KeyCode::Char('4') => return self.show(View::Settings),
             // Back to the main screen; there, nothing to go back to.
             KeyCode::Esc | KeyCode::Backspace if self.view != View::Sessions => {
                 return self.show(View::Sessions);
             }
             _ if self.view == View::Tickets => return self.tickets_key(key),
+            _ if self.view == View::Settings => return self.settings_key(key),
             _ => {}
         }
         match key.code {
@@ -178,10 +176,15 @@ impl App {
         Vec::new()
     }
 
-    /// Shows `view`. The queue opens on its most urgent session.
+    /// Shows `view`. The queue opens on its most urgent session; the
+    /// settings are read afresh, as they may have been edited by hand.
     fn show(&mut self, view: View) -> Vec<Action> {
         if view == View::NeedsYou && self.view != View::NeedsYou {
             self.needs_selected = self.needs_list.first().copied();
+        }
+        if view == View::Settings && self.view != View::Settings {
+            self.settings
+                .retain(|_, settings| matches!(settings, super::Settings::Loading));
         }
         self.view = view;
         self.settle()
@@ -217,6 +220,13 @@ impl App {
                     .as_ref()
                     .and_then(|row| rows.iter().position(|r| r == row));
                 self.tickets_selected = step(rows.len(), at).map(|index| rows[index].clone());
+            }
+            View::Settings => {
+                let rows = self.setting_rows();
+                let at = self
+                    .settings_selected
+                    .and_then(|row| rows.iter().position(|r| *r == row));
+                self.settings_selected = step(rows.len(), at).map(|index| rows[index]);
             }
         }
     }
@@ -353,7 +363,7 @@ impl App {
             View::NeedsYou => self
                 .focused_session()
                 .and_then(|session| self.model.worktree_of(Row::Session(session))),
-            View::Tickets => None,
+            View::Tickets | View::Settings => None,
         };
         match workspace {
             Some(workspace) => {

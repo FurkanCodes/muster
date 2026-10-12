@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+pub mod edit;
 mod services;
 
 pub use services::{HostKind, PullRequests, Tickets, TrackerKind};

@@ -40,6 +40,11 @@ pub(crate) trait TicketSource: Send + Sync + std::fmt::Debug {
     fn describe(&self) -> String;
     /// The open tickets, newest first.
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>>;
+    /// Whether it lists only those assigned to the person signed in
+    /// (`[tickets] mine`).
+    fn only_mine(&self) -> bool {
+        false
+    }
     /// One ticket, with its text.
     fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, ServiceError>>;
     /// Closes a ticket, because the person asked: the one change Muster

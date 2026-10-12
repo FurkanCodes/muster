@@ -250,7 +250,10 @@ fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
     ui.wait_for("x close");
     ui.keys(b"\t");
     ui.wait_for("Nothing is waiting on you.");
+    // On round Tickets and Settings.
     ui.keys(b"\t\t");
+    ui.wait_for("Only my tickets");
+    ui.keys(b"\t");
     ui.wait_for("x close");
 
     // Ctrl-2, as a terminal with the kitty keyboard protocol sends it,
@@ -495,6 +498,72 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
     assert!(
         branches.contains("muster/issue-42-fix-the-login-redirect-2"),
         "{branches}"
+    );
+}
+
+#[test]
+fn only_my_tickets_is_turned_on_and_off_on_the_settings_screen() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let gh = sandbox.fake_gh();
+    std::fs::write(
+        gh.join("issues.json"),
+        serde_json::json!([{
+            "number": 42, "title": "Fix the login redirect",
+            "url": "https://github.com/o/app/issues/42", "labels": [],
+            "author": {"login": "someone"}
+        }])
+        .to_string(),
+    )
+    .unwrap();
+    let _stop = StopDaemon(sandbox.paths().socket());
+
+    let mut ui = Ui::start(&sandbox, &root);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+    ui.keys(b"i");
+    ui.wait_for("app  1 open");
+
+    // 4: the Settings screen, on the project's only setting.
+    ui.keys(b"4");
+    ui.wait_for("Only my tickets");
+    ui.wait_for("The Tickets screen lists every open ticket.");
+    ui.wait_for("Tickets from  GitHub issues, as its git remote says");
+    ui.keys(b"\r");
+    ui.wait_for("Tickets for app now lists only the tickets assigned to you.");
+    // The person's own settings for the project, the one file there.
+    let projects = sandbox.paths().config_dir.join("projects");
+    let files: Vec<PathBuf> = std::fs::read_dir(&projects)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    let [file] = &files[..] else {
+        panic!("{files:?}");
+    };
+    let written = std::fs::read_to_string(file).unwrap();
+    assert!(written.ends_with("[tickets]\nmine = true\n"), "{written}");
+
+    // The Tickets screen asks again, for only the person's.
+    ui.keys(b"3");
+    ui.wait_for("app  1 of yours open");
+    let calls = std::fs::read_to_string(gh.join("calls")).unwrap();
+    let last = calls
+        .lines()
+        .rfind(|call| call.starts_with("issue list"))
+        .unwrap();
+    assert!(last.ends_with("--assignee @me"), "{calls}");
+
+    // And off again, with space.
+    ui.keys(b"4");
+    ui.wait_for("⏎ or space turns it off");
+    ui.keys(b" ");
+    ui.wait_for("Tickets for app now lists every open ticket.");
+    assert!(
+        std::fs::read_to_string(file)
+            .unwrap()
+            .ends_with("[tickets]\nmine = false\n")
     );
 }
 

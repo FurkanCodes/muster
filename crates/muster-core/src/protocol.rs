@@ -19,7 +19,9 @@
 //! 10 a review and a draft pull request by hand; version 11 a ticket's
 //! text, and another agent on a ticket; version 12 closing a ticket; version
 //! 13 more harnesses, and a wait their own display reports (`WaitReason::Action`);
-//! version 14 tickets by key from more trackers.
+//! version 14 tickets by key from more trackers; version 15 the settings a
+//! person changes on the Settings screen, and whether a listing of tickets
+//! has only theirs.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -31,12 +33,13 @@ use serde::{Deserialize, Serialize};
 use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
+use crate::settings::{ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 14;
+pub const PROTOCOL_VERSION: u32 = 15;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 14;
+pub const MIN_PROTOCOL_VERSION: u32 = 15;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -334,6 +337,17 @@ pub enum Command {
     /// asked: the one change Muster makes in a tracker. Answered with
     /// [`Reply::Done`].
     CloseIssue { project: ProjectId, key: TicketKey },
+    /// The project's settings that the person can change, as they stand;
+    /// answered with [`Reply::ProjectSettings`].
+    ProjectSettings { project: ProjectId },
+    /// Change one of the project's settings, in the person's own overrides
+    /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
+    /// the settings would not read with it. Answered with
+    /// [`Reply::ProjectSettings`] as they stand after.
+    ChangeSetting {
+        project: ProjectId,
+        change: SettingChange,
+    },
     /// Hand a GitHub issue to the autopilot: a run that builds, checks,
     /// opens a draft pull request and has it reviewed before asking the
     /// person (`PRODUCT.md` §5). Needs the project's `muster.toml` checks.
@@ -401,6 +415,9 @@ pub enum Reply {
         /// (acme.atlassian.net)`.
         #[serde(default)]
         tracker: String,
+        /// Only those assigned to the person signed in (`[tickets] mine`).
+        #[serde(default)]
+        mine: bool,
     },
     IssueStarted {
         workspace: WorkspaceId,
@@ -422,6 +439,8 @@ pub enum Reply {
     PullRequestOpened {
         pr: crate::PullRequest,
     },
+    /// A project's settings that the person can change.
+    ProjectSettings(ProjectSettings),
     /// The run is the person's; `session` is its agent, in its container.
     RunTakenOver {
         workspace: WorkspaceId,
