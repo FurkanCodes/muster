@@ -10,17 +10,20 @@ use crate::keys::{encode_key, encode_paste};
 use crate::model::Row;
 
 /// Whether `key` gives the keys back from a session's terminal to the
-/// list: Ctrl+Q, a letter, so it is there on every keyboard layout, and
-/// used by neither Claude Code nor the shells. Ctrl+], the key before it,
-/// still works; it needs Option on many layouts. A terminal without the
-/// kitty keyboard protocol sends Ctrl+] as byte 0x1d, which crossterm
-/// reports as Ctrl+5, so both are accepted.
+/// list: Shift+Q, the person's choice, so a capital Q never reaches a
+/// session's program. A terminal sends it as `Q`, or, with the kitty
+/// keyboard protocol, as `q` with Shift. Ctrl+], the key before it, still
+/// works; a terminal without the kitty protocol sends it as byte 0x1d,
+/// which crossterm reports as Ctrl+5, so both are accepted.
 pub(crate) fn leaves_terminal(key: &KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(
-            key.code,
-            KeyCode::Char('q') | KeyCode::Char(']') | KeyCode::Char('5')
-        )
+    let (control, alt) = (
+        key.modifiers.contains(KeyModifiers::CONTROL),
+        key.modifiers.contains(KeyModifiers::ALT),
+    );
+    let shift_q = key.code == KeyCode::Char('Q')
+        || (key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::SHIFT));
+    (shift_q && !control && !alt)
+        || (control && matches!(key.code, KeyCode::Char(']') | KeyCode::Char('5')))
 }
 
 /// The screen Ctrl+1, Ctrl+2 or Ctrl+3 goes to, from anywhere, a session's
@@ -100,7 +103,7 @@ impl App {
             && key.code == KeyCode::Char('z')
         {
             self.complain(format!(
-                "Ctrl+Z would freeze {agent} here, so it was not sent. Ctrl-Q goes back to the list."
+                "Ctrl+Z would freeze {agent} here, so it was not sent. Shift-Q goes back to the list."
             ));
             return Vec::new();
         }
@@ -123,8 +126,9 @@ impl App {
         }
         match key.code {
             KeyCode::Char('c') if control => return vec![Action::Quit],
-            // Ctrl+Q leaves a session's terminal; pressed once too often on
-            // the list, it must not quit.
+            // Shift+Q leaves a session's terminal; pressed once too often
+            // on the list, it must not quit.
+            _ if leaves_terminal(key) => return Vec::new(),
             KeyCode::Char('q') if control => return Vec::new(),
             KeyCode::Char('q') => return vec![Action::Quit],
             // The tabs, round and back.

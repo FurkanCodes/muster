@@ -213,7 +213,7 @@ fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
 /// The keys that do something for what is selected.
 fn hints(app: &App) -> String {
     if matches!(app.mode, Mode::Terminal(_)) {
-        return "keys go to the session   Ctrl-Q back to the list (or click it)".to_owned();
+        return "keys go to the session   Shift-Q back to the list (or click it)".to_owned();
     }
     let session = app.focused_session().and_then(|id| app.model.session(id));
     let mut hints = vec!["↑↓ move"];
@@ -478,7 +478,7 @@ fn draw_session(
     if back > 0 {
         title.push_str(&format!("· ↑ {back} lines back "));
     } else if typing {
-        title.push_str("· Ctrl-Q back to the list ");
+        title.push_str("· Shift-Q back to the list ");
     }
     let block = panel(title, typing);
     match app.screens.get(&session) {
@@ -662,7 +662,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
             ))
             .yellow(),
         ),
-        None => spans.push(Span::from("   Ctrl-Q back to the list").dim()),
+        None => spans.push(Span::from("   Shift-Q back to the list").dim()),
     }
     frame.render_widget(Line::from(spans), top);
     match app.screens.get(&session) {

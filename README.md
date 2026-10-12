@@ -51,7 +51,7 @@ muster
 | `esc` `⌫` | back to *Sessions* from *Needs you* or *Tickets* |
 | `q` | quit the UI (sessions keep running) |
 
-While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them); **Ctrl-Q** gives the keys back to the list, and so does a click on it. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
+While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but one: **Shift-Q** gives the keys back to the list, and so does a click on it. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
 
 | Key | On the *Tickets* screen |
 |---|---|
