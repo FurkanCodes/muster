@@ -29,31 +29,13 @@ Found a security problem? Please open a private security advisory on GitHub rath
 
 Muster runs on macOS (Apple Silicon and Intel) and Linux (x86-64 and ARM). It needs git, and — for the features that use them — the agents you want to run (Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI), and the GitHub CLI (`gh`) or the GitLab CLI (`glab`) for your git host, signed in.
 
-With Homebrew:
+Install or update it with one command:
 
 ```bash
-brew install furkancodes/tap/muster
+curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/main/install.sh | sh
 ```
 
-Or with the installer, which downloads the right prebuilt binary for your machine and checks its checksum:
-
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/FurkanCodes/muster/releases/latest/download/muster-installer.sh | sh
-```
-
-Every release's binaries are built by GitHub Actions from this repository, with SHA-256 checksums and build attestations; to check one you downloaded yourself:
-
-```bash
-gh attestation verify muster-aarch64-apple-darwin.tar.xz --repo FurkanCodes/muster
-```
-
-Or build it from source, with Rust 1.95 or newer:
-
-```bash
-cargo install --locked --git https://github.com/FurkanCodes/muster muster
-```
-
-`--locked` builds the exact dependency versions the tests ran against.
+It downloads the prebuilt binary for your machine from the latest release, checks it against its published checksum, and puts it in `~/.local/bin`. On a machine without a prebuilt binary it builds Muster from source, which needs [Rust](https://rustup.rs).
 
 ```bash
 muster
