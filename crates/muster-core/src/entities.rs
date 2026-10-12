@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
+use crate::tickets::TicketKey;
 use crate::time::Timestamp;
 
 /// A folder Muster knows about: a git repository, or a plain folder.
@@ -91,10 +92,11 @@ impl WorkspaceKind {
     }
 }
 
-/// A GitHub issue, as listed for the person to pick from.
+/// A ticket, as listed for the person to pick from: an issue on GitHub or
+/// GitLab, a Jira work item, a Linear issue.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Issue {
-    pub number: u64,
+    pub key: TicketKey,
     pub title: String,
     pub url: String,
     #[serde(default)]

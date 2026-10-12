@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
 use muster_core::{
-    Project, ProjectId, Run, Session, SessionId, SessionStatus, Workspace, WorkspaceId,
+    Project, ProjectId, Run, Session, SessionId, SessionStatus, TicketKey, Workspace, WorkspaceId,
 };
 
 /// One line of the sessions list.
@@ -127,22 +127,22 @@ impl Model {
         &self.sessions
     }
 
-    /// The project's worktrees for issue `number`: on branches named for it.
-    pub(crate) fn worktrees_for(&self, project: ProjectId, number: u64) -> Vec<WorkspaceId> {
+    /// The project's worktrees for ticket `key`: on branches named for it.
+    pub(crate) fn worktrees_for(&self, project: ProjectId, key: &TicketKey) -> Vec<WorkspaceId> {
         self.workspaces
             .iter()
             .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
             .filter(|workspace| {
-                muster_core::tickets::issue_of_branch(workspace.kind.branch()) == Some(number)
+                muster_core::tickets::issue_of_branch(workspace.kind.branch()).as_ref() == Some(key)
             })
             .map(|workspace| workspace.id)
             .collect()
     }
 
-    /// The sessions working on issue `number` of `project`: those in the
+    /// The sessions working on ticket `key` of `project`: those in the
     /// project's worktrees on branches named for it, oldest first.
-    pub(crate) fn agents_on(&self, project: ProjectId, number: u64) -> Vec<&Session> {
-        let workspaces = self.worktrees_for(project, number);
+    pub(crate) fn agents_on(&self, project: ProjectId, key: &TicketKey) -> Vec<&Session> {
+        let workspaces = self.worktrees_for(project, key);
         let mut agents: Vec<&Session> = self
             .sessions
             .iter()

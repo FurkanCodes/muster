@@ -13,9 +13,9 @@ use muster_state::run::{Limits, RunEffect, RunEvent, RunMachine};
 use tokio::sync::{oneshot, watch};
 
 use super::{Request, Supervisor, store_closed, store_error};
-use crate::github::{self, IssueDetail};
 use crate::runs::{Report, RunContext};
 use crate::store::{RunProgress, RunUpdate, StoredRun};
+use crate::trackers::IssueDetail;
 
 /// The harness runs can drive headless, for now.
 const HEADLESS: &str = "claude";
@@ -92,19 +92,23 @@ impl Supervisor {
                 return;
             }
         };
-        let overrides = self
-            .config_dir
-            .join("projects")
-            .join(format!("{project}.toml"));
-        let (requests, tickets) = (self.requests.clone(), self.tickets.clone());
+        let place = match self.tracker_place(project) {
+            Ok(place) => place,
+            Err(error) => {
+                let _ = reply.send(Err(error));
+                return;
+            }
+        };
+        let overrides = place.overrides.clone();
+        let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
         tokio::spawn(async move {
             let prepared = async {
                 let config = settings_for_runs(root.clone(), overrides).await?;
                 if let Some(hand_off) = &hand_off {
                     ready_to_hand_off(hand_off, &config).await?;
                 }
-                let detail = tickets
-                    .view(&root, number)
+                let key = muster_core::TicketKey::number(number);
+                let detail = async { trackers.for_project(place).await?.view(&key).await }
                     .await
                     .map_err(|error| ErrorBody::new(ErrorCode::BadRequest, error.to_string()))?;
                 Ok::<_, ErrorBody>((config, detail))
@@ -140,7 +144,14 @@ impl Supervisor {
             handed,
             reply,
         } = fetched;
-        let number = detail.issue.number;
+        // Runs, set aside, take GitHub's numbered issues only.
+        let Some(number) = detail.issue.key.as_number() else {
+            let _ = reply.send(Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!("runs take numbered issues; {} is not one", detail.issue.key),
+            )));
+            return;
+        };
         if let Some(existing) = self.active_run_for(project, number) {
             let _ = reply.send(Err(ErrorBody::new(
                 ErrorCode::Conflict,
@@ -183,8 +194,12 @@ impl Supervisor {
         let (branch, machine) = match handed {
             Some(branch) => (branch, RunMachine::handed_off(limits)),
             None => (
-                self.unused_run_branch(project, &root, &github::issue_branch(&detail.issue))
-                    .await,
+                self.unused_run_branch(
+                    project,
+                    &root,
+                    &muster_core::tickets::ticket_branch(&detail.issue.key, &detail.issue.title),
+                )
+                .await,
                 RunMachine::new(limits),
             ),
         };

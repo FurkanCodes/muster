@@ -77,13 +77,17 @@ async fn a_plain_folder_is_a_project_until_and_after_it_becomes_a_repository() {
     assert!(checked.status.success(), "{}", said(&checked));
     assert!(said(&checked).contains("checked-42"), "{}", said(&checked));
 
-    // What needs git is refused, saying why.
+    // What needs git is refused, saying why; tickets, which can be in Jira
+    // or Linear for a folder too, say how to name where they are.
     for (args, why) in [
         (
             &["worktree", "add", "notes", "--branch", "side"][..],
             "worktrees need one",
         ),
-        (&["issue", "list", "notes"][..], "GitHub issues need one"),
+        (
+            &["issue", "list", "notes"][..],
+            "say where its tickets are with [tickets] tracker",
+        ),
         (&["review", "notes"][..], "no branch to review or push"),
         (&["pr", "notes"][..], "no branch to review or push"),
     ] {

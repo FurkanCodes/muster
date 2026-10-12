@@ -31,14 +31,14 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
-use crate::githost::GitHost;
-use crate::github::TicketSource;
+use crate::githost::choose::Hosts;
 use crate::harness::Harness;
 use crate::hooks::HookDelivery;
 use crate::pty::{PtyEvent, PtyHandle};
 use crate::runs::credentials::Credentials;
 use crate::runs::{Report, Reports, RunWork};
 use crate::store::{StoreClosed, StoreError, StoreHandle};
+use crate::trackers::Trackers;
 
 type Subscription = (Snapshot, broadcast::Receiver<Delta>);
 
@@ -221,16 +221,16 @@ pub(crate) struct Settings {
     pub(crate) timing: Timing,
     /// Does runs' work.
     pub(crate) work: Arc<dyn RunWork>,
-    /// Where issues come from.
-    pub(crate) tickets: Arc<dyn TicketSource>,
+    /// Where each project's tickets come from.
+    pub(crate) trackers: Arc<dyn Trackers>,
     /// The person's settings, such as projects' overrides.
     pub(crate) config_dir: PathBuf,
     /// The credential runs' agents use, also when the person drives one.
     pub(crate) credentials: Arc<dyn Credentials>,
     /// The `docker` command, for sessions in runs' containers.
     pub(crate) docker: String,
-    /// Where pull requests opened by hand go.
-    pub(crate) git_host: Arc<dyn GitHost>,
+    /// Each project's git host, for pull requests opened by hand.
+    pub(crate) hosts: Arc<dyn Hosts>,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -264,12 +264,12 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         timing: settings.timing,
         active_runs: HashMap::new(),
         work: settings.work,
-        tickets: settings.tickets,
+        trackers: settings.trackers,
         run_reports,
         config_dir: settings.config_dir,
         credentials: settings.credentials,
         docker: settings.docker,
-        git_host: settings.git_host,
+        hosts: settings.hosts,
     };
     supervisor.ensure_checkouts().await;
     // Runs first: a session in a run's container needs its run.
@@ -334,13 +334,13 @@ struct Supervisor {
     /// Runs in progress, with their machines.
     active_runs: HashMap<RunId, runs::ActiveRun>,
     work: Arc<dyn RunWork>,
-    tickets: Arc<dyn TicketSource>,
+    trackers: Arc<dyn Trackers>,
     /// Where runs' work reports.
     run_reports: Reports,
     config_dir: PathBuf,
     credentials: Arc<dyn Credentials>,
     docker: String,
-    git_host: Arc<dyn GitHost>,
+    hosts: Arc<dyn Hosts>,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }
@@ -377,11 +377,11 @@ impl Supervisor {
                 let _ = reply.send((self.state.clone(), self.deltas.subscribe()));
             }
             Request::Command { command, reply } => match command {
-                // These talk to GitHub, so they answer from a task of their own.
+                // These talk to trackers, so they answer from a task of their own.
                 Command::ListIssues { project } => self.list_issues(project, reply),
-                Command::ViewIssue { project, number } => self.view_issue(project, number, reply),
-                Command::CloseIssue { project, number } => {
-                    self.close_issue(project, number, reply);
+                Command::ViewIssue { project, key } => self.view_issue(project, key, reply),
+                Command::CloseIssue { project, key } => {
+                    self.close_issue(project, key, reply);
                 }
                 Command::StartRun {
                     project,
@@ -409,11 +409,11 @@ impl Supervisor {
                 }
                 Command::StartFromIssue {
                     project,
-                    number,
+                    key,
                     harness,
                     size,
                     another,
-                } => self.fetch_issue(project, number, harness, size, another, reply),
+                } => self.fetch_issue(project, key, harness, size, another, reply),
                 command => {
                     let name = command_name(&command);
                     let outcome = self.handle(command).await;

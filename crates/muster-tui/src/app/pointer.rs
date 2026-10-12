@@ -127,7 +127,7 @@ impl App {
             View::Tickets => {
                 let rows = self.ticket_rows();
                 if let Some(index) = line_at(list, row, rows.len(), self.tickets_offset) {
-                    self.tickets_selected = Some(rows[index]);
+                    self.tickets_selected = Some(rows[index].clone());
                 }
             }
         }

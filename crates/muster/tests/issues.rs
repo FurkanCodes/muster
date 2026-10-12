@@ -1,4 +1,4 @@
-//! End-to-end tests for working on GitHub issues (M1 step 8). A stand-in
+//! End-to-end tests for working on tickets, here GitHub issues (M1 step 8). A stand-in
 //! `gh` answers from fixture files; a stand-in `claude` records its prompt.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
@@ -78,7 +78,7 @@ async fn start_agent(
     connection
         .command(Command::StartFromIssue {
             project,
-            number,
+            key: muster_core::TicketKey::number(number),
             harness: "claude".to_owned(),
             size: TermSize::default(),
             another,
@@ -102,12 +102,19 @@ async fn open_issues_are_listed() {
         })
         .await
         .unwrap();
-    let Reply::Issues { issues } = reply else {
+    let Reply::Issues { issues, tracker } = reply else {
         panic!("expected Issues");
     };
+    assert_eq!(tracker, "GitHub issues");
     let summary: Vec<_> = issues
         .iter()
-        .map(|issue| (issue.number, issue.title.as_str(), issue.labels.clone()))
+        .map(|issue| {
+            (
+                issue.key.as_number().unwrap(),
+                issue.title.as_str(),
+                issue.labels.clone(),
+            )
+        })
         .collect();
     assert_eq!(
         summary,
@@ -206,14 +213,14 @@ async fn another_agent_works_in_a_worktree_of_its_own_and_the_list_shows_them() 
     let viewed = connection
         .command(Command::ViewIssue {
             project: setup.project,
-            number: 42,
+            key: muster_core::TicketKey::number(42),
         })
         .await
         .unwrap();
     let Reply::IssueViewed { issue, body } = viewed else {
         panic!("expected IssueViewed");
     };
-    assert_eq!(issue.number, 42);
+    assert_eq!(issue.key.as_number(), Some(42));
     assert!(body.starts_with("After signing in"), "{body}");
 
     // The command line lists them with their agents.
@@ -301,7 +308,7 @@ fn the_command_line_lists_starts_and_closes_issues() {
         "{}",
         String::from_utf8_lossy(&started.stderr)
     );
-    assert!(String::from_utf8_lossy(&started.stdout).contains("for issue #3"));
+    assert!(String::from_utf8_lossy(&started.stdout).contains("for #3 in"));
     let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
     assert!(status.contains("muster/issue-3-typo-in-readme"), "{status}");
     assert!(status.contains("#3 Typo in README"), "{status}");
@@ -314,7 +321,7 @@ fn the_command_line_lists_starts_and_closes_issues() {
         "{}",
         String::from_utf8_lossy(&closed.stderr)
     );
-    assert!(String::from_utf8_lossy(&closed.stdout).contains("Closed issue #3 on GitHub."));
+    assert!(String::from_utf8_lossy(&closed.stdout).contains("Closed #3."));
     let calls = std::fs::read_to_string(sandbox.fake_gh().join("calls")).unwrap();
     assert!(calls.lines().any(|call| call == "issue close 3"), "{calls}");
     let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();

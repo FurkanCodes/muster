@@ -175,9 +175,19 @@ impl Supervisor {
                 return;
             }
         };
-        let host = self.git_host.clone();
+        let hosts = self.hosts.clone();
+        let place = crate::service::ProjectPlace {
+            root: path.clone(),
+            overrides: overrides.clone(),
+        };
         tokio::spawn(async move {
             let opened = async {
+                // Which host first: a project it cannot tell is refused
+                // before anything is pushed.
+                let host = hosts
+                    .for_project(place)
+                    .await
+                    .map_err(|error| error.body())?;
                 let configured = load_settings(path.clone(), overrides).await?.base_branch;
                 let base = base_of(&path, configured.as_deref()).await;
                 let base = base.strip_prefix("origin/").unwrap_or(&base).to_owned();
@@ -203,7 +213,7 @@ impl Supervisor {
                 let pr = host
                     .open_draft(&path, &branch, &base, &title, body)
                     .await
-                    .map_err(|error| ErrorBody::new(ErrorCode::BadRequest, error.to_string()))?;
+                    .map_err(|error| error.body())?;
                 Ok(Reply::PullRequestOpened { pr })
             };
             let outcome = opened.await;

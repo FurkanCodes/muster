@@ -36,11 +36,17 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         history_every: 1,
         timing: muster_state::session::Timing::default(),
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
-        tickets: std::sync::Arc::new(crate::github::GitHubIssues),
+        trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
+            secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
-        git_host: Arc::new(crate::githost::GitHub),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts {
+            secrets: Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
     })
     .await
     .unwrap()
@@ -163,25 +169,31 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
         ),
         (
             Command::ListIssues { project },
-            "notes is a plain folder, not a git repository; GitHub issues need one",
+            "this project has no git remote to find its tickets by; say where its tickets are",
         ),
         (
-            Command::ViewIssue { project, number: 1 },
-            "GitHub issues need one",
+            Command::ViewIssue {
+                project,
+                key: muster_core::TicketKey::number(1),
+            },
+            "say where its tickets are with [tickets] tracker",
         ),
         (
-            Command::CloseIssue { project, number: 1 },
-            "GitHub issues need one",
+            Command::CloseIssue {
+                project,
+                key: muster_core::TicketKey::number(1),
+            },
+            "say where its tickets are with [tickets] tracker",
         ),
         (
             Command::StartFromIssue {
                 project,
-                number: 1,
+                key: muster_core::TicketKey::number(1),
                 harness: "shell".to_owned(),
                 size: Default::default(),
                 another: false,
             },
-            "GitHub issues need one",
+            "notes is a plain folder, not a git repository; worktrees for tickets need one",
         ),
         (
             Command::StartRun {
@@ -313,11 +325,17 @@ async fn every_nth_measurement_is_kept_in_history() {
         history_every: 2,
         timing: muster_state::session::Timing::default(),
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
-        tickets: std::sync::Arc::new(crate::github::GitHubIssues),
+        trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
+            secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
-        git_host: Arc::new(crate::githost::GitHub),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts {
+            secrets: Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
     })
     .await
     .unwrap();

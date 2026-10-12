@@ -1,33 +1,35 @@
-//! The Tickets screen: each project's open tickets (GitHub issues, through
-//! the person's `gh`), the agents working on each, and assigning more.
-//! Muster only reads tickets: nothing changes in the tracker.
+//! The Tickets screen: each project's open tickets, from its tracker
+//! (GitHub or GitLab issues, Jira, Linear), the agents working on each, and
+//! assigning more. Muster only reads tickets, but for closing one.
 //!
-//! An agent on a ticket is a Claude Code session in a worktree on a branch
-//! named for it (`muster/issue-<n>-<title>`), started with the ticket as
-//! its first prompt. ⏎ on a ticket opens the agent on it, or starts the
-//! first; `a` starts another, in a worktree of its own. `x` closes the
-//! ticket on GitHub, after asking, the one change Muster makes there, and
-//! then offers to close its agents and remove its worktrees.
+//! An agent on a ticket is a session in a worktree on a branch named for it
+//! (`muster/issue-<key>-<title>`), started with the ticket as its first
+//! prompt. ⏎ on a ticket opens the agent on it, or starts the first; `a`
+//! starts another, in a worktree of its own. `x` closes the ticket in its
+//! tracker, after asking, the one change Muster makes there, and then
+//! offers to close its agents and remove its worktrees.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::protocol::Command;
-use muster_core::{Issue, ProjectId, SessionId};
+use muster_core::{Issue, ProjectId, SessionId, TicketKey};
 
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
 
 /// One line of the tickets list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum TicketRow {
     Project(ProjectId),
-    Ticket(ProjectId, u64),
+    Ticket(ProjectId, TicketKey),
 }
 
 /// A project's tickets, as last fetched.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Tickets {
     Loading,
-    Loaded(Vec<Issue>),
-    /// Why they could not be fetched, as `gh` said.
+    /// The tickets, and where they came from: `GitHub issues`, `Jira
+    /// (acme.atlassian.net)`.
+    Loaded(Vec<Issue>, String),
+    /// Why they could not be fetched, as the tracker said.
     Failed(String),
 }
 
@@ -45,11 +47,11 @@ impl App {
         let mut rows = Vec::new();
         for project in self.model.projects() {
             rows.push(TicketRow::Project(project.id));
-            if let Some(Tickets::Loaded(tickets)) = self.tickets.get(&project.id) {
+            if let Some(Tickets::Loaded(tickets, _)) = self.tickets.get(&project.id) {
                 rows.extend(
                     tickets
                         .iter()
-                        .map(|ticket| TicketRow::Ticket(project.id, ticket.number)),
+                        .map(|ticket| TicketRow::Ticket(project.id, ticket.key.clone())),
                 );
             }
         }
@@ -57,10 +59,26 @@ impl App {
     }
 
     /// The ticket a row is, as fetched.
-    pub(crate) fn ticket(&self, project: ProjectId, number: u64) -> Option<&Issue> {
+    pub(crate) fn ticket(&self, project: ProjectId, key: &TicketKey) -> Option<&Issue> {
         match self.tickets.get(&project)? {
-            Tickets::Loaded(tickets) => tickets.iter().find(|ticket| ticket.number == number),
+            Tickets::Loaded(tickets, _) => tickets.iter().find(|ticket| ticket.key == *key),
             Tickets::Loading | Tickets::Failed(_) => None,
+        }
+    }
+
+    /// Where a project's tickets come from, once fetched.
+    pub(crate) fn tracker_of(&self, project: ProjectId) -> &str {
+        match self.tickets.get(&project) {
+            Some(Tickets::Loaded(_, tracker)) if !tracker.is_empty() => tracker,
+            _ => "its tracker",
+        }
+    }
+
+    /// The selected ticket, if a ticket is selected.
+    fn selected_ticket(&self) -> Option<(ProjectId, TicketKey)> {
+        match &self.tickets_selected {
+            Some(TicketRow::Ticket(project, key)) => Some((*project, key.clone())),
+            _ => None,
         }
     }
 
@@ -85,27 +103,29 @@ impl App {
             }
             KeyCode::Enter => return self.open_ticket(),
             KeyCode::Char('a') => {
-                if let Some(TicketRow::Ticket(project, number)) = self.tickets_selected {
-                    return self.assign_agent(project, number, true);
+                if let Some((project, key)) = self.selected_ticket() {
+                    return self.assign_agent(project, key, true);
                 }
             }
             KeyCode::Char('x') => {
-                if let Some(TicketRow::Ticket(project, number)) = self.tickets_selected
-                    && let Some(ticket) = self.ticket(project, number)
+                if let Some((project, key)) = self.selected_ticket()
+                    && let Some(ticket) = self.ticket(project, &key)
                 {
                     self.mode = Mode::Dialog(Dialog::Confirm {
                         question: format!(
-                            "Close #{number} {} on GitHub? Everyone watching it is told.",
-                            ticket.title
+                            "Close {} {} in {}? Everyone watching it is told.",
+                            key.shown(),
+                            ticket.title,
+                            self.tracker_of(project)
                         ),
-                        then: Confirmed::CloseTicket { project, number },
+                        then: Confirmed::CloseTicket { project, key },
                     });
                     return Vec::new();
                 }
             }
             KeyCode::Char('b') => {
-                if let Some(TicketRow::Ticket(project, number)) = self.tickets_selected
-                    && let Some(ticket) = self.ticket(project, number)
+                if let Some((project, key)) = self.selected_ticket()
+                    && let Some(ticket) = self.ticket(project, &key)
                 {
                     return vec![Action::Open(ticket.url.clone())];
                 }
@@ -118,21 +138,21 @@ impl App {
     /// ⏎ on a ticket: its agent's terminal (the latest still running, else
     /// the latest), or the first agent on it.
     fn open_ticket(&mut self) -> Vec<Action> {
-        let Some(TicketRow::Ticket(project, number)) = self.tickets_selected else {
+        let Some((project, key)) = self.selected_ticket() else {
             return Vec::new();
         };
-        match self.agent_to_open(project, number) {
+        match self.agent_to_open(project, &key) {
             Some(session) => {
                 self.mode = Mode::Terminal(session);
                 self.note = None;
                 self.settle()
             }
-            None => self.assign_agent(project, number, false),
+            None => self.assign_agent(project, key, false),
         }
     }
 
-    fn agent_to_open(&self, project: ProjectId, number: u64) -> Option<SessionId> {
-        let agents = self.model.agents_on(project, number);
+    fn agent_to_open(&self, project: ProjectId, key: &TicketKey) -> Option<SessionId> {
+        let agents = self.model.agents_on(project, key);
         agents
             .iter()
             .rev()
@@ -143,11 +163,11 @@ impl App {
 
     /// Starts Claude Code on the ticket: in its worktree, or with `another`
     /// in a worktree of its own; it opens as it starts.
-    fn assign_agent(&mut self, project: ProjectId, number: u64, another: bool) -> Vec<Action> {
-        self.say(format!("Starting an agent on #{number}…"));
+    fn assign_agent(&mut self, project: ProjectId, key: TicketKey, another: bool) -> Vec<Action> {
+        self.say(format!("Starting an agent on {}…", key.shown()));
         let command = Command::StartFromIssue {
             project,
-            number,
+            key,
             harness: HarnessChoice::Claude.id().to_owned(),
             size: self.session_size(),
             another,
@@ -155,19 +175,20 @@ impl App {
         vec![self.command(command, Then::OpenIssueSession)]
     }
 
-    /// A ticket closed on GitHub leaves the list; if work on it is still
-    /// about, the person is offered to clean up after it.
-    pub(super) fn ticket_closed(&mut self, project: ProjectId, number: u64) {
-        if let Some(Tickets::Loaded(tickets)) = self.tickets.get_mut(&project) {
-            tickets.retain(|ticket| ticket.number != number);
+    /// A ticket closed in its tracker leaves the list; if work on it is
+    /// still about, the person is offered to clean up after it.
+    pub(super) fn ticket_closed(&mut self, project: ProjectId, key: TicketKey) {
+        let tracker = self.tracker_of(project).to_owned();
+        if let Some(Tickets::Loaded(tickets, _)) = self.tickets.get_mut(&project) {
+            tickets.retain(|ticket| ticket.key != key);
         }
-        self.ticket_texts.remove(&(project, number));
-        let worktrees = self.model.worktrees_for(project, number).len();
+        self.ticket_texts.remove(&(project, key.clone()));
+        let worktrees = self.model.worktrees_for(project, &key).len();
         if worktrees == 0 {
-            self.say(format!("Closed #{number} on GitHub."));
+            self.say(format!("Closed {} in {tracker}.", key.shown()));
             return;
         }
-        let agents = self.model.agents_on(project, number).len();
+        let agents = self.model.agents_on(project, &key).len();
         let what = match (agents, worktrees) {
             (0, 1) => "remove its worktree".to_owned(),
             (0, n) => format!("remove its {n} worktrees"),
@@ -176,23 +197,26 @@ impl App {
             (a, n) => format!("close its {a} agents and remove its {n} worktrees"),
         };
         self.mode = Mode::Dialog(Dialog::Confirm {
-            question: format!("Closed #{number} on GitHub. Also {what}? Branches are kept."),
-            then: Confirmed::CleanUpTicket { project, number },
+            question: format!(
+                "Closed {} in {tracker}. Also {what}? Branches are kept.",
+                key.shown()
+            ),
+            then: Confirmed::CleanUpTicket { project, key },
         });
     }
 
     /// Stops a closed ticket's agents and removes its worktrees once
     /// nothing runs in them.
-    pub(super) fn clean_up_ticket(&mut self, project: ProjectId, number: u64) -> Vec<Action> {
-        let worktrees = self.model.worktrees_for(project, number);
+    pub(super) fn clean_up_ticket(&mut self, project: ProjectId, key: &TicketKey) -> Vec<Action> {
+        let worktrees = self.model.worktrees_for(project, key);
         let running: Vec<SessionId> = self
             .model
-            .agents_on(project, number)
+            .agents_on(project, key)
             .iter()
             .filter(|session| session.ended_at.is_none())
             .map(|session| session.id)
             .collect();
-        self.say(format!("Cleaning up after #{number}…"));
+        self.say(format!("Cleaning up after {}…", key.shown()));
         self.removing.extend(worktrees);
         running
             .into_iter()
@@ -245,14 +269,17 @@ impl App {
             self.tickets.insert(project, Tickets::Loading);
             actions.push(self.command(Command::ListIssues { project }, Then::Tickets(project)));
         }
-        if let Some(TicketRow::Ticket(project, number)) = self.tickets_selected
-            && !self.ticket_texts.contains_key(&(project, number))
+        if let Some((project, key)) = self.selected_ticket()
+            && !self.ticket_texts.contains_key(&(project, key.clone()))
         {
             self.ticket_texts
-                .insert((project, number), TicketText::Loading);
+                .insert((project, key.clone()), TicketText::Loading);
             actions.push(self.command(
-                Command::ViewIssue { project, number },
-                Then::TicketText(project, number),
+                Command::ViewIssue {
+                    project,
+                    key: key.clone(),
+                },
+                Then::TicketText(project, key),
             ));
         }
         actions
@@ -261,15 +288,18 @@ impl App {
     /// Keeps the tickets selection on a line that exists.
     pub(super) fn keep_ticket_selection(&mut self) {
         let rows = self.ticket_rows();
-        let kept = self.tickets_selected.filter(|row| rows.contains(row));
+        let kept = self
+            .tickets_selected
+            .clone()
+            .filter(|row| rows.contains(row));
         self.tickets_selected = kept.or_else(|| {
             // A ticket that went (closed, or fetched again): its project.
-            match self.tickets_selected {
-                Some(TicketRow::Ticket(project, _)) => Some(TicketRow::Project(project)),
+            match &self.tickets_selected {
+                Some(TicketRow::Ticket(project, _)) => Some(TicketRow::Project(*project)),
                 _ => None,
             }
             .filter(|row| rows.contains(row))
-            .or_else(|| rows.first().copied())
+            .or_else(|| rows.first().cloned())
         });
     }
 }

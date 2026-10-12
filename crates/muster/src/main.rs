@@ -2,6 +2,7 @@
 //! the daemon if none is running; its subcommands run the daemon and drive it
 //! from scripts.
 
+mod auth;
 mod commands;
 mod runs;
 
@@ -65,8 +66,9 @@ enum Commands {
     /// request in a container. Hidden; its code is kept.
     #[command(subcommand, hide = true)]
     Run(RunCommand),
-    /// Credentials the autopilot's runs need, kept in the macOS Keychain.
-    #[command(subcommand, hide = true)]
+    /// Sign-ins and tokens Muster keeps in the macOS Keychain: for Jira, Linear,
+    /// Bitbucket, and the autopilot's runs.
+    #[command(subcommand)]
     Auth(AuthCommand),
 }
 
@@ -74,7 +76,34 @@ enum Commands {
 enum AuthCommand {
     /// Store the Claude Code token runs' agents use: make one with
     /// `claude setup-token`, then paste it when asked.
+    #[command(hide = true)]
     Claude,
+    /// Store an API token for Bitbucket, for pull requests: pasted when
+    /// asked, not shown, or piped in.
+    Bitbucket {
+        /// The Bitbucket: `bitbucket.org`, or a Data Center's host.
+        #[arg(long, default_value = "bitbucket.org")]
+        host: String,
+    },
+    /// Sign in to Jira Cloud through Atlassian in your browser, for the
+    /// tickets of projects whose `[tickets]` say `tracker = "jira"`; or,
+    /// with --token, store a token for a site (Jira Data Center too).
+    Jira {
+        /// Store a token instead of signing in in the browser.
+        #[arg(long)]
+        token: bool,
+        /// The site the token is for: `acme.atlassian.net`, or a Data
+        /// Center's address.
+        #[arg(long)]
+        site: Option<String>,
+    },
+    /// Sign in to Linear in your browser; or, with --token, store a
+    /// personal API key.
+    Linear {
+        /// Store a personal API key instead of signing in in the browser.
+        #[arg(long)]
+        token: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -87,14 +116,15 @@ enum DaemonCommand {
 
 #[derive(Debug, Subcommand)]
 enum IssueCommand {
-    /// List PROJECT's open issues (its name, id or path), with the agents
-    /// on each.
+    /// List PROJECT's open tickets (its name, id or path) from its tracker,
+    /// with the agents on each.
     List { project: String },
-    /// Start an agent on issue NUMBER of PROJECT: a worktree for it and a
-    /// session with the issue as its first prompt.
+    /// Start an agent on ticket KEY of PROJECT (`42`, `#42` or `APP-7`): a
+    /// worktree for it and a session with the ticket as its first prompt.
     Start {
         project: String,
-        number: u64,
+        #[arg(value_parser = ticket_key)]
+        key: muster_core::TicketKey,
         /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`
         /// or `shell`.
         #[arg(long, default_value = "claude")]
@@ -104,10 +134,20 @@ enum IssueCommand {
         #[arg(long)]
         another: bool,
     },
-    /// Close issue NUMBER of PROJECT on GitHub, with your `gh`. Its agents
-    /// and worktrees stay; close and remove them with `muster session` and
-    /// `muster worktree`.
-    Close { project: String, number: u64 },
+    /// Close ticket KEY of PROJECT in its tracker. Its agents and worktrees
+    /// stay; close and remove them with `muster session` and `muster
+    /// worktree`.
+    Close {
+        project: String,
+        #[arg(value_parser = ticket_key)]
+        key: muster_core::TicketKey,
+    },
+}
+
+/// A ticket's key as written on the command line.
+fn ticket_key(text: &str) -> Result<muster_core::TicketKey, String> {
+    muster_core::TicketKey::parse(text)
+        .ok_or_else(|| format!("{text:?} is not a ticket: write `42`, `#42` or `APP-7`"))
 }
 
 /// RUN is a run's id, or its issue's number (`42` or `#42`): the run going
@@ -277,6 +317,15 @@ fn main() -> ExitCode {
                 commands::remove_session(&socket, &session).await
             }
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
+            Some(Commands::Auth(AuthCommand::Bitbucket { host })) => {
+                return auth::bitbucket(&host).await;
+            }
+            Some(Commands::Auth(AuthCommand::Jira { token, site })) => {
+                return auth::jira(token, site.as_deref()).await;
+            }
+            Some(Commands::Auth(AuthCommand::Linear { token })) => {
+                return auth::linear(token).await;
+            }
             Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
             Some(Commands::Review { worktree }) => commands::review(&socket, &worktree).await,
@@ -286,15 +335,15 @@ fn main() -> ExitCode {
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await
             }
-            Some(Commands::Issue(IssueCommand::Close { project, number })) => {
-                commands::close_issue(&socket, &project, number).await
+            Some(Commands::Issue(IssueCommand::Close { project, key })) => {
+                commands::close_issue(&socket, &project, key).await
             }
             Some(Commands::Issue(IssueCommand::Start {
                 project,
-                number,
+                key,
                 harness,
                 another,
-            })) => commands::start_issue(&socket, &project, number, harness, another).await,
+            })) => commands::start_issue(&socket, &project, key, harness, another).await,
             None => return ui(paths).await,
         };
         match outcome {

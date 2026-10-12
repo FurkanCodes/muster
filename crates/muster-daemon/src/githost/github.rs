@@ -1,66 +1,13 @@
-//! Pull requests, through the person's `gh` (`ARCHITECTURE.md` §10): their
-//! own login, and the repository found from the checkout's remote. Behind
-//! a trait, with a fake in tests (`ARC-03`).
-//!
-//! Muster pushes and opens pull requests as the person, so they are the
-//! author, and GitHub lets no author approve or ask for changes on their
-//! own pull request, nor be asked to review it: the reviewer agent's
-//! verdict is posted as a review comment, and a ready pull request waits
-//! in Needs you.
+//! GitHub pull requests, through the person's `gh`.
 
 use std::path::Path;
 
 use muster_core::PullRequest;
 use serde::Deserialize;
 
-use crate::github::{BoxFuture, GitHubError, gh_with};
-
-/// Where a pull request stands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PrState {
-    Open,
-    Merged,
-    Closed,
-}
-
-/// What runs need from the git host.
-pub(crate) trait GitHost: Send + Sync + std::fmt::Debug {
-    /// The open pull request for `branch`, or a new draft one into `base`.
-    fn open_draft<'a>(
-        &'a self,
-        root: &'a Path,
-        branch: &'a str,
-        base: &'a str,
-        title: &'a str,
-        body: &'a str,
-    ) -> BoxFuture<'a, Result<PullRequest, GitHubError>>;
-
-    fn mark_ready<'a>(
-        &'a self,
-        root: &'a Path,
-        number: u64,
-    ) -> BoxFuture<'a, Result<(), GitHubError>>;
-
-    fn mark_draft<'a>(
-        &'a self,
-        root: &'a Path,
-        number: u64,
-    ) -> BoxFuture<'a, Result<(), GitHubError>>;
-
-    /// Posts a review comment.
-    fn review_comment<'a>(
-        &'a self,
-        root: &'a Path,
-        number: u64,
-        body: &'a str,
-    ) -> BoxFuture<'a, Result<(), GitHubError>>;
-
-    fn state<'a>(
-        &'a self,
-        root: &'a Path,
-        number: u64,
-    ) -> BoxFuture<'a, Result<PrState, GitHubError>>;
-}
+use super::{GitHost, PrState};
+use crate::github::gh_with;
+use crate::service::{BoxFuture, ServiceError};
 
 /// GitHub, through `gh`.
 #[derive(Debug, Default)]
@@ -80,7 +27,7 @@ impl GitHost for GitHub {
         base: &'a str,
         title: &'a str,
         body: &'a str,
-    ) -> BoxFuture<'a, Result<PullRequest, GitHubError>> {
+    ) -> BoxFuture<'a, Result<PullRequest, ServiceError>> {
         Box::pin(async move {
             let listed = gh_with(
                 root,
@@ -100,7 +47,7 @@ impl GitHost for GitHub {
             )
             .await?;
             let open: Vec<Listed> = serde_json::from_str(&listed)
-                .map_err(|error| GitHubError::Unreadable(error.to_string()))?;
+                .map_err(|error| ServiceError::Unreadable(error.to_string()))?;
             if let Some(found) = open.into_iter().next() {
                 return Ok(PullRequest {
                     number: found.number,
@@ -137,7 +84,7 @@ impl GitHost for GitHub {
                 .next()
                 .and_then(|tail| tail.parse().ok())
                 .ok_or_else(|| {
-                    GitHubError::Unreadable(format!("no pull request in {created:?}"))
+                    ServiceError::Unreadable(format!("no pull request in {created:?}"))
                 })?;
             Ok(PullRequest { number, url })
         })
@@ -147,11 +94,12 @@ impl GitHost for GitHub {
         &'a self,
         root: &'a Path,
         number: u64,
-    ) -> BoxFuture<'a, Result<(), GitHubError>> {
+    ) -> BoxFuture<'a, Result<(), ServiceError>> {
         Box::pin(async move {
             gh_with(root, &["pr", "ready", &number.to_string()], None)
                 .await
                 .map(drop)
+                .map_err(ServiceError::from)
         })
     }
 
@@ -159,11 +107,12 @@ impl GitHost for GitHub {
         &'a self,
         root: &'a Path,
         number: u64,
-    ) -> BoxFuture<'a, Result<(), GitHubError>> {
+    ) -> BoxFuture<'a, Result<(), ServiceError>> {
         Box::pin(async move {
             gh_with(root, &["pr", "ready", &number.to_string(), "--undo"], None)
                 .await
                 .map(drop)
+                .map_err(ServiceError::from)
         })
     }
 
@@ -172,7 +121,7 @@ impl GitHost for GitHub {
         root: &'a Path,
         number: u64,
         body: &'a str,
-    ) -> BoxFuture<'a, Result<(), GitHubError>> {
+    ) -> BoxFuture<'a, Result<(), ServiceError>> {
         Box::pin(async move {
             gh_with(
                 root,
@@ -188,6 +137,7 @@ impl GitHost for GitHub {
             )
             .await
             .map(drop)
+            .map_err(ServiceError::from)
         })
     }
 
@@ -195,7 +145,7 @@ impl GitHost for GitHub {
         &'a self,
         root: &'a Path,
         number: u64,
-    ) -> BoxFuture<'a, Result<PrState, GitHubError>> {
+    ) -> BoxFuture<'a, Result<PrState, ServiceError>> {
         Box::pin(async move {
             #[derive(Deserialize)]
             struct View {
@@ -208,7 +158,7 @@ impl GitHost for GitHub {
             )
             .await?;
             let view: View = serde_json::from_str(&json)
-                .map_err(|error| GitHubError::Unreadable(error.to_string()))?;
+                .map_err(|error| ServiceError::Unreadable(error.to_string()))?;
             Ok(match view.state.as_str() {
                 "MERGED" => PrState::Merged,
                 "CLOSED" => PrState::Closed,

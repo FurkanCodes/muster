@@ -110,7 +110,7 @@ impl Inner {
             )
         } else {
             let base = self.base(container).await?;
-            let fence = crate::github::new_fence().unwrap_or_else(|_| "fence".to_owned());
+            let fence = crate::trackers::new_fence().unwrap_or_else(|_| "fence".to_owned());
             let mut prompt = prompts::builder_first(
                 &context.ticket,
                 &context.branch,
@@ -225,7 +225,7 @@ impl Inner {
                     .await
                     .unwrap_or(base_cost);
             } else {
-                let fence = crate::github::new_fence().unwrap_or_else(|_| "fence".to_owned());
+                let fence = crate::trackers::new_fence().unwrap_or_else(|_| "fence".to_owned());
                 let prompt = prompts::reviewer(&context.ticket, &context.branch, &base, &fence);
                 let session =
                     claude::new_session_id().map_err(|error| Halt::failed(error.to_string()))?;

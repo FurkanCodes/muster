@@ -12,6 +12,10 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+mod services;
+
+pub use services::{HostKind, PullRequests, Tickets, TrackerKind};
+
 /// The smallest memory reservation accepted: below it no agent runs.
 const MIN_MEMORY: u64 = 512 * 1024 * 1024;
 
@@ -32,6 +36,10 @@ pub struct ProjectConfig {
     pub agents: Agents,
     pub limits: RunLimits,
     pub intake: Intake,
+    /// Where its tickets are, if not where its git remote says.
+    pub tickets: Tickets,
+    /// Where its pull requests are opened, if not where its remote says.
+    pub pull_requests: PullRequests,
 }
 
 /// The commands that decide whether work is good enough to show a person.
@@ -92,6 +100,8 @@ impl Default for ProjectConfig {
                 label: None,
                 allowed_accounts: Vec::new(),
             },
+            tickets: Tickets::default(),
+            pull_requests: PullRequests::default(),
         }
     }
 }
@@ -172,6 +182,8 @@ struct Raw {
     agents: RawAgents,
     limits: RawLimits,
     intake: RawIntake,
+    tickets: services::RawTickets,
+    pull_requests: services::RawPullRequests,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -352,6 +364,8 @@ impl Raw {
                 label,
                 allowed_accounts,
             },
+            tickets: self.tickets.validate()?,
+            pull_requests: self.pull_requests.validate()?,
         })
     }
 }

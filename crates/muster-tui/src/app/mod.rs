@@ -42,7 +42,7 @@ use std::path::PathBuf;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
 };
-use muster_core::{ProjectId, SessionId, WorkspaceId};
+use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
 
 use crate::input::LineInput;
 use crate::model::{Model, Row, needs_attention};
@@ -110,20 +110,20 @@ pub(crate) enum Dialog {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Confirmed {
     StopSession(SessionId),
     /// Stop it and take it off the list once it has ended.
     CloseSession(SessionId),
-    /// Close the ticket on GitHub.
+    /// Close the ticket in its tracker.
     CloseTicket {
         project: ProjectId,
-        number: u64,
+        key: TicketKey,
     },
     /// Close a closed ticket's agents and remove its worktrees.
     CleanUpTicket {
         project: ProjectId,
-        number: u64,
+        key: TicketKey,
     },
     RemoveWorktree {
         workspace: WorkspaceId,
@@ -140,7 +140,7 @@ pub(crate) struct Note {
 }
 
 /// What to do with a command's reply.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Then {
     SelectProject,
     SelectWorktree,
@@ -152,7 +152,7 @@ enum Then {
     /// Keep the project's tickets.
     Tickets(ProjectId),
     /// Keep the ticket's text.
-    TicketText(ProjectId, u64),
+    TicketText(ProjectId, TicketKey),
     OpenIssueSession,
     /// Say which pull request was opened.
     ShowPullRequest,
@@ -160,7 +160,7 @@ enum Then {
     /// not closed either.
     Closing(SessionId),
     /// Drop the ticket from the list, and offer to clean up after it.
-    TicketClosed(ProjectId, u64),
+    TicketClosed(ProjectId, TicketKey),
     Say(&'static str),
 }
 
@@ -192,7 +192,7 @@ pub(crate) struct App {
     pub(crate) tickets_selected: Option<TicketRow>,
     pub(crate) tickets_offset: usize,
     /// Tickets' text, fetched as each is first shown.
-    pub(crate) ticket_texts: HashMap<(ProjectId, u64), TicketText>,
+    pub(crate) ticket_texts: HashMap<(ProjectId, TicketKey), TicketText>,
     pub(crate) screens: HashMap<SessionId, Screen>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
@@ -443,25 +443,26 @@ impl App {
                     pr.number, pr.url
                 ));
             }
-            (Ok(Reply::Issues { issues }), Then::Tickets(project)) => {
-                self.tickets.insert(project, Tickets::Loaded(issues));
+            (Ok(Reply::Issues { issues, tracker }), Then::Tickets(project)) => {
+                self.tickets
+                    .insert(project, Tickets::Loaded(issues, tracker));
             }
             (Err(error), Then::Tickets(project)) => {
                 self.tickets.insert(project, Tickets::Failed(error.message));
             }
-            (Ok(Reply::IssueViewed { body, .. }), Then::TicketText(project, number)) => {
+            (Ok(Reply::IssueViewed { body, .. }), Then::TicketText(project, key)) => {
                 self.ticket_texts
-                    .insert((project, number), TicketText::Loaded(body));
+                    .insert((project, key), TicketText::Loaded(body));
             }
-            (Err(error), Then::TicketText(project, number)) => {
+            (Err(error), Then::TicketText(project, key)) => {
                 self.ticket_texts
-                    .insert((project, number), TicketText::Failed(error.message));
+                    .insert((project, key), TicketText::Failed(error.message));
             }
             (Ok(_), Then::RemovedWorktree(_)) => {
                 self.say("Removed the worktree; its branch is kept.")
             }
             (Ok(_), Then::Say(text)) => self.say(text),
-            (Ok(_), Then::TicketClosed(project, number)) => self.ticket_closed(project, number),
+            (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
             (Err(error), Then::Closing(session)) => {
                 self.closing.retain(|closing| *closing != session);
                 self.complain(error.message);
@@ -569,7 +570,8 @@ impl App {
         let tickets = self.ticket_rows();
         let ticket = self
             .tickets_selected
-            .and_then(|row| tickets.iter().position(|r| *r == row));
+            .as_ref()
+            .and_then(|row| tickets.iter().position(|r| r == row));
         self.tickets_offset = in_view(self.tickets_offset, ticket, tickets.len(), height);
     }
 

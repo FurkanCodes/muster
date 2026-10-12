@@ -29,13 +29,14 @@ pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let width = usize::from(area.width.saturating_sub(2));
     let items: Vec<ListItem<'_>> = rows
         .iter()
-        .map(|row| ListItem::new(row_line(app, *row, width)))
+        .map(|row| ListItem::new(row_line(app, row, width)))
         .collect();
     let mut state = ListState::default()
         .with_offset(app.tickets_offset)
         .with_selected(
             app.tickets_selected
-                .and_then(|selected| rows.iter().position(|row| *row == selected)),
+                .as_ref()
+                .and_then(|selected| rows.iter().position(|row| row == selected)),
         );
     let list = List::new(items)
         .block(block)
@@ -45,19 +46,20 @@ pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
 
 /// A project's heading with how its tickets stand, or a ticket with the
 /// agents on it; the title gives way so the agents stay in view.
-fn row_line(app: &App, row: TicketRow, width: usize) -> Line<'static> {
+fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
     match row {
         TicketRow::Project(project) => {
+            let project = *project;
             let name = app
                 .model
                 .project(project)
                 .map_or_else(|| "?".to_owned(), |found| found.name.clone());
             let state = match app.tickets.get(&project) {
                 None | Some(Tickets::Loading) => Span::from("  fetching…").dim(),
-                Some(Tickets::Loaded(tickets)) if tickets.is_empty() => {
+                Some(Tickets::Loaded(tickets, _)) if tickets.is_empty() => {
                     Span::from("  no open tickets").dim()
                 }
-                Some(Tickets::Loaded(tickets)) => {
+                Some(Tickets::Loaded(tickets, _)) => {
                     Span::from(format!("  {} open", tickets.len())).dim()
                 }
                 Some(Tickets::Failed(error)) => {
@@ -66,11 +68,12 @@ fn row_line(app: &App, row: TicketRow, width: usize) -> Line<'static> {
             };
             Line::from(vec![Span::from(name).bold(), state])
         }
-        TicketRow::Ticket(project, number) => {
-            let Some(ticket) = app.ticket(project, number) else {
-                return Line::from(format!("  #{number}"));
+        TicketRow::Ticket(project, key) => {
+            let project = *project;
+            let Some(ticket) = app.ticket(project, key) else {
+                return Line::from(format!("  {}", key.shown()));
             };
-            let agents = app.model.agents_on(project, number);
+            let agents = app.model.agents_on(project, key);
             let mut marks: Vec<Span<'static>> = agents
                 .iter()
                 .take(AGENTS_SHOWN)
@@ -83,7 +86,7 @@ fn row_line(app: &App, row: TicketRow, width: usize) -> Line<'static> {
                 marks.push(Span::from(format!(" +{}", agents.len() - AGENTS_SHOWN)).dim());
             }
             let marks_width: usize = marks.iter().map(|mark| mark.content.chars().count()).sum();
-            let number_text = format!("  #{number} ");
+            let number_text = format!("  {} ", key.shown());
             let room = width
                 .saturating_sub(number_text.chars().count() + marks_width + 1)
                 .max(8);
@@ -99,9 +102,9 @@ fn row_line(app: &App, row: TicketRow, width: usize) -> Line<'static> {
 
 /// The selected ticket, or the selected project's tickets as a whole.
 pub(super) fn draw_ticket_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let text = match app.tickets_selected {
-        Some(TicketRow::Ticket(project, number)) => ticket_text(app, project, number),
-        Some(TicketRow::Project(project)) => project_text(app, project),
+    let text = match &app.tickets_selected {
+        Some(TicketRow::Ticket(project, key)) => ticket_text(app, *project, key),
+        Some(TicketRow::Project(project)) => project_text(app, *project),
         None => Text::from("Select a ticket to see it here.").dim(),
     };
     frame.render_widget(
@@ -125,24 +128,28 @@ fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
         Some(Tickets::Failed(error)) => {
             lines.push(Line::from("Its tickets could not be fetched:").red());
             lines.push(Line::from(error.clone()));
-            lines.push(Line::from(""));
+        }
+        Some(Tickets::Loaded(_, tracker)) => {
             lines.push(
-                Line::from("Tickets come from its GitHub issues through `gh`: is `gh` signed in?")
-                    .dim(),
+                Line::from(format!(
+                    "Its open tickets from {tracker}, newest first. ⏎ on one starts an agent on it."
+                ))
+                .dim(),
             );
         }
-        Some(Tickets::Loaded(_)) | Some(Tickets::Loading) | None => {
-            lines.push(
-                Line::from("Its open GitHub issues, newest first. ⏎ on one starts an agent on it.")
-                    .dim(),
-            );
+        Some(Tickets::Loading) | None => {
+            lines.push(Line::from("Fetching its tickets…").dim());
         }
     }
     Text::from(lines)
 }
 
-fn ticket_text(app: &App, project: muster_core::ProjectId, number: u64) -> Text<'static> {
-    let Some(ticket) = app.ticket(project, number) else {
+fn ticket_text(
+    app: &App,
+    project: muster_core::ProjectId,
+    key: &muster_core::TicketKey,
+) -> Text<'static> {
+    let Some(ticket) = app.ticket(project, key) else {
         return Text::default();
     };
     let project_name = app
@@ -151,7 +158,7 @@ fn ticket_text(app: &App, project: muster_core::ProjectId, number: u64) -> Text<
         .map_or_else(|| "?".to_owned(), |found| found.name.clone());
     let mut lines = vec![
         Line::from(ticket.title.clone()).bold(),
-        Line::from(format!("#{number} · {project_name} · {}", ticket.url)).dim(),
+        Line::from(format!("{} · {project_name} · {}", key.shown(), ticket.url)).dim(),
     ];
     let mut about = Vec::new();
     if let Some(author) = &ticket.author {
@@ -168,7 +175,7 @@ fn ticket_text(app: &App, project: muster_core::ProjectId, number: u64) -> Text<
     }
     lines.push(Line::from(""));
 
-    let agents = app.model.agents_on(project, number);
+    let agents = app.model.agents_on(project, key);
     if agents.is_empty() {
         lines.push(
             Line::from("No agent on it yet: ⏎ starts Claude Code on it, in a worktree of its own.")
@@ -196,7 +203,7 @@ fn ticket_text(app: &App, project: muster_core::ProjectId, number: u64) -> Text<
         );
     }
     lines.push(Line::from(""));
-    match app.ticket_texts.get(&(project, number)) {
+    match app.ticket_texts.get(&(project, key.clone())) {
         None | Some(TicketText::Loading) => lines.push(Line::from("Fetching its text…").dim()),
         Some(TicketText::Failed(error)) => {
             lines.push(Line::from(format!("Its text could not be fetched: {error}")).red());
@@ -214,13 +221,13 @@ fn ticket_text(app: &App, project: muster_core::ProjectId, number: u64) -> Text<
 /// The keys that apply on the Tickets screen, for what is selected.
 pub(super) fn hints(app: &App) -> Vec<&'static str> {
     let mut hints = Vec::new();
-    if let Some(TicketRow::Ticket(project, number)) = app.tickets_selected {
-        if app.model.agents_on(project, number).is_empty() {
+    if let Some(TicketRow::Ticket(project, key)) = &app.tickets_selected {
+        if app.model.agents_on(*project, key).is_empty() {
             hints.push("⏎ start an agent");
         } else {
             hints.extend(["⏎ open agent", "a another agent"]);
         }
-        hints.extend(["b browser", "x close on GitHub"]);
+        hints.extend(["b browser", "x close"]);
     }
     hints.push("r refresh");
     hints

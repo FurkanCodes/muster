@@ -19,6 +19,8 @@ use nix::unistd::Pid;
 use tempfile::TempDir;
 
 pub(crate) mod agents;
+pub(crate) mod http;
+mod services;
 
 pub(crate) const BINARY: &str = env!("CARGO_BIN_EXE_muster");
 
@@ -114,6 +116,7 @@ impl Sandbox {
             ("claude", FAKE_CLAUDE),
             ("gh", FAKE_GH),
             ("docker", FAKE_DOCKER),
+            ("glab", services::FAKE_GLAB),
         ]
         .into_iter()
         .chain(agents)
@@ -126,6 +129,7 @@ impl Sandbox {
             .unwrap();
         }
         std::fs::create_dir_all(dir.path().join("fake-gh")).unwrap();
+        std::fs::create_dir_all(dir.path().join("fake-glab")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-docker")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-agents")).unwrap();
@@ -240,6 +244,11 @@ impl Sandbox {
         std::fs::write(root.join("README.md"), "test\n").unwrap();
         git(&root, &["add", "README.md"]);
         git(&root, &["commit", "--quiet", "--message", "first"]);
+        // Hosted on GitHub, as far as Muster can tell, so its tickets are
+        // GitHub's: a remote never fetched from or pushed to. Not `origin`,
+        // which tests that push add as a local repository.
+        let github = format!("https://github.com/o/{name}.git");
+        git(&root, &["remote", "add", "github", &github]);
         root.canonicalize().unwrap()
     }
 
@@ -270,7 +279,13 @@ impl Sandbox {
             // rather than replaces, are none in the tests.
             .env_remove("GEMINI_CLI_SYSTEM_DEFAULTS_PATH")
             .env_remove("OPENCODE_CONFIG_CONTENT")
+            // Nor the person's tokens for services reached by their APIs.
+            .env_remove("BITBUCKET_TOKEN")
+            .env_remove("JIRA_API_TOKEN")
+            .env_remove("JIRA_EMAIL")
+            .env_remove("LINEAR_API_KEY")
             .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
+            .env("FAKE_GLAB_DIR", self.dir.path().join("fake-glab"))
             .env("FAKE_DOCKER_DIR", self.dir.path().join("fake-docker"))
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))
             // Runs never reach the person's own credential: not the

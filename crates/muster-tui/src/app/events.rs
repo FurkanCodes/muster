@@ -210,8 +210,9 @@ impl App {
                 let rows = self.ticket_rows();
                 let at = self
                     .tickets_selected
-                    .and_then(|row| rows.iter().position(|r| *r == row));
-                self.tickets_selected = step(rows.len(), at).map(|index| rows[index]);
+                    .as_ref()
+                    .and_then(|row| rows.iter().position(|r| r == row));
+                self.tickets_selected = step(rows.len(), at).map(|index| rows[index].clone());
             }
         }
     }
@@ -585,15 +586,22 @@ impl App {
                 Command::RemoveProject { project },
                 Then::Say("Muster no longer tracks the project; its folder is untouched."),
             ),
-            Confirmed::CloseTicket { project, number } => {
-                self.say(format!("Closing #{number} on GitHub…"));
+            Confirmed::CloseTicket { project, key } => {
+                self.say(format!(
+                    "Closing {} in {}…",
+                    key.shown(),
+                    self.tracker_of(project)
+                ));
                 self.command(
-                    Command::CloseIssue { project, number },
-                    Then::TicketClosed(project, number),
+                    Command::CloseIssue {
+                        project,
+                        key: key.clone(),
+                    },
+                    Then::TicketClosed(project, key),
                 )
             }
-            Confirmed::CleanUpTicket { project, number } => {
-                return self.clean_up_ticket(project, number);
+            Confirmed::CleanUpTicket { project, key } => {
+                return self.clean_up_ticket(project, &key);
             }
         };
         vec![action]
