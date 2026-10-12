@@ -251,14 +251,21 @@ async fn the_child_inherits_no_descriptors_beyond_stdio() {
     let _held_open = tempfile::tempfile().unwrap();
     let (pty, _) = shell(vec![], vec![]);
     // Asks lsof what the idle shell holds, writing to a file so the probe
-    // itself opens nothing in the shell. Descriptor 255 is excluded: bash
-    // keeps its own copy of the terminal there. (Probing with `>&$fd` would
-    // not do either: bash opens descriptors 10 and up to carry it out.)
-    let probe = "lsof -a -p $$ -d 3-254 -F f > fds.$$ 2>/dev/null; \
-                 echo \"fds-$(grep -c '^f' fds.$$)-done-$((3*3))\"; rm -f fds.$$\n";
+    // itself opens nothing in the shell, and counts the descriptors past
+    // stdio that are not a terminal. A shell keeps copies of its terminal
+    // for itself (bash at 255, dash at 10), and opens them after it starts;
+    // a file, a socket or a pipe there can only have been inherited, as
+    // the listening socket this guards against once was. (Probing with
+    // `>&$fd` would not do: bash opens descriptors 10 and up to carry it
+    // out.)
+    let probe = "lsof -a -p $$ -d 3-255 -F ftn > fds.$$ 2>/dev/null; \
+                 n=$(awk '/^f/ {fd = substr($0, 2)} \
+                 /^t/ {if (fd ~ /^[0-9]+$/ && $0 != \"tCHR\") n++} \
+                 END {print n + 0}' fds.$$); \
+                 echo \"inherited-$n-done-$((3*3))\"; rm -f fds.$$\n";
     pty.input(probe.as_bytes().to_vec()).await;
     let (text, _) = read_until(&pty, None, "done-9").await;
-    assert!(text.contains("fds-0-done-9"), "{text:?}");
+    assert!(text.contains("inherited-0-done-9"), "{text:?}");
 }
 
 #[tokio::test]
@@ -332,9 +339,20 @@ async fn questions_to_the_terminal_are_answered() {
         .next()
         .and_then(|rest| rest.split(':').next())
         .unwrap_or_default();
-    // A VT102 claim, then a cursor position on some row of column 1.
+    // A VT102 claim, then a cursor position: a row and a column. Where the
+    // cursor is depends on the shell (dash, Linux's `sh`, prints its prompt
+    // before it runs the line), so only the answer's form is checked.
     assert!(answer.starts_with("E[?6cE["), "{answer:?} in {text:?}");
-    assert!(answer.ends_with(";1R"), "{answer:?} in {text:?}");
+    let position = answer
+        .trim_start_matches("E[?6cE[")
+        .strip_suffix('R')
+        .and_then(|rest| rest.split_once(';'));
+    assert!(
+        position.is_some_and(
+            |(row, column)| row.parse::<u16>().is_ok() && column.parse::<u16>().is_ok()
+        ),
+        "{answer:?} in {text:?}"
+    );
 }
 
 #[tokio::test]
