@@ -6,6 +6,8 @@ rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "A terminal cockpit for coding agents: assign them to your tickets, each in its own git worktree"
+homepage = "https://github.com/FurkanCodes/muster"
 
 [dependencies]
 clap.workspace = true
@@ -27,3 +29,7 @@ vt100.workspace = true
 
 [lints]
 workspace = true
+
+# The one crate dist builds and ships (the workspace is not published to crates.io).
+[package.metadata.dist]
+dist = true
