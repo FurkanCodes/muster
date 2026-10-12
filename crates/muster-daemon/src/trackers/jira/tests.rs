@@ -36,6 +36,15 @@ fn a_description_in_atlassian_s_format_reads_as_text() {
         "After signing in,\nusers land on /404.\nChrome"
     );
     assert_eq!(description_text(&json!("wiki *text*")), "wiki *text*");
+    // As Atlassian's MCP server gives it (seen 2026-10-12), markdown asked
+    // for or not.
+    assert_eq!(
+        description_text(&json!(
+            "<p><a href=\"https://acme.atlassian.net/browse/APP-6\">https://acme.atlassian.net/browse/APP-6</a> \
+             first, then <span data-type=\"mention\">@Ada</span>&#039;s menu.</p><ul><li>Chrome</li></ul>"
+        )),
+        "https://acme.atlassian.net/browse/APP-6 first, then @Ada's menu.\n\n- Chrome"
+    );
     assert_eq!(description_text(&Value::Null), "");
 }
 
@@ -252,7 +261,9 @@ async fn mcp_server(
                 "getJiraIssue" => {
                     assert!(args.get("fields").is_none(), "its fields are custom ones");
                     let mut found = item("APP-7", "Fix the login redirect");
-                    found["fields"]["description"] = json!("Users land on /404.\u{1b}[2J");
+                    // HTML, as its server gives it, with an escape written
+                    // as a reference, which must not reach a terminal either.
+                    found["fields"]["description"] = json!("<p>Users land on /404.&#27;[2J</p>");
                     text(json!({"data": found}))
                 }
                 "listJiraIssueTransitions" => text(json!({"data": {"transitions": [
@@ -607,4 +618,71 @@ async fn live_jira_query() {
     let listed = jira.list().await.unwrap();
     let keys: Vec<&str> = listed.iter().map(|issue| issue.key.as_str()).collect();
     println!("listed: {} {keys:?}", listed.len());
+}
+
+/// How the person's own tickets' descriptions come and read, read-only:
+/// `cargo test -- --ignored live_jira_descriptions`. It prints each
+/// description's format, the tags it uses and whether any tag or
+/// reference is left after reading it as text; never ticket text.
+#[tokio::test]
+#[ignore = "reads the person's Jira through their Atlassian sign-in"]
+async fn live_jira_descriptions_read_as_text() {
+    let secrets = crate::secrets::Keychain::default();
+    let http = crate::service::http_client();
+    let session = oauth::session(&secrets, MCP_ACCOUNT)
+        .await
+        .expect("signed in");
+    let token = oauth::access_token(&http, &secrets, MCP_ACCOUNT, session)
+        .await
+        .unwrap();
+    let mcp = Mcp::connect(http, MCP_URL, token, "Atlassian", "muster auth jira")
+        .await
+        .unwrap();
+    let jira = Jira {
+        site: Site::parse("acme.atlassian.net").unwrap(),
+        jql: assigned_to_me("statusCategory != Done ORDER BY created DESC"),
+        mine: true,
+        access: Access::Mcp {
+            mcp: Mutex::new(mcp),
+        },
+    };
+    let listed = jira.list().await.unwrap();
+    println!("yours: {} tickets", listed.len());
+    let mut tags = std::collections::BTreeSet::new();
+    for issue in listed.iter().take(20) {
+        let found = jira.issue(&issue.key).await.unwrap();
+        let found = found.get("issue").unwrap_or(&found);
+        let description = found.pointer("/fields/description").unwrap_or(&Value::Null);
+        let format = match description {
+            Value::String(text) if html::looks_like_html(text) => "html",
+            Value::String(_) => "text",
+            Value::Null => "none",
+            _ => "atlassian document",
+        };
+        if let Value::String(text) = description {
+            let mut rest = text.as_str();
+            while let Some(at) = rest.find('<') {
+                rest = &rest[at + 1..];
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | ':' | '-'))
+                    .collect();
+                if !name.is_empty() {
+                    tags.insert(name.trim_start_matches('/').to_ascii_lowercase());
+                }
+            }
+        }
+        let read = description_text(description);
+        let tag_left = read.char_indices().any(|(at, c)| {
+            c == '<' && read[at + 1..].starts_with(|c: char| c.is_ascii_alphabetic())
+        });
+        let reference_left =
+            read.contains("&#") || read.contains("&amp;") || read.contains("&quot;");
+        println!(
+            "{}: {format}, {} characters read, tags left {tag_left}, references left {reference_left}",
+            issue.key,
+            read.chars().count()
+        );
+    }
+    println!("tags used: {tags:?}");
 }
