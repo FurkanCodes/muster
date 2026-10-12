@@ -103,6 +103,11 @@ impl Ui {
         self.screen.lock().unwrap().screen().contents()
     }
 
+    /// The UI's process id.
+    fn pid(&self) -> u32 {
+        self.child.process_id().expect("the UI's pid")
+    }
+
     /// Waits until the screen shows `wanted`.
     fn wait_for(&self, wanted: &str) {
         let deadline = Instant::now() + Duration::from_secs(15);
@@ -369,8 +374,9 @@ fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
     let pid = Pid::from_raw(i32::try_from(first).unwrap());
     kill(pid, Signal::SIGTERM).unwrap();
 
-    // The UI waits for its child, so no zombie is left: signalling the pid
-    // fails once it is gone, which a zombie's would not.
+    // The daemon is not the UI's child, and the system reaps it, so no
+    // zombie is left: signalling the pid fails once it is gone, which a
+    // zombie's would not.
     let deadline = Instant::now() + Duration::from_secs(10);
     while kill(pid, None).is_ok() {
         assert!(
@@ -390,6 +396,101 @@ fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
         std::thread::sleep(Duration::from_millis(50));
     }
     ui.wait_for("daemon 0.1.0");
+}
+
+/// The parent of process `pid`, as `ps` tells it.
+fn parent_of(pid: u32) -> Option<u32> {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "ppid=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
+/// `root` and every process below it, as `ps` tells it now.
+fn tree_of(root: u32) -> Vec<u32> {
+    let out = std::process::Command::new("ps")
+        .args(["-A", "-o", "pid=,ppid="])
+        .output()
+        .unwrap();
+    let pairs: Vec<(u32, u32)> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            Some((words.next()?.parse().ok()?, words.next()?.parse().ok()?))
+        })
+        .collect();
+    let mut tree = vec![root];
+    let mut at = 0;
+    while at < tree.len() {
+        let parent = tree[at];
+        tree.extend(
+            pairs
+                .iter()
+                .filter(|(_, ppid)| *ppid == parent)
+                .map(|(pid, _)| *pid),
+        );
+        at += 1;
+    }
+    tree
+}
+
+#[test]
+fn the_daemon_the_ui_starts_outlives_the_ui_s_whole_process_tree_and_hang_ups() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let socket = sandbox.paths().socket();
+    let _stop = StopDaemon(socket.clone());
+    let ui = Ui::start(&sandbox, &root);
+    ui.wait_for("daemon 0.1.0");
+    let daemon = daemon_pid(&socket).expect("the UI started a daemon");
+
+    // It is apart from the UI from the start: nothing of the UI's.
+    let ui_tree = tree_of(ui.pid());
+    assert!(!ui_tree.contains(&daemon), "{daemon} is in {ui_tree:?}");
+    assert_ne!(parent_of(daemon), Some(ui.pid()));
+
+    // What some terminals do as a pane closes: kill everything under it.
+    for pid in tree_of(ui.pid()) {
+        let _ = kill(Pid::from_raw(i32::try_from(pid).unwrap()), Signal::SIGKILL);
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(daemon_pid(&socket), Some(daemon), "the daemon lives on");
+
+    // A hang-up is someone else's: logged, and ignored.
+    kill(
+        Pid::from_raw(i32::try_from(daemon).unwrap()),
+        Signal::SIGHUP,
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(daemon_pid(&socket), Some(daemon), "a hang-up stops nothing");
+    let log = sandbox.paths().runtime_dir.join("daemon.log");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !std::fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("ignored a hang-up")
+    {
+        assert!(Instant::now() < deadline, "the hang-up is not in the log");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // Asked to stop, it says why as it goes.
+    kill(
+        Pid::from_raw(i32::try_from(daemon).unwrap()),
+        Signal::SIGTERM,
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !std::fs::read_to_string(&log)
+        .unwrap_or_default()
+        .contains("daemon stopped")
+    {
+        assert!(Instant::now() < deadline, "it never stopped");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let log = std::fs::read_to_string(&log).unwrap();
+    assert!(log.contains("stopping: asked to stop"), "{log}");
 }
 
 #[test]

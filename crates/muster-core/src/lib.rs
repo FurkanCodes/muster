@@ -4,6 +4,7 @@
 //! This crate does no IO (`ARC-01`).
 
 pub mod config;
+pub mod credentials;
 pub mod entities;
 pub mod frame;
 pub mod html;
