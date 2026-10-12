@@ -234,6 +234,34 @@ pub(crate) async fn show_config(
             .max_cost_usd
             .map_or("no cost limit".to_owned(), |usd| format!("${usd:.2}"))
     );
+    let tickets = &config.tickets;
+    let source = match tickets.tracker {
+        None => "as the git remote says".to_owned(),
+        Some(tracker) => {
+            let mut source = tracker.name().to_owned();
+            if let Some(site) = &tickets.site {
+                source.push_str(&format!(" at {}", shown(site)));
+            }
+            match (&tickets.jql, &tickets.project, &tickets.team) {
+                (Some(jql), _, _) => source.push_str(&format!(", {}", shown(jql))),
+                (None, Some(project), _) => {
+                    source.push_str(&format!(", project {}", shown(project)))
+                }
+                (None, None, Some(team)) => source.push_str(&format!(", team {}", shown(team))),
+                (None, None, None) => {}
+            }
+            source
+        }
+    };
+    let whose = if tickets.mine {
+        ", assigned to you"
+    } else {
+        ""
+    };
+    println!("tickets       {source}{whose}");
+    if let Some(host) = config.pull_requests.host {
+        println!("pull requests {}", host.name());
+    }
     match &config.intake.label {
         Some(label) => println!(
             "pickup        issues labelled {:?} by {}",

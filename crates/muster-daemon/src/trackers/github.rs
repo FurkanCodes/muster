@@ -19,6 +19,8 @@ const LIST_LIMIT: &str = "100";
 #[derive(Debug)]
 pub(crate) struct GitHubIssues {
     pub(crate) root: PathBuf,
+    /// Only those assigned to the person signed in to `gh`.
+    pub(crate) mine: bool,
 }
 
 /// `gh`'s JSON for one issue.
@@ -85,21 +87,20 @@ impl TicketSource for GitHubIssues {
 
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
-            let json = gh_with(
-                &self.root,
-                &[
-                    "issue",
-                    "list",
-                    "--state",
-                    "open",
-                    "--limit",
-                    LIST_LIMIT,
-                    "--json",
-                    "number,title,url,labels,author",
-                ],
-                None,
-            )
-            .await?;
+            let mut args = vec![
+                "issue",
+                "list",
+                "--state",
+                "open",
+                "--limit",
+                LIST_LIMIT,
+                "--json",
+                "number,title,url,labels,author",
+            ];
+            if self.mine {
+                args.extend(["--assignee", "@me"]);
+            }
+            let json = gh_with(&self.root, &args, None).await?;
             let issues: Vec<GhIssue> = serde_json::from_str(&json).map_err(unreadable)?;
             Ok(issues
                 .into_iter()

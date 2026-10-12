@@ -116,6 +116,36 @@ fn project_query(project: &str) -> String {
     format!("project = \"{project}\" AND statusCategory != Done ORDER BY created DESC")
 }
 
+/// Only the tickets of `jql` assigned to the person signed in, its order
+/// kept at the end.
+fn assigned_to_me(jql: &str) -> String {
+    let upper = jql.to_ascii_uppercase();
+    let (filter, order) = match upper.rfind("ORDER BY") {
+        Some(at) => (jql[..at].trim(), format!(" {}", jql[at..].trim())),
+        None => (jql.trim(), String::new()),
+    };
+    if filter.is_empty() {
+        format!("assignee = currentUser(){order}")
+    } else {
+        format!("({filter}) AND assignee = currentUser(){order}")
+    }
+}
+
+/// The query `tickets` asks for: their JQL, or their project's open
+/// tickets; with `mine`, those assigned to the person signed in.
+fn query(tickets: &Tickets) -> Option<String> {
+    let jql = match (&tickets.jql, &tickets.project) {
+        (Some(jql), _) => jql.clone(),
+        (None, Some(project)) => project_query(project),
+        (None, None) => return None,
+    };
+    Some(if tickets.mine {
+        assigned_to_me(&jql)
+    } else {
+        jql
+    })
+}
+
 fn signed_out(site: &Site) -> ServiceError {
     let browser = if site.is_cloud() {
         "run `muster auth jira` to sign in in your browser, or "
@@ -148,15 +178,11 @@ impl Jira {
                 "tickets.site {written:?} is not a Jira site's address"
             ))
         })?;
-        let jql = match (&tickets.jql, &tickets.project) {
-            (Some(jql), _) => jql.clone(),
-            (None, Some(project)) => project_query(project),
-            (None, None) => {
-                return Err(ServiceError::NotConfigured(
-                    "say which tickets with tickets.project or tickets.jql".to_owned(),
-                ));
-            }
-        };
+        let jql = query(tickets).ok_or_else(|| {
+            ServiceError::NotConfigured(
+                "say which tickets with tickets.project or tickets.jql".to_owned(),
+            )
+        })?;
         let access = if let Some(session) = oauth::session(secrets, MCP_ACCOUNT)
             .await
             .filter(|_| site.is_cloud())

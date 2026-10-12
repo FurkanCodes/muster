@@ -19,6 +19,8 @@ const LIST_LIMIT: &str = "100";
 #[derive(Debug)]
 pub(crate) struct GitLabIssues {
     pub(crate) root: PathBuf,
+    /// Only those assigned to the person signed in to `glab`.
+    pub(crate) mine: bool,
 }
 
 /// `glab`'s JSON for one issue: GitLab's API fields.
@@ -72,18 +74,18 @@ impl TicketSource for GitLabIssues {
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
             // Open ones, newest first, are what it lists unasked.
-            let json = glab(
-                &self.root,
-                &[
-                    "issue",
-                    "list",
-                    "--output",
-                    "json",
-                    "--per-page",
-                    LIST_LIMIT,
-                ],
-            )
-            .await?;
+            let mut args = vec![
+                "issue",
+                "list",
+                "--output",
+                "json",
+                "--per-page",
+                LIST_LIMIT,
+            ];
+            if self.mine {
+                args.push("--assignee=@me");
+            }
+            let json = glab(&self.root, &args).await?;
             let issues: Vec<GlabIssue> = parse(&json)?;
             Ok(issues
                 .into_iter()

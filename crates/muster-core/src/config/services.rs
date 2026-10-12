@@ -8,6 +8,7 @@
 //! tracker = "jira"                 # github, gitlab, jira or linear
 //! site = "acme.atlassian.net"      # Jira: the site, or a Data Center's address
 //! project = "APP"                  # Jira: the project, or `jql = "…"`
+//! mine = true                      # only those assigned to you, any tracker
 //!
 //! [pull_requests]
 //! host = "gitlab"                  # github, gitlab or bitbucket
@@ -96,6 +97,8 @@ pub struct Tickets {
     pub jql: Option<String>,
     /// Linear: the team whose open issues are listed.
     pub team: Option<String>,
+    /// Only the tickets assigned to the person signed in, in any tracker.
+    pub mine: bool,
 }
 
 /// Where the project's pull requests are opened; unwritten, the git
@@ -113,6 +116,7 @@ pub(super) struct RawTickets {
     project: Option<String>,
     jql: Option<String>,
     team: Option<String>,
+    mine: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -204,6 +208,7 @@ impl RawTickets {
             project: project.map(|project| project.to_ascii_uppercase()),
             jql,
             team: team.map(|team| team.to_ascii_uppercase()),
+            mine: self.mine.unwrap_or(false),
         })
     }
 }
@@ -285,6 +290,14 @@ mod tests {
                 .contains("github, gitlab, jira or linear")
         );
         assert_eq!(tickets("").unwrap(), Tickets::default());
+        // Any tracker's, or the remote's own, can be narrowed to yours.
+        assert!(tickets("mine = true").unwrap().mine);
+        assert!(
+            tickets("tracker = \"linear\"\nteam = \"ENG\"\nmine = true")
+                .unwrap()
+                .mine
+        );
+        assert!(!tickets("mine = false").unwrap().mine);
     }
 
     #[test]

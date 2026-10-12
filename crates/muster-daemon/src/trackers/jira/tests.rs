@@ -40,6 +40,37 @@ fn a_description_in_atlassian_s_format_reads_as_text() {
 }
 
 #[test]
+fn mine_narrows_any_query_to_the_person_s_and_keeps_its_order() {
+    assert_eq!(
+        assigned_to_me("project = APP ORDER BY created DESC"),
+        "(project = APP) AND assignee = currentUser() ORDER BY created DESC"
+    );
+    assert_eq!(
+        assigned_to_me("labels = ui OR labels = ux"),
+        "(labels = ui OR labels = ux) AND assignee = currentUser()"
+    );
+    assert_eq!(
+        assigned_to_me("order by rank"),
+        "assignee = currentUser() order by rank"
+    );
+    let project = Tickets {
+        project: Some("APP".to_owned()),
+        mine: true,
+        ..Tickets::default()
+    };
+    assert_eq!(
+        query(&project).unwrap(),
+        "(project = \"APP\" AND statusCategory != Done) AND assignee = currentUser() ORDER BY created DESC"
+    );
+    let all = Tickets {
+        mine: false,
+        ..project
+    };
+    assert_eq!(query(&all).unwrap(), project_query("APP"));
+    assert_eq!(query(&Tickets::default()), None);
+}
+
+#[test]
 fn the_done_transition_is_found_by_its_category() {
     let transitions = json!({"transitions": [
         {"id": "11", "name": "To Do", "to": {"statusCategory": {"key": "new"}}},
