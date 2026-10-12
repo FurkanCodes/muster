@@ -116,6 +116,18 @@ impl Ui {
         }
     }
 
+    /// The background of the cell where `text` first starts on screen.
+    fn background_of(&self, text: &str) -> Option<vt100::Color> {
+        let parser = self.screen.lock().unwrap();
+        let screen = parser.screen();
+        (0..ROWS).find_map(|row| {
+            let line = screen.contents_between(row, 0, row, COLS);
+            let at = line.find(text)?;
+            let col = u16::try_from(line[..at].chars().count()).unwrap();
+            screen.cell(row, col).map(vt100::Cell::bgcolor)
+        })
+    }
+
     fn keys(&mut self, bytes: &[u8]) {
         self.input.send(bytes.to_vec()).unwrap();
         // Let the UI read one burst at a time, as typing would.
@@ -487,7 +499,7 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
 }
 
 #[test]
-fn a_running_agent_s_mark_spins_unless_motion_is_off() {
+fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motion_is_off() {
     const LINE: &str = "#42 Fix the login redirect ";
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
@@ -532,15 +544,63 @@ fn a_running_agent_s_mark_spins_unless_motion_is_off() {
         assert!(Instant::now() < deadline, "it never moved: {}", ui.text());
         std::thread::sleep(Duration::from_millis(20));
     }
+
+    // It finishes its turn: on the sessions list its line lights up in
+    // green, then settles.
+    ui.keys(b"1");
+    ui.wait_for("running");
+    let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
+    let session: muster_core::SessionId = status
+        .split_whitespace()
+        .find(|word| word.starts_with("ses_"))
+        .expect("the agent in the status")
+        .parse()
+        .unwrap();
+    let launch = sandbox.wait_for_launches(session, 1).remove(0);
+    let agent = launch.value("--session-id").unwrap().to_owned();
+    launch.fire(
+        "Stop",
+        &serde_json::json!({"session_id": agent, "hook_event_name": "Stop", "cwd": "/work"}),
+    );
+    ui.wait_for("✓ #42");
+    assert_eq!(
+        ui.background_of("✓ #42"),
+        Some(vt100::Color::Idx(2)),
+        "{}",
+        ui.text()
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while ui.background_of("✓ #42") != Some(vt100::Color::Default) {
+        assert!(Instant::now() < deadline, "it never settled: {}", ui.text());
+        std::thread::sleep(Duration::from_millis(20));
+    }
     ui.keys(b"q");
     assert!(ui.wait_for_exit());
 
-    // MUSTER_MOTION=off: the same agent, standing still.
+    // MUSTER_MOTION=off: the agent's next turn spins nothing, and its
+    // end lights up nothing.
+    launch.fire(
+        "UserPromptSubmit",
+        &serde_json::json!({"session_id": agent, "hook_event_name": "UserPromptSubmit", "cwd": "/work"}),
+    );
     let mut ui = Ui::start_with(&sandbox, &root, &[("MUSTER_MOTION", "off")]);
     ui.keys(b"i");
     ui.wait_for(&format!("{LINE}●"));
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(mark(&ui), '●', "{}", ui.text());
+    ui.keys(b"1");
+    ui.wait_for("running");
+    launch.fire(
+        "Stop",
+        &serde_json::json!({"session_id": agent, "hook_event_name": "Stop", "cwd": "/work"}),
+    );
+    ui.wait_for("✓ #42");
+    assert_eq!(
+        ui.background_of("✓ #42"),
+        Some(vt100::Color::Default),
+        "{}",
+        ui.text()
+    );
     ui.keys(b"q");
     assert!(ui.wait_for_exit());
 }

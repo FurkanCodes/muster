@@ -357,7 +357,7 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
                 if !usage.is_empty() {
                     line.spans.push(Span::from(usage).dim());
                 }
-                ListItem::new(line)
+                ListItem::new(flashed(app, session, line))
             }
             None => ListItem::new(""),
         },
@@ -398,6 +398,29 @@ fn session_line<'a>(
     Line::from(spans)
 }
 
+/// `line`, flashing if `session`'s status has just changed: lit in the
+/// status's colour, then tinted with it, then as it was.
+fn flashed<'a>(app: &App, session: &Session, mut line: Line<'a>) -> Line<'a> {
+    let Some(age) = app.flash_age(session.id) else {
+        return line;
+    };
+    let colour = status_symbol(session.status, None)
+        .1
+        .fg
+        .unwrap_or(Color::White);
+    match motion::flash(colour, age) {
+        Some(motion::Flash::Lit(style)) => {
+            for span in &mut line.spans {
+                span.style = Style::default();
+            }
+            line.style = style;
+        }
+        Some(motion::Flash::Tinted(style)) => line.style = style,
+        None => {}
+    }
+    line
+}
+
 fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Needs you ", app.list_has_keys());
     if app.needs_list.is_empty() {
@@ -417,7 +440,7 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
             let place = app.model.branch(session.workspace).unwrap_or("?");
             let mut line = session_line(session, "", &session.title, app.motion_step());
             line.spans.push(Span::from(format!("  {place}")).dim());
-            ListItem::new(line)
+            ListItem::new(flashed(app, session, line))
         })
         .collect();
     let mut state = ListState::default()

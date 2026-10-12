@@ -3,6 +3,7 @@
 //! can be tested by feeding it events and drawing it into a test buffer.
 
 mod events;
+mod motion;
 mod picker;
 mod pointer;
 mod tickets;
@@ -39,7 +40,7 @@ use std::path::PathBuf;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Reply, ServerFrame, TermSize,
 };
-use muster_core::{ProjectId, SessionId, SessionStatus, WorkspaceId};
+use muster_core::{ProjectId, SessionId, WorkspaceId};
 
 use crate::input::LineInput;
 use crate::model::{Model, Row, needs_attention};
@@ -245,6 +246,9 @@ pub(crate) struct App {
     pub(crate) motion: bool,
     /// The step of the motion to draw, counted out by the runtime.
     pub(crate) step: u64,
+    /// Sessions whose lines flash for a change of status, with the step
+    /// each flash began.
+    flashes: HashMap<SessionId, u64>,
 }
 
 impl App {
@@ -279,6 +283,7 @@ impl App {
             notify: true,
             motion: true,
             step: 0,
+            flashes: HashMap::new(),
         }
     }
 
@@ -319,6 +324,8 @@ impl App {
                     _ => None,
                 };
                 let before = session.and_then(|id| self.model.session(id).map(needs_attention));
+                let status_before =
+                    session.and_then(|id| self.model.session(id).map(|stored| stored.status));
                 let was_ended = session
                     .and_then(|id| self.model.session(id))
                     .is_some_and(|stored| stored.ended_at.is_some());
@@ -328,6 +335,9 @@ impl App {
                 }
                 if let Some(id) = session {
                     self.reattach_if_reopened(id, was_ended);
+                    if let Some(status) = status_before {
+                        self.flash_if_changed(id, status);
+                    }
                 }
             }
             ServerFrame::Reply { req_id, outcome } => return self.on_reply(req_id, outcome),
@@ -597,22 +607,6 @@ impl App {
             cols: pane.width.max(1),
             rows: pane.height.max(1),
         }
-    }
-
-    /// The step of the motion to draw, or `None` to draw everything still.
-    pub(crate) fn motion_step(&self) -> Option<u64> {
-        self.motion.then_some(self.step)
-    }
-
-    /// Whether something on screen moves: a running session, or something
-    /// waiting on the person. Nothing else asks for drawing.
-    pub(crate) fn animating(&self) -> bool {
-        self.motion
-            && self
-                .model
-                .sessions()
-                .iter()
-                .any(|session| session.status == SessionStatus::Running || needs_attention(session))
     }
 
     /// Whether the list has the keys, rather than a session's terminal.

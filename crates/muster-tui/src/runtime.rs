@@ -122,10 +122,9 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
             Some((dir, folders)) = folder_lists.recv() => app.on_folders(dir, folders),
             _ = redraw.tick() => {
                 let now = Instant::now();
-                if app.animating()
-                    && let Some(step) = steps.due(now)
+                if let Some(step) = steps.due(now)
+                    && app.on_step(step)
                 {
-                    app.step = step;
                     dirty = true;
                 }
                 if dirty && hold.may_draw(app.frame_pending(), now) {
