@@ -19,6 +19,8 @@ use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
 use support::{Sandbox, daemon_pid};
 
 const COLS: u16 = 120;
+/// What the top bar says of the daemon, whatever the version.
+const DAEMON: &str = concat!("daemon ", env!("CARGO_PKG_VERSION"));
 const ROWS: u16 = 36;
 
 /// The UI running on a pseudo-terminal, with what it draws parsed into a
@@ -177,7 +179,7 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     // No daemon is running: the UI starts one.
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.wait_for("daemon 0.1.0");
+    ui.wait_for(DAEMON);
 
     // a: add the repository the UI was started in.
     ui.keys(b"a");
@@ -369,7 +371,7 @@ fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
     let _stop = StopDaemon(socket.clone());
 
     let ui = Ui::start(&sandbox, &root);
-    ui.wait_for("daemon 0.1.0");
+    ui.wait_for(DAEMON);
     let first = daemon_pid(&socket).expect("the UI started a daemon");
     let pid = Pid::from_raw(i32::try_from(first).unwrap());
     kill(pid, Signal::SIGTERM).unwrap();
@@ -395,7 +397,7 @@ fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    ui.wait_for("daemon 0.1.0");
+    ui.wait_for(DAEMON);
 }
 
 /// The parent of process `pid`, as `ps` tells it.
@@ -442,7 +444,7 @@ fn the_daemon_the_ui_starts_outlives_the_ui_s_whole_process_tree_and_hang_ups() 
     let socket = sandbox.paths().socket();
     let _stop = StopDaemon(socket.clone());
     let ui = Ui::start(&sandbox, &root);
-    ui.wait_for("daemon 0.1.0");
+    ui.wait_for(DAEMON);
     let daemon = daemon_pid(&socket).expect("the UI started a daemon");
 
     // It is apart from the UI from the start: nothing of the UI's.

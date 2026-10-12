@@ -1,0 +1,22 @@
+[workspace]
+members = ["cargo:."]
+
+# Prebuilt binaries for each release, built by GitHub Actions when a
+# version tag (v0.1.1, …) is pushed: archives with checksums and build
+# attestations, a shell installer, and a Homebrew formula.
+[dist]
+cargo-dist-version = "0.32.0"
+ci = "github"
+installers = ["shell", "homebrew"]
+tap = "FurkanCodes/homebrew-tap"
+publish-jobs = ["homebrew"]
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+]
+install-path = "CARGO_HOME"
+install-updater = false
+github-attestations = true
+pr-run-mode = "plan"
