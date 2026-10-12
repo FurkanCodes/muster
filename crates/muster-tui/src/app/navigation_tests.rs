@@ -84,7 +84,7 @@ fn from_a_session_s_terminal_ctrl_and_a_number_gives_the_keys_back_there() {
     assert_eq!(world.app.mode, Mode::Browse);
     assert_eq!(world.app.view, View::NeedsYou);
 
-    // Ctrl-1 is the way back to the list beside it, as Ctrl-Q is; from
+    // Ctrl-1 is the way back to the list beside it, as Shift-Q is; from
     // full screen too.
     world.app.view = View::Sessions;
     press(&mut world.app, KeyCode::Char('f'));

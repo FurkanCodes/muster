@@ -193,7 +193,7 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     ui.wait_for("New session");
     ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-Q back to the list");
+    ui.wait_for("Shift-Q back to the list");
 
     // Typing reaches the shell, and its output comes back.
     ui.keys(b"echo ui-$((6*7))\r");
@@ -204,16 +204,16 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
         ui.text()
     );
 
-    // Ctrl-Q gives the list the keys back; the session is listed.
-    ui.keys(&[0x11]);
+    // Shift-Q gives the list the keys back; the session is listed.
+    ui.keys(b"Q");
     ui.wait_for("f full screen");
     ui.wait_for("Shell");
 
-    // f fills the window with it, and Ctrl-Q puts it back.
+    // f fills the window with it, and Shift-Q puts it back.
     ui.keys(b"f");
-    ui.wait_for("Ctrl-Q back to the list");
+    ui.wait_for("Shift-Q back to the list");
     assert!(!ui.text().contains("╭ Sessions"), "{}", ui.text());
-    ui.keys(&[0x11]);
+    ui.keys(b"Q");
     ui.wait_for("╭ Sessions");
 
     // q quits the UI; the daemon and the session keep running.
@@ -241,12 +241,12 @@ fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
     ui.wait_for("New session");
     ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-Q back to the list");
+    ui.wait_for("Shift-Q back to the list");
     ui.keys(b"echo first-$((6*7))\r");
     ui.wait_for("first-42");
 
-    // Ctrl-Q out to the list; ⇥ round the tabs and back to Sessions.
-    ui.keys(&[0x11]);
+    // Shift-Q out to the list; ⇥ round the tabs and back to Sessions.
+    ui.keys(b"Q");
     ui.wait_for("x close");
     ui.keys(b"\t");
     ui.wait_for("Nothing is waiting on you.");
@@ -262,12 +262,12 @@ fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
 
     // ⏎ back into the session.
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-Q back to the list");
+    ui.wait_for("Shift-Q back to the list");
     ui.keys(b"echo second-$((6*7))\r");
     ui.wait_for("second-42");
 
     // x closes it: asked once, then stopped and gone from the list.
-    ui.keys(&[0x11]);
+    ui.keys(b"Q");
     ui.wait_for("x close");
     ui.keys(b"x");
     ui.wait_for("Close Shell? It stops and leaves the list.");
@@ -304,12 +304,12 @@ fn a_plain_folder_is_added_from_the_ui_and_a_session_runs_in_it() {
     ui.wait_for("In notes");
     ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-Q back to the list");
+    ui.wait_for("Shift-Q back to the list");
     ui.keys(b"pwd; echo folder-$((6*7))\r");
     ui.wait_for("folder-42");
     assert!(ui.text().contains("Desktop/notes"), "{}", ui.text());
 
-    ui.keys(&[0x11]);
+    ui.keys(b"Q");
     ui.wait_for("f full screen");
     ui.keys(b"q");
     assert!(ui.wait_for_exit());
@@ -405,7 +405,7 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     ui.wait_for("New session");
     ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-Q back to the list");
+    ui.wait_for("Shift-Q back to the list");
     ui.keys(b"seq 1 300\r");
     ui.wait_for("300");
 
@@ -456,14 +456,14 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
 
     // ⏎: an agent on it, opened as it starts, with the ticket to work on.
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-Q back to the list");
-    ui.keys(&[0x11]);
+    ui.wait_for("Shift-Q back to the list");
+    ui.keys(b"Q");
     ui.wait_for("⏎ open agent  a another agent");
 
     // a: another, in a worktree of its own.
     ui.keys(b"a");
-    ui.wait_for("Ctrl-Q back to the list");
-    ui.keys(&[0x11]);
+    ui.wait_for("Shift-Q back to the list");
+    ui.keys(b"Q");
     ui.wait_for("muster/issue-42-fix-the-login-redirect-2");
 
     let listed = sandbox.run(&["issue", "list", "app"]);
@@ -527,8 +527,8 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     ui.wait_for("app  1 open");
     ui.keys(b"j");
     ui.keys(b"\r");
-    ui.wait_for("Ctrl-Q back to the list");
-    ui.keys(&[0x11]);
+    ui.wait_for("Shift-Q back to the list");
+    ui.keys(b"Q");
     ui.wait_for("⏎ open agent");
 
     // Its mark on the ticket's line goes round the spinner's frames.

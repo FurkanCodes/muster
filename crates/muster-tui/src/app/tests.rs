@@ -62,6 +62,11 @@ pub(super) fn ctrl(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
 }
 
+/// Shift+Q, as most terminals send it: a capital Q.
+pub(super) fn shift_q() -> KeyEvent {
+    KeyEvent::new(KeyCode::Char('Q'), KeyModifiers::SHIFT)
+}
+
 pub(super) fn press(app: &mut App, code: KeyCode) -> Vec<Action> {
     app.on_key(key(code))
 }
@@ -198,7 +203,7 @@ fn a_terminal_beside_the_list_takes_keys_and_ctrl_q_gives_them_back() {
     assert!(!world.app.full_screen);
     let screen = render(&world.app);
     assert!(screen.contains("Sessions"), "the list stays: {screen}");
-    assert!(screen.contains("Ctrl-Q back to the list"), "{screen}");
+    assert!(screen.contains("Shift-Q back to the list"), "{screen}");
 
     assert_eq!(
         press(&mut world.app, KeyCode::Char('q')),
@@ -207,11 +212,30 @@ fn a_terminal_beside_the_list_takes_keys_and_ctrl_q_gives_them_back() {
             data: b"q".to_vec()
         })]
     );
-    assert!(world.app.on_key(ctrl('q')).is_empty(), "nothing to resize");
+    assert!(world.app.on_key(shift_q()).is_empty(), "nothing to resize");
     assert_eq!(world.app.mode, Mode::Browse);
     assert_eq!(world.app.selected, Some(Row::Session(id)));
     // Pressed once more on the list, it does not quit.
-    assert!(!world.app.on_key(ctrl('q')).contains(&Action::Quit));
+    assert!(!world.app.on_key(shift_q()).contains(&Action::Quit));
+
+    // With the kitty protocol it comes as q with Shift, and leaves too.
+    press(&mut world.app, KeyCode::Enter);
+    world
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::SHIFT));
+    assert_eq!(world.app.mode, Mode::Browse);
+
+    // Ctrl-Q is the program's now: its byte reaches the session.
+    press(&mut world.app, KeyCode::Enter);
+    assert_eq!(
+        world.app.on_key(ctrl('q')),
+        [Action::Send(ClientFrame::Input {
+            session: id,
+            data: vec![0x11]
+        })]
+    );
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    world.app.on_key(shift_q());
 
     // Ctrl-] still works; without the kitty protocol the terminal sends
     // 0x1d, which crossterm calls Ctrl+5.
@@ -224,7 +248,7 @@ fn a_terminal_beside_the_list_takes_keys_and_ctrl_q_gives_them_back() {
 }
 
 #[test]
-fn f_fills_the_window_and_ctrl_q_puts_it_back_beside_the_list() {
+fn f_fills_the_window_and_shift_q_puts_it_back_beside_the_list() {
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
@@ -235,9 +259,9 @@ fn f_fills_the_window_and_ctrl_q_puts_it_back_beside_the_list() {
     assert_eq!(world.app.mode, Mode::Terminal(id));
     let screen = render(&world.app);
     assert!(!screen.contains("╭ Sessions"), "no list: {screen}");
-    assert!(screen.contains("Ctrl-Q back to the list"), "{screen}");
+    assert!(screen.contains("Shift-Q back to the list"), "{screen}");
 
-    assert_eq!(world.app.on_key(ctrl('q')), [resized(PANE)]);
+    assert_eq!(world.app.on_key(shift_q()), [resized(PANE)]);
     assert_eq!(world.app.mode, Mode::Browse);
     assert!(!world.app.full_screen);
 
@@ -267,7 +291,7 @@ fn output_is_drawn_and_pastes_follow_the_programs_modes() {
     });
     let screen = render(&world.app);
     assert!(screen.contains("$ echo hi"), "{screen}");
-    assert!(screen.contains("Ctrl-Q back to the list"), "{screen}");
+    assert!(screen.contains("Shift-Q back to the list"), "{screen}");
 
     assert_eq!(
         world.app.on_paste("a\nb"),
