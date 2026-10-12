@@ -41,6 +41,8 @@ pub(crate) const EMAIL_VARIABLE: &str = "JIRA_EMAIL";
 const LIST_LIMIT: u64 = 100;
 /// The fields read.
 const FIELDS: &[&str] = &["summary", "labels", "reporter", "description"];
+/// The fields a listing reads.
+const LISTED: &[&str] = &["summary", "labels", "reporter"];
 
 /// The Keychain account of a token for the site at `host`.
 pub(crate) fn token_account(host: &str) -> String {
@@ -193,7 +195,8 @@ impl Jira {
     /// The site's cloud id, which Atlassian's tools ask for.
     async fn cloud_id(&self, mcp: &mut Mcp) -> Result<String, ServiceError> {
         let tool = mcp.tool(&["getAccessibleAtlassianResources"])?;
-        let resources = mcp.call(&tool, json!({})).await?;
+        let answer = mcp.call(&tool, json!({})).await?;
+        let resources = unwrapped(&answer);
         let list = resources
             .as_array()
             .cloned()
@@ -214,7 +217,12 @@ impl Jira {
                     .as_deref()
                     == Some(self.site.host.as_str())
             })
-            .and_then(|resource| resource.get("id").and_then(Value::as_str))
+            .and_then(|resource| {
+                resource
+                    .get("cloudId")
+                    .or_else(|| resource.get("id"))
+                    .and_then(Value::as_str)
+            })
             .map(str::to_owned)
             .ok_or_else(|| {
                 ServiceError::NotFound(format!(
@@ -282,19 +290,22 @@ impl Jira {
                 let args = tool.args(&[
                     (&["cloudId"], json!(cloud)),
                     (&["jql"], json!(self.jql)),
-                    (&["fields"], json!(FIELDS)),
+                    (&["fields"], json!(LISTED)),
                     (&["maxResults", "limit"], json!(LIST_LIMIT)),
+                    // The compact view leaves labels and the reporter out.
+                    (&["view"], json!("evidence")),
                 ]);
-                mcp.call(&tool, args).await
+                let found = mcp.call(&tool, args).await?;
+                Ok(unwrapped(&found).clone())
             }
             Access::Rest { http, api, .. } => {
                 if api.ends_with("/3") {
                     let body =
-                        json!({ "jql": self.jql, "fields": FIELDS, "maxResults": LIST_LIMIT });
+                        json!({ "jql": self.jql, "fields": LISTED, "maxResults": LIST_LIMIT });
                     self.rest(http.post(self.rest_url("/search/jql")).json(&body))
                         .await
                 } else {
-                    let fields = FIELDS.join(",");
+                    let fields = LISTED.join(",");
                     let limit = LIST_LIMIT.to_string();
                     let query = [
                         ("jql", self.jql.as_str()),
@@ -314,12 +325,15 @@ impl Jira {
                 let mut mcp = mcp.lock().await;
                 let cloud = self.cloud_id(&mut mcp).await?;
                 let tool = mcp.tool(&["getJiraIssue"])?;
+                // Its `fields` names custom fields only: the view says what.
                 let args = tool.args(&[
                     (&["cloudId"], json!(cloud)),
                     (&["issueIdOrKey", "issueKey", "key"], json!(key.as_str())),
-                    (&["fields"], json!(FIELDS)),
+                    (&["view"], json!("evidence")),
+                    (&["responseContentFormat"], json!("markdown")),
                 ]);
-                mcp.call(&tool, args).await
+                let found = mcp.call(&tool, args).await?;
+                Ok(unwrapped(&found).clone())
             }
             Access::Rest { http, .. } => {
                 let fields = FIELDS.join(",");
@@ -348,12 +362,22 @@ impl Jira {
                     (&["issueIdOrKey", "issueKey", "key"], json!(key.as_str())),
                 ]);
                 let transitions = mcp.call(&list, args).await?;
-                let id = done_transition(&transitions).ok_or_else(not_closable)?;
+                let id = done_transition(unwrapped(&transitions)).ok_or_else(not_closable)?;
                 let go = mcp.tool(&["transitionJiraIssue"])?;
+                // v2 takes the id as it is; earlier, a transition object.
+                let transition: (&[&str], Value) = if go
+                    .input_schema
+                    .pointer("/properties/transitionId")
+                    .is_some()
+                {
+                    (&["transitionId"], json!(id))
+                } else {
+                    (&["transition"], json!({ "id": id }))
+                };
                 let args = go.args(&[
                     (&["cloudId"], json!(cloud)),
                     (&["issueIdOrKey", "issueKey", "key"], json!(key.as_str())),
-                    (&["transition"], json!({ "id": id })),
+                    transition,
                 ]);
                 mcp.call(&go, args).await.map(drop)
             }
@@ -393,7 +417,9 @@ fn done_transition(found: &Value) -> Option<String> {
         .get("transitions")
         .and_then(Value::as_array)
         .or_else(|| found.as_array())?;
+    // One the person may take now, if the server says which they may.
     list.iter()
+        .filter(|transition| transition.get("isAvailable").and_then(Value::as_bool) != Some(false))
         .find(|transition| {
             transition
                 .pointer("/to/statusCategory/key")
@@ -405,6 +431,14 @@ fn done_transition(found: &Value) -> Option<String> {
             Value::Number(id) => Some(id.to_string()),
             _ => None,
         })
+}
+
+/// An answer without the `data` that Atlassian's MCP tools wrap it in.
+fn unwrapped(answer: &Value) -> &Value {
+    answer
+        .get("data")
+        .filter(|data| !data.is_null())
+        .unwrap_or(answer)
 }
 
 /// The text of a description: plain text, or Atlassian's document format
