@@ -5,11 +5,11 @@ use muster_core::ProjectId;
 use muster_core::settings::{ProjectSettings, SettingSource};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{panel, shorten};
+use super::{look, panel, shorten};
 use crate::app::{App, SettingRow, Settings};
 
 /// What the only-my-tickets setting is called in the list.
@@ -41,16 +41,26 @@ pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        .highlight_style(look::selected_style(app.list_has_keys()));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
 /// A project's heading, or a setting with its value at the line's end.
 fn row_line(app: &App, row: SettingRow, width: usize) -> Line<'static> {
+    let edge = look::edge(app, Some(row.project()), app.settings_selected == Some(row));
+    let mut line = row_text(app, row, width.saturating_sub(1));
+    line.spans.insert(0, edge);
+    line
+}
+
+/// A row's line after its edge.
+fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
     let settings = app.settings.get(&row.project());
     match row {
         SettingRow::Project(project) => {
-            let mut spans = vec![Span::from(project_name(app, project)).bold()];
+            let colour = look::project_colour(app, project);
+            let mut spans =
+                vec![Span::styled(project_name(app, project), Style::default().fg(colour)).bold()];
             match settings {
                 None | Some(Settings::Loading) => spans.push(Span::from("  reading…").dim()),
                 Some(Settings::Failed(_)) => spans.push(Span::from("  cannot be read").red()),

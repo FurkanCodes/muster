@@ -339,6 +339,12 @@ impl Sandbox {
     fn log(&self) -> PathBuf {
         self.dir.path().join("daemon.log")
     }
+
+    /// What the daemon started here has logged, at debug level.
+    #[allow(dead_code)]
+    pub(crate) fn daemon_log(&self) -> PathBuf {
+        self.log()
+    }
 }
 
 /// A running daemon, stopped when dropped so a failing test never leaks one.

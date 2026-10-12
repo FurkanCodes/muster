@@ -22,6 +22,11 @@ const PULSE_PHASE: u64 = 4;
 /// for the second, then settled.
 pub(crate) const FLASH_STEPS: u64 = 10;
 
+/// When a note under the screen dims, and when it goes, in steps: read
+/// for four seconds, dim for one.
+pub(crate) const NOTE_DIMS: u64 = 40;
+pub(crate) const NOTE_GOES: u64 = 50;
+
 /// How a flashing line is drawn `age` steps into its flash, in `colour`:
 /// lit (dark on the colour) for the first half, then in the colour, bold.
 /// `None` once it has settled.

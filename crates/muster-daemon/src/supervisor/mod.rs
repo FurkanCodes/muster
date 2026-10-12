@@ -576,6 +576,9 @@ impl Supervisor {
         }
         let event = delivery.event.as_deref();
         if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
+            if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {
+                self.set_activity(session, change);
+            }
             self.step_session(
                 session,
                 Signal::Hook {
@@ -643,15 +646,53 @@ impl Supervisor {
         let at = self.clock.now();
         self.write(move |store| store.record_status(session, status, unseen, at))
             .await;
+        let mut since = at;
         if let Some(stored) = self.session_mut(session) {
+            // Only a new status starts its clock again: the unseen mark
+            // alone changing leaves it.
+            if stored.status == status {
+                since = stored.status_since;
+            }
             stored.status = status;
             stored.unseen = unseen;
+            stored.status_since = since;
         }
         self.broadcast(Delta::SessionStatus {
             session,
             status,
             unseen,
+            since,
         });
+        // Done working and not waiting: nothing is going on to tell.
+        if !matches!(
+            status,
+            SessionStatus::Running | SessionStatus::NeedsYou { .. }
+        ) {
+            self.set_activity(session, crate::harness::activity::ActivityChange::Clear);
+        }
+    }
+
+    /// What a session is doing now, as its hooks tell; told to clients
+    /// when it changes, and never stored.
+    fn set_activity(
+        &mut self,
+        session: SessionId,
+        change: crate::harness::activity::ActivityChange,
+    ) {
+        let now = self.clock.now();
+        let Some(stored) = self.session_mut(session) else {
+            return;
+        };
+        let text = match change {
+            crate::harness::activity::ActivityChange::Set(text) => Some(text),
+            crate::harness::activity::ActivityChange::Clear => None,
+        };
+        if stored.activity.as_ref().map(|activity| &activity.text) == text.as_ref() {
+            return;
+        }
+        stored.activity = text.map(|text| muster_core::Activity { text, since: now });
+        let activity = stored.activity.clone();
+        self.broadcast(Delta::SessionActivity { session, activity });
     }
 
     fn session_mut(&mut self, session: SessionId) -> Option<&mut muster_core::Session> {

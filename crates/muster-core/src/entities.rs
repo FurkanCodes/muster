@@ -120,4 +120,11 @@ pub struct Session {
     pub resume_id: Option<String>,
     pub created_at: Timestamp,
     pub ended_at: Option<Timestamp>,
+    /// When it came to its status, so a person sees how long it has run,
+    /// waited or sat finished.
+    pub status_since: Timestamp,
+    /// What it is doing now, as its hooks tell; kept only while it works
+    /// or waits, and never stored.
+    #[serde(default)]
+    pub activity: Option<crate::session::Activity>,
 }

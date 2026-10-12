@@ -14,8 +14,10 @@ use crate::model::Row;
 use crate::motion;
 
 mod dialogs;
+pub(crate) mod look;
 mod settings;
 mod tickets;
+mod top_bar;
 
 /// The terminal area a session gets when it fills the screen: everything
 /// but the top bar.
@@ -90,7 +92,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         preview,
         bottom,
     } = browse_areas(app, area);
-    draw_top_bar(frame, app, top);
+    top_bar::draw_top_bar(frame, app, top);
     match app.view {
         View::Sessions => draw_sessions(frame, app, list),
         View::NeedsYou => draw_needs_you(frame, app, list),
@@ -110,66 +112,6 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     if let Mode::Dialog(dialog) = &app.mode {
         dialogs::draw_dialog(frame, app, dialog, area);
     }
-}
-
-fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let waiting = app.model.needs_you().len();
-    let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw(" ")];
-    // The screens as tabs, the one shown lit; ⇥ goes round them.
-    for (at, (view, name)) in [
-        (View::Sessions, "Sessions"),
-        (View::NeedsYou, "Needs you"),
-        (View::Tickets, "Tickets"),
-        (View::Settings, "Settings"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        if at > 0 {
-            spans.push(Span::from("│").dim());
-        }
-        let mut tab = vec![Span::raw(format!(" {name} "))];
-        if view == View::NeedsYou && waiting > 0 {
-            let style = Style::default().fg(Color::Red).bold();
-            let style = app
-                .motion_step()
-                .map_or(style, |step| motion::pulse(style, step));
-            tab.push(Span::styled(format!("{waiting} "), style));
-        }
-        if app.view == view {
-            tab = tab.into_iter().map(|span| span.reversed().bold()).collect();
-        }
-        spans.extend(tab);
-    }
-    spans.push(Span::from(" ⇥   ").dim());
-    match &app.link {
-        Link::Connecting => spans.push(Span::from("connecting to the daemon…").dim()),
-        Link::Connected { .. } if !app.model.loaded() => {
-            spans.push(Span::from("loading…").dim());
-        }
-        Link::Connected { daemon_version } => {
-            spans.push(Span::from(format!("daemon {daemon_version}")).dim());
-            if let Some(report) = app.model.resources() {
-                spans.push(
-                    Span::from(format!(
-                        "  ·  memory {} of {}",
-                        bytes(report.host_memory_used),
-                        bytes(report.host_memory_total)
-                    ))
-                    .dim(),
-                );
-            }
-            spans.push(
-                Span::from(format!(
-                    "  ·  {}",
-                    count(app.model.sessions().len(), "session")
-                ))
-                .dim(),
-            );
-        }
-        Link::Lost(_) => spans.push(Span::from("daemon unreachable; retrying…").red()),
-    }
-    frame.render_widget(Line::from(spans), area);
 }
 
 /// The most lines a message gets under the list.
@@ -208,7 +150,11 @@ pub(crate) fn bottom_height(app: &App, width: u16) -> u16 {
 fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     if let Some((text, error)) = message(app) {
         let text = Line::from(note_text(text));
-        let text = if error { text.red() } else { text.green() };
+        let text = match (error, app.note_fading()) {
+            (true, _) => text.red(),
+            (false, true) => text.green().dim(),
+            (false, false) => text.green(),
+        };
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), area);
         return;
     }
@@ -305,26 +251,41 @@ fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let mut state = ListState::default()
         .with_offset(app.list_offset)
         .with_selected(app.selected.and_then(|s| rows.iter().position(|r| *r == s)));
+    let selected = match app.selected {
+        Some(Row::Session(session)) => Some(session),
+        _ => None,
+    };
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        .highlight_style(session_highlight(app, selected));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
 fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
+    let selected = app.view == View::Sessions && app.selected == Some(row);
+    let edge = look::edge(app, app.model.project_of(row), selected);
     match row {
         Row::Project(id) => {
             let name = app
                 .model
                 .project(id)
                 .map_or("?", |project| project.name.as_str());
-            ListItem::new(Line::from(Span::from(name.to_owned()).bold()))
+            ListItem::new(Line::from(vec![
+                edge,
+                Span::styled(
+                    name.to_owned(),
+                    Style::default()
+                        .fg(look::project_colour(app, id))
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]))
         }
         Row::Worktree(id) => {
             let branch = app.model.branch(id).unwrap_or("?").to_owned();
             let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
             let mut spans = vec![
-                Span::raw("  "),
+                edge,
+                Span::raw(" "),
                 Span::from(match kind {
                     Some(WorkspaceKind::Checkout { .. }) => "⌂ ",
                     Some(WorkspaceKind::Container { .. }) => "⧉ ",
@@ -346,27 +307,7 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
         }
         Row::Session(id) => match app.model.session(id) {
             Some(session) => {
-                let usage = app
-                    .model
-                    .usage(id)
-                    .map(|usage| format!("  {}", usage_text(usage)))
-                    .unwrap_or_default();
-                // The status stays in view. The title gives way, but not
-                // below a readable length: then the usage goes instead,
-                // which the session's pane also shows.
-                let base = session_line(session, "    ", "", None).width();
-                let readable = session.title.chars().count().min(READABLE_TITLE);
-                let usage = if width.saturating_sub(base + usage.chars().count()) >= readable {
-                    usage
-                } else {
-                    String::new()
-                };
-                let rest = base + usage.chars().count();
-                let title = shorten(&session.title, width.saturating_sub(rest).max(8));
-                let mut line = session_line(session, "    ", &title, app.motion_step());
-                if !usage.is_empty() {
-                    line.spans.push(Span::from(usage).dim());
-                }
+                let line = session_line(app, session, vec![edge, Span::raw("   ")], width, None);
                 ListItem::new(flashed(app, session, line))
             }
             None => ListItem::new(""),
@@ -387,25 +328,98 @@ pub(super) fn shorten(text: &str, max: usize) -> String {
     format!("{kept}…")
 }
 
-fn session_line<'a>(
-    session: &'a Session,
-    indent: &'a str,
-    title: &str,
-    step: Option<u64>,
-) -> Line<'a> {
-    let (symbol, style) = status_symbol(session.status, step);
-    let mut spans = vec![
-        Span::raw(indent),
+/// A session's line after `lead`: its mark, its title and what it is
+/// doing (and with `place`, where), and at the end how long it has been
+/// so. Where it is short of room the title gives way first, down to a
+/// readable length; then a finished or ended session's time goes, then
+/// what it is doing, which is cut short only while it works or waits (a
+/// status alone says no more than its mark). The mark always stays, and a
+/// working or waiting session's time.
+fn session_line(
+    app: &App,
+    session: &Session,
+    lead: Vec<Span<'static>>,
+    width: usize,
+    place: Option<&str>,
+) -> Line<'static> {
+    let (symbol, style) = status_symbol(session.status, app.motion_step());
+    let live = matches!(
+        session.status,
+        SessionStatus::Running | SessionStatus::NeedsYou { .. }
+    );
+    let unseen = if session.unseen { " •" } else { "" };
+    let mut doing = look::doing(session).to_owned();
+    if let Some(place) = place {
+        doing = format!("{doing} · {place}");
+    }
+    let lead_width: usize = lead.iter().map(Span::width).sum();
+    let fixed = lead_width + 2 + unseen.chars().count();
+    let title_least = session.title.chars().count().min(READABLE_TITLE);
+    let wanted = title_least + 2 + doing.chars().count();
+    let mut time = look::session_time(app, session).unwrap_or_default();
+    let time_width = |time: &str| {
+        if time.is_empty() {
+            0
+        } else {
+            time.chars().count() + 1
+        }
+    };
+    if !live && width.saturating_sub(fixed + time_width(&time)) < wanted {
+        time.clear();
+    }
+    let room = width.saturating_sub(fixed + time_width(&time));
+    let doing_room = room.saturating_sub(title_least + 2);
+    let doing = if doing.chars().count() <= doing_room {
+        doing
+    } else if live && doing_room >= 8 {
+        shorten(&doing, doing_room)
+    } else {
+        String::new()
+    };
+    let doing_width = if doing.is_empty() {
+        0
+    } else {
+        doing.chars().count() + 2
+    };
+    let title = shorten(&session.title, room.saturating_sub(doing_width).max(4));
+    let doing_style = match (&session.activity, session.status) {
+        (_, SessionStatus::NeedsYou { .. }) => Style::default().fg(Color::Red),
+        (Some(_), SessionStatus::Running) => Style::default(),
+        _ => Style::default().add_modifier(Modifier::DIM),
+    };
+    let mut spans = lead;
+    spans.extend([
         Span::styled(symbol, style),
         Span::raw(" "),
-        Span::raw(title.to_owned()),
-        Span::raw("  "),
-        Span::from(describe(session.status)).dim(),
-    ];
+        Span::raw(title),
+    ]);
+    if !doing.is_empty() {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(doing, doing_style));
+    }
     if session.unseen {
-        spans.push(Span::from(" •").cyan().bold());
+        spans.push(Span::from(unseen).cyan().bold());
+    }
+    if !time.is_empty() {
+        let used: usize = spans.iter().map(Span::width).sum();
+        let gap = width.saturating_sub(used + time.chars().count()).max(1);
+        spans.push(Span::raw(" ".repeat(gap)));
+        spans.push(Span::from(time).dim());
     }
     Line::from(spans)
+}
+
+/// The selected line's look in a list of sessions: none while that line
+/// is lit by its flash, which would be hidden under it.
+fn session_highlight(app: &App, selected: Option<muster_core::SessionId>) -> Style {
+    let lit = selected
+        .and_then(|session| app.flash_age(session))
+        .is_some_and(|age| age < crate::motion::FLASH_STEPS / 2);
+    if lit {
+        Style::default()
+    } else {
+        look::selected_style(app.list_has_keys())
+    }
 }
 
 /// `line`, flashing if `session`'s status has just changed: lit in the
@@ -434,22 +448,31 @@ fn flashed<'a>(app: &App, session: &Session, mut line: Line<'a>) -> Line<'a> {
 fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Needs you ", app.list_has_keys());
     if app.needs_list.is_empty() {
+        let text = Text::from(vec![
+            Line::from(""),
+            Line::from(" ✓ All clear").green().bold(),
+            Line::from(""),
+            Line::from(" Nothing is waiting on you.").dim(),
+            Line::from(" Agents that ask you something, or finish while").dim(),
+            Line::from(" you look elsewhere, come here.").dim(),
+        ]);
         frame.render_widget(
-            Paragraph::new("Nothing is waiting on you.")
-                .block(block)
-                .dim(),
+            Paragraph::new(text).wrap(Wrap { trim: false }).block(block),
             area,
         );
         return;
     }
+    let width = usize::from(area.width.saturating_sub(2));
     let items: Vec<ListItem<'_>> = app
         .needs_list
         .iter()
         .filter_map(|id| app.model.session(*id))
         .map(|session| {
             let place = app.model.branch(session.workspace).unwrap_or("?");
-            let mut line = session_line(session, "", &session.title, app.motion_step());
-            line.spans.push(Span::from(format!("  {place}")).dim());
+            let selected = app.needs_selected == Some(session.id);
+            let project = app.model.project_of(Row::Session(session.id));
+            let lead = vec![look::edge(app, project, selected)];
+            let line = session_line(app, session, lead, width, Some(place));
             ListItem::new(flashed(app, session, line))
         })
         .collect();
@@ -461,7 +484,7 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        .highlight_style(session_highlight(app, app.needs_selected));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
@@ -481,7 +504,10 @@ fn draw_session(
         .screens
         .get(&session)
         .map_or(0, crate::screen::Screen::scrolled_back);
-    let mut title = format!(" {} · {} ", stored.title, describe(stored.status));
+    let mut title = format!(" {} · {} ", stored.title, look::doing(stored));
+    if let Some(time) = look::session_time(app, stored) {
+        title.push_str(&format!("· {time} "));
+    }
     if let Some(usage) = app.model.usage(session) {
         title.push_str(&format!("· {} ", usage_text(usage)));
     }
@@ -629,6 +655,15 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
             }
             None => Text::default(),
         },
+        _ if !app.model.loaded() => Text::from(look::wordmark("Connecting to the daemon…")),
+        _ if app.model.projects().is_empty() => {
+            let mut lines = look::wordmark("Agents on your tickets, side by side.");
+            lines.extend([
+                Line::from(""),
+                Line::from("  Press a to add a project: a git repository, or any folder."),
+            ]);
+            Text::from(lines)
+        }
         _ => Text::from("Select a session to watch it here.").dim(),
     };
     frame.render_widget(
@@ -650,7 +685,10 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
         let (symbol, style) = status_symbol(stored.status, app.motion_step());
         spans.push(Span::styled(symbol, style));
         spans.push(Span::raw(format!(" {}  ", stored.title)));
-        spans.push(Span::from(describe(stored.status)).dim());
+        spans.push(Span::from(look::doing(stored).to_owned()).dim());
+        if let Some(time) = look::session_time(app, stored) {
+            spans.push(Span::from(format!(" · {time}")).dim());
+        }
         if let Some(workspace) = app.model.workspace(stored.workspace) {
             let mark = if workspace.kind.is_checkout() {
                 "⌂"
@@ -718,7 +756,7 @@ pub(super) fn status_symbol(status: SessionStatus, step: Option<u64>) -> (&'stat
             ("▲", step.map_or(style, |step| motion::pulse(style, step)))
         }
         SessionStatus::Finished => ("✓", Style::default().fg(Color::Green)),
-        SessionStatus::Exited { success: true } => ("■", Style::default().fg(Color::DarkGray)),
+        SessionStatus::Exited { success: true } => ("■", Style::default().fg(Color::Gray)),
         SessionStatus::Exited { success: false } => ("✕", Style::default().fg(Color::Red)),
     }
 }
@@ -762,13 +800,5 @@ pub(crate) fn bytes(count: u64) -> String {
         format!("{:.1} GB", count as f64 / GB as f64)
     } else {
         format!("{} MB", count.div_ceil(MB))
-    }
-}
-
-fn count(n: usize, noun: &str) -> String {
-    if n == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{n} {noun}s")
     }
 }

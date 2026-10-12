@@ -304,6 +304,8 @@ async fn every_nth_measurement_is_kept_in_history() {
         resume_id: None,
         created_at: Timestamp::from_millis(1),
         ended_at: None,
+        status_since: Timestamp::from_millis(1),
+        activity: None,
     };
     let id = session.id;
     store

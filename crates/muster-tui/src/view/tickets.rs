@@ -3,11 +3,11 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{describe, panel, shorten, status_symbol};
+use super::{describe, look, panel, shorten, status_symbol};
 use crate::app::{App, TicketRow, TicketText, Tickets};
 
 /// The most agents shown on a ticket's line; the rest are counted.
@@ -40,13 +40,29 @@ pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        .highlight_style(look::selected_style(app.list_has_keys()));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
 /// A project's heading with how its tickets stand, or a ticket with the
 /// agents on it; the title gives way so the agents stay in view.
 fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
+    let project = match row {
+        TicketRow::Project(project) | TicketRow::Ticket(project, _) => *project,
+    };
+    let edge = look::edge(
+        app,
+        Some(project),
+        app.tickets_selected.as_ref() == Some(row),
+    );
+    let width = width.saturating_sub(1);
+    let mut line = row_text(app, row, width);
+    line.spans.insert(0, edge);
+    line
+}
+
+/// A row's line after its edge.
+fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
     match row {
         TicketRow::Project(project) => {
             let project = *project;
@@ -72,7 +88,11 @@ fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                     Span::from(format!("  {}", shorten(error, width.saturating_sub(4)))).red()
                 }
             };
-            Line::from(vec![Span::from(name).bold(), state])
+            let colour = look::project_colour(app, project);
+            Line::from(vec![
+                Span::styled(name, Style::default().fg(colour)).bold(),
+                state,
+            ])
         }
         TicketRow::Ticket(project, key) => {
             let project = *project;
@@ -83,9 +103,13 @@ fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
             let mut marks: Vec<Span<'static>> = agents
                 .iter()
                 .take(AGENTS_SHOWN)
-                .map(|session| {
+                .flat_map(|session| {
+                    // Which agent, then how it is doing.
                     let (symbol, style) = status_symbol(session.status, app.motion_step());
-                    Span::styled(format!(" {symbol}"), style)
+                    [
+                        Span::from(format!(" {}", look::harness_letter(&session.harness))).dim(),
+                        Span::styled(symbol, style),
+                    ]
                 })
                 .collect();
             if agents.len() > AGENTS_SHOWN {

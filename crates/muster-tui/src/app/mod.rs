@@ -24,6 +24,8 @@ mod folder_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod look_tests;
+#[cfg(test)]
 mod motion_tests;
 #[cfg(test)]
 mod navigation_tests;
@@ -158,11 +160,15 @@ pub(crate) enum Confirmed {
     RemoveProject(ProjectId),
 }
 
-/// A line under the screen telling the person what just happened.
+/// A line under the screen telling the person what just happened. It
+/// fades after a few seconds and gives the keys' hints back; an error
+/// stays until the next key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Note {
     pub(crate) text: String,
     pub(crate) error: bool,
+    /// The motion step it was shown at.
+    pub(crate) shown_at: u64,
 }
 
 /// What to do with a command's reply.
@@ -262,6 +268,9 @@ pub(crate) struct App {
     pub(crate) motion: bool,
     /// The step of the motion to draw, counted out by the runtime.
     pub(crate) step: u64,
+    /// The time now, as the runtime last read it, for how long sessions
+    /// have run, waited or sat finished; `None` until it has.
+    pub(crate) now: Option<muster_core::Timestamp>,
     /// Sessions whose lines flash for a change of status, with the step
     /// each flash began.
     flashes: HashMap<SessionId, u64>,
@@ -305,6 +314,7 @@ impl App {
             notify: true,
             motion: true,
             step: 0,
+            now: None,
             flashes: HashMap::new(),
             last_harness: HarnessChoice::Claude,
         }
@@ -557,6 +567,7 @@ impl App {
         self.note = Some(Note {
             text: text.into(),
             error: false,
+            shown_at: self.step,
         });
     }
 
@@ -564,6 +575,7 @@ impl App {
         self.note = Some(Note {
             text: text.into(),
             error: true,
+            shown_at: self.step,
         });
     }
 

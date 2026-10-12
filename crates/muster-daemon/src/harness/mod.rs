@@ -9,6 +9,7 @@
 //! (`PRD-13`): hooks passed at launch, a plugin or settings file of Muster's
 //! own that it is pointed at, or what it shows in its window title.
 
+pub(crate) mod activity;
 pub(crate) mod claude;
 pub(crate) mod claude_stream;
 pub(crate) mod codex;

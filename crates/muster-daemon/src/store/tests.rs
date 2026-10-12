@@ -45,6 +45,8 @@ fn session(workspace: WorkspaceId) -> Session {
         resume_id: None,
         created_at: at(3),
         ended_at: None,
+        status_since: at(3),
+        activity: None,
     }
 }
 
@@ -227,6 +229,27 @@ fn a_status_change_updates_the_session_and_its_history_together() {
             },
         ]
     );
+}
+
+#[test]
+fn a_session_s_status_is_dated_from_when_it_came_to_it() {
+    let (mut store, _, _, session) = populated();
+    let since = |store: &Store| store.snapshot().unwrap().sessions[0].status_since;
+    // None kept yet: its start.
+    assert_eq!(since(&store), at(3));
+    let record = |store: &mut Store, status, unseen, when| {
+        store
+            .record_status(session.id, status, unseen, at(when))
+            .unwrap();
+    };
+    record(&mut store, SessionStatus::Running, false, 10);
+    record(&mut store, SessionStatus::Finished, true, 20);
+    // Looked at: the unseen mark goes, the status and its date stay.
+    record(&mut store, SessionStatus::Finished, false, 30);
+    assert_eq!(since(&store), at(20));
+    record(&mut store, SessionStatus::Running, false, 40);
+    record(&mut store, SessionStatus::Finished, false, 50);
+    assert_eq!(since(&store), at(50), "a new run of the same status");
 }
 
 #[test]
@@ -492,6 +515,7 @@ fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
     store.insert_workspace(&container).unwrap();
     let mut agent = session(container.id);
     agent.created_at = at(6);
+    agent.status_since = at(6);
     store.insert_session(&agent).unwrap();
 
     let snapshot = store.snapshot().unwrap();

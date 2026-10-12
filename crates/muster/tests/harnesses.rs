@@ -82,6 +82,7 @@ async fn expect_status(connection: &mut Connection, session: SessionId) -> (Sess
             session: changed,
             status,
             unseen,
+            ..
         }) if *changed == session => Some((*status, *unseen)),
         _ => None,
     })

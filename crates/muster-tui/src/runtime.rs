@@ -127,6 +127,9 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                 {
                     dirty = true;
                 }
+                if app.on_clock(wall_clock()) {
+                    dirty = true;
+                }
                 if dirty && hold.may_draw(app.frame_pending(), now) {
                     terminal.terminal.draw(|frame| view::draw(frame, &app))?;
                     dirty = false;
@@ -165,6 +168,17 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     link_task.abort();
     drop(terminal);
     outcome
+}
+
+/// The time now, for how long sessions have run or waited: read here, so
+/// the app and the view never read the clock (`ARC-03`).
+fn wall_clock() -> muster_core::Timestamp {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+        });
+    muster_core::Timestamp::from_millis(millis)
 }
 
 /// Holds drawing while the session shown draws a frame, as a terminal with

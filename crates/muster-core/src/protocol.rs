@@ -21,7 +21,8 @@
 //! 13 more harnesses, and a wait their own display reports (`WaitReason::Action`);
 //! version 14 tickets by key from more trackers; version 15 the settings a
 //! person changes on the Settings screen, and whether a listing of tickets
-//! has only theirs.
+//! has only theirs; version 16 when each session came to its status, and
+//! what it is doing now.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -37,9 +38,9 @@ use crate::settings::{ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 15;
+pub const PROTOCOL_VERSION: u32 = 16;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 15;
+pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -502,6 +503,14 @@ pub enum Delta {
         session: SessionId,
         status: SessionStatus,
         unseen: bool,
+        /// When it came to this status.
+        since: crate::Timestamp,
+    },
+    /// What a session is doing now changed; `None` once it is doing
+    /// nothing to tell.
+    SessionActivity {
+        session: SessionId,
+        activity: Option<crate::session::Activity>,
     },
     /// A new measurement; replaces the last.
     Resources(ResourceReport),
