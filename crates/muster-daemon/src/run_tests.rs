@@ -201,6 +201,7 @@ async fn spawn_with(
             secrets: Arc::new(crate::secrets::Kept::default()),
             http: crate::service::http_client(),
         }),
+        adopted: Vec::new(),
     })
     .await
     .unwrap()

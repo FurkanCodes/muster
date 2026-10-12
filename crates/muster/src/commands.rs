@@ -7,7 +7,7 @@ use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Reply, Snapshot, TermSize};
 use muster_core::{Project, SessionId, SessionStatus, WaitReason, Workspace};
 
-const CLIENT: &str = concat!("muster ", env!("CARGO_PKG_VERSION"));
+pub(crate) const CLIENT: &str = concat!("muster ", env!("CARGO_PKG_VERSION"));
 
 pub(crate) type Outcome = Result<(), Box<dyn std::error::Error>>;
 
@@ -587,7 +587,7 @@ fn describe(status: SessionStatus) -> String {
     }
 }
 
-fn count(n: usize, noun: &str) -> String {
+pub(crate) fn count(n: usize, noun: &str) -> String {
     if n == 1 {
         format!("1 {noun}")
     } else {

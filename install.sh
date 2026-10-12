@@ -87,7 +87,7 @@ main() {
     *) say "add it to your PATH: export PATH=\"$(dirname "$installed"):\$PATH\"" ;;
     esac
     if pgrep -f 'muster daemon' >/dev/null 2>&1; then
-        say "a Muster daemon is running the old version: run 'muster daemon stop', then 'muster'."
+        say "a Muster daemon is running the old version: 'muster reload' moves it onto this one, every session running on."
     fi
 }
 

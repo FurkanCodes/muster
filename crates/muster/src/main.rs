@@ -4,7 +4,9 @@
 
 mod auth;
 mod commands;
+mod reload;
 mod runs;
+mod upgrade;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -39,7 +41,23 @@ enum Commands {
         /// hang-ups.
         #[arg(long, hide = true)]
         background: bool,
+        /// Take over from the daemon's previous version, whose handoff is
+        /// at this descriptor: its restart in place (`muster reload`).
+        #[arg(long, hide = true, value_name = "FD")]
+        adopt: Option<i32>,
+        /// Say (by the exit status) whether this program can take over a
+        /// handoff in this format; asked before a restart in place.
+        #[arg(long, hide = true, value_name = "FORMAT")]
+        can_adopt: Option<u32>,
     },
+    /// Move the running daemon onto the muster installed now, in place:
+    /// every session keeps running, a shell's work and an agent's turn
+    /// included. Run it after installing a new version; `muster upgrade`
+    /// does both.
+    Reload,
+    /// Install the latest release of muster, checked against its published
+    /// checksum, and move the daemon onto it with every session running.
+    Upgrade,
     /// Show whether the daemon is running and what it is tracking.
     Status,
     /// Manage the projects Muster tracks: git repositories, or any folder.
@@ -284,7 +302,16 @@ fn main() -> ExitCode {
                 action: None,
                 detach,
                 background,
+                adopt,
+                can_adopt,
             }) => {
+                if let Some(format) = can_adopt {
+                    return if format == muster_daemon::HANDOFF_FORMAT {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    };
+                }
                 if detach {
                     return start_in_background();
                 }
@@ -293,8 +320,12 @@ fn main() -> ExitCode {
                     // Fails only if already a session leader, which is fine.
                     let _ = nix::unistd::setsid();
                 }
-                return daemon(paths, background).await;
+                return daemon(paths, background, adopt).await;
             }
+            Some(Commands::Reload) => {
+                return reload::reload_daemon(&socket, &paths.runtime_dir).await;
+            }
+            Some(Commands::Upgrade) => return upgrade::run(&socket, &paths.runtime_dir).await,
             Some(Commands::Status) => return commands::status(&socket).await,
             Some(Commands::Project(ProjectCommand::Add { path, name })) => {
                 commands::add_project(&socket, &path, name).await
@@ -458,7 +489,7 @@ fn start_in_background() -> ExitCode {
     }
 }
 
-async fn daemon(paths: Paths, background: bool) -> ExitCode {
+async fn daemon(paths: Paths, background: bool, adopt: Option<i32>) -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("MUSTER_LOG")
@@ -487,44 +518,83 @@ async fn daemon(paths: Paths, background: bool) -> ExitCode {
     if let Some(ms) = millis("MUSTER_PR_MS") {
         config.pr_interval = std::time::Duration::from_millis(ms.max(10));
     }
-    match muster_daemon::run(config, shutdown_signal(background)).await {
+    // Listening from the start, so no signal arrives before it is caught:
+    // uncaught, SIGUSR1 would end the daemon.
+    let (stops, stop_queue) = tokio::sync::mpsc::unbounded_channel();
+    match Signals::listen() {
+        Ok(signals) => {
+            tokio::spawn(signals.forward(background, stops));
+        }
+        Err(error) => return fail(format!("cannot listen for signals: {error}")),
+    }
+    // Run again, as it is, by a restart in place.
+    let mut relaunch = vec!["daemon".to_owned()];
+    if background {
+        relaunch.push("--background".to_owned());
+    }
+    match muster_daemon::run(config, stop_queue, relaunch, adopt).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),
     }
 }
 
-/// Completes on SIGINT or SIGTERM, saying which in the log, so a stop is
-/// never a mystery. A hang-up stops a daemon run in a terminal, which has
-/// closed; one in the `background` has no terminal, so a hang-up there is
-/// someone else's and is logged and ignored. Each is caught by a handler,
-/// never ignored outright: an ignored signal would be inherited by the
-/// agents the daemon starts, which are stopped with a hang-up.
-async fn shutdown_signal(background: bool) {
-    use tokio::signal::unix::{SignalKind, signal};
-    let (Ok(mut interrupt), Ok(mut terminate), Ok(mut hangup)) = (
-        signal(SignalKind::interrupt()),
-        signal(SignalKind::terminate()),
-        signal(SignalKind::hangup()),
-    ) else {
-        let _ = tokio::signal::ctrl_c().await;
-        return;
-    };
-    loop {
-        tokio::select! {
-            _ = interrupt.recv() => {
-                tracing::info!(signal = "SIGINT", "stopping: interrupted");
-                return;
-            }
-            _ = terminate.recv() => {
-                tracing::info!(signal = "SIGTERM", "stopping: asked to stop");
-                return;
-            }
-            _ = hangup.recv() => {
-                if !background {
-                    tracing::info!(signal = "SIGHUP", "stopping: its terminal closed");
-                    return;
+/// The signals the daemon answers, each caught by a handler, never ignored
+/// outright: an ignored signal would be inherited by the agents the daemon
+/// starts, which are stopped with a hang-up.
+struct Signals {
+    interrupt: tokio::signal::unix::Signal,
+    terminate: tokio::signal::unix::Signal,
+    hangup: tokio::signal::unix::Signal,
+    reload: tokio::signal::unix::Signal,
+}
+
+impl Signals {
+    fn listen() -> std::io::Result<Self> {
+        use tokio::signal::unix::{SignalKind, signal};
+        Ok(Self {
+            interrupt: signal(SignalKind::interrupt())?,
+            terminate: signal(SignalKind::terminate())?,
+            hangup: signal(SignalKind::hangup())?,
+            reload: signal(SignalKind::user_defined1())?,
+        })
+    }
+
+    /// Tells the daemon what each signal asks, saying which in the log, so
+    /// a stop is never a mystery: SIGINT and SIGTERM stop it, SIGUSR1 has it
+    /// restart in place (`muster reload`). A hang-up stops a daemon run in a
+    /// terminal, which has closed; one in the `background` has no terminal,
+    /// so a hang-up there is someone else's and is logged and ignored.
+    async fn forward(
+        mut self,
+        background: bool,
+        stops: tokio::sync::mpsc::UnboundedSender<muster_daemon::Stop>,
+    ) {
+        use muster_daemon::Stop;
+        loop {
+            let stop = tokio::select! {
+                _ = self.interrupt.recv() => {
+                    tracing::info!(signal = "SIGINT", "stopping: interrupted");
+                    Stop::Shutdown
                 }
-                tracing::info!(signal = "SIGHUP", "ignored a hang-up: the daemon has no terminal");
+                _ = self.terminate.recv() => {
+                    tracing::info!(signal = "SIGTERM", "stopping: asked to stop");
+                    Stop::Shutdown
+                }
+                _ = self.hangup.recv() => {
+                    if background {
+                        tracing::info!(signal = "SIGHUP", "ignored a hang-up: the daemon has no terminal");
+                        continue;
+                    }
+                    tracing::info!(signal = "SIGHUP", "stopping: its terminal closed");
+                    Stop::Shutdown
+                }
+                _ = self.reload.recv() => {
+                    tracing::info!(signal = "SIGUSR1", "asked to restart in place");
+                    Stop::Reload
+                }
+            };
+            if stops.send(stop).is_err() {
+                return;
             }
         }
     }

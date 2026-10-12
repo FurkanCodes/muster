@@ -11,6 +11,7 @@ mod git;
 mod githost;
 mod github;
 mod glab;
+mod handoff;
 mod harness;
 mod hooks;
 mod mcp;
@@ -32,7 +33,6 @@ mod run_tests;
 mod tests;
 
 use std::fs::{DirBuilder, File, Permissions, TryLockError};
-use std::future::Future;
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -194,10 +194,29 @@ fn io_error(context: &'static str, path: &Path) -> impl FnOnce(io::Error) -> Dae
     }
 }
 
-/// Runs the daemon until `shutdown` completes, then removes its socket.
+/// What stops the daemon, or has it restart in place as the program
+/// installed now (`muster reload`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stop {
+    Shutdown,
+    Reload,
+}
+
+/// The handoff format this build takes over from (`--can-adopt`).
+pub const HANDOFF_FORMAT: u32 = handoff::FORMAT;
+
+/// Runs the daemon until told to stop, then removes its sockets.
+///
+/// Told to reload, it restarts in place as the program installed now
+/// (`handoff`), running it with `relaunch`, its own arguments, and the
+/// handoff; its sessions run on. If it cannot, it says why and carries on.
+/// With `adopt`, it takes over from the daemon's previous version, whose
+/// handoff is at that descriptor.
 pub async fn run(
     config: DaemonConfig,
-    shutdown: impl Future<Output = ()>,
+    mut stops: tokio::sync::mpsc::UnboundedReceiver<Stop>,
+    relaunch: Vec<String>,
+    adopt: Option<std::os::fd::RawFd>,
 ) -> Result<(), DaemonError> {
     let paths = &config.paths;
     private_dir(&paths.runtime_dir)?;
@@ -206,22 +225,42 @@ pub async fn run(
         .create(&paths.data_dir)
         .map_err(io_error("cannot create", &paths.data_dir))?;
 
-    // Held for the daemon's whole life; the operating system releases it
-    // however the process ends.
-    let _lock = lock(&paths.lock_file())?;
-
     let socket = paths.socket();
     let hook_socket = paths.hook_socket();
-    // Holding the lock means any socket left here belongs to a daemon that died.
-    for stale in [&socket, &hook_socket] {
-        match std::fs::remove_file(stale) {
-            Ok(()) => tracing::info!(socket = %stale.display(), "removed a stale socket"),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(io_error("cannot remove", stale)(error)),
+    // The lock is held for the daemon's whole life, across a restart in
+    // place too; the operating system releases it however the process ends.
+    let (lock, socket_listener, hook_listener, adopted) = match adopt {
+        Some(state) => {
+            let inherited = handoff::inherit(state).map_err(io_error(
+                "cannot take over the handoff in",
+                &paths.runtime_dir,
+            ))?;
+            tracing::info!(
+                from = %inherited.from,
+                sessions = inherited.sessions.len(),
+                "taking over from the daemon's previous version"
+            );
+            (
+                inherited.lock,
+                inherited.socket,
+                inherited.hook_socket,
+                inherited.sessions,
+            )
         }
-    }
-    let listener = listen(&socket)?;
-    let hook_listener = listen(&hook_socket)?;
+        None => {
+            let lock = lock(&paths.lock_file())?;
+            // Holding the lock means any socket left here belongs to a daemon
+            // that died.
+            for stale in [&socket, &hook_socket] {
+                match std::fs::remove_file(stale) {
+                    Ok(()) => tracing::info!(socket = %stale.display(), "removed a stale socket"),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(io_error("cannot remove", stale)(error)),
+                }
+            }
+            (lock, listen(&socket)?, listen(&hook_socket)?, Vec::new())
+        }
+    };
 
     let store = Store::open(&paths.database())?;
     let store = StoreHandle::spawn(store)
@@ -256,6 +295,7 @@ pub async fn run(
             secrets: Arc::new(secrets::Keychain::default()),
             http: service::http_client(),
         }),
+        adopted,
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
@@ -267,12 +307,41 @@ pub async fn run(
     let pr_watch = tokio::spawn(watch_pull_requests(supervisor.clone(), config.pr_interval));
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
-    let hook_server = tokio::spawn(hooks::serve(hook_listener, hook_deliveries, async {
-        let _ = hooks_stopped.await;
-    }));
+    let hook_server = tokio::spawn(hooks::serve(
+        serving(&hook_listener, &hook_socket)?,
+        hook_deliveries,
+        async {
+            let _ = hooks_stopped.await;
+        },
+    ));
 
     tracing::info!(socket = %socket.display(), pid = std::process::id(), "daemon ready");
-    server::serve(listener, supervisor, shutdown).await;
+    let mut listener = serving(&socket_listener, &socket)?;
+    loop {
+        let mut stop = None;
+        server::serve(listener, supervisor.clone(), async {
+            stop = stops.recv().await;
+        })
+        .await;
+        if stop != Some(Stop::Reload) {
+            break;
+        }
+        let failed = match reload(
+            paths,
+            &supervisor,
+            &lock,
+            &socket_listener,
+            &hook_listener,
+            &relaunch,
+        )
+        .await
+        {
+            Ok(never) => match never {},
+            Err(reason) => reason,
+        };
+        tracing::warn!(reason = %failed, "could not restart in place; carrying on as before");
+        listener = serving(&socket_listener, &socket)?;
+    }
 
     sampler.abort();
     branch_watcher.abort();
@@ -282,8 +351,58 @@ pub async fn run(
     let _ = hook_server.await;
     let _ = std::fs::remove_file(&hook_socket);
     let _ = std::fs::remove_file(&socket);
+    drop(lock);
     tracing::info!("daemon stopped");
     Ok(())
+}
+
+/// Restarts in place as the program installed now, handing every running
+/// session over; returns only if that could not be done, the sessions
+/// taken back.
+async fn reload(
+    paths: &Paths,
+    supervisor: &supervisor::SupervisorHandle,
+    lock: &File,
+    socket: &std::os::unix::net::UnixListener,
+    hook_socket: &std::os::unix::net::UnixListener,
+    relaunch: &[String],
+) -> Result<std::convert::Infallible, String> {
+    let program = handoff::next_program()
+        .map_err(|error| format!("cannot tell which program to run: {error}"))?;
+    // Before anything is handed over: an older Muster could not take it.
+    handoff::can_take_over(&program).await?;
+    let sessions = supervisor.hand_over().await;
+    tracing::info!(
+        program = %program.display(),
+        sessions = sessions.len(),
+        "restarting in place"
+    );
+    let (error, sessions) = handoff::exec_into(
+        &program,
+        relaunch,
+        &paths.runtime_dir,
+        env!("CARGO_PKG_VERSION"),
+        lock,
+        socket,
+        hook_socket,
+        sessions,
+    );
+    supervisor.adopt(sessions).await;
+    Err(format!("could not start {}: {error}", program.display()))
+}
+
+/// A listener the servers can use, the original kept for a handoff.
+fn serving(
+    listener: &std::os::unix::net::UnixListener,
+    path: &Path,
+) -> Result<UnixListener, DaemonError> {
+    listener
+        .try_clone()
+        .and_then(|clone| {
+            clone.set_nonblocking(true)?;
+            UnixListener::from_std(clone)
+        })
+        .map_err(io_error("cannot listen on", path))
 }
 
 /// Runs' work with Docker, git and GitHub; `MUSTER_RUN_IMAGE` names an
@@ -326,8 +445,9 @@ fn history_every(sample: Duration, history: Duration) -> u32 {
 }
 
 /// Binds a Unix socket only this user can use.
-fn listen(socket: &Path) -> Result<UnixListener, DaemonError> {
-    let listener = UnixListener::bind(socket).map_err(io_error("cannot listen on", socket))?;
+fn listen(socket: &Path) -> Result<std::os::unix::net::UnixListener, DaemonError> {
+    let listener = std::os::unix::net::UnixListener::bind(socket)
+        .map_err(io_error("cannot listen on", socket))?;
     std::fs::set_permissions(socket, Permissions::from_mode(0o600))
         .map_err(io_error("cannot restrict", socket))?;
     Ok(listener)

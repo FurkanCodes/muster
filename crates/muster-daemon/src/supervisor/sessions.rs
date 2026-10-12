@@ -538,7 +538,7 @@ impl Supervisor {
             .state
             .sessions
             .iter()
-            .filter(|session| session.ended_at.is_none())
+            .filter(|session| session.ended_at.is_none() && !self.live.contains_key(&session.id))
             .cloned()
             .collect();
         for session in orphaned {

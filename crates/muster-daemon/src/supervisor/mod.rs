@@ -12,6 +12,7 @@ mod by_hand;
 mod containers;
 mod issues;
 mod projects;
+mod reload;
 mod runs;
 mod sessions;
 mod settings;
@@ -79,6 +80,10 @@ enum Request {
     },
     /// The sampler's measurement.
     Resources(ResourceReport),
+    /// Hand every running session over, for the daemon's restart in place.
+    HandOver(oneshot::Sender<Vec<crate::handoff::HandedSession>>),
+    /// Take sessions over that were handed over.
+    Adopt(Vec<crate::handoff::HandedSession>, oneshot::Sender<()>),
 }
 
 impl std::fmt::Debug for Request {
@@ -97,6 +102,8 @@ impl std::fmt::Debug for Request {
             Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
             Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
             Self::Resources(_) => f.write_str("Resources"),
+            Self::HandOver(_) => f.write_str("HandOver"),
+            Self::Adopt(sessions, _) => write!(f, "Adopt({})", sessions.len()),
         }
     }
 }
@@ -232,6 +239,9 @@ pub(crate) struct Settings {
     pub(crate) docker: String,
     /// Each project's git host, for pull requests opened by hand.
     pub(crate) hosts: Arc<dyn Hosts>,
+    /// Sessions the daemon's previous version handed over, to take over
+    /// before anything else.
+    pub(crate) adopted: Vec<crate::handoff::HandedSession>,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -273,6 +283,9 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         hosts: settings.hosts,
     };
     supervisor.ensure_checkouts().await;
+    // Running sessions handed over keep running: taken over before any is
+    // taken to have died with the last daemon.
+    supervisor.adopt_sessions(settings.adopted);
     // Runs first: a session in a run's container needs its run.
     supervisor.resume_runs(stored_runs).await;
     supervisor.recover_sessions().await;
@@ -443,6 +456,14 @@ impl Supervisor {
                 let _ = reply.send(running);
             }
             Request::Resources(report) => self.record_resources(report).await,
+            Request::HandOver(reply) => {
+                let handed = self.hand_over_sessions().await;
+                let _ = reply.send(handed);
+            }
+            Request::Adopt(sessions, reply) => {
+                self.adopt_sessions(sessions);
+                let _ = reply.send(());
+            }
             Request::Workspaces(reply) => {
                 let _ = reply.send(self.workspace_heads());
             }

@@ -6,5 +6,7 @@
 pub mod connection;
 pub mod transport;
 
-pub use connection::{ClientError, Connection, FrameReceiver, FrameSender, daemon_pid};
+pub use connection::{
+    ClientError, Connection, FrameReceiver, FrameSender, daemon_identity, daemon_pid,
+};
 pub use transport::{FramedRead, FramedWrite, TransportError};

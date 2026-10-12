@@ -7,6 +7,10 @@ use muster_core::{SessionStatus, WaitReason};
 
 use super::signal::{Effect, HookEvent, Origin, Signal};
 
+mod carry;
+
+pub use carry::Carried;
+
 /// The time windows the machine uses.
 ///
 /// The defaults come from Nebula's experience with Claude Code. Re-measure

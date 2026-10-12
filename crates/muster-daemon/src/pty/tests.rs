@@ -6,7 +6,7 @@ use tokio::time::timeout;
 
 use super::osc::{OscScanner, Report};
 use super::ring::{Replay, Ring};
-use super::{PtyEvent, PtyHandle, SpawnSpec, spawn};
+use super::{PtyEvent, PtyHandle, SpawnSpec, adopt, spawn};
 
 // Ring
 
@@ -213,6 +213,31 @@ async fn input_reaches_the_shell_and_its_output_comes_back() {
     let (pty, _) = shell(vec![], vec![]);
     pty.input(b"echo out-$((6*7))\n".to_vec()).await;
     read_until(&pty, None, "out-42").await;
+}
+
+#[tokio::test]
+async fn a_terminal_handed_over_is_adopted_with_its_program_running() {
+    let (pty, _) = shell(vec![], vec![]);
+    // State only the running shell has, and an input mode it set.
+    pty.input(b"MARK=kept; printf '\\033[?2004h'; echo armed-$((2+3))\n".to_vec())
+        .await;
+    let (_, end) = read_until(&pty, None, "armed-5").await;
+
+    let handed = pty.hand_over().await.expect("its program still runs");
+    assert!(pty.attach(None).await.is_none(), "the old actor has gone");
+    // Everything read so far, the prompt after the marker too.
+    let carried_end = handed.terminal.seq + handed.terminal.ring.len() as u64;
+    assert!(carried_end >= end, "{carried_end} < {end}");
+    let events = Events::default();
+    let adopted = adopt(handed.master, handed.terminal, events.sink()).unwrap();
+
+    // Its output so far, numbered as before, and its mode, carried.
+    let attachment = adopted.attach(None).await.unwrap();
+    assert!(String::from_utf8_lossy(&attachment.replay.data).contains("armed-5"));
+    assert!(attachment.modes.bracketed_paste);
+    // The same shell, still running: it remembers what it was told.
+    adopted.input(b"echo still-$MARK-$((6*7))\n".to_vec()).await;
+    read_until(&adopted, Some(carried_end), "still-kept-42").await;
 }
 
 #[tokio::test]
