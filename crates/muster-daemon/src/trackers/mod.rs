@@ -11,6 +11,8 @@
 pub(crate) mod choose;
 pub(crate) mod github;
 pub(crate) mod gitlab;
+pub(crate) mod jira;
+pub(crate) mod linear;
 
 use std::sync::Arc;
 

@@ -36,7 +36,10 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         history_every: 1,
         timing: muster_state::session::Timing::default(),
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
-        trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers),
+        trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
+            secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
@@ -322,7 +325,10 @@ async fn every_nth_measurement_is_kept_in_history() {
         history_every: 2,
         timing: muster_state::session::Timing::default(),
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
-        trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers),
+        trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
+            secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),

@@ -19,6 +19,7 @@ use nix::unistd::Pid;
 use tempfile::TempDir;
 
 pub(crate) mod agents;
+pub(crate) mod http;
 mod services;
 
 pub(crate) const BINARY: &str = env!("CARGO_BIN_EXE_muster");

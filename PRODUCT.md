@@ -80,8 +80,8 @@ Terminal UI first (ratatui). The daemon exposes the same API to any client, so a
 
 | Kind | v1 | Later |
 |---|---|---|
-| Ticket sources | GitHub Issues (the person's `gh`) | Jira Cloud, Linear; how to reach them (their APIs, or the MCP servers agents already use) is open |
-| Git host | GitHub | GitLab |
+| Ticket sources | GitHub and GitLab issues (the person's `gh`, `glab`); Jira (Cloud through Atlassian's MCP server with the person's browser sign-in, or Cloud and Data Center with a token); Linear (its MCP server, or an API key) | Others behind the same interface |
+| Git host | GitHub, GitLab, Bitbucket (Cloud and Data Center, with a token) | Others behind the same interface |
 | Harnesses | Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI (hands-on) | Others through config; headless runs beyond Claude Code |
 | Container runtime | Docker API (Docker Desktop, OrbStack, Colima on macOS; Docker Engine on Linux) | Podman |
 
@@ -102,6 +102,7 @@ Each milestone ends with a demo that works on a real repository, and with tests 
    *Done when:* the author starts their day on the Tickets screen and assigns agents from it, for a week.
    *Status (2026-10-11):* built for GitHub Issues through `gh`, in the UI (`i`, `⇥`) and the command line (`muster issue list`, `muster issue start --another`). Next: Jira Cloud and Linear.
 4. **M4 — More trackers.** Jira Cloud and Linear as ticket sources, read-only but for closing a ticket.
+   *Status (2026-10-12):* tickets come from each project's own tracker, named in `[tickets]` or told by its git remote: GitHub and GitLab issues through the person's `gh` and `glab`; Jira (Cloud through Atlassian's MCP server with the person's browser sign-in, as agents' connectors do, or Cloud and Data Center with a token); Linear (its MCP server, or an API key). Tickets are keyed `#42` or `APP-7`. Pull requests by hand go to the project's host: GitHub, GitLab (merge requests through `glab`) or Bitbucket (Cloud and Data Center, with a token). Sign-ins and tokens live in the Keychain (`muster auth jira|linear|bitbucket`). Built and tested against stand-ins of every service and checked against each one's documentation and live metadata; a first real sign-in is the person's.
 5. **M5 — Many at once (with the autopilot; set aside).** Memory-aware scheduler, queue reasons, the Resources view, run limits (`PRD-12`).
    *Done when:* five runs on a machine that fits three run three, queue two with a visible reason, and finish all five.
 6. **M6 — More harnesses.** Codex and OpenCode, hands-on.

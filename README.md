@@ -11,13 +11,13 @@
 - **Needs you.** One queue of everything waiting on you: questions first, then news, oldest first. While your terminal window is in the background, Muster tells you as something comes to need you, with a desktop notification where your terminal shows them (iTerm2, WezTerm, Ghostty, kitty) and its bell elsewhere; `MUSTER_NOTIFY=off` turns that off.
 - **A real terminal per session, beside the list.** Work in any session to the right of the list, or full screen, as you would in your own terminal: the daemon answers the program's terminal questions, and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys).
 - **Survives restarts.** Sessions belong to the daemon. After a daemon restart, agent sessions resume their conversations (`--resume`, `codex resume`, `opencode --session`); one that cannot falls back to a fresh start.
-- **Tickets.** A screen of each project's open tickets (GitHub issues, through your `gh`) with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<n>-<title>`, starts Claude Code there, and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file an issue. More agents on the same ticket get worktrees of their own. When the work is done, close the ticket from Muster (`x`, after asking; it is closed with your `gh`) and let it close the ticket's agents and remove its worktrees, keeping the branches. That is the only change Muster makes in the tracker.
+- **Tickets, wherever they are.** A screen of each project's open tickets — GitHub or GitLab issues (through your `gh` or `glab`), Jira work items (Cloud or Data Center), or Linear issues — with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<key>-<title>` (`#42`'s, or `APP-7`'s), starts Claude Code there, and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file one. More agents on the same ticket get worktrees of their own. When the work is done, close the ticket from Muster (`x`, after asking) and let it close the ticket's agents and remove its worktrees, keeping the branches. That is the only change Muster makes in a tracker.
 - **The stages by hand.** On any worktree: run the project's checks as a session, have Claude Code review the change in plan mode, or push the branch and open a draft pull request.
 - **Resources.** Memory and CPU for each session's whole process tree, and the machine's memory.
 
 ## Install and run
 
-Muster runs on macOS and Linux. You need git, Rust 1.95 or newer to build it, and — for the features that use them — the agents you want to run (Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI) and the GitHub CLI (`gh`), signed in.
+Muster runs on macOS and Linux. You need git, Rust 1.95 or newer to build it, and — for the features that use them — the agents you want to run (Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI), and the GitHub CLI (`gh`) or the GitLab CLI (`glab`) for your git host, signed in.
 
 ```bash
 cargo install --locked --path crates/muster
@@ -58,7 +58,7 @@ While you type in a session, beside the list or full screen, every key goes to t
 | `⏎` | open the agent on the selected ticket, or start the first: Claude Code in a worktree for it, with the ticket as its first prompt |
 | `a` | start another agent on the ticket, in a worktree of its own |
 | `b` | open the ticket in your browser |
-| `x` | close the ticket on GitHub, after asking; then, if you want, close its agents and remove its worktrees (the branches are kept) |
+| `x` | close the ticket in its tracker, after asking; then, if you want, close its agents and remove its worktrees (the branches are kept) |
 | `r` | fetch the tickets again |
 
 The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the session beside it gives it the keys. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
@@ -86,6 +86,10 @@ muster issue start app 42
 ```
 
 ```bash
+muster issue start app APP-7
+```
+
+```bash
 muster issue close app 42
 ```
 
@@ -108,6 +112,37 @@ muster status
 ```bash
 muster session restart <session-id>
 ```
+
+### Where tickets and pull requests are
+
+Muster tells from a project's git remote where it is hosted: GitHub, GitLab (`gitlab.com`, or a host named `gitlab.…`) or Bitbucket. GitHub's and GitLab's projects get their issues as tickets, and pull requests by hand (`muster pr`, `o`) go to the same host — through your `gh` or `glab`, signed in. A project says what its remote cannot in its `muster.toml` (or your local overrides of it, `muster project config`):
+
+```toml
+[tickets]
+tracker = "jira"               # github, gitlab, jira or linear
+site = "acme.atlassian.net"    # Jira: the site, or a Data Center's address
+project = "APP"                # Jira: the project (or jql = "…")
+# team = "ENG"                 # Linear: the team
+
+[pull_requests]
+host = "gitlab"                # github, gitlab or bitbucket, for a host on another name
+```
+
+Jira and Linear are signed in to once, in your browser, the way Claude Code's connectors are (through their MCP servers' OAuth); Bitbucket takes an API token. Muster keeps these in the macOS Keychain, never in a file, the database or a log:
+
+```bash
+muster auth jira
+```
+
+```bash
+muster auth linear
+```
+
+```bash
+muster auth bitbucket
+```
+
+`muster auth jira --token --site <site>` keeps an API token instead (Jira Cloud's, with your email; or a Data Center's personal access token), and `muster auth linear --token` a personal API key. Elsewhere than macOS, or for one daemon, set `JIRA_API_TOKEN` and `JIRA_EMAIL`, `LINEAR_API_KEY` or `BITBUCKET_TOKEN` in the environment it starts in. Bitbucket retired its own issue tracker in 2026, so a Bitbucket project's tickets are named in `[tickets]` (Jira, usually).
 
 After upgrading muster, stop the daemon the old build left running; the next `muster` starts the new one, and Claude Code sessions resume:
 
@@ -133,7 +168,7 @@ A Rust workspace of six crates around one rule: the daemon owns everything, and 
 cargo test --workspace
 ```
 
-The suite (over 350 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, clippy with warnings as errors, a 1,000-line file limit, `cargo deny`, and the tests on macOS and Linux.
+The suite (over 550 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, clippy with warnings as errors, a 1,000-line file limit, `cargo deny`, and the tests on macOS and Linux.
 
 ## Credits
 

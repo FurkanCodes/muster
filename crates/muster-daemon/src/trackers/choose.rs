@@ -9,12 +9,19 @@ use muster_core::remote::Remote;
 
 use super::github::GitHubIssues;
 use super::gitlab::GitLabIssues;
+use super::jira::Jira;
+use super::linear::Linear;
 use super::{BoxFuture, ProjectPlace, ServiceError, TicketSource, Trackers};
+use crate::secrets::Secrets;
 use crate::service::Origin;
 
 /// The trackers in use.
-#[derive(Debug, Default)]
-pub(crate) struct ServiceTrackers;
+#[derive(Debug)]
+pub(crate) struct ServiceTrackers {
+    /// The sign-ins and tokens for trackers reached by MCP or their APIs.
+    pub(crate) secrets: Arc<dyn Secrets>,
+    pub(crate) http: reqwest::Client,
+}
 
 impl Trackers for ServiceTrackers {
     fn for_project(
@@ -28,11 +35,13 @@ impl Trackers for ServiceTrackers {
             let source: Arc<dyn TicketSource> = match tracker {
                 TrackerKind::GitHub => Arc::new(GitHubIssues { root: place.root }),
                 TrackerKind::GitLab => Arc::new(GitLabIssues { root: place.root }),
-                TrackerKind::Jira | TrackerKind::Linear => {
-                    return Err(ServiceError::NotConfigured(format!(
-                        "{} is not yet supported",
-                        tracker.name()
-                    )));
+                TrackerKind::Jira => {
+                    Jira::for_settings(&config.tickets, self.secrets.as_ref(), self.http.clone())
+                        .await?
+                }
+                TrackerKind::Linear => {
+                    Linear::for_settings(&config.tickets, self.secrets.as_ref(), self.http.clone())
+                        .await?
                 }
             };
             Ok(source)

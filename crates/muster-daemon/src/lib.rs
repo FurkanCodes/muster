@@ -13,6 +13,8 @@ mod github;
 mod glab;
 mod harness;
 mod hooks;
+mod mcp;
+mod oauth;
 mod pty;
 mod resources;
 mod runs;
@@ -55,6 +57,71 @@ pub async fn keep_secret(account: &str, value: &str) -> std::io::Result<()> {
 pub fn bitbucket_account(host: &str) -> String {
     githost::bitbucket::account(host)
 }
+
+/// A service Muster signs in to in the person's browser, through its MCP
+/// server's OAuth.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignIn {
+    /// Atlassian, for Jira Cloud.
+    Jira,
+    Linear,
+}
+
+/// Signs the person in to `service` in their browser (`open` is given the
+/// address to show them) and keeps the sign-in in the Keychain.
+pub async fn sign_in(service: SignIn, open: impl FnOnce(&str)) -> Result<(), String> {
+    let provider = match service {
+        SignIn::Jira => oauth::Provider {
+            name: "Atlassian",
+            resource: trackers::jira::MCP_URL
+                .split('?')
+                .next()
+                .unwrap_or(trackers::jira::MCP_URL)
+                .to_owned(),
+            account: trackers::jira::MCP_ACCOUNT,
+            scopes: &[
+                "read:me",
+                "read:account",
+                "offline_access",
+                "read:jira:agent-interface",
+                "write:jira:agent-interface",
+                "search:jira:agent-interface",
+            ],
+        },
+        SignIn::Linear => oauth::Provider {
+            name: "Linear",
+            resource: trackers::linear::MCP_URL.to_owned(),
+            account: trackers::linear::MCP_ACCOUNT,
+            scopes: &["read", "write"],
+        },
+    };
+    oauth::sign_in(&service::http_client(), &secrets::Keychain, &provider, open)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// A Jira site as written, read: its host, and whether it is Jira Cloud.
+pub fn jira_site(written: &str) -> Option<(String, bool)> {
+    trackers::jira::Site::parse(written).map(|site| {
+        let cloud = site.is_cloud();
+        (site.host, cloud)
+    })
+}
+
+/// Keeps a Jira token for the site at `host`, with the email it belongs to
+/// (Jira Cloud's) or without (a Data Center's).
+pub async fn keep_jira_token(
+    host: &str,
+    email: Option<String>,
+    token: String,
+) -> std::io::Result<()> {
+    let kept = trackers::jira::KeptToken { email, token };
+    let text = serde_json::to_string(&kept).map_err(std::io::Error::other)?;
+    keep_secret(&trackers::jira::token_account(host), &text).await
+}
+
+/// The Keychain account of a Linear API key.
+pub const LINEAR_KEY_ACCOUNT: &str = trackers::linear::KEY_ACCOUNT;
 
 use crate::clock::{Clock, SystemClock};
 use crate::store::{Store, StoreError, StoreHandle};
@@ -173,7 +240,10 @@ pub async fn run(
             ..muster_state::session::Timing::default()
         },
         work: Arc::new(run_work(paths, credentials.clone(), git_host.clone())),
-        trackers: Arc::new(trackers::choose::ServiceTrackers),
+        trackers: Arc::new(trackers::choose::ServiceTrackers {
+            secrets: Arc::new(secrets::Keychain),
+            http: service::http_client(),
+        }),
         config_dir: paths.config_dir.clone(),
         credentials,
         docker: "docker".to_owned(),

@@ -210,81 +210,22 @@ fn a_project_whose_remote_names_no_host_says_what_to_write() {
     assert!(listed.contains("[tickets] tracker"), "{listed}");
 }
 
-/// One request the stand-in Bitbucket was sent.
-#[derive(Clone, Debug)]
-struct Asked {
-    method: String,
-    target: String,
-    authorization: String,
-    body: String,
-}
-
-/// Stands in for Bitbucket Cloud's API on a local port: lists the
-/// branch's open pull requests (none until one is made), makes one (#17),
-/// and records every request.
-fn fake_bitbucket() -> (String, std::sync::Arc<std::sync::Mutex<Vec<Asked>>>) {
-    use std::io::{BufRead, BufReader, Read, Write};
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = format!("http://{}", listener.local_addr().unwrap());
-    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Asked>::new()));
-    let record = asked.clone();
-    std::thread::spawn(move || {
+/// Stands in for Bitbucket Cloud's API: lists the branch's open pull
+/// requests (none until one is made) and makes one (#17).
+fn fake_bitbucket() -> (String, support::http::Recorded) {
+    support::http::serve(|request, before| {
         let pr = serde_json::json!({
             "id": 17, "state": "OPEN", "draft": true,
             "links": {"html": {"href": "https://bitbucket.org/ws/app/pull-requests/17"}},
         });
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut line = String::new();
-            reader.read_line(&mut line).unwrap();
-            let mut parts = line.split_whitespace();
-            let (method, target) = (
-                parts.next().unwrap_or_default().to_owned(),
-                parts.next().unwrap_or_default().to_owned(),
-            );
-            let (mut length, mut authorization) = (0, String::new());
-            loop {
-                let mut header = String::new();
-                reader.read_line(&mut header).unwrap();
-                let header = header.trim_end();
-                if header.is_empty() {
-                    break;
-                }
-                let (name, value) = header.split_once(':').unwrap_or((header, ""));
-                match name.to_ascii_lowercase().as_str() {
-                    "content-length" => length = value.trim().parse().unwrap_or(0),
-                    "authorization" => authorization = value.trim().to_owned(),
-                    _ => {}
-                }
-            }
-            let mut body = vec![0; length];
-            reader.read_exact(&mut body).unwrap();
-            let made = record
-                .lock()
-                .unwrap()
-                .iter()
-                .any(|asked| asked.method == "POST");
-            let answer = match method.as_str() {
-                "POST" => pr.clone(),
-                _ if made => serde_json::json!({"values": [pr.clone()]}),
-                _ => serde_json::json!({"values": []}),
-            };
-            record.lock().unwrap().push(Asked {
-                method,
-                target,
-                authorization,
-                body: String::from_utf8_lossy(&body).into_owned(),
-            });
-            let answer = answer.to_string();
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
-                answer.len()
-            );
-        }
-    });
-    (address, asked)
+        let made = before.iter().any(|asked| asked.method == "POST");
+        let answer = match request.method.as_str() {
+            "POST" => pr,
+            _ if made => serde_json::json!({"values": [pr]}),
+            _ => serde_json::json!({"values": []}),
+        };
+        (200, answer.to_string())
+    })
 }
 
 #[test]
@@ -360,7 +301,7 @@ fn a_bitbucket_pull_request_by_hand_is_a_draft_through_its_api_with_the_token() 
     assert!(
         requests
             .iter()
-            .all(|asked| asked.authorization == "Bearer test-token"),
+            .all(|asked| asked.header("authorization") == Some("Bearer test-token")),
         "{requests:?}"
     );
     let listed = &requests[0];
@@ -377,7 +318,7 @@ fn a_bitbucket_pull_request_by_hand_is_a_draft_through_its_api_with_the_token() 
         .find(|asked| asked.method == "POST")
         .expect("a pull request made");
     assert_eq!(made.target, "/repositories/ws/app/pullrequests");
-    let body: serde_json::Value = serde_json::from_str(&made.body).unwrap();
+    let body = made.json();
     assert_eq!(body["draft"], true);
     assert_eq!(body["title"], "Fix the login redirect");
     assert_eq!(body["source"]["branch"]["name"], "feature");

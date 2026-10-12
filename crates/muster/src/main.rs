@@ -66,8 +66,9 @@ enum Commands {
     /// request in a container. Hidden; its code is kept.
     #[command(subcommand, hide = true)]
     Run(RunCommand),
-    /// Credentials the autopilot's runs need, kept in the macOS Keychain.
-    #[command(subcommand, hide = true)]
+    /// Sign-ins and tokens Muster keeps in the macOS Keychain: for Jira, Linear,
+    /// Bitbucket, and the autopilot's runs.
+    #[command(subcommand)]
     Auth(AuthCommand),
 }
 
@@ -75,6 +76,7 @@ enum Commands {
 enum AuthCommand {
     /// Store the Claude Code token runs' agents use: make one with
     /// `claude setup-token`, then paste it when asked.
+    #[command(hide = true)]
     Claude,
     /// Store an API token for Bitbucket, for pull requests: pasted when
     /// asked, not shown, or piped in.
@@ -82,6 +84,25 @@ enum AuthCommand {
         /// The Bitbucket: `bitbucket.org`, or a Data Center's host.
         #[arg(long, default_value = "bitbucket.org")]
         host: String,
+    },
+    /// Sign in to Jira Cloud through Atlassian in your browser, for the
+    /// tickets of projects whose `[tickets]` say `tracker = "jira"`; or,
+    /// with --token, store a token for a site (Jira Data Center too).
+    Jira {
+        /// Store a token instead of signing in in the browser.
+        #[arg(long)]
+        token: bool,
+        /// The site the token is for: `acme.atlassian.net`, or a Data
+        /// Center's address.
+        #[arg(long)]
+        site: Option<String>,
+    },
+    /// Sign in to Linear in your browser; or, with --token, store a
+    /// personal API key.
+    Linear {
+        /// Store a personal API key instead of signing in in the browser.
+        #[arg(long)]
+        token: bool,
     },
 }
 
@@ -298,6 +319,12 @@ fn main() -> ExitCode {
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
             Some(Commands::Auth(AuthCommand::Bitbucket { host })) => {
                 return auth::bitbucket(&host).await;
+            }
+            Some(Commands::Auth(AuthCommand::Jira { token, site })) => {
+                return auth::jira(token, site.as_deref()).await;
+            }
+            Some(Commands::Auth(AuthCommand::Linear { token })) => {
+                return auth::linear(token).await;
             }
             Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
