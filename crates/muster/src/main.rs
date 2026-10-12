@@ -2,6 +2,7 @@
 //! the daemon if none is running; its subcommands run the daemon and drive it
 //! from scripts.
 
+mod auth;
 mod commands;
 mod runs;
 
@@ -75,6 +76,13 @@ enum AuthCommand {
     /// Store the Claude Code token runs' agents use: make one with
     /// `claude setup-token`, then paste it when asked.
     Claude,
+    /// Store an API token for Bitbucket, for pull requests: pasted when
+    /// asked, not shown, or piped in.
+    Bitbucket {
+        /// The Bitbucket: `bitbucket.org`, or a Data Center's host.
+        #[arg(long, default_value = "bitbucket.org")]
+        host: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -288,6 +296,9 @@ fn main() -> ExitCode {
                 commands::remove_session(&socket, &session).await
             }
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
+            Some(Commands::Auth(AuthCommand::Bitbucket { host })) => {
+                return auth::bitbucket(&host).await;
+            }
             Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
             Some(Commands::Review { worktree }) => commands::review(&socket, &worktree).await,

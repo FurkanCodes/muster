@@ -16,6 +16,7 @@ mod hooks;
 mod pty;
 mod resources;
 mod runs;
+mod secrets;
 mod server;
 mod service;
 mod supervisor;
@@ -40,6 +41,20 @@ use muster_core::Paths;
 use tokio::net::UnixListener;
 
 pub use crate::runs::credentials::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
+
+/// Keeps `value` in the Keychain for `account`, as `muster auth` does:
+/// handed to `security` on its standard input, never a command line.
+pub async fn keep_secret(account: &str, value: &str) -> std::io::Result<()> {
+    use crate::secrets::Secrets as _;
+    secrets::Keychain
+        .set(account, &secrets::Token::new(value))
+        .await
+}
+
+/// The Keychain account for Bitbucket's token for `host`.
+pub fn bitbucket_account(host: &str) -> String {
+    githost::bitbucket::account(host)
+}
 
 use crate::clock::{Clock, SystemClock};
 use crate::store::{Store, StoreError, StoreHandle};
@@ -162,7 +177,10 @@ pub async fn run(
         config_dir: paths.config_dir.clone(),
         credentials,
         docker: "docker".to_owned(),
-        hosts: Arc::new(githost::choose::ServiceHosts),
+        hosts: Arc::new(githost::choose::ServiceHosts {
+            secrets: Arc::new(secrets::Keychain),
+            http: service::http_client(),
+        }),
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));

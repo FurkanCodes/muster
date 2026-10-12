@@ -8,10 +8,12 @@ publish.workspace = true
 [dependencies]
 axum.workspace = true
 portable-pty.workspace = true
+reqwest.workspace = true
 vt100.workspace = true
 muster-client.workspace = true
 muster-core.workspace = true
 muster-state.workspace = true
+futures-util.workspace = true
 nix.workspace = true
 rusqlite.workspace = true
 serde.workspace = true

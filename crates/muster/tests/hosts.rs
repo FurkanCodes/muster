@@ -209,3 +209,228 @@ fn a_project_whose_remote_names_no_host_says_what_to_write() {
     );
     assert!(listed.contains("[tickets] tracker"), "{listed}");
 }
+
+/// One request the stand-in Bitbucket was sent.
+#[derive(Clone, Debug)]
+struct Asked {
+    method: String,
+    target: String,
+    authorization: String,
+    body: String,
+}
+
+/// Stands in for Bitbucket Cloud's API on a local port: lists the
+/// branch's open pull requests (none until one is made), makes one (#17),
+/// and records every request.
+fn fake_bitbucket() -> (String, std::sync::Arc<std::sync::Mutex<Vec<Asked>>>) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Asked>::new()));
+    let record = asked.clone();
+    std::thread::spawn(move || {
+        let pr = serde_json::json!({
+            "id": 17, "state": "OPEN", "draft": true,
+            "links": {"html": {"href": "https://bitbucket.org/ws/app/pull-requests/17"}},
+        });
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let mut parts = line.split_whitespace();
+            let (method, target) = (
+                parts.next().unwrap_or_default().to_owned(),
+                parts.next().unwrap_or_default().to_owned(),
+            );
+            let (mut length, mut authorization) = (0, String::new());
+            loop {
+                let mut header = String::new();
+                reader.read_line(&mut header).unwrap();
+                let header = header.trim_end();
+                if header.is_empty() {
+                    break;
+                }
+                let (name, value) = header.split_once(':').unwrap_or((header, ""));
+                match name.to_ascii_lowercase().as_str() {
+                    "content-length" => length = value.trim().parse().unwrap_or(0),
+                    "authorization" => authorization = value.trim().to_owned(),
+                    _ => {}
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let made = record
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|asked| asked.method == "POST");
+            let answer = match method.as_str() {
+                "POST" => pr.clone(),
+                _ if made => serde_json::json!({"values": [pr.clone()]}),
+                _ => serde_json::json!({"values": []}),
+            };
+            record.lock().unwrap().push(Asked {
+                method,
+                target,
+                authorization,
+                body: String::from_utf8_lossy(&body).into_owned(),
+            });
+            let answer = answer.to_string();
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                answer.len()
+            );
+        }
+    });
+    (address, asked)
+}
+
+#[test]
+fn a_bitbucket_pull_request_by_hand_is_a_draft_through_its_api_with_the_token() {
+    let (api, asked) = fake_bitbucket();
+    let sandbox = Sandbox::new()
+        .with_env("MUSTER_BITBUCKET_API", &api)
+        .with_env("BITBUCKET_TOKEN", "test-token");
+    let root = sandbox.repository("app");
+    let pushed = root.parent().unwrap().join("pushed.git");
+    git(
+        root.parent().unwrap(),
+        &[
+            "clone",
+            "--bare",
+            "--quiet",
+            root.to_str().unwrap(),
+            pushed.to_str().unwrap(),
+        ],
+    );
+    // The remote names Bitbucket Cloud's repository; pushes go to a local
+    // one instead.
+    git(
+        &root,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://bitbucket.org/ws/app.git",
+        ],
+    );
+    let local = pushed.to_str().unwrap();
+    git(
+        &root,
+        &[
+            "config",
+            &format!("url.{local}.pushInsteadOf"),
+            "https://bitbucket.org/ws/app.git",
+        ],
+    );
+    let _daemon = sandbox.start();
+    assert!(
+        sandbox
+            .run(&["project", "add", root.to_str().unwrap()])
+            .status
+            .success()
+    );
+    assert!(
+        sandbox
+            .run(&["worktree", "add", "app", "--branch", "feature"])
+            .status
+            .success()
+    );
+    let tree = sandbox.root().join("worktrees/app/feature");
+    std::fs::write(tree.join("fix.txt"), "fixed\n").unwrap();
+    git(&tree, &["add", "fix.txt"]);
+    git(
+        &tree,
+        &["commit", "--quiet", "--message", "Fix the login redirect"],
+    );
+
+    let opened = sandbox.run(&["pr", "feature"]);
+    assert!(opened.status.success(), "{}", said(&opened));
+    assert_eq!(
+        String::from_utf8_lossy(&opened.stdout),
+        "Draft pull request #17: https://bitbucket.org/ws/app/pull-requests/17\n"
+    );
+    assert_eq!(
+        git(&pushed, &["log", "-1", "--format=%s", "feature"]),
+        "Fix the login redirect"
+    );
+    let requests = asked.lock().unwrap().clone();
+    assert!(
+        requests
+            .iter()
+            .all(|asked| asked.authorization == "Bearer test-token"),
+        "{requests:?}"
+    );
+    let listed = &requests[0];
+    assert_eq!(listed.method, "GET");
+    assert!(
+        listed
+            .target
+            .starts_with("/repositories/ws/app/pullrequests?q="),
+        "{listed:?}"
+    );
+    assert!(listed.target.contains("feature"), "{listed:?}");
+    let made = requests
+        .iter()
+        .find(|asked| asked.method == "POST")
+        .expect("a pull request made");
+    assert_eq!(made.target, "/repositories/ws/app/pullrequests");
+    let body: serde_json::Value = serde_json::from_str(&made.body).unwrap();
+    assert_eq!(body["draft"], true);
+    assert_eq!(body["title"], "Fix the login redirect");
+    assert_eq!(body["source"]["branch"]["name"], "feature");
+    assert_eq!(body["destination"]["branch"]["name"], "main");
+
+    // Again: found, not made twice.
+    let again = sandbox.run(&["pr", "feature"]);
+    assert!(again.status.success(), "{}", said(&again));
+    let made = asked
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|asked| asked.method == "POST")
+        .count();
+    assert_eq!(made, 1);
+}
+
+#[test]
+fn without_a_bitbucket_token_it_says_how_to_give_one_before_pushing() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    git(
+        &root,
+        &["remote", "add", "origin", "git@bitbucket.org:ws/app.git"],
+    );
+    let _daemon = sandbox.start();
+    assert!(
+        sandbox
+            .run(&["project", "add", root.to_str().unwrap()])
+            .status
+            .success()
+    );
+    assert!(
+        sandbox
+            .run(&["worktree", "add", "app", "--branch", "feature"])
+            .status
+            .success()
+    );
+    let refused = sandbox.run(&["pr", "feature"]);
+    assert!(!refused.status.success());
+    let refused = said(&refused);
+    assert!(
+        refused.contains("no Bitbucket token for bitbucket.org"),
+        "{refused}"
+    );
+    assert!(
+        refused.contains("muster auth bitbucket --host bitbucket.org"),
+        "{refused}"
+    );
+    // Its tickets are not Bitbucket's, which keeps none any more.
+    let tickets = said(&sandbox.run(&["issue", "list", "app"]));
+    assert!(
+        tickets.contains("Bitbucket has no issue tracker"),
+        "{tickets}"
+    );
+}

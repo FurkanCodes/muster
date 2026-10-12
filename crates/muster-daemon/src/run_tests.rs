@@ -197,7 +197,10 @@ async fn spawn_with(
         credentials: Arc::new(FixedCredentials(secret)),
         docker: docker.display().to_string(),
         // Never reached here: pull requests by hand are tested end to end.
-        hosts: Arc::new(crate::githost::choose::ServiceHosts),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts {
+            secrets: Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
     })
     .await
     .unwrap()

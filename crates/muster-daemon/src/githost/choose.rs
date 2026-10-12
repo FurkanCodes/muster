@@ -7,8 +7,10 @@ use muster_core::config::HostKind;
 use muster_core::remote::Remote;
 
 use super::GitHost;
+use super::bitbucket::Bitbucket;
 use super::github::GitHub;
 use super::gitlab::GitLab;
+use crate::secrets::Secrets;
 use crate::service::{BoxFuture, Origin, ProjectPlace, ServiceError};
 
 /// Finds each project's git host: the real ones in use, a fake in tests.
@@ -20,8 +22,12 @@ pub(crate) trait Hosts: Send + Sync + std::fmt::Debug {
 }
 
 /// The git hosts in use.
-#[derive(Debug, Default)]
-pub(crate) struct ServiceHosts;
+#[derive(Debug)]
+pub(crate) struct ServiceHosts {
+    /// The tokens for hosts reached by their APIs: Bitbucket.
+    pub(crate) secrets: Arc<dyn Secrets>,
+    pub(crate) http: reqwest::Client,
+}
 
 impl Hosts for ServiceHosts {
     fn for_project(
@@ -35,9 +41,16 @@ impl Hosts for ServiceHosts {
                 HostKind::GitHub => Arc::new(GitHub),
                 HostKind::GitLab => Arc::new(GitLab),
                 HostKind::Bitbucket => {
-                    return Err(ServiceError::NotConfigured(
-                        "Bitbucket is not yet supported".to_owned(),
-                    ));
+                    let remote = origin.remote().ok_or_else(|| {
+                        ServiceError::NotConfigured(format!(
+                            "{}; Bitbucket's pull requests need the repository's address",
+                            origin.why_untold("pull requests")
+                        ))
+                    })?;
+                    Arc::new(
+                        Bitbucket::for_remote(remote, self.secrets.as_ref(), self.http.clone())
+                            .await?,
+                    )
                 }
             };
             Ok(host)

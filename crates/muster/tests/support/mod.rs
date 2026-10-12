@@ -278,6 +278,11 @@ impl Sandbox {
             // rather than replaces, are none in the tests.
             .env_remove("GEMINI_CLI_SYSTEM_DEFAULTS_PATH")
             .env_remove("OPENCODE_CONFIG_CONTENT")
+            // Nor the person's tokens for services reached by their APIs.
+            .env_remove("BITBUCKET_TOKEN")
+            .env_remove("JIRA_API_TOKEN")
+            .env_remove("JIRA_EMAIL")
+            .env_remove("LINEAR_API_KEY")
             .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
             .env("FAKE_GLAB_DIR", self.dir.path().join("fake-glab"))
             .env("FAKE_DOCKER_DIR", self.dir.path().join("fake-docker"))

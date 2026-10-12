@@ -14,6 +14,7 @@ use std::path::Path;
 
 use muster_core::PullRequest;
 
+pub(crate) mod bitbucket;
 pub(crate) mod choose;
 pub(crate) mod github;
 pub(crate) mod gitlab;

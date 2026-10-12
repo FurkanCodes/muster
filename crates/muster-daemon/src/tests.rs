@@ -40,7 +40,10 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
-        hosts: Arc::new(crate::githost::choose::ServiceHosts),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts {
+            secrets: Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
     })
     .await
     .unwrap()
@@ -323,7 +326,10 @@ async fn every_nth_measurement_is_kept_in_history() {
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
-        hosts: Arc::new(crate::githost::choose::ServiceHosts),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts {
+            secrets: Arc::new(crate::secrets::Kept::default()),
+            http: crate::service::http_client(),
+        }),
     })
     .await
     .unwrap();
