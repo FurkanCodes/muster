@@ -590,6 +590,11 @@ async fn live_jira_projects() {
     }
 }
 
+/// The person's own Jira site, for the live checks: `MUSTER_JIRA_SITE`.
+fn live_site() -> String {
+    std::env::var("MUSTER_JIRA_SITE").expect("MUSTER_JIRA_SITE: your Jira site")
+}
+
 /// How many tickets a query of the person's lists, read-only: `MUSTER_JQL=…
 /// cargo test -- --ignored live_jira_query`. It prints the count and keys.
 #[tokio::test]
@@ -608,7 +613,7 @@ async fn live_jira_query() {
         .await
         .unwrap();
     let jira = Jira {
-        site: Site::parse("acme.atlassian.net").unwrap(),
+        site: Site::parse(&live_site()).unwrap(),
         jql,
         mine: false,
         access: Access::Mcp {
@@ -621,7 +626,7 @@ async fn live_jira_query() {
 }
 
 /// How the person's own tickets' descriptions come and read, read-only:
-/// `cargo test -- --ignored live_jira_descriptions`. It prints each
+/// `MUSTER_JIRA_SITE=… cargo test -- --ignored live_jira_descriptions`. It prints each
 /// description's format, the tags it uses and whether any tag or
 /// reference is left after reading it as text; never ticket text.
 #[tokio::test]
@@ -639,7 +644,7 @@ async fn live_jira_descriptions_read_as_text() {
         .await
         .unwrap();
     let jira = Jira {
-        site: Site::parse("acme.atlassian.net").unwrap(),
+        site: Site::parse(&live_site()).unwrap(),
         jql: assigned_to_me("statusCategory != Done ORDER BY created DESC"),
         mine: true,
         access: Access::Mcp {
