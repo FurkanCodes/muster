@@ -16,12 +16,21 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "BSL-1.0",
+    # Rust's TLS stack (rustls, rustls-webpki, aws-lc-rs, untrusted), which
+    # reqwest uses for Jira, Linear and Bitbucket: OSI approved, permissive.
+    "ISC",
     "MIT",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
 ]
 confidence-threshold = 0.9
+
+# Data, not code: the Mozilla root certificates TLS checks servers against.
+# Allowed for that crate alone.
+[[licenses.exceptions]]
+crate = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]
 
 [licenses.private]
 # Muster's own crates are not published.
