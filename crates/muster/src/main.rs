@@ -95,7 +95,8 @@ enum IssueCommand {
     Start {
         project: String,
         number: u64,
-        /// What to run: `claude` or `shell`.
+        /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`
+        /// or `shell`.
         #[arg(long, default_value = "claude")]
         harness: String,
         /// Another agent on the issue, in a worktree of its own, rather
@@ -198,7 +199,8 @@ enum SessionCommand {
     /// for the project's own checkout).
     Start {
         worktree: String,
-        /// What to run: `shell` or `claude`.
+        /// What to run: `shell`, or a coding agent: `claude`, `codex`,
+        /// `gemini`, `opencode` or `copilot`.
         #[arg(long, default_value = "shell")]
         harness: String,
         #[arg(long)]

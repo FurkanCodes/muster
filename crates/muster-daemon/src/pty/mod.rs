@@ -13,7 +13,7 @@
 //! questions programs ask their terminal (see `queries`).
 
 mod cursor;
-mod progress;
+mod osc;
 mod queries;
 mod ring;
 
@@ -33,7 +33,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::Instant;
 
 use self::cursor::CursorTracker;
-use self::progress::ProgressScanner;
+use self::osc::{OscScanner, Report};
 use self::queries::{QueryScanner, Reply};
 use self::ring::{RING_CAPACITY, Replay, Ring};
 
@@ -59,10 +59,12 @@ pub(crate) struct SpawnSpec {
 }
 
 /// What a terminal reports to whoever started it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PtyEvent {
     /// The progress sequence turned busy or idle.
     Progress { busy: bool },
+    /// The program set its window title, as it may to say how it is doing.
+    Title(String),
     /// The process exited and all its output has been read; `end` is the
     /// position after its last byte and `size` the terminal's last size.
     Exited {
@@ -217,7 +219,7 @@ pub(crate) fn spawn(
         ring: Ring::starting_at(RING_CAPACITY, first_seq),
         live: Some(broadcast::channel(256).0),
         input: Some(input),
-        progress: ProgressScanner::default(),
+        osc: OscScanner::default(),
         queries: QueryScanner::default(),
         cursor: None,
         size: spec.size,
@@ -271,7 +273,7 @@ struct Actor {
     /// Dropped once the process has exited, which ends live streams.
     live: Option<broadcast::Sender<Chunk>>,
     input: Option<std::sync::mpsc::Sender<Vec<u8>>>,
-    progress: ProgressScanner,
+    osc: OscScanner,
     queries: QueryScanner,
     /// A screen for cursor-position answers, built at the first question.
     cursor: Option<CursorTracker>,
@@ -351,8 +353,11 @@ impl Actor {
                 Err(_) => break,
             }
         }
-        for busy in self.progress.scan(&data) {
-            events(PtyEvent::Progress { busy });
+        for report in self.osc.scan(&data) {
+            events(match report {
+                Report::Progress { busy } => PtyEvent::Progress { busy },
+                Report::Title(title) => PtyEvent::Title(title),
+            });
         }
         self.answer_queries(&data);
         let seq = self.ring.push(&data);

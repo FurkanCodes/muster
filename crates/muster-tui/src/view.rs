@@ -726,6 +726,9 @@ pub(crate) fn describe(status: SessionStatus) -> &'static str {
         SessionStatus::NeedsYou {
             reason: WaitReason::Startup,
         } => "needs you: asking before it starts",
+        SessionStatus::NeedsYou {
+            reason: WaitReason::Action,
+        } => "needs you: action required",
         SessionStatus::Finished => "finished",
         SessionStatus::Exited { success: true } => "exited",
         SessionStatus::Exited { success: false } => "exited with an error",

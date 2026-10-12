@@ -48,7 +48,7 @@ Ticket → Build → Check → Draft PR → Agent review → Ready for you → M
 - **PRD-10 — Local first.** No Muster server, no account, no telemetry. Muster talks only to the user's ticket sources, git host, container runtime and agent providers.
 - **PRD-11 — Measured claims.** Every claim about quality, speed or cost in the README is backed by a reproducible benchmark run committed to the repo.
 - **PRD-12 — Bounded cost.** Every run has a time limit and an attempt limit, and a cost limit where the harness reports cost. Hitting a limit stops the run and moves it to *Needs you*; it never silently keeps spending. Hands-on sessions show cost where reported but are never stopped by Muster.
-- **PRD-13 — Leave the user's setup alone.** Muster never edits the user's global agent configuration or adds files to their repository to make itself work. It passes what it needs at launch (for example Claude Code's `--settings`). Where a harness offers no such way, Muster runs it with less status detail rather than editing its config.
+- **PRD-13 — Leave the user's setup alone.** Muster never edits the user's global agent configuration or adds files to their repository to make itself work. It passes what it needs at launch: on the command line or in the environment (for example Claude Code's `--settings`), or as a file of Muster's own, in its private runtime directory, that the harness is pointed at for that session only (for example an OpenCode plugin). Where a harness offers no such way, Muster runs it with less status detail rather than editing its config.
 
 ## 5. Run stages (autopilot, set aside)
 
@@ -82,7 +82,7 @@ Terminal UI first (ratatui). The daemon exposes the same API to any client, so a
 |---|---|---|
 | Ticket sources | GitHub Issues (the person's `gh`) | Jira Cloud, Linear; how to reach them (their APIs, or the MCP servers agents already use) is open |
 | Git host | GitHub | GitLab |
-| Harnesses | Claude Code | Codex, OpenCode, others through config |
+| Harnesses | Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI (hands-on) | Others through config; headless runs beyond Claude Code |
 | Container runtime | Docker API (Docker Desktop, OrbStack, Colima on macOS; Docker Engine on Linux) | Podman |
 
 Each kind sits behind one interface from day one, so adding Jira or Codex never touches sessions or tickets.
@@ -105,6 +105,7 @@ Each milestone ends with a demo that works on a real repository, and with tests 
 5. **M5 — Many at once (with the autopilot; set aside).** Memory-aware scheduler, queue reasons, the Resources view, run limits (`PRD-12`).
    *Done when:* five runs on a machine that fits three run three, queue two with a visible reason, and finish all five.
 6. **M6 — More harnesses.** Codex and OpenCode, hands-on.
+   *Status (2026-10-12):* Codex, Gemini CLI, OpenCode and GitHub Copilot CLI start, report their state and resume, hands-on, beside Claude Code (`ARCHITECTURE.md` §7), each heard the way it allows without editing the person's config: Codex through its turn notice and its window title (its hooks need trust Muster does not give them), Gemini CLI through hooks in a defaults file of Muster's own, OpenCode through a plugin of Muster's own, Copilot CLI through a plugin folder of Muster's own. Checked against Codex 0.162.1, Gemini CLI 0.63.0, OpenCode 1.4.6 and Copilot CLI 1.0.95. Next: choosing the agent when assigning one to a ticket.
 7. **M7 — Benchmark and release.** (The benchmark below measured the autopilot; it is to be rethought for assigned agents.) A fixed task set (real closed issues with known fixes), run single-agent vs Muster; publish solve rate, time to ready and cost per merged PR. Write-up, demo video, `v0.1.0`.
 
 ## 9. Not in v1
@@ -129,7 +130,7 @@ Each milestone ends with a demo that works on a real repository, and with tests 
   - *Codex* documents `CODEX_API_KEY` for `codex exec`, with `--json` for JSONL events. Saved ChatGPT sign-in is described as an advanced option for trusted runners.
   - *Risk:* anything the agent runs — including the project's own tests — can read a credential held in the container's environment. OpenAI's own guidance warns against exposing the key to repository-controlled code. For `PRD-06`, the likely answer is a host-side credential proxy: the container gets only a per-run token for a local proxy (`ANTHROPIC_BASE_URL` / equivalent), and the proxy adds the real credential. M2 may start with per-exec environment variables on the user's own repositories, with the proxy required before running tickets from anyone else.
 - **Headless runs.** The architecture assumes run agents are headless with structured output, and interactive only on take-over (`ARCHITECTURE.md` §7). The container spike during M1 confirms it.
-- **Status for hands-on sessions without editing config.** Claude Code accepts hooks through `--settings` at launch (`PRD-13`). Other harnesses must be checked one by one; where none exists, status falls back to the terminal's progress signal and process state.
+- **Status for hands-on sessions without editing config.** Claude Code accepts hooks through `--settings` at launch (`PRD-13`). Checked one by one on 2026-10-12: Gemini CLI reads hooks from a defaults file named in its environment, OpenCode loads a plugin named in its environment, Copilot CLI loads a plugin folder named on its command line; Codex runs hooks passed at launch only once the person has trusted them, so Muster hears it through its turn notice and its window title instead. Where none of this works, status falls back to the terminal's progress signal and process state.
 - **Claude's trust prompt in every worktree.** Checked 2026-10-11 with Claude Code 2.1.296: accepting the prompt in a worktree records the trust against the repository's main checkout, so a repository's other worktrees, and later ones, are not asked again. The prompt therefore appears once per repository not yet trusted. Muster must not answer it or edit Claude's own files to avoid it (`PRD-13`). Claude Code runs no hook while it shows, so a session that has not announced its start within 10 s (it does in under a second) reads as *needs you: asking before it starts*, which also covers a sign-in or first-run setup.
 - **Background work at a turn's end.** Claude Code 2.1.291's `Stop` payload carries `background_tasks` (empty in the one capture so far). If it lists background shells and subagents still working, it could replace part of the subagent-drain timing in the status machine. Needs a capture with background work running.
 - **Heavy builds.** Android/Gradle in Linux containers needs a large image and several GB per build. Shared dependency caches between containers may be required for Lamphaus to be practical.

@@ -18,6 +18,8 @@ use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
 use tempfile::TempDir;
 
+pub(crate) mod agents;
+
 pub(crate) const BINARY: &str = env!("CARGO_BIN_EXE_muster");
 
 /// A scratch area: the daemon's runtime and data directories, and room for
@@ -107,11 +109,15 @@ impl Sandbox {
         let dir = tempfile::tempdir().unwrap();
         let bin = dir.path().join("bin");
         std::fs::create_dir_all(&bin).unwrap();
+        let agents = agents::AGENTS.map(|agent| (agent, agents::FAKE_AGENT));
         for (name, script) in [
             ("claude", FAKE_CLAUDE),
             ("gh", FAKE_GH),
             ("docker", FAKE_DOCKER),
-        ] {
+        ]
+        .into_iter()
+        .chain(agents)
+        {
             std::fs::write(bin.join(name), script).unwrap();
             std::fs::set_permissions(
                 bin.join(name),
@@ -122,6 +128,7 @@ impl Sandbox {
         std::fs::create_dir_all(dir.path().join("fake-gh")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-docker")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
+        std::fs::create_dir_all(dir.path().join("fake-agents")).unwrap();
         std::fs::create_dir_all(dir.path().join("claude-config/projects")).unwrap();
         Self {
             dir,
@@ -258,6 +265,11 @@ impl Sandbox {
                 ),
             )
             .env("FAKE_CLAUDE_DIR", self.dir.path().join("fake-claude"))
+            .env("FAKE_AGENT_DIR", self.dir.path().join("fake-agents"))
+            // The person's own settings for the agents, which Muster adds to
+            // rather than replaces, are none in the tests.
+            .env_remove("GEMINI_CLI_SYSTEM_DEFAULTS_PATH")
+            .env_remove("OPENCODE_CONFIG_CONTENT")
             .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
             .env("FAKE_DOCKER_DIR", self.dir.path().join("fake-docker"))
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))

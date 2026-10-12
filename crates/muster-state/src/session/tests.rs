@@ -787,3 +787,51 @@ fn news_from_before_a_slow_start_is_kept() {
         (SessionStatus::Finished, true)
     );
 }
+
+const NEEDS_ACTION: SessionStatus = SessionStatus::NeedsYou {
+    reason: WaitReason::Action,
+};
+
+#[test]
+fn a_display_that_says_it_waits_needs_the_person_until_it_stops() {
+    let mut session = Session::fresh();
+    session.send(Signal::Progress { busy: true });
+    assert_eq!(
+        session.send(Signal::Waiting { waiting: true }),
+        [status_effect(NEEDS_ACTION, true)]
+    );
+    // Said again, it is the same wait.
+    assert!(session.send(Signal::Waiting { waiting: true }).is_empty());
+    assert_eq!(
+        session.send(Signal::Waiting { waiting: false }),
+        [status_effect(SessionStatus::Running, false)]
+    );
+    session.send(Signal::Progress { busy: false });
+    assert_eq!(session.status(), SessionStatus::Finished);
+}
+
+#[test]
+fn a_display_waiting_closes_with_the_turn_and_keeps_a_hooked_prompt() {
+    let mut session = Session::running_turn();
+    session.send(Signal::Waiting { waiting: true });
+    session.hook(permission(Origin::Main));
+    assert_eq!(session.status(), NEEDS_PERMISSION);
+    // The display stops waiting: the permission asked through a hook stays.
+    session.send(Signal::Waiting { waiting: false });
+    assert_eq!(session.status(), NEEDS_PERMISSION);
+    // A turn's end closes the main agent's prompts.
+    session.send(Signal::Waiting { waiting: true });
+    session.hook(HookEvent::TurnEnded);
+    assert_eq!(session.status(), SessionStatus::Finished);
+}
+
+#[test]
+fn a_display_that_appears_has_started() {
+    let mut session = reporting(Start::Idle);
+    session.at(1);
+    session.send(Signal::Waiting { waiting: false });
+    assert_eq!(session.machine.next_deadline(), None);
+    session.now = session.start + Timing::default().start_grace;
+    assert!(session.send(Signal::Tick).is_empty());
+    assert_eq!(session.status(), SessionStatus::Fresh);
+}

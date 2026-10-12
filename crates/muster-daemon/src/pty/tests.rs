@@ -4,7 +4,7 @@ use std::time::Duration;
 use muster_core::protocol::TermSize;
 use tokio::time::timeout;
 
-use super::progress::ProgressScanner;
+use super::osc::{OscScanner, Report};
 use super::ring::{Replay, Ring};
 use super::{PtyEvent, PtyHandle, SpawnSpec, spawn};
 
@@ -70,13 +70,20 @@ fn a_position_from_nowhere_gets_everything_with_a_reset() {
 
 // Progress
 
-fn scan(scanner: &mut ProgressScanner, bytes: &[u8]) -> Vec<bool> {
-    scanner.scan(bytes)
+fn scan(scanner: &mut OscScanner, bytes: &[u8]) -> Vec<bool> {
+    scanner
+        .scan(bytes)
+        .into_iter()
+        .filter_map(|report| match report {
+            Report::Progress { busy } => Some(busy),
+            Report::Title(_) => None,
+        })
+        .collect()
 }
 
 #[test]
 fn progress_reports_are_found_with_either_terminator() {
-    let mut scanner = ProgressScanner::default();
+    let mut scanner = OscScanner::default();
     assert_eq!(scan(&mut scanner, b"text\x1b]9;4;3\x07more"), [true]);
     assert_eq!(scan(&mut scanner, b"\x1b]9;4;0\x1b\\"), [false]);
     assert_eq!(scan(&mut scanner, b"\x1b]9;4;1;50\x07"), [true]);
@@ -84,7 +91,7 @@ fn progress_reports_are_found_with_either_terminator() {
 
 #[test]
 fn only_changes_are_reported() {
-    let mut scanner = ProgressScanner::default();
+    let mut scanner = OscScanner::default();
     assert_eq!(
         scan(&mut scanner, b"\x1b]9;4;3\x07\x1b]9;4;1;20\x07"),
         [true]
@@ -94,7 +101,7 @@ fn only_changes_are_reported() {
 
 #[test]
 fn a_report_split_across_reads_is_still_found() {
-    let mut scanner = ProgressScanner::default();
+    let mut scanner = OscScanner::default();
     let report = b"\x1b]9;4;3\x07";
     let mut changes = Vec::new();
     for byte in report {
@@ -105,12 +112,33 @@ fn a_report_split_across_reads_is_still_found() {
 
 #[test]
 fn other_sequences_are_ignored() {
-    let mut scanner = ProgressScanner::default();
-    // A window title, a colour, a long hyperlink, and a malformed report.
-    let noise = b"\x1b]0;title\x07\x1b[31mred\x1b]8;;https://example.com/a/very/long/path\x07\x1b]9;4;x\x07";
+    let mut scanner = OscScanner::default();
+    // A colour, a long hyperlink, and a malformed report.
+    let noise = b"\x1b[31mred\x1b]8;;https://example.com/a/very/long/path\x07\x1b]9;4;x\x07";
     assert!(scan(&mut scanner, noise).is_empty());
     // An escape sequence that interrupts an OSC ends it.
     assert!(scan(&mut scanner, b"\x1b]9;4;3\x1b[0m\x07").is_empty());
+}
+
+#[test]
+fn titles_are_reported_as_they_change() {
+    let mut scanner = OscScanner::default();
+    assert_eq!(
+        scanner.scan(b"\x1b]0;\xe2\xa0\x8b Working\x07text\x1b]2;Ready\x1b\\"),
+        [
+            Report::Title("⠋ Working".to_owned()),
+            Report::Title("Ready".to_owned())
+        ]
+    );
+    // The same title again is no change; progress is still found beside it.
+    assert_eq!(
+        scanner.scan(b"\x1b]2;Ready\x07\x1b]9;4;3\x07"),
+        [Report::Progress { busy: true }]
+    );
+    // An empty title is a change, and one too long to be a status is not read.
+    assert_eq!(scanner.scan(b"\x1b]0;\x07"), [Report::Title(String::new())]);
+    let long = format!("\x1b]0;{}\x07", "x".repeat(600));
+    assert!(scanner.scan(long.as_bytes()).is_empty());
 }
 
 // The actor, with a real shell

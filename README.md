@@ -1,23 +1,23 @@
 # Muster
 
-**A terminal cockpit for coding agents.** Fetch your tickets, assign agents to them, and run Claude Code and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
+**A terminal cockpit for coding agents.** Fetch your tickets, assign agents to them, and run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
 > Status: the cockpit is built, tested and dogfooded; the Tickets screen takes a project's GitHub issues, with Jira Cloud and Linear to come. An autopilot that took tickets to reviewed pull requests in containers was built and set aside; its code is kept. See [PRODUCT.md](PRODUCT.md). No release yet.
 
 ## What it does
 
-- **Sessions in worktrees, or in your checkout.** Add a repository (or any folder), create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start Claude Code or a shell in it, or start one in the repository itself. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist. Branches shown follow what is checked out, also when you or an agent switch, and worktrees made or removed with plain git appear and go. A plain folder, not a git repository, works too: sessions and checks run in the folder, and worktrees, tickets, reviews and pull requests come once you make it one (`git init`).
-- **Live status, no screen scraping.** Claude Code reports through hooks passed on its command line (`--settings`), never written into your repository or your Claude settings. Muster shows each session as running, finished, or *needs you* (a permission prompt or a question), with a dot for news you have not seen. A running session's mark spins, what needs you pulses, and a session's line flashes for a moment as it finishes or comes to need you, so what is moving stands out; `MUSTER_MOTION=off` keeps them still.
+- **Sessions in worktrees, or in your checkout.** Add a repository (or any folder), create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start a coding agent (Claude Code, Codex, Gemini CLI, OpenCode or Copilot CLI) or a shell in it, or start one in the repository itself. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist. Branches shown follow what is checked out, also when you or an agent switch, and worktrees made or removed with plain git appear and go. A plain folder, not a git repository, works too: sessions and checks run in the folder, and worktrees, tickets, reviews and pull requests come once you make it one (`git init`).
+- **Live status, no screen scraping.** Each agent reports the way it allows without touching your setup: Claude Code through hooks passed on its command line (`--settings`); Gemini CLI, OpenCode and Copilot CLI through hooks or a plugin in a file of Muster's own that they are pointed at for the session; Codex through its turn notice and its window title. Nothing is written into your repository or your agents' settings. Muster shows each session as running, finished, or *needs you* (a permission prompt or a question), with a dot for news you have not seen. A running session's mark spins, what needs you pulses, and a session's line flashes for a moment as it finishes or comes to need you, so what is moving stands out; `MUSTER_MOTION=off` keeps them still.
 - **Needs you.** One queue of everything waiting on you: questions first, then news, oldest first. While your terminal window is in the background, Muster tells you as something comes to need you, with a desktop notification where your terminal shows them (iTerm2, WezTerm, Ghostty, kitty) and its bell elsewhere; `MUSTER_NOTIFY=off` turns that off.
 - **A real terminal per session, beside the list.** Work in any session to the right of the list, or full screen, as you would in your own terminal: the daemon answers the program's terminal questions, and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys).
-- **Survives restarts.** Sessions belong to the daemon. After a daemon restart, Claude Code sessions resume with `--resume`; one that cannot falls back to a fresh start.
+- **Survives restarts.** Sessions belong to the daemon. After a daemon restart, agent sessions resume their conversations (`--resume`, `codex resume`, `opencode --session`); one that cannot falls back to a fresh start.
 - **Tickets.** A screen of each project's open tickets (GitHub issues, through your `gh`) with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<n>-<title>`, starts Claude Code there, and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file an issue. More agents on the same ticket get worktrees of their own. When the work is done, close the ticket from Muster (`x`, after asking; it is closed with your `gh`) and let it close the ticket's agents and remove its worktrees, keeping the branches. That is the only change Muster makes in the tracker.
 - **The stages by hand.** On any worktree: run the project's checks as a session, have Claude Code review the change in plan mode, or push the branch and open a draft pull request.
 - **Resources.** Memory and CPU for each session's whole process tree, and the machine's memory.
 
 ## Install and run
 
-Muster runs on macOS and Linux. You need git, Rust 1.95 or newer to build it, and — for the features that use them — Claude Code and the GitHub CLI (`gh`), signed in.
+Muster runs on macOS and Linux. You need git, Rust 1.95 or newer to build it, and — for the features that use them — the agents you want to run (Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI) and the GitHub CLI (`gh`), signed in.
 
 ```bash
 cargo install --locked --path crates/muster
@@ -38,10 +38,10 @@ muster
 | `f` | the selected session full screen |
 | `a` | add a project |
 | `w` | new worktree for the selected project |
-| `n` | new session in the selected worktree, or on a project in its own checkout: Claude Code with an optional first prompt, or a shell (`⇥` switches) |
+| `n` | new session in the selected worktree, or on a project in its own checkout: a coding agent with an optional first prompt, or a shell (`⇥` `⇧⇥` choose; it offers the one you last started first) |
 | `i` | the Tickets screen, on the selected project |
 | `s` | stop a session; it stays listed, for `r` |
-| `r` | start an ended session again: Claude Code resumes its conversation, a shell starts afresh |
+| `r` | start an ended session again: an agent resumes its conversation, a shell starts afresh |
 | `x` | close the selected session: a running one after asking once (it stops, then leaves the list), an ended one at once; or, after asking, the selected worktree, or a project (Muster forgets it; its files are untouched) |
 | `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `v` | have Claude Code review the selected worktree's change, in plan mode (it changes nothing) |

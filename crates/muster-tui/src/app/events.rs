@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use muster_core::WorkspaceId;
 use muster_core::protocol::{ClientFrame, Command};
 
-use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
+use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View, harness_choice};
 use crate::input::{Edit, LineInput};
 use crate::keys::{encode_key, encode_paste};
 use crate::model::Row;
@@ -88,17 +88,20 @@ impl App {
             actions.extend(self.show(view));
             return actions;
         }
-        // Claude Code suspends itself on Ctrl+Z and waits for a shell's `fg`;
-        // a session has no shell above it, so the key would only freeze it.
-        let is_claude = self
+        // A coding agent suspends itself on Ctrl+Z and waits for a shell's
+        // `fg`; a session has no shell above it, so the key would only
+        // freeze it.
+        let suspends = self
             .model
             .session(session)
-            .is_some_and(|stored| matches!(stored.harness.as_str(), "claude" | "review"));
-        if is_claude
+            .and_then(|stored| harness_choice::suspends_itself(&stored.harness));
+        if let Some(agent) = suspends
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && key.code == KeyCode::Char('z')
         {
-            self.complain("Ctrl+Z would freeze Claude Code here, so it was not sent. Ctrl-Q goes back to the list.");
+            self.complain(format!(
+                "Ctrl+Z would freeze {agent} here, so it was not sent. Ctrl-Q goes back to the list."
+            ));
             return Vec::new();
         }
         let screen = self.screen(session);
@@ -360,7 +363,7 @@ impl App {
                     harness: if in_container {
                         HarnessChoice::Shell
                     } else {
-                        HarnessChoice::Claude
+                        self.last_harness
                     },
                     prompt: LineInput::default(),
                 });
@@ -505,9 +508,10 @@ impl App {
                 mut prompt,
             } => {
                 if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
-                    let harness = match harness {
-                        HarnessChoice::Claude => HarnessChoice::Shell,
-                        HarnessChoice::Shell => HarnessChoice::Claude,
+                    let harness = if key.code == KeyCode::Tab {
+                        harness.next()
+                    } else {
+                        harness.previous()
                     };
                     self.mode = Mode::Dialog(Dialog::NewSession {
                         workspace,
@@ -516,20 +520,22 @@ impl App {
                     });
                     return Vec::new();
                 }
-                let edit = match harness {
-                    HarnessChoice::Claude => prompt.handle(key),
+                let edit = if harness.is_agent() {
+                    prompt.handle(key)
+                } else {
                     // A shell takes no prompt: only Enter and Esc matter.
-                    HarnessChoice::Shell => match key.code {
+                    match key.code {
                         KeyCode::Enter => Edit::Submit,
                         KeyCode::Esc => Edit::Cancel,
                         _ => Edit::Ignored,
-                    },
+                    }
                 };
                 match edit {
                     Edit::Submit => {
                         self.mode = Mode::Browse;
+                        self.last_harness = harness;
                         let prompt = Some(prompt.text().trim().to_owned())
-                            .filter(|p| !p.is_empty() && harness == HarnessChoice::Claude);
+                            .filter(|p| !p.is_empty() && harness.is_agent());
                         let command = Command::StartSession {
                             workspace,
                             harness: harness.id().to_owned(),

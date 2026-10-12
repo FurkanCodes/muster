@@ -390,20 +390,54 @@ fn a_reply_that_arrives_before_its_delta_still_selects_and_opens() {
 }
 
 #[test]
-fn tab_switches_a_new_session_to_a_shell_which_takes_no_prompt() {
+fn tab_goes_round_the_harnesses_and_a_shell_takes_no_prompt() {
+    let mut world = world();
+    world.app.selected = Some(Row::Worktree(world.worktree.id));
+    let started = |world: &mut World, keys: &[KeyCode]| {
+        press(&mut world.app, KeyCode::Char('n'));
+        for key in keys {
+            press(&mut world.app, *key);
+        }
+        typed(&mut world.app, "a prompt");
+        let (_, sent) = command(&press(&mut world.app, KeyCode::Enter));
+        let Command::StartSession {
+            harness, prompt, ..
+        } = sent
+        else {
+            panic!("expected StartSession");
+        };
+        (harness, prompt)
+    };
+    // ⇥ from Claude Code: Codex, with the prompt.
+    assert_eq!(
+        started(&mut world, &[KeyCode::Tab]),
+        ("codex".to_owned(), Some("a prompt".to_owned()))
+    );
+    // The dialog opens on the harness last started: ⇥ ⇥ from Codex is
+    // OpenCode.
+    assert_eq!(
+        started(&mut world, &[KeyCode::Tab, KeyCode::Tab]),
+        ("opencode".to_owned(), Some("a prompt".to_owned()))
+    );
+    // ⇧⇥ goes back, round to a shell, which takes no prompt.
+    let back = [KeyCode::BackTab; 4];
+    assert_eq!(started(&mut world, &back), ("shell".to_owned(), None));
+}
+
+#[test]
+fn the_new_session_dialog_offers_every_harness() {
     let mut world = world();
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     press(&mut world.app, KeyCode::Char('n'));
-    press(&mut world.app, KeyCode::Tab);
-    typed(&mut world.app, "ignored");
-    let (_, sent) = command(&press(&mut world.app, KeyCode::Enter));
-    let Command::StartSession {
-        harness, prompt, ..
-    } = sent
-    else {
-        panic!("expected StartSession");
-    };
-    assert_eq!((harness.as_str(), prompt), ("shell", None));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("Run  Claude Code  Codex  Gemini CLI  OpenCode  Copilot CLI  Shell "),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("⇥ ⇧⇥ choose   ⏎ start   esc cancel"),
+        "{screen}"
+    );
 }
 
 #[test]
@@ -558,7 +592,7 @@ fn a_long_error_wraps_instead_of_being_cut_off() {
 }
 
 #[test]
-fn ctrl_z_is_held_back_from_claude_but_reaches_a_shell() {
+fn ctrl_z_is_held_back_from_every_agent_but_reaches_a_shell() {
     let mut world = world();
     let claude = Session {
         harness: "claude".to_owned(),
@@ -575,6 +609,20 @@ fn ctrl_z_is_held_back_from_claude_but_reaches_a_shell() {
     // The next key clears the message.
     press(&mut world.app, KeyCode::Char('a'));
     assert!(world.app.note.is_none());
+
+    // Every coding agent is held back the same way, by its own name.
+    world.app.on_key(ctrl(']'));
+    let codex = Session {
+        harness: "codex".to_owned(),
+        ..session(world.worktree.id, "Codex", 8)
+    };
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(codex.clone())));
+    world.app.selected = Some(Row::Session(codex.id));
+    press(&mut world.app, KeyCode::Enter);
+    assert!(world.app.on_key(ctrl('z')).is_empty());
+    assert!(render(&world.app).contains("Ctrl+Z would freeze Codex"));
 
     world.app.on_key(ctrl(']'));
     world.app.selected = Some(Row::Session(world.session.id));

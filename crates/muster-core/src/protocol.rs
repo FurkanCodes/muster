@@ -17,7 +17,8 @@
 //! containers as workspaces, and taking a run over; version 8 handing a
 //! person's branch to the autopilot; version 9 the checks by hand; version
 //! 10 a review and a draft pull request by hand; version 11 a ticket's
-//! text, and another agent on a ticket; version 12 closing a ticket.
+//! text, and another agent on a ticket; version 12 closing a ticket; version
+//! 13 more harnesses, and a wait their own display reports (`WaitReason::Action`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -31,9 +32,9 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 12;
+pub const PROTOCOL_VERSION: u32 = 13;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 12;
+pub const MIN_PROTOCOL_VERSION: u32 = 13;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

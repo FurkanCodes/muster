@@ -191,7 +191,7 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     // keys.
     ui.keys(b"n");
     ui.wait_for("New session");
-    ui.keys(b"\t");
+    ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
     ui.wait_for("Ctrl-Q back to the list");
 
@@ -239,7 +239,7 @@ fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
     ui.wait_for("Added the project.");
     ui.keys(b"n");
     ui.wait_for("New session");
-    ui.keys(b"\t");
+    ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
     ui.wait_for("Ctrl-Q back to the list");
     ui.keys(b"echo first-$((6*7))\r");
@@ -302,7 +302,7 @@ fn a_plain_folder_is_added_from_the_ui_and_a_session_runs_in_it() {
     // Enter on the project: a session in the folder.
     ui.keys(b"\r");
     ui.wait_for("In notes");
-    ui.keys(b"\t");
+    ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
     ui.wait_for("Ctrl-Q back to the list");
     ui.keys(b"pwd; echo folder-$((6*7))\r");
@@ -403,7 +403,7 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     // n on the project: a shell in its own checkout, beside the list.
     ui.keys(b"n");
     ui.wait_for("New session");
-    ui.keys(b"\t");
+    ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
     ui.wait_for("Ctrl-Q back to the list");
     ui.keys(b"seq 1 300\r");
