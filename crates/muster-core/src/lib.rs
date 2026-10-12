@@ -6,6 +6,7 @@
 pub mod config;
 pub mod entities;
 pub mod frame;
+pub mod html;
 pub mod ids;
 pub mod paths;
 pub mod protocol;

@@ -15,6 +15,7 @@
 use std::sync::Arc;
 
 use muster_core::config::{Tickets, TrackerKind};
+use muster_core::html;
 use muster_core::text::{multi_line, one_line};
 use muster_core::{Issue, TicketKey};
 use serde::{Deserialize, Serialize};
@@ -474,8 +475,9 @@ fn unwrapped(answer: &Value) -> &Value {
         .unwrap_or(answer)
 }
 
-/// The text of a description: plain text, or Atlassian's document format
-/// with its text nodes joined, paragraphs on lines of their own.
+/// The text of a description: plain text; the HTML Atlassian's MCP
+/// server gives, as text; or Atlassian's document format with its text
+/// nodes joined, paragraphs on lines of their own.
 pub(crate) fn description_text(value: &Value) -> String {
     fn walk(node: &Value, out: &mut String) {
         if let Some(text) = node.get("text").and_then(Value::as_str) {
@@ -498,6 +500,7 @@ pub(crate) fn description_text(value: &Value) -> String {
         }
     }
     match value {
+        Value::String(text) if html::looks_like_html(text) => html::to_text(text),
         Value::String(text) => text.clone(),
         Value::Null => String::new(),
         node => {
