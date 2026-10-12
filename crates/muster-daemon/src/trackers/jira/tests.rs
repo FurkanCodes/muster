@@ -678,8 +678,11 @@ async fn live_jira_descriptions_read_as_text() {
         });
         let reference_left =
             read.contains("&#") || read.contains("&amp;") || read.contains("&quot;");
+        // How many credentials Muster would hide: a count, never them.
+        let (_, hidden) = muster_core::credentials::hide(&read);
         println!(
-            "{}: {format}, {} characters read, tags left {tag_left}, references left {reference_left}",
+            "{}: {format}, {} characters read, tags left {tag_left}, references left \
+             {reference_left}, credentials hidden {hidden}",
             issue.key,
             read.chars().count()
         );

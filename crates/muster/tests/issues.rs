@@ -174,6 +174,53 @@ async fn starting_an_issue_makes_its_worktree_and_hands_claude_the_issue_as_data
 }
 
 #[tokio::test]
+async fn a_token_pasted_into_an_issue_reaches_neither_the_screen_nor_the_agent() {
+    let setup = setup().await;
+    // Made up, in the shapes people paste: a curl with its headers.
+    let token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZGEiLCJleHAiOjk5fQ.c2lnbmF0dXJlLWZvci10ZXN0cw";
+    let key = "00000000-0000-4000-8000-000000000000";
+    std::fs::write(
+        setup.sandbox.fake_gh().join("issue-42.json"),
+        json!({"number": 42, "title": "Fix the login redirect", "url": "https://github.com/o/app/issues/42",
+               "labels": [], "author": {"login": "furkan"},
+               "body": format!("Repro:\ncurl -H 'authorization: Bearer {token}' -H 'x-api-key: {key}' https://api.example.com")})
+        .to_string(),
+    )
+    .unwrap();
+    let mut connection = setup.daemon.connect().await;
+    let Reply::IssueViewed { body, .. } = connection
+        .command(Command::ViewIssue {
+            project: setup.project,
+            key: muster_core::TicketKey::number(42),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected IssueViewed");
+    };
+    assert_eq!(
+        body,
+        "Repro:\ncurl -H 'authorization: Bearer [hidden by Muster]' -H 'x-api-key: [hidden by Muster]' https://api.example.com"
+    );
+
+    let (_, session) = start_issue(&mut connection, setup.project, 42)
+        .await
+        .unwrap();
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let prompt = launch.args.last().unwrap();
+    assert!(prompt.contains("x-api-key: [hidden by Muster]"), "{prompt}");
+    for secret in [token, key] {
+        assert!(!prompt.contains(secret), "the agent was handed {secret}");
+        assert!(
+            !std::fs::read_to_string(setup.sandbox.daemon_log())
+                .unwrap_or_default()
+                .contains(secret),
+            "{secret} is in the daemon's log"
+        );
+    }
+}
+
+#[tokio::test]
 async fn starting_the_same_issue_again_reuses_its_worktree() {
     let setup = setup().await;
     let mut connection = setup.daemon.connect().await;

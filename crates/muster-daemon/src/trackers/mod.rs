@@ -60,6 +60,51 @@ pub(crate) trait Trackers: Send + Sync + std::fmt::Debug {
     ) -> BoxFuture<'_, Result<Arc<dyn TicketSource>, ServiceError>>;
 }
 
+/// A tracker whose tickets have their credentials hidden before anything
+/// else sees them (`muster_core::credentials`, `PRD-06`): the screen, an
+/// agent's first prompt, a run. Someone may have pasted a token into a
+/// ticket; Muster is not to pass it on. The ticket in the tracker is left
+/// as it is, and only how many were hidden is logged.
+#[derive(Debug)]
+pub(crate) struct Hidden(pub(crate) Arc<dyn TicketSource>);
+
+/// `issue` with any credential in its title hidden.
+fn hide_in(mut issue: Issue) -> Issue {
+    issue.title = muster_core::credentials::hide(&issue.title).0;
+    issue
+}
+
+impl TicketSource for Hidden {
+    fn describe(&self) -> String {
+        self.0.describe()
+    }
+
+    fn only_mine(&self) -> bool {
+        self.0.only_mine()
+    }
+
+    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
+        Box::pin(async move { Ok(self.0.list().await?.into_iter().map(hide_in).collect()) })
+    }
+
+    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, ServiceError>> {
+        Box::pin(async move {
+            let mut detail = self.0.view(key).await?;
+            detail.issue = hide_in(detail.issue);
+            let (body, hidden) = muster_core::credentials::hide(&detail.body);
+            if hidden > 0 {
+                tracing::info!(%key, hidden, "hid credentials in a ticket's text");
+            }
+            detail.body = body;
+            Ok(detail)
+        })
+    }
+
+    fn close<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<(), ServiceError>> {
+        self.0.close(key)
+    }
+}
+
 /// One tracker for every project, as tests use.
 #[cfg(test)]
 #[derive(Debug)]
@@ -189,6 +234,73 @@ mod tests {
         let end = format!("\n----- end of issue #42 {fence} -----");
         assert_eq!(prompt.matches(&end).count(), 1);
         assert!(prompt.ends_with(&end));
+    }
+
+    /// One ticket whose text carries a token, as pasted in.
+    #[derive(Debug)]
+    struct Pasted;
+
+    impl TicketSource for Pasted {
+        fn describe(&self) -> String {
+            "Jira (acme.atlassian.net)".to_owned()
+        }
+
+        fn only_mine(&self) -> bool {
+            true
+        }
+
+        fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
+            Box::pin(async {
+                Ok(vec![
+                    detail(
+                        "APP-7",
+                        "Rotate ghp_abcdefghijklmnopqrstuvwxyz0123",
+                        "",
+                        TrackerKind::Jira,
+                    )
+                    .issue,
+                ])
+            })
+        }
+
+        fn view<'a>(
+            &'a self,
+            _key: &'a TicketKey,
+        ) -> BoxFuture<'a, Result<IssueDetail, ServiceError>> {
+            Box::pin(async {
+                Ok(detail(
+                    "APP-7",
+                    "Search returns nothing",
+                    "curl -H 'x-api-key: 00000000-0000-4000-8000-000000000000' https://api.example.com",
+                    TrackerKind::Jira,
+                ))
+            })
+        }
+
+        fn close<'a>(&'a self, _key: &'a TicketKey) -> BoxFuture<'a, Result<(), ServiceError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn a_ticket_s_credentials_are_hidden_before_anything_sees_them() {
+        let hidden = Hidden(Arc::new(Pasted));
+        let key = TicketKey::parse("APP-7").unwrap();
+        let detail = hidden.view(&key).await.unwrap();
+        assert_eq!(
+            detail.body,
+            "curl -H 'x-api-key: [hidden by Muster]' https://api.example.com"
+        );
+        // So the agent's first prompt never has it either.
+        let prompt = issue_prompt(&detail, "f00d");
+        assert!(!prompt.contains("00000000-0000-4000"), "{prompt}");
+        assert!(prompt.contains("[hidden by Muster]"));
+        let listed = hidden.list().await.unwrap();
+        assert_eq!(listed[0].title, "Rotate [hidden by Muster]");
+        // The rest is the tracker's own.
+        assert_eq!(hidden.describe(), "Jira (acme.atlassian.net)");
+        assert!(hidden.only_mine());
+        hidden.close(&key).await.unwrap();
     }
 
     #[test]

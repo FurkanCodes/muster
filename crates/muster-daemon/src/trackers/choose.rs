@@ -11,7 +11,7 @@ use super::github::GitHubIssues;
 use super::gitlab::GitLabIssues;
 use super::jira::Jira;
 use super::linear::Linear;
-use super::{BoxFuture, ProjectPlace, ServiceError, TicketSource, Trackers};
+use super::{BoxFuture, Hidden, ProjectPlace, ServiceError, TicketSource, Trackers};
 use crate::secrets::Secrets;
 use crate::service::Origin;
 
@@ -50,7 +50,9 @@ impl Trackers for ServiceTrackers {
                         .await?
                 }
             };
-            Ok(source)
+            // Nothing reads a ticket but through this: its credentials go.
+            let hidden: Arc<dyn TicketSource> = Arc::new(Hidden(source));
+            Ok(hidden)
         })
     }
 }
