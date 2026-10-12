@@ -19,6 +19,7 @@ use nix::unistd::Pid;
 use tempfile::TempDir;
 
 pub(crate) mod agents;
+mod services;
 
 pub(crate) const BINARY: &str = env!("CARGO_BIN_EXE_muster");
 
@@ -114,6 +115,7 @@ impl Sandbox {
             ("claude", FAKE_CLAUDE),
             ("gh", FAKE_GH),
             ("docker", FAKE_DOCKER),
+            ("glab", services::FAKE_GLAB),
         ]
         .into_iter()
         .chain(agents)
@@ -126,6 +128,7 @@ impl Sandbox {
             .unwrap();
         }
         std::fs::create_dir_all(dir.path().join("fake-gh")).unwrap();
+        std::fs::create_dir_all(dir.path().join("fake-glab")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-docker")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-agents")).unwrap();
@@ -276,6 +279,7 @@ impl Sandbox {
             .env_remove("GEMINI_CLI_SYSTEM_DEFAULTS_PATH")
             .env_remove("OPENCODE_CONFIG_CONTENT")
             .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
+            .env("FAKE_GLAB_DIR", self.dir.path().join("fake-glab"))
             .env("FAKE_DOCKER_DIR", self.dir.path().join("fake-docker"))
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))
             // Runs never reach the person's own credential: not the

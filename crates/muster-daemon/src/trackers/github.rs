@@ -9,7 +9,7 @@ use muster_core::text::{multi_line, one_line};
 use muster_core::{Issue, TicketKey};
 use serde::Deserialize;
 
-use super::{BoxFuture, IssueDetail, TicketSource, TrackerError};
+use super::{BoxFuture, IssueDetail, ServiceError, TicketSource};
 use crate::github::{GitHubError, gh_with};
 
 /// How many open issues a listing shows.
@@ -68,13 +68,13 @@ impl GhIssue {
 }
 
 /// The issue's number: GitHub numbers its issues.
-fn number(key: &TicketKey) -> Result<String, TrackerError> {
+fn number(key: &TicketKey) -> Result<String, ServiceError> {
     key.as_number()
         .map(|number| number.to_string())
-        .ok_or_else(|| TrackerError::NotFound(format!("{key} is not a GitHub issue's number")))
+        .ok_or_else(|| ServiceError::NotFound(format!("{key} is not a GitHub issue's number")))
 }
 
-fn unreadable(error: serde_json::Error) -> TrackerError {
+fn unreadable(error: serde_json::Error) -> ServiceError {
     GitHubError::Unreadable(error.to_string()).into()
 }
 
@@ -83,7 +83,7 @@ impl TicketSource for GitHubIssues {
         TrackerKind::GitHub.name().to_owned()
     }
 
-    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, TrackerError>> {
+    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
             let json = gh_with(
                 &self.root,
@@ -108,7 +108,7 @@ impl TicketSource for GitHubIssues {
         })
     }
 
-    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, TrackerError>> {
+    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, ServiceError>> {
         Box::pin(async move {
             let number = number(key)?;
             let json = gh_with(
@@ -128,7 +128,7 @@ impl TicketSource for GitHubIssues {
         })
     }
 
-    fn close<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<(), TrackerError>> {
+    fn close<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<(), ServiceError>> {
         Box::pin(async move {
             let number = number(key)?;
             gh_with(&self.root, &["issue", "close", &number], None).await?;
@@ -168,7 +168,7 @@ mod tests {
         assert_eq!(number(&TicketKey::number(42)).unwrap(), "42");
         assert!(matches!(
             number(&TicketKey::parse("APP-1").unwrap()),
-            Err(TrackerError::NotFound(_))
+            Err(ServiceError::NotFound(_))
         ));
     }
 }

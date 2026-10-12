@@ -31,7 +31,7 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
-use crate::githost::GitHost;
+use crate::githost::choose::Hosts;
 use crate::harness::Harness;
 use crate::hooks::HookDelivery;
 use crate::pty::{PtyEvent, PtyHandle};
@@ -229,8 +229,8 @@ pub(crate) struct Settings {
     pub(crate) credentials: Arc<dyn Credentials>,
     /// The `docker` command, for sessions in runs' containers.
     pub(crate) docker: String,
-    /// Where pull requests opened by hand go.
-    pub(crate) git_host: Arc<dyn GitHost>,
+    /// Each project's git host, for pull requests opened by hand.
+    pub(crate) hosts: Arc<dyn Hosts>,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -269,7 +269,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         config_dir: settings.config_dir,
         credentials: settings.credentials,
         docker: settings.docker,
-        git_host: settings.git_host,
+        hosts: settings.hosts,
     };
     supervisor.ensure_checkouts().await;
     // Runs first: a session in a run's container needs its run.
@@ -340,7 +340,7 @@ struct Supervisor {
     config_dir: PathBuf,
     credentials: Arc<dyn Credentials>,
     docker: String,
-    git_host: Arc<dyn GitHost>,
+    hosts: Arc<dyn Hosts>,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
 }

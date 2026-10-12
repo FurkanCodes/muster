@@ -19,7 +19,7 @@ use crate::runs::credentials::{FixedCredentials, Secret};
 use crate::runs::{Report, Reports, RunContext, RunWork};
 use crate::store::{Store, StoreHandle};
 use crate::supervisor::{self, SupervisorHandle};
-use crate::trackers::{Fixed, IssueDetail, TicketSource, TrackerError};
+use crate::trackers::{Fixed, IssueDetail, ServiceError, TicketSource};
 
 #[derive(Debug)]
 struct FixedClock;
@@ -39,11 +39,11 @@ impl TicketSource for OneIssue {
         "GitHub issues".to_owned()
     }
 
-    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, TrackerError>> {
+    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async { Ok(vec![issue()]) })
     }
 
-    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, TrackerError>> {
+    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, ServiceError>> {
         Box::pin(async move {
             if key.as_number() == Some(42) {
                 Ok(IssueDetail {
@@ -52,14 +52,14 @@ impl TicketSource for OneIssue {
                     tracker: muster_core::config::TrackerKind::GitHub,
                 })
             } else {
-                Err(TrackerError::NotFound(format!(
+                Err(ServiceError::NotFound(format!(
                     "Could not resolve to an Issue with the number of {key}."
                 )))
             }
         })
     }
 
-    fn close<'a>(&'a self, _key: &'a TicketKey) -> BoxFuture<'a, Result<(), TrackerError>> {
+    fn close<'a>(&'a self, _key: &'a TicketKey) -> BoxFuture<'a, Result<(), ServiceError>> {
         Box::pin(async { Ok(()) })
     }
 }
@@ -197,7 +197,7 @@ async fn spawn_with(
         credentials: Arc::new(FixedCredentials(secret)),
         docker: docker.display().to_string(),
         // Never reached here: pull requests by hand are tested end to end.
-        git_host: Arc::new(crate::githost::GitHub),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts),
     })
     .await
     .unwrap()

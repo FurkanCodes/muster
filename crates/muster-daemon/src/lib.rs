@@ -10,12 +10,14 @@ mod containers;
 mod git;
 mod githost;
 mod github;
+mod glab;
 mod harness;
 mod hooks;
 mod pty;
 mod resources;
 mod runs;
 mod server;
+mod service;
 mod supervisor;
 mod terminal;
 mod trackers;
@@ -141,6 +143,7 @@ pub async fn run(
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
     let credentials: Arc<dyn runs::credentials::Credentials> =
         Arc::new(runs::credentials::PersonsCredentials);
+    // Runs, set aside, open their pull requests on GitHub.
     let git_host: Arc<dyn githost::GitHost> = Arc::new(githost::GitHub);
     let supervisor = supervisor::spawn(supervisor::Settings {
         store,
@@ -159,7 +162,7 @@ pub async fn run(
         config_dir: paths.config_dir.clone(),
         credentials,
         docker: "docker".to_owned(),
-        git_host,
+        hosts: Arc::new(githost::choose::ServiceHosts),
     })
     .await?;
     let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));

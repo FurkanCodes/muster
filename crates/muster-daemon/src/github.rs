@@ -27,9 +27,7 @@ pub(crate) enum GitHubError {
     Unreadable(String),
 }
 
-/// A future some trait methods return, so the traits can be used as objects.
-pub(crate) type BoxFuture<'a, T> =
-    std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+pub(crate) use crate::service::BoxFuture;
 
 /// Runs `gh` in `repo` with `input` on its stdin, if any; its output, or
 /// its complaint.

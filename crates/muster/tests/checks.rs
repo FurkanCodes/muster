@@ -152,6 +152,14 @@ async fn a_draft_pull_request_by_hand_pushes_the_branch_and_opens_or_finds_it() 
         &root,
         &["remote", "add", "origin", remote.to_str().unwrap()],
     );
+    // A local `origin` names no host: the project says it is GitHub.
+    std::fs::write(
+        root.join("muster.toml"),
+        "[pull_requests]\nhost = \"github\"\n",
+    )
+    .unwrap();
+    support::git(&root, &["add", "muster.toml"]);
+    support::git(&root, &["commit", "--quiet", "--message", "Name the host"]);
     let _daemon = sandbox.start();
     assert!(
         sandbox

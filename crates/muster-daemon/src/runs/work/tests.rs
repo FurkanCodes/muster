@@ -14,8 +14,8 @@ use tokio::sync::mpsc;
 
 use super::*;
 use crate::git::tests::{git, repository};
-use crate::github::{BoxFuture, GitHubError};
 use crate::runs::provision::tests::{RemoveOnDrop, test_image};
+use crate::service::{BoxFuture, ServiceError};
 
 /// Stands in for Claude Code in the container: a builder that commits
 /// (and fixes its work when told the checks failed), or, with
@@ -94,7 +94,7 @@ impl GitHost for FakeHost {
         base: &'a str,
         title: &'a str,
         _body: &'a str,
-    ) -> BoxFuture<'a, Result<PullRequest, GitHubError>> {
+    ) -> BoxFuture<'a, Result<PullRequest, ServiceError>> {
         self.opened
             .lock()
             .unwrap()
@@ -111,7 +111,7 @@ impl GitHost for FakeHost {
         &'a self,
         _root: &'a Path,
         number: u64,
-    ) -> BoxFuture<'a, Result<(), GitHubError>> {
+    ) -> BoxFuture<'a, Result<(), ServiceError>> {
         self.ready.lock().unwrap().push(number);
         Box::pin(async { Ok(()) })
     }
@@ -120,7 +120,7 @@ impl GitHost for FakeHost {
         &'a self,
         _root: &'a Path,
         _number: u64,
-    ) -> BoxFuture<'a, Result<(), GitHubError>> {
+    ) -> BoxFuture<'a, Result<(), ServiceError>> {
         Box::pin(async { Ok(()) })
     }
 
@@ -129,7 +129,7 @@ impl GitHost for FakeHost {
         _root: &'a Path,
         _number: u64,
         body: &'a str,
-    ) -> BoxFuture<'a, Result<(), GitHubError>> {
+    ) -> BoxFuture<'a, Result<(), ServiceError>> {
         self.comments.lock().unwrap().push(body.to_owned());
         Box::pin(async { Ok(()) })
     }
@@ -138,7 +138,7 @@ impl GitHost for FakeHost {
         &'a self,
         _root: &'a Path,
         _number: u64,
-    ) -> BoxFuture<'a, Result<PrState, GitHubError>> {
+    ) -> BoxFuture<'a, Result<PrState, ServiceError>> {
         Box::pin(async { Ok(PrState::Open) })
     }
 }

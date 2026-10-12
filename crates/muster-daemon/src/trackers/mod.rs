@@ -10,76 +10,17 @@
 
 pub(crate) mod choose;
 pub(crate) mod github;
+pub(crate) mod gitlab;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use muster_core::config::TrackerKind;
-use muster_core::protocol::{ErrorBody, ErrorCode};
 use muster_core::{Issue, TicketKey};
 
-pub(crate) use crate::github::BoxFuture;
-use crate::github::GitHubError;
+pub(crate) use crate::service::{BoxFuture, ProjectPlace, ServiceError};
 
 /// The most of a ticket's text put in a prompt.
 const MAX_BODY: usize = 20_000;
-
-/// Why a tracker could not answer.
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum TrackerError {
-    /// The project does not say where its tickets are, and its remote does
-    /// not tell.
-    #[error("{0}")]
-    NotConfigured(String),
-    /// The person is not signed in, or their sign-in has run out.
-    #[error("{0}")]
-    NotSignedIn(String),
-    #[error("{0}")]
-    NotFound(String),
-    /// The tracker refused: a permission, a bad query.
-    #[error("{0}")]
-    Refused(String),
-    /// The tracker, or the program reaching it, could not be reached.
-    #[error("{0}")]
-    Unavailable(String),
-    #[error("{0}")]
-    Unreadable(String),
-}
-
-impl TrackerError {
-    /// The error as the protocol carries it.
-    pub(crate) fn body(&self) -> ErrorBody {
-        let code = match self {
-            Self::NotConfigured(_) | Self::NotSignedIn(_) | Self::Refused(_) => {
-                ErrorCode::BadRequest
-            }
-            Self::NotFound(_) => ErrorCode::NotFound,
-            Self::Unavailable(_) | Self::Unreadable(_) => ErrorCode::Internal,
-        };
-        ErrorBody::new(code, self.to_string())
-    }
-}
-
-impl From<GitHubError> for TrackerError {
-    fn from(error: GitHubError) -> Self {
-        let message = error.to_string();
-        match error {
-            GitHubError::Failed(text)
-                if text.contains("Could not resolve") || text.contains("not found") =>
-            {
-                Self::NotFound(message)
-            }
-            GitHubError::Failed(text) if text.contains("gh auth login") => {
-                Self::NotSignedIn(message)
-            }
-            GitHubError::Failed(_) => Self::Refused(message),
-            GitHubError::Missing | GitHubError::Spawn(_) | GitHubError::TimedOut => {
-                Self::Unavailable(message)
-            }
-            GitHubError::Unreadable(_) => Self::Unreadable(message),
-        }
-    }
-}
 
 /// A ticket with its text, for starting work on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -96,20 +37,12 @@ pub(crate) trait TicketSource: Send + Sync + std::fmt::Debug {
     /// (acme.atlassian.net)`.
     fn describe(&self) -> String;
     /// The open tickets, newest first.
-    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, TrackerError>>;
+    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>>;
     /// One ticket, with its text.
-    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, TrackerError>>;
+    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, ServiceError>>;
     /// Closes a ticket, because the person asked: the one change Muster
     /// makes in a tracker.
-    fn close<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<(), TrackerError>>;
-}
-
-/// A project, as its tracker is found for it.
-#[derive(Clone, Debug)]
-pub(crate) struct ProjectPlace {
-    pub(crate) root: PathBuf,
-    /// The person's overrides of its `muster.toml`.
-    pub(crate) overrides: PathBuf,
+    fn close<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<(), ServiceError>>;
 }
 
 /// Finds each project's tracker: the real ones in use, a fake in tests.
@@ -117,7 +50,7 @@ pub(crate) trait Trackers: Send + Sync + std::fmt::Debug {
     fn for_project(
         &self,
         place: ProjectPlace,
-    ) -> BoxFuture<'_, Result<Arc<dyn TicketSource>, TrackerError>>;
+    ) -> BoxFuture<'_, Result<Arc<dyn TicketSource>, ServiceError>>;
 }
 
 /// One tracker for every project, as tests use.
@@ -130,7 +63,7 @@ impl Trackers for Fixed {
     fn for_project(
         &self,
         _place: ProjectPlace,
-    ) -> BoxFuture<'_, Result<Arc<dyn TicketSource>, TrackerError>> {
+    ) -> BoxFuture<'_, Result<Arc<dyn TicketSource>, ServiceError>> {
         let source = self.0.clone();
         Box::pin(async move { Ok(source) })
     }
@@ -261,17 +194,19 @@ mod tests {
 
     #[test]
     fn gh_s_complaints_say_what_went_wrong() {
-        let not_found: TrackerError =
+        use crate::github::GitHubError;
+        use muster_core::protocol::ErrorCode;
+        let not_found: ServiceError =
             GitHubError::Failed("Could not resolve to an Issue".to_owned()).into();
         assert_eq!(not_found.body().code, ErrorCode::NotFound);
-        let signed_out: TrackerError = GitHubError::Failed(
+        let signed_out: ServiceError = GitHubError::Failed(
             "To get started with GitHub CLI, please run:  gh auth login".to_owned(),
         )
         .into();
-        assert!(matches!(signed_out, TrackerError::NotSignedIn(_)));
+        assert!(matches!(signed_out, ServiceError::NotSignedIn(_)));
         assert!(matches!(
-            TrackerError::from(GitHubError::Missing),
-            TrackerError::Unavailable(_)
+            ServiceError::from(GitHubError::Missing),
+            ServiceError::Unavailable(_)
         ));
     }
 }

@@ -4,11 +4,13 @@
 
 use std::sync::Arc;
 
-use muster_core::config::{HostKind, ProjectConfig, Tickets, TrackerKind};
+use muster_core::config::{HostKind, Tickets, TrackerKind};
 use muster_core::remote::Remote;
 
 use super::github::GitHubIssues;
-use super::{BoxFuture, ProjectPlace, TicketSource, TrackerError, Trackers};
+use super::gitlab::GitLabIssues;
+use super::{BoxFuture, ProjectPlace, ServiceError, TicketSource, Trackers};
+use crate::service::Origin;
 
 /// The trackers in use.
 #[derive(Debug, Default)]
@@ -18,17 +20,16 @@ impl Trackers for ServiceTrackers {
     fn for_project(
         &self,
         place: ProjectPlace,
-    ) -> BoxFuture<'_, Result<Arc<dyn TicketSource>, TrackerError>> {
+    ) -> BoxFuture<'_, Result<Arc<dyn TicketSource>, ServiceError>> {
         Box::pin(async move {
-            let config = settings(&place).await?;
-            let remote = crate::git::remote_url(&place.root)
-                .await
-                .and_then(|url| Remote::parse(&url));
-            let tracker = choose(&config.tickets, config.pull_requests.host, remote.as_ref())?;
+            let config = crate::service::settings(&place).await?;
+            let origin = crate::service::origin(&place.root).await;
+            let tracker = choose(&config.tickets, config.pull_requests.host, &origin)?;
             let source: Arc<dyn TicketSource> = match tracker {
                 TrackerKind::GitHub => Arc::new(GitHubIssues { root: place.root }),
-                TrackerKind::GitLab | TrackerKind::Jira | TrackerKind::Linear => {
-                    return Err(TrackerError::NotConfigured(format!(
+                TrackerKind::GitLab => Arc::new(GitLabIssues { root: place.root }),
+                TrackerKind::Jira | TrackerKind::Linear => {
+                    return Err(ServiceError::NotConfigured(format!(
                         "{} is not yet supported",
                         tracker.name()
                     )));
@@ -39,40 +40,27 @@ impl Trackers for ServiceTrackers {
     }
 }
 
-/// The project's settings, read off the loop.
-pub(crate) async fn settings(place: &ProjectPlace) -> Result<ProjectConfig, TrackerError> {
-    let (root, overrides) = (place.root.clone(), place.overrides.clone());
-    tokio::task::spawn_blocking(move || crate::config::load(&root, &overrides))
-        .await
-        .map_err(|error| TrackerError::Unavailable(error.to_string()))?
-        .map(|loaded| loaded.config)
-        .map_err(|error| TrackerError::NotConfigured(error.to_string()))
-}
-
 /// Which tracker a project's tickets are in: the one written, or the one
 /// its git host comes with, the host written or the remote's.
 pub(crate) fn choose(
     tickets: &Tickets,
     host: Option<HostKind>,
-    remote: Option<&Remote>,
-) -> Result<TrackerKind, TrackerError> {
+    origin: &Origin,
+) -> Result<TrackerKind, ServiceError> {
     if let Some(tracker) = tickets.tracker {
         return Ok(tracker);
     }
     const SAY: &str = "say where its tickets are with [tickets] tracker = \"github\", \"gitlab\", \
                        \"jira\" or \"linear\" in muster.toml";
-    let Some(host) = host.or_else(|| remote.and_then(Remote::kind)) else {
-        return Err(TrackerError::NotConfigured(match remote {
-            None => format!("this project has no git remote to find its tickets by; {SAY}"),
-            Some(remote) => format!(
-                "{} is not a host Muster knows by its name; {SAY}, or name its host with \
-                 [pull_requests] host",
-                remote.host
-            ),
+    let Some(host) = host.or_else(|| origin.remote().and_then(Remote::kind)) else {
+        let why = origin.why_untold("tickets");
+        return Err(ServiceError::NotConfigured(match origin {
+            Origin::Named(_) => format!("{why}; {SAY}, or name its host with [pull_requests] host"),
+            Origin::None | Origin::Unnamed => format!("{why}; {SAY}"),
         }));
     };
     host.own_tracker().ok_or_else(|| {
-        TrackerError::NotConfigured(format!(
+        ServiceError::NotConfigured(format!(
             "{} has no issue tracker of its own any more (its teams keep their tickets in \
              Jira); {SAY}",
             host.name()
@@ -84,8 +72,8 @@ pub(crate) fn choose(
 mod tests {
     use super::*;
 
-    fn remote(url: &str) -> Remote {
-        Remote::parse(url).unwrap()
+    fn remote(url: &str) -> Origin {
+        Origin::Named(Remote::parse(url).unwrap())
     }
 
     #[test]
@@ -95,38 +83,31 @@ mod tests {
             ..Tickets::default()
         };
         let github = remote("git@github.com:o/r.git");
-        assert_eq!(
-            choose(&jira, None, Some(&github)).unwrap(),
-            TrackerKind::Jira
-        );
+        assert_eq!(choose(&jira, None, &github).unwrap(), TrackerKind::Jira);
         let none = Tickets::default();
-        assert_eq!(
-            choose(&none, None, Some(&github)).unwrap(),
-            TrackerKind::GitHub
-        );
+        assert_eq!(choose(&none, None, &github).unwrap(), TrackerKind::GitHub);
         let gitlab = remote("https://gitlab.example.com/g/r");
-        assert_eq!(
-            choose(&none, None, Some(&gitlab)).unwrap(),
-            TrackerKind::GitLab
-        );
+        assert_eq!(choose(&none, None, &gitlab).unwrap(), TrackerKind::GitLab);
         // A host written wins over the remote's name.
         let own = remote("https://code.example.com/g/r");
         assert_eq!(
-            choose(&none, Some(HostKind::GitLab), Some(&own)).unwrap(),
+            choose(&none, Some(HostKind::GitLab), &own).unwrap(),
             TrackerKind::GitLab
+        );
+        assert_eq!(
+            choose(&none, Some(HostKind::GitHub), &Origin::Unnamed).unwrap(),
+            TrackerKind::GitHub
         );
     }
 
     #[test]
     fn where_nothing_tells_it_says_what_to_write() {
         let none = Tickets::default();
-        let message =
-            |remote: Option<&Remote>| choose(&none, None, remote).unwrap_err().to_string();
-        assert!(message(None).contains("no git remote"));
-        assert!(
-            message(Some(&remote("https://code.example.com/g/r"))).contains("[pull_requests] host")
-        );
-        let bitbucket = message(Some(&remote("git@bitbucket.org:ws/r.git")));
+        let message = |origin: &Origin| choose(&none, None, origin).unwrap_err().to_string();
+        assert!(message(&Origin::None).contains("no git remote"));
+        assert!(message(&Origin::Unnamed).contains("a local path"));
+        assert!(message(&remote("https://code.example.com/g/r")).contains("[pull_requests] host"));
+        let bitbucket = message(&remote("git@bitbucket.org:ws/r.git"));
         assert!(
             bitbucket.contains("Bitbucket has no issue tracker"),
             "{bitbucket}"

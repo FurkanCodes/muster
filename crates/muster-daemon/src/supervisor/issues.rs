@@ -15,7 +15,7 @@ use tokio::sync::oneshot;
 
 use super::{Request, Supervisor};
 use crate::harness;
-use crate::trackers::{self, IssueDetail, ProjectPlace, TrackerError};
+use crate::trackers::{self, IssueDetail, ProjectPlace, ServiceError};
 
 /// A ticket fetched for starting work, on its way back to the Supervisor.
 #[derive(Debug)]
@@ -24,7 +24,7 @@ pub(super) struct FetchedIssue {
     pub(super) harness: String,
     pub(super) size: TermSize,
     pub(super) another: bool,
-    pub(super) detail: Result<IssueDetail, TrackerError>,
+    pub(super) detail: Result<IssueDetail, ServiceError>,
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
 
@@ -61,7 +61,7 @@ impl Supervisor {
             let outcome = async {
                 let source = trackers.for_project(place).await?;
                 let issues = source.list().await?;
-                Ok::<_, TrackerError>(Reply::Issues {
+                Ok::<_, ServiceError>(Reply::Issues {
                     issues,
                     tracker: source.describe(),
                 })
@@ -93,7 +93,7 @@ impl Supervisor {
         tokio::spawn(async move {
             let outcome = async {
                 let detail = trackers.for_project(place).await?.view(&key).await?;
-                Ok::<_, TrackerError>(Reply::IssueViewed {
+                Ok::<_, ServiceError>(Reply::IssueViewed {
                     issue: detail.issue,
                     body: detail.body,
                 })
@@ -122,7 +122,7 @@ impl Supervisor {
         tokio::spawn(async move {
             let outcome = async {
                 trackers.for_project(place).await?.close(&key).await?;
-                Ok::<_, TrackerError>(Reply::Done)
+                Ok::<_, ServiceError>(Reply::Done)
             }
             .await
             .map_err(|error| error.body());

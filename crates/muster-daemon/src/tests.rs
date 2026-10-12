@@ -40,7 +40,7 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
-        git_host: Arc::new(crate::githost::GitHub),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts),
     })
     .await
     .unwrap()
@@ -323,7 +323,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
-        git_host: Arc::new(crate::githost::GitHub),
+        hosts: Arc::new(crate::githost::choose::ServiceHosts),
     })
     .await
     .unwrap();
