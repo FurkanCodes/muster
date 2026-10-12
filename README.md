@@ -2,7 +2,7 @@
 
 **A terminal cockpit for coding agents.** Fetch your tickets, assign agents to them, and run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
-> Status: the cockpit is built, tested and dogfooded; the Tickets screen takes a project's GitHub issues, with Jira Cloud and Linear to come. An autopilot that took tickets to reviewed pull requests in containers was built and set aside; its code is kept. See [PRODUCT.md](PRODUCT.md). No release yet.
+> Status: built, tested and used daily by its author. Tickets come from GitHub, GitLab, Jira and Linear; agents are Claude Code, Codex, Gemini CLI, OpenCode and Copilot CLI. An autopilot that took tickets to reviewed pull requests in containers was built and set aside; its code is kept. See [PRODUCT.md](PRODUCT.md). No release yet: build it from source.
 
 ## What it does
 
@@ -14,6 +14,16 @@
 - **Tickets, wherever they are.** A screen of each project's open tickets — GitHub or GitLab issues (through your `gh` or `glab`), Jira work items (Cloud or Data Center), or Linear issues — with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<key>-<title>` (`#42`'s, or `APP-7`'s), starts Claude Code there, and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file one. A credential someone pasted into a ticket (a token in a `curl` command, an API key, a password) is shown and handed on as `[hidden by Muster]`; the ticket itself is left as it is. More agents on the same ticket get worktrees of their own. When the work is done, close the ticket from Muster (`x`, after asking) and let it close the ticket's agents and remove its worktrees, keeping the branches. That is the only change Muster makes in a tracker.
 - **The stages by hand.** On any worktree: run the project's checks as a session, have Claude Code review the change in plan mode, or push the branch and open a draft pull request.
 - **Resources.** Memory and CPU for each session's whole process tree, and the machine's memory.
+
+## Security and privacy
+
+- **Local only.** No Muster server, account or telemetry. Muster talks only to your trackers, your git host and the agents you run.
+- **Your agents, your sign-ins.** Agents run as you, in your own environment, as if started in your terminal; Muster adds no credentials and never edits your agents' settings or your repository.
+- **Sign-ins in the Keychain.** Jira and Linear (browser sign-in through their MCP servers' OAuth) and API tokens are kept in the macOS Keychain, never in a file, the database or a log.
+- **Tickets are untrusted.** A ticket reaches an agent fenced off as data, never as instructions, and without its control characters. Credentials someone pasted into a ticket are replaced with `[hidden by Muster]` before the ticket is shown or handed to an agent.
+- **A private daemon.** The daemon's sockets are open to your user only, and every session's hooks carry a token of their own. The daemon runs apart from the UI, so closing a terminal never takes your sessions down.
+
+Found a security problem? Please open a private security advisory on GitHub rather than a public issue.
 
 ## Install and run
 
@@ -177,8 +187,12 @@ A Rust workspace of six crates around one rule: the daemon owns everything, and 
 cargo test --workspace
 ```
 
-The suite (over 550 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, clippy with warnings as errors, a 1,000-line file limit, `cargo deny`, and the tests on macOS and Linux.
+The suite (over 600 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, clippy with warnings as errors, a 1,000-line file limit, `cargo deny`, and the tests on macOS and Linux.
 
 ## Credits
 
 Muster learned from [Nebula](https://github.com/AgentSystemLabs/nebula) and adapts some of its code — terminal query answering, key encoding, Claude Code's hook events and transcript lookup — under the MIT license; see [NOTICE](NOTICE). The study that informed the design is in [docs/research/nebula-study.md](docs/research/nebula-study.md).
+
+## License
+
+[MIT](LICENSE).
