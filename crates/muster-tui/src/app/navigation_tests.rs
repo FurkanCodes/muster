@@ -1,4 +1,4 @@
-//! Getting about: the three screens as tabs, ⇥ round them, Ctrl and their
+//! Getting about: the four screens as tabs, ⇥ round them, Ctrl and their
 //! numbers straight to one from anywhere, Esc and Backspace back to the
 //! main one.
 
@@ -19,7 +19,7 @@ fn at(world: &mut World, view: View) {
 #[test]
 fn esc_and_backspace_go_back_to_the_main_screen_and_no_further() {
     for key in [KeyCode::Esc, KeyCode::Backspace] {
-        for from in [View::NeedsYou, View::Tickets] {
+        for from in [View::NeedsYou, View::Tickets, View::Settings] {
             let mut world = world();
             at(&mut world, from);
             press(&mut world.app, key);
@@ -63,6 +63,25 @@ fn ctrl_and_a_number_jumps_to_each_screen_from_any_of_them() {
     assert_eq!(world.app.view, View::NeedsYou);
     press(&mut world.app, KeyCode::Char('1'));
     assert_eq!(world.app.view, View::Sessions);
+    // Settings is 4 on the list, with Ctrl or without.
+    press(&mut world.app, KeyCode::Char('4'));
+    assert_eq!(world.app.view, View::Settings);
+    world.app.on_key(ctrl('1'));
+    world.app.on_key(ctrl('4'));
+    assert_eq!(world.app.view, View::Settings);
+}
+
+#[test]
+fn in_a_session_s_terminal_ctrl_4_leaves_the_keys_with_it() {
+    // Without the kitty protocol Ctrl+4 and Ctrl+\ are one byte, which a
+    // session's program may want: Settings is not taken from there.
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    press(&mut world.app, KeyCode::Enter);
+    world.app.on_key(ctrl('4'));
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    assert_eq!(world.app.view, View::Sessions);
 }
 
 #[test]
@@ -100,14 +119,19 @@ fn from_a_session_s_terminal_ctrl_and_a_number_gives_the_keys_back_there() {
 #[test]
 fn tab_goes_round_the_tabs_and_in_a_session_reaches_the_program() {
     let mut world = world();
-    for view in [View::NeedsYou, View::Tickets, View::Sessions] {
+    for view in [
+        View::NeedsYou,
+        View::Tickets,
+        View::Settings,
+        View::Sessions,
+    ] {
         press(&mut world.app, KeyCode::Tab);
         assert_eq!(world.app.view, view);
     }
     press(&mut world.app, KeyCode::BackTab);
-    assert_eq!(world.app.view, View::Tickets);
+    assert_eq!(world.app.view, View::Settings);
     press(&mut world.app, KeyCode::BackTab);
-    assert_eq!(world.app.view, View::NeedsYou);
+    assert_eq!(world.app.view, View::Tickets);
 
     // ⏎ goes into a session, where ⇥ is the program's: completion.
     world.app.view = View::Sessions;
@@ -162,6 +186,7 @@ fn the_top_bar_shows_the_screens_as_tabs_with_the_one_shown_marked() {
         (View::Sessions, "Sessions"),
         (View::NeedsYou, "Needs you"),
         (View::Tickets, "Tickets"),
+        (View::Settings, "Settings"),
     ] {
         at(&mut world, view);
         let mut terminal = Terminal::new(TestBackend::new(SIZE.cols, SIZE.rows + 1)).unwrap();
@@ -172,9 +197,12 @@ fn the_top_bar_shows_the_screens_as_tabs_with_the_one_shown_marked() {
         let top: String = (0..buffer.area.width)
             .map(|x| buffer[(x, 0)].symbol())
             .collect();
-        assert!(top.contains(" Sessions │ Needs you │ Tickets  ⇥"), "{top}");
+        assert!(
+            top.contains(" Sessions │ Needs you │ Tickets │ Settings  ⇥"),
+            "{top}"
+        );
         // Each tab's name is marked only while its screen is shown.
-        for other in ["Sessions", "Needs you", "Tickets"] {
+        for other in ["Sessions", "Needs you", "Tickets", "Settings"] {
             let at = top.find(other).unwrap();
             let column = u16::try_from(top[..at].chars().count()).unwrap();
             let marked = buffer[(column, 0)].modifier.contains(Modifier::REVERSED);

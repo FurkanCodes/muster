@@ -165,6 +165,7 @@ async fn jira_cloud_s_rest_api_lists_views_and_closes_with_a_token() {
     let jira = Jira {
         site: Site::parse("acme.atlassian.net").unwrap(),
         jql: project_query("APP"),
+        mine: false,
         access: Access::Rest {
             http: reqwest::Client::new(),
             api: format!("{base}/rest/api/3"),
@@ -293,6 +294,7 @@ async fn atlassian_s_mcp_server_lists_views_and_closes_on_the_site_s_cloud() {
     let jira = Jira {
         site: Site::parse("acme.atlassian.net").unwrap(),
         jql: "assignee = currentUser()".to_owned(),
+        mine: false,
         access: Access::Mcp {
             mcp: Mutex::new(mcp),
         },
@@ -507,6 +509,7 @@ async fn live_jira_lists_and_views_through_muster_s_own_code() {
     let jira = Jira {
         site: Site::parse(&site).unwrap(),
         jql: "created >= -90d ORDER BY created DESC".to_owned(),
+        mine: false,
         access: Access::Mcp {
             mcp: Mutex::new(mcp),
         },
@@ -596,6 +599,7 @@ async fn live_jira_query() {
     let jira = Jira {
         site: Site::parse("acme.atlassian.net").unwrap(),
         jql,
+        mine: false,
         access: Access::Mcp {
             mcp: Mutex::new(mcp),
         },

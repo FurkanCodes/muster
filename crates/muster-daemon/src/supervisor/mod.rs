@@ -14,6 +14,7 @@ mod issues;
 mod projects;
 mod runs;
 mod sessions;
+mod settings;
 mod terminals;
 mod worktrees;
 
@@ -383,6 +384,10 @@ impl Supervisor {
                 Command::CloseIssue { project, key } => {
                     self.close_issue(project, key, reply);
                 }
+                Command::ProjectSettings { project } => self.project_settings(project, reply),
+                Command::ChangeSetting { project, change } => {
+                    self.change_setting(project, change, reply);
+                }
                 Command::StartRun {
                     project,
                     number,
@@ -517,6 +522,8 @@ impl Supervisor {
             Command::ListIssues { .. }
             | Command::ViewIssue { .. }
             | Command::CloseIssue { .. }
+            | Command::ProjectSettings { .. }
+            | Command::ChangeSetting { .. }
             | Command::StartFromIssue { .. }
             | Command::StartRun { .. }
             | Command::TakeOverRun { .. }
@@ -692,6 +699,8 @@ fn command_name(command: &Command) -> &'static str {
         Command::ListIssues { .. } => "list issues",
         Command::ViewIssue { .. } => "view issue",
         Command::CloseIssue { .. } => "close issue",
+        Command::ProjectSettings { .. } => "project settings",
+        Command::ChangeSetting { .. } => "change setting",
         Command::StartRun { .. } => "start run",
         Command::CancelRun { .. } => "cancel run",
         Command::RetryRun { .. } => "retry run",

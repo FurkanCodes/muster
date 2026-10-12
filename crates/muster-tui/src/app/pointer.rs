@@ -100,7 +100,11 @@ impl App {
             MouseEventKind::Down(MouseButton::Left) => {
                 if areas.list.contains(at) {
                     self.select_at(areas.list, event.row);
-                } else if areas.preview.contains(at) {
+                } else if areas.preview.contains(at)
+                    && matches!(self.view, View::Sessions | View::NeedsYou)
+                {
+                    // A session's pane opens it; a ticket's or a setting's
+                    // details are only to read.
                     self.open_selected();
                 }
             }
@@ -128,6 +132,12 @@ impl App {
                 let rows = self.ticket_rows();
                 if let Some(index) = line_at(list, row, rows.len(), self.tickets_offset) {
                     self.tickets_selected = Some(rows[index].clone());
+                }
+            }
+            View::Settings => {
+                let rows = self.setting_rows();
+                if let Some(index) = line_at(list, row, rows.len(), self.settings_offset) {
+                    self.settings_selected = Some(rows[index]);
                 }
             }
         }

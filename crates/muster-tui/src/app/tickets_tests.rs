@@ -63,6 +63,7 @@ fn on_tickets() -> World {
         Ok(Reply::Issues {
             tracker: "GitHub issues".to_owned(),
             issues: vec![issue(42, "Fix the login redirect"), issue(7, "Dark mode")],
+            mine: false,
         }),
     );
     assert_eq!(
@@ -274,7 +275,11 @@ fn b_opens_the_ticket_in_the_browser_and_other_screens_keys_do_nothing_here() {
 fn tab_goes_from_the_tickets_screen_round_to_sessions_and_back() {
     let mut world = on_tickets();
     press(&mut world.app, KeyCode::Tab);
+    assert_eq!(world.app.view, View::Settings);
+    press(&mut world.app, KeyCode::Tab);
     assert_eq!(world.app.view, View::Sessions);
+    press(&mut world.app, KeyCode::BackTab);
+    assert_eq!(world.app.view, View::Settings);
     press(&mut world.app, KeyCode::BackTab);
     assert_eq!(world.app.view, View::Tickets);
 }

@@ -26,9 +26,10 @@ pub(crate) enum TicketRow {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Tickets {
     Loading,
-    /// The tickets, and where they came from: `GitHub issues`, `Jira
-    /// (acme.atlassian.net)`.
-    Loaded(Vec<Issue>, String),
+    /// The tickets, where they came from (`GitHub issues`, `Jira
+    /// (acme.atlassian.net)`), and whether they are only those assigned to
+    /// the person.
+    Loaded(Vec<Issue>, String, bool),
     /// Why they could not be fetched, as the tracker said.
     Failed(String),
 }
@@ -47,7 +48,7 @@ impl App {
         let mut rows = Vec::new();
         for project in self.model.projects() {
             rows.push(TicketRow::Project(project.id));
-            if let Some(Tickets::Loaded(tickets, _)) = self.tickets.get(&project.id) {
+            if let Some(Tickets::Loaded(tickets, ..)) = self.tickets.get(&project.id) {
                 rows.extend(
                     tickets
                         .iter()
@@ -61,7 +62,7 @@ impl App {
     /// The ticket a row is, as fetched.
     pub(crate) fn ticket(&self, project: ProjectId, key: &TicketKey) -> Option<&Issue> {
         match self.tickets.get(&project)? {
-            Tickets::Loaded(tickets, _) => tickets.iter().find(|ticket| ticket.key == *key),
+            Tickets::Loaded(tickets, ..) => tickets.iter().find(|ticket| ticket.key == *key),
             Tickets::Loading | Tickets::Failed(_) => None,
         }
     }
@@ -69,7 +70,7 @@ impl App {
     /// Where a project's tickets come from, once fetched.
     pub(crate) fn tracker_of(&self, project: ProjectId) -> &str {
         match self.tickets.get(&project) {
-            Some(Tickets::Loaded(_, tracker)) if !tracker.is_empty() => tracker,
+            Some(Tickets::Loaded(_, tracker, _)) if !tracker.is_empty() => tracker,
             _ => "its tracker",
         }
     }
@@ -179,7 +180,7 @@ impl App {
     /// still about, the person is offered to clean up after it.
     pub(super) fn ticket_closed(&mut self, project: ProjectId, key: TicketKey) {
         let tracker = self.tracker_of(project).to_owned();
-        if let Some(Tickets::Loaded(tickets, _)) = self.tickets.get_mut(&project) {
+        if let Some(Tickets::Loaded(tickets, ..)) = self.tickets.get_mut(&project) {
             tickets.retain(|ticket| ticket.key != key);
         }
         self.ticket_texts.remove(&(project, key.clone()));

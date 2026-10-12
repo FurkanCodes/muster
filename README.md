@@ -46,9 +46,10 @@ muster
 | `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `v` | have Claude Code review the selected worktree's change, in plan mode (it changes nothing) |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
-| `⇥` `⇧⇥` | the next or previous tab: *Sessions*, *Needs you*, *Tickets* |
+| `⇥` `⇧⇥` | the next or previous tab: *Sessions*, *Needs you*, *Tickets*, *Settings* |
 | `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
-| `esc` `⌫` | back to *Sessions* from *Needs you* or *Tickets* |
+| `4` | the *Settings* tab, from the list |
+| `esc` `⌫` | back to *Sessions* from the other tabs |
 | `q` | quit the UI (sessions keep running) |
 
 While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but one: **Shift-Q** gives the keys back to the list, and so does a click on it. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
@@ -60,6 +61,13 @@ While you type in a session, beside the list or full screen, every key goes to t
 | `b` | open the ticket in your browser |
 | `x` | close the ticket in its tracker, after asking; then, if you want, close its agents and remove its worktrees (the branches are kept) |
 | `r` | fetch the tickets again |
+
+| Key | On the *Settings* screen |
+|---|---|
+| `⏎` `space` | turn the selected setting on or off: for now, *Only my tickets*, per project, which lists only the tickets assigned to you, in whichever tracker the project's tickets are |
+| `r` | read the settings again, after editing a file by hand |
+
+A change on the *Settings* screen goes into your own settings for the project (`~/.config/muster/projects/<project id>.toml`, over its `muster.toml`; comments and the rest of the file are kept), never into the repository.
 
 The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the session beside it gives it the keys. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
 
@@ -115,7 +123,7 @@ muster session restart <session-id>
 
 ### Where tickets and pull requests are
 
-Muster tells from a project's git remote where it is hosted: GitHub, GitLab (`gitlab.com`, or a host named `gitlab.…`) or Bitbucket. GitHub's and GitLab's projects get their issues as tickets, and pull requests by hand (`muster pr`, `o`) go to the same host — through your `gh` or `glab`, signed in. A project says what its remote cannot in its `muster.toml` (or your local overrides of it, `muster project config`):
+Muster tells from a project's git remote where it is hosted: GitHub, GitLab (`gitlab.com`, or a host named `gitlab.…`) or Bitbucket. GitHub's and GitLab's projects get their issues as tickets, and pull requests by hand (`muster pr`, `o`) go to the same host — through your `gh` or `glab`, signed in. A project says what its remote cannot in its `muster.toml` (or your local overrides of it, `muster project config`; *Only my tickets* is also on the *Settings* screen):
 
 ```toml
 [tickets]

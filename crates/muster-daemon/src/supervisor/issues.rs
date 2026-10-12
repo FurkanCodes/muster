@@ -64,6 +64,7 @@ impl Supervisor {
                 Ok::<_, ServiceError>(Reply::Issues {
                     issues,
                     tracker: source.describe(),
+                    mine: source.only_mine(),
                 })
             }
             .await

@@ -235,24 +235,11 @@ pub(crate) async fn show_config(
             .map_or("no cost limit".to_owned(), |usd| format!("${usd:.2}"))
     );
     let tickets = &config.tickets;
-    let source = match tickets.tracker {
-        None => "as the git remote says".to_owned(),
-        Some(tracker) => {
-            let mut source = tracker.name().to_owned();
-            if let Some(site) = &tickets.site {
-                source.push_str(&format!(" at {}", shown(site)));
-            }
-            match (&tickets.jql, &tickets.project, &tickets.team) {
-                (Some(jql), _, _) => source.push_str(&format!(", {}", shown(jql))),
-                (None, Some(project), _) => {
-                    source.push_str(&format!(", project {}", shown(project)))
-                }
-                (None, None, Some(team)) => source.push_str(&format!(", team {}", shown(team))),
-                (None, None, None) => {}
-            }
-            source
-        }
-    };
+    let source = tickets
+        .written()
+        .map_or("as the git remote says".to_owned(), |written| {
+            shown(&written)
+        });
     let whose = if tickets.mine {
         ", assigned to you"
     } else {
@@ -433,11 +420,17 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
     let snapshot = connection.subscribe().await?;
     let project = find_project(&snapshot, project)?.id;
     let reply = connection.command(Command::ListIssues { project }).await?;
-    let Reply::Issues { issues, tracker } = reply else {
+    let Reply::Issues {
+        issues,
+        tracker,
+        mine,
+    } = reply
+    else {
         return Err(unexpected(&reply));
     };
     if issues.is_empty() {
-        println!("No open tickets in {}.", shown(&tracker));
+        let whose = if mine { " assigned to you" } else { "" };
+        println!("No open tickets{whose} in {}.", shown(&tracker));
     }
     for issue in issues {
         let labels = if issue.labels.is_empty() {

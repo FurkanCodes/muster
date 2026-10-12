@@ -14,6 +14,7 @@ use crate::model::Row;
 use crate::motion;
 
 mod dialogs;
+mod settings;
 mod tickets;
 
 /// The terminal area a session gets when it fills the screen: everything
@@ -94,11 +95,14 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         View::Sessions => draw_sessions(frame, app, list),
         View::NeedsYou => draw_needs_you(frame, app, list),
         View::Tickets => tickets::draw_tickets(frame, app, list),
+        View::Settings => settings::draw_settings(frame, app, list),
     }
     if let Mode::Terminal(session) = app.mode {
         draw_session(frame, app, session, preview, true);
     } else if app.view == View::Tickets {
         tickets::draw_ticket_details(frame, app, preview);
+    } else if app.view == View::Settings {
+        settings::draw_setting_details(frame, app, preview);
     } else {
         draw_preview(frame, app, preview);
     }
@@ -116,6 +120,7 @@ fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
         (View::Sessions, "Sessions"),
         (View::NeedsYou, "Needs you"),
         (View::Tickets, "Tickets"),
+        (View::Settings, "Settings"),
     ]
     .into_iter()
     .enumerate()
@@ -222,6 +227,11 @@ fn hints(app: &App) -> String {
         hints.extend(["⇥ next tab", "esc back", "q quit"]);
         return hints.join("  ");
     }
+    if app.view == View::Settings {
+        hints.extend(settings::hints(app));
+        hints.extend(["⇥ next tab", "esc back", "q quit"]);
+        return hints.join("  ");
+    }
     match (app.view, app.selected, session) {
         (_, _, Some(session)) if session.ended_at.is_none() => {
             hints.extend([
@@ -266,7 +276,7 @@ fn hints(app: &App) -> String {
     match app.view {
         View::Sessions => hints.extend(["a project", "⇥ next tab", "q quit"]),
         View::NeedsYou => hints.extend(["⇥ next tab", "esc back", "q quit"]),
-        View::Tickets => {}
+        View::Tickets | View::Settings => {}
     }
     hints.join("  ")
 }

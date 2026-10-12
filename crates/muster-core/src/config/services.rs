@@ -101,6 +101,25 @@ pub struct Tickets {
     pub mine: bool,
 }
 
+impl Tickets {
+    /// Where the tickets written down are, for the person: `Jira at
+    /// acme.atlassian.net, project APP`; `None` where no tracker is
+    /// written, and the git remote tells.
+    pub fn written(&self) -> Option<String> {
+        let mut source = self.tracker?.name().to_owned();
+        if let Some(site) = &self.site {
+            source.push_str(&format!(" at {site}"));
+        }
+        match (&self.jql, &self.project, &self.team) {
+            (Some(jql), _, _) => source.push_str(&format!(", {jql}")),
+            (None, Some(project), _) => source.push_str(&format!(", project {project}")),
+            (None, None, Some(team)) => source.push_str(&format!(", team {team}")),
+            (None, None, None) => {}
+        }
+        Some(source)
+    }
+}
+
 /// Where the project's pull requests are opened; unwritten, the git
 /// remote's host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -263,6 +282,30 @@ mod tests {
             let error = tickets(written).unwrap_err();
             assert!(error.contains(says), "{written:?}: {error}");
         }
+    }
+
+    #[test]
+    fn where_the_written_tickets_are_reads_as_words() {
+        let written = |toml: &str| tickets(toml).unwrap().written();
+        assert_eq!(written("mine = true"), None);
+        assert_eq!(
+            written("tracker = \"github\"").as_deref(),
+            Some("GitHub issues")
+        );
+        assert_eq!(
+            written("tracker = \"jira\"\nsite = \"acme.atlassian.net\"\nproject = \"app\"")
+                .as_deref(),
+            Some("Jira at acme.atlassian.net, project APP")
+        );
+        assert_eq!(
+            written("tracker = \"jira\"\nsite = \"j.example.com\"\njql = \"labels = ui\"")
+                .as_deref(),
+            Some("Jira at j.example.com, labels = ui")
+        );
+        assert_eq!(
+            written("tracker = \"linear\"\nteam = \"eng\"").as_deref(),
+            Some("Linear, team ENG")
+        );
     }
 
     #[test]

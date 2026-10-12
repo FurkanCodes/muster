@@ -7,10 +7,12 @@ mod harness_choice;
 mod motion;
 mod picker;
 mod pointer;
+mod settings;
 mod tickets;
 
 pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
+pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
 #[cfg(test)]
@@ -31,6 +33,8 @@ mod picker_tests;
 mod pointer_tests;
 #[cfg(test)]
 mod project_tests;
+#[cfg(test)]
+mod settings_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -79,6 +83,28 @@ pub(crate) enum View {
     Sessions,
     NeedsYou,
     Tickets,
+    Settings,
+}
+
+impl View {
+    /// The screens as tabs, in the order ⇥ goes round them.
+    pub(crate) const TABS: [Self; 4] = [
+        Self::Sessions,
+        Self::NeedsYou,
+        Self::Tickets,
+        Self::Settings,
+    ];
+
+    /// The tab after this one, or with `back` the one before.
+    pub(crate) fn next(self, back: bool) -> Self {
+        let at = Self::TABS.iter().position(|tab| *tab == self).unwrap_or(0);
+        let len = Self::TABS.len();
+        Self::TABS[if back {
+            (at + len - 1) % len
+        } else {
+            (at + 1) % len
+        }]
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -161,6 +187,10 @@ enum Then {
     Closing(SessionId),
     /// Drop the ticket from the list, and offer to clean up after it.
     TicketClosed(ProjectId, TicketKey),
+    /// Keep the project's settings.
+    Settings(ProjectId),
+    /// Keep the project's settings as changed, and fetch its tickets again.
+    SettingChanged(ProjectId),
     Say(&'static str),
 }
 
@@ -193,6 +223,12 @@ pub(crate) struct App {
     pub(crate) tickets_offset: usize,
     /// Tickets' text, fetched as each is first shown.
     pub(crate) ticket_texts: HashMap<(ProjectId, TicketKey), TicketText>,
+    /// Each project's settings, as last read; read again each time the
+    /// Settings screen is shown, and on `r`.
+    pub(crate) settings: HashMap<ProjectId, Settings>,
+    /// The selected line of the settings list, and its first line shown.
+    pub(crate) settings_selected: Option<SettingRow>,
+    pub(crate) settings_offset: usize,
     pub(crate) screens: HashMap<SessionId, Screen>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
@@ -252,6 +288,9 @@ impl App {
             tickets_selected: None,
             tickets_offset: 0,
             ticket_texts: HashMap::new(),
+            settings: HashMap::new(),
+            settings_selected: None,
+            settings_offset: 0,
             screens: HashMap::new(),
             attached: None,
             wanted: None,
@@ -443,9 +482,16 @@ impl App {
                     pr.number, pr.url
                 ));
             }
-            (Ok(Reply::Issues { issues, tracker }), Then::Tickets(project)) => {
+            (
+                Ok(Reply::Issues {
+                    issues,
+                    tracker,
+                    mine,
+                }),
+                Then::Tickets(project),
+            ) => {
                 self.tickets
-                    .insert(project, Tickets::Loaded(issues, tracker));
+                    .insert(project, Tickets::Loaded(issues, tracker, mine));
             }
             (Err(error), Then::Tickets(project)) => {
                 self.tickets.insert(project, Tickets::Failed(error.message));
@@ -463,6 +509,19 @@ impl App {
             }
             (Ok(_), Then::Say(text)) => self.say(text),
             (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
+            (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
+                self.settings.insert(project, Settings::Loaded(settings));
+            }
+            (Err(error), Then::Settings(project)) => {
+                self.settings
+                    .insert(project, Settings::Failed(error.message));
+            }
+            (Ok(Reply::ProjectSettings(settings)), Then::SettingChanged(project)) => {
+                self.setting_changed(project, settings);
+            }
+            (Err(error), Then::SettingChanged(project)) => {
+                self.setting_refused(project, error.message);
+            }
             (Err(error), Then::Closing(session)) => {
                 self.closing.retain(|closing| *closing != session);
                 self.complain(error.message);
@@ -534,7 +593,7 @@ impl App {
                 Some(Row::Session(session)) => Some(session),
                 _ => None,
             },
-            (_, View::Tickets) => None,
+            (_, View::Tickets | View::Settings) => None,
         }
     }
 
@@ -545,6 +604,8 @@ impl App {
             .retain(|_, tickets| !matches!(tickets, Tickets::Loading));
         self.ticket_texts
             .retain(|_, text| !matches!(text, TicketText::Loading));
+        self.settings
+            .retain(|_, settings| !matches!(settings, Settings::Loading));
     }
 
     /// Scrolls the lists just enough to show their selections.
@@ -573,6 +634,11 @@ impl App {
             .as_ref()
             .and_then(|row| tickets.iter().position(|r| r == row));
         self.tickets_offset = in_view(self.tickets_offset, ticket, tickets.len(), height);
+        let settings = self.setting_rows();
+        let setting = self
+            .settings_selected
+            .and_then(|row| settings.iter().position(|r| *r == row));
+        self.settings_offset = in_view(self.settings_offset, setting, settings.len(), height);
     }
 
     /// The terminal area changed size.
@@ -627,6 +693,7 @@ impl App {
         self.take_wanted();
         self.keep_selection();
         self.keep_ticket_selection();
+        self.keep_setting_selection();
         self.keep_in_view();
         if let Mode::Terminal(session) = self.mode
             && self.model.session(session).is_none()
@@ -638,6 +705,7 @@ impl App {
             return Vec::new();
         }
         let mut actions = self.fetch_tickets();
+        actions.extend(self.fetch_settings());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
         let focus = self
