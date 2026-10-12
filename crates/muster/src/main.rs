@@ -30,10 +30,15 @@ enum Commands {
     Daemon {
         #[command(subcommand)]
         action: Option<DaemonCommand>,
-        /// Leave the terminal's session, as the UI does when it starts the
-        /// daemon, so closing the terminal does not stop it.
+        /// Start the daemon in the background, apart from this process and
+        /// its terminal, and return: as the UI does when it starts one.
+        /// Nothing that ends this process, or its terminal, stops it.
         #[arg(long)]
         detach: bool,
+        /// The daemon `--detach` starts: in a session of its own, ignoring
+        /// hang-ups.
+        #[arg(long, hide = true)]
+        background: bool,
     },
     /// Show whether the daemon is running and what it is tracking.
     Status,
@@ -278,12 +283,17 @@ fn main() -> ExitCode {
             Some(Commands::Daemon {
                 action: None,
                 detach,
+                background,
             }) => {
                 if detach {
+                    return start_in_background();
+                }
+                if background {
+                    // A session of its own, with no terminal to hang it up.
                     // Fails only if already a session leader, which is fine.
                     let _ = nix::unistd::setsid();
                 }
-                return daemon(paths).await;
+                return daemon(paths, background).await;
             }
             Some(Commands::Status) => return commands::status(&socket).await,
             Some(Commands::Project(ProjectCommand::Add { path, name })) => {
@@ -398,10 +408,12 @@ async fn ui(paths: Paths) -> ExitCode {
     }
 }
 
-/// Starts `muster daemon --detach` in the background, logging to
-/// `daemon.log` in the runtime directory. The daemon stays this process's
-/// child until the UI exits, so a thread waits for it: a daemon that stops
-/// while the UI runs must not linger as a zombie.
+/// Starts `muster daemon --detach`, logging to `daemon.log` in the runtime
+/// directory. That starts the daemon itself apart from this process and
+/// returns at once, so the daemon is never the UI's child: whatever ends
+/// the UI, its whole process tree included, leaves the daemon and its
+/// sessions running (`PRD-09`). A thread waits for the short-lived starter
+/// so it never lingers as a zombie.
 fn start_daemon(paths: &Paths) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     std::fs::DirBuilder::new()
@@ -426,7 +438,27 @@ fn start_daemon(paths: &Paths) -> std::io::Result<()> {
     Ok(())
 }
 
-async fn daemon(paths: Paths) -> ExitCode {
+/// `muster daemon --detach`: starts the daemon as a process of its own and
+/// returns. Once this one exits the daemon is no longer anyone's child but
+/// the system's, so nothing that walks this process's tree reaches it. Its
+/// errors go where this process's do (the UI's `daemon.log`).
+fn start_in_background() -> ExitCode {
+    let started = std::env::current_exe().and_then(|exe| {
+        std::process::Command::new(exe)
+            .args(["daemon", "--background"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+    });
+    match started {
+        // Not waited for: it runs on once this process has gone.
+        Ok(_daemon) => ExitCode::SUCCESS,
+        Err(error) => fail(format!("could not start the daemon: {error}")),
+    }
+}
+
+async fn daemon(paths: Paths, background: bool) -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("MUSTER_LOG")
@@ -455,27 +487,45 @@ async fn daemon(paths: Paths) -> ExitCode {
     if let Some(ms) = millis("MUSTER_PR_MS") {
         config.pr_interval = std::time::Duration::from_millis(ms.max(10));
     }
-    match muster_daemon::run(config, shutdown_signal()).await {
+    match muster_daemon::run(config, shutdown_signal(background)).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),
     }
 }
 
-/// Completes on SIGINT or SIGTERM.
-async fn shutdown_signal() {
+/// Completes on SIGINT or SIGTERM, saying which in the log, so a stop is
+/// never a mystery. A hang-up stops a daemon run in a terminal, which has
+/// closed; one in the `background` has no terminal, so a hang-up there is
+/// someone else's and is logged and ignored. Each is caught by a handler,
+/// never ignored outright: an ignored signal would be inherited by the
+/// agents the daemon starts, which are stopped with a hang-up.
+async fn shutdown_signal(background: bool) {
     use tokio::signal::unix::{SignalKind, signal};
-    match (
+    let (Ok(mut interrupt), Ok(mut terminate), Ok(mut hangup)) = (
         signal(SignalKind::interrupt()),
         signal(SignalKind::terminate()),
-    ) {
-        (Ok(mut interrupt), Ok(mut terminate)) => {
-            tokio::select! {
-                _ = interrupt.recv() => {}
-                _ = terminate.recv() => {}
+        signal(SignalKind::hangup()),
+    ) else {
+        let _ = tokio::signal::ctrl_c().await;
+        return;
+    };
+    loop {
+        tokio::select! {
+            _ = interrupt.recv() => {
+                tracing::info!(signal = "SIGINT", "stopping: interrupted");
+                return;
             }
-        }
-        _ => {
-            let _ = tokio::signal::ctrl_c().await;
+            _ = terminate.recv() => {
+                tracing::info!(signal = "SIGTERM", "stopping: asked to stop");
+                return;
+            }
+            _ = hangup.recv() => {
+                if !background {
+                    tracing::info!(signal = "SIGHUP", "stopping: its terminal closed");
+                    return;
+                }
+                tracing::info!(signal = "SIGHUP", "ignored a hang-up: the daemon has no terminal");
+            }
         }
     }
 }
