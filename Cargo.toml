@@ -58,3 +58,8 @@ unwrap_used = "warn"
 lto = "thin"
 codegen-units = 1
 strip = "debuginfo"
+
+# The profile release binaries are built with (dist).
+[profile.dist]
+inherits = "release"
+lto = "thin"
