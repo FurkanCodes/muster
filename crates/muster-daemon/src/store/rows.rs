@@ -138,6 +138,10 @@ pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
     let (harness, title, unseen, resume_id) = (row.get(2)?, row.get(3)?, row.get(5)?, row.get(6)?);
     let created_at = Timestamp::from_millis(row.get(7)?);
     let ended_at = row.get::<_, Option<i64>>(8)?.map(Timestamp::from_millis);
+    // Its latest change of status, or its start where none is kept.
+    let status_since = row
+        .get::<_, Option<i64>>(9)?
+        .map_or(created_at, Timestamp::from_millis);
     Ok((|| {
         Ok(Session {
             id: parse_id(&id)?,
@@ -149,6 +153,8 @@ pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
             resume_id,
             created_at,
             ended_at,
+            status_since,
+            activity: None,
         })
     })())
 }

@@ -324,7 +324,12 @@ impl Store {
         )?;
         let sessions = self.collect(
             "SELECT s.id, s.workspace_id, s.harness, s.title, s.status, s.unseen, s.resume_id,
-                    s.created_at, s.ended_at
+                    s.created_at, s.ended_at,
+                    (SELECT MIN(c.at) FROM status_changes c
+                     WHERE c.session_id = s.id AND c.status = s.status
+                       AND c.seq > COALESCE((SELECT MAX(d.seq) FROM status_changes d
+                                             WHERE d.session_id = s.id
+                                               AND d.status != s.status), 0))
              FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
              WHERE w.removed_at IS NULL AND s.removed_at IS NULL
              ORDER BY s.created_at, s.id",

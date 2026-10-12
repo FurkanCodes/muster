@@ -89,6 +89,7 @@ async fn expect_status(
             session: changed,
             status,
             unseen,
+            ..
         }) if *changed == session && wanted(*status, *unseen) => Some((*status, *unseen)),
         _ => None,
     })
@@ -258,6 +259,7 @@ async fn an_exit_is_reported_and_its_output_stays_readable() {
                 session: s,
                 status,
                 unseen,
+                ..
             }) if *s == session && status.is_exited() => exited = Some((*status, *unseen)),
             ServerFrame::Detached { session: s, reason } if *s == session => {
                 detached = Some(*reason);

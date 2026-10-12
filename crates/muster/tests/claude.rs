@@ -91,6 +91,7 @@ async fn expect_status(connection: &mut Connection, session: SessionId) -> (Sess
             session: changed,
             status,
             unseen,
+            ..
         }) if *changed == session => Some((*status, *unseen)),
         _ => None,
     })
@@ -177,6 +178,94 @@ async fn hooks_move_the_status_through_a_turn() {
     assert_eq!(
         expect_status(&mut connection, session).await,
         (SessionStatus::Finished, true)
+    );
+}
+
+/// The next thing `session` is said to be doing.
+async fn expect_activity(connection: &mut Connection, session: SessionId) -> Option<String> {
+    expect_event(connection, |frame| match frame {
+        ServerFrame::Delta(Delta::SessionActivity {
+            session: changed,
+            activity,
+        }) if *changed == session => Some(activity.as_ref().map(|now| now.text.clone())),
+        _ => None,
+    })
+    .await
+}
+
+#[tokio::test]
+async fn hooks_tell_what_the_agent_is_doing_and_keep_no_secrets() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace, None).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str, extra| launch.fire(event, &payload(&id, event, extra));
+
+    fire("UserPromptSubmit", json!({ "prompt": "fix it" }));
+    assert_eq!(
+        expect_activity(&mut connection, session).await.as_deref(),
+        Some("thinking")
+    );
+    fire(
+        "PreToolUse",
+        json!({ "tool_name": "Edit", "tool_input": { "file_path": "/work/src/view.rs" } }),
+    );
+    assert_eq!(
+        expect_activity(&mut connection, session).await.as_deref(),
+        Some("editing view.rs")
+    );
+    // A command's arguments, which can carry a secret, are never kept.
+    fire(
+        "PreToolUse",
+        json!({ "tool_name": "Bash", "tool_input": { "command": "GITHUB_TOKEN=ghp_s3cret cargo test" } }),
+    );
+    assert_eq!(
+        expect_activity(&mut connection, session).await.as_deref(),
+        Some("running cargo")
+    );
+    fire(
+        "PermissionRequest",
+        json!({ "tool_name": "Bash", "tool_input": { "command": "rm -rf build" } }),
+    );
+    assert_eq!(
+        expect_activity(&mut connection, session).await.as_deref(),
+        Some("wants to run rm")
+    );
+    let snapshot = setup.daemon.connect().await.subscribe().await.unwrap();
+    let stored = snapshot
+        .sessions
+        .iter()
+        .find(|stored| stored.id == session)
+        .unwrap();
+    assert_eq!(
+        stored.activity.as_ref().map(|now| now.text.as_str()),
+        Some("wants to run rm"),
+        "a client connecting now sees it too"
+    );
+    let waiting_since = stored.status_since;
+
+    // The turn ends: there is nothing to tell, and its status is dated
+    // afresh.
+    fire("Stop", json!({ "stop_hook_active": false }));
+    assert_eq!(expect_activity(&mut connection, session).await, None);
+    let since = expect_event(&mut connection, |frame| match frame {
+        ServerFrame::Delta(Delta::SessionStatus {
+            session: changed,
+            status: SessionStatus::Finished,
+            since,
+            ..
+        }) if *changed == session => Some(*since),
+        _ => None,
+    })
+    .await;
+    assert!(since >= waiting_since);
+    assert!(
+        !std::fs::read_to_string(setup.sandbox.daemon_log())
+            .unwrap_or_default()
+            .contains("ghp_s3cret"),
+        "never in the daemon's log"
     );
 }
 

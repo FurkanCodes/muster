@@ -200,6 +200,7 @@ fn a_removed_session_leaves_the_list_and_the_selection_stays_nearby() {
         session: world.session.id,
         status: world.session.status,
         unseen: false,
+        since: muster_core::Timestamp::from_millis(10),
     }));
 
     world

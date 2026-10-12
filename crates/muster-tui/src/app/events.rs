@@ -50,6 +50,10 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return Vec::new();
         }
+        // An error stays until the person has seen it and pressed on.
+        if self.note.as_ref().is_some_and(|note| note.error) {
+            self.note = None;
+        }
         let mut actions = match self.mode.clone() {
             Mode::Terminal(session) => return self.terminal_key(session, &key),
             Mode::Dialog(dialog) => self.dialog_key(dialog, &key),

@@ -2,11 +2,11 @@
 //! needs the person pulses, and a session's line flashes as it finishes,
 //! ends or comes to wait on the person.
 
-use muster_core::{SessionId, SessionStatus};
+use muster_core::{SessionId, SessionStatus, Timestamp};
 
 use super::App;
 use crate::model::needs_attention;
-use crate::motion::FLASH_STEPS;
+use crate::motion::{FLASH_STEPS, NOTE_DIMS, NOTE_GOES};
 
 impl App {
     /// The step of the motion to draw, or `None` to draw everything still.
@@ -34,7 +34,54 @@ impl App {
         self.flashes.retain(|session, began| {
             step.saturating_sub(*began) < FLASH_STEPS && model.session(*session).is_some()
         });
-        self.flashes.len() < flashing || self.animating()
+        self.flashes.len() < flashing || self.fade_note() || self.animating()
+    }
+
+    /// Lets a note go once it has been read, dimming it first; an error
+    /// stays. Whether that changed what is drawn.
+    fn fade_note(&mut self) -> bool {
+        let Some(age) = self.note_age() else {
+            return false;
+        };
+        if age >= NOTE_GOES {
+            self.note = None;
+            // The bottom bar may be a line or two shorter now.
+            self.keep_in_view();
+            return true;
+        }
+        self.motion && age >= NOTE_DIMS
+    }
+
+    /// How many steps a note that fades has been shown, while it is.
+    pub(crate) fn note_age(&self) -> Option<u64> {
+        let note = self.note.as_ref().filter(|note| !note.error)?;
+        Some(self.step.saturating_sub(note.shown_at))
+    }
+
+    /// Whether a note is fading out now.
+    pub(crate) fn note_fading(&self) -> bool {
+        self.motion && self.note_age().is_some_and(|age| age >= NOTE_DIMS)
+    }
+
+    /// The runtime read the clock. Whether a time on screen reads
+    /// differently now: each second while a session runs or waits, each
+    /// minute otherwise; each minute only, with motion off.
+    pub(crate) fn on_clock(&mut self, now: Timestamp) -> bool {
+        let Some(before) = self.now.replace(now) else {
+            return true;
+        };
+        let sessions = self.model.sessions();
+        if sessions.is_empty() {
+            return false;
+        }
+        let live = sessions.iter().any(|session| {
+            matches!(
+                session.status,
+                SessionStatus::Running | SessionStatus::NeedsYou { .. }
+            )
+        });
+        let unit = if live && self.motion { 1_000 } else { 60_000 };
+        before.as_millis() / unit != now.as_millis() / unit
     }
 
     /// How many steps ago `session`'s line began to flash, while it does.

@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::time::Timestamp;
+
 /// The status of one session. `muster-state` decides it; the daemon stores and
 /// broadcasts it; clients draw it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -48,6 +50,17 @@ pub enum WaitReason {
     /// window title reads "Action Required" for a permission and a
     /// question alike.
     Action,
+}
+
+/// What an agent is doing now, as its hooks tell: `editing view.rs`,
+/// `running cargo`, `wants to run npm`, `thinking`. Only what a glance
+/// needs: a file's name, never its path; a command's program, never its
+/// arguments, which can carry a secret (`PRD-06`). Shown, never stored.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Activity {
+    pub text: String,
+    /// When it began.
+    pub since: Timestamp,
 }
 
 #[cfg(test)]

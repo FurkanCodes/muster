@@ -569,7 +569,8 @@ fn only_my_tickets_is_turned_on_and_off_on_the_settings_screen() {
 
 #[test]
 fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motion_is_off() {
-    const LINE: &str = "#42 Fix the login redirect ";
+    // The ticket's line up to its agent's mark: its letter, C for Claude.
+    const LINE: &str = "#42 Fix the login redirect C";
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
     let gh = sandbox.fake_gh();
@@ -638,8 +639,9 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
         "{}",
         ui.text()
     );
+    // Settled, it is the selected line: tinted, as the selection is.
     let deadline = Instant::now() + Duration::from_secs(5);
-    while ui.background_of("✓ #42") != Some(vt100::Color::Default) {
+    while ui.background_of("✓ #42") != Some(vt100::Color::Idx(8)) {
         assert!(Instant::now() < deadline, "it never settled: {}", ui.text());
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -658,7 +660,8 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(mark(&ui), '●', "{}", ui.text());
     ui.keys(b"1");
-    ui.wait_for("running");
+    // Its prompt went in: it is thinking, as its hooks said.
+    ui.wait_for("thinking");
     launch.fire(
         "Stop",
         &serde_json::json!({"session_id": agent, "hook_event_name": "Stop", "cwd": "/work"}),
@@ -667,7 +670,7 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     assert_eq!(
         ui.background_of("✓ #42"),
         Some(vt100::Color::Default),
-        "{}",
+        "never lit (and not the selected line): {}",
         ui.text()
     );
     ui.keys(b"q");

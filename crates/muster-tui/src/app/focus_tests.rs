@@ -14,6 +14,7 @@ fn status(world: &mut World, status: SessionStatus, unseen: bool) -> Vec<Action>
         session,
         status,
         unseen,
+        since: muster_core::Timestamp::from_millis(10),
     }))
 }
 

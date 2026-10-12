@@ -22,6 +22,6 @@ pub use entities::{Issue, Project, Session, Workspace, WorkspaceKind};
 pub use ids::{ParseIdError, ProjectId, RunId, SessionId, WorkspaceId};
 pub use paths::Paths;
 pub use run::{PullRequest, Run, RunStage, RunTransition, Ticket};
-pub use session::{SessionStatus, WaitReason};
+pub use session::{Activity, SessionStatus, WaitReason};
 pub use tickets::TicketKey;
 pub use time::Timestamp;

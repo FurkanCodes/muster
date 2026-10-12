@@ -109,6 +109,14 @@ mod tests {
                 reason: WaitReason::Permission,
             },
             unseen: true,
+            since: crate::Timestamp::from_millis(1_760_000_000_000),
+        }));
+        round_trip(ServerFrame::Delta(Delta::SessionActivity {
+            session: SessionId::new(),
+            activity: Some(crate::Activity {
+                text: "editing view.rs".to_owned(),
+                since: crate::Timestamp::from_millis(1_760_000_000_000),
+            }),
         }));
         round_trip(ServerFrame::Output {
             session: SessionId::new(),

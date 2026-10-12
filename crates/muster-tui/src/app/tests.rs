@@ -131,7 +131,11 @@ fn resource_use_is_shown_for_the_host_and_each_session() {
         },
     )));
     let screen = render(&world.app);
-    assert!(screen.contains("memory 9.1 GB of 16.0 GB"), "{screen}");
+    // The machine's memory as a bar in the top bar, more than half used.
+    assert!(screen.contains("▕████▌   ▏ 9.1/16.0 GB"), "{screen}");
+    // A session's own, in its pane.
+    world.app.selected = Some(Row::Session(world.session.id));
+    let screen = render(&world.app);
     assert!(screen.contains("313 MB · 5%"), "{screen}");
 }
 
@@ -551,6 +555,7 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
             session: id,
             status,
             unseen: true,
+            since: muster_core::Timestamp::from_millis(10),
         }));
     }
     world.app.on_key(ctrl('2'));
@@ -563,6 +568,7 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
         session: other.id,
         status: SessionStatus::Running,
         unseen: false,
+        since: muster_core::Timestamp::from_millis(10),
     }));
     assert_eq!(world.app.needs_list, [other.id, world.session.id]);
     press(&mut world.app, KeyCode::Down);

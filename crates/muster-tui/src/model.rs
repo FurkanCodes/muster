@@ -87,6 +87,7 @@ impl Model {
                 session,
                 status,
                 unseen,
+                since,
             } => {
                 if let Some(stored) = self.sessions.iter_mut().find(|s| s.id == session) {
                     if stored.status != status {
@@ -95,6 +96,12 @@ impl Model {
                     }
                     stored.status = status;
                     stored.unseen = unseen;
+                    stored.status_since = since;
+                }
+            }
+            Delta::SessionActivity { session, activity } => {
+                if let Some(stored) = self.sessions.iter_mut().find(|s| s.id == session) {
+                    stored.activity = activity;
                 }
             }
             Delta::Resources(report) => self.resources = Some(report),
@@ -327,6 +334,8 @@ pub(crate) mod tests {
             resume_id: None,
             created_at: Timestamp::from_millis(created),
             ended_at: None,
+            status_since: Timestamp::from_millis(created),
+            activity: None,
         }
     }
 
@@ -370,6 +379,7 @@ pub(crate) mod tests {
             session: shell.id,
             status: SessionStatus::Running,
             unseen: false,
+            since: muster_core::Timestamp::from_millis(10),
         });
         assert_eq!(
             model.session(shell.id).unwrap().status,
@@ -400,6 +410,7 @@ pub(crate) mod tests {
             session,
             status: SessionStatus::Finished,
             unseen: true,
+            since: muster_core::Timestamp::from_millis(10),
         };
         model.apply(finished_unseen(two.id));
         model.apply(finished_unseen(one.id));
@@ -409,6 +420,7 @@ pub(crate) mod tests {
                 reason: WaitReason::Permission,
             },
             unseen: true,
+            since: muster_core::Timestamp::from_millis(10),
         });
         assert_eq!(model.needs_you(), [three.id, two.id, one.id]);
 
@@ -416,6 +428,7 @@ pub(crate) mod tests {
             session: two.id,
             status: SessionStatus::Finished,
             unseen: false,
+            since: muster_core::Timestamp::from_millis(10),
         });
         assert_eq!(model.needs_you(), [three.id, one.id]);
     }

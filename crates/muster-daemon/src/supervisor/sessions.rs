@@ -95,6 +95,7 @@ impl Supervisor {
         title: Option<String>,
         start: Start,
     ) -> Result<SessionId, ErrorBody> {
+        let now = self.clock.now();
         let session = Session {
             id: SessionId::new(),
             workspace,
@@ -110,8 +111,10 @@ impl Supervisor {
             },
             unseen: false,
             resume_id: None,
-            created_at: self.clock.now(),
+            created_at: now,
             ended_at: None,
+            status_since: now,
+            activity: None,
         };
         let id = session.id;
         let stored = session.clone();
