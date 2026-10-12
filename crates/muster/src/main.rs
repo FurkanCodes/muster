@@ -329,11 +329,17 @@ async fn ui(paths: Paths) -> ExitCode {
         std::env::var("MUSTER_NOTIFY").as_deref(),
         Ok("off" | "0" | "false" | "no")
     );
+    // MUSTER_MOTION=off keeps every mark still.
+    let motion = !matches!(
+        std::env::var("MUSTER_MOTION").as_deref(),
+        Ok("off" | "0" | "false" | "no")
+    );
     let options = muster_tui::Options {
         socket: paths.socket(),
         start_daemon: Some(Box::new(move || start_daemon(&paths))),
         cwd,
         notify,
+        motion,
     };
     match muster_tui::run(options).await {
         Ok(()) => ExitCode::SUCCESS,
