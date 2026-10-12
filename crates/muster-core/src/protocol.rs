@@ -18,7 +18,8 @@
 //! person's branch to the autopilot; version 9 the checks by hand; version
 //! 10 a review and a draft pull request by hand; version 11 a ticket's
 //! text, and another agent on a ticket; version 12 closing a ticket; version
-//! 13 more harnesses, and a wait their own display reports (`WaitReason::Action`).
+//! 13 more harnesses, and a wait their own display reports (`WaitReason::Action`);
+//! version 14 tickets by key from more trackers.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -30,11 +31,12 @@ use serde::{Deserialize, Serialize};
 use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
+use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 13;
+pub const PROTOCOL_VERSION: u32 = 14;
 /// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 13;
+pub const MIN_PROTOCOL_VERSION: u32 = 14;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,15 +325,15 @@ pub enum Command {
     RestartSession { session: SessionId, size: TermSize },
     /// Take an ended session off the list. Its history is kept.
     RemoveSession { session: SessionId },
-    /// List a project's open GitHub issues, newest first.
+    /// List a project's open tickets, newest first, from its tracker.
     ListIssues { project: ProjectId },
-    /// One of a project's GitHub issues with its text, answered with
+    /// One of a project's tickets with its text, answered with
     /// [`Reply::IssueViewed`].
-    ViewIssue { project: ProjectId, number: u64 },
-    /// Close one of a project's GitHub issues, with the person's `gh`, as
-    /// they asked: the one change Muster makes in a tracker. Answered with
+    ViewIssue { project: ProjectId, key: TicketKey },
+    /// Close one of a project's tickets in its tracker, as the person
+    /// asked: the one change Muster makes in a tracker. Answered with
     /// [`Reply::Done`].
-    CloseIssue { project: ProjectId, number: u64 },
+    CloseIssue { project: ProjectId, key: TicketKey },
     /// Hand a GitHub issue to the autopilot: a run that builds, checks,
     /// opens a draft pull request and has it reviewed before asking the
     /// person (`PRODUCT.md` §5). Needs the project's `muster.toml` checks.
@@ -364,13 +366,13 @@ pub enum Command {
     RequestChanges { run: RunId, comments: String },
     /// A run's timeline, answered with [`Reply::RunHistory`].
     RunHistory { run: RunId },
-    /// Work on a GitHub issue: a worktree on `muster/issue-<n>-<title>`
-    /// (reused if it exists) and a session in it. Claude Code gets the issue
+    /// Work on a ticket: a worktree on `muster/issue-<key>-<title>`
+    /// (reused if it exists) and a session in it. An agent gets the ticket
     /// as its first prompt, marked as data rather than instructions.
     StartFromIssue {
         project: ProjectId,
-        number: u64,
-        /// A harness id: `claude` or `shell`.
+        key: TicketKey,
+        /// A harness id, such as `claude` or `shell`.
         harness: String,
         size: TermSize,
         /// Another agent on the issue, in a worktree of its own, rather
@@ -395,6 +397,10 @@ pub enum Reply {
     },
     Issues {
         issues: Vec<Issue>,
+        /// Where they came from, for the person: `GitHub issues`, `Jira
+        /// (acme.atlassian.net)`.
+        #[serde(default)]
+        tracker: String,
     },
     IssueStarted {
         workspace: WorkspaceId,

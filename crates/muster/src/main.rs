@@ -87,14 +87,15 @@ enum DaemonCommand {
 
 #[derive(Debug, Subcommand)]
 enum IssueCommand {
-    /// List PROJECT's open issues (its name, id or path), with the agents
-    /// on each.
+    /// List PROJECT's open tickets (its name, id or path) from its tracker,
+    /// with the agents on each.
     List { project: String },
-    /// Start an agent on issue NUMBER of PROJECT: a worktree for it and a
-    /// session with the issue as its first prompt.
+    /// Start an agent on ticket KEY of PROJECT (`42`, `#42` or `APP-7`): a
+    /// worktree for it and a session with the ticket as its first prompt.
     Start {
         project: String,
-        number: u64,
+        #[arg(value_parser = ticket_key)]
+        key: muster_core::TicketKey,
         /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`
         /// or `shell`.
         #[arg(long, default_value = "claude")]
@@ -104,10 +105,20 @@ enum IssueCommand {
         #[arg(long)]
         another: bool,
     },
-    /// Close issue NUMBER of PROJECT on GitHub, with your `gh`. Its agents
-    /// and worktrees stay; close and remove them with `muster session` and
-    /// `muster worktree`.
-    Close { project: String, number: u64 },
+    /// Close ticket KEY of PROJECT in its tracker. Its agents and worktrees
+    /// stay; close and remove them with `muster session` and `muster
+    /// worktree`.
+    Close {
+        project: String,
+        #[arg(value_parser = ticket_key)]
+        key: muster_core::TicketKey,
+    },
+}
+
+/// A ticket's key as written on the command line.
+fn ticket_key(text: &str) -> Result<muster_core::TicketKey, String> {
+    muster_core::TicketKey::parse(text)
+        .ok_or_else(|| format!("{text:?} is not a ticket: write `42`, `#42` or `APP-7`"))
 }
 
 /// RUN is a run's id, or its issue's number (`42` or `#42`): the run going
@@ -286,15 +297,15 @@ fn main() -> ExitCode {
             Some(Commands::Issue(IssueCommand::List { project })) => {
                 commands::list_issues(&socket, &project).await
             }
-            Some(Commands::Issue(IssueCommand::Close { project, number })) => {
-                commands::close_issue(&socket, &project, number).await
+            Some(Commands::Issue(IssueCommand::Close { project, key })) => {
+                commands::close_issue(&socket, &project, key).await
             }
             Some(Commands::Issue(IssueCommand::Start {
                 project,
-                number,
+                key,
                 harness,
                 another,
-            })) => commands::start_issue(&socket, &project, number, harness, another).await,
+            })) => commands::start_issue(&socket, &project, key, harness, another).await,
             None => return ui(paths).await,
         };
         match outcome {

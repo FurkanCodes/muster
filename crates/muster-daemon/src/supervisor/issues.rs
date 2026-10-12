@@ -1,52 +1,73 @@
-//! Working on GitHub issues: the tickets an agent is assigned to.
+//! Working on tickets: the ones an agent is assigned to, from each
+//! project's tracker (`trackers`).
 //!
-//! Talking to GitHub takes a while, so it never happens inside the
+//! Talking to a tracker takes a while, so it never happens inside the
 //! Supervisor's loop: listing and viewing run on a task of their own and
-//! answer directly; starting work fetches the issue on its own task, then
+//! answer directly; starting work fetches the ticket on its own task, then
 //! hands it back to the Supervisor to create the worktree and the session.
-//! The first agent on an issue works in its worktree (made, or found as
-//! it is); another works in a worktree of its own, `…-2`, `…-3`.
+//! The first agent on a ticket works in its worktree (made, or found as it
+//! is); another works in a worktree of its own, `…-2`, `…-3`.
 
-use muster_core::ProjectId;
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
+use muster_core::tickets::ticket_branch;
+use muster_core::{ProjectId, TicketKey};
 use tokio::sync::oneshot;
 
 use super::{Request, Supervisor};
-use crate::github::{self, GitHubError, IssueDetail};
 use crate::harness;
+use crate::trackers::{self, IssueDetail, ProjectPlace, TrackerError};
 
-/// An issue fetched for starting work, on its way back to the Supervisor.
+/// A ticket fetched for starting work, on its way back to the Supervisor.
 #[derive(Debug)]
 pub(super) struct FetchedIssue {
     pub(super) project: ProjectId,
     pub(super) harness: String,
     pub(super) size: TermSize,
     pub(super) another: bool,
-    pub(super) detail: Result<IssueDetail, GitHubError>,
+    pub(super) detail: Result<IssueDetail, TrackerError>,
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
 
 impl Supervisor {
-    /// Lists a project's issues on a task of its own.
+    /// Where the project is, for finding its tracker.
+    pub(super) fn tracker_place(&self, project: ProjectId) -> Result<ProjectPlace, ErrorBody> {
+        let root = self
+            .project_root(project)
+            .ok_or_else(|| no_project(project))?;
+        Ok(ProjectPlace {
+            root,
+            overrides: self
+                .config_dir
+                .join("projects")
+                .join(format!("{project}.toml")),
+        })
+    }
+
+    /// Lists a project's tickets on a task of its own.
     pub(super) fn list_issues(
         &self,
         project: ProjectId,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let root = match self.repository_root(project, "GitHub issues") {
-            Ok(root) => root,
+        let place = match self.tracker_place(project) {
+            Ok(place) => place,
             Err(error) => {
                 let _ = reply.send(Err(error));
                 return;
             }
         };
-        let tickets = self.tickets.clone();
+        let trackers = self.trackers.clone();
         tokio::spawn(async move {
-            let outcome = tickets
-                .list(&root)
-                .await
-                .map(|issues| Reply::Issues { issues })
-                .map_err(github_error);
+            let outcome = async {
+                let source = trackers.for_project(place).await?;
+                let issues = source.list().await?;
+                Ok::<_, TrackerError>(Reply::Issues {
+                    issues,
+                    tracker: source.describe(),
+                })
+            }
+            .await
+            .map_err(|error| error.body());
             if let Err(error) = &outcome {
                 tracing::info!(command = "list issues", %error, "command refused");
             }
@@ -54,77 +75,83 @@ impl Supervisor {
         });
     }
 
-    /// Fetches one issue with its text, on a task of its own.
+    /// Fetches one ticket with its text, on a task of its own.
     pub(super) fn view_issue(
         &self,
         project: ProjectId,
-        number: u64,
+        key: TicketKey,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let root = match self.repository_root(project, "GitHub issues") {
-            Ok(root) => root,
+        let place = match self.tracker_place(project) {
+            Ok(place) => place,
             Err(error) => {
                 let _ = reply.send(Err(error));
                 return;
             }
         };
-        let tickets = self.tickets.clone();
+        let trackers = self.trackers.clone();
         tokio::spawn(async move {
-            let outcome = tickets
-                .view(&root, number)
-                .await
-                .map(|detail| Reply::IssueViewed {
+            let outcome = async {
+                let detail = trackers.for_project(place).await?.view(&key).await?;
+                Ok::<_, TrackerError>(Reply::IssueViewed {
                     issue: detail.issue,
                     body: detail.body,
                 })
-                .map_err(github_error);
+            }
+            .await
+            .map_err(|error| error.body());
             let _ = reply.send(outcome);
         });
     }
 
-    /// Closes an issue on a task of its own, as the person asked.
+    /// Closes a ticket on a task of its own, as the person asked.
     pub(super) fn close_issue(
         &self,
         project: ProjectId,
-        number: u64,
+        key: TicketKey,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let root = match self.repository_root(project, "GitHub issues") {
-            Ok(root) => root,
+        let place = match self.tracker_place(project) {
+            Ok(place) => place,
             Err(error) => {
                 let _ = reply.send(Err(error));
                 return;
             }
         };
-        let tickets = self.tickets.clone();
+        let trackers = self.trackers.clone();
         tokio::spawn(async move {
-            let outcome = tickets
-                .close(&root, number)
-                .await
-                .map(|()| Reply::Done)
-                .map_err(github_error);
+            let outcome = async {
+                trackers.for_project(place).await?.close(&key).await?;
+                Ok::<_, TrackerError>(Reply::Done)
+            }
+            .await
+            .map_err(|error| error.body());
             match &outcome {
-                Ok(_) => tracing::info!(%project, number, "closed an issue"),
+                Ok(_) => tracing::info!(%project, %key, "closed a ticket"),
                 Err(error) => tracing::info!(command = "close issue", %error, "command refused"),
             }
             let _ = reply.send(outcome);
         });
     }
 
-    /// Fetches an issue on a task of its own, then continues in
+    /// Fetches a ticket on a task of its own, then continues in
     /// [`start_fetched_issue`](Self::start_fetched_issue).
     #[allow(clippy::too_many_arguments)]
     pub(super) fn fetch_issue(
         &self,
         project: ProjectId,
-        number: u64,
+        key: TicketKey,
         harness: String,
         size: TermSize,
         another: bool,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let root = match self.repository_root(project, "GitHub issues") {
-            Ok(root) => root,
+        // Work on a ticket goes in a worktree of its own.
+        let place = match self
+            .repository_root(project, "worktrees for tickets")
+            .and_then(|_| self.tracker_place(project))
+        {
+            Ok(place) => place,
             Err(error) => {
                 let _ = reply.send(Err(error));
                 return;
@@ -138,9 +165,9 @@ impl Supervisor {
             let _ = reply.send(Err(error));
             return;
         }
-        let (requests, tickets) = (self.requests.clone(), self.tickets.clone());
+        let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
         tokio::spawn(async move {
-            let detail = tickets.view(&root, number).await;
+            let detail = async { trackers.for_project(place).await?.view(&key).await }.await;
             let fetched = FetchedIssue {
                 project,
                 harness,
@@ -155,7 +182,7 @@ impl Supervisor {
         });
     }
 
-    /// Creates or reuses the issue's worktree and starts a session in it.
+    /// Creates or reuses the ticket's worktree and starts a session in it.
     pub(super) async fn start_fetched_issue(&mut self, fetched: FetchedIssue) {
         let outcome = match fetched.detail {
             Ok(detail) => {
@@ -169,7 +196,7 @@ impl Supervisor {
                 self.start_issue(project, &detail, harness, size, another)
                     .await
             }
-            Err(error) => Err(github_error(error)),
+            Err(error) => Err(error.body()),
         };
         if let Err(error) = &outcome {
             tracing::info!(command = "start from issue", %error, "command refused");
@@ -185,7 +212,7 @@ impl Supervisor {
         size: TermSize,
         another: bool,
     ) -> Result<Reply, ErrorBody> {
-        let branch = github::issue_branch(&detail.issue);
+        let branch = ticket_branch(&detail.issue.key, &detail.issue.title);
         let existing = self.worktree_on(project, &branch).map(|found| found.id);
         let workspace = match (existing, another) {
             (Some(existing), false) => existing,
@@ -196,8 +223,8 @@ impl Supervisor {
             }
         };
         let takes_prompt = harness::find(&harness).is_some_and(|found| found.takes_prompt());
-        let prompt = match takes_prompt.then(github::new_fence).transpose() {
-            Ok(fence) => fence.map(|fence| github::issue_prompt(detail, &fence)),
+        let prompt = match takes_prompt.then(trackers::new_fence).transpose() {
+            Ok(fence) => fence.map(|fence| trackers::issue_prompt(detail, &fence)),
             Err(error) => {
                 return Err(ErrorBody::new(
                     ErrorCode::Internal,
@@ -205,7 +232,7 @@ impl Supervisor {
                 ));
             }
         };
-        let title = format!("#{} {}", detail.issue.number, detail.issue.title);
+        let title = format!("{} {}", detail.issue.key.shown(), detail.issue.title);
         match self
             .start_session(workspace, harness, Some(title), size, prompt)
             .await?
@@ -272,19 +299,4 @@ fn no_project(project: ProjectId) -> ErrorBody {
 
 fn unexpected(reply: &Reply) -> ErrorBody {
     ErrorBody::new(ErrorCode::Internal, format!("unexpected {reply:?}"))
-}
-
-fn github_error(error: GitHubError) -> ErrorBody {
-    let code = match &error {
-        GitHubError::Failed(message)
-            if message.contains("Could not resolve") || message.contains("not found") =>
-        {
-            ErrorCode::NotFound
-        }
-        GitHubError::Missing | GitHubError::Failed(_) => ErrorCode::BadRequest,
-        GitHubError::Spawn(_) | GitHubError::TimedOut | GitHubError::Unreadable(_) => {
-            ErrorCode::Internal
-        }
-    };
-    ErrorBody::new(code, error.to_string())
 }

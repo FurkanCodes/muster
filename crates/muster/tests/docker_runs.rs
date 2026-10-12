@@ -127,6 +127,9 @@ fn sandbox(muster_toml: &str, slow_build: Option<u32>) -> (Sandbox, PathBuf, Pat
         .with_env("CLAUDE_CODE_OAUTH_TOKEN", "fake-token")
         .with_env("MUSTER_PR_MS", "300");
     let root = sandbox.repository("app");
+    // Its `origin` is a local repository, which names no host: its tickets
+    // are said to be GitHub's.
+    let muster_toml = format!("{muster_toml}\n[tickets]\ntracker = \"github\"\n");
     std::fs::write(root.join("muster.toml"), muster_toml).unwrap();
     if let Some(seconds) = slow_build {
         std::fs::write(root.join("slow-build"), seconds.to_string()).unwrap();

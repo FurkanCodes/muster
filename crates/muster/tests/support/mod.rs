@@ -240,6 +240,11 @@ impl Sandbox {
         std::fs::write(root.join("README.md"), "test\n").unwrap();
         git(&root, &["add", "README.md"]);
         git(&root, &["commit", "--quiet", "--message", "first"]);
+        // Hosted on GitHub, as far as Muster can tell, so its tickets are
+        // GitHub's: a remote never fetched from or pushed to. Not `origin`,
+        // which tests that push add as a local repository.
+        let github = format!("https://github.com/o/{name}.git");
+        git(&root, &["remote", "add", "github", &github]);
         root.canonicalize().unwrap()
     }
 

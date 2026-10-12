@@ -473,10 +473,10 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
         "{listed}"
     );
 
-    // x: closed on GitHub after asking, then its agents stopped and its
+    // x: closed in its tracker, GitHub, after asking, then its agents stopped and its
     // worktrees removed, if the person wants; the branches stay.
     ui.keys(b"x");
-    ui.wait_for("Close #42 Fix the login redirect on GitHub?");
+    ui.wait_for("Close #42 Fix the login redirect in GitHub issues?");
     ui.keys(b"y");
     ui.wait_for("Also close its 2 agents");
     ui.keys(b"y");

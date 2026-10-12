@@ -384,14 +384,19 @@ pub(crate) async fn stop_daemon(socket: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-pub(crate) async fn close_issue(socket: &Path, project: &str, number: u64) -> Outcome {
+pub(crate) async fn close_issue(
+    socket: &Path,
+    project: &str,
+    key: muster_core::TicketKey,
+) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
     let project = find_project(&snapshot, project)?.id;
+    let shown = key.shown();
     connection
-        .command(Command::CloseIssue { project, number })
+        .command(Command::CloseIssue { project, key })
         .await?;
-    println!("Closed issue #{number} on GitHub.");
+    println!("Closed {shown}.");
     Ok(())
 }
 
@@ -400,11 +405,11 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
     let snapshot = connection.subscribe().await?;
     let project = find_project(&snapshot, project)?.id;
     let reply = connection.command(Command::ListIssues { project }).await?;
-    let Reply::Issues { issues } = reply else {
+    let Reply::Issues { issues, tracker } = reply else {
         return Err(unexpected(&reply));
     };
     if issues.is_empty() {
-        println!("No open issues.");
+        println!("No open tickets in {}.", shown(&tracker));
     }
     for issue in issues {
         let labels = if issue.labels.is_empty() {
@@ -412,7 +417,7 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
         } else {
             format!("  [{}]", shown(&issue.labels.join(", ")))
         };
-        let agents = agents_on(&snapshot, project, issue.number);
+        let agents = agents_on(&snapshot, project, &issue.key);
         let agents = if agents.is_empty() {
             String::new()
         } else {
@@ -423,17 +428,21 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
             )
         };
         println!(
-            "#{:<6} {}{labels}{agents}",
-            issue.number,
+            "{:<7} {}{labels}{agents}",
+            issue.key.shown(),
             shown(&issue.title)
         );
     }
     Ok(())
 }
 
-/// How each agent on issue `number` is doing: the sessions in the
-/// project's worktrees on branches named for it, oldest first.
-fn agents_on(snapshot: &Snapshot, project: muster_core::ProjectId, number: u64) -> Vec<String> {
+/// How each agent on ticket `key` is doing: the sessions in the project's
+/// worktrees on branches named for it, oldest first.
+fn agents_on(
+    snapshot: &Snapshot,
+    project: muster_core::ProjectId,
+    key: &muster_core::TicketKey,
+) -> Vec<String> {
     let mut agents: Vec<&muster_core::Session> = snapshot
         .sessions
         .iter()
@@ -442,8 +451,8 @@ fn agents_on(snapshot: &Snapshot, project: muster_core::ProjectId, number: u64) 
                 workspace.id == session.workspace
                     && workspace.project == project
                     && workspace.kind.is_worktree()
-                    && muster_core::tickets::issue_of_branch(workspace.kind.branch())
-                        == Some(number)
+                    && muster_core::tickets::issue_of_branch(workspace.kind.branch()).as_ref()
+                        == Some(key)
             })
         })
         .collect();
@@ -457,7 +466,7 @@ fn agents_on(snapshot: &Snapshot, project: muster_core::ProjectId, number: u64) 
 pub(crate) async fn start_issue(
     socket: &Path,
     project: &str,
-    number: u64,
+    key: muster_core::TicketKey,
     harness: String,
     another: bool,
 ) -> Outcome {
@@ -467,7 +476,7 @@ pub(crate) async fn start_issue(
     let reply = connection
         .command(Command::StartFromIssue {
             project,
-            number,
+            key: key.clone(),
             harness,
             size: TermSize::default(),
             another,
@@ -476,7 +485,7 @@ pub(crate) async fn start_issue(
     let Reply::IssueStarted { workspace, session } = reply else {
         return Err(unexpected(&reply));
     };
-    println!("Started {session} for issue #{number} in {workspace}.");
+    println!("Started {session} for {} in {workspace}.", key.shown());
     Ok(())
 }
 

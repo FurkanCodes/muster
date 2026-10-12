@@ -7,15 +7,21 @@ use crossterm::event::KeyCode;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame,
 };
-use muster_core::{Issue, SessionStatus, Timestamp, Workspace, WorkspaceId, WorkspaceKind};
+use muster_core::{
+    Issue, SessionStatus, TicketKey, Timestamp, Workspace, WorkspaceId, WorkspaceKind,
+};
 
 use super::tests::{PANE, World, command, press, render, world};
 use super::{Action, Mode, TicketRow, View};
 use crate::model::tests::session;
 
+fn key(number: u64) -> TicketKey {
+    TicketKey::number(number)
+}
+
 fn issue(number: u64, title: &str) -> Issue {
     Issue {
-        number,
+        key: key(number),
         title: title.to_owned(),
         url: format!("https://github.com/o/app/issues/{number}"),
         labels: vec!["bug".to_owned()],
@@ -55,6 +61,7 @@ fn on_tickets() -> World {
         &mut world,
         req_id,
         Ok(Reply::Issues {
+            tracker: "GitHub issues".to_owned(),
             issues: vec![issue(42, "Fix the login redirect"), issue(7, "Dark mode")],
         }),
     );
@@ -62,8 +69,8 @@ fn on_tickets() -> World {
         world.app.ticket_rows(),
         [
             TicketRow::Project(world.project.id),
-            TicketRow::Ticket(world.project.id, 42),
-            TicketRow::Ticket(world.project.id, 7),
+            TicketRow::Ticket(world.project.id, key(42)),
+            TicketRow::Ticket(world.project.id, key(7)),
         ]
     );
     let actions = press(&mut world.app, KeyCode::Down);
@@ -72,7 +79,7 @@ fn on_tickets() -> World {
         viewed,
         Command::ViewIssue {
             project: world.project.id,
-            number: 42
+            key: key(42)
         }
     );
     reply(
@@ -127,7 +134,7 @@ fn a_project_s_tickets_are_listed_and_the_selected_one_shown_with_its_text() {
         "by someone · bug",
         "No agent on it yet",
         "After signing in, users land on /404.",
-        "⏎ start an agent  b browser  x close on GitHub  r refresh  ⇥ next tab  esc back",
+        "⏎ start an agent  b browser  x close  r refresh  ⇥ next tab  esc back",
     ] {
         assert!(screen.contains(shown), "{shown:?} in\n{screen}");
     }
@@ -147,7 +154,7 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
         started,
         Command::StartFromIssue {
             project: world.project.id,
-            number: 42,
+            key: key(42),
             harness: "claude".to_owned(),
             size: PANE,
             another: false,
@@ -190,10 +197,10 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
     assert!(matches!(
         &commands(&actions)[..],
         [Command::StartFromIssue {
-            number: 42,
+            key: started,
             another: true,
             ..
-        }]
+        }] if *started == key(42)
     ));
     // The latest agent still running is the one ⏎ opens.
     let second = agent_on_42(&mut world, "muster/issue-42-fix-the-login-redirect-2", 20);
@@ -212,7 +219,7 @@ fn the_agents_on_a_ticket_are_those_on_branches_named_for_it() {
     let agents: Vec<_> = world
         .app
         .model
-        .agents_on(world.project.id, 42)
+        .agents_on(world.project.id, &key(42))
         .iter()
         .map(|session| session.id)
         .collect();
@@ -301,7 +308,7 @@ fn x_closes_a_ticket_on_github_after_asking_and_it_leaves_the_list() {
     assert!(commands(&press(&mut world.app, KeyCode::Char('x'))).is_empty());
     let screen = render(&world.app);
     assert!(
-        screen.contains("Close #42 Fix the login redirect on GitHub?"),
+        screen.contains("Close #42 Fix the login redirect in GitHub issues?"),
         "{screen}"
     );
     let (req_id, sent) = command(&press(&mut world.app, KeyCode::Char('y')));
@@ -309,7 +316,7 @@ fn x_closes_a_ticket_on_github_after_asking_and_it_leaves_the_list() {
         sent,
         Command::CloseIssue {
             project: world.project.id,
-            number: 42
+            key: key(42)
         }
     );
     reply(&mut world, req_id, Ok(Reply::Done));
@@ -317,7 +324,7 @@ fn x_closes_a_ticket_on_github_after_asking_and_it_leaves_the_list() {
     assert_eq!(world.app.mode, Mode::Browse);
     let screen = render(&world.app);
     assert!(!screen.contains("#42 Fix the login redirect"), "{screen}");
-    assert!(screen.contains("Closed #42 on GitHub."), "{screen}");
+    assert!(screen.contains("Closed #42 in GitHub issues."), "{screen}");
     assert!(screen.contains("#7 Dark mode"), "{screen}");
 }
 
@@ -353,9 +360,10 @@ fn after_closing_a_ticket_its_agents_and_worktrees_go_if_asked() {
     reply(&mut world, req_id, Ok(Reply::Done));
     let screen = render(&world.app);
     assert!(
-        screen.contains("Closed #42 on GitHub. Also close its agent and remove its worktree?"),
+        screen.contains("Closed #42 in GitHub issues. Also close its agent and remove its"),
         "{screen}"
     );
+    assert!(screen.contains("worktree? Branches are kept."), "{screen}");
 
     // The agent is stopped; the worktree goes once nothing runs in it.
     let actions = press(&mut world.app, KeyCode::Char('y'));

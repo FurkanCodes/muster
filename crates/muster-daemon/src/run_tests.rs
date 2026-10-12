@@ -6,17 +6,20 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use muster_core::protocol::{Command, Delta, ErrorCode, Reply};
-use muster_core::{Issue, ProjectId, PullRequest, RunId, RunStage, SessionId, Timestamp};
+use muster_core::{
+    Issue, ProjectId, PullRequest, RunId, RunStage, SessionId, TicketKey, Timestamp,
+};
 use muster_state::run::{AgentOutcome, RunEffect, RunEvent, Verdict};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::timeout;
 
 use crate::clock::Clock;
-use crate::github::{BoxFuture, GitHubError, IssueDetail, TicketSource};
+use crate::github::BoxFuture;
 use crate::runs::credentials::{FixedCredentials, Secret};
 use crate::runs::{Report, Reports, RunContext, RunWork};
 use crate::store::{Store, StoreHandle};
 use crate::supervisor::{self, SupervisorHandle};
+use crate::trackers::{Fixed, IssueDetail, TicketSource, TrackerError};
 
 #[derive(Debug)]
 struct FixedClock;
@@ -32,33 +35,38 @@ impl Clock for FixedClock {
 struct OneIssue;
 
 impl TicketSource for OneIssue {
-    fn list(&self, _repo: &Path) -> BoxFuture<'_, Result<Vec<Issue>, GitHubError>> {
+    fn describe(&self) -> String {
+        "GitHub issues".to_owned()
+    }
+
+    fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, TrackerError>> {
         Box::pin(async { Ok(vec![issue()]) })
     }
 
-    fn view(&self, _repo: &Path, number: u64) -> BoxFuture<'_, Result<IssueDetail, GitHubError>> {
+    fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, TrackerError>> {
         Box::pin(async move {
-            if number == 42 {
+            if key.as_number() == Some(42) {
                 Ok(IssueDetail {
                     issue: issue(),
                     body: "Users land on /404.".to_owned(),
+                    tracker: muster_core::config::TrackerKind::GitHub,
                 })
             } else {
-                Err(GitHubError::Failed(format!(
-                    "Could not resolve to an Issue with the number of {number}."
+                Err(TrackerError::NotFound(format!(
+                    "Could not resolve to an Issue with the number of {key}."
                 )))
             }
         })
     }
 
-    fn close(&self, _repo: &Path, _number: u64) -> BoxFuture<'_, Result<(), GitHubError>> {
+    fn close<'a>(&'a self, _key: &'a TicketKey) -> BoxFuture<'a, Result<(), TrackerError>> {
         Box::pin(async { Ok(()) })
     }
 }
 
 fn issue() -> Issue {
     Issue {
-        number: 42,
+        key: TicketKey::number(42),
         title: "Fix the login redirect".to_owned(),
         url: "https://github.com/o/app/issues/42".to_owned(),
         labels: vec!["bug".to_owned()],
@@ -184,7 +192,7 @@ async fn spawn_with(
         history_every: 1,
         timing: muster_state::session::Timing::default(),
         work,
-        tickets: Arc::new(OneIssue),
+        trackers: Arc::new(Fixed(Arc::new(OneIssue))),
         config_dir: config_dir.to_owned(),
         credentials: Arc::new(FixedCredentials(secret)),
         docker: docker.display().to_string(),

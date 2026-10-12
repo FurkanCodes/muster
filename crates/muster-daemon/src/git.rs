@@ -159,6 +159,20 @@ pub(crate) async fn answer(cwd: &Path, args: &[&str]) -> Result<Option<String>, 
     Ok(outcome.success.then_some(outcome.stdout))
 }
 
+/// The address of the repository's remote: `origin`'s, or else the first
+/// remote's; `None` with no remote, or outside a repository.
+pub(crate) async fn remote_url(repo: &Path) -> Option<String> {
+    if let Ok(Some(url)) = answer(repo, &["remote", "get-url", "origin"]).await {
+        return Some(url).filter(|url| !url.is_empty());
+    }
+    let remotes = answer(repo, &["remote"]).await.ok()??;
+    let first = remotes.lines().next()?.trim().to_owned();
+    answer(repo, &["remote", "get-url", &first])
+        .await
+        .ok()?
+        .filter(|url| !url.is_empty())
+}
+
 /// What is changed or untracked in the work tree at `path`, one line per
 /// path as git's porcelain status lists it (the whole output trimmed);
 /// nothing when all is committed.

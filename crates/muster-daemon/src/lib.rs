@@ -18,6 +18,7 @@ mod runs;
 mod server;
 mod supervisor;
 mod terminal;
+mod trackers;
 mod worktree_sync;
 
 #[cfg(test)]
@@ -154,7 +155,7 @@ pub async fn run(
             ..muster_state::session::Timing::default()
         },
         work: Arc::new(run_work(paths, credentials.clone(), git_host.clone())),
-        tickets: Arc::new(github::GitHubIssues),
+        trackers: Arc::new(trackers::choose::ServiceTrackers),
         config_dir: paths.config_dir.clone(),
         credentials,
         docker: "docker".to_owned(),
