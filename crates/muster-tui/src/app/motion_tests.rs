@@ -1,12 +1,13 @@
 //! Motion: a running session's mark spins, what needs the person pulses,
-//! and nothing moves otherwise.
+//! a line flashes as its session comes to want a look, and nothing moves
+//! otherwise.
 
 use muster_core::protocol::{Delta, ServerFrame};
 use muster_core::{SessionStatus, WaitReason};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
-use ratatui::style::Modifier;
+use ratatui::style::{Color, Modifier};
 
 use super::tests::{SIZE, World, render, world};
 
@@ -78,13 +79,14 @@ fn what_needs_the_person_pulses_bright_plain_dim_plain() {
         let buffer = buffer(world);
         (modifiers_of(&buffer, "▲"), count_modifiers(&buffer))
     };
-    let (mark, count) = at(&mut world, 0);
+    // From step 16, once the line's flash for the change has settled.
+    let (mark, count) = at(&mut world, 16);
     assert!(mark.contains(Modifier::BOLD) && !mark.contains(Modifier::DIM));
     assert!(count.contains(Modifier::BOLD) && !count.contains(Modifier::DIM));
-    let (mark, count) = at(&mut world, 4);
+    let (mark, count) = at(&mut world, 20);
     assert!(!mark.intersects(Modifier::BOLD | Modifier::DIM));
     assert!(!count.intersects(Modifier::BOLD | Modifier::DIM));
-    let (mark, count) = at(&mut world, 8);
+    let (mark, count) = at(&mut world, 24);
     assert!(mark.contains(Modifier::DIM) && !mark.contains(Modifier::BOLD));
     assert!(count.contains(Modifier::DIM) && !count.contains(Modifier::BOLD));
 }
@@ -111,13 +113,22 @@ fn with_motion_off_every_mark_stands_still() {
     assert!(!world.app.animating());
 }
 
+/// Lets any flash for the last change settle.
+fn settle(world: &mut World) {
+    world.app.on_step(world.app.step + 10);
+    world.app.on_step(world.app.step + 1);
+}
+
 #[test]
 fn only_a_running_session_or_something_waiting_asks_for_drawing() {
     let mut world = world();
     assert!(!world.app.animating(), "an idle session stands still");
     with_status(&mut world, SessionStatus::Finished);
-    assert!(!world.app.animating(), "a finished one too");
+    assert!(world.app.animating(), "its line flashes");
+    settle(&mut world);
+    assert!(!world.app.animating(), "then a finished one stands still");
     with_status(&mut world, SessionStatus::Exited { success: false });
+    settle(&mut world);
     assert!(!world.app.animating(), "and an ended one");
 
     with_status(&mut world, SessionStatus::Running);
@@ -138,4 +149,117 @@ fn only_a_running_session_or_something_waiting_asks_for_drawing() {
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(news)));
     assert!(world.app.animating());
+}
+
+/// The cell where `text` first starts on screen.
+fn cell_at<'a>(buffer: &'a Buffer, text: &str) -> &'a ratatui::buffer::Cell {
+    for y in 0..buffer.area.height {
+        let row: Vec<&str> = (0..buffer.area.width)
+            .map(|x| buffer[(x, y)].symbol())
+            .collect();
+        let line: String = row.concat();
+        if let Some(at) = line.find(text) {
+            let x = line[..at].chars().count();
+            return &buffer[(u16::try_from(x).unwrap(), y)];
+        }
+    }
+    panic!("no {text:?} on screen");
+}
+
+#[test]
+fn a_session_that_finishes_flashes_lit_then_tinted_then_settles() {
+    let mut world = world();
+    world.app.on_step(20);
+    with_status(&mut world, SessionStatus::Running);
+    assert_eq!(
+        world.app.flash_age(world.session.id),
+        None,
+        "running: no flash"
+    );
+
+    with_status(&mut world, SessionStatus::Finished);
+    assert_eq!(world.app.flash_age(world.session.id), Some(0));
+    let lit = buffer(&world);
+    let title = cell_at(&lit, "Shell  finished");
+    assert_eq!((title.fg, title.bg), (Color::Black, Color::Green));
+    // Lit over the spans' own styles: the mark stays readable on it.
+    assert_eq!(cell_at(&lit, "✓ Shell").bg, Color::Green);
+
+    assert!(world.app.on_step(25), "a flashing line is drawn each step");
+    let tinted = buffer(&world);
+    let title = cell_at(&tinted, "Shell  finished");
+    assert_eq!((title.fg, title.bg), (Color::Green, Color::Reset));
+    assert!(title.modifier.contains(Modifier::BOLD));
+
+    // Once over, one more frame settles the line, then nothing asks.
+    assert!(world.app.on_step(30));
+    assert_eq!(world.app.flash_age(world.session.id), None);
+    let settled = buffer(&world);
+    let title = cell_at(&settled, "Shell  finished");
+    assert_ne!(title.fg, Color::Green);
+    assert_eq!(title.bg, Color::Reset);
+    assert!(!world.app.on_step(31));
+}
+
+#[test]
+fn waiting_and_ending_flash_but_starting_or_staying_the_same_does_not() {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.on_step(3);
+    with_status(&mut world, SessionStatus::Running);
+    assert_eq!(world.app.flash_age(id), None);
+
+    with_status(
+        &mut world,
+        SessionStatus::NeedsYou {
+            reason: WaitReason::Question,
+        },
+    );
+    assert_eq!(world.app.flash_age(id), Some(0));
+    // The same status again does not start the flash over.
+    world.app.on_step(6);
+    with_status(
+        &mut world,
+        SessionStatus::NeedsYou {
+            reason: WaitReason::Question,
+        },
+    );
+    assert_eq!(world.app.flash_age(id), Some(3));
+
+    world.app.on_step(40);
+    with_status(&mut world, SessionStatus::Exited { success: false });
+    assert_eq!(world.app.flash_age(id), Some(0));
+
+    // A new session, or a snapshot, flashes nothing.
+    world.app.on_step(80);
+    let mut new = world.session.clone();
+    new.id = muster_core::SessionId::new();
+    new.status = SessionStatus::Finished;
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(new.clone())));
+    assert_eq!(world.app.flash_age(new.id), None);
+    let mut finished = world.session.clone();
+    finished.status = SessionStatus::Finished;
+    world
+        .app
+        .on_frame(ServerFrame::Snapshot(muster_core::protocol::Snapshot {
+            projects: vec![world.project.clone()],
+            workspaces: vec![world.worktree.clone()],
+            sessions: vec![finished],
+            ..muster_core::protocol::Snapshot::default()
+        }));
+    assert_eq!(world.app.flash_age(id), None);
+}
+
+#[test]
+fn with_motion_off_nothing_flashes() {
+    let mut world = world();
+    world.app.motion = false;
+    world.app.on_step(1);
+    with_status(&mut world, SessionStatus::Running);
+    with_status(&mut world, SessionStatus::Finished);
+    assert_eq!(world.app.flash_age(world.session.id), None);
+    assert_eq!(cell_at(&buffer(&world), "Shell  finished").bg, Color::Reset);
+    assert!(!world.app.on_step(2));
 }

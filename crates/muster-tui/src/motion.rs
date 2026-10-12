@@ -1,12 +1,13 @@
 //! Motion: the few things that move, so what is moving stands out. A
-//! running session's mark spins, and what needs the person pulses. The
+//! running session's mark spins, what needs the person pulses, and a
+//! session's line flashes as its status comes to want a look. The
 //! runtime counts out steps (`STEP`) and the view draws the step it is
 //! given, never reading the clock, so drawing stays a function of the app.
 //! While nothing runs or waits nothing moves, and nothing is drawn for it.
 
 use std::time::{Duration, Instant};
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 /// How long each step of the motion is shown.
 pub(crate) const STEP: Duration = Duration::from_millis(100);
@@ -16,6 +17,37 @@ const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 
 /// Steps in each phase of the pulse: bright, plain, dim, plain.
 const PULSE_PHASE: u64 = 4;
+
+/// How long a line flashes: lit for the first half, then in its colour
+/// for the second, then settled.
+pub(crate) const FLASH_STEPS: u64 = 10;
+
+/// How a flashing line is drawn `age` steps into its flash, in `colour`:
+/// lit (dark on the colour) for the first half, then in the colour, bold.
+/// `None` once it has settled.
+pub(crate) fn flash(colour: Color, age: u64) -> Option<Flash> {
+    match age {
+        age if age < FLASH_STEPS / 2 => Some(Flash::Lit(
+            Style::default()
+                .fg(Color::Black)
+                .bg(colour)
+                .add_modifier(Modifier::BOLD),
+        )),
+        age if age < FLASH_STEPS => Some(Flash::Tinted(
+            Style::default().fg(colour).add_modifier(Modifier::BOLD),
+        )),
+        _ => None,
+    }
+}
+
+/// A flashing line's look.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Flash {
+    /// The whole line in this style, over its spans' own.
+    Lit(Style),
+    /// This style under the spans' own, so their marks keep their colours.
+    Tinted(Style),
+}
 
 /// The spinner's frame at `step`.
 pub(crate) fn spinner(step: u64) -> &'static str {
@@ -60,7 +92,6 @@ impl Steps {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::style::Color;
 
     #[test]
     fn the_spinner_goes_round_its_frames_one_a_step() {
@@ -91,6 +122,22 @@ mod tests {
         // Each phase holds for its steps, and the cycle starts again.
         assert_eq!(pulse(red, 3), pulse(red, 0));
         assert_eq!(pulse(red, 16), pulse(red, 0));
+    }
+
+    #[test]
+    fn a_flash_is_lit_then_tinted_then_settles() {
+        let lit = Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD);
+        let tinted = Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD);
+        assert_eq!(flash(Color::Green, 0), Some(Flash::Lit(lit)));
+        assert_eq!(flash(Color::Green, 4), Some(Flash::Lit(lit)));
+        assert_eq!(flash(Color::Green, 5), Some(Flash::Tinted(tinted)));
+        assert_eq!(flash(Color::Green, 9), Some(Flash::Tinted(tinted)));
+        assert_eq!(flash(Color::Green, 10), None);
     }
 
     #[test]
