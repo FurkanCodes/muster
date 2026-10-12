@@ -123,6 +123,7 @@ tracker = "jira"               # github, gitlab, jira or linear
 site = "acme.atlassian.net"    # Jira: the site, or a Data Center's address
 project = "APP"                # Jira: the project (or jql = "…")
 # team = "ENG"                 # Linear: the team
+mine = true                    # only tickets assigned to you, in any tracker
 
 [pull_requests]
 host = "gitlab"                # github, gitlab or bitbucket, for a host on another name

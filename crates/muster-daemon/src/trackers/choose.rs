@@ -33,8 +33,14 @@ impl Trackers for ServiceTrackers {
             let origin = crate::service::origin(&place.root).await;
             let tracker = choose(&config.tickets, config.pull_requests.host, &origin)?;
             let source: Arc<dyn TicketSource> = match tracker {
-                TrackerKind::GitHub => Arc::new(GitHubIssues { root: place.root }),
-                TrackerKind::GitLab => Arc::new(GitLabIssues { root: place.root }),
+                TrackerKind::GitHub => Arc::new(GitHubIssues {
+                    root: place.root,
+                    mine: config.tickets.mine,
+                }),
+                TrackerKind::GitLab => Arc::new(GitLabIssues {
+                    root: place.root,
+                    mine: config.tickets.mine,
+                }),
                 TrackerKind::Jira => {
                     Jira::for_settings(&config.tickets, self.secrets.as_ref(), self.http.clone())
                         .await?

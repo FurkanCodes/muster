@@ -52,11 +52,17 @@ enum Access {
 #[derive(Debug)]
 pub(crate) struct Linear {
     team: String,
+    /// Only those assigned to the person signed in.
+    mine: bool,
     access: Access,
 }
 
 const LIST: &str = "query($team: String!, $first: Int!) { issues(first: $first, \
     filter: { team: { key: { eq: $team } }, state: { type: { nin: [\"completed\", \"canceled\"] } } }) \
+    { nodes { identifier title url description createdAt labels { nodes { name } } creator { name } } } }";
+const LIST_MINE: &str = "query($team: String!, $first: Int!) { issues(first: $first, \
+    filter: { team: { key: { eq: $team } }, assignee: { isMe: { eq: true } }, \
+    state: { type: { nin: [\"completed\", \"canceled\"] } } }) \
     { nodes { identifier title url description createdAt labels { nodes { name } } creator { name } } } }";
 const VIEW: &str = "query($id: String!) { issue(id: $id) { identifier title url description \
     labels { nodes { name } } creator { name } } }";
@@ -98,7 +104,11 @@ impl Linear {
                 key,
             }
         };
-        Ok(Arc::new(Self { team, access }))
+        Ok(Arc::new(Self {
+            team,
+            mine: tickets.mine,
+            access,
+        }))
     }
 
     /// Runs a GraphQL query with the key: its `data`.
@@ -260,7 +270,10 @@ impl TicketSource for Linear {
             let mut found: Vec<(String, Issue)> = match &self.access {
                 Access::Api { .. } => {
                     let data = self
-                        .graphql(LIST, json!({ "team": self.team, "first": LIST_LIMIT }))
+                        .graphql(
+                            if self.mine { LIST_MINE } else { LIST },
+                            json!({ "team": self.team, "first": LIST_LIMIT }),
+                        )
                         .await?;
                     items(data.get("issues").unwrap_or(&Value::Null))
                         .iter()
@@ -276,10 +289,14 @@ impl TicketSource for Linear {
                 Access::Mcp { mcp } => {
                     let mut mcp = mcp.lock().await;
                     let tool = mcp.tool(&["list_issues", "listIssues"])?;
-                    let args = tool.args(&[
+                    let mut wanted: Vec<(&[&str], Value)> = vec![
                         (&["team", "teamId", "teamKey"], json!(self.team)),
                         (&["limit", "first"], json!(LIST_LIMIT)),
-                    ]);
+                    ];
+                    if self.mine {
+                        wanted.push((&["assignee", "assigneeId"], json!("me")));
+                    }
+                    let args = tool.args(&wanted);
                     let answer = mcp.call(&tool, args).await?;
                     items(&answer)
                         .iter()

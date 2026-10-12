@@ -227,3 +227,81 @@ fn a_plain_folder_s_linear_issues_are_listed_and_closed_with_a_key() {
         "{refused}"
     );
 }
+
+#[test]
+fn mine_narrows_every_tracker_to_the_person_s_own() {
+    let (jira, jira_asked) = fake_jira();
+    let (linear, linear_asked) =
+        serve(|_, _| (200, json!({"data": {"issues": {"nodes": []}}}).to_string()));
+    let sandbox = Sandbox::new()
+        .with_env("MUSTER_JIRA_API", &format!("{jira}/rest/api/3"))
+        .with_env("JIRA_API_TOKEN", "t0ken")
+        .with_env("JIRA_EMAIL", "me@example.com")
+        .with_env("MUSTER_LINEAR_API", &format!("{linear}/graphql"))
+        .with_env("LINEAR_API_KEY", "lin_api_k");
+    std::fs::write(sandbox.fake_gh().join("issues.json"), "[]").unwrap();
+    std::fs::write(sandbox.fake_glab().join("issues.json"), "[]").unwrap();
+    let project = |name: &str, toml: &str, remote: Option<&str>| {
+        let root = sandbox.repository(name);
+        if let Some(remote) = remote {
+            git(&root, &["remote", "add", "origin", remote]);
+        }
+        std::fs::write(root.join("muster.toml"), toml).unwrap();
+        root
+    };
+    let roots = [
+        project("onhub", "[tickets]\nmine = true\n", None),
+        project(
+            "onlab",
+            "[tickets]\nmine = true\n",
+            Some("git@gitlab.example.com:g/onlab.git"),
+        ),
+        project(
+            "onjira",
+            "[tickets]\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\nproject = \"APP\"\nmine = true\n",
+            None,
+        ),
+        project(
+            "onlinear",
+            "[tickets]\ntracker = \"linear\"\nteam = \"ENG\"\nmine = true\n",
+            None,
+        ),
+    ];
+    let _daemon = sandbox.start();
+    for root in &roots {
+        assert!(
+            sandbox
+                .run(&["project", "add", root.to_str().unwrap()])
+                .status
+                .success()
+        );
+    }
+    for name in ["onhub", "onlab", "onjira", "onlinear"] {
+        let listed = sandbox.run(&["issue", "list", name]);
+        assert!(listed.status.success(), "{name}: {}", said(&listed));
+    }
+
+    let gh = std::fs::read_to_string(sandbox.fake_gh().join("calls")).unwrap();
+    assert!(gh.contains("issue list --state open --limit 100 --json number,title,url,labels,author --assignee @me"), "{gh}");
+    let glab = std::fs::read_to_string(sandbox.fake_glab().join("calls")).unwrap();
+    assert!(
+        glab.contains("issue list --output json --per-page 100 --assignee=@me"),
+        "{glab}"
+    );
+    let search = jira_asked.lock().unwrap()[0].json();
+    assert_eq!(
+        search["jql"],
+        "(project = \"APP\" AND statusCategory != Done) AND assignee = currentUser() ORDER BY created DESC"
+    );
+    let query = linear_asked.lock().unwrap()[0].json()["query"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(query.contains("isMe"), "{query}");
+
+    let config = said(&sandbox.run(&["project", "config", "onjira"]));
+    assert!(
+        config.contains("tickets       Jira at acme.atlassian.net, project APP, assigned to you"),
+        "{config}"
+    );
+}

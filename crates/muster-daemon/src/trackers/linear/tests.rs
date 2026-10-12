@@ -74,6 +74,7 @@ async fn api(
     let query = body["query"].as_str().unwrap_or_default();
     let data = if query.contains("issues(") {
         assert_eq!(body["variables"]["team"], "ENG");
+
         json!({"issues": {"nodes": [
             {"identifier": "ENG-1", "title": "Old", "url": "u1", "createdAt": "2026-01-01T00:00:00Z"},
             {"identifier": "ENG-2", "title": "New", "url": "u2", "createdAt": "2026-10-01T00:00:00Z"}
@@ -109,6 +110,7 @@ async fn the_api_lists_newest_first_views_and_closes_with_the_key() {
     .await;
     let linear = Linear {
         team: "ENG".to_owned(),
+        mine: false,
         access: Access::Api {
             http: reqwest::Client::new(),
             url: format!("{base}/graphql"),
@@ -142,7 +144,7 @@ async fn mcp_server(
         "initialize" => reply(json!({"protocolVersion": "2025-06-18", "capabilities": {}})),
         "notifications/initialized" => StatusCode::ACCEPTED.into_response(),
         "tools/list" => reply(json!({"tools": [
-            {"name": "list_issues", "inputSchema": {"properties": {"team": {}, "limit": {}}}},
+            {"name": "list_issues", "inputSchema": {"properties": {"team": {}, "limit": {}, "assignee": {}}}},
             {"name": "get_issue", "inputSchema": {"properties": {"id": {}}}},
             {"name": "list_issue_statuses", "inputSchema": {"properties": {"team": {}}}},
             {"name": "update_issue", "inputSchema": {"properties": {"id": {}, "state": {}}}}
@@ -176,6 +178,62 @@ async fn mcp_server(
 }
 
 #[tokio::test]
+async fn mine_asks_linear_for_the_person_s_own() {
+    let seen: Recorded = Arc::default();
+    let base = serve(
+        Router::new()
+            .route("/graphql", post(api))
+            .with_state(seen.clone()),
+    )
+    .await;
+    let linear = Linear {
+        team: "ENG".to_owned(),
+        mine: true,
+        access: Access::Api {
+            http: reqwest::Client::new(),
+            url: format!("{base}/graphql"),
+            key: Token::new("lin_api_k"),
+        },
+    };
+    linear.list().await.unwrap();
+    let query = seen.lock().unwrap().asked[0]["query"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        query.contains("assignee: { isMe: { eq: true } }"),
+        "{query}"
+    );
+
+    let mcp_seen: Recorded = Arc::default();
+    let base = serve(
+        Router::new()
+            .route("/mcp", post(mcp_server))
+            .with_state(mcp_seen.clone()),
+    )
+    .await;
+    let mcp = Mcp::connect(
+        reqwest::Client::new(),
+        &format!("{base}/mcp"),
+        Token::new("a"),
+        "Linear",
+        "muster auth linear",
+    )
+    .await
+    .unwrap();
+    let linear = Linear {
+        team: "ENG".to_owned(),
+        mine: true,
+        access: Access::Mcp {
+            mcp: Mutex::new(mcp),
+        },
+    };
+    linear.list().await.unwrap();
+    let asked = mcp_seen.lock().unwrap().asked[0]["args"].clone();
+    assert_eq!(asked["assignee"], "me");
+}
+
+#[tokio::test]
 async fn linear_s_mcp_server_lists_open_issues_views_and_closes_by_state_name() {
     let seen: Recorded = Arc::default();
     let base = serve(
@@ -195,6 +253,7 @@ async fn linear_s_mcp_server_lists_open_issues_views_and_closes_by_state_name() 
     .unwrap();
     let linear = Linear {
         team: "ENG".to_owned(),
+        mine: false,
         access: Access::Mcp {
             mcp: Mutex::new(mcp),
         },
@@ -211,7 +270,11 @@ async fn linear_s_mcp_server_lists_open_issues_views_and_closes_by_state_name() 
     assert_eq!(linear.view(&key).await.unwrap().body, "Its text.");
     linear.close(&key).await.unwrap();
     let asked = seen.lock().unwrap().asked.clone();
-    assert_eq!(asked[0]["args"], json!({"team": "ENG", "limit": 100}));
+    assert_eq!(
+        asked[0]["args"],
+        json!({"team": "ENG", "limit": 100}),
+        "not only the person's"
+    );
     assert_eq!(
         asked.last().unwrap()["args"],
         json!({"id": "ENG-3", "state": "Done"})
