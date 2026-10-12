@@ -47,6 +47,7 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
             secrets: Arc::new(crate::secrets::Kept::default()),
             http: crate::service::http_client(),
         }),
+        adopted: Vec::new(),
     })
     .await
     .unwrap()
@@ -338,6 +339,7 @@ async fn every_nth_measurement_is_kept_in_history() {
             secrets: Arc::new(crate::secrets::Kept::default()),
             http: crate::service::http_client(),
         }),
+        adopted: Vec::new(),
     })
     .await
     .unwrap();

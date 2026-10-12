@@ -37,6 +37,8 @@ curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/main/install.sh 
 
 It downloads the prebuilt binary for your machine from the latest release, checks it against its published checksum, and puts it in `~/.local/bin`. On a machine without a prebuilt binary it builds Muster from source, which needs [Rust](https://rustup.rs).
 
+Later, `muster upgrade` installs the newest release the same way and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
+
 ```bash
 muster
 ```

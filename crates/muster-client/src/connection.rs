@@ -214,6 +214,12 @@ impl Connection {
 /// The process id of the daemon answering on `socket`, whichever protocol
 /// it speaks, so it can be stopped even when this build cannot talk to it.
 pub async fn daemon_pid(socket: &Path, client: &str) -> Result<u32, ClientError> {
+    daemon_identity(socket, client).await.map(|(pid, _)| pid)
+}
+
+/// The process id and version of the daemon answering on `socket`,
+/// whichever protocol it speaks.
+pub async fn daemon_identity(socket: &Path, client: &str) -> Result<(u32, String), ClientError> {
     let stream = UnixStream::connect(socket)
         .await
         .map_err(|source| ClientError::Unreachable {
@@ -228,9 +234,9 @@ pub async fn daemon_pid(socket: &Path, client: &str) -> Result<u32, ClientError>
     };
     writer.send(&ClientFrame::Hello(hello)).await?;
     match reader.next::<ServerFrame>().await? {
-        Some(ServerFrame::Welcome(welcome)) => Ok(welcome.daemon_pid),
+        Some(ServerFrame::Welcome(welcome)) => Ok((welcome.daemon_pid, welcome.daemon_version)),
         Some(ServerFrame::Incompatible(incompatible)) if incompatible.daemon_pid != 0 => {
-            Ok(incompatible.daemon_pid)
+            Ok((incompatible.daemon_pid, incompatible.daemon_version))
         }
         Some(ServerFrame::Incompatible(incompatible)) => {
             Err(ClientError::Incompatible(incompatible))

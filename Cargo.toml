@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95"
 publish = false
@@ -32,7 +32,8 @@ portable-pty = "0.9.0"
 reqwest = { version = "0.13.5", features = ["json", "form", "query", "stream"] }
 vt100 = "0.16.2"
 clap = { version = "4.6.7", features = ["derive"] }
-nix = { version = "0.31.3", features = ["fs", "signal", "term", "user"] }
+nix = { version = "0.31.3", features = ["fs", "poll", "process", "signal", "term", "user"] }
+rustix = { version = "1.1.5", features = ["termios"] }
 rmp-serde = "1.3.1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.11.0"
@@ -45,7 +46,9 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# Denied everywhere; allowed in one audited module only, the daemon's
+# descriptor handoff (`ARC-12`), which no safe interface can express.
+unsafe_code = "deny"
 missing_debug_implementations = "warn"
 unreachable_pub = "warn"
 

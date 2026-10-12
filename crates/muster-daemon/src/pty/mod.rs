@@ -11,6 +11,12 @@
 //! the terminal as its controlling terminal and closes every inherited
 //! descriptor above stderr before `exec`. The actor also answers the
 //! questions programs ask their terminal (see `queries`).
+//!
+//! An actor can hand its terminal over, for the daemon's restart in place
+//! (`handoff`): it stops its reader between reads, so no byte is taken from
+//! the terminal that the ring does not hold, and gives up the terminal with
+//! its ring, input modes and size; the program runs on, untouched. The next
+//! daemon adopts it into a new actor.
 
 mod cursor;
 mod osc;
@@ -20,15 +26,19 @@ mod ring;
 #[cfg(test)]
 mod tests;
 
+use std::fs::File;
 use std::io::{Read, Write};
+use std::os::fd::{AsFd, OwnedFd};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use muster_core::protocol::{TermSize, TerminalModes};
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
-use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::Instant;
 
@@ -44,6 +54,9 @@ const STOP_GRACE: Duration = Duration::from_secs(3);
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// The most output sent as one chunk.
 const MAX_CHUNK: usize = 8 * 1024;
+/// How long the reader waits for output before it looks whether it is to
+/// stop, for a handoff.
+const READ_WAIT: Duration = Duration::from_millis(100);
 
 /// What to run in a terminal.
 #[derive(Clone, Debug)]
@@ -93,6 +106,28 @@ pub(crate) struct Attachment {
     pub(crate) live: Option<broadcast::Receiver<Chunk>>,
 }
 
+/// A running terminal as carried to the daemon's next version.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Carried {
+    /// The program's process id, which leads its process group.
+    pub(crate) pid: Option<u32>,
+    /// The sequence number of the ring's first byte.
+    pub(crate) seq: u64,
+    #[serde(with = "serde_bytes")]
+    pub(crate) ring: Vec<u8>,
+    pub(crate) size: TermSize,
+    pub(crate) modes: queries::CarriedModes,
+    /// It was asked to stop and is within its grace.
+    pub(crate) stopping: bool,
+}
+
+/// A terminal handed over: the terminal itself and what goes with it.
+#[derive(Debug)]
+pub(crate) struct Handed {
+    pub(crate) master: OwnedFd,
+    pub(crate) terminal: Carried,
+}
+
 #[derive(Debug)]
 enum Command {
     Attach {
@@ -103,6 +138,9 @@ enum Command {
     Resize(TermSize),
     Stop,
     ResumeIfSuspended,
+    /// Give the terminal up, with what goes with it, if its program still
+    /// runs; the actor ends, leaving the program running.
+    HandOver(oneshot::Sender<Option<Handed>>),
 }
 
 /// A cheap, cloneable way to reach a terminal's actor.
@@ -154,6 +192,14 @@ impl PtyHandle {
     pub(crate) async fn resume_if_suspended(&self) {
         let _ = self.commands.send(Command::ResumeIfSuspended).await;
     }
+
+    /// Hands the terminal over, for the daemon's next version: `None` if
+    /// its program has ended, or the terminal is gone.
+    pub(crate) async fn hand_over(&self) -> Option<Handed> {
+        let (reply, answer) = oneshot::channel();
+        self.commands.send(Command::HandOver(reply)).await.ok()?;
+        answer.await.ok().flatten()
+    }
 }
 
 /// Starts `spec` in a new terminal whose first byte of output is numbered
@@ -185,25 +231,14 @@ pub(crate) fn spawn(
     drop(pair.slave);
 
     let pid = child.process_id();
-    let process_group = pid
-        .and_then(|pid| i32::try_from(pid).ok())
-        .map(Pid::from_raw);
-    let reader = pair
+    // The terminal as a descriptor of Muster's own, which a handoff can
+    // carry; portable-pty's copy closes with it.
+    let master = pair
         .master
-        .try_clone_reader()
-        .map_err(std::io::Error::other)?;
-    let writer = pair.master.take_writer().map_err(std::io::Error::other)?;
-
-    let (output, output_queue) = mpsc::channel(64);
-    std::thread::Builder::new()
-        .name("muster-pty-read".to_owned())
-        .spawn(move || read_output(reader, &output))?;
-
-    let (input, input_queue) = std::sync::mpsc::channel::<Vec<u8>>();
-    std::thread::Builder::new()
-        .name("muster-pty-write".to_owned())
-        .spawn(move || write_input(writer, &input_queue))?;
-
+        .as_raw_fd()
+        .ok_or_else(|| std::io::Error::other("the terminal has no descriptor"))
+        .and_then(crate::handoff::fds::duplicate)?;
+    drop(pair.master);
     let (exit, exited) = oneshot::channel();
     std::thread::Builder::new()
         .name("muster-pty-wait".to_owned())
@@ -211,23 +246,125 @@ pub(crate) fn spawn(
             let success = child.wait().is_ok_and(|status| status.success());
             let _ = exit.send(success);
         })?;
+    start(
+        master,
+        pid,
+        exited,
+        Ring::starting_at(RING_CAPACITY, first_seq),
+        QueryScanner::default(),
+        spec.size,
+        false,
+        events,
+    )
+}
+
+/// Takes over a terminal handed over by the daemon's previous version, its
+/// program still running and still this process's child.
+pub(crate) fn adopt(
+    master: OwnedFd,
+    carried: Carried,
+    events: impl Fn(PtyEvent) + Send + 'static,
+) -> std::io::Result<PtyHandle> {
+    let mut ring = Ring::starting_at(RING_CAPACITY, carried.seq);
+    ring.push(&carried.ring);
+    let pid = carried.pid;
+    let (exit, exited) = oneshot::channel();
+    std::thread::Builder::new()
+        .name("muster-pty-wait".to_owned())
+        .spawn(move || {
+            let _ = exit.send(wait_for(pid));
+        })?;
+    start(
+        master,
+        pid,
+        exited,
+        ring,
+        QueryScanner::adopt(carried.modes),
+        carried.size,
+        carried.stopping,
+        events,
+    )
+}
+
+/// Waits for the child `pid` to exit: whether it exited cleanly.
+fn wait_for(pid: Option<u32>) -> bool {
+    use nix::errno::Errno;
+    use nix::sys::wait::{WaitStatus, waitpid};
+    let Some(pid) = pid.and_then(|pid| i32::try_from(pid).ok()) else {
+        return false;
+    };
+    loop {
+        match waitpid(Pid::from_raw(pid), None) {
+            Ok(WaitStatus::Exited(_, code)) => return code == 0,
+            Ok(WaitStatus::Signaled(..)) => return false,
+            Err(Errno::EINTR) | Ok(_) => {}
+            // Reaped already, as it was exiting during the handoff.
+            Err(_) => return false,
+        }
+    }
+}
+
+/// Starts the actor for a terminal and its threads.
+#[allow(clippy::too_many_arguments)]
+fn start(
+    master: OwnedFd,
+    pid: Option<u32>,
+    exited: oneshot::Receiver<bool>,
+    ring: Ring,
+    queries: QueryScanner,
+    size: TermSize,
+    stopping: bool,
+    events: impl Fn(PtyEvent) + Send + 'static,
+) -> std::io::Result<PtyHandle> {
+    let process_group = pid
+        .and_then(|pid| i32::try_from(pid).ok())
+        .map(Pid::from_raw);
+    let reader = File::from(master.try_clone()?);
+    let writer = File::from(master.try_clone()?);
+
+    let (output, output_queue) = mpsc::channel(64);
+    let stop_reading = Arc::new(AtomicBool::new(false));
+    let (read_done, reader_done) = oneshot::channel();
+    let stop = stop_reading.clone();
+    std::thread::Builder::new()
+        .name("muster-pty-read".to_owned())
+        .spawn(move || {
+            read_output(reader, &output, &stop);
+            let _ = read_done.send(());
+        })?;
+
+    let (input, input_queue) = std::sync::mpsc::channel::<Vec<u8>>();
+    std::thread::Builder::new()
+        .name("muster-pty-write".to_owned())
+        .spawn(move || write_input(writer, &input_queue))?;
 
     let (commands, queue) = mpsc::channel(256);
     let actor = Actor {
-        master: pair.master,
+        master: Some(master),
         process_group,
-        ring: Ring::starting_at(RING_CAPACITY, first_seq),
+        ring,
         live: Some(broadcast::channel(256).0),
         input: Some(input),
         osc: OscScanner::default(),
-        queries: QueryScanner::default(),
+        queries,
         cursor: None,
-        size: spec.size,
-        stopping: false,
-        kill_at: None,
+        size,
+        stopping,
+        kill_at: stopping.then(|| Instant::now() + STOP_GRACE),
+        stop_reading,
+        reader_done: Some(reader_done),
     };
     tokio::spawn(actor.run(queue, output_queue, exited, events));
     Ok(PtyHandle { commands, pid })
+}
+
+fn winsize(size: TermSize) -> rustix::termios::Winsize {
+    rustix::termios::Winsize {
+        ws_row: size.rows.max(1),
+        ws_col: size.cols.max(1),
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    }
 }
 
 fn pty_size(size: TermSize) -> PtySize {
@@ -239,9 +376,18 @@ fn pty_size(size: TermSize) -> PtySize {
     }
 }
 
-fn read_output(mut reader: Box<dyn Read + Send>, output: &mpsc::Sender<Vec<u8>>) {
+/// Reads output until the terminal closes, or until `stop` is set, which is
+/// looked at between reads: a byte read is always sent on, so a handoff
+/// loses none.
+fn read_output(mut reader: File, output: &mpsc::Sender<Vec<u8>>, stop: &AtomicBool) {
     let mut buffer = vec![0; 16 * 1024];
-    loop {
+    while !stop.load(Ordering::Acquire) {
+        match readable(&reader) {
+            Ok(false) => continue,
+            Ok(true) => {}
+            Err(nix::errno::Errno::EINTR) => continue,
+            Err(_) => return,
+        }
         match reader.read(&mut buffer) {
             // macOS reports a closed terminal as an error rather than EOF.
             Ok(0) | Err(_) => return,
@@ -254,7 +400,19 @@ fn read_output(mut reader: Box<dyn Read + Send>, output: &mpsc::Sender<Vec<u8>>)
     }
 }
 
-fn write_input(mut writer: Box<dyn Write + Send>, input: &std::sync::mpsc::Receiver<Vec<u8>>) {
+/// Whether the terminal has output, waiting at most `READ_WAIT`. With
+/// `select`, as macOS's `poll` does not work on terminals.
+fn readable(reader: &File) -> nix::Result<bool> {
+    use nix::sys::select::{FdSet, select};
+    use nix::sys::time::{TimeVal, TimeValLike};
+    let mut fds = FdSet::new();
+    fds.insert(reader.as_fd());
+    let millis = i64::try_from(READ_WAIT.as_millis()).unwrap_or(100);
+    let mut timeout = TimeVal::milliseconds(millis);
+    select(None, &mut fds, None, None, &mut timeout).map(|ready| ready > 0)
+}
+
+fn write_input(mut writer: File, input: &std::sync::mpsc::Receiver<Vec<u8>>) {
     while let Ok(data) = input.recv() {
         if writer
             .write_all(&data)
@@ -267,7 +425,8 @@ fn write_input(mut writer: Box<dyn Write + Send>, input: &std::sync::mpsc::Recei
 }
 
 struct Actor {
-    master: Box<dyn MasterPty + Send>,
+    /// The terminal; taken by a handoff.
+    master: Option<OwnedFd>,
     process_group: Option<Pid>,
     ring: Ring,
     /// Dropped once the process has exited, which ends live streams.
@@ -280,6 +439,10 @@ struct Actor {
     size: TermSize,
     stopping: bool,
     kill_at: Option<Instant>,
+    /// Set to stop the reader, for a handoff.
+    stop_reading: Arc<AtomicBool>,
+    /// Told when the reader has stopped.
+    reader_done: Option<oneshot::Receiver<()>>,
 }
 
 impl Actor {
@@ -312,6 +475,24 @@ impl Actor {
                     output_open = false;
                 }
                 command = commands.recv() => match command {
+                    Some(Command::HandOver(reply)) => {
+                        let handed = if exit_status.is_none() && self.live.is_some() {
+                            self.stop_reader().await;
+                            // What the reader read before it stopped.
+                            while let Ok(chunk) = output.try_recv() {
+                                self.on_output(chunk, &mut output, &events);
+                            }
+                            self.give_up()
+                        } else {
+                            None
+                        };
+                        let gone = handed.is_some();
+                        let _ = reply.send(handed);
+                        if gone {
+                            // The program runs on, the next daemon's now.
+                            return;
+                        }
+                    }
                     Some(command) => self.on_command(command),
                     // Released: nobody can attach any more.
                     None => break,
@@ -338,6 +519,33 @@ impl Actor {
             // Released while still running.
             self.signal(Signal::SIGKILL);
         }
+    }
+
+    /// Stops the reader between reads, for a handoff.
+    async fn stop_reader(&mut self) {
+        self.stop_reading.store(true, Ordering::Release);
+        if let Some(done) = self.reader_done.take() {
+            let _ = done.await;
+        }
+    }
+
+    /// Gives up the terminal with its ring, modes and size.
+    fn give_up(&mut self) -> Option<Handed> {
+        let master = self.master.take()?;
+        let replay = self.ring.replay_from(None);
+        Some(Handed {
+            master,
+            terminal: Carried {
+                pid: self
+                    .process_group
+                    .and_then(|group| u32::try_from(group.as_raw()).ok()),
+                seq: replay.seq,
+                ring: replay.data,
+                size: self.size,
+                modes: self.queries.carry(),
+                stopping: self.stopping,
+            },
+        })
     }
 
     fn on_output(
@@ -414,7 +622,9 @@ impl Actor {
             }
             Command::Resize(size) => {
                 if self.live.is_some() {
-                    let _ = self.master.resize(pty_size(size));
+                    if let Some(master) = &self.master {
+                        let _ = rustix::termios::tcsetwinsize(master, winsize(size));
+                    }
                     self.size = size;
                     if let Some(tracker) = &mut self.cursor {
                         tracker.resize(size.cols, size.rows);
@@ -427,6 +637,8 @@ impl Actor {
                     self.signal(Signal::SIGCONT);
                 }
             }
+            // Handled in `run`, where it can wait for the reader.
+            Command::HandOver(_) => {}
             Command::Stop => {
                 if self.live.is_some() && !self.stopping {
                     self.stopping = true;

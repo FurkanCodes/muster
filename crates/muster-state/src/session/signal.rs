@@ -3,7 +3,9 @@
 use muster_core::SessionStatus;
 
 /// Who inside an agent session raised an event.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Origin {
     /// The main agent, the one the person talks to.
     Main,

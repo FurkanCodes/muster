@@ -90,6 +90,50 @@ pub(crate) struct QueryScanner {
     synchronized: bool,
 }
 
+/// The input modes a program set, carried across the daemon's restart in
+/// place: the bytes that set them may long have left the ring, and a client
+/// encodes keys, pastes and the mouse by them (Shift+Enter in Claude Code
+/// needs the kitty flags).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CarriedModes {
+    kitty_flags: Vec<u8>,
+    bracketed_paste: bool,
+    paste_used: bool,
+    application_cursor: bool,
+    mouse: MouseTracking,
+    mouse_encoding: MouseEncoding,
+    alternate_screen: bool,
+}
+
+impl QueryScanner {
+    /// The modes to carry.
+    pub(crate) fn carry(&self) -> CarriedModes {
+        CarriedModes {
+            kitty_flags: self.kitty_flags.clone(),
+            bracketed_paste: self.bracketed_paste,
+            paste_used: self.paste_used,
+            application_cursor: self.application_cursor,
+            mouse: self.mouse,
+            mouse_encoding: self.mouse_encoding,
+            alternate_screen: self.alternate_screen,
+        }
+    }
+
+    /// A scanner with carried modes, between sequences.
+    pub(crate) fn adopt(modes: CarriedModes) -> Self {
+        Self {
+            kitty_flags: modes.kitty_flags,
+            bracketed_paste: modes.bracketed_paste,
+            paste_used: modes.paste_used,
+            application_cursor: modes.application_cursor,
+            mouse: modes.mouse,
+            mouse_encoding: modes.mouse_encoding,
+            alternate_screen: modes.alternate_screen,
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for QueryScanner {
     fn default() -> Self {
         Self {
