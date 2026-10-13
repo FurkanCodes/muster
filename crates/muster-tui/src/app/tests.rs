@@ -584,27 +584,67 @@ fn set_status(world: &mut World, session: SessionId, status: SessionStatus, unse
 }
 
 #[test]
+fn a_session_answered_from_needs_you_is_shown_among_its_project_s() {
+    let mut world = world();
+    let web = project("web");
+    let fix = worktree(web.id, "fix-login");
+    let theirs = session(fix.id, "Claude Code", 4);
+    for delta in [
+        Delta::ProjectUpserted(web.clone()),
+        Delta::WorkspaceUpserted(fix),
+        Delta::SessionUpserted(theirs.clone()),
+    ] {
+        world.app.on_frame(ServerFrame::Delta(delta));
+    }
+    let asking = SessionStatus::NeedsYou {
+        reason: WaitReason::Question,
+    };
+    let mine = world.session.id;
+    set_status(&mut world, mine, SessionStatus::Finished, true);
+    set_status(&mut world, theirs.id, asking, true);
+    world.app.on_key(ctrl('2'));
+    assert_eq!(world.app.needs_list, [theirs.id, mine]);
+
+    // Another question, or the same one asked again, keeps it in the queue.
+    press(&mut world.app, KeyCode::Enter);
+    assert_eq!(world.app.mode, Mode::Terminal(theirs.id));
+    let permission = SessionStatus::NeedsYou {
+        reason: WaitReason::Permission,
+    };
+    set_status(&mut world, theirs.id, permission, false);
+    assert_eq!(world.app.view, View::NeedsYou);
+
+    // Answered: the list beside it goes to the Sessions view, on it among
+    // its project's, and the keys stay with it.
+    set_status(&mut world, theirs.id, SessionStatus::Running, false);
+    assert_eq!(world.app.view, View::Sessions);
+    assert_eq!(world.app.selected, Some(Row::Session(theirs.id)));
+    assert_eq!(
+        world.app.model.project_of(Row::Session(theirs.id)),
+        Some(web.id)
+    );
+    assert_eq!(world.app.mode, Mode::Terminal(theirs.id));
+    assert!(render(&world.app).contains(" Needs you 1 "));
+    // Back on the list, it is still there.
+    world.app.on_key(shift_q());
+    assert_eq!(world.app.mode, Mode::Browse);
+    assert_eq!(world.app.view, View::Sessions);
+    assert_eq!(world.app.selected, Some(Row::Session(theirs.id)));
+    // The queue opens on what still waits.
+    world.app.on_key(ctrl('2'));
+    assert_eq!(world.app.needs_list, [mine]);
+}
+
+#[test]
 fn a_session_dealt_with_leaves_needs_you_once_the_person_is_back() {
     let mut world = world();
     let id = world.session.id;
     let asking = SessionStatus::NeedsYou {
         reason: WaitReason::Question,
     };
-    set_status(&mut world, id, asking, true);
     world.app.on_key(ctrl('2'));
-    assert_eq!(world.app.needs_list, [id]);
 
-    // Answered from its terminal: it stays while the person is in it...
-    press(&mut world.app, KeyCode::Enter);
-    assert_eq!(world.app.mode, Mode::Terminal(id));
-    set_status(&mut world, id, SessionStatus::Running, false);
-    assert_eq!(world.app.needs_list, [id]);
-    // ...and goes when they are back, though nothing else is left.
-    world.app.on_key(shift_q());
-    assert!(world.app.needs_list.is_empty());
-    assert!(render(&world.app).contains("All clear"));
-
-    // News only looked at, then gone into and left: dealt with too.
+    // News only looked at, then gone into and left: dealt with.
     set_status(&mut world, id, SessionStatus::Finished, true);
     assert_eq!(world.app.needs_list, [id]);
     set_status(&mut world, id, SessionStatus::Finished, false);
