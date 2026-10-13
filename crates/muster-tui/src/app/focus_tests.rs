@@ -84,14 +84,14 @@ fn news_is_announced_only_while_the_person_looks_elsewhere() {
     world.app.on_focus(false);
     assert_eq!(
         notes(&status(&mut world, waiting, true)),
-        ["Shell (work) needs your permission"]
+        ["Shell in app (work) needs your permission"]
     );
     // Still waiting: no second notice.
     assert!(notes(&status(&mut world, waiting, true)).is_empty());
     status(&mut world, SessionStatus::Running, false);
     assert_eq!(
         notes(&status(&mut world, SessionStatus::Finished, true)),
-        ["Shell (work) finished"]
+        ["Shell in app (work) finished"]
     );
     status(&mut world, SessionStatus::Running, false);
     // A finish someone saw is no news.

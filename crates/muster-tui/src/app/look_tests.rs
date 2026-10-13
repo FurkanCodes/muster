@@ -230,6 +230,49 @@ fn each_project_has_its_colour_and_the_selection_a_tint_and_a_bar() {
 }
 
 #[test]
+fn each_line_of_needs_you_names_its_project_in_its_colour() {
+    let mut app = App::new(PathBuf::from("/src"), SIZE);
+    app.on_connected("0.1.0".to_owned());
+    let (mine, theirs) = (project("app"), project("web"));
+    let (work, fix) = (worktree(mine.id, "work"), worktree(theirs.id, "fix-login"));
+    let waiting = |workspace, created| {
+        let mut found = session(workspace, "Claude Code", created);
+        found.status = SessionStatus::NeedsYou {
+            reason: WaitReason::Question,
+        };
+        found
+    };
+    app.on_frame(ServerFrame::Snapshot(Snapshot {
+        projects: vec![mine, theirs.clone()],
+        workspaces: vec![work.clone(), fix.clone()],
+        sessions: vec![waiting(work.id, 3), waiting(fix.id, 4)],
+        ..Snapshot::default()
+    }));
+    app.view = View::NeedsYou;
+    // The same agent waits in both: only the project tells them apart,
+    // and it stays where what each wants is cut short.
+    let screen = render(&app);
+    assert!(line_with(&screen, "▲ app  Claude Code").contains("needs you"));
+    assert!(line_with(&screen, "▲ web  Claude Code").contains("needs you"));
+
+    let cells = buffer(&app);
+    let (row, column) = (0..cells.area.height)
+        .find_map(|y| {
+            let text: String = (0..cells.area.width)
+                .map(|x| cells[(x, y)].symbol())
+                .collect();
+            let at = text.find("web  Claude")?;
+            Some((y, u16::try_from(text[..at].chars().count()).unwrap()))
+        })
+        .unwrap();
+    assert_eq!(
+        cells[(column, row)].fg,
+        crate::view::look::project_colour(&app, theirs.id)
+    );
+    assert!(cells[(column, row)].modifier.contains(Modifier::BOLD));
+}
+
+#[test]
 fn notes_fade_and_errors_wait_for_a_key() {
     let mut world = world();
     world.app.on_step(100);

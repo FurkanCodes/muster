@@ -5,7 +5,7 @@ use muster_core::protocol::{
     ClientFrame, Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame, Snapshot, TermSize,
     TerminalModes,
 };
-use muster_core::{Project, Session, SessionStatus, WaitReason, Workspace, WorkspaceId};
+use muster_core::{Project, Session, SessionId, SessionStatus, WaitReason, Workspace, WorkspaceId};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
@@ -564,16 +564,82 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
     assert_eq!(world.app.needs_selected, Some(other.id));
 
     // Looking at it clears it, yet it stays until the selection moves on.
+    press(&mut world.app, KeyCode::Down);
+    assert_eq!(world.app.needs_selected, Some(world.session.id));
+    let id = world.session.id;
+    set_status(&mut world, id, SessionStatus::Finished, false);
+    assert_eq!(world.app.needs_list, [other.id, world.session.id]);
+    press(&mut world.app, KeyCode::Up);
+    assert_eq!(world.app.needs_list, [other.id]);
+    assert!(render(&world.app).contains(" Needs you 1 "));
+}
+
+fn set_status(world: &mut World, session: SessionId, status: SessionStatus, unseen: bool) {
     world.app.on_frame(ServerFrame::Delta(Delta::SessionStatus {
-        session: other.id,
-        status: SessionStatus::Running,
-        unseen: false,
+        session,
+        status,
+        unseen,
         since: muster_core::Timestamp::from_millis(10),
     }));
-    assert_eq!(world.app.needs_list, [other.id, world.session.id]);
-    press(&mut world.app, KeyCode::Down);
-    assert_eq!(world.app.needs_list, [world.session.id]);
-    assert!(render(&world.app).contains(" Needs you 1 "));
+}
+
+#[test]
+fn a_session_dealt_with_leaves_needs_you_once_the_person_is_back() {
+    let mut world = world();
+    let id = world.session.id;
+    let asking = SessionStatus::NeedsYou {
+        reason: WaitReason::Question,
+    };
+    set_status(&mut world, id, asking, true);
+    world.app.on_key(ctrl('2'));
+    assert_eq!(world.app.needs_list, [id]);
+
+    // Answered from its terminal: it stays while the person is in it...
+    press(&mut world.app, KeyCode::Enter);
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    set_status(&mut world, id, SessionStatus::Running, false);
+    assert_eq!(world.app.needs_list, [id]);
+    // ...and goes when they are back, though nothing else is left.
+    world.app.on_key(shift_q());
+    assert!(world.app.needs_list.is_empty());
+    assert!(render(&world.app).contains("All clear"));
+
+    // News only looked at, then gone into and left: dealt with too.
+    set_status(&mut world, id, SessionStatus::Finished, true);
+    assert_eq!(world.app.needs_list, [id]);
+    set_status(&mut world, id, SessionStatus::Finished, false);
+    assert_eq!(world.app.needs_list, [id], "kept while looked at");
+    press(&mut world.app, KeyCode::Enter);
+    world.app.on_key(shift_q());
+    assert!(world.app.needs_list.is_empty());
+
+    // A question still open when they come back stays.
+    set_status(&mut world, id, asking, true);
+    press(&mut world.app, KeyCode::Enter);
+    world.app.on_key(shift_q());
+    assert_eq!(world.app.needs_list, [id]);
+}
+
+#[test]
+fn needs_you_lets_go_of_a_session_back_at_work_or_left_behind() {
+    let mut world = world();
+    let id = world.session.id;
+    set_status(&mut world, id, SessionStatus::Finished, true);
+    world.app.on_key(ctrl('2'));
+    set_status(&mut world, id, SessionStatus::Finished, false);
+    assert_eq!(world.app.needs_list, [id]);
+    // Back at work without the person in it: nothing waits on them.
+    set_status(&mut world, id, SessionStatus::Running, false);
+    assert!(world.app.needs_list.is_empty());
+
+    // Kept while looked at, it is not kept for the next visit.
+    set_status(&mut world, id, SessionStatus::Finished, true);
+    set_status(&mut world, id, SessionStatus::Finished, false);
+    assert_eq!(world.app.needs_list, [id]);
+    world.app.on_key(ctrl('1'));
+    world.app.on_key(ctrl('2'));
+    assert!(world.app.needs_list.is_empty());
+    assert_eq!(world.app.needs_selected, None);
 }
 
 #[test]

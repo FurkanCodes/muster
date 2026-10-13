@@ -7,7 +7,7 @@ use muster_core::protocol::{ClientFrame, Command};
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View, harness_choice};
 use crate::input::{Edit, LineInput};
 use crate::keys::{encode_key, encode_paste};
-use crate::model::Row;
+use crate::model::{Row, needs_attention};
 
 /// Whether `key` gives the keys back from a session's terminal to the
 /// list: Shift+Q, the person's choice, so a capital Q never reaches a
@@ -180,11 +180,12 @@ impl App {
         Vec::new()
     }
 
-    /// Shows `view`. The queue opens on its most urgent session; the
-    /// settings are read afresh, as they may have been edited by hand.
+    /// Shows `view`. The queue opens on its most urgent session, without
+    /// one kept from the last visit; the settings are read afresh, as they
+    /// may have been edited by hand.
     fn show(&mut self, view: View) -> Vec<Action> {
         if view == View::NeedsYou && self.view != View::NeedsYou {
-            self.needs_selected = self.needs_list.first().copied();
+            self.needs_selected = self.model.needs_you().first().copied();
         }
         if view == View::Settings && self.view != View::Settings {
             self.settings
@@ -272,6 +273,14 @@ impl App {
     pub(super) fn leave_terminal(&mut self, session: muster_core::SessionId) -> Vec<Action> {
         self.screen(session).scroll_to_bottom();
         self.mode = Mode::Browse;
+        // Back from a session of the queue that waits no more: the person
+        // dealt with it, so the queue moves on rather than keep it.
+        if self.view == View::NeedsYou
+            && self.needs_selected == Some(session)
+            && !self.model.session(session).is_some_and(needs_attention)
+        {
+            self.needs_selected = None;
+        }
         let was_full = std::mem::take(&mut self.full_screen);
         let mut actions = self.settle();
         if was_full {
