@@ -2,7 +2,7 @@
 
 **A terminal cockpit for coding agents.** Fetch your tickets, assign agents to them, and run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and shells across your projects, each in its own git worktree, from one terminal UI — and see at a glance which agent is working, which has finished, and which is waiting on you. Sessions live in a background daemon, so closing the UI stops nothing, and Claude Code sessions resume after the daemon restarts.
 
-> Status: built, tested and used daily by its author. Tickets come from GitHub, GitLab, Jira and Linear; agents are Claude Code, Codex, Gemini CLI, OpenCode and Copilot CLI. An autopilot that took tickets to reviewed pull requests in containers was built and set aside; its code is kept. See [PRODUCT.md](PRODUCT.md). No release yet: build it from source.
+> Status: built, tested and used daily by its author. Tickets come from GitHub, GitLab, Jira and Linear; agents are Claude Code, Codex, Gemini CLI, OpenCode and Copilot CLI. An autopilot that took tickets to reviewed pull requests in containers was built and set aside; its code is kept. See [PRODUCT.md](PRODUCT.md). Each release comes with prebuilt binaries for macOS and Linux.
 
 ## What it does
 
