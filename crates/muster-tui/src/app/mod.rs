@@ -449,12 +449,21 @@ impl App {
             muster_core::SessionStatus::Exited { success: true } => "exited",
             _ => "finished",
         };
+        let project = self
+            .model
+            .project_of(Row::Session(session))
+            .and_then(|id| self.model.project(id))
+            .map(|project| format!(" in {}", project.name))
+            .unwrap_or_default();
         let place = self
             .model
             .branch(stored.workspace)
             .map(|branch| format!(" ({branch})"))
             .unwrap_or_default();
-        Some(Action::Notify(format!("{}{place} {what}", stored.title)))
+        Some(Action::Notify(format!(
+            "{}{project}{place} {what}",
+            stored.title
+        )))
     }
 
     /// The person's terminal window gained or lost focus. Looking away

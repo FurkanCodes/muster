@@ -307,7 +307,7 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
         }
         Row::Session(id) => match app.model.session(id) {
             Some(session) => {
-                let line = session_line(app, session, vec![edge, Span::raw("   ")], width, None);
+                let line = session_line(app, session, vec![edge, Span::raw("   ")], width, false);
                 ListItem::new(flashed(app, session, line))
             }
             None => ListItem::new(""),
@@ -319,6 +319,9 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
 /// leaves out the session's usage.
 const READABLE_TITLE: usize = 12;
 
+/// The most of a project's name a session's line gives it.
+const PROJECT_NAME_ROOM: usize = 20;
+
 /// `text`, cut to `max` characters with an ellipsis if it is longer.
 pub(super) fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
@@ -329,18 +332,19 @@ pub(super) fn shorten(text: &str, max: usize) -> String {
 }
 
 /// A session's line after `lead`: its mark, its title and what it is
-/// doing (and with `place`, where), and at the end how long it has been
+/// doing (with `place`, also its project, before the title in the
+/// project's colour, and its branch), and at the end how long it has been
 /// so. Where it is short of room the title gives way first, down to a
 /// readable length; then a finished or ended session's time goes, then
 /// what it is doing, which is cut short only while it works or waits (a
 /// status alone says no more than its mark). The mark always stays, and a
-/// working or waiting session's time.
+/// working or waiting session's time, and its project's name.
 fn session_line(
     app: &App,
     session: &Session,
     lead: Vec<Span<'static>>,
     width: usize,
-    place: Option<&str>,
+    place: bool,
 ) -> Line<'static> {
     let (symbol, style) = status_symbol(session.status, app.motion_step());
     let live = matches!(
@@ -349,10 +353,25 @@ fn session_line(
     );
     let unseen = if session.unseen { " •" } else { "" };
     let mut doing = look::doing(session).to_owned();
-    if let Some(place) = place {
-        doing = format!("{doing} · {place}");
+    let mut project = Vec::new();
+    if place {
+        let branch = app.model.branch(session.workspace).unwrap_or("?");
+        doing = format!("{doing} · {branch}");
+        if let Some(id) = app.model.project_of(Row::Session(session.id))
+            && let Some(found) = app.model.project(id)
+        {
+            project = vec![
+                Span::styled(
+                    shorten(&found.name, PROJECT_NAME_ROOM),
+                    Style::default()
+                        .fg(look::project_colour(app, id))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw("  "),
+            ];
+        }
     }
-    let lead_width: usize = lead.iter().map(Span::width).sum();
+    let lead_width: usize = lead.iter().chain(&project).map(Span::width).sum();
     let fixed = lead_width + 2 + unseen.chars().count();
     let title_least = session.title.chars().count().min(READABLE_TITLE);
     let wanted = title_least + 2 + doing.chars().count();
@@ -388,11 +407,9 @@ fn session_line(
         _ => Style::default().add_modifier(Modifier::DIM),
     };
     let mut spans = lead;
-    spans.extend([
-        Span::styled(symbol, style),
-        Span::raw(" "),
-        Span::raw(title),
-    ]);
+    spans.extend([Span::styled(symbol, style), Span::raw(" ")]);
+    spans.extend(project);
+    spans.push(Span::raw(title));
     if !doing.is_empty() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(doing, doing_style));
@@ -468,11 +485,11 @@ fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .iter()
         .filter_map(|id| app.model.session(*id))
         .map(|session| {
-            let place = app.model.branch(session.workspace).unwrap_or("?");
             let selected = app.needs_selected == Some(session.id);
             let project = app.model.project_of(Row::Session(session.id));
             let lead = vec![look::edge(app, project, selected)];
-            let line = session_line(app, session, lead, width, Some(place));
+            // Mixed from every project, so each line says whose it is.
+            let line = session_line(app, session, lead, width, true);
             ListItem::new(flashed(app, session, line))
         })
         .collect();
