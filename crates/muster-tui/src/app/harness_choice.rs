@@ -74,6 +74,23 @@ impl HarnessChoice {
             .unwrap_or(0);
         Self::ALL[(at + Self::ALL.len() - 1) % Self::ALL.len()]
     }
+
+    /// The next coding agent, passing over the shell, which a ticket is
+    /// never given.
+    pub(crate) fn next_agent(self) -> Self {
+        let next = self.next();
+        if next.is_agent() { next } else { next.next() }
+    }
+
+    /// The previous coding agent, passing over the shell.
+    pub(crate) fn previous_agent(self) -> Self {
+        let previous = self.previous();
+        if previous.is_agent() {
+            previous
+        } else {
+            previous.previous()
+        }
+    }
 }
 
 /// Whether a session's harness suspends itself on Ctrl+Z, as every coding
@@ -104,6 +121,27 @@ mod tests {
         assert_eq!(choice, HarnessChoice::Claude);
         assert_eq!(HarnessChoice::Claude.previous(), HarnessChoice::Shell);
         assert_eq!(HarnessChoice::Shell.previous(), HarnessChoice::Copilot);
+    }
+
+    #[test]
+    fn the_agents_go_round_without_the_shell() {
+        let mut choice = HarnessChoice::Claude;
+        let mut seen = Vec::new();
+        for _ in 0..5 {
+            seen.push(choice);
+            choice = choice.next_agent();
+        }
+        let agents: Vec<_> = HarnessChoice::ALL
+            .into_iter()
+            .filter(|choice| choice.is_agent())
+            .collect();
+        assert_eq!(seen, agents);
+        assert_eq!(choice, HarnessChoice::Claude);
+        assert_eq!(
+            HarnessChoice::Claude.previous_agent(),
+            HarnessChoice::Copilot
+        );
+        assert_eq!(HarnessChoice::Codex.previous_agent(), HarnessChoice::Claude);
     }
 
     #[test]

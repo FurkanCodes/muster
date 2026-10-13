@@ -105,7 +105,7 @@ impl App {
             KeyCode::Enter => return self.open_ticket(),
             KeyCode::Char('a') => {
                 if let Some((project, key)) = self.selected_ticket() {
-                    return self.assign_agent(project, key, true);
+                    return self.choose_agent(project, key, true);
                 }
             }
             KeyCode::Char('x') => {
@@ -148,7 +148,7 @@ impl App {
                 self.note = None;
                 self.settle()
             }
-            None => self.assign_agent(project, key, false),
+            None => self.choose_agent(project, key, false),
         }
     }
 
@@ -162,14 +162,66 @@ impl App {
             .map(|session| session.id)
     }
 
-    /// Starts Claude Code on the ticket: in its worktree, or with `another`
+    /// Asks which agent to start on the ticket, offering the one last
+    /// started on a ticket first.
+    fn choose_agent(&mut self, project: ProjectId, key: TicketKey, another: bool) -> Vec<Action> {
+        self.note = None;
+        self.mode = Mode::Dialog(Dialog::AssignAgent {
+            project,
+            key,
+            harness: self.ticket_agent,
+            another,
+        });
+        Vec::new()
+    }
+
+    /// A key in the dialog choosing an agent for a ticket: ⇥ and ⇧⇥ (or
+    /// the arrows) choose, ⏎ starts it, esc thinks better of it.
+    pub(super) fn assign_key(
+        &mut self,
+        project: ProjectId,
+        key: TicketKey,
+        harness: HarnessChoice,
+        another: bool,
+        pressed: &KeyEvent,
+    ) -> Vec<Action> {
+        let harness = match pressed.code {
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => harness.next_agent(),
+            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => harness.previous_agent(),
+            KeyCode::Enter => {
+                self.mode = Mode::Browse;
+                self.ticket_agent = harness;
+                return self.assign_agent(project, key, harness, another);
+            }
+            KeyCode::Esc => {
+                self.mode = Mode::Browse;
+                return Vec::new();
+            }
+            _ => harness,
+        };
+        self.mode = Mode::Dialog(Dialog::AssignAgent {
+            project,
+            key,
+            harness,
+            another,
+        });
+        Vec::new()
+    }
+
+    /// Starts `harness` on the ticket: in its worktree, or with `another`
     /// in a worktree of its own; it opens as it starts.
-    fn assign_agent(&mut self, project: ProjectId, key: TicketKey, another: bool) -> Vec<Action> {
-        self.say(format!("Starting an agent on {}…", key.shown()));
+    fn assign_agent(
+        &mut self,
+        project: ProjectId,
+        key: TicketKey,
+        harness: HarnessChoice,
+        another: bool,
+    ) -> Vec<Action> {
+        self.say(format!("Starting {} on {}…", harness.label(), key.shown()));
         let command = Command::StartFromIssue {
             project,
             key,
-            harness: HarnessChoice::Claude.id().to_owned(),
+            harness: harness.id().to_owned(),
             size: self.session_size(),
             another,
         };

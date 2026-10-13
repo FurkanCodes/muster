@@ -8,6 +8,16 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
 
+/// A harness offered in a dialog, the chosen one stood out.
+fn harness_option(option: HarnessChoice, chosen: HarnessChoice) -> Span<'static> {
+    let label = format!(" {} ", option.label());
+    if option == chosen {
+        Span::from(label).reversed()
+    } else {
+        Span::from(label).dim()
+    }
+}
+
 pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
     let width = area.width.saturating_sub(4).min(72);
     let inner_width = width.saturating_sub(2).max(1);
@@ -46,17 +56,9 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
                     .map_or("?", |project| project.name.as_str()),
                 _ => app.model.branch(*workspace).unwrap_or("?"),
             };
-            let choice = |option: HarnessChoice| {
-                let label = format!(" {} ", option.label());
-                if option == *harness {
-                    Span::from(label).reversed()
-                } else {
-                    Span::from(label).dim()
-                }
-            };
             let mut run = vec![Span::raw("Run ")];
             for option in HarnessChoice::ALL {
-                run.push(choice(option));
+                run.push(harness_option(option, *harness));
             }
             let mut lines = vec![Line::from(format!("In {place}")).dim(), Line::from(run)];
             hint = "⇥ ⇧⇥ choose   ⏎ start   esc cancel";
@@ -66,6 +68,37 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
             } else {
                 (" New session ", lines, None)
             }
+        }
+        Dialog::AssignAgent {
+            project,
+            key,
+            harness,
+            another,
+        } => {
+            let title = app
+                .ticket(*project, key)
+                .map_or(String::new(), |ticket| format!(" {}", ticket.title));
+            let mut run = vec![Span::raw("Start ")];
+            for option in HarnessChoice::ALL.into_iter().filter(|o| o.is_agent()) {
+                run.push(harness_option(option, *harness));
+            }
+            let place = if *another {
+                "In a worktree of its own, with the ticket as its first prompt."
+            } else {
+                "In the ticket's worktree, with the ticket as its first prompt."
+            };
+            (
+                " Assign an agent ",
+                vec![
+                    Line::from(format!("{}{title}", key.shown())),
+                    Line::from(place).dim(),
+                    Line::from(""),
+                    Line::from(run),
+                    Line::from(""),
+                    Line::from("⇥ ⇧⇥ choose   ⏎ start   esc cancel").dim(),
+                ],
+                None,
+            )
         }
         Dialog::Confirm { question, .. } => (
             " Confirm ",

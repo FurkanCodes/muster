@@ -132,6 +132,14 @@ pub(crate) enum Dialog {
         harness: HarnessChoice,
         prompt: LineInput,
     },
+    /// Which agent to start on a ticket: in its worktree, or with
+    /// `another` in a worktree of its own.
+    AssignAgent {
+        project: ProjectId,
+        key: TicketKey,
+        harness: HarnessChoice,
+        another: bool,
+    },
     Confirm {
         question: String,
         then: Confirmed,
@@ -277,6 +285,9 @@ pub(crate) struct App {
     /// The harness last started from the new-session dialog, which it
     /// offers first next time.
     last_harness: HarnessChoice,
+    /// The agent last started on a ticket, which the next ticket is
+    /// offered first.
+    ticket_agent: HarnessChoice,
 }
 
 impl App {
@@ -317,6 +328,7 @@ impl App {
             now: None,
             flashes: HashMap::new(),
             last_harness: HarnessChoice::Claude,
+            ticket_agent: HarnessChoice::Claude,
         }
     }
 

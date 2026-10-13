@@ -12,7 +12,7 @@ use muster_core::{
 };
 
 use super::tests::{PANE, World, command, press, render, world};
-use super::{Action, Mode, TicketRow, View};
+use super::{Action, Dialog, HarnessChoice, Mode, TicketRow, View};
 use crate::model::tests::session;
 
 fn key(number: u64) -> TicketKey {
@@ -149,6 +149,8 @@ fn a_project_s_tickets_are_listed_and_the_selected_one_shown_with_its_text() {
 #[test]
 fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
     let mut world = on_tickets();
+    // ⏎ asks which agent, Claude Code first; ⏎ again starts it.
+    assert!(press(&mut world.app, KeyCode::Enter).is_empty());
     let actions = press(&mut world.app, KeyCode::Enter);
     let (req_id, started) = command(&actions);
     assert_eq!(
@@ -195,7 +197,8 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
     assert_eq!(world.app.mode, Mode::Terminal(agent.id));
     world.app.mode = Mode::Browse;
 
-    let actions = press(&mut world.app, KeyCode::Char('a'));
+    press(&mut world.app, KeyCode::Char('a'));
+    let actions = press(&mut world.app, KeyCode::Enter);
     assert!(matches!(
         &commands(&actions)[..],
         [Command::StartFromIssue {
@@ -209,6 +212,72 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
     world.app.mode = Mode::Browse;
     press(&mut world.app, KeyCode::Enter);
     assert_eq!(world.app.mode, Mode::Terminal(second.id));
+}
+
+#[test]
+fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
+    let mut world = on_tickets();
+    press(&mut world.app, KeyCode::Enter);
+    let Mode::Dialog(Dialog::AssignAgent {
+        harness, another, ..
+    }) = &world.app.mode
+    else {
+        panic!("{:?}", world.app.mode);
+    };
+    assert_eq!((*harness, *another), (HarnessChoice::Claude, false));
+    let screen = render(&world.app);
+    for shown in [
+        "Assign an agent",
+        "#42 Fix the login redirect",
+        "Codex",
+        "Copilot CLI",
+    ] {
+        assert!(screen.contains(shown), "{shown:?} in\n{screen}");
+    }
+    // A ticket is never given a shell: the choices go round the agents.
+    assert!(!screen.contains("Shell"), "{screen}");
+    press(&mut world.app, KeyCode::BackTab);
+    press(&mut world.app, KeyCode::Tab);
+    press(&mut world.app, KeyCode::Tab);
+    let actions = press(&mut world.app, KeyCode::Enter);
+    assert_eq!(world.app.mode, Mode::Browse);
+    assert_eq!(
+        commands(&actions),
+        [Command::StartFromIssue {
+            project: world.project.id,
+            key: key(42),
+            harness: "codex".to_owned(),
+            size: PANE,
+            another: false,
+        }]
+    );
+    assert!(render(&world.app).contains("Starting Codex on #42…"));
+
+    // Codex is offered first next time; esc starts nothing.
+    press(&mut world.app, KeyCode::Char('a'));
+    let Mode::Dialog(Dialog::AssignAgent {
+        harness, another, ..
+    }) = &world.app.mode
+    else {
+        panic!("{:?}", world.app.mode);
+    };
+    assert_eq!((*harness, *another), (HarnessChoice::Codex, true));
+    assert!(render(&world.app).contains("In a worktree of its own"));
+    assert!(press(&mut world.app, KeyCode::Esc).is_empty());
+    assert_eq!(world.app.mode, Mode::Browse);
+}
+
+#[test]
+fn each_agent_on_a_ticket_is_named() {
+    let mut world = on_tickets();
+    let mut agent = agent_on_42(&mut world, "muster/issue-42-fix-the-login-redirect", 10);
+    world.app.mode = Mode::Browse;
+    agent.harness = "gemini".to_owned();
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(agent)));
+    let screen = render(&world.app);
+    assert!(screen.contains("Gemini CLI"), "{screen}");
 }
 
 #[test]
