@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 use super::{describe, look, panel, shorten, status_symbol};
-use crate::app::{App, TicketRow, TicketText, Tickets};
+use crate::app::{App, HarnessChoice, TicketRow, TicketText, Tickets};
 
 /// The most agents shown on a ticket's line; the rest are counted.
 const AGENTS_SHOWN: usize = 4;
@@ -163,7 +163,7 @@ fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
             let whose = if *mine { " assigned to you" } else { "" };
             lines.push(
                 Line::from(format!(
-                    "Its open tickets{whose} from {tracker}, newest first. ⏎ on one starts an agent on it."
+                    "Its open tickets{whose} from {tracker}, newest first. ⏎ on one assigns an agent to it."
                 ))
                 .dim(),
             );
@@ -215,14 +215,16 @@ fn ticket_text(
     let agents = app.model.agents_on(project, key);
     if agents.is_empty() {
         lines.push(
-            Line::from("No agent on it yet: ⏎ starts Claude Code on it, in a worktree of its own.")
-                .dim(),
+            Line::from(
+                "No agent on it yet: ⏎ chooses one to start on it, in a worktree of its own.",
+            )
+            .dim(),
         );
     } else {
         lines.push(Line::from("Agents").bold());
         for session in &agents {
             // Their titles all name the ticket: what tells them apart is
-            // how each is doing and where it works.
+            // which agent each is, how it is doing and where it works.
             let (symbol, style) = status_symbol(session.status, app.motion_step());
             let branch = app
                 .model
@@ -231,6 +233,7 @@ fn ticket_text(
                 .to_owned();
             lines.push(Line::from(vec![
                 Span::styled(format!(" {symbol} "), style),
+                Span::from(format!("{}  ", agent_name(&session.harness))).bold(),
                 Span::raw(describe(session.status)),
                 Span::from(format!("  {branch}")).dim(),
             ]));
@@ -268,4 +271,12 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
     }
     hints.push("r refresh");
     hints
+}
+
+/// An agent's name as the person knows it: `Codex`, not `codex`.
+fn agent_name(harness: &str) -> &str {
+    match HarnessChoice::from_id(harness) {
+        Some(choice) => choice.label(),
+        None => harness,
+    }
 }

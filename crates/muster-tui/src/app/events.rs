@@ -509,6 +509,12 @@ impl App {
                 _ => Vec::new(),
             },
             Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
+            Dialog::AssignAgent {
+                project,
+                key: ticket,
+                harness,
+                another,
+            } => self.assign_key(project, ticket, harness, another, key),
             Dialog::NewWorktree {
                 project,
                 mut branch,
