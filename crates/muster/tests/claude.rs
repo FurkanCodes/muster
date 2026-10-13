@@ -167,6 +167,12 @@ async fn hooks_move_the_status_through_a_turn() {
         expect_status(&mut connection, session).await,
         (needs_answer, true)
     );
+    // Claude Code then opens the question's own permission dialog, which
+    // is the same question: the answer alone sends the session back to work.
+    fire(
+        "PermissionRequest",
+        json!({ "tool_name": "AskUserQuestion" }),
+    );
 
     fire("PostToolUse", json!({ "tool_name": "AskUserQuestion" }));
     assert_eq!(

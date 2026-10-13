@@ -98,6 +98,8 @@ pub(crate) fn translate(event: &str, body: &[u8]) -> Option<(Option<String>, Hoo
         "sessionStart" => HookEvent::SessionStarted,
         "userPromptSubmitted" => HookEvent::PromptSubmitted,
         "agentStop" => HookEvent::TurnEnded,
+        // A permission asked for the question tool is the question itself.
+        "permissionRequest" if is_question => HookEvent::QuestionAsked { origin: main },
         "permissionRequest" => HookEvent::PermissionRequested {
             origin: main,
             deferred: false,
@@ -223,6 +225,12 @@ mod tests {
         );
         assert_eq!(
             event("preToolUse", r#","toolName":"ask_user""#),
+            Some(HookEvent::QuestionAsked {
+                origin: Origin::Main
+            })
+        );
+        assert_eq!(
+            event("permissionRequest", r#","toolName":"ask_user""#),
             Some(HookEvent::QuestionAsked {
                 origin: Origin::Main
             })

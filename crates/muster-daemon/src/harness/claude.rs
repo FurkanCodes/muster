@@ -143,6 +143,11 @@ pub(crate) fn translate(payload: &HookPayload) -> Option<(Option<String>, HookEv
         "SessionStart" => HookEvent::SessionStarted,
         "UserPromptSubmit" => HookEvent::PromptSubmitted,
         "Stop" => HookEvent::TurnEnded,
+        // The question tool's dialog is a permission dialog to Claude Code
+        // (2.1.296 sends this right after the tool's PreToolUse): it is the
+        // question again, answered when the tool finishes, not a second
+        // prompt that only the next tool to finish would close.
+        "PermissionRequest" if is_question => HookEvent::QuestionAsked { origin: origin() },
         "PermissionRequest" => HookEvent::PermissionRequested {
             origin: origin(),
             deferred: false,
@@ -250,6 +255,15 @@ mod tests {
             )),
             HookEvent::QuestionAsked {
                 origin: Origin::Subagent("a1".to_owned()),
+            }
+        );
+        // The question's own permission dialog is the same question.
+        assert_eq!(
+            event(&base(
+                r#""hook_event_name":"PermissionRequest","tool_name":"AskUserQuestion""#
+            )),
+            HookEvent::QuestionAsked {
+                origin: Origin::Main,
             }
         );
         assert_eq!(

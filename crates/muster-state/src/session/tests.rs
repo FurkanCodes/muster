@@ -302,6 +302,23 @@ fn a_question_is_answered_only_by_its_own_completion() {
 }
 
 #[test]
+fn a_question_announced_twice_is_answered_once() {
+    // Claude Code's question tool raises its PreToolUse and then its own
+    // permission dialog, both read as the question.
+    let mut session = Session::running_turn();
+    let asked = || HookEvent::QuestionAsked {
+        origin: Origin::Main,
+    };
+    session.hook(asked());
+    assert_eq!(session.hook(asked()), []);
+    session.hook(HookEvent::ToolFinished {
+        origin: Origin::Main,
+        question: true,
+    });
+    assert_eq!(session.status(), SessionStatus::Running);
+}
+
+#[test]
 fn several_open_prompts_keep_the_session_waiting_until_all_are_answered() {
     let mut session = Session::running_turn();
     session.hook(subagent_started("a"));
