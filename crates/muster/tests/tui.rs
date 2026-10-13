@@ -560,7 +560,10 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
     ui.wait_for("users land on /404.");
     ui.wait_for("No agent on it yet");
 
-    // ⏎: an agent on it, opened as it starts, with the ticket to work on.
+    // ⏎: which agent, Claude Code first; ⏎ again starts it, opened as it
+    // starts, with the ticket to work on.
+    ui.keys(b"\r");
+    ui.wait_for("Assign an agent");
     ui.keys(b"\r");
     ui.wait_for("Shift-Q back to the list");
     ui.keys(b"Q");
@@ -568,6 +571,8 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
 
     // a: another, in a worktree of its own.
     ui.keys(b"a");
+    ui.wait_for("In a worktree of its own");
+    ui.keys(b"\r");
     ui.wait_for("Shift-Q back to the list");
     ui.keys(b"Q");
     ui.wait_for("muster/issue-42-fix-the-login-redirect-2");
@@ -699,6 +704,8 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     ui.keys(b"i");
     ui.wait_for("app  1 open");
     ui.keys(b"j");
+    ui.keys(b"\r");
+    ui.wait_for("Assign an agent");
     ui.keys(b"\r");
     ui.wait_for("Shift-Q back to the list");
     ui.keys(b"Q");
