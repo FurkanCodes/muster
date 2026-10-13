@@ -724,6 +724,7 @@ impl App {
     /// state, after anything changed.
     fn settle(&mut self) -> Vec<Action> {
         self.take_wanted();
+        self.follow_answered();
         self.keep_selection();
         self.keep_ticket_selection();
         self.keep_setting_selection();
@@ -819,6 +820,24 @@ impl App {
         }
     }
 
+    /// A session of the queue the person is in, back at work, has had
+    /// their answer or their message, and waits on them no more: the list
+    /// beside it goes to the Sessions view, on that session among its
+    /// project's. The keys stay with the session, where they were typing.
+    fn follow_answered(&mut self) {
+        if self.view == View::NeedsYou
+            && let Mode::Terminal(session) = self.mode
+            && self
+                .model
+                .session(session)
+                .is_some_and(|stored| stored.status == muster_core::SessionStatus::Running)
+        {
+            self.view = View::Sessions;
+            self.selected = Some(Row::Session(session));
+            self.needs_selected = None;
+        }
+    }
+
     /// Keeps the selection on something that exists: the line that took
     /// the place of one that went away, or the last line.
     fn keep_selection(&mut self) {
@@ -837,15 +856,14 @@ impl App {
         let model = &self.model;
         self.screens.retain(|id, _| model.session(*id).is_some());
         // Questions first, then news, oldest first; but the selected session
-        // keeps its place after looking at it has cleared it, and while the
-        // person is in it. Back at work, and nobody in it, it was dealt
-        // with: kept, it would stay there with nothing left to move to.
+        // keeps its place after looking at it has cleared it. Back at work,
+        // it was dealt with: kept, it would stay there with nothing left to
+        // move to.
         let mut list = self.model.needs_you();
         if let Some(selected) = self.needs_selected
             && !list.contains(&selected)
             && let Some(stored) = self.model.session(selected)
-            && (stored.status != muster_core::SessionStatus::Running
-                || self.mode == Mode::Terminal(selected))
+            && stored.status != muster_core::SessionStatus::Running
             && let Some(was) = self.needs_list.iter().position(|s| *s == selected)
         {
             list.insert(was.min(list.len()), selected);
