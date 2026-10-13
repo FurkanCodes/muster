@@ -837,11 +837,15 @@ impl App {
         let model = &self.model;
         self.screens.retain(|id, _| model.session(*id).is_some());
         // Questions first, then news, oldest first; but the selected session
-        // keeps its place after looking at it has cleared it.
+        // keeps its place after looking at it has cleared it, and while the
+        // person is in it. Back at work, and nobody in it, it was dealt
+        // with: kept, it would stay there with nothing left to move to.
         let mut list = self.model.needs_you();
         if let Some(selected) = self.needs_selected
             && !list.contains(&selected)
-            && self.model.session(selected).is_some()
+            && let Some(stored) = self.model.session(selected)
+            && (stored.status != muster_core::SessionStatus::Running
+                || self.mode == Mode::Terminal(selected))
             && let Some(was) = self.needs_list.iter().position(|s| *s == selected)
         {
             list.insert(was.min(list.len()), selected);
