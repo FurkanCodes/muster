@@ -332,3 +332,38 @@ fn screens_with_nothing_on_them_yet_say_so_with_character() {
     assert!(screen.contains("✓ All clear"), "{screen}");
     assert!(screen.contains("Nothing is waiting on you."), "{screen}");
 }
+
+#[test]
+fn a_ui_older_than_its_daemon_says_how_to_start_the_new_one() {
+    let mut world = world();
+    world.app.on_connected("999.0.0".to_owned());
+    let screen = render(&world.app);
+    let warning = line_with(&screen, "This window runs muster");
+    assert!(warning.contains("the daemon is 999.0.0"), "{screen}");
+    // Under it, the hints still.
+    assert!(screen.contains("q quit"), "{screen}");
+    let cells = buffer(&world.app);
+    let row = (0..cells.area.height)
+        .find(|y| {
+            (0..cells.area.width)
+                .map(|x| cells[(x, *y)].symbol())
+                .collect::<String>()
+                .contains("This window runs")
+        })
+        .unwrap();
+    assert_eq!(cells[(1, row)].fg, Color::Yellow);
+
+    // In a session, the session keeps its size and the bar its one line.
+    world.app.selected = Some(Row::Session(world.session.id));
+    press(&mut world.app, KeyCode::Enter);
+    let screen = render(&world.app);
+    assert!(!screen.contains("This window runs muster"), "{screen}");
+    assert!(screen.contains("keys go to the session"), "{screen}");
+
+    // A daemon of its own version, or older: nothing to say.
+    world.app.on_key(super::tests::shift_q());
+    for version in [env!("CARGO_PKG_VERSION"), "0.1.0"] {
+        world.app.on_connected(version.to_owned());
+        assert!(!render(&world.app).contains("This window runs muster"));
+    }
+}

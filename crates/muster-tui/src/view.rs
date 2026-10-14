@@ -18,6 +18,7 @@ pub(crate) mod look;
 mod settings;
 mod tickets;
 mod top_bar;
+mod version;
 
 /// The terminal area a session gets when it fills the screen: everything
 /// but the top bar.
@@ -137,17 +138,42 @@ fn message(app: &App) -> Option<(&str, bool)> {
     }
 }
 
+/// Over the hints while the list has the keys: that this UI is older than
+/// the daemon, and how to start the new one.
+fn stale(app: &App) -> Option<String> {
+    match (&app.link, &app.mode) {
+        (_, Mode::Terminal(_)) => None,
+        (Link::Connected { daemon_version }, _) => version::stale_warning(daemon_version),
+        _ => None,
+    }
+}
+
 /// How many lines the bottom bar needs: hints take one, a long message up
-/// to three, so the reason in an error is not cut off.
+/// to three, so the reason in an error is not cut off; a warning that this
+/// UI is old, up to two over the hints.
 pub(crate) fn bottom_height(app: &App, width: u16) -> u16 {
-    let Some((text, _)) = message(app) else {
-        return 1;
+    let lines = |text: &str| {
+        let length = u16::try_from(note_text(text).chars().count()).unwrap_or(u16::MAX);
+        length.div_ceil(width.max(1))
     };
-    let length = u16::try_from(note_text(text).chars().count()).unwrap_or(u16::MAX);
-    length.div_ceil(width.max(1)).clamp(1, MAX_NOTE_LINES)
+    match (message(app), stale(app)) {
+        (Some((text, _)), _) => lines(text).clamp(1, MAX_NOTE_LINES),
+        (None, Some(warning)) => 1 + lines(&warning).clamp(1, MAX_NOTE_LINES - 1),
+        (None, None) => 1,
+    }
 }
 
 fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    if message(app).is_none()
+        && let Some(warning) = stale(app)
+    {
+        let [above, hints_area] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+        let warning = Line::from(note_text(&warning)).yellow();
+        frame.render_widget(Paragraph::new(warning).wrap(Wrap { trim: false }), above);
+        frame.render_widget(Line::from(format!(" {}", hints(app))).dim(), hints_area);
+        return;
+    }
     if let Some((text, error)) = message(app) {
         let text = Line::from(note_text(text));
         let text = match (error, app.note_fading()) {
