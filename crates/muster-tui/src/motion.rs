@@ -4,6 +4,8 @@
 //! runtime counts out steps (`STEP`) and the view draws the step it is
 //! given, never reading the clock, so drawing stays a function of the app.
 //! While nothing runs or waits nothing moves, and nothing is drawn for it.
+//! Kep, at the top bar's start, blinks now and then while something works
+//! and is glad a moment when a session finishes.
 
 use std::time::{Duration, Instant};
 
@@ -26,6 +28,18 @@ pub(crate) const FLASH_STEPS: u64 = 10;
 /// for four seconds, dim for one.
 pub(crate) const NOTE_DIMS: u64 = 40;
 pub(crate) const NOTE_GOES: u64 = 50;
+
+/// Steps between Kep's blinks, and how long a blink lasts.
+const BLINK_EVERY: u64 = 40;
+const BLINK_STEPS: u64 = 2;
+
+/// How long Kep is glad of a session that finished: three seconds.
+pub(crate) const GLAD_STEPS: u64 = 30;
+
+/// Whether Kep's eyes are shut for a blink at `step`.
+pub(crate) fn blinking(step: u64) -> bool {
+    step % BLINK_EVERY >= BLINK_EVERY - BLINK_STEPS
+}
 
 /// How a flashing line is drawn `age` steps into its flash, in `colour`:
 /// lit (dark on the colour) for the first half, then in the colour, bold.
@@ -143,6 +157,12 @@ mod tests {
         assert_eq!(flash(Color::Green, 5), Some(Flash::Tinted(tinted)));
         assert_eq!(flash(Color::Green, 9), Some(Flash::Tinted(tinted)));
         assert_eq!(flash(Color::Green, 10), None);
+    }
+
+    #[test]
+    fn kep_blinks_for_two_steps_in_forty() {
+        let shut: Vec<u64> = (0..120).filter(|step| blinking(*step)).collect();
+        assert_eq!(shut, [38, 39, 78, 79, 118, 119]);
     }
 
     #[test]

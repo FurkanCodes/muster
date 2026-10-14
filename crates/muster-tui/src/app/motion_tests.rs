@@ -29,9 +29,11 @@ fn buffer(world: &World) -> Buffer {
 
 /// The modifiers of the first cell showing `symbol`.
 fn modifiers_of(buffer: &Buffer, symbol: &str) -> Modifier {
+    // Below the top bar, where Kep's ears are.
     buffer
         .content
         .iter()
+        .skip(usize::from(buffer.area.width))
         .find(|cell| cell.symbol() == symbol)
         .unwrap_or_else(|| panic!("no {symbol} on screen"))
         .modifier
@@ -113,9 +115,12 @@ fn with_motion_off_every_mark_stands_still() {
     assert!(!world.app.animating());
 }
 
-/// Lets any flash for the last change settle.
+/// Lets any flash for the last change settle, and Kep's gladness of a
+/// finish.
 fn settle(world: &mut World) {
-    world.app.on_step(world.app.step + 10);
+    world
+        .app
+        .on_step(world.app.step + crate::motion::GLAD_STEPS);
     world.app.on_step(world.app.step + 1);
 }
 
@@ -198,7 +203,11 @@ fn a_session_that_finishes_flashes_lit_then_tinted_then_settles() {
     let title = cell_at(&settled, "Shell  finished");
     assert_ne!(title.fg, Color::Green);
     assert_eq!(title.bg, Color::Reset);
-    assert!(!world.app.on_step(31));
+    // Kep is glad of it three seconds from the finish; once that is over,
+    // one more frame, then nothing asks.
+    assert!(world.app.on_step(49));
+    assert!(world.app.on_step(50));
+    assert!(!world.app.on_step(51));
 }
 
 #[test]

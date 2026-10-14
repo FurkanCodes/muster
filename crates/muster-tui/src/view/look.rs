@@ -4,8 +4,8 @@
 //! sixteen, so they follow the person's theme.
 
 use muster_core::{ProjectId, Session, SessionStatus};
-use ratatui::style::{Color, Modifier, Style, Stylize};
-use ratatui::text::{Line, Span};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::Span;
 
 use crate::app::App;
 
@@ -115,19 +115,6 @@ pub(crate) const WORDMARK: [&str; 3] = [
     "┃┃┃┃ ┃┗━┓ ┃ ┣╸ ┣┳┛",
     "╹ ╹┗━┛┗━┛ ╹ ┗━╸╹┗╸",
 ];
-
-/// The wordmark's lines, with the line under it.
-pub(crate) fn wordmark(under: &str) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::from("")];
-    lines.extend(
-        WORDMARK
-            .iter()
-            .map(|line| Line::from(format!("  {line}")).cyan().bold()),
-    );
-    lines.push(Line::from(""));
-    lines.push(Line::from(format!("  {under}")).dim());
-    lines
-}
 
 #[cfg(test)]
 mod tests {

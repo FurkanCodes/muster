@@ -24,6 +24,9 @@ const WHEEL_LINES: isize = 3;
 
 impl App {
     pub(crate) fn on_mouse(&mut self, event: MouseEvent) -> Vec<Action> {
+        if self.skip_welcome() {
+            return Vec::new();
+        }
         let mut actions = match self.mode {
             Mode::Terminal(session) => return self.terminal_mouse(session, event),
             Mode::Browse => self.browse_mouse(event),

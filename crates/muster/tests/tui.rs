@@ -215,6 +215,36 @@ fn the_folder_to_add_is_found_by_browsing_folders() {
 }
 
 #[test]
+fn kep_welcomes_the_person_and_a_key_typed_ahead_goes_through() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let _stop = StopDaemon(sandbox.paths().socket());
+
+    // The welcome fills the window as the UI starts: Kep, Muster's name,
+    // and nothing of the screens behind.
+    let mut ui = Ui::start(&sandbox, &root);
+    ui.wait_for("┏┳┓╻ ╻┏━┓╺┳╸┏━╸┏━┓");
+    let screen = ui.text();
+    assert!(
+        screen.contains('▀') && !screen.contains("Sessions"),
+        "{screen}"
+    );
+
+    // `a`, typed ahead, lets the welcome go and opens what it says.
+    ui.keys(b"a");
+    ui.wait_for("Add a project");
+    ui.keys(b"\x1b");
+    ui.wait_without("Add a project");
+    // Kep sits beside the name in the pane, with nothing to show yet.
+    let screen = ui.text();
+    assert!(
+        screen.contains("No projects yet") && screen.contains('▀'),
+        "{screen}"
+    );
+    ui.keys(b"q");
+}
+
+#[test]
 fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");

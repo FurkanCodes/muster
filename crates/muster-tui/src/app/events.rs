@@ -50,6 +50,8 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return Vec::new();
         }
+        // Typed ahead, as the person knows the screens behind.
+        self.skip_welcome();
         // An error stays until the person has seen it and pressed on.
         if self.note.as_ref().is_some_and(|note| note.error) {
             self.note = None;
@@ -64,6 +66,7 @@ impl App {
     }
 
     pub(crate) fn on_paste(&mut self, text: &str) -> Vec<Action> {
+        self.skip_welcome();
         match &mut self.mode {
             Mode::Terminal(session) => {
                 let session = *session;

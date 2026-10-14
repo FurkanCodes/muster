@@ -1,6 +1,7 @@
-//! The top bar: the screens as tabs, then how the agents stand (working,
-//! waiting on the person, done) in their statuses' colours, the machine's
-//! memory as a bar, and the daemon's version where there is room.
+//! The top bar: Kep's face, the screens as tabs, then how the agents
+//! stand (working, waiting on the person, done) in their statuses'
+//! colours, the machine's memory as a bar, and the daemon's version where
+//! there is room.
 
 use muster_core::SessionStatus;
 use muster_core::protocol::ResourceReport;
@@ -9,23 +10,36 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 
-use super::{bytes, status_symbol};
+use super::{bytes, kep, status_symbol};
 use crate::app::{App, Link, View};
 use crate::motion;
 
 pub(super) fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let mut spans = tabs(app);
     let room = usize::from(area.width).saturating_sub(width(&spans));
-    match &app.link {
-        Link::Connecting => spans.push(Span::from("connecting to the daemon…").dim()),
-        Link::Connected { .. } if !app.model.loaded() => {
-            spans.push(Span::from("loading…").dim());
-        }
-        Link::Connected { daemon_version } => spans.extend(fleet(app, daemon_version, room)),
-        Link::Lost(_) => spans.push(Span::from("daemon unreachable; retrying…").red()),
+    // Kep comes first, and is the first to go short of room: only while
+    // all the rest fits beside it, in full.
+    if width(&standing(app, usize::MAX)) + KEP_ROOM <= room {
+        let mut first = vec![Span::raw(" ")];
+        first.extend(kep::face(kep::mood(app), app.motion_step()));
+        spans.splice(0..0, first);
     }
+    spans.extend(standing(app, room));
     frame.render_widget(Line::from(spans), area);
 }
+
+/// How things stand, after the tabs, as much as fits in `room`.
+fn standing(app: &App, room: usize) -> Vec<Span<'static>> {
+    match &app.link {
+        Link::Connecting => vec![Span::from("connecting to the daemon…").dim()],
+        Link::Connected { .. } if !app.model.loaded() => vec![Span::from("loading…").dim()],
+        Link::Connected { daemon_version } => fleet(app, daemon_version, room),
+        Link::Lost(_) => vec![Span::from("daemon unreachable; retrying…").red()],
+    }
+}
+
+/// What Kep's face takes at the top bar's start, with the space before it.
+const KEP_ROOM: usize = 1 + kep::FACE_WIDTH;
 
 /// The name, then the screens as tabs, the one shown lit; ⇥ goes round.
 fn tabs(app: &App) -> Vec<Span<'static>> {

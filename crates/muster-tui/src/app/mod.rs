@@ -13,6 +13,7 @@ mod settings;
 mod settle;
 mod tickets;
 pub(crate) mod tickets_from;
+mod welcome;
 
 pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
@@ -51,6 +52,8 @@ mod tests;
 mod tickets_from_tests;
 #[cfg(test)]
 mod tickets_tests;
+#[cfg(test)]
+mod welcome_tests;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -310,6 +313,10 @@ pub(crate) struct App {
     /// Sessions whose lines flash for a change of status, with the step
     /// each flash began.
     flashes: HashMap<SessionId, u64>,
+    /// The step a session last finished at, while Kep is glad of it.
+    glad_at: Option<u64>,
+    /// Whether the welcome fills the window, as the UI starts.
+    pub(crate) welcome: bool,
     /// The harness last started from the new-session dialog, which it
     /// offers first next time.
     last_harness: HarnessChoice,
@@ -359,6 +366,8 @@ impl App {
             step: 0,
             now: None,
             flashes: HashMap::new(),
+            glad_at: None,
+            welcome: false,
             last_harness: HarnessChoice::Claude,
             ticket_agent: HarnessChoice::Claude,
             daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
