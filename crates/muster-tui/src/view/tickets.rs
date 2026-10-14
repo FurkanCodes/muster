@@ -158,6 +158,14 @@ fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
         Some(Tickets::Failed(error)) => {
             lines.push(Line::from("Its tickets could not be fetched:").red());
             lines.push(Line::from(error.clone()));
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(
+                    "Muster tries again when you come back to this screen or to this window; \
+                     r tries now.",
+                )
+                .dim(),
+            );
         }
         Some(Tickets::Loaded(_, tracker, mine)) => {
             let whose = if *mine { " assigned to you" } else { "" };

@@ -122,9 +122,7 @@ impl Linear {
             .json(&json!({ "query": query, "variables": variables }))
             .send()
             .await
-            .map_err(|error| {
-                ServiceError::Unavailable(format!("could not reach Linear: {error}"))
-            })?;
+            .map_err(|error| crate::service::unreachable("Linear", error))?;
         let status = response.status().as_u16();
         let text = response.text().await.unwrap_or_default();
         let said: String = one_line(&text).chars().take(300).collect();

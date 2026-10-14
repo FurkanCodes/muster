@@ -48,10 +48,43 @@ impl ServiceError {
     }
 }
 
+/// What to look at when a service cannot be reached: one on a company's
+/// network is often only reachable through its VPN, easily left off.
+pub(crate) const REACH_HINT: &str =
+    "If it is only reachable on your company's network, check that your VPN is on.";
+
+/// A service that could not be reached over the network, `what` it is
+/// (`Jira at acme.atlassian.net`) and how it failed, with where to look.
+pub(crate) fn unreachable(what: &str, error: impl std::fmt::Display) -> ServiceError {
+    ServiceError::Unavailable(format!("could not reach {what}: {error}. {REACH_HINT}"))
+}
+
+/// Whether a command-line client's complaint (`gh`, `glab`) says the
+/// network failed it, rather than the service refusing.
+pub(crate) fn says_unreachable(complaint: &str) -> bool {
+    const SIGNS: [&str; 10] = [
+        "dial tcp",
+        "no such host",
+        "i/o timeout",
+        "connection refused",
+        "connection reset",
+        "network is unreachable",
+        "no route to host",
+        "could not resolve host",
+        "error connecting to",
+        "tls handshake timeout",
+    ];
+    let lower = complaint.to_ascii_lowercase();
+    SIGNS.iter().any(|sign| lower.contains(sign))
+}
+
 impl From<GitHubError> for ServiceError {
     fn from(error: GitHubError) -> Self {
         let message = error.to_string();
         match error {
+            GitHubError::Failed(text) if says_unreachable(&text) => {
+                Self::Unavailable(format!("{message}. {REACH_HINT}"))
+            }
             GitHubError::Failed(text)
                 if text.contains("Could not resolve") || text.contains("not found") =>
             {

@@ -67,8 +67,9 @@ pub(crate) fn choose(
     if let Some(tracker) = tickets.tracker {
         return Ok(tracker);
     }
-    const SAY: &str = "say where its tickets are with [tickets] tracker = \"github\", \"gitlab\", \
-                       \"jira\" or \"linear\" in muster.toml";
+    const SAY: &str = "choose where its tickets are on the Settings screen, or say with \
+                       [tickets] tracker = \"github\", \"gitlab\", \"jira\" or \"linear\" in \
+                       muster.toml";
     let Some(host) = host.or_else(|| origin.remote().and_then(Remote::kind)) else {
         let why = origin.why_untold("tickets");
         return Err(ServiceError::NotConfigured(match origin {

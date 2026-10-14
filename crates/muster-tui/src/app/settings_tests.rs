@@ -11,15 +11,22 @@ use muster_core::settings::{ProjectSettings, SettingChange, SettingSource, Toggl
 use super::tests::{World, command, press, render, world};
 use super::{Action, Mode, SettingRow, Settings, Tickets, View};
 
-fn settings(on: bool, from: SettingSource) -> ProjectSettings {
+pub(super) fn settings(on: bool, from: SettingSource) -> ProjectSettings {
     ProjectSettings {
         tickets_from: "GitHub issues, as its git remote says".to_owned(),
         only_mine: Toggle { on, from },
         file: PathBuf::from("/home/me/.config/muster/projects/p.toml"),
+        tickets: None,
+        tickets_set_by: SettingSource::Default,
+        tickets_untold: false,
     }
 }
 
-fn reply(world: &mut World, req_id: u64, outcome: Result<Reply, ErrorBody>) -> Vec<Action> {
+pub(super) fn reply(
+    world: &mut World,
+    req_id: u64,
+    outcome: Result<Reply, ErrorBody>,
+) -> Vec<Action> {
     world.app.on_frame(ServerFrame::Reply { req_id, outcome })
 }
 
@@ -35,7 +42,7 @@ fn commands(actions: &[Action]) -> Vec<Command> {
 
 /// The world on the Settings screen, its project's settings read: only
 /// my tickets `on` or not, set by nothing.
-fn on_settings(on: bool) -> World {
+pub(super) fn on_settings(on: bool) -> World {
     let mut world = world();
     let actions = press(&mut world.app, KeyCode::Char('4'));
     assert_eq!(world.app.view, View::Settings);
@@ -73,7 +80,11 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
     let project = world.project.id;
     assert_eq!(
         world.app.setting_rows(),
-        [SettingRow::Project(project), SettingRow::OnlyMine(project)]
+        [
+            SettingRow::Project(project),
+            SettingRow::OnlyMine(project),
+            SettingRow::TicketsFrom(project),
+        ]
     );
     // The first setting is selected, so ⏎ does something at once.
     assert_eq!(

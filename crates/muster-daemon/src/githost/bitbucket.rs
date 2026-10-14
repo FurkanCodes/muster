@@ -132,10 +132,7 @@ impl Bitbucket {
             .send()
             .await
             .map_err(|error| {
-                ServiceError::Unavailable(format!(
-                    "could not reach Bitbucket at {}: {error}",
-                    self.host
-                ))
+                crate::service::unreachable(&format!("Bitbucket at {}", self.host), error)
             })?;
         let status = response.status();
         let text = response.text().await.unwrap_or_default();

@@ -47,6 +47,53 @@ pub fn set_flag(text: Option<&str>, table: &str, key: &str, value: bool) -> Resu
     })
 }
 
+/// `text`, the overrides as they are (`None` when there is no file yet),
+/// with each `[table] key` of `values` set to its text, or taken out where
+/// it has none. Values already there keep their comments; a table left
+/// empty is kept, as the person may have written it.
+pub fn set_texts(
+    text: Option<&str>,
+    table: &str,
+    values: &[(&str, Option<&str>)],
+) -> Result<String, String> {
+    let mut document: toml_edit::DocumentMut = text
+        .unwrap_or_default()
+        .parse()
+        .map_err(|error: toml_edit::TomlError| format!("is not valid TOML: {}", error.message()))?;
+    let item = document.entry(table).or_insert_with(toml_edit::table);
+    let Some(entries) = item.as_table_like_mut() else {
+        return Err(format!("{table} is not a table"));
+    };
+    for (key, value) in values {
+        match (entries.get_mut(key), value) {
+            (Some(existing), Some(value)) => {
+                let Some(written) = existing.as_value_mut() else {
+                    return Err(format!("{table}.{key} is not a value"));
+                };
+                let decor = written.decor().clone();
+                *written = toml_edit::Value::from(*value);
+                *written.decor_mut() = decor;
+            }
+            (None, Some(value)) => {
+                entries.insert(key, toml_edit::value(*value));
+            }
+            (Some(_), None) => {
+                entries.remove(key);
+            }
+            (None, None) => {}
+        }
+    }
+    // A table written inline is spaced afresh, or a value's spacing would
+    // come before the next one's comma.
+    if let Some(inline) = item.as_inline_table_mut() {
+        inline.fmt();
+    }
+    Ok(match text {
+        Some(_) => document.to_string(),
+        None => format!("{NEW_FILE}\n{document}"),
+    })
+}
+
 /// Where `[table] key` gets its value: the person's overrides (`local`)
 /// over the repository's `muster.toml`, over Muster's default.
 pub fn source_of(
@@ -138,6 +185,54 @@ mod tests {
             set_flag(Some("[tickets]\nmine = ["), "tickets", "mine", true)
                 .unwrap_err()
                 .contains("not valid TOML")
+        );
+    }
+
+    #[test]
+    fn texts_are_set_and_taken_out_keeping_the_rest_as_written() {
+        let jira = [
+            ("tracker", Some("jira")),
+            ("site", Some("acme.atlassian.net")),
+            ("project", Some("APP")),
+            ("team", None),
+        ];
+        let text = set_texts(None, "tickets", &jira).unwrap();
+        assert!(text.starts_with(NEW_FILE), "{text}");
+        assert!(
+            text.ends_with(
+                "[tickets]\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\nproject = \"APP\"\n"
+            ),
+            "{text}"
+        );
+
+        let written = "# mine\n[tickets]\nmine = true # just mine\ntracker = \"github\" # was\n\
+                       team = \"ENG\"\n\n[pull_requests]\nhost = \"gitlab\"\n";
+        assert_eq!(
+            set_texts(Some(written), "tickets", &jira).unwrap(),
+            "# mine\n[tickets]\nmine = true # just mine\ntracker = \"jira\" # was\n\
+             site = \"acme.atlassian.net\"\nproject = \"APP\"\n\n[pull_requests]\nhost = \"gitlab\"\n"
+        );
+        // Following the git remote again: the keys go, the rest stays.
+        let none: Vec<(&str, Option<&str>)> = ["tracker", "site", "project"]
+            .map(|key| (key, None))
+            .to_vec();
+        assert_eq!(
+            set_texts(
+                Some("[tickets]\nmine = true\ntracker = \"jira\"\nsite = \"a\"\n"),
+                "tickets",
+                &none
+            )
+            .unwrap(),
+            "[tickets]\nmine = true\n"
+        );
+        assert_eq!(
+            set_texts(Some("tickets = { mine = true }\n"), "tickets", &jira[..1]).unwrap(),
+            "tickets = { mine = true, tracker = \"jira\" }\n"
+        );
+        assert!(
+            set_texts(Some("tickets = 3\n"), "tickets", &jira)
+                .unwrap_err()
+                .contains("not a table")
         );
     }
 

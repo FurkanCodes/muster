@@ -280,10 +280,7 @@ impl Jira {
             .send()
             .await
             .map_err(|error| {
-                ServiceError::Unavailable(format!(
-                    "could not reach Jira at {}: {error}",
-                    self.site.host
-                ))
+                crate::service::unreachable(&format!("Jira at {}", self.site.host), error)
             })?;
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
