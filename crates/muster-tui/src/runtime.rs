@@ -18,6 +18,7 @@ use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 
 use crate::app::{Action, App};
+use crate::clipboard;
 use crate::folders::{self, Folder};
 use crate::motion;
 use crate::view;
@@ -145,6 +146,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                 Action::Quit => quit = true,
                 Action::Notify(text) => notify(&text),
                 Action::Open(url) => open_in_browser(&url),
+                Action::Copy(text) => clipboard::copy(&text),
                 Action::ListFolders(dir) => {
                     let listed = listed_folders.clone();
                     tokio::task::spawn_blocking(move || {
@@ -303,8 +305,9 @@ impl HostTerminal {
     fn enter() -> std::io::Result<Self> {
         let terminal = ratatui::init();
         let mut out = stdout();
-        // The mouse scrolls sessions back and picks lines; selecting text
-        // in the person's terminal then takes a modifier (Option or Shift).
+        // The mouse scrolls sessions back, picks lines and selects a
+        // session's text; the person's terminal's own selection, of whole
+        // lines of the window, then takes a modifier (Option or Shift).
         execute!(
             out,
             EnableBracketedPaste,

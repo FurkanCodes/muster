@@ -67,6 +67,7 @@ impl App {
         match &mut self.mode {
             Mode::Terminal(session) => {
                 let session = *session;
+                self.selection = None;
                 let screen = self.screen(session);
                 screen.scroll_to_bottom();
                 vec![Action::Send(ClientFrame::Input {
@@ -103,6 +104,7 @@ impl App {
 
     fn terminal_key(&mut self, session: muster_core::SessionId, key: &KeyEvent) -> Vec<Action> {
         self.note = None;
+        self.selection = None;
         if leaves_terminal(key) {
             return self.leave_terminal(session);
         }
@@ -290,6 +292,7 @@ impl App {
     /// goes back beside it, at that size.
     pub(super) fn leave_terminal(&mut self, session: muster_core::SessionId) -> Vec<Action> {
         self.screen(session).scroll_to_bottom();
+        self.selection = None;
         self.mode = Mode::Browse;
         // Back from a session of the queue that waits no more: the person
         // dealt with it, so the queue moves on rather than keep it.

@@ -1,9 +1,11 @@
-//! What the mouse does in each mode. In a session's terminal, a program
-//! that asked for the mouse gets it; otherwise the wheel scrolls back
-//! through the session's output (or, on the alternate screen, which keeps
-//! none, sends arrow keys as terminals do). In the list, the wheel moves the
-//! selection or scrolls the preview, and a click selects or opens. A click
-//! on the list beside a session's terminal gives the list the keys back.
+//! What the mouse does in each mode. In a session's terminal, a drag
+//! selects its text and copies it (see `selection`); a program that asked
+//! for the mouse gets it, but for a drag with Shift; otherwise the wheel
+//! scrolls back through the session's output (or, on the alternate screen,
+//! which keeps none, sends arrow keys as terminals do). In the list, the
+//! wheel moves the selection or scrolls the preview, and a click selects or
+//! opens. A click on the list beside a session's terminal gives the list
+//! the keys back.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::SessionId;
@@ -47,12 +49,23 @@ impl App {
             }
             crate::view::session_area(window)
         };
+        let modes = self.screen(session).modes;
+        let tracked = modes.mouse != MouseTracking::Off;
+        if let Some(actions) = self.select_with_mouse(session, &event, screen, tracked) {
+            return actions;
+        }
         if !screen.contains(Position::new(event.column, event.row)) {
             return Vec::new();
         }
+        if matches!(
+            event.kind,
+            MouseEventKind::Down(_) | MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+        ) {
+            // What is marked moves, or is clicked away.
+            self.selection = None;
+        }
         let (column, row) = (event.column - screen.x, event.row - screen.y);
-        let modes = self.screen(session).modes;
-        if modes.mouse != MouseTracking::Off {
+        if tracked {
             return encode_mouse(event.kind, event.modifiers, column, row, modes)
                 .map(|data| Action::Send(ClientFrame::Input { session, data }))
                 .into_iter()
@@ -106,6 +119,9 @@ impl App {
                     // A session's pane opens it; a ticket's or a setting's
                     // details are only to read.
                     self.open_selected();
+                    if let Mode::Terminal(session) = self.mode {
+                        self.select_from_preview(session, &event, crate::view::session_area(full));
+                    }
                 }
             }
             _ => {}

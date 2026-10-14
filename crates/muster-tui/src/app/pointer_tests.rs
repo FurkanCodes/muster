@@ -11,7 +11,7 @@ use super::tests::{World, press, render, world};
 use super::{Action, Mode};
 use crate::model::Row;
 
-fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+pub(super) fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
     MouseEvent {
         kind,
         column,
@@ -22,7 +22,7 @@ fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
 
 /// The world's session open beside the list, with `lines` of output; full
 /// screen with `full`.
-fn open_with_output(lines: usize, full: bool) -> (World, SessionId) {
+pub(super) fn open_with_output(lines: usize, full: bool) -> (World, SessionId) {
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
@@ -46,11 +46,11 @@ fn open_with_output(lines: usize, full: bool) -> (World, SessionId) {
     (world, id)
 }
 
-fn set_modes(world: &mut World, session: SessionId, modes: TerminalModes) {
+pub(super) fn set_modes(world: &mut World, session: SessionId, modes: TerminalModes) {
     world.app.on_frame(ServerFrame::Modes { session, modes });
 }
 
-fn input(actions: &[Action]) -> Vec<u8> {
+pub(super) fn input(actions: &[Action]) -> Vec<u8> {
     actions
         .iter()
         .filter_map(|action| match action {
@@ -61,7 +61,7 @@ fn input(actions: &[Action]) -> Vec<u8> {
         .collect()
 }
 
-fn mouse_mode() -> TerminalModes {
+pub(super) fn mouse_mode() -> TerminalModes {
     TerminalModes {
         mouse: MouseTracking::PressRelease,
         mouse_encoding: MouseEncoding::Sgr,

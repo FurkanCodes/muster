@@ -27,6 +27,8 @@ const ROWS: u16 = 36;
 /// screen.
 struct Ui {
     screen: Arc<Mutex<vt100::Parser>>,
+    /// Everything the UI wrote to its terminal, as written.
+    written: Arc<Mutex<Vec<u8>>>,
     /// Bytes for the UI's terminal input: keystrokes, and the answers the
     /// stand-in terminal gives.
     input: std::sync::mpsc::Sender<Vec<u8>>,
@@ -69,6 +71,8 @@ impl Ui {
         let mut reader = pair.master.try_clone_reader().unwrap();
         let mut writer = pair.master.take_writer().unwrap();
         let parsed = screen.clone();
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let kept = written.clone();
         // Plays the person's terminal: draws what arrives and answers the
         // device-attributes question crossterm asks, without claiming the
         // kitty keyboard protocol.
@@ -85,6 +89,7 @@ impl Ui {
                     let _ = writer_tx.send(b"\x1b[?6c".to_vec());
                 }
                 parsed.lock().unwrap().process(chunk);
+                kept.lock().unwrap().extend_from_slice(chunk);
             }
         });
         std::thread::spawn(move || {
@@ -95,6 +100,7 @@ impl Ui {
         });
         Self {
             screen,
+            written,
             input,
             child,
             _master: pair.master,
@@ -121,6 +127,37 @@ impl Ui {
             );
             std::thread::sleep(Duration::from_millis(25));
         }
+    }
+
+    /// Waits until the UI has written `wanted` to its terminal, escape
+    /// sequences and all.
+    fn wait_for_written(&self, wanted: &[u8]) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while !self
+            .written
+            .lock()
+            .unwrap()
+            .windows(wanted.len())
+            .any(|window| window == wanted)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "never wrote {:?}",
+                String::from_utf8_lossy(wanted)
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    /// Where `text` first starts on screen, as (column, row).
+    fn position_of(&self, text: &str) -> Option<(u16, u16)> {
+        let parser = self.screen.lock().unwrap();
+        let screen = parser.screen();
+        (0..ROWS).find_map(|row| {
+            let line = screen.contents_between(row, 0, row, COLS);
+            let at = line.find(text)?;
+            Some((u16::try_from(line[..at].chars().count()).unwrap(), row))
+        })
     }
 
     /// The background of the cell where `text` first starts on screen.
@@ -526,6 +563,73 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     ui.keys(b"echo back-$((6*7))\r");
     ui.wait_for("back-42");
     assert!(!ui.text().contains("lines back"), "{}", ui.text());
+}
+
+/// The UI started with `env`, a shell open in the project's checkout that
+/// printed two lines, and a drag over them, which the UI said it copied.
+fn drag_over_two_lines(sandbox: &Sandbox, env: &[(&str, &str)]) -> Ui {
+    let root = sandbox.repository("app");
+    let mut ui = Ui::start_with(sandbox, &root, env);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+    ui.keys(b"n");
+    ui.wait_for("New session");
+    ui.keys(b"\x1b[Z");
+    ui.keys(b"\r");
+    ui.wait_for("Shift-Q back to the list");
+    ui.keys(b"echo copy-$((6*7)); echo next-$((2*4))\r");
+    ui.wait_for("next-8");
+
+    // Pressed on the first line's first letter, dragged to the second's
+    // last and let go (SGR, 1-based).
+    let (column, row) = ui.position_of("copy-42").unwrap();
+    let (end, end_row) = ui.position_of("next-8").unwrap();
+    let (end, end_row) = (end + 6, end_row + 1);
+    ui.keys(format!("\x1b[<0;{};{}M", column + 1, row + 1).as_bytes());
+    ui.keys(format!("\x1b[<32;{end};{end_row}M").as_bytes());
+    ui.keys(format!("\x1b[<0;{end};{end_row}m").as_bytes());
+    ui.wait_for("Copied 2 lines.");
+    ui
+}
+
+#[test]
+fn a_drag_over_a_session_copies_its_text_with_the_system_s_own_program() {
+    let sandbox = Sandbox::new();
+    let _stop = StopDaemon(sandbox.paths().socket());
+    // On the person's machine: `pbcopy` on macOS, `xclip` under X on
+    // Linux, the sandbox's stand-ins both.
+    let _ui = drag_over_two_lines(
+        &sandbox,
+        &[
+            ("SSH_CONNECTION", ""),
+            ("SSH_TTY", ""),
+            ("WAYLAND_DISPLAY", ""),
+            ("DISPLAY", ":0"),
+        ],
+    );
+    let deadline = Instant::now() + Duration::from_secs(15);
+    // The session's text, none of the list beside it.
+    while sandbox.clipboard().as_deref() != Some("copy-42\nnext-8") {
+        assert!(Instant::now() < deadline, "{:?}", sandbox.clipboard());
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[test]
+fn over_ssh_a_drag_copies_through_the_person_s_terminal() {
+    let sandbox = Sandbox::new();
+    let _stop = StopDaemon(sandbox.paths().socket());
+    // The machine's clipboard is not the person's: their terminal is asked
+    // (OSC 52), which is this test's.
+    let ui = drag_over_two_lines(
+        &sandbox,
+        &[("SSH_CONNECTION", "192.0.2.1 50000 192.0.2.2 22")],
+    );
+    // "copy-42\nnext-8".
+    ui.wait_for_written(b"\x1b]52;c;Y29weS00MgpuZXh0LTg=\x07");
+    assert_eq!(sandbox.clipboard(), None);
 }
 
 #[test]

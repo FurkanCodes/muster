@@ -8,6 +8,7 @@ mod link;
 mod motion;
 mod picker;
 mod pointer;
+pub(crate) mod selection;
 mod settings;
 mod settle;
 mod tickets;
@@ -39,6 +40,8 @@ mod pointer_tests;
 #[cfg(test)]
 mod project_tests;
 #[cfg(test)]
+mod selection_tests;
+#[cfg(test)]
 mod settings_tests;
 #[cfg(test)]
 mod tests;
@@ -57,6 +60,7 @@ use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
 use crate::input::LineInput;
 use crate::model::{Model, Row};
 use crate::screen::Screen;
+use selection::Selection;
 
 /// What the runtime must do for the app.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +71,8 @@ pub(crate) enum Action {
     Notify(String),
     /// Open a web page in the person's browser.
     Open(String),
+    /// Put text on the person's clipboard.
+    Copy(String),
     /// List the folders in this folder, for the folder picker
     /// ([`App::on_folders`]).
     ListFolders(PathBuf),
@@ -261,6 +267,9 @@ pub(crate) struct App {
     pub(crate) settings_selected: Option<SettingRow>,
     pub(crate) settings_offset: usize,
     pub(crate) screens: HashMap<SessionId, Screen>,
+    /// Text selected with the mouse in the screen of the session with the
+    /// keys.
+    pub(crate) selection: Option<Selection>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
     /// Something a reply named that the state may not show yet: replies and
@@ -332,6 +341,7 @@ impl App {
             settings_selected: None,
             settings_offset: 0,
             screens: HashMap::new(),
+            selection: None,
             attached: None,
             wanted: None,
             pending: HashMap::new(),
@@ -411,6 +421,8 @@ impl App {
     /// The terminal area changed size.
     pub(crate) fn on_resize(&mut self, size: TermSize) -> Vec<Action> {
         self.terminal_size = size;
+        // The session's screen is drawn again at another size.
+        self.selection = None;
         self.keep_in_view();
         self.fit_attached()
     }
