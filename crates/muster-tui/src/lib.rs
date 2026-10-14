@@ -8,6 +8,7 @@
 //! all to the person's terminal and the daemon.
 
 mod app;
+mod clipboard;
 mod folders;
 mod input;
 mod keys;

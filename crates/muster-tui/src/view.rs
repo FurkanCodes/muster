@@ -15,6 +15,7 @@ use crate::motion;
 
 mod dialogs;
 pub(crate) mod look;
+mod selection;
 mod settings;
 mod tickets;
 mod top_bar;
@@ -574,6 +575,7 @@ fn draw_session(
             let inner = block.inner(area);
             frame.render_widget(PseudoTerminal::new(screen.screen()).block(block), area);
             if typing {
+                selection::draw_selection(frame, app, session, inner);
                 show_cursor(frame, screen, inner);
             }
         }
@@ -746,7 +748,8 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
         .get(&session)
         .map_or(0, crate::screen::Screen::scrolled_back);
     match &app.note {
-        Some(note) => spans.push(Span::from(format!("   {}", note.text)).red()),
+        Some(note) if note.error => spans.push(Span::from(format!("   {}", note.text)).red()),
+        Some(note) => spans.push(Span::from(format!("   {}", note.text)).green()),
         None if back > 0 => spans.push(
             Span::from(format!(
                 "   ↑ {back} lines back · scroll down or type to return"
@@ -767,6 +770,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
         }
         Some(screen) => {
             frame.render_widget(PseudoTerminal::new(screen.screen()), body);
+            selection::draw_selection(frame, app, session, body);
             show_cursor(frame, screen, body);
         }
         None => frame.render_widget(Paragraph::new("Connecting…").dim(), body),

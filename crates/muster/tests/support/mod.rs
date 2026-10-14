@@ -106,6 +106,13 @@ echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the
 exit 1
 "#;
 
+/// Stands in for the programs that put text on the clipboard (`pbcopy`,
+/// `wl-copy`, `xclip`): keeps what it was given, so no test reaches the
+/// person's own clipboard.
+const FAKE_COPY: &str = r#"#!/bin/sh
+cat > "$FAKE_CLIPBOARD_DIR/copied"
+"#;
+
 impl Sandbox {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
@@ -117,6 +124,9 @@ impl Sandbox {
             ("gh", FAKE_GH),
             ("docker", FAKE_DOCKER),
             ("glab", services::FAKE_GLAB),
+            ("pbcopy", FAKE_COPY),
+            ("wl-copy", FAKE_COPY),
+            ("xclip", FAKE_COPY),
         ]
         .into_iter()
         .chain(agents)
@@ -131,6 +141,7 @@ impl Sandbox {
         std::fs::create_dir_all(dir.path().join("fake-gh")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-glab")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-docker")).unwrap();
+        std::fs::create_dir_all(dir.path().join("fake-clipboard")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-claude")).unwrap();
         std::fs::create_dir_all(dir.path().join("fake-agents")).unwrap();
         std::fs::create_dir_all(dir.path().join("claude-config/projects")).unwrap();
@@ -168,6 +179,11 @@ impl Sandbox {
     /// `GH_SLOW` flag and the `calls` it recorded.
     pub(crate) fn fake_gh(&self) -> PathBuf {
         self.dir.path().join("fake-gh")
+    }
+
+    /// What was last put on the clipboard through the stand-in programs.
+    pub(crate) fn clipboard(&self) -> Option<String> {
+        std::fs::read_to_string(self.dir.path().join("fake-clipboard/copied")).ok()
     }
 
     /// The calls the stand-in `docker` was given, one per line.
@@ -287,6 +303,7 @@ impl Sandbox {
             .env("FAKE_GH_DIR", self.dir.path().join("fake-gh"))
             .env("FAKE_GLAB_DIR", self.dir.path().join("fake-glab"))
             .env("FAKE_DOCKER_DIR", self.dir.path().join("fake-docker"))
+            .env("FAKE_CLIPBOARD_DIR", self.dir.path().join("fake-clipboard"))
             .env("CLAUDE_CONFIG_DIR", self.dir.path().join("claude-config"))
             // Runs never reach the person's own credential: not the
             // Keychain, and not one in the environment the tests run in.
