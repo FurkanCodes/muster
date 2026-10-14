@@ -512,8 +512,10 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     ui.keys(b"\x1b[Z");
     ui.keys(b"\r");
     ui.wait_for("Shift-Q back to the list");
-    ui.keys(b"seq 1 300\r");
-    ui.wait_for("300");
+    // Waited for by what only the output says: the command as typed
+    // says "300" too, before there is anything to scroll back to.
+    ui.keys(b"seq 1 300; echo seq-$((2*3))\r");
+    ui.wait_for("seq-6");
 
     // Two turns of the wheel over the session, as the terminal reports
     // them (SGR).
