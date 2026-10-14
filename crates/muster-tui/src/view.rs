@@ -756,7 +756,7 @@ fn draw_terminal(frame: &mut Frame<'_>, app: &App, session: muster_core::Session
             ))
             .yellow(),
         ),
-        None => spans.push(Span::from("   Shift-Q back to the list").dim()),
+        None => spans.push(Span::from("   Shift-Q back to the list (or click here)").dim()),
     }
     frame.render_widget(Line::from(spans), top);
     match app.screens.get(&session) {

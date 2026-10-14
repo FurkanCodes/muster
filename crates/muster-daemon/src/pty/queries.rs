@@ -363,14 +363,14 @@ impl QueryScanner {
         })
     }
 
+    /// As xterm and iTerm2 do: the one set last is in effect, and resetting
+    /// any stops the reports, so a program that resets another than it set
+    /// is never sent clicks it no longer reads.
     fn track_mouse(&mut self, mode: MouseTracking, on: bool) {
-        if on {
-            self.mouse = mode;
-        } else if self.mouse == mode {
-            self.mouse = MouseTracking::Off;
-        }
+        self.mouse = if on { mode } else { MouseTracking::Off };
     }
 
+    /// An encoding, though, is reset only by its own number (xterm).
     fn encode_mouse(&mut self, encoding: MouseEncoding, on: bool) {
         if on {
             self.mouse_encoding = encoding;
@@ -492,12 +492,22 @@ mod tests {
         let modes = scanner.modes();
         assert_eq!(modes.mouse, MouseTracking::ButtonMotion);
         assert_eq!(modes.mouse_encoding, MouseEncoding::Sgr);
-        // Setting another replaces it; resetting one not in effect does not.
-        scanner.scan(b"\x1b[?1000;1005h\x1b[?1002l\x1b[?1006l");
+        // Setting another replaces it; resetting an encoding not in effect
+        // changes nothing.
+        scanner.scan(b"\x1b[?1000;1005h\x1b[?1006l");
         let modes = scanner.modes();
         assert_eq!(modes.mouse, MouseTracking::PressRelease);
         assert_eq!(modes.mouse_encoding, MouseEncoding::Utf8);
-        scanner.scan(b"\x1b[?1000l\x1b[?1005l");
+        // But resetting any way of tracking stops it: the program set 1000
+        // after 1002 and resets 1002.
+        scanner.scan(b"\x1b[?1002l");
+        assert_eq!(scanner.modes().mouse, MouseTracking::Off);
+        scanner.scan(b"\x1b[?1005l");
+        assert_eq!(scanner.modes().mouse_encoding, MouseEncoding::Default);
+        // Claude Code's, on and off around its full-screen views.
+        scanner.scan(b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h");
+        assert_eq!(scanner.modes().mouse, MouseTracking::AnyMotion);
+        scanner.scan(b"\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l");
         assert_eq!(scanner.modes().mouse, MouseTracking::Off);
         assert_eq!(scanner.modes().mouse_encoding, MouseEncoding::Default);
         scanner.scan(b"\x1b[?9h");

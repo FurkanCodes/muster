@@ -23,7 +23,7 @@ pub(crate) struct Selection {
     head: (u16, u16),
     /// The button is still held.
     dragging: bool,
-    /// The drag has left the cell it began on: a click selects nothing.
+    /// The drag has gone far enough to select: a click selects nothing.
     moved: bool,
 }
 
@@ -71,9 +71,9 @@ impl Selection {
     }
 }
 
-/// The cell of `screen` (an area of the window) under `event`, kept inside
-/// it: a drag may leave the session's pane.
-fn cell(screen: Rect, event: &MouseEvent) -> (u16, u16) {
+/// The cell of `screen` (an area of the window) under `event`, as (row,
+/// column), kept inside it: a drag or the wheel may be beside it.
+pub(super) fn cell(screen: Rect, event: &MouseEvent) -> (u16, u16) {
     let row = event
         .row
         .clamp(screen.y, screen.bottom().saturating_sub(1).max(screen.y));
@@ -103,7 +103,10 @@ impl App {
         match (event.kind, held) {
             (MouseEventKind::Drag(MouseButton::Left), Some(selection)) => {
                 selection.head = cell(screen, event);
-                selection.moved |= selection.head != selection.anchor;
+                // A hand that moves a click into the next cell still
+                // clicks: a selection takes another line, or two cells.
+                selection.moved |= selection.head.0 != selection.anchor.0
+                    || selection.head.1.abs_diff(selection.anchor.1) > 1;
                 Some(Vec::new())
             }
             (MouseEventKind::Up(MouseButton::Left), Some(_)) => Some(self.copy_selection()),

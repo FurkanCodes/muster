@@ -32,6 +32,8 @@ mod look_tests;
 #[cfg(test)]
 mod motion_tests;
 #[cfg(test)]
+mod mouse_sweep_tests;
+#[cfg(test)]
 mod navigation_tests;
 #[cfg(test)]
 mod picker_tests;
