@@ -81,6 +81,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let mut app = App::new(options.cwd.clone(), size);
     app.notify = options.notify;
     app.motion = options.motion;
+    app.welcome = true;
 
     let (link_events, mut link) = mpsc::unbounded_channel();
     let link_task = tokio::spawn(keep_linked(options, link_events));

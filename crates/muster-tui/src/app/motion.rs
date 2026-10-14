@@ -1,12 +1,12 @@
 //! What moves, and when it asks for drawing: running sessions spin, what
-//! needs the person pulses, and a session's line flashes as it finishes,
-//! ends or comes to wait on the person.
+//! needs the person pulses, a session's line flashes as it finishes, ends
+//! or comes to wait on the person, and Kep blinks, and is glad of a finish.
 
 use muster_core::{SessionId, SessionStatus, Timestamp};
 
 use super::App;
 use crate::model::needs_attention;
-use crate::motion::{FLASH_STEPS, NOTE_DIMS, NOTE_GOES};
+use crate::motion::{FLASH_STEPS, GLAD_STEPS, NOTE_DIMS, NOTE_GOES};
 
 impl App {
     /// The step of the motion to draw, or `None` to draw everything still.
@@ -15,11 +15,12 @@ impl App {
     }
 
     /// Whether something on screen moves: a running session, something
-    /// waiting on the person, or a line flashing. Nothing else asks for
-    /// drawing.
+    /// waiting on the person, a line flashing or Kep glad. Nothing else
+    /// asks for drawing.
     pub(crate) fn animating(&self) -> bool {
         self.motion
             && (!self.flashes.is_empty()
+                || self.kep_glad()
                 || self.model.sessions().iter().any(|session| {
                     session.status == SessionStatus::Running || needs_attention(session)
                 }))
@@ -34,7 +35,24 @@ impl App {
         self.flashes.retain(|session, began| {
             step.saturating_sub(*began) < FLASH_STEPS && model.session(*session).is_some()
         });
-        self.flashes.len() < flashing || self.fade_note() || self.animating()
+        let welcomed = self.end_welcome_when_due();
+        let glad_over = self.glad_at.is_some() && !self.kep_glad();
+        if glad_over {
+            self.glad_at = None;
+        }
+        welcomed
+            || glad_over
+            || self.flashes.len() < flashing
+            || self.fade_note()
+            || self.animating()
+    }
+
+    /// Whether Kep is glad of a session that has just finished.
+    pub(crate) fn kep_glad(&self) -> bool {
+        self.motion
+            && self
+                .glad_at
+                .is_some_and(|at| self.step.saturating_sub(at) < GLAD_STEPS)
     }
 
     /// Lets a note go once it has been read, dimming it first; an error
@@ -106,6 +124,9 @@ impl App {
         );
         if self.motion && worth_a_look && stored.status != before {
             self.flashes.insert(session, self.step);
+            if stored.status == SessionStatus::Finished {
+                self.glad_at = Some(self.step);
+            }
         }
     }
 }

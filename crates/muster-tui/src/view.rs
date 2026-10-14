@@ -14,6 +14,7 @@ use crate::model::Row;
 use crate::motion;
 
 mod dialogs;
+pub(crate) mod kep;
 pub(crate) mod look;
 mod selection;
 mod settings;
@@ -82,6 +83,10 @@ fn layout(area: Rect, bottom: u16) -> BrowseAreas {
 
 pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     let area = frame.area();
+    if app.welcome {
+        kep::draw_welcome(frame, app, area);
+        return;
+    }
     if let Mode::Terminal(session) = app.mode
         && app.full_screen
     {
@@ -700,14 +705,16 @@ fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
             }
             None => Text::default(),
         },
-        _ if !app.model.loaded() => Text::from(look::wordmark("Connecting to the daemon…")),
+        _ if !app.model.loaded() => {
+            return kep::draw_empty_pane(frame, area, "Connecting to the daemon…", &[]);
+        }
         _ if app.model.projects().is_empty() => {
-            let mut lines = look::wordmark("Agents on your tickets, side by side.");
-            lines.extend([
-                Line::from(""),
-                Line::from("  Press a to add a project: a git repository, or any folder."),
-            ]);
-            Text::from(lines)
+            return kep::draw_empty_pane(
+                frame,
+                area,
+                "Agents on your tickets, side by side.",
+                &["Press a to add a project: a git repository, or any folder."],
+            );
         }
         _ => Text::from("Select a session to watch it here.").dim(),
     };
