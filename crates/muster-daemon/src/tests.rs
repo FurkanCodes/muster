@@ -170,21 +170,21 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
         ),
         (
             Command::ListIssues { project },
-            "this project has no git remote to find its tickets by; say where its tickets are",
+            "this project has no git remote to find its tickets by; choose where its tickets are",
         ),
         (
             Command::ViewIssue {
                 project,
                 key: muster_core::TicketKey::number(1),
             },
-            "say where its tickets are with [tickets] tracker",
+            "or say with [tickets] tracker",
         ),
         (
             Command::CloseIssue {
                 project,
                 key: muster_core::TicketKey::number(1),
             },
-            "say where its tickets are with [tickets] tracker",
+            "or say with [tickets] tracker",
         ),
         (
             Command::StartFromIssue {

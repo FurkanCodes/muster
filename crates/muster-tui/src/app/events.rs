@@ -83,6 +83,20 @@ impl App {
                 input.paste(text);
                 Vec::new()
             }
+            Mode::Dialog(Dialog::TicketsFrom {
+                tracker,
+                site,
+                key,
+                on_key,
+                ..
+            }) => {
+                match super::tickets_from::focused(*tracker, *on_key) {
+                    super::tickets_from::Field::Site => site.paste(text),
+                    super::tickets_from::Field::Key => key.paste(text),
+                    super::tickets_from::Field::None => {}
+                }
+                Vec::new()
+            }
             _ => Vec::new(),
         }
     }
@@ -181,11 +195,15 @@ impl App {
     }
 
     /// Shows `view`. The queue opens on its most urgent session, without
-    /// one kept from the last visit; the settings are read afresh, as they
-    /// may have been edited by hand.
+    /// one kept from the last visit; tickets that could not be fetched are
+    /// tried again; the settings are read afresh, as they may have been
+    /// edited by hand.
     fn show(&mut self, view: View) -> Vec<Action> {
         if view == View::NeedsYou && self.view != View::NeedsYou {
             self.needs_selected = self.model.needs_you().first().copied();
+        }
+        if view == View::Tickets && self.view != View::Tickets {
+            self.forget_failed_tickets();
         }
         if view == View::Settings && self.view != View::Settings {
             self.settings
@@ -518,6 +536,7 @@ impl App {
                 _ => Vec::new(),
             },
             Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
+            dialog @ Dialog::TicketsFrom { .. } => self.tickets_from_key(dialog, key),
             Dialog::AssignAgent {
                 project,
                 key: ticket,

@@ -1,11 +1,13 @@
 //! The Settings screen: each project's settings that the person can
-//! change from here, read from the daemon as the screen is shown. For now
-//! one: whether the Tickets screen lists only the tickets assigned to the
-//! person, in whatever tracker the project's tickets are.
+//! change from here, read from the daemon as the screen is shown: whether
+//! the Tickets screen lists only the tickets assigned to the person, in
+//! whatever tracker the project's tickets are, and where they come from
+//! (`tickets_from`).
 //!
-//! ⏎ or space turns the selected setting on or off. The daemon writes the
-//! change into the person's own settings for the project, never into its
-//! repository (`ARC-05`), and the project's tickets are fetched again.
+//! ⏎ or space turns the selected setting on or off, or opens its dialog.
+//! The daemon writes the change into the person's own settings for the
+//! project, never into its repository (`ARC-05`), and the project's
+//! tickets are fetched again.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::ProjectId;
@@ -20,12 +22,16 @@ pub(crate) enum SettingRow {
     Project(ProjectId),
     /// Only the tickets assigned to the person.
     OnlyMine(ProjectId),
+    /// Where its tickets come from.
+    TicketsFrom(ProjectId),
 }
 
 impl SettingRow {
     pub(crate) fn project(self) -> ProjectId {
         match self {
-            Self::Project(project) | Self::OnlyMine(project) => project,
+            Self::Project(project) | Self::OnlyMine(project) | Self::TicketsFrom(project) => {
+                project
+            }
         }
     }
 }
@@ -50,6 +56,7 @@ impl App {
                 [
                     SettingRow::Project(project.id),
                     SettingRow::OnlyMine(project.id),
+                    SettingRow::TicketsFrom(project.id),
                 ]
             })
             .collect()
@@ -60,7 +67,10 @@ impl App {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-            KeyCode::Enter | KeyCode::Char(' ') => return self.toggle_setting(),
+            KeyCode::Enter | KeyCode::Char(' ') => match self.settings_selected {
+                Some(SettingRow::TicketsFrom(project)) => return self.choose_tickets_from(project),
+                _ => return self.toggle_setting(),
+            },
             KeyCode::Char('r') => {
                 // Read again as they are shown, edits by hand included.
                 self.settings.clear();

@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use muster_core::config::{ConfigError, ProjectConfig, edit};
-use muster_core::settings::{ONLY_MINE, SettingChange, SettingSource};
+use muster_core::settings::{ONLY_MINE, SettingChange, SettingSource, TICKETS_FROM_KEYS, TRACKER};
 
 /// The repository's settings file.
 pub const FILE_NAME: &str = "muster.toml";
@@ -42,16 +42,29 @@ pub fn load(root: &Path, overrides: &Path) -> Result<Loaded, ConfigError> {
     Ok(Loaded { config, files })
 }
 
-/// The settings, and where only-my-tickets comes from.
+/// Which file sets the settings the person changes on the Settings screen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sources {
+    pub only_mine: SettingSource,
+    pub tracker: SettingSource,
+}
+
+/// The settings, and where the ones the person changes come from.
 pub fn load_with_sources(
     root: &Path,
     overrides: &Path,
-) -> Result<(ProjectConfig, SettingSource), ConfigError> {
+) -> Result<(ProjectConfig, Sources), ConfigError> {
     let repository = read(&root.join(FILE_NAME))?;
     let local = read(overrides)?;
     let config = load(root, overrides)?.config;
-    let only_mine = edit::source_of(repository.as_deref(), local.as_deref(), ONLY_MINE);
-    Ok((config, only_mine))
+    let source = |key| edit::source_of(repository.as_deref(), local.as_deref(), key);
+    Ok((
+        config,
+        Sources {
+            only_mine: source(ONLY_MINE),
+            tracker: source(TRACKER),
+        },
+    ))
 }
 
 /// Makes `change` in the person's overrides at `overrides`, keeping the
@@ -67,8 +80,21 @@ pub fn change(root: &Path, overrides: &Path, change: SettingChange) -> Result<()
         file: shown.clone(),
         message,
     };
-    let (table, key) = change.key();
-    let changed = edit::set_flag(local.as_deref(), table, key, change.value()).map_err(invalid)?;
+    let changed = match change {
+        SettingChange::OnlyMyTickets(on) => {
+            let (table, key) = ONLY_MINE;
+            edit::set_flag(local.as_deref(), table, key, on)
+        }
+        // Written whole: what the last tracker needed goes with it.
+        SettingChange::TicketsFrom(from) => {
+            let values: Vec<(&str, Option<&str>)> = match &from {
+                Some(from) => from.written().to_vec(),
+                None => TICKETS_FROM_KEYS.iter().map(|key| (*key, None)).collect(),
+            };
+            edit::set_texts(local.as_deref(), TRACKER.0, &values)
+        }
+    }
+    .map_err(invalid)?;
     ProjectConfig::parse(
         repository.as_deref(),
         Some(&changed),
@@ -149,7 +175,7 @@ mod tests {
         std::fs::write(root.join(FILE_NAME), repository).unwrap();
         let (config, from) = load_with_sources(&root, &overrides).unwrap();
         assert!(config.tickets.mine);
-        assert_eq!(from, SettingSource::Project);
+        assert_eq!(from.only_mine, SettingSource::Project);
 
         // No file of the person's yet: one is made, folders and all.
         change(&root, &overrides, SettingChange::OnlyMyTickets(false)).unwrap();
@@ -157,7 +183,7 @@ mod tests {
         assert!(written.starts_with(edit::NEW_FILE), "{written}");
         let (config, from) = load_with_sources(&root, &overrides).unwrap();
         assert!(!config.tickets.mine);
-        assert_eq!(from, SettingSource::Yours);
+        assert_eq!(from.only_mine, SettingSource::Yours);
         assert_eq!(
             std::fs::read_to_string(root.join(FILE_NAME)).unwrap(),
             repository,
@@ -175,6 +201,80 @@ mod tests {
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(leftovers, ["p.toml"]);
+    }
+
+    #[test]
+    fn where_the_tickets_are_is_written_whole_and_can_follow_the_remote_again() {
+        use muster_core::config::TrackerKind;
+        use muster_core::settings::TicketsFrom;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("repo");
+        let overrides = dir.path().join("config/projects/p.toml");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(overrides.parent().unwrap()).unwrap();
+        // A project on a company's own git server, its address an IP.
+        std::fs::write(&overrides, "# mine\n[tickets]\nmine = true\n").unwrap();
+        let jira = TicketsFrom {
+            tracker: TrackerKind::Jira,
+            site: Some("acme.atlassian.net".to_owned()),
+            project: Some("app".to_owned()),
+            jql: None,
+            team: None,
+        };
+        change(
+            &root,
+            &overrides,
+            SettingChange::TicketsFrom(Some(jira.clone())),
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&overrides).unwrap(),
+            "# mine\n[tickets]\nmine = true\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\n\
+             project = \"app\"\n"
+        );
+        let (config, from) = load_with_sources(&root, &overrides).unwrap();
+        assert_eq!(config.tickets.tracker, Some(TrackerKind::Jira));
+        assert_eq!(config.tickets.project.as_deref(), Some("APP"));
+        assert!(config.tickets.mine);
+        assert_eq!(from.tracker, SettingSource::Yours);
+
+        // Linear instead: Jira's keys go with Jira.
+        let linear = TicketsFrom {
+            tracker: TrackerKind::Linear,
+            site: None,
+            project: None,
+            jql: None,
+            team: Some("ENG".to_owned()),
+        };
+        change(&root, &overrides, SettingChange::TicketsFrom(Some(linear))).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&overrides).unwrap(),
+            "# mine\n[tickets]\nmine = true\ntracker = \"linear\"\nteam = \"ENG\"\n"
+        );
+
+        // Jira without its site does not read: refused, nothing written.
+        let before = std::fs::read_to_string(&overrides).unwrap();
+        let siteless = TicketsFrom { site: None, ..jira };
+        let error = change(
+            &root,
+            &overrides,
+            SettingChange::TicketsFrom(Some(siteless)),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("tickets.site"), "{error}");
+        assert_eq!(std::fs::read_to_string(&overrides).unwrap(), before);
+
+        // Back to the git remote: only the person's other settings stay.
+        change(&root, &overrides, SettingChange::TicketsFrom(None)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&overrides).unwrap(),
+            "# mine\n[tickets]\nmine = true\n"
+        );
+        let (config, from) = load_with_sources(&root, &overrides).unwrap();
+        assert_eq!(config.tickets.tracker, None);
+        assert_eq!(from.tracker, SettingSource::Default);
     }
 
     #[test]

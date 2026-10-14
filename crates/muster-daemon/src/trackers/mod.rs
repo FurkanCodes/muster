@@ -327,5 +327,20 @@ mod tests {
             ServiceError::from(GitHubError::Missing),
             ServiceError::Unavailable(_)
         ));
+        // The network failed it, not GitHub: said so, with where to look.
+        let unreachable: ServiceError = GitHubError::Failed(
+            "error connecting to github.example.com\ncheck your internet connection".to_owned(),
+        )
+        .into();
+        assert!(matches!(unreachable, ServiceError::Unavailable(_)));
+        assert!(unreachable.to_string().contains("VPN"), "{unreachable}");
+        let jira = crate::service::unreachable("Jira at acme.atlassian.net", "timed out");
+        assert_eq!(
+            jira.to_string(),
+            format!(
+                "could not reach Jira at acme.atlassian.net: timed out. {}",
+                crate::service::REACH_HINT
+            )
+        );
     }
 }

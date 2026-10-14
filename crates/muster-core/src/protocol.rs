@@ -24,6 +24,11 @@
 //! has only theirs; version 16 when each session came to its status, and
 //! what it is doing now.
 //!
+//! Since the first release, a change keeps older peers working where it
+//! can: version 17 (from 16) is where a project's tickets are chosen on the
+//! Settings screen (`SettingChange::TicketsFrom`, sent only to a daemon of
+//! 17 or later), and the settings saying where they are written.
+//!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
 
@@ -38,7 +43,7 @@ use crate::settings::{ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 16;
+pub const PROTOCOL_VERSION: u32 = 17;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 

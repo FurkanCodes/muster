@@ -10,10 +10,13 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 use super::{look, panel, shorten};
+use crate::app::tickets_from::tracker_label;
 use crate::app::{App, SettingRow, Settings};
 
 /// What the only-my-tickets setting is called in the list.
 const ONLY_MINE: &str = "Only my tickets";
+/// What the setting of where the tickets come from is called.
+const TICKETS_FROM: &str = "Tickets from";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Settings ", app.list_has_keys());
@@ -77,12 +80,43 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
                 Some(Settings::Failed(_)) => Span::from("?").red(),
                 None | Some(Settings::Loading) => Span::from("…").dim(),
             };
-            let label = format!("  {ONLY_MINE}");
-            let room = width.saturating_sub(value.content.chars().count() + 1);
-            let label = shorten(&label, room);
-            let gap = room.saturating_sub(label.chars().count()) + 1;
-            Line::from(vec![Span::raw(label), Span::raw(" ".repeat(gap)), value])
+            labelled(ONLY_MINE, value, width)
         }
+        SettingRow::TicketsFrom(_) => {
+            let value = match settings {
+                Some(Settings::Loaded(found)) => tickets_value(found),
+                Some(Settings::Failed(_)) => Span::from("?").red(),
+                None | Some(Settings::Loading) => Span::from("…").dim(),
+            };
+            labelled(TICKETS_FROM, value, width)
+        }
+    }
+}
+
+/// A setting's line: its name, and its value at the line's end.
+fn labelled(label: &str, value: Span<'static>, width: usize) -> Line<'static> {
+    let label = format!("  {label}");
+    let room = width.saturating_sub(value.content.chars().count() + 1);
+    let label = shorten(&label, room);
+    let gap = room.saturating_sub(label.chars().count()) + 1;
+    Line::from(vec![Span::raw(label), Span::raw(" ".repeat(gap)), value])
+}
+
+/// Where the tickets come from, in a word or two: `Jira TURPAT`; `choose`
+/// where nothing can tell.
+fn tickets_value(settings: &ProjectSettings) -> Span<'static> {
+    match &settings.tickets {
+        Some(from) => {
+            let which = from.project.as_ref().or(from.team.as_ref());
+            let tracker = tracker_label(Some(from.tracker));
+            Span::from(match which {
+                Some(which) => format!("{tracker} {which}"),
+                None => tracker.to_owned(),
+            })
+            .bold()
+        }
+        None if settings.tickets_untold => Span::from("choose").red().bold(),
+        None => Span::from("git remote").dim(),
     }
 }
 
@@ -99,6 +133,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(row) => match app.settings.get(&row.project()) {
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings),
+                SettingRow::TicketsFrom(_) => tickets_from_text(settings),
                 SettingRow::Project(project) => project_text(app, project, settings),
             },
             Some(Settings::Failed(error)) => Text::from(vec![
@@ -162,6 +197,51 @@ fn only_mine_text(settings: &ProjectSettings) -> Text<'static> {
     ])
 }
 
+fn tickets_from_text(settings: &ProjectSettings) -> Text<'static> {
+    let from = match settings.tickets_set_by {
+        SettingSource::Yours => "your settings",
+        SettingSource::Project => "the project's muster.toml",
+        SettingSource::Default => "its git remote, as nothing names a tracker",
+    };
+    let said = Line::from(settings.tickets_from.clone());
+    let mut lines = vec![
+        Line::from(vec![
+            Span::from(format!("{TICKETS_FROM}  ")).bold(),
+            tickets_value(settings),
+        ]),
+        if settings.tickets_untold {
+            said.red()
+        } else {
+            said
+        },
+        Line::from(""),
+        detail("Set by", from.to_owned()),
+        detail("Saved in", settings.file.display().to_string()),
+        Line::from(""),
+        Line::from(
+            "⏎ chooses where they come from: its git remote, GitHub, GitLab, Jira (its site and a \
+             project's key) or Linear (a team's key).",
+        )
+        .dim(),
+        Line::from(
+            "A change goes in your own settings file, never in the repository, and the tickets \
+             are fetched again.",
+        )
+        .dim(),
+    ];
+    if settings.tickets_untold {
+        lines.insert(2, Line::from(""));
+        lines.insert(
+            3,
+            Line::from(
+                "A remote on a company's own server, such as an IP address, says nothing of \
+                 where its tickets are: choose them here.",
+            ),
+        );
+    }
+    Text::from(lines)
+}
+
 fn project_text(app: &App, project: ProjectId, settings: &ProjectSettings) -> Text<'static> {
     let root = app
         .model
@@ -194,14 +274,22 @@ fn detail(label: &str, value: String) -> Line<'static> {
 /// The keys that apply on the Settings screen, for what is selected.
 pub(super) fn hints(app: &App) -> Vec<&'static str> {
     let mut hints = Vec::new();
-    if let Some(SettingRow::OnlyMine(project)) = app.settings_selected
-        && let Some(Settings::Loaded(settings)) = app.settings.get(&project)
-    {
-        hints.push(if settings.only_mine.on {
-            "⏎ turn off"
-        } else {
-            "⏎ turn on"
-        });
+    match app.settings_selected {
+        Some(SettingRow::OnlyMine(project)) => {
+            if let Some(Settings::Loaded(settings)) = app.settings.get(&project) {
+                hints.push(if settings.only_mine.on {
+                    "⏎ turn off"
+                } else {
+                    "⏎ turn on"
+                });
+            }
+        }
+        Some(SettingRow::TicketsFrom(project)) => {
+            if let Some(Settings::Loaded(_)) = app.settings.get(&project) {
+                hints.push("⏎ choose");
+            }
+        }
+        Some(SettingRow::Project(_)) | None => {}
     }
     hints.push("r read again");
     hints

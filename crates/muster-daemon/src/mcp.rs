@@ -219,10 +219,7 @@ impl Mcp {
     }
 
     fn unreachable(&self, error: impl std::fmt::Display) -> ServiceError {
-        ServiceError::Unavailable(format!(
-            "could not reach {}'s MCP server: {error}",
-            self.service
-        ))
+        crate::service::unreachable(&format!("{}'s MCP server", self.service), error)
     }
 
     fn check(&self, status: u16, text: &str) -> Result<(), ServiceError> {

@@ -11,6 +11,7 @@ mod pointer;
 mod settings;
 mod settle;
 mod tickets;
+pub(crate) mod tickets_from;
 
 pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
@@ -42,11 +43,14 @@ mod settings_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tickets_from_tests;
+#[cfg(test)]
 mod tickets_tests;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use muster_core::config::TrackerKind;
 use muster_core::protocol::{ClientFrame, Command, TermSize};
 use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
 
@@ -144,6 +148,17 @@ pub(crate) enum Dialog {
         question: String,
         then: Confirmed,
     },
+    /// Where a project's tickets come from: a tracker, or `None` for the
+    /// one its git remote says; Jira's site and project's key, or Linear's
+    /// team's key, as typed.
+    TicketsFrom {
+        project: ProjectId,
+        tracker: Option<TrackerKind>,
+        site: LineInput,
+        key: LineInput,
+        /// Whether the key has the cursor, rather than Jira's site.
+        on_key: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -205,6 +220,8 @@ enum Then {
     Settings(ProjectId),
     /// Keep the project's settings as changed, and fetch its tickets again.
     SettingChanged(ProjectId),
+    /// The same, after the person chose where its tickets come from.
+    TicketsFromChanged(ProjectId),
     Say(&'static str),
 }
 
@@ -288,6 +305,9 @@ pub(crate) struct App {
     /// The agent last started on a ticket, which the next ticket is
     /// offered first.
     ticket_agent: HarnessChoice,
+    /// The protocol the daemon agreed to speak: a change it does not know
+    /// is never sent to it (`ARC-09`).
+    pub(crate) daemon_protocol: u32,
 }
 
 impl App {
@@ -329,6 +349,7 @@ impl App {
             flashes: HashMap::new(),
             last_harness: HarnessChoice::Claude,
             ticket_agent: HarnessChoice::Claude,
+            daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
         }
     }
 

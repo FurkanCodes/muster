@@ -183,3 +183,108 @@ async fn settings_that_do_not_read_are_said_and_a_change_writes_nothing() {
     .await;
     assert_eq!(error.code, ErrorCode::NotFound);
 }
+
+#[tokio::test]
+async fn a_project_on_a_company_s_own_server_gets_its_tickets_from_jira_here() {
+    use muster_core::config::TrackerKind;
+    use muster_core::settings::TicketsFrom;
+
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    // Its git server is on the company's network, by its address.
+    git(
+        &root,
+        &["remote", "set-url", "github", "git@10.10.10.5:team/app.git"],
+    );
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let project = add(&mut connection, root.clone()).await;
+    let file = sandbox.paths().project_overrides(project);
+
+    let untold = settings(&mut connection, Command::ProjectSettings { project }).await;
+    assert!(untold.tickets_untold);
+    assert_eq!(untold.tickets, None);
+    assert!(
+        untold.tickets_from.contains("10.10.10.5 is not a host")
+            && untold.tickets_from.contains("on the Settings screen"),
+        "{}",
+        untold.tickets_from
+    );
+    let listing = refused(&mut connection, Command::ListIssues { project }).await;
+    assert!(
+        listing.message.contains("on the Settings screen"),
+        "{listing:?}"
+    );
+
+    let jira = TicketsFrom {
+        tracker: TrackerKind::Jira,
+        site: Some("acme.atlassian.net".to_owned()),
+        project: Some("app".to_owned()),
+        jql: None,
+        team: None,
+    };
+    let chosen = settings(
+        &mut connection,
+        Command::ChangeSetting {
+            project,
+            change: SettingChange::TicketsFrom(Some(jira)),
+        },
+    )
+    .await;
+    assert!(!chosen.tickets_untold);
+    assert_eq!(
+        chosen.tickets_from,
+        "Jira at acme.atlassian.net, project APP"
+    );
+    assert_eq!(chosen.tickets_set_by, SettingSource::Yours);
+    assert_eq!(
+        chosen
+            .tickets
+            .as_ref()
+            .and_then(|from| from.project.as_deref()),
+        Some("APP")
+    );
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        written.ends_with(
+            "[tickets]\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\nproject = \"app\"\n"
+        ),
+        "{written}"
+    );
+    assert_eq!(
+        git(&root, &["status", "--porcelain", "--untracked-files=all"]),
+        "",
+        "nothing in the repository"
+    );
+
+    // Jira without its site is refused, the file as it was.
+    let error = refused(
+        &mut connection,
+        Command::ChangeSetting {
+            project,
+            change: SettingChange::TicketsFrom(Some(TicketsFrom {
+                tracker: TrackerKind::Jira,
+                site: None,
+                project: Some("APP".to_owned()),
+                jql: None,
+                team: None,
+            })),
+        },
+    )
+    .await;
+    assert_eq!(error.code, ErrorCode::BadRequest);
+    assert!(error.message.contains("tickets.site"), "{error:?}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), written);
+
+    // Back to its git remote, which still cannot tell.
+    let back = settings(
+        &mut connection,
+        Command::ChangeSetting {
+            project,
+            change: SettingChange::TicketsFrom(None),
+        },
+    )
+    .await;
+    assert!(back.tickets_untold);
+    assert_eq!(back.tickets_set_by, SettingSource::Default);
+}

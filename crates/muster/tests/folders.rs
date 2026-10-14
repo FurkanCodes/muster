@@ -86,7 +86,7 @@ async fn a_plain_folder_is_a_project_until_and_after_it_becomes_a_repository() {
         ),
         (
             &["issue", "list", "notes"][..],
-            "say where its tickets are with [tickets] tracker",
+            "choose where its tickets are on the Settings screen, or say with [tickets] tracker",
         ),
         (&["review", "notes"][..], "no branch to review or push"),
         (&["pr", "notes"][..], "no branch to review or push"),

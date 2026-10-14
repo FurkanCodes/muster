@@ -7,7 +7,9 @@ use muster_core::protocol::{
     ClientFrame, Delta, DetachReason, ErrorBody, ErrorCode, Reply, ServerFrame,
 };
 
-use super::{Action, App, Confirmed, Dialog, Link, Mode, Settings, Then, TicketText, Tickets};
+use super::{
+    Action, App, Confirmed, Dialog, Link, Mode, Settings, Then, TicketText, Tickets, View,
+};
 use crate::model::{Row, needs_attention};
 
 impl App {
@@ -145,10 +147,11 @@ impl App {
 
     /// The person's terminal window gained or lost focus. Looking away
     /// stops watching the attached session, so what happens meanwhile is
-    /// news; looking back watches it again.
+    /// news; looking back watches it again, and on the Tickets screen tries
+    /// again what could not be fetched.
     pub(crate) fn on_focus(&mut self, focused: bool) -> Vec<Action> {
         self.focused = Some(focused);
-        match self.attached {
+        let mut actions = match self.attached {
             Some(session) if matches!(self.link, Link::Connected { .. }) => {
                 vec![Action::Send(ClientFrame::Watch {
                     session,
@@ -156,7 +159,12 @@ impl App {
                 })]
             }
             _ => Vec::new(),
+        };
+        if focused && self.view == View::Tickets && matches!(self.link, Link::Connected { .. }) {
+            self.forget_failed_tickets();
+            actions.extend(self.fetch_tickets());
         }
+        actions
     }
 
     fn on_reply(&mut self, req_id: u64, outcome: Result<Reply, ErrorBody>) -> Vec<Action> {
@@ -227,7 +235,10 @@ impl App {
             (Ok(Reply::ProjectSettings(settings)), Then::SettingChanged(project)) => {
                 self.setting_changed(project, settings);
             }
-            (Err(error), Then::SettingChanged(project)) => {
+            (Ok(Reply::ProjectSettings(settings)), Then::TicketsFromChanged(project)) => {
+                self.tickets_from_changed(project, settings);
+            }
+            (Err(error), Then::SettingChanged(project) | Then::TicketsFromChanged(project)) => {
                 self.setting_refused(project, error.message);
             }
             (Err(error), Then::Closing(session)) => {

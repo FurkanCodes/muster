@@ -110,6 +110,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
             Some(event) = link.recv() => match event {
                 LinkEvent::Connected { sender: connected, welcome } => {
                     sender = Some(connected);
+                    app.daemon_protocol = welcome.version;
                     app.on_connected(welcome.daemon_version)
                 }
                 LinkEvent::Frame(frame) => app.on_frame(*frame),

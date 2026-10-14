@@ -6,15 +6,32 @@ use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
+use muster_core::config::TrackerKind;
+
+use crate::app::tickets_from::{Field, TRACKERS, focused, tracker_label};
 use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
+use crate::input::LineInput;
 
 /// A harness offered in a dialog, the chosen one stood out.
 fn harness_option(option: HarnessChoice, chosen: HarnessChoice) -> Span<'static> {
-    let label = format!(" {} ", option.label());
-    if option == chosen {
+    choice(option.label(), option == chosen)
+}
+
+/// One of a dialog's choices, the chosen one stood out.
+fn choice(label: &str, chosen: bool) -> Span<'static> {
+    let label = format!(" {label} ");
+    if chosen {
         Span::from(label).reversed()
     } else {
         Span::from(label).dim()
+    }
+}
+
+/// A field of a dialog that does not have the cursor, as typed.
+fn typed_line(input: &LineInput) -> Line<'static> {
+    match input.text() {
+        "" => Line::from("(nothing yet)").dim(),
+        text => Line::from(text.to_owned()),
     }
 }
 
@@ -109,6 +126,71 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
             ],
             None,
         ),
+        Dialog::TicketsFrom {
+            project,
+            tracker,
+            site,
+            key,
+            on_key,
+        } => {
+            let name = app
+                .model
+                .project(*project)
+                .map_or("?", |found| found.name.as_str());
+            let mut from = vec![Span::raw("From ")];
+            for option in TRACKERS {
+                from.push(choice(tracker_label(option), option == *tracker));
+            }
+            let mut lines = vec![
+                Line::from(format!("Where {name}'s tickets come from")).bold(),
+                Line::from(from),
+                Line::from(""),
+            ];
+            let jira = *tracker == Some(TrackerKind::Jira);
+            let site_label = "Jira site, such as acme.atlassian.net:";
+            let key_label = if jira {
+                "Project key, such as APP:"
+            } else {
+                "Team key, such as ENG:"
+            };
+            hint = if jira {
+                "⇥ ⇧⇥ choose   ↑↓ field   ⏎ save   esc cancel"
+            } else {
+                "⇥ ⇧⇥ choose   ⏎ save   esc cancel"
+            };
+            match focused(*tracker, *on_key) {
+                Field::None => {
+                    lines.push(
+                        Line::from(match tracker {
+                            Some(TrackerKind::GitHub) => {
+                                "Its GitHub issues, through your gh login."
+                            }
+                            Some(TrackerKind::GitLab) => {
+                                "Its GitLab issues, through your glab login."
+                            }
+                            _ => "Where its git remote's host keeps them, as Muster can tell.",
+                        })
+                        .dim(),
+                    );
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(hint).dim());
+                    (" Tickets from ", lines, None)
+                }
+                Field::Site => {
+                    lines.push(Line::from(site_label));
+                    below = vec![Line::from(key_label), typed_line(key)];
+                    (" Tickets from ", lines, Some(site))
+                }
+                Field::Key => {
+                    if jira {
+                        lines.push(Line::from(site_label));
+                        lines.push(typed_line(site));
+                    }
+                    lines.push(Line::from(key_label));
+                    (" Tickets from ", lines, Some(key))
+                }
+            }
+        }
     };
     // Text wraps rather than being cut off; an input takes its line, a
     // blank one and its hint, with what goes below it and a blank between.

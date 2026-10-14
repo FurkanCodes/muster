@@ -70,7 +70,12 @@ pub(crate) async fn glab(repo: &Path, args: &[&str]) -> Result<String, ServiceEr
 fn complaint(stderr: &str) -> ServiceError {
     let message = format!("glab: {stderr}");
     let lower = stderr.to_ascii_lowercase();
-    if lower.contains("auth login") || lower.contains("401") || lower.contains("unauthorized") {
+    if crate::service::says_unreachable(stderr) {
+        ServiceError::Unavailable(format!("{message}. {}", crate::service::REACH_HINT))
+    } else if lower.contains("auth login")
+        || lower.contains("401")
+        || lower.contains("unauthorized")
+    {
         ServiceError::NotSignedIn(message)
     } else if lower.contains("404") || lower.contains("not found") {
         ServiceError::NotFound(message)
@@ -106,5 +111,11 @@ mod tests {
             complaint("403 Forbidden"),
             ServiceError::Refused(_)
         ));
+        // A host on a company's network, its VPN off.
+        let unreachable = complaint(
+            "Get \"https://10.10.10.5/api/v4/projects\": dial tcp 10.10.10.5:443: i/o timeout",
+        );
+        assert!(matches!(unreachable, ServiceError::Unavailable(_)));
+        assert!(unreachable.to_string().contains("VPN"), "{unreachable}");
     }
 }

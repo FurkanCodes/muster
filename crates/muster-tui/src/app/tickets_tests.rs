@@ -326,6 +326,48 @@ fn a_failed_fetch_says_why_and_r_fetches_everything_again() {
 }
 
 #[test]
+fn a_failed_fetch_is_tried_again_when_the_person_comes_back() {
+    let mut world = world();
+    let listed = Command::ListIssues {
+        project: world.project.id,
+    };
+    let fail = |world: &mut World, actions: &[Action]| {
+        let (req_id, _) = command(actions);
+        reply(
+            world,
+            req_id,
+            Err(ErrorBody::new(
+                ErrorCode::Internal,
+                "could not reach Atlassian's MCP server: timed out. If it is only reachable on \
+                 your company's network, check that your VPN is on.",
+            )),
+        );
+    };
+    let actions = press(&mut world.app, KeyCode::Char('i'));
+    fail(&mut world, &actions);
+    let screen = render(&world.app);
+    assert!(screen.contains("check that your VPN is on"), "{screen}");
+    assert!(screen.contains("Muster tries again"), "{screen}");
+    // Nothing more while it stays in view.
+    assert!(commands(&press(&mut world.app, KeyCode::Down)).is_empty());
+
+    // Back to the window, maybe from turning the VPN on.
+    world.app.on_focus(false);
+    let actions = world.app.on_focus(true);
+    assert_eq!(commands(&actions), std::slice::from_ref(&listed));
+    // While that is on its way, nothing more is asked.
+    assert!(commands(&world.app.on_focus(true)).is_empty());
+    fail(&mut world, &actions);
+
+    // Back to the screen from another.
+    world.app.on_key(super::tests::ctrl('1'));
+    assert_eq!(
+        commands(&world.app.on_key(super::tests::ctrl('3'))),
+        [listed]
+    );
+}
+
+#[test]
 fn b_opens_the_ticket_in_the_browser_and_other_screens_keys_do_nothing_here() {
     let mut world = on_tickets();
     assert_eq!(

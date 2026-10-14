@@ -7,7 +7,7 @@
 
 use muster_core::ProjectId;
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply};
-use muster_core::settings::{ProjectSettings, SettingChange, Toggle};
+use muster_core::settings::{ProjectSettings, SettingChange, TicketsFrom, Toggle};
 use muster_core::text::one_line;
 use tokio::sync::oneshot;
 
@@ -53,7 +53,7 @@ impl Supervisor {
                 return;
             }
         };
-        if let Err(error) = crate::config::change(&place.root, &place.overrides, change) {
+        if let Err(error) = crate::config::change(&place.root, &place.overrides, change.clone()) {
             tracing::info!(command = "change setting", %error, "command refused");
             let _ = reply.send(Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -71,24 +71,37 @@ impl Supervisor {
 /// The project's settings that the person can change, as they stand.
 async fn settings_of(place: ProjectPlace) -> Result<Reply, ErrorBody> {
     let (root, overrides) = (place.root.clone(), place.overrides.clone());
-    let (config, only_mine) =
+    let (config, sources) =
         tokio::task::spawn_blocking(move || crate::config::load_with_sources(&root, &overrides))
             .await
             .map_err(|error| ErrorBody::new(ErrorCode::Internal, error.to_string()))?
             .map_err(|error| ErrorBody::new(ErrorCode::BadRequest, error.to_string()))?;
-    let tickets_from = match config.tickets.written() {
-        Some(written) => written,
+    let written = &config.tickets;
+    let tickets = written.tracker.map(|tracker| TicketsFrom {
+        tracker,
+        site: written.site.clone(),
+        project: written.project.clone(),
+        jql: written.jql.clone(),
+        team: written.team.clone(),
+    });
+    let (tickets_from, tickets_untold) = match config.tickets.written() {
+        Some(written) => (written, false),
         None => {
             let origin = crate::service::origin(&place.root).await;
             let host = config.pull_requests.host;
             match (choose(&config.tickets, host, &origin), host) {
-                (Ok(tracker), Some(host)) => format!(
-                    "{}, as its pull requests are on {}",
-                    tracker.name(),
-                    host.name()
+                (Ok(tracker), Some(host)) => (
+                    format!(
+                        "{}, as its pull requests are on {}",
+                        tracker.name(),
+                        host.name()
+                    ),
+                    false,
                 ),
-                (Ok(tracker), None) => format!("{}, as its git remote says", tracker.name()),
-                (Err(error), _) => error.to_string(),
+                (Ok(tracker), None) => {
+                    (format!("{}, as its git remote says", tracker.name()), false)
+                }
+                (Err(error), _) => (error.to_string(), true),
             }
         }
     };
@@ -96,8 +109,11 @@ async fn settings_of(place: ProjectPlace) -> Result<Reply, ErrorBody> {
         tickets_from: one_line(&tickets_from),
         only_mine: Toggle {
             on: config.tickets.mine,
-            from: only_mine,
+            from: sources.only_mine,
         },
         file: place.overrides,
+        tickets,
+        tickets_set_by: sources.tracker,
+        tickets_untold,
     }))
 }

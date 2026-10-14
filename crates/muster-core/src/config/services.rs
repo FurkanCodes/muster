@@ -14,10 +14,12 @@
 //! host = "gitlab"                  # github, gitlab or bitbucket
 //! ```
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-/// A ticket tracker Muster can read.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// A ticket tracker Muster can read. On the wire, as in `muster.toml`, by
+/// its key: `"github"`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TrackerKind {
     GitHub,
     GitLab,
@@ -32,6 +34,16 @@ impl TrackerKind {
             Self::GitLab => "GitLab issues",
             Self::Jira => "Jira",
             Self::Linear => "Linear",
+        }
+    }
+
+    /// What `[tickets] tracker` says for it: `"github"`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::GitHub => "github",
+            Self::GitLab => "gitlab",
+            Self::Jira => "jira",
+            Self::Linear => "linear",
         }
     }
 

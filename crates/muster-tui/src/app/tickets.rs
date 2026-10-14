@@ -304,6 +304,16 @@ impl App {
             .collect()
     }
 
+    /// Forgets the tickets and texts that could not be fetched, so they are
+    /// fetched again as they are shown: the person has come back to them,
+    /// maybe with the VPN their tracker needs turned on.
+    pub(super) fn forget_failed_tickets(&mut self) {
+        self.tickets
+            .retain(|_, tickets| !matches!(tickets, Tickets::Failed(_)));
+        self.ticket_texts
+            .retain(|_, text| !matches!(text, TicketText::Failed(_)));
+    }
+
     /// Asks for the tickets of projects shown without them, and for the
     /// text of the ticket in focus, while the Tickets screen is up.
     pub(super) fn fetch_tickets(&mut self) -> Vec<Action> {
