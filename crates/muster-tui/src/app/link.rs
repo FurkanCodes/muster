@@ -1,0 +1,265 @@
+//! The link to the daemon: connecting to it and losing it, the frames it
+//! sends (the state, terminals' output, replies to commands), and the news
+//! told to a person who looks elsewhere.
+
+use muster_core::SessionId;
+use muster_core::protocol::{
+    ClientFrame, Delta, DetachReason, ErrorBody, ErrorCode, Reply, ServerFrame,
+};
+
+use super::{Action, App, Confirmed, Dialog, Link, Mode, Settings, Then, TicketText, Tickets};
+use crate::model::{Row, needs_attention};
+
+impl App {
+    pub(crate) fn on_connected(&mut self, daemon_version: String) -> Vec<Action> {
+        self.link = Link::Connected { daemon_version };
+        self.keep_in_view();
+        self.attached = None;
+        self.pending.clear();
+        // Asked of the last daemon, never answered: asked again.
+        self.forget_unanswered();
+        // A new connection is a new daemon, which numbers its terminals'
+        // output afresh: positions in the old screens mean nothing to it.
+        self.screens.clear();
+        vec![Action::Send(ClientFrame::Subscribe)]
+    }
+
+    pub(crate) fn on_disconnected(&mut self, reason: String) {
+        self.link = Link::Lost(reason);
+        self.attached = None;
+        self.pending.clear();
+        self.forget_unanswered();
+        // The reason takes lines from the list.
+        self.keep_in_view();
+    }
+
+    // Frames from the daemon.
+
+    pub(crate) fn on_frame(&mut self, frame: ServerFrame) -> Vec<Action> {
+        let mut news = None;
+        match frame {
+            ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
+            ServerFrame::Delta(delta) => {
+                let session = match &delta {
+                    Delta::SessionStatus { session, .. } => Some(*session),
+                    Delta::SessionUpserted(session) => Some(session.id),
+                    _ => None,
+                };
+                let before = session.and_then(|id| self.model.session(id).map(needs_attention));
+                let status_before =
+                    session.and_then(|id| self.model.session(id).map(|stored| stored.status));
+                let was_ended = session
+                    .and_then(|id| self.model.session(id))
+                    .is_some_and(|stored| stored.ended_at.is_some());
+                self.model.apply(delta);
+                if before == Some(false) {
+                    news = session.and_then(|id| self.news(id));
+                }
+                if let Some(id) = session {
+                    self.reattach_if_reopened(id, was_ended);
+                    if let Some(status) = status_before {
+                        self.flash_if_changed(id, status);
+                    }
+                }
+            }
+            ServerFrame::Reply { req_id, outcome } => return self.on_reply(req_id, outcome),
+            ServerFrame::Replay {
+                session,
+                seq,
+                data,
+                reset,
+            } => self.screen(session).replay(seq, &data, reset),
+            ServerFrame::Output { session, seq, data } => self.screen(session).output(seq, &data),
+            ServerFrame::Modes { session, modes } => self.screen(session).modes = modes,
+            ServerFrame::Detached { session, reason } => {
+                self.screen(session).ended = Some(reason);
+            }
+            ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
+        }
+        let mut actions: Vec<Action> = news.into_iter().collect();
+        actions.extend(self.settle());
+        actions
+    }
+
+    /// A session that had ended reopened (restarted, maybe by another
+    /// client). A stream the daemon ended because it held no terminal for
+    /// it does not come back on its own, so attach again.
+    fn reattach_if_reopened(&mut self, session: SessionId, was_ended: bool) {
+        let reopened = was_ended
+            && self
+                .model
+                .session(session)
+                .is_some_and(|stored| stored.ended_at.is_none());
+        let stream_gone = self
+            .screens
+            .get(&session)
+            .is_some_and(|screen| screen.ended == Some(DetachReason::NotRunning));
+        if reopened && stream_gone && self.attached == Some(session) {
+            self.attached = None;
+        }
+    }
+
+    /// A notification for a session that has just come to need the
+    /// person, if they are looking elsewhere and want to be told.
+    fn news(&self, session: SessionId) -> Option<Action> {
+        if !self.notify || self.focused != Some(false) {
+            return None;
+        }
+        let stored = self.model.session(session)?;
+        if !needs_attention(stored) {
+            return None;
+        }
+        let what = match stored.status {
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Permission,
+            } => "needs your permission",
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Question,
+            } => "has a question for you",
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Startup,
+            } => "is asking something before it starts",
+            muster_core::SessionStatus::NeedsYou {
+                reason: muster_core::WaitReason::Action,
+            } => "needs you",
+            muster_core::SessionStatus::Exited { success: false } => "exited with an error",
+            muster_core::SessionStatus::Exited { success: true } => "exited",
+            _ => "finished",
+        };
+        let project = self
+            .model
+            .project_of(Row::Session(session))
+            .and_then(|id| self.model.project(id))
+            .map(|project| format!(" in {}", project.name))
+            .unwrap_or_default();
+        let place = self
+            .model
+            .branch(stored.workspace)
+            .map(|branch| format!(" ({branch})"))
+            .unwrap_or_default();
+        Some(Action::Notify(format!(
+            "{}{project}{place} {what}",
+            stored.title
+        )))
+    }
+
+    /// The person's terminal window gained or lost focus. Looking away
+    /// stops watching the attached session, so what happens meanwhile is
+    /// news; looking back watches it again.
+    pub(crate) fn on_focus(&mut self, focused: bool) -> Vec<Action> {
+        self.focused = Some(focused);
+        match self.attached {
+            Some(session) if matches!(self.link, Link::Connected { .. }) => {
+                vec![Action::Send(ClientFrame::Watch {
+                    session,
+                    watching: focused,
+                })]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn on_reply(&mut self, req_id: u64, outcome: Result<Reply, ErrorBody>) -> Vec<Action> {
+        let Some(then) = self.pending.remove(&req_id) else {
+            return Vec::new();
+        };
+        match (outcome, then) {
+            (Ok(Reply::ProjectAdded { id }), Then::SelectProject) => {
+                self.wanted = Some((Row::Project(id), false));
+                self.say("Added the project.");
+            }
+            (Ok(Reply::WorktreeCreated { id }), Then::SelectWorktree) => {
+                self.wanted = Some((Row::Worktree(id), false));
+                self.say("Created the worktree.");
+            }
+            (Ok(Reply::SessionStarted { id }), Then::OpenSession)
+            | (Ok(Reply::IssueStarted { session: id, .. }), Then::OpenIssueSession) => {
+                self.wanted = Some((Row::Session(id), true));
+                self.note = None;
+            }
+            (Ok(Reply::SessionStarted { id }), Then::OpenRestarted) => {
+                // The stream follows the session to its new program; one the
+                // daemon had no terminal for is attached again once the
+                // state says it reopened (see `on_frame`).
+                self.wanted = Some((Row::Session(id), true));
+                self.note = None;
+            }
+            (Ok(Reply::PullRequestOpened { pr }), Then::ShowPullRequest) => {
+                self.say(format!(
+                    "Draft pull request #{} is open: {}",
+                    pr.number, pr.url
+                ));
+            }
+            (
+                Ok(Reply::Issues {
+                    issues,
+                    tracker,
+                    mine,
+                }),
+                Then::Tickets(project),
+            ) => {
+                self.tickets
+                    .insert(project, Tickets::Loaded(issues, tracker, mine));
+            }
+            (Err(error), Then::Tickets(project)) => {
+                self.tickets.insert(project, Tickets::Failed(error.message));
+            }
+            (Ok(Reply::IssueViewed { body, .. }), Then::TicketText(project, key)) => {
+                self.ticket_texts
+                    .insert((project, key), TicketText::Loaded(body));
+            }
+            (Err(error), Then::TicketText(project, key)) => {
+                self.ticket_texts
+                    .insert((project, key), TicketText::Failed(error.message));
+            }
+            (Ok(_), Then::RemovedWorktree(_)) => {
+                self.say("Removed the worktree; its branch is kept.")
+            }
+            (Ok(_), Then::Say(text)) => self.say(text),
+            (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
+            (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
+                self.settings.insert(project, Settings::Loaded(settings));
+            }
+            (Err(error), Then::Settings(project)) => {
+                self.settings
+                    .insert(project, Settings::Failed(error.message));
+            }
+            (Ok(Reply::ProjectSettings(settings)), Then::SettingChanged(project)) => {
+                self.setting_changed(project, settings);
+            }
+            (Err(error), Then::SettingChanged(project)) => {
+                self.setting_refused(project, error.message);
+            }
+            (Err(error), Then::Closing(session)) => {
+                self.closing.retain(|closing| *closing != session);
+                self.complain(error.message);
+            }
+            (Ok(_), _) => {}
+            (Err(error), Then::RemovedWorktree(workspace))
+                if error.code == ErrorCode::Conflict && error.message.contains("uncommitted") =>
+            {
+                self.mode = Mode::Dialog(Dialog::Confirm {
+                    question: "It has uncommitted changes. Remove it anyway and discard them?"
+                        .to_owned(),
+                    then: Confirmed::RemoveWorktree {
+                        workspace,
+                        force: true,
+                    },
+                });
+            }
+            (Err(error), _) => self.complain(error.message),
+        }
+        self.settle()
+    }
+
+    /// Asked of a daemon and never answered (the connection went): asked
+    /// again once the screen wants it.
+    fn forget_unanswered(&mut self) {
+        self.tickets
+            .retain(|_, tickets| !matches!(tickets, Tickets::Loading));
+        self.ticket_texts
+            .retain(|_, text| !matches!(text, TicketText::Loading));
+        self.settings
+            .retain(|_, settings| !matches!(settings, Settings::Loading));
+    }
+}
