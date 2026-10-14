@@ -202,3 +202,42 @@ fn a_drag_over_the_preview_opens_the_session_and_selects() {
     // The press opened it, and the drag selects from there.
     assert_eq!(copied(&actions), Some("line1"));
 }
+
+#[test]
+fn a_click_the_hand_moved_a_cell_copies_nothing() {
+    let (mut world, id) = open_with_output(5, false);
+    let actions = drag(
+        &mut world,
+        (PANE_X + 2, PANE_Y + 1),
+        (PANE_X + 3, PANE_Y + 1),
+    );
+    assert_eq!(copied(&actions), None, "{actions:?}");
+    assert_eq!(world.app.selection, None);
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    // Nor when it opened the session from the list's preview.
+    press(&mut world.app, KeyCode::Char('Q'));
+    let actions = drag(&mut world, (PANE_X, PANE_Y), (PANE_X + 1, PANE_Y));
+    assert_eq!(world.app.mode, Mode::Terminal(id));
+    assert_eq!(copied(&actions), None, "{actions:?}");
+}
+
+#[test]
+fn a_click_anywhere_takes_the_mark_away() {
+    let (mut world, _) = open_with_output(5, false);
+    drag(&mut world, (PANE_X, PANE_Y), (PANE_X + 4, PANE_Y));
+    assert!(world.app.selection.is_some());
+    // On the pane's border, which is not the program's.
+    world
+        .app
+        .on_mouse(left(MouseEventKind::Down, PANE_X - 1, PANE_Y));
+    assert_eq!(world.app.selection, None);
+    // And a drag from there marks nothing.
+    world
+        .app
+        .on_mouse(left(MouseEventKind::Drag, PANE_X + 6, PANE_Y + 2));
+    let up = world
+        .app
+        .on_mouse(left(MouseEventKind::Up, PANE_X + 6, PANE_Y + 2));
+    assert_eq!(copied(&up), None);
+    assert_eq!(world.app.selection, None);
+}

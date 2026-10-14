@@ -134,11 +134,14 @@ fn full_screen_the_program_gets_the_mouse_below_the_top_bar() {
         .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 0, 1));
     assert_eq!(input(&click), b"\x1b[<0;1;1M");
     assert_eq!(world.app.mode, Mode::Terminal(id), "no list to click");
-    // The top bar is not the program's.
+    // The top bar is not the program's: a click there gives the list the
+    // keys back, as the list does beside a session.
     let top = world
         .app
         .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 3, 0));
     assert!(input(&top).is_empty());
+    assert_eq!(world.app.mode, Mode::Browse);
+    assert!(!world.app.full_screen);
     assert_eq!(world.app.screens[&id].scrolled_back(), 0);
 }
 
@@ -287,4 +290,59 @@ fn a_message_taking_lines_from_the_list_keeps_clicks_on_what_is_drawn() {
         other => panic!("{other:?}"),
     };
     assert!(top.contains(&format!("○ {clicked} ")), "{top} vs {clicked}");
+}
+
+#[test]
+fn while_a_session_has_the_keys_the_wheel_scrolls_it_wherever_the_pointer_is() {
+    let (mut world, id) = open_with_output(100, false);
+    // Over the list, the pane's border and the bottom bar.
+    for (column, row) in [(5, 4), (34, 1), (60, 29)] {
+        world
+            .app
+            .on_mouse(mouse(MouseEventKind::ScrollUp, column, row));
+    }
+    assert_eq!(world.app.screens[&id].scrolled_back(), 9);
+    assert_eq!(world.app.mode, Mode::Terminal(id), "the keys stay");
+    // A program that asked for the mouse gets it at the screen's edge.
+    set_modes(&mut world, id, mouse_mode());
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 5, 4));
+    assert_eq!(input(&actions), b"\x1b[<64;1;3M");
+}
+
+#[test]
+fn a_click_on_a_project_s_details_opens_no_dialog() {
+    let mut world = world();
+    for row in [
+        Row::Project(world.project.id),
+        Row::Worktree(world.worktree.id),
+    ] {
+        world.app.selected = Some(row);
+        world
+            .app
+            .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 60, 10));
+        assert_eq!(world.app.mode, Mode::Browse, "{row:?}");
+    }
+    // A session's pane still opens it.
+    world.app.selected = Some(Row::Session(world.session.id));
+    world
+        .app
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 60, 10));
+    assert_eq!(world.app.mode, Mode::Terminal(world.session.id));
+}
+
+#[test]
+fn over_the_preview_a_program_that_takes_the_mouse_scrolls_its_own_view() {
+    let (mut world, id) = open_with_output(100, false);
+    press(&mut world.app, KeyCode::Char('Q'));
+    world.app.selected = Some(Row::Session(id));
+    set_modes(&mut world, id, mouse_mode());
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 40, 8));
+    assert_eq!(input(&actions), b"\x1b[<64;6;7M");
+    assert_eq!(world.app.screens[&id].scrolled_back(), 0);
+    assert_eq!(world.app.mode, Mode::Browse, "the list keeps the keys");
+    // Others scroll what Muster kept of them.
+    set_modes(&mut world, id, TerminalModes::default());
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 40, 8));
+    assert!(input(&actions).is_empty());
+    assert_eq!(world.app.screens[&id].scrolled_back(), 3);
 }

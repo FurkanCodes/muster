@@ -2,16 +2,18 @@
 //! selects its text and copies it (see `selection`); a program that asked
 //! for the mouse gets it, but for a drag with Shift; otherwise the wheel
 //! scrolls back through the session's output (or, on the alternate screen,
-//! which keeps none, sends arrow keys as terminals do). In the list, the
-//! wheel moves the selection or scrolls the preview, and a click selects or
-//! opens. A click on the list beside a session's terminal gives the list
-//! the keys back.
+//! which keeps none, sends arrow keys as terminals do), wherever the
+//! pointer is, since the session has the keys. A click on the list beside
+//! it, or on the top bar over it full screen, gives the list the keys
+//! back. In the list, the wheel moves the selection or scrolls the
+//! preview, and a click selects, or opens the session shown.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::SessionId;
 use muster_core::protocol::{ClientFrame, MouseTracking};
 use ratatui::layout::{Position, Rect};
 
+use super::selection::cell;
 use super::{Action, App, Mode, View};
 use crate::keys::encode_key;
 use crate::mouse::encode_mouse;
@@ -33,15 +35,22 @@ impl App {
 
     fn terminal_mouse(&mut self, session: SessionId, event: MouseEvent) -> Vec<Action> {
         let window = Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        let at = Position::new(event.column, event.row);
+        let pressed = event.kind == MouseEventKind::Down(MouseButton::Left);
         // Where the program's screen is: below the top bar when it fills
         // the window, else inside the pane beside the list.
         let screen = if self.full_screen {
-            crate::view::terminal_area(window)
+            let screen = crate::view::terminal_area(window);
+            if pressed && !screen.contains(at) {
+                // The top bar, as the list beside a session.
+                let mut actions = self.leave_terminal(session);
+                actions.extend(self.settle());
+                return actions;
+            }
+            screen
         } else {
             let list = browse_areas(self, window).list;
-            if event.kind == MouseEventKind::Down(MouseButton::Left)
-                && list.contains(Position::new(event.column, event.row))
-            {
+            if pressed && list.contains(at) {
                 let mut actions = self.leave_terminal(session);
                 self.select_at(list, event.row);
                 actions.extend(self.settle());
@@ -54,17 +63,20 @@ impl App {
         if let Some(actions) = self.select_with_mouse(session, &event, screen, tracked) {
             return actions;
         }
-        if !screen.contains(Position::new(event.column, event.row)) {
-            return Vec::new();
-        }
-        if matches!(
+        let wheel = matches!(
             event.kind,
-            MouseEventKind::Down(_) | MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
-        ) {
-            // What is marked moves, or is clicked away.
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+        );
+        if wheel || matches!(event.kind, MouseEventKind::Down(_)) {
+            // What is marked moves, or is clicked away, wherever.
             self.selection = None;
         }
-        let (column, row) = (event.column - screen.x, event.row - screen.y);
+        // The wheel is the session's wherever the pointer is: it has the
+        // keys. Anything else is only over its screen.
+        if !wheel && !screen.contains(at) {
+            return Vec::new();
+        }
+        let (row, column) = cell(screen, &event);
         if tracked {
             return encode_mouse(event.kind, event.modifiers, column, row, modes)
                 .map(|data| Action::Send(ClientFrame::Input { session, data }))
@@ -106,6 +118,17 @@ impl App {
                 } else if areas.preview.contains(at)
                     && let Some(session) = self.focused_session()
                 {
+                    let modes = self.screen(session).modes;
+                    if modes.mouse != MouseTracking::Off {
+                        // A program that takes the mouse scrolls its own
+                        // view (Claude Code's transcript, on the alternate
+                        // screen, which keeps no scrollback here).
+                        let (row, column) = cell(crate::view::session_area(full), &event);
+                        return encode_mouse(event.kind, event.modifiers, column, row, modes)
+                            .map(|data| Action::Send(ClientFrame::Input { session, data }))
+                            .into_iter()
+                            .collect();
+                    }
                     self.screen(session)
                         .scroll(if up { WHEEL_LINES } else { -WHEEL_LINES });
                 }
@@ -115,9 +138,12 @@ impl App {
                     self.select_at(areas.list, event.row);
                 } else if areas.preview.contains(at)
                     && matches!(self.view, View::Sessions | View::NeedsYou)
+                    && self.focused_session().is_some()
                 {
-                    // A session's pane opens it; a ticket's or a setting's
-                    // details are only to read.
+                    // A session's pane opens it; a project's, a worktree's,
+                    // a ticket's or a setting's details are only to read:
+                    // a click there never opens a dialog, which would take
+                    // no clicks.
                     self.open_selected();
                     if let Mode::Terminal(session) = self.mode {
                         self.select_from_preview(session, &event, crate::view::session_area(full));

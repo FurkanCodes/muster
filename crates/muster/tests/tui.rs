@@ -6,206 +6,20 @@
 #![allow(clippy::unwrap_used)]
 
 mod support;
+#[path = "tui/ui.rs"]
+mod ui;
 
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
-use portable_pty::{Child, CommandBuilder, PtySize, native_pty_system};
 
 use support::{Sandbox, daemon_pid};
+use ui::{StopDaemon, Ui};
 
-const COLS: u16 = 120;
 /// What the top bar says of the daemon, whatever the version.
 const DAEMON: &str = concat!("daemon ", env!("CARGO_PKG_VERSION"));
-const ROWS: u16 = 36;
-
-/// The UI running on a pseudo-terminal, with what it draws parsed into a
-/// screen.
-struct Ui {
-    screen: Arc<Mutex<vt100::Parser>>,
-    /// Everything the UI wrote to its terminal, as written.
-    written: Arc<Mutex<Vec<u8>>>,
-    /// Bytes for the UI's terminal input: keystrokes, and the answers the
-    /// stand-in terminal gives.
-    input: std::sync::mpsc::Sender<Vec<u8>>,
-    child: Box<dyn Child + Send + Sync>,
-    /// Held so the terminal stays open.
-    _master: Box<dyn portable_pty::MasterPty + Send>,
-}
-
-impl Ui {
-    fn start(sandbox: &Sandbox, cwd: &Path) -> Self {
-        Self::start_with(sandbox, cwd, &[])
-    }
-
-    /// Starts the UI with `env` set as well.
-    fn start_with(sandbox: &Sandbox, cwd: &Path, env: &[(&str, &str)]) -> Self {
-        let pair = native_pty_system()
-            .openpty(PtySize {
-                rows: ROWS,
-                cols: COLS,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .unwrap();
-        let mut command = CommandBuilder::new(support::BINARY);
-        command.cwd(cwd);
-        let template = sandbox.command();
-        for (key, value) in template.get_envs() {
-            if let Some(value) = value {
-                command.env(key, value);
-            }
-        }
-        command.env("TERM", "xterm-256color");
-        for (key, value) in env {
-            command.env(key, value);
-        }
-        let child = pair.slave.spawn_command(command).unwrap();
-        drop(pair.slave);
-
-        let screen = Arc::new(Mutex::new(vt100::Parser::new(ROWS, COLS, 0)));
-        let mut reader = pair.master.try_clone_reader().unwrap();
-        let mut writer = pair.master.take_writer().unwrap();
-        let parsed = screen.clone();
-        let written = Arc::new(Mutex::new(Vec::new()));
-        let kept = written.clone();
-        // Plays the person's terminal: draws what arrives and answers the
-        // device-attributes question crossterm asks, without claiming the
-        // kitty keyboard protocol.
-        let (input, queue) = std::sync::mpsc::channel::<Vec<u8>>();
-        let writer_tx = input.clone();
-        std::thread::spawn(move || {
-            let mut buffer = [0; 16 * 1024];
-            while let Ok(read) = reader.read(&mut buffer) {
-                if read == 0 {
-                    break;
-                }
-                let chunk = &buffer[..read];
-                if chunk.windows(3).any(|window| window == b"\x1b[c") {
-                    let _ = writer_tx.send(b"\x1b[?6c".to_vec());
-                }
-                parsed.lock().unwrap().process(chunk);
-                kept.lock().unwrap().extend_from_slice(chunk);
-            }
-        });
-        std::thread::spawn(move || {
-            while let Ok(bytes) = queue.recv() {
-                let _ = writer.write_all(&bytes);
-                let _ = writer.flush();
-            }
-        });
-        Self {
-            screen,
-            written,
-            input,
-            child,
-            _master: pair.master,
-        }
-    }
-
-    fn text(&self) -> String {
-        self.screen.lock().unwrap().screen().contents()
-    }
-
-    /// The UI's process id.
-    fn pid(&self) -> u32 {
-        self.child.process_id().expect("the UI's pid")
-    }
-
-    /// Waits until the screen shows `wanted`.
-    fn wait_for(&self, wanted: &str) {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while !self.text().contains(wanted) {
-            assert!(
-                Instant::now() < deadline,
-                "never saw {wanted:?}; the screen:\n{}",
-                self.text()
-            );
-            std::thread::sleep(Duration::from_millis(25));
-        }
-    }
-
-    /// Waits until the UI has written `wanted` to its terminal, escape
-    /// sequences and all.
-    fn wait_for_written(&self, wanted: &[u8]) {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while !self
-            .written
-            .lock()
-            .unwrap()
-            .windows(wanted.len())
-            .any(|window| window == wanted)
-        {
-            assert!(
-                Instant::now() < deadline,
-                "never wrote {:?}",
-                String::from_utf8_lossy(wanted)
-            );
-            std::thread::sleep(Duration::from_millis(25));
-        }
-    }
-
-    /// Where `text` first starts on screen, as (column, row).
-    fn position_of(&self, text: &str) -> Option<(u16, u16)> {
-        let parser = self.screen.lock().unwrap();
-        let screen = parser.screen();
-        (0..ROWS).find_map(|row| {
-            let line = screen.contents_between(row, 0, row, COLS);
-            let at = line.find(text)?;
-            Some((u16::try_from(line[..at].chars().count()).unwrap(), row))
-        })
-    }
-
-    /// The background of the cell where `text` first starts on screen.
-    fn background_of(&self, text: &str) -> Option<vt100::Color> {
-        let parser = self.screen.lock().unwrap();
-        let screen = parser.screen();
-        (0..ROWS).find_map(|row| {
-            let line = screen.contents_between(row, 0, row, COLS);
-            let at = line.find(text)?;
-            let col = u16::try_from(line[..at].chars().count()).unwrap();
-            screen.cell(row, col).map(vt100::Cell::bgcolor)
-        })
-    }
-
-    fn keys(&mut self, bytes: &[u8]) {
-        self.input.send(bytes.to_vec()).unwrap();
-        // Let the UI read one burst at a time, as typing would.
-        std::thread::sleep(Duration::from_millis(60));
-    }
-
-    fn wait_for_exit(&mut self) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if let Some(status) = self.child.try_wait().unwrap() {
-                return status.success();
-            }
-            assert!(Instant::now() < deadline, "the UI did not quit");
-            std::thread::sleep(Duration::from_millis(25));
-        }
-    }
-}
-
-impl Drop for Ui {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-    }
-}
-
-/// Stops the daemon the UI started, whatever happens in the test.
-struct StopDaemon(PathBuf);
-
-impl Drop for StopDaemon {
-    fn drop(&mut self) {
-        if let Some(pid) = daemon_pid(&self.0).and_then(|pid| i32::try_from(pid).ok()) {
-            let _ = kill(Pid::from_raw(pid), Signal::SIGTERM);
-        }
-    }
-}
 
 #[test]
 fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
@@ -630,6 +444,118 @@ fn over_ssh_a_drag_copies_through_the_person_s_terminal() {
     // "copy-42\nnext-8".
     ui.wait_for_written(b"\x1b]52;c;Y29weS00MgpuZXh0LTg=\x07");
     assert_eq!(sandbox.clipboard(), None);
+}
+
+/// A shell open in the project's checkout, beside the list, that printed
+/// 200 lines.
+fn shell_with_output(sandbox: &Sandbox, env: &[(&str, &str)]) -> Ui {
+    let root = sandbox.repository("app");
+    let mut ui = Ui::start_with(sandbox, &root, env);
+    ui.wait_for("No projects yet");
+    ui.keys(b"a");
+    ui.keys(b"\r");
+    ui.wait_for("Added the project.");
+    ui.keys(b"n");
+    ui.wait_for("New session");
+    ui.keys(b"\x1b[Z");
+    ui.keys(b"\r");
+    ui.wait_for("Shift-Q back to the list");
+    ui.keys(b"seq 101 300; echo seq-$((2*3))\r");
+    ui.wait_for("seq-6");
+    ui
+}
+
+/// The pane beside the list starts here: after the 36-column list of a
+/// 120-column window and the pane's border, below the top bar and it.
+const PANE: (u16, u16) = (37, 2);
+
+#[test]
+fn the_mouse_reaches_what_it_points_at_around_a_copy() {
+    let sandbox = Sandbox::new();
+    let _stop = StopDaemon(sandbox.paths().socket());
+    let mut ui = shell_with_output(
+        &sandbox,
+        &[
+            ("SSH_CONNECTION", ""),
+            ("SSH_TTY", ""),
+            ("WAYLAND_DISPLAY", ""),
+            ("DISPLAY", ":0"),
+        ],
+    );
+    // Back to the list, the session still selected: the wheel over its
+    // preview looks back.
+    ui.keys(b"Q");
+    ui.wheel_back(80, 10);
+    ui.wait_for("3 lines back");
+
+    // A drag over the preview opens the session and copies what it covers.
+    let first = ui.cells(PANE.1, PANE.0, 4).trim().to_owned();
+    let second = ui.cells(PANE.1 + 1, PANE.0, 4).trim().to_owned();
+    ui.drag(PANE, (PANE.0 + 3, PANE.1 + 1));
+    ui.wait_for("Copied 2 lines.");
+    let wanted = format!("{first}\n{second}");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while sandbox.clipboard().as_deref() != Some(wanted.as_str()) {
+        assert!(Instant::now() < deadline, "{:?}", sandbox.clipboard());
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    // A click on the project's line gives the list the keys and selects it;
+    // one on its details opens nothing, so no dialog takes the clicks.
+    ui.click(2, 2);
+    ui.wait_for("╭ Details");
+    ui.click(80, 10);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(!ui.text().contains("New worktree"), "{}", ui.text());
+
+    // The session's line, then its pane: the session has the keys.
+    let (column, row) = ui.position_of("Shell").unwrap();
+    ui.click(column, row);
+    ui.wait_for("╭ Shell");
+    ui.click(80, 10);
+    ui.wait_for("keys go to the session");
+    // The wheel, over the list, looks back in the session with the keys.
+    ui.wheel_back(5, 10);
+    ui.wait_for("3 lines back");
+    ui.keys(b"echo typed-$((3*3))\r");
+    ui.wait_for("typed-9");
+}
+
+#[test]
+fn a_program_takes_the_mouse_and_lets_it_go_and_full_screen_is_left_by_a_click() {
+    let sandbox = Sandbox::new();
+    let _stop = StopDaemon(sandbox.paths().socket());
+    let mut ui = shell_with_output(&sandbox, &[]);
+    // As Claude Code does around its full-screen views: the alternate
+    // screen and the mouse, every way of tracking it, until a line is read.
+    ui.keys(
+        b"printf '\\033[?1049h\\033[?1000h\\033[?1002h\\033[?1003h\\033[?1006h'; read -r line; \
+          printf '\\033[?1006l\\033[?1003l\\033[?1002l\\033[?1000l\\033[?1049l'; \
+          echo back-$((6*7))\r",
+    );
+    // The alternate screen shown: the modes, sent after the output that
+    // set them, have come too.
+    ui.wait_without("seq-6");
+    std::thread::sleep(Duration::from_millis(100));
+    ui.wheel_back(80, 10);
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(
+        !ui.text().contains("lines back"),
+        "the program's: {}",
+        ui.text()
+    );
+    ui.keys(b"\r");
+    ui.wait_for("back-42");
+    // Let go of: the wheel is Muster's again.
+    ui.wheel_back(80, 10);
+    ui.wait_for("3 lines back");
+
+    // Full screen, and back to the list by a click on the top bar.
+    ui.keys(b"Q");
+    ui.keys(b"f");
+    ui.wait_for("(or click here)");
+    ui.click(2, 0);
+    ui.wait_for("╭ Sessions");
 }
 
 #[test]
