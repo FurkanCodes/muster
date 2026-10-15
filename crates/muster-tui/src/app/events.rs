@@ -566,7 +566,8 @@ impl App {
                 key: ticket,
                 harness,
                 another,
-            } => self.assign_key(project, ticket, harness, another, key),
+                into,
+            } => self.assign_key(project, ticket, harness, another, into, key),
             Dialog::NewWorktree {
                 project,
                 mut branch,

@@ -91,31 +91,50 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
             key,
             harness,
             another,
+            into,
         } => {
             let title = app
                 .ticket(*project, key)
                 .map_or(String::new(), |ticket| format!(" {}", ticket.title));
+            let mut lines = vec![Line::from(format!("{}{title}", key.shown()))];
+            let sharing = app.sharing(*project);
+            let keys = if sharing.len() > 1 {
+                // Nothing in the ticket says which repository it is for.
+                lines.push(Line::from("Which project is it for?").dim());
+                for choice_of in sharing {
+                    let name = app
+                        .model
+                        .project(choice_of)
+                        .map_or("?", |found| found.name.as_str());
+                    let mut line = vec![Span::raw(" "), choice(name, choice_of == *into)];
+                    let agents = app.model.agents_on(&[choice_of], key).len();
+                    if agents > 0 {
+                        let noun = if agents == 1 { "agent" } else { "agents" };
+                        line.push(Span::from(format!("  {agents} {noun} on it")).dim());
+                    }
+                    lines.push(Line::from(line));
+                }
+                "↑↓ project   ⇥ ⇧⇥ agent   ⏎ start   esc cancel"
+            } else {
+                "⇥ ⇧⇥ choose   ⏎ start   esc cancel"
+            };
             let mut run = vec![Span::raw("Start ")];
             for option in HarnessChoice::ALL.into_iter().filter(|o| o.is_agent()) {
                 run.push(harness_option(option, *harness));
             }
-            let place = if *another {
+            let place = if app.starts_another(*into, key, *another) {
                 "In a worktree of its own, with the ticket as its first prompt."
             } else {
                 "In the ticket's worktree, with the ticket as its first prompt."
             };
-            (
-                " Assign an agent ",
-                vec![
-                    Line::from(format!("{}{title}", key.shown())),
-                    Line::from(place).dim(),
-                    Line::from(""),
-                    Line::from(run),
-                    Line::from(""),
-                    Line::from("⇥ ⇧⇥ choose   ⏎ start   esc cancel").dim(),
-                ],
-                None,
-            )
+            lines.extend([
+                Line::from(""),
+                Line::from(run),
+                Line::from(place).dim(),
+                Line::from(""),
+                Line::from(keys).dim(),
+            ]);
+            (" Assign an agent ", lines, None)
         }
         Dialog::Confirm { question, .. } => (
             " Confirm ",

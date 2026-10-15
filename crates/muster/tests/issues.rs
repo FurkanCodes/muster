@@ -106,11 +106,13 @@ async fn open_issues_are_listed() {
         issues,
         tracker,
         mine,
+        source,
     } = reply
     else {
         panic!("expected Issues");
     };
     assert_eq!(tracker, "GitHub issues");
+    assert_eq!(source, None, "a repository's own issues are its alone");
     assert!(!mine, "every open ticket, unless the person asks");
     let summary: Vec<_> = issues
         .iter()

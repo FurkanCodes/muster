@@ -134,11 +134,17 @@ impl Model {
         &self.sessions
     }
 
-    /// The project's worktrees for ticket `key`: on branches named for it.
-    pub(crate) fn worktrees_for(&self, project: ProjectId, key: &TicketKey) -> Vec<WorkspaceId> {
+    /// The projects' worktrees for ticket `key`: on branches named for it.
+    pub(crate) fn worktrees_for(
+        &self,
+        projects: &[ProjectId],
+        key: &TicketKey,
+    ) -> Vec<WorkspaceId> {
         self.workspaces
             .iter()
-            .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
+            .filter(|workspace| {
+                projects.contains(&workspace.project) && workspace.kind.is_worktree()
+            })
             .filter(|workspace| {
                 muster_core::tickets::issue_of_branch(workspace.kind.branch()).as_ref() == Some(key)
             })
@@ -146,10 +152,10 @@ impl Model {
             .collect()
     }
 
-    /// The sessions working on ticket `key` of `project`: those in the
-    /// project's worktrees on branches named for it, oldest first.
-    pub(crate) fn agents_on(&self, project: ProjectId, key: &TicketKey) -> Vec<&Session> {
-        let workspaces = self.worktrees_for(project, key);
+    /// The sessions working on ticket `key` in `projects`: those in their
+    /// worktrees on branches named for it, oldest first.
+    pub(crate) fn agents_on(&self, projects: &[ProjectId], key: &TicketKey) -> Vec<&Session> {
+        let workspaces = self.worktrees_for(projects, key);
         let mut agents: Vec<&Session> = self
             .sessions
             .iter()
@@ -164,7 +170,7 @@ impl Model {
     /// one, then a draft, then a closed one; the newest of each.
     pub(crate) fn ticket_pull_request(
         &self,
-        project: ProjectId,
+        projects: &[ProjectId],
         key: &TicketKey,
     ) -> Option<&muster_core::PullRequestStatus> {
         let rank = |state| match state {
@@ -173,7 +179,7 @@ impl Model {
             muster_core::PullRequestState::Draft => 1,
             muster_core::PullRequestState::Closed => 0,
         };
-        self.worktrees_for(project, key)
+        self.worktrees_for(projects, key)
             .into_iter()
             .filter_map(|id| self.workspace(id)?.pull_request.as_ref())
             .max_by_key(|found| (rank(found.state), found.number))

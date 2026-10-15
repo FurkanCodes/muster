@@ -49,7 +49,7 @@ use crate::settings::{ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 20;
+pub const PROTOCOL_VERSION: u32 = 21;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -430,6 +430,13 @@ pub enum Reply {
         /// Only those assigned to the person signed in (`[tickets] mine`).
         #[serde(default)]
         mine: bool,
+        /// Where they are, the same for every project that lists the same
+        /// tickets from a tracker that is no repository's own: a Jira
+        /// site's query, a Linear team's issues. `None` for a repository's
+        /// own issues (GitHub's, GitLab's), and from a daemon before
+        /// protocol 21. Projects with the same are offered together.
+        #[serde(default)]
+        source: Option<String>,
     },
     IssueStarted {
         workspace: WorkspaceId,

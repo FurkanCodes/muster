@@ -11,6 +11,7 @@ mod pointer;
 pub(crate) mod selection;
 mod settings;
 mod settle;
+mod sharing;
 mod tickets;
 pub(crate) mod tickets_from;
 mod welcome;
@@ -48,6 +49,8 @@ mod pull_request_tests;
 mod selection_tests;
 #[cfg(test)]
 mod settings_tests;
+#[cfg(test)]
+mod sharing_tests;
 #[cfg(test)]
 mod spend_tests;
 #[cfg(test)]
@@ -151,13 +154,17 @@ pub(crate) enum Dialog {
         harness: HarnessChoice,
         prompt: LineInput,
     },
-    /// Which agent to start on a ticket: in its worktree, or with
-    /// `another` in a worktree of its own.
+    /// Which agent to start on a ticket, and, where several projects
+    /// share it, in which: in its worktree there, or with `another` in a
+    /// worktree of its own if it has one there already.
     AssignAgent {
+        /// The ticket's project, as listed.
         project: ProjectId,
         key: TicketKey,
         harness: HarnessChoice,
         another: bool,
+        /// Where it starts: `project`, or another sharing its tickets.
+        into: ProjectId,
     },
     Confirm {
         question: String,
@@ -330,6 +337,10 @@ pub(crate) struct App {
     /// The agent last started on a ticket, which the next ticket is
     /// offered first.
     ticket_agent: HarnessChoice,
+    /// The project last chosen for an agent on a ticket that several
+    /// projects share, by where their tickets come from: offered first
+    /// next time.
+    ticket_projects: HashMap<String, ProjectId>,
     /// The protocol the daemon agreed to speak: a change it does not know
     /// is never sent to it (`ARC-09`).
     pub(crate) daemon_protocol: u32,
@@ -377,6 +388,7 @@ impl App {
             welcome: false,
             last_harness: HarnessChoice::Claude,
             ticket_agent: HarnessChoice::Claude,
+            ticket_projects: HashMap::new(),
             daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
         }
     }

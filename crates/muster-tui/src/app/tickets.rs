@@ -1,6 +1,8 @@
 //! The Tickets screen: each project's open tickets, from its tracker
 //! (GitHub or GitLab issues, Jira, Linear), the agents working on each, and
 //! assigning more. Muster only reads tickets, but for closing one.
+//! Projects whose tickets are in one place share them (`sharing`): they
+//! are listed once, and an agent starts in the one the person chooses.
 //!
 //! An agent on a ticket is a session in a worktree on a branch named for it
 //! (`muster/issue-<key>-<title>`), started with the ticket as its first
@@ -26,10 +28,16 @@ pub(crate) enum TicketRow {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Tickets {
     Loading,
-    /// The tickets, where they came from (`GitHub issues`, `Jira
-    /// (acme.atlassian.net)`), and whether they are only those assigned to
-    /// the person.
-    Loaded(Vec<Issue>, String, bool),
+    Loaded {
+        tickets: Vec<Issue>,
+        /// Where they came from, for the person: `GitHub issues`, `Jira
+        /// (acme.atlassian.net)`.
+        tracker: String,
+        /// Whether they are only those assigned to the person.
+        mine: bool,
+        /// Where they came from, the same for projects sharing them.
+        source: Option<String>,
+    },
     /// Why they could not be fetched, as the tracker said.
     Failed(String),
 }
@@ -43,12 +51,16 @@ pub(crate) enum TicketText {
 }
 
 impl App {
-    /// The tickets list: each project, then its tickets as fetched.
+    /// The tickets list: each project, then its tickets as fetched;
+    /// projects sharing their tickets under the first one's heading.
     pub(crate) fn ticket_rows(&self) -> Vec<TicketRow> {
         let mut rows = Vec::new();
         for project in self.model.projects() {
+            if self.lead(project.id) != project.id {
+                continue;
+            }
             rows.push(TicketRow::Project(project.id));
-            if let Some(Tickets::Loaded(tickets, ..)) = self.tickets.get(&project.id) {
+            if let Some(Tickets::Loaded { tickets, .. }) = self.tickets.get(&project.id) {
                 rows.extend(
                     tickets
                         .iter()
@@ -62,7 +74,7 @@ impl App {
     /// The ticket a row is, as fetched.
     pub(crate) fn ticket(&self, project: ProjectId, key: &TicketKey) -> Option<&Issue> {
         match self.tickets.get(&project)? {
-            Tickets::Loaded(tickets, ..) => tickets.iter().find(|ticket| ticket.key == *key),
+            Tickets::Loaded { tickets, .. } => tickets.iter().find(|ticket| ticket.key == *key),
             Tickets::Loading | Tickets::Failed(_) => None,
         }
     }
@@ -70,7 +82,7 @@ impl App {
     /// Where a project's tickets come from, once fetched.
     pub(crate) fn tracker_of(&self, project: ProjectId) -> &str {
         match self.tickets.get(&project) {
-            Some(Tickets::Loaded(_, tracker, _)) if !tracker.is_empty() => tracker,
+            Some(Tickets::Loaded { tracker, .. }) if !tracker.is_empty() => tracker,
             _ => "its tracker",
         }
     }
@@ -153,7 +165,7 @@ impl App {
     }
 
     fn agent_to_open(&self, project: ProjectId, key: &TicketKey) -> Option<SessionId> {
-        let agents = self.model.agents_on(project, key);
+        let agents = self.ticket_agents(project, key);
         agents
             .iter()
             .rev()
@@ -163,7 +175,8 @@ impl App {
     }
 
     /// Asks which agent to start on the ticket, offering the one last
-    /// started on a ticket first.
+    /// started on a ticket first, and, where several projects share it,
+    /// in which, offering the one last chosen for tickets from there.
     fn choose_agent(&mut self, project: ProjectId, key: TicketKey, another: bool) -> Vec<Action> {
         self.note = None;
         self.mode = Mode::Dialog(Dialog::AssignAgent {
@@ -171,45 +184,64 @@ impl App {
             key,
             harness: self.ticket_agent,
             another,
+            into: self.project_to_offer(project),
         });
         Vec::new()
     }
 
+    /// Whether an agent asked for as `another` on ticket `key` starts in a
+    /// worktree of its own in `into`: only if the ticket has one there
+    /// already; the first there starts in the ticket's worktree.
+    pub(crate) fn starts_another(&self, into: ProjectId, key: &TicketKey, another: bool) -> bool {
+        another && !self.model.worktrees_for(&[into], key).is_empty()
+    }
+
     /// A key in the dialog choosing an agent for a ticket: ⇥ and ⇧⇥ (or
-    /// the arrows) choose, ⏎ starts it, esc thinks better of it.
+    /// ← →) choose the agent, ↑ ↓ the project where several share the
+    /// ticket, ⏎ starts it, esc thinks better of it.
     pub(super) fn assign_key(
         &mut self,
         project: ProjectId,
         key: TicketKey,
         harness: HarnessChoice,
         another: bool,
+        into: ProjectId,
         pressed: &KeyEvent,
     ) -> Vec<Action> {
-        let harness = match pressed.code {
-            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => harness.next_agent(),
-            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => harness.previous_agent(),
+        let (harness, into) = match pressed.code {
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => (harness.next_agent(), into),
+            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
+                (harness.previous_agent(), into)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                (harness, self.next_project(project, into, false))
+            }
+            KeyCode::Up | KeyCode::Char('k') => (harness, self.next_project(project, into, true)),
             KeyCode::Enter => {
                 self.mode = Mode::Browse;
                 self.ticket_agent = harness;
-                return self.assign_agent(project, key, harness, another);
+                self.remember_project(project, into);
+                let another = self.starts_another(into, &key, another);
+                return self.assign_agent(into, key, harness, another);
             }
             KeyCode::Esc => {
                 self.mode = Mode::Browse;
                 return Vec::new();
             }
-            _ => harness,
+            _ => (harness, into),
         };
         self.mode = Mode::Dialog(Dialog::AssignAgent {
             project,
             key,
             harness,
             another,
+            into,
         });
         Vec::new()
     }
 
-    /// Starts `harness` on the ticket: in its worktree, or with `another`
-    /// in a worktree of its own; it opens as it starts.
+    /// Starts `harness` on the ticket in `project`: in its worktree, or
+    /// with `another` in a worktree of its own; it opens as it starts.
     fn assign_agent(
         &mut self,
         project: ProjectId,
@@ -232,16 +264,18 @@ impl App {
     /// still about, the person is offered to clean up after it.
     pub(super) fn ticket_closed(&mut self, project: ProjectId, key: TicketKey) {
         let tracker = self.tracker_of(project).to_owned();
-        if let Some(Tickets::Loaded(tickets, ..)) = self.tickets.get_mut(&project) {
-            tickets.retain(|ticket| ticket.key != key);
+        let worktrees = self.ticket_worktrees(project, &key).len();
+        let agents = self.ticket_agents(project, &key).len();
+        for sharing in self.sharing(project) {
+            if let Some(Tickets::Loaded { tickets, .. }) = self.tickets.get_mut(&sharing) {
+                tickets.retain(|ticket| ticket.key != key);
+            }
+            self.ticket_texts.remove(&(sharing, key.clone()));
         }
-        self.ticket_texts.remove(&(project, key.clone()));
-        let worktrees = self.model.worktrees_for(project, &key).len();
         if worktrees == 0 {
             self.say(format!("Closed {} in {tracker}.", key.shown()));
             return;
         }
-        let agents = self.model.agents_on(project, &key).len();
         let what = match (agents, worktrees) {
             (0, 1) => "remove its worktree".to_owned(),
             (0, n) => format!("remove its {n} worktrees"),
@@ -261,10 +295,9 @@ impl App {
     /// Stops a closed ticket's agents and removes its worktrees once
     /// nothing runs in them.
     pub(super) fn clean_up_ticket(&mut self, project: ProjectId, key: &TicketKey) -> Vec<Action> {
-        let worktrees = self.model.worktrees_for(project, key);
+        let worktrees = self.ticket_worktrees(project, key);
         let running: Vec<SessionId> = self
-            .model
-            .agents_on(project, key)
+            .ticket_agents(project, key)
             .iter()
             .filter(|session| session.ended_at.is_none())
             .map(|session| session.id)
@@ -348,9 +381,14 @@ impl App {
         actions
     }
 
-    /// Keeps the tickets selection on a line that exists.
+    /// Keeps the tickets selection on a line that exists: one of a
+    /// project sharing its tickets is the same line under the first's.
     pub(super) fn keep_ticket_selection(&mut self) {
         let rows = self.ticket_rows();
+        self.tickets_selected = self.tickets_selected.take().map(|row| match row {
+            TicketRow::Project(project) => TicketRow::Project(self.lead(project)),
+            TicketRow::Ticket(project, key) => TicketRow::Ticket(self.lead(project), key),
+        });
         let kept = self
             .tickets_selected
             .clone()

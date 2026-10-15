@@ -45,6 +45,11 @@ pub(crate) trait TicketSource: Send + Sync + std::fmt::Debug {
     fn only_mine(&self) -> bool {
         false
     }
+    /// Where they are, if not in a repository's own tracker: the same for
+    /// every project listing the same tickets (`Reply::Issues::source`).
+    fn source(&self) -> Option<String> {
+        None
+    }
     /// One ticket, with its text.
     fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, ServiceError>>;
     /// Closes a ticket, because the person asked: the one change Muster
@@ -81,6 +86,10 @@ impl TicketSource for Hidden {
 
     fn only_mine(&self) -> bool {
         self.0.only_mine()
+    }
+
+    fn source(&self) -> Option<String> {
+        self.0.source()
     }
 
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {

@@ -203,11 +203,19 @@ impl App {
                     issues,
                     tracker,
                     mine,
+                    source,
                 }),
                 Then::Tickets(project),
             ) => {
-                self.tickets
-                    .insert(project, Tickets::Loaded(issues, tracker, mine));
+                self.tickets.insert(
+                    project,
+                    Tickets::Loaded {
+                        tickets: issues,
+                        tracker,
+                        mine,
+                        source,
+                    },
+                );
             }
             (Err(error), Then::Tickets(project)) => {
                 self.tickets.insert(project, Tickets::Failed(error.message));

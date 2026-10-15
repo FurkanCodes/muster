@@ -267,6 +267,11 @@ impl TicketSource for Linear {
         self.mine
     }
 
+    fn source(&self) -> Option<String> {
+        let whose = if self.mine { "mine" } else { "all" };
+        Some(format!("linear {} {whose}", self.team))
+    }
+
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
             let mut found: Vec<(String, Issue)> = match &self.access {
