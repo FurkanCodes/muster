@@ -97,7 +97,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
     // a full queue back to it could leave both waiting forever.
     #[expect(
         clippy::disallowed_methods,
-        reason = "ARC-14: terminals' events; a title at most once per chunk of output, progress only as it flips, an exit once"
+        reason = "ARC-14: terminals' events; a title or progress only as it changes, an exit once"
     )]
     let (pty_events, pty_queue) = mpsc::unbounded_channel();
     #[expect(

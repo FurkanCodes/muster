@@ -150,14 +150,14 @@ async fn codex_is_heard_through_its_title_and_turn_notices_and_resumes_its_threa
     // Its title: working, then waiting on the person, then ready.
     connection.attach(session, None).await.unwrap();
     let title = |text: &str| format!("printf '\\033]0;{text}\\007'\n");
-    // The spinner as octal escapes: the stand-in's shell would mangle it
-    // typed.
+    // Working and waiting in one write, so they reach the daemon in one
+    // piece of output, as they can from Codex: each is still a step. The
+    // spinner as octal escapes: the stand-in's shell would mangle it typed.
     connection
-        .input(session, title("\\342\\240\\213 Working").as_bytes())
-        .await
-        .unwrap();
-    connection
-        .input(session, title("[ ! ] Action Required").as_bytes())
+        .input(
+            session,
+            b"printf '\\033]0;\\342\\240\\213 Working\\007\\033]0;[ ! ] Action Required\\007'\n",
+        )
         .await
         .unwrap();
     let action = SessionStatus::NeedsYou {

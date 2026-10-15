@@ -569,18 +569,13 @@ impl Actor {
                 Err(_) => break,
             }
         }
-        // Only a chunk's last title is news, so a program retitling itself
-        // in a loop sends no more events than its output has chunks
-        // (`ARC-14`).
-        let mut title = None;
+        // Every change is reported, in order: a harness's titles are steps
+        // ("Working", then "Action Required"), not only a latest state.
         for report in self.osc.scan(&data) {
-            match report {
-                Report::Progress { busy } => events(PtyEvent::Progress { busy }),
-                Report::Title(latest) => title = Some(latest),
-            }
-        }
-        if let Some(title) = title {
-            events(PtyEvent::Title(title));
+            events(match report {
+                Report::Progress { busy } => PtyEvent::Progress { busy },
+                Report::Title(title) => PtyEvent::Title(title),
+            });
         }
         self.answer_queries(&data);
         let seq = self.ring.push(&data);
