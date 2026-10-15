@@ -3,10 +3,13 @@
 //! session running (`muster reload`).
 //!
 //! The archive for this machine is checked against its published SHA-256
-//! before anything is replaced; a mismatch replaces nothing. The new program
+//! and, where the GitHub CLI is signed in, against the attestation GitHub
+//! made as the release workflow built it, before anything is replaced; a
+//! mismatch replaces nothing (`ARC-21`). The new program
 //! is swapped in with a rename in its own folder, so the file is never half
 //! written, and running programs keep the one they started with.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -86,10 +89,7 @@ async fn install() -> Result<Installed, String> {
         .next()
         .unwrap_or_default()
         .to_ascii_lowercase();
-    let actual: String = Sha256::digest(&bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let actual = muster_core::hex::encode(&Sha256::digest(&bytes));
     if expected.len() != 64 || actual != expected {
         return Err(
             "the download does not match its published checksum; nothing was replaced".to_owned(),
@@ -107,6 +107,17 @@ async fn install() -> Result<Installed, String> {
         .map_err(|error| format!("cannot write in {}: {error}", folder.display()))?;
     let saved = unpacked.path().join(&archive);
     std::fs::write(&saved, &bytes).map_err(|error| error.to_string())?;
+    // A stand-in release, as tests use, has no attestation.
+    if std::env::var_os("MUSTER_RELEASES").is_none() {
+        if attested(&saved).await? {
+            println!("Checked: built by {REPOSITORY}'s release workflow.");
+        } else {
+            println!(
+                "Not checked against its build attestation: the GitHub CLI (gh) is not installed, \
+                 too old, or not signed in."
+            );
+        }
+    }
     let untarred = std::process::Command::new("tar")
         .arg("-xzf")
         .arg(&saved)
@@ -125,7 +136,6 @@ async fn install() -> Result<Installed, String> {
     if version == env!("CARGO_PKG_VERSION") {
         return Ok(Installed::Current(version));
     }
-    use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755))
         .map_err(|error| error.to_string())?;
     std::fs::rename(&new, &program)
@@ -134,6 +144,64 @@ async fn install() -> Result<Installed, String> {
         version,
         at: program,
     })
+}
+
+/// Checks the archive at `path` against the attestation GitHub made as the
+/// release workflow built it, where the GitHub CLI can; whether it could.
+/// A mismatch is an error: the download is not what the workflow built.
+async fn attested(path: &Path) -> Result<bool, String> {
+    let gh = |args: &[&std::ffi::OsStr]| {
+        let mut command = tokio::process::Command::new("gh");
+        command
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        async move {
+            tokio::time::timeout(std::time::Duration::from_mins(1), command.status())
+                .await
+                .ok()
+                .and_then(Result::ok)
+        }
+    };
+    if std::env::var_os("MUSTER_SKIP_ATTESTATION").is_some() {
+        return Ok(false);
+    }
+    // A gh too old to have attestations, or not signed in, cannot check.
+    for able in [
+        &["attestation".as_ref(), "verify".as_ref(), "--help".as_ref()][..],
+        &["auth".as_ref(), "status".as_ref()][..],
+    ] {
+        if !gh(able).await.is_some_and(|status| status.success()) {
+            return Ok(false);
+        }
+    }
+    let repository = REPOSITORY
+        .strip_prefix("https://github.com/")
+        .unwrap_or(REPOSITORY);
+    let verified = gh(&[
+        "attestation".as_ref(),
+        "verify".as_ref(),
+        path.as_os_str(),
+        "--repo".as_ref(),
+        repository.as_ref(),
+    ])
+    .await;
+    match verified {
+        Some(status) if status.success() => Ok(true),
+        Some(_) => Err(
+            "the download could not be checked against the attestation GitHub made as it was \
+             built, so nothing was replaced (MUSTER_SKIP_ATTESTATION=1 upgrades with its checksum \
+             checked only)"
+                .to_owned(),
+        ),
+        None => Err(
+            "gh did not finish checking the download's attestation, so nothing was replaced \
+             (MUSTER_SKIP_ATTESTATION=1 upgrades with its checksum checked only)"
+                .to_owned(),
+        ),
+    }
 }
 
 async fn fetch(http: &reqwest::Client, url: &str) -> Result<Vec<u8>, String> {
