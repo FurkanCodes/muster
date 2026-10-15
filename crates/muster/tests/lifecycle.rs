@@ -366,6 +366,10 @@ fn daemon_stop_reaches_a_daemon_from_an_older_build() {
     let pid = process.id();
     let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's thread ends with the test"
+    )]
     let old = std::thread::spawn(move || {
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         while std::time::Instant::now() < deadline {

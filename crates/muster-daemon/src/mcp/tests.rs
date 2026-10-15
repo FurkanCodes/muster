@@ -67,6 +67,10 @@ async fn server(headers: HeaderMap, axum::Json(message): axum::Json<Value>) -> R
 async fn tools_are_listed_and_called_through_a_session() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}/mcp", listener.local_addr().unwrap());
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's task ends with the test"
+    )]
     tokio::spawn(async move {
         axum::serve(listener, Router::new().route("/mcp", post(server)))
             .await

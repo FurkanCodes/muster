@@ -29,7 +29,7 @@ impl Supervisor {
                 return;
             }
         };
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let outcome = settings_of(place).await;
             if let Err(error) = &outcome {
                 tracing::info!(command = "project settings", %error, "command refused");
@@ -62,7 +62,7 @@ impl Supervisor {
             return;
         }
         tracing::info!(%project, ?change, "changed a setting");
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let _ = reply.send(settings_of(place).await);
         });
     }

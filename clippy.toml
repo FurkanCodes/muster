@@ -1,2 +1,10 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+
+disallowed-methods = [
+    { path = "tokio::spawn", reason = "ARC-13: start work through `tasks::Tasks`, or hold the handle; where a bare spawn is right, an #[expect] names its owner" },
+    { path = "tokio::task::spawn", reason = "ARC-13: start work through `tasks::Tasks`, or hold the handle; where a bare spawn is right, an #[expect] names its owner" },
+    { path = "std::thread::spawn", reason = "ARC-13: name the thread with `std::thread::Builder`, and say what owns it" },
+    { path = "tokio::sync::mpsc::unbounded_channel", reason = "ARC-14: bound the queue, or #[expect] it with why its producer is bounded" },
+    { path = "std::sync::mpsc::channel", reason = "ARC-14: bound the queue (`sync_channel`), or #[expect] it with why its producer is bounded" },
+]

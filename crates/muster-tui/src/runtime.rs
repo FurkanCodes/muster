@@ -16,6 +16,7 @@ use muster_client::{ClientError, Connection, FrameSender};
 use muster_core::protocol::{ServerFrame, TermSize, Welcome};
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
+use tokio_util::task::AbortOnDropHandle;
 
 use crate::app::{Action, App};
 use crate::clipboard;
@@ -83,11 +84,28 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     app.motion = options.motion;
     app.welcome = true;
 
+    // Unbounded on purpose: this loop also writes to the daemon, which
+    // may be waiting to write to the link, so the link waiting on this loop
+    // could leave all three waiting. The daemon bounds what it sends: a
+    // client that falls behind gets a fresh snapshot instead.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: frames from the daemon, which queues at most 256 for a client"
+    )]
     let (link_events, mut link) = mpsc::unbounded_channel();
-    let link_task = tokio::spawn(keep_linked(options, link_events));
+    // Ends when dropped, as the UI ends (`ARC-13`).
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-13: the AbortOnDropHandle owns it"
+    )]
+    let _link_task = AbortOnDropHandle::new(tokio::spawn(keep_linked(options, link_events)));
 
     // Folders listed for the folder picker, off this loop: a folder on a
     // slow disk must not stop the UI.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: one listing for each folder the person opens in the picker"
+    )]
     let (listed_folders, mut folder_lists) =
         mpsc::unbounded_channel::<(PathBuf, Result<Vec<Folder>, String>)>();
 
@@ -169,7 +187,6 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
             break Ok(());
         }
     };
-    link_task.abort();
     drop(terminal);
     outcome
 }
@@ -384,7 +401,9 @@ fn open_in_browser(url: &str) {
         .spawn()
         .map(|mut child| {
             // Reaped in the background: it returns at once.
-            std::thread::spawn(move || child.wait());
+            let _ = std::thread::Builder::new()
+                .name("muster-open-wait".to_owned())
+                .spawn(move || child.wait());
         });
 }
 

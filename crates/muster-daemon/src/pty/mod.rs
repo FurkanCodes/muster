@@ -333,6 +333,10 @@ fn start(
             let _ = read_done.send(());
         })?;
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: what the person types and pastes; the writer must not drop keys, and the actor must not wait on it"
+    )]
     let (input, input_queue) = std::sync::mpsc::channel::<Vec<u8>>();
     std::thread::Builder::new()
         .name("muster-pty-write".to_owned())
@@ -354,6 +358,10 @@ fn start(
         stop_reading,
         reader_done: Some(reader_done),
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-13: the actor runs until every PtyHandle to it is dropped or it hands its terminal over"
+    )]
     tokio::spawn(actor.run(queue, output_queue, exited, events));
     Ok(PtyHandle { commands, pid })
 }
@@ -561,11 +569,18 @@ impl Actor {
                 Err(_) => break,
             }
         }
+        // Only a chunk's last title is news, so a program retitling itself
+        // in a loop sends no more events than its output has chunks
+        // (`ARC-14`).
+        let mut title = None;
         for report in self.osc.scan(&data) {
-            events(match report {
-                Report::Progress { busy } => PtyEvent::Progress { busy },
-                Report::Title(title) => PtyEvent::Title(title),
-            });
+            match report {
+                Report::Progress { busy } => events(PtyEvent::Progress { busy }),
+                Report::Title(latest) => title = Some(latest),
+            }
+        }
+        if let Some(title) = title {
+            events(PtyEvent::Title(title));
         }
         self.answer_queries(&data);
         let seq = self.ring.push(&data);

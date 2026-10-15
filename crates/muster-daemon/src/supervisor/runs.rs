@@ -101,7 +101,7 @@ impl Supervisor {
         };
         let overrides = place.overrides.clone();
         let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let prepared = async {
                 let config = settings_for_runs(root.clone(), overrides).await?;
                 if let Some(hand_off) = &hand_off {

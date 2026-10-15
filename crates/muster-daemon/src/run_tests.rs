@@ -202,6 +202,7 @@ async fn spawn_with(
             http: crate::service::http_client(),
         }),
         adopted: Vec::new(),
+        tasks: crate::tasks::Tasks::default(),
     })
     .await
     .unwrap()

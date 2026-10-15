@@ -69,8 +69,16 @@ impl Ui {
         // Plays the person's terminal: draws what arrives and answers the
         // device-attributes question crossterm asks, without claiming the
         // kitty keyboard protocol.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "a test's queue ends with the test"
+        )]
         let (input, queue) = std::sync::mpsc::channel::<Vec<u8>>();
         let writer_tx = input.clone();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "a test's thread ends with the test"
+        )]
         std::thread::spawn(move || {
             let mut buffer = [0; 16 * 1024];
             while let Ok(read) = reader.read(&mut buffer) {
@@ -85,6 +93,10 @@ impl Ui {
                 kept.lock().unwrap().extend_from_slice(chunk);
             }
         });
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "a test's thread ends with the test"
+        )]
         std::thread::spawn(move || {
             while let Ok(bytes) = queue.recv() {
                 let _ = writer.write_all(&bytes);

@@ -497,6 +497,16 @@ async fn daemon(paths: Paths, background: bool, adopt: Option<i32>) -> ExitCode 
         )
         .with_writer(std::io::stderr)
         .init();
+    // A panic anywhere, in a task or a thread, is logged with the rest, its
+    // time and thread named (`ARC-13`).
+    std::panic::set_hook(Box::new(|info| {
+        let thread = std::thread::current();
+        let backtrace = std::backtrace::Backtrace::capture();
+        tracing::error!(
+            thread = thread.name().unwrap_or("unnamed"),
+            "panicked: {info}\n{backtrace}"
+        );
+    }));
     let mut config = DaemonConfig::new(paths);
     // Tests measure more often than people need.
     let millis = |key| std::env::var(key).ok()?.parse::<u64>().ok();
@@ -523,9 +533,17 @@ async fn daemon(paths: Paths, background: bool, adopt: Option<i32>) -> ExitCode 
     }
     // Listening from the start, so no signal arrives before it is caught:
     // uncaught, SIGUSR1 would end the daemon.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: one stop per signal the daemon is sent"
+    )]
     let (stops, stop_queue) = tokio::sync::mpsc::unbounded_channel();
     match Signals::listen() {
         Ok(signals) => {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "ARC-13: listens for signals as long as the daemon runs"
+            )]
             tokio::spawn(signals.forward(background, stops));
         }
         Err(error) => return fail(format!("cannot listen for signals: {error}")),

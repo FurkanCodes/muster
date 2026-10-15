@@ -249,6 +249,9 @@ fn the_command_line_reports_status_and_adds_projects() {
         stdout.contains("1 project, 0 worktrees, 0 sessions"),
         "{stdout}"
     );
+    // ARC-13, ARC-14: what the daemon holds, for spotting a leak.
+    assert!(stdout.contains("Inside: "), "{stdout}");
+    assert!(stdout.contains("1 client, 0 terminals."), "{stdout}");
     assert!(stdout.contains("App"), "{stdout}");
 
     let again = sandbox.run(&["project", "add", root.to_str().unwrap()]);

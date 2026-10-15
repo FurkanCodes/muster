@@ -14,10 +14,10 @@ use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
 
 use crate::pty::PtyHandle;
 use crate::supervisor::{SupervisorHandle, TerminalLink, WatchGuard};
+use crate::tasks::{self, Owned, Tasks};
 use crate::terminal::forward_output;
 
 /// Frames queued for one client before the sender waits. A subscriber that
@@ -25,10 +25,12 @@ use crate::terminal::forward_output;
 /// is sent a fresh snapshot when it catches up.
 const OUTGOING_FRAMES: usize = 256;
 
-/// Accepts connections until `shutdown` completes.
+/// Accepts connections until `shutdown` completes. Each is counted in
+/// `tasks` and served until its client leaves or the daemon stops.
 pub(crate) async fn serve(
     listener: UnixListener,
     supervisor: SupervisorHandle,
+    tasks: &Tasks,
     shutdown: impl Future<Output = ()>,
 ) {
     tokio::pin!(shutdown);
@@ -37,7 +39,7 @@ pub(crate) async fn serve(
             () = &mut shutdown => return,
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
-                    tokio::spawn(connection(stream, supervisor.clone()));
+                    tasks.connection(connection(stream, supervisor.clone(), tasks.clone()));
                 }
                 Err(error) => tracing::warn!(%error, "could not accept a connection"),
             },
@@ -45,15 +47,16 @@ pub(crate) async fn serve(
     }
 }
 
-async fn connection(stream: UnixStream, supervisor: SupervisorHandle) {
+async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tasks) {
     let (read, write) = stream.into_split();
     let (outgoing, queue) = mpsc::channel(OUTGOING_FRAMES);
-    let writer = tokio::spawn(write_frames(FramedWrite::new(write), queue));
+    let writer = tasks::owned(write_frames(FramedWrite::new(write), queue));
 
     let mut session = Connection {
         reader: FramedRead::new(read),
         outgoing,
         supervisor,
+        tasks,
         pump: None,
         terminals: HashMap::new(),
         forwarders: HashMap::new(),
@@ -63,13 +66,8 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle) {
         // The writer sends this last, then closes.
         let _ = session.outgoing.send(ServerFrame::Error(error)).await;
     }
-    if let Some(pump) = session.pump.take() {
-        pump.abort();
-    }
-    session.watching.clear();
-    for (_, forwarder) in session.forwarders.drain() {
-        forwarder.abort();
-    }
+    // Its pump and forwarders end as they are dropped, here or, should
+    // this task end early, with it (`ARC-13`).
     drop(session);
     let _ = writer.await;
 }
@@ -91,12 +89,14 @@ struct Connection {
     reader: FramedRead<OwnedReadHalf>,
     outgoing: mpsc::Sender<ServerFrame>,
     supervisor: SupervisorHandle,
-    pump: Option<JoinHandle<()>>,
+    tasks: Tasks,
+    /// Streams state to the client once it subscribes.
+    pump: Option<Owned>,
     /// Terminals this client has used, so keystrokes skip the Supervisor:
     /// each session's current one, which follows it to a new program.
     terminals: HashMap<SessionId, watch::Receiver<Option<PtyHandle>>>,
     /// One output stream per attached session.
-    forwarders: HashMap<SessionId, JoinHandle<()>>,
+    forwarders: HashMap<SessionId, Owned>,
     /// The attached sessions this client's person is looking at; dropping
     /// a guard ends its watch.
     watching: HashMap<SessionId, WatchGuard>,
@@ -118,15 +118,13 @@ impl Connection {
                     ));
                 }
                 ClientFrame::Subscribe => {
-                    if let Some(old) = self.pump.take() {
-                        old.abort();
-                    }
                     let pump = pump_state(self.supervisor.clone(), self.outgoing.clone());
-                    self.pump = Some(tokio::spawn(pump));
+                    // Dropping the old one ends it.
+                    self.pump = Some(tasks::owned(pump));
                 }
                 ClientFrame::Command { req_id, command } => {
                     let (supervisor, outgoing) = (self.supervisor.clone(), self.outgoing.clone());
-                    tokio::spawn(async move {
+                    self.tasks.spawn(async move {
                         let outcome = supervisor.command(command).await;
                         let _ = outgoing.send(ServerFrame::Reply { req_id, outcome }).await;
                     });
@@ -176,7 +174,7 @@ impl Connection {
         }
         self.terminals.insert(session, current.clone());
         let forwarder = forward_output(session, current, from_seq, self.outgoing.clone());
-        self.forwarders.insert(session, tokio::spawn(forwarder));
+        self.forwarders.insert(session, tasks::owned(forwarder));
     }
 
     /// Stops streaming `session` to this client, and watching it.

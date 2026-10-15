@@ -277,6 +277,9 @@ Following Nebula's strategy, which is the best part of its codebase.
 - **ARC-10** A transition is stored with its reason before its effects run, and every effect is idempotent.
 - **ARC-11** A session's identity comes from its own secret token, never from an id the caller supplies.
 - **ARC-12** No `unsafe` code but in `muster-daemon`'s `handoff::fds`: borrowing a descriptor a library owns to duplicate it, and owning one the daemon's previous version left across `exec`, each with its reasoning beside it. The workspace denies `unsafe` everywhere else.
+- **ARC-13** Every task and thread has an owner that can count it and stop it. Long-lived ones are held by what started them and end with it; short-lived work runs under the daemon's task tracker, and every wait on an external system in it has a deadline. A panic is logged, never lost. Clippy refuses a bare `tokio::spawn` or `std::thread::spawn`; where one is right, an `#[expect]` beside it names its owner.
+- **ARC-14** Queues and caches are bounded. An unbounded channel is allowed only where its producer is bounded, with an `#[expect]` beside it saying why (clippy refuses one without). Every entry keyed by a session, run, connection or project leaves when that entity ends.
+- **ARC-15** Logs are bounded: the daemon's log starts a new file each day or when it grows past its size limit, and keeps seven; nothing is appended forever.
 
 ## 15. Milestone 1 plan — Cockpit
 

@@ -16,6 +16,7 @@ muster-core.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tui-term.workspace = true
 vt100.workspace = true
 

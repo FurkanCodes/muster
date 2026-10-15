@@ -22,6 +22,7 @@ use super::provision::{self, STATE_DIR};
 use super::{Report, Reports, RunContext, RunWork, image, mirror};
 use crate::containers::{Docker, LABEL_RUN, RuntimeError};
 use crate::githost::{GitHost, PrState};
+use crate::tasks::Tasks;
 
 /// How long a quick question to a container may take.
 const QUICK: Duration = Duration::from_secs(60);
@@ -32,6 +33,7 @@ const DOCKER_PATIENCE: Duration = Duration::from_secs(10 * 60);
 #[derive(Clone, Debug)]
 pub(crate) struct DockerWork {
     inner: Arc<Inner>,
+    tasks: Tasks,
 }
 
 #[derive(Debug)]
@@ -106,8 +108,10 @@ impl DockerWork {
         credentials: Arc<dyn Credentials>,
         poll: Duration,
         image: Option<String>,
+        tasks: Tasks,
     ) -> Self {
         Self {
+            tasks,
             inner: Arc::new(Inner {
                 docker: Docker::default(),
                 data_dir,
@@ -125,7 +129,7 @@ impl DockerWork {
 impl RunWork for DockerWork {
     fn start(&self, context: RunContext, effect: RunEffect, reports: Reports) {
         let inner = self.inner.clone();
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let run = context.run;
             let send = |report| {
                 let _ = reports.send((run, report));
@@ -212,7 +216,7 @@ impl RunWork for DockerWork {
 
     fn stop_session(&self, container: String, session: SessionId) {
         let inner = self.inner.clone();
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let script = format!(
                 "{}{}",
                 crate::harness::IN_CONTAINER,
@@ -239,14 +243,14 @@ impl RunWork for DockerWork {
             return;
         }
         let inner = self.inner.clone();
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             inner.remove_containers(&runs.into_iter().collect()).await;
         });
     }
 
     fn check_pull_request(&self, context: RunContext, reports: Reports) {
         let inner = self.inner.clone();
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let Some(pr) = &context.pr else {
                 return;
             };

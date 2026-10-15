@@ -160,6 +160,7 @@ async fn setup() -> Setup {
         docker: "docker".to_owned(),
         hosts: Arc::new(FakeHosts(host.clone())),
         adopted: Vec::new(),
+        tasks: crate::tasks::Tasks::default(),
     })
     .await
     .unwrap();

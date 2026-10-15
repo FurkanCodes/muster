@@ -226,6 +226,7 @@ async fn real_docker_takes_a_run_from_pickup_to_ready_through_a_failed_check() {
         Arc::new(FakeCredentials),
         Duration::from_millis(100),
         Some(image),
+        Tasks::default(),
     );
 
     let mut machine = RunMachine::new(Limits {
@@ -233,6 +234,10 @@ async fn real_docker_takes_a_run_from_pickup_to_ready_through_a_failed_check() {
         run_timeout: Duration::from_secs(600),
         max_cost_micros: None,
     });
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's queue ends with the test"
+    )]
     let (reports, mut queue) = mpsc::unbounded_channel();
     // As the Supervisor does: the work hears of each generation first.
     let (generation, current) = tokio::sync::watch::channel(0);

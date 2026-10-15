@@ -59,7 +59,7 @@ impl Supervisor {
             }
         };
         let trackers = self.trackers.clone();
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let outcome = async {
                 let source = trackers.for_project(place).await?;
                 let issues = source.list().await?;
@@ -94,7 +94,7 @@ impl Supervisor {
             }
         };
         let trackers = self.trackers.clone();
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let outcome = async {
                 let detail = trackers.for_project(place).await?.view(&key).await?;
                 Ok::<_, ServiceError>(Reply::IssueViewed {
@@ -123,7 +123,7 @@ impl Supervisor {
             }
         };
         let trackers = self.trackers.clone();
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let outcome = async {
                 trackers.for_project(place).await?.close(&key).await?;
                 Ok::<_, ServiceError>(Reply::Done)
@@ -170,7 +170,7 @@ impl Supervisor {
             return;
         }
         let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let prefixed =
                 crate::config::muster_prefix(place.root.clone(), place.overrides.clone()).await;
             let detail = async { trackers.for_project(place).await?.view(&key).await }.await;
