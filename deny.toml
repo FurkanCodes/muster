@@ -41,6 +41,74 @@ multiple-versions = "warn"
 wildcards = "deny"
 # Workspace crates refer to each other by path.
 allow-wildcard-paths = true
+deny = [
+    # TLS is rustls only (reqwest's default); OpenSSL would bring a C
+    # library and a second certificate store.
+    { crate = "native-tls", reason = "TLS is rustls only" },
+    { crate = "openssl-sys", reason = "TLS is rustls only" },
+]
+
+# A build script runs on the machine that compiles Muster, with its
+# credentials in reach. The 2026 supply-chain attacks on crates.io came that
+# way: a new crate, pulled in by a compromised release of a trusted one,
+# whose build script fetched the payload. Only the crates below may have one;
+# a dependency that adds a build script fails CI until it is reviewed and
+# added here. Generate the current set with
+#   cargo metadata --format-version 1 --locked
+# (packages with a "custom-build" target).
+[bans.build]
+include-dependencies = true
+allow-build-scripts = [
+    "anyhow",
+    "aws-lc-rs",
+    "aws-lc-sys",
+    "encoding_rs",
+    "getrandom",
+    "httparse",
+    "icu_normalizer_data",
+    "icu_properties_data",
+    "jni",
+    "jni-macros",
+    "libc",
+    "libm",
+    "libsqlite3-sys",
+    "nix",
+    "ntapi",
+    "num-traits",
+    "parking_lot_core",
+    "portable-atomic",
+    "proc-macro2",
+    "quinn",
+    "quinn-udp",
+    "quote",
+    "ring",
+    "rustix",
+    "rustls",
+    "rustversion",
+    "serde",
+    "serde_core",
+    "serde_json",
+    "signal-hook",
+    "sqlite-wasm-rs",
+    "system-configuration-sys",
+    "thiserror",
+    "valuable",
+    "wasm-bindgen",
+    "wasm-bindgen-shared",
+    "winapi",
+    "winapi-i686-pc-windows-gnu",
+    "winapi-x86_64-pc-windows-gnu",
+    "windows_aarch64_gnullvm",
+    "windows_aarch64_msvc",
+    "windows_i686_gnu",
+    "windows_i686_gnullvm",
+    "windows_i686_msvc",
+    "windows_x86_64_gnu",
+    "windows_x86_64_gnullvm",
+    "windows_x86_64_msvc",
+    "winreg",
+    "zmij",
+]
 
 [sources]
 unknown-registry = "deny"
