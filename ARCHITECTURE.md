@@ -261,7 +261,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 - **End to end:** the real daemon binary per test, isolated directories through environment variables, an RAII guard that stops it on drop, and a raw protocol client. Hooks are tested by typing `curl` into the fake agent's terminal; the progress signal by typing `printf` escape sequences.
 - **Restart:** kill the daemon with a worktree session and a run in flight, start it again, assert both come back.
 - **Real Docker:** a suite gated by `MUSTER_DOCKER_TESTS=1`, run in CI on Linux.
-- **CI:** `fmt`, `clippy -D warnings`, tests on Ubuntu and macOS, `cargo deny` for licenses and advisories, and a **failing** file-size check (`ARC-08`).
+- **CI:** `fmt`, `clippy -D warnings`, tests on Ubuntu and macOS, `cargo deny` for licenses, advisories, banned crates and an allowlist of dependencies that may run build scripts, and a **failing** file-size check (`ARC-08`).
 
 ## 14. Rules
 

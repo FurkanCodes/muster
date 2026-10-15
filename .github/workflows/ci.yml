@@ -11,6 +11,8 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# Linux images are pinned so a runner upgrade is a reviewed change, not a
+# surprise on the next push.
 jobs:
   checks:
     name: Checks (${{ matrix.os }})
@@ -18,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-latest]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -36,7 +38,7 @@ jobs:
 
   docker:
     name: Real Docker (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -54,8 +56,8 @@ jobs:
           MUSTER_DOCKER_TESTS: "1"
 
   dependencies:
-    name: Dependencies (licenses and advisories)
-    runs-on: ubuntu-latest
+    name: Dependencies (licenses, advisories, build scripts)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: EmbarkStudios/cargo-deny-action@v2
