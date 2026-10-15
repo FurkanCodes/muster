@@ -595,3 +595,36 @@ fn a_ticket_shows_the_pull_request_its_agents_opened_the_furthest_along_first() 
     let row = row(&wide);
     assert!(row.contains("#51 merged"), "{row}");
 }
+
+#[test]
+fn a_ticket_s_agents_say_what_each_used_and_all_together() {
+    let mut world = on_tickets();
+    let (workspace, mut claude) = agent_for_42(&world, "muster/issue-42-fix-the-login-redirect", 3);
+    claude.spend = Some(muster_core::Spend {
+        tokens: 1_200_000,
+        cost_micros: None,
+    });
+    let (other_workspace, mut opencode) =
+        agent_for_42(&world, "muster/issue-42-fix-the-login-redirect-2", 4);
+    opencode.harness = "opencode".to_owned();
+    opencode.spend = Some(muster_core::Spend {
+        tokens: 200_000,
+        cost_micros: Some(300_000),
+    });
+    for frame in [
+        Delta::WorkspaceUpserted(workspace),
+        Delta::WorkspaceUpserted(other_workspace),
+        Delta::SessionUpserted(claude),
+        Delta::SessionUpserted(opencode),
+    ] {
+        world.app.on_frame(ServerFrame::Delta(frame));
+    }
+    let screen = render(&world.app);
+    // Claude Code reports no cost, so the whole says none.
+    assert!(screen.contains("Agents · 1.4M tokens "), "{screen}");
+    assert!(screen.contains("running  1.2M tokens  "), "{screen}");
+    assert!(
+        screen.contains("running  $0.30 · 200k tokens  "),
+        "{screen}"
+    );
+}

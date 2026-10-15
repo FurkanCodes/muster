@@ -53,6 +53,10 @@ pub(super) enum Request {
     },
     /// The sampler's measurement.
     Resources(ResourceReport),
+    /// The spend reader asks which sessions to read.
+    SpendTargets(oneshot::Sender<Vec<crate::spend::Target>>),
+    /// The totals the spend reader found changed.
+    Spends(Vec<(SessionId, muster_core::Spend)>),
     /// Hand every running session over, for the daemon's restart in place.
     HandOver(oneshot::Sender<Vec<crate::handoff::HandedSession>>),
     /// Take sessions over that were handed over.
@@ -77,6 +81,8 @@ impl std::fmt::Debug for Request {
             Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
             Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
             Self::Resources(_) => f.write_str("Resources"),
+            Self::SpendTargets(_) => f.write_str("SpendTargets"),
+            Self::Spends(spends) => write!(f, "Spends({})", spends.len()),
             Self::HandOver(_) => f.write_str("HandOver"),
             Self::Adopt(sessions, _) => write!(f, "Adopt({})", sessions.len()),
         }
@@ -164,6 +170,23 @@ impl SupervisorHandle {
     /// `false` once the Supervisor has stopped.
     pub(crate) async fn check_pull_requests(&self) -> bool {
         self.requests.send(Request::CheckPullRequests).await.is_ok()
+    }
+
+    /// The sessions whose agents' records to read, or `None` once the
+    /// Supervisor has stopped.
+    pub(crate) async fn spend_targets(&self) -> Option<Vec<crate::spend::Target>> {
+        let (reply, answer) = oneshot::channel();
+        self.requests
+            .send(Request::SpendTargets(reply))
+            .await
+            .ok()?;
+        answer.await.ok()
+    }
+
+    /// Hands over totals that changed. `false` once the Supervisor has
+    /// stopped.
+    pub(crate) async fn record_spends(&self, spends: Vec<(SessionId, muster_core::Spend)>) -> bool {
+        self.requests.send(Request::Spends(spends)).await.is_ok()
     }
 
     /// Hands over a measurement. `false` once the Supervisor has stopped.

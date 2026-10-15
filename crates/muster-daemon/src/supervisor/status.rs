@@ -23,6 +23,10 @@ impl Supervisor {
             tracing::debug!("ignored a hook posted for another harness");
             return;
         }
+        if let Some(spend) = harness.spend(&delivery.body) {
+            self.set_spend(session, spend);
+            return;
+        }
         let event = delivery.event.as_deref();
         if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
             if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {

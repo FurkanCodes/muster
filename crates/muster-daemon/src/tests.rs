@@ -308,6 +308,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         ended_at: None,
         status_since: Timestamp::from_millis(1),
         activity: None,
+        spend: None,
     };
     let id = session.id;
     store

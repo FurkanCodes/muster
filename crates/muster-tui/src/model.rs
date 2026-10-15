@@ -357,6 +357,7 @@ pub(crate) mod tests {
             ended_at: None,
             status_since: Timestamp::from_millis(created),
             activity: None,
+            spend: None,
         }
     }
 

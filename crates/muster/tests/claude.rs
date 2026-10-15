@@ -22,7 +22,10 @@ struct Setup {
 }
 
 async fn setup() -> Setup {
-    let sandbox = Sandbox::new();
+    setup_in(Sandbox::new()).await
+}
+
+async fn setup_in(sandbox: Sandbox) -> Setup {
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
@@ -759,4 +762,66 @@ async fn attaching_without_watching_leaves_the_news_for_later() {
         expect_status(&mut connection, session).await,
         (SessionStatus::Finished, false)
     );
+}
+
+#[tokio::test]
+async fn what_a_claude_session_used_is_read_from_its_transcript() {
+    let setup = setup_in(Sandbox::new().with_env("MUSTER_SPEND_MS", "100")).await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace, None).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    launch.fire(
+        "UserPromptSubmit",
+        &payload(&id, "UserPromptSubmit", json!({})),
+    );
+    expect_status(&mut connection, session).await;
+    // As Claude Code writes it: a line per block of a message, each with
+    // the message's usage, which counts once.
+    let assistant = |message: &str, output: u64| {
+        json!({
+            "type": "assistant",
+            "sessionId": id,
+            "message": {"id": message, "role": "assistant", "usage": {
+                "input_tokens": 3, "cache_creation_input_tokens": 500,
+                "cache_read_input_tokens": 12_000, "output_tokens": output
+            }}
+        })
+        .to_string()
+    };
+    let slug = setup.sandbox.claude_projects().join("-work");
+    std::fs::create_dir_all(&slug).unwrap();
+    std::fs::write(
+        slug.join(format!("{id}.jsonl")),
+        [
+            assistant("msg_1", 97),
+            assistant("msg_1", 97),
+            assistant("msg_2", 497),
+        ]
+        .join("\n")
+            + "\n",
+    )
+    .unwrap();
+    let spent = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let snapshot = setup.daemon.connect().await.subscribe().await.unwrap();
+            if let Some(spend) = snapshot.sessions[0].spend {
+                return spend;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the transcript was never read");
+    assert_eq!(
+        spent,
+        muster_core::Spend {
+            tokens: 12_600 + 13_000,
+            cost_micros: None
+        }
+    );
+    let status = setup.sandbox.run(&["status"]);
+    let said = String::from_utf8_lossy(&status.stdout);
+    assert!(said.contains("  25k tokens"), "{said}");
 }

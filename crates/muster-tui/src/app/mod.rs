@@ -49,6 +49,8 @@ mod selection_tests;
 #[cfg(test)]
 mod settings_tests;
 #[cfg(test)]
+mod spend_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tickets_from_tests;

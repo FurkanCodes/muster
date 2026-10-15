@@ -35,6 +35,9 @@ pub(super) fn draw_session(
     if let Some(usage) = app.model.usage(session) {
         title.push_str(&format!("· {} ", usage_text(usage)));
     }
+    if let Some(spend) = &stored.spend {
+        title.push_str(&format!("· {} ", spend.text()));
+    }
     if back > 0 {
         title.push_str(&format!("· ↑ {back} lines back "));
     } else if typing {
@@ -94,6 +97,9 @@ pub(super) fn draw_terminal(
         spans.push(Span::from(look::doing(stored).to_owned()).dim());
         if let Some(time) = look::session_time(app, stored) {
             spans.push(Span::from(format!(" · {time}")).dim());
+        }
+        if let Some(spend) = &stored.spend {
+            spans.push(Span::from(format!(" · {}", spend.text())).dim());
         }
         if let Some(workspace) = app.model.workspace(stored.workspace) {
             let mark = if workspace.kind.is_checkout() {

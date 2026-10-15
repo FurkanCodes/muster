@@ -25,6 +25,6 @@ pub use ids::{ParseIdError, ProjectId, RunId, SessionId, WorkspaceId};
 pub use paths::Paths;
 pub use pulls::{Checks, PullRequestState, PullRequestStatus, Review};
 pub use run::{PullRequest, Run, RunStage, RunTransition, Ticket};
-pub use session::{Activity, SessionStatus, WaitReason};
+pub use session::{Activity, SessionStatus, Spend, WaitReason};
 pub use tickets::TicketKey;
 pub use time::Timestamp;

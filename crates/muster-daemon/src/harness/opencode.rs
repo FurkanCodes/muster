@@ -12,10 +12,18 @@
 //! the session at the root of it, so the machine sees one agent session
 //! with subagents in it.
 //!
+//! At each turn's end the plugin also says what the session and its
+//! subagents' sessions have used, as OpenCode counts it through its own
+//! API: every token and the cost (`PRD-12`), which it alone of the agents
+//! reports.
+//!
 //! Verified against OpenCode 1.4.6: the variable loads a `file://` plugin,
 //! which sees the session's environment; the event names and fields read
-//! below are those of its bus.
+//! below are those of its bus; the client's `session.children` and
+//! `session.messages`, and a message's `cost` and `tokens`, are those of
+//! its SDK's types.
 
+use muster_core::Spend;
 use muster_state::session::{HookEvent, Origin};
 use serde_json::{Value, json};
 
@@ -65,7 +73,7 @@ pub(crate) fn config_content(own: Option<&str>, plugin: &str) -> Option<String> 
 /// session. Streamed text is never sent.
 pub(crate) const PLUGIN: &str = r#"// Muster's plugin: reports this OpenCode session's state to the Muster
 // daemon that started it. Inert anywhere else.
-export const MusterStatus = async () => {
+export const MusterStatus = async ({ client } = {}) => {
   const socket = process.env.MUSTER_HOOK_SOCKET;
   const token = process.env.MUSTER_HOOK_TOKEN;
   if (!socket || !token) return {};
@@ -86,6 +94,29 @@ export const MusterStatus = async () => {
       signal: AbortSignal.timeout(3000),
     }).catch(() => {});
   };
+  // What a root session and every session under it used, as OpenCode
+  // itself counts it.
+  const spend = async (session) => {
+    try {
+      let tokens = 0;
+      let cost = 0;
+      const ids = [session];
+      for (let at = 0; at < ids.length && at < 256; at++) {
+        const children = await client.session.children({ path: { id: ids[at] } });
+        for (const child of children?.data ?? []) if (child?.id) ids.push(child.id);
+        const listed = await client.session.messages({ path: { id: ids[at] } });
+        for (const message of listed?.data ?? []) {
+          const info = message?.info ?? {};
+          if (info.role !== "assistant") continue;
+          const used = info.tokens ?? {};
+          tokens += (used.input ?? 0) + (used.output ?? 0) + (used.reasoning ?? 0)
+            + (used.cache?.read ?? 0) + (used.cache?.write ?? 0);
+          cost += info.cost ?? 0;
+        }
+      }
+      send("muster.spend", session, { tokens, cost });
+    } catch {}
+  };
   const wanted = new Set([
     "session.idle",
     "permission.asked",
@@ -104,6 +135,9 @@ export const MusterStatus = async () => {
         send("session.created", info.id, { parent: info.parentID ?? null });
       } else if (wanted.has(event?.type)) {
         send(event.type, props.sessionID, {});
+        if (event.type === "session.idle" && client?.session && !parents.has(props.sessionID)) {
+          spend(props.sessionID);
+        }
       }
     },
     "chat.message": async (input) => send("chat.message", input?.sessionID, {}),
@@ -112,6 +146,26 @@ export const MusterStatus = async () => {
   };
 };
 "#;
+
+/// What a turn's end said the session has used: every token, and its cost
+/// in dollars, kept to millionths.
+pub(crate) fn spend(body: &[u8]) -> Option<Spend> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    if value.get("type")?.as_str()? != "muster.spend" {
+        return None;
+    }
+    let tokens = value.get("tokens")?.as_f64()?;
+    let cost = value.get("cost")?.as_f64()?;
+    let sane = |amount: f64, most: f64| amount.is_finite() && (0.0..most).contains(&amount);
+    if !sane(tokens, 1e15) || !sane(cost, 1e9) {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some(Spend {
+        tokens: tokens as u64,
+        cost_micros: Some((cost * 1_000_000.0).round() as u64),
+    })
+}
 
 /// What a report means to the session machine, with the root session it
 /// came from.
@@ -229,6 +283,38 @@ mod tests {
         assert!(PLUGIN.contains(".catch(() => {})"));
         assert!(!PLUGIN.contains("message.part"));
         assert!(!PLUGIN.contains("import "));
+    }
+
+    #[test]
+    fn a_turn_s_end_says_what_the_session_used_tokens_and_cost() {
+        let spend = |json: &str| {
+            super::spend(json.as_bytes()).map(|spend| (spend.tokens, spend.cost_micros))
+        };
+        assert_eq!(
+            spend(
+                r#"{"type":"muster.spend","session":"ses_root","child":null,"tokens":152340,"cost":0.4213}"#
+            ),
+            Some((152_340, Some(421_300)))
+        );
+        assert_eq!(
+            spend(r#"{"type":"muster.spend","session":"s","tokens":10,"cost":0}"#),
+            Some((10, Some(0)))
+        );
+        for odd in [
+            r#"{"type":"muster.spend","session":"s","tokens":-5,"cost":0.1}"#,
+            r#"{"type":"muster.spend","session":"s","tokens":5,"cost":"lots"}"#,
+            r#"{"type":"muster.spend","session":"s","tokens":5}"#,
+            r#"{"type":"session.idle","session":"s","tokens":5,"cost":0.1}"#,
+        ] {
+            assert_eq!(spend(odd), None, "{odd}");
+        }
+        // Not news to the session machine.
+        assert_eq!(
+            event(r#"{"type":"muster.spend","session":"s","child":null,"tokens":5,"cost":0.1}"#),
+            None
+        );
+        assert!(PLUGIN.contains("client.session.messages({ path: { id: ids[at] } })"));
+        assert!(PLUGIN.contains("send(\"muster.spend\", session, { tokens, cost })"));
     }
 
     #[test]

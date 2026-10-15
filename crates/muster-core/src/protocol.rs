@@ -29,7 +29,9 @@
 //! Settings screen (`SettingChange::TicketsFrom`, sent only to a daemon of
 //! 17 or later), and the settings saying where they are written; version
 //! 18 the pull request from each workspace's branch
-//! (`Workspace::pull_request`, an optional field older clients pass over).
+//! (`Workspace::pull_request`, an optional field older clients pass over);
+//! version 19 what each session's agent has used (`Session::spend`, the
+//! same).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -45,7 +47,7 @@ use crate::settings::{ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 18;
+pub const PROTOCOL_VERSION: u32 = 19;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
