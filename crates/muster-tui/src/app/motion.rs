@@ -26,6 +26,18 @@ impl App {
                 }))
     }
 
+    /// Whether anything waits on the steps going by: something moving, a
+    /// flash or a note to let go, Kep's gladness to end, the welcome to
+    /// leave. While nothing does, the runtime takes no steps and waits for
+    /// what comes next.
+    pub(crate) fn wants_steps(&self) -> bool {
+        self.animating()
+            || self.welcome
+            || self.glad_at.is_some()
+            || !self.flashes.is_empty()
+            || self.note_age().is_some()
+    }
+
     /// The runtime's next step. Whether to draw for it: something moves,
     /// or a flash has just ended and its line must settle.
     pub(crate) fn on_step(&mut self, step: u64) -> bool {
@@ -88,9 +100,16 @@ impl App {
         let Some(before) = self.now.replace(now) else {
             return true;
         };
+        self.clock_every()
+            .is_some_and(|unit| before.as_millis() / unit != now.as_millis() / unit)
+    }
+
+    /// How often, in milliseconds, a time on screen reads differently, as
+    /// [`on_clock`](Self::on_clock) tells; `None` while no session shows one.
+    pub(crate) fn clock_every(&self) -> Option<i64> {
         let sessions = self.model.sessions();
         if sessions.is_empty() {
-            return false;
+            return None;
         }
         let live = sessions.iter().any(|session| {
             matches!(
@@ -98,8 +117,7 @@ impl App {
                 SessionStatus::Running | SessionStatus::NeedsYou { .. }
             )
         });
-        let unit = if live && self.motion { 1_000 } else { 60_000 };
-        before.as_millis() / unit != now.as_millis() / unit
+        Some(if live && self.motion { 1_000 } else { 60_000 })
     }
 
     /// How many steps ago `session`'s line began to flash, while it does.

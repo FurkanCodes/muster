@@ -57,6 +57,15 @@ pub enum TuiError {
     Terminal(#[from] std::io::Error),
 }
 
+/// What woke the loop.
+enum Woke {
+    Input(Option<std::io::Result<Event>>),
+    Link(LinkEvent),
+    Folders((PathBuf, Result<Vec<Folder>, String>)),
+    /// Something of its own was due: a frame, a step or the clock.
+    Time,
+}
+
 /// What the link task reports.
 enum LinkEvent {
     Connected {
@@ -111,13 +120,41 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
 
     let mut input = EventStream::new();
     let mut sender: Option<FrameSender> = None;
-    let mut redraw = tokio::time::interval(FRAME);
     let mut dirty = true;
+    let mut next_draw = Instant::now();
     let mut hold = FrameHold::default();
     let mut steps = motion::Steps::new(Instant::now());
     let outcome = loop {
-        let actions = tokio::select! {
-            event = input.next() => match event {
+        // Asleep until an event or something of its own is due: idle, the
+        // UI wakes for a time on screen to change, and not at all with no
+        // sessions.
+        let now = Instant::now();
+        let wake = next_wake(
+            now,
+            wall_clock().as_millis(),
+            app.clock_every(),
+            app.wants_steps().then(|| steps.next(now)),
+            dirty.then_some(next_draw),
+        );
+        let woke = tokio::select! {
+            event = input.next() => Woke::Input(event),
+            Some(event) = link.recv() => Woke::Link(event),
+            Some(listed) = folder_lists.recv() => Woke::Folders(listed),
+            () = sleep_until(wake) => Woke::Time,
+        };
+        // The step and the clock first, so what an event starts is timed
+        // from now.
+        let now = Instant::now();
+        if let Some(step) = steps.due(now)
+            && app.on_step(step)
+        {
+            dirty = true;
+        }
+        if app.on_clock(wall_clock()) {
+            dirty = true;
+        }
+        let actions = match woke {
+            Woke::Input(event) => match event {
                 Some(Ok(Event::Key(key))) => app.on_key(key),
                 Some(Ok(Event::Paste(text))) => app.on_paste(&text),
                 Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
@@ -127,8 +164,11 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
                 None => break Ok(()),
             },
-            Some(event) = link.recv() => match event {
-                LinkEvent::Connected { sender: connected, welcome } => {
+            Woke::Link(event) => match event {
+                LinkEvent::Connected {
+                    sender: connected,
+                    welcome,
+                } => {
                     sender = Some(connected);
                     app.daemon_protocol = welcome.version;
                     app.on_connected(welcome.daemon_version)
@@ -140,21 +180,9 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                     Vec::new()
                 }
             },
-            Some((dir, folders)) = folder_lists.recv() => app.on_folders(dir, folders),
-            _ = redraw.tick() => {
-                let now = Instant::now();
-                if let Some(step) = steps.due(now)
-                    && app.on_step(step)
-                {
-                    dirty = true;
-                }
-                if app.on_clock(wall_clock()) {
-                    dirty = true;
-                }
-                if dirty && hold.may_draw(app.frame_pending(), now) {
-                    terminal.terminal.draw(|frame| view::draw(frame, &app))?;
-                    dirty = false;
-                }
+            Woke::Folders((dir, folders)) => app.on_folders(dir, folders),
+            Woke::Time => {
+                draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
                 continue;
             }
         };
@@ -186,9 +214,56 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
         if quit {
             break Ok(());
         }
+        draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
     };
     drop(terminal);
     outcome
+}
+
+/// Draws what changed, at most once a `FRAME`, and not while the session
+/// shown is midway through a frame of its own.
+fn draw_if_due(
+    terminal: &mut HostTerminal,
+    app: &App,
+    dirty: &mut bool,
+    next_draw: &mut Instant,
+    hold: &mut FrameHold,
+) -> Result<(), TuiError> {
+    let now = Instant::now();
+    if !*dirty || now < *next_draw {
+        return Ok(());
+    }
+    if hold.may_draw(app.frame_pending(), now) {
+        terminal.terminal.draw(|frame| view::draw(frame, app))?;
+        *dirty = false;
+    }
+    *next_draw = now + FRAME;
+    Ok(())
+}
+
+/// When the loop next has something of its own to do: draw a frame that is
+/// due, take the next step of something moving, or show a time on screen
+/// that reads differently. `None`: nothing, until an event comes.
+fn next_wake(
+    now: Instant,
+    wall_millis: i64,
+    clock_every: Option<i64>,
+    next_step: Option<Instant>,
+    next_draw: Option<Instant>,
+) -> Option<Instant> {
+    let clock = clock_every.filter(|every| *every > 0).map(|every| {
+        let left = every - wall_millis.rem_euclid(every);
+        now + Duration::from_millis(u64::try_from(left).unwrap_or(0))
+    });
+    [clock, next_step, next_draw].into_iter().flatten().min()
+}
+
+/// Sleeps until `wake`, or for good.
+async fn sleep_until(wake: Option<Instant>) {
+    match wake {
+        Some(at) => tokio::time::sleep_until(at.into()).await,
+        None => std::future::pending().await,
+    }
 }
 
 /// The time now, for how long sessions have run or waited: read here, so
@@ -450,6 +525,44 @@ mod tests {
         // Never finished: drawn anyway once the wait is up.
         assert!(!hold.may_draw(true, start + Duration::from_millis(200)));
         assert!(hold.may_draw(true, start + Duration::from_millis(350)));
+    }
+
+    #[test]
+    fn with_nothing_due_the_ui_sleeps_until_an_event() {
+        let now = std::time::Instant::now();
+        assert_eq!(super::next_wake(now, 12_345, None, None, None), None);
+    }
+
+    #[test]
+    fn the_ui_wakes_for_the_first_thing_due() {
+        use std::time::{Duration, Instant};
+        let now = Instant::now();
+        let ms = Duration::from_millis;
+        // A time on screen that reads by the second: at the next one.
+        assert_eq!(
+            super::next_wake(now, 12_300, Some(1_000), None, None),
+            Some(now + ms(700))
+        );
+        // By the minute.
+        assert_eq!(
+            super::next_wake(now, 60_000 + 1_000, Some(60_000), None, None),
+            Some(now + ms(59_000))
+        );
+        // A step or a frame due sooner comes first.
+        assert_eq!(
+            super::next_wake(now, 12_300, Some(1_000), Some(now + ms(40)), None),
+            Some(now + ms(40))
+        );
+        assert_eq!(
+            super::next_wake(
+                now,
+                12_300,
+                Some(1_000),
+                Some(now + ms(40)),
+                Some(now + ms(16))
+            ),
+            Some(now + ms(16))
+        );
     }
 
     #[test]

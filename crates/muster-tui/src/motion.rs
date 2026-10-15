@@ -106,6 +106,13 @@ impl Steps {
         self.drawn = Some(step);
         Some(step)
     }
+
+    /// When the step after the one at `now` begins.
+    pub(crate) fn next(&self, now: Instant) -> Instant {
+        let elapsed = now.saturating_duration_since(self.start).as_millis() / STEP.as_millis();
+        let next = u32::try_from(elapsed + 1).unwrap_or(u32::MAX);
+        self.start + STEP * next
+    }
 }
 
 #[cfg(test)]
