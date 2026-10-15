@@ -1,3 +1,7 @@
 /target
 # Worktrees that Claude Code makes for its own agents.
 /.claude/worktrees/
+
+# Research notes and reports made while working on Muster, kept locally.
+/research_notes/
+/reports/
