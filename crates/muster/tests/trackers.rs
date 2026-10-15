@@ -7,6 +7,7 @@
 
 mod support;
 
+use muster_core::protocol::{Command, Reply};
 use serde_json::json;
 use support::http::serve;
 use support::{Sandbox, git};
@@ -304,4 +305,71 @@ fn mine_narrows_every_tracker_to_the_person_s_own() {
         config.contains("tickets       Jira at acme.atlassian.net, project APP, assigned to you"),
         "{config}"
     );
+}
+
+/// Repositories whose tickets are in the same Jira project say so alike,
+/// and a ticket there can be worked on in either: the UI offers them
+/// together and asks which (`PRODUCT.md` §6, Tickets).
+#[tokio::test]
+async fn projects_listing_the_same_jira_tickets_share_a_source() {
+    let (jira, _asked) = fake_jira();
+    let sandbox = Sandbox::new()
+        .with_env("MUSTER_JIRA_API", &format!("{jira}/rest/api/3"))
+        .with_env("JIRA_API_TOKEN", "t0ken")
+        .with_env("JIRA_EMAIL", "me@example.com");
+    let jira_project = |key: &str| {
+        format!(
+            "[tickets]\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\nproject = \"{key}\"\n"
+        )
+    };
+    let mut roots = Vec::new();
+    for (name, key) in [("web", "APP"), ("api", "APP"), ("ops", "OPS")] {
+        let root = sandbox.repository(name);
+        std::fs::write(root.join("muster.toml"), jira_project(key)).unwrap();
+        git(&root, &["add", "muster.toml"]);
+        git(
+            &root,
+            &["commit", "--quiet", "--message", "Tickets are in Jira"],
+        );
+        roots.push(root);
+    }
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let mut sources = Vec::new();
+    for root in &roots {
+        let Reply::ProjectAdded { id } = connection
+            .command(Command::AddProject {
+                root: root.clone(),
+                name: None,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("expected ProjectAdded");
+        };
+        let Reply::Issues { source, .. } = connection
+            .command(Command::ListIssues { project: id })
+            .await
+            .unwrap()
+        else {
+            panic!("expected Issues");
+        };
+        sources.push(source.expect("Jira's tickets are no repository's own"));
+    }
+    assert_eq!(sources[0], sources[1], "web and api list the same tickets");
+    assert_ne!(sources[0], sources[2], "ops lists another project's");
+    assert!(!sources[0].contains("t0ken") && !sources[0].contains("me@example.com"));
+
+    // The ticket goes to the repository the person chose.
+    let started = sandbox.run(&["issue", "start", "api", "APP-7", "--harness", "shell"]);
+    assert!(started.status.success(), "{}", said(&started));
+    let status = said(&sandbox.run(&["status"]));
+    let api = status.split("\napi ").nth(1).expect(&status);
+    assert!(
+        api.contains("muster/issue-APP-7-fix-the-login-redirect"),
+        "{status}"
+    );
+    let web = status.split("\nweb ").nth(1).expect(&status);
+    let web = web.split("\napi ").next().unwrap_or(web);
+    assert!(!web.contains("issue-APP-7"), "{status}");
 }

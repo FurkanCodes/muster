@@ -439,6 +439,7 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
         issues,
         tracker,
         mine,
+        ..
     } = reply
     else {
         return Err(unexpected(&reply));

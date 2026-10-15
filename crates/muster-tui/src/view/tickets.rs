@@ -1,5 +1,6 @@
 //! The Tickets screen: each project's open tickets with the agents on
-//! them, and the selected ticket's details and text.
+//! them, and the selected ticket's details and text. Projects sharing
+//! their tickets have one heading, their names in their colours.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -69,13 +70,9 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
     match row {
         TicketRow::Project(project) => {
             let project = *project;
-            let name = app
-                .model
-                .project(project)
-                .map_or_else(|| "?".to_owned(), |found| found.name.clone());
             let state = match app.tickets.get(&project) {
                 None | Some(Tickets::Loading) => Span::from("  fetching…").dim(),
-                Some(Tickets::Loaded(tickets, _, mine)) if tickets.is_empty() => {
+                Some(Tickets::Loaded { tickets, mine, .. }) if tickets.is_empty() => {
                     Span::from(if *mine {
                         "  none of yours open"
                     } else {
@@ -83,7 +80,7 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                     })
                     .dim()
                 }
-                Some(Tickets::Loaded(tickets, _, mine)) => {
+                Some(Tickets::Loaded { tickets, mine, .. }) => {
                     let yours = if *mine { " of yours" } else { "" };
                     Span::from(format!("  {}{yours} open", tickets.len())).dim()
                 }
@@ -91,18 +88,16 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                     Span::from(format!("  {}", shorten(error, width.saturating_sub(4)))).red()
                 }
             };
-            let colour = look::project_colour(app, project);
-            Line::from(vec![
-                Span::styled(name, Style::default().fg(colour)).bold(),
-                state,
-            ])
+            let mut spans = names(app, project);
+            spans.push(state);
+            Line::from(spans)
         }
         TicketRow::Ticket(project, key) => {
             let project = *project;
             let Some(ticket) = app.ticket(project, key) else {
                 return Line::from(format!("  {}", key.shown()));
             };
-            let agents = app.model.agents_on(project, key);
+            let agents = app.ticket_agents(project, key);
             let mut marks: Vec<Span<'static>> = agents
                 .iter()
                 .take(AGENTS_SHOWN)
@@ -126,7 +121,7 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
             };
             // Its pull request where the title keeps a readable length;
             // the ticket's details show it anyway.
-            if let Some(found) = app.model.ticket_pull_request(project, key) {
+            if let Some(found) = app.model.ticket_pull_request(&app.sharing(project), key) {
                 let mut with = marks.clone();
                 with.push(Span::raw("  "));
                 with.extend(pull_request::badge(found, true));
@@ -160,15 +155,35 @@ pub(super) fn draw_ticket_details(frame: &mut Frame<'_>, app: &App, area: Rect) 
     );
 }
 
+/// The names of the projects sharing `project`'s tickets, each in its
+/// colour.
+fn names(app: &App, project: muster_core::ProjectId) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    for (at, sharing) in app.sharing(project).into_iter().enumerate() {
+        if at > 0 {
+            spans.push(Span::from(" · ").dim());
+        }
+        let name = app
+            .model
+            .project(sharing)
+            .map_or_else(|| "?".to_owned(), |found| found.name.clone());
+        let colour = look::project_colour(app, sharing);
+        spans.push(Span::styled(name, Style::default().fg(colour)).bold());
+    }
+    spans
+}
+
 fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
-    let Some(found) = app.model.project(project) else {
+    let sharing = app.sharing(project);
+    let mut lines = Vec::new();
+    for found in sharing.iter().filter_map(|id| app.model.project(*id)) {
+        lines.push(Line::from(found.name.clone()).bold());
+        lines.push(Line::from(found.root.display().to_string()).dim());
+    }
+    if lines.is_empty() {
         return Text::default();
-    };
-    let mut lines = vec![
-        Line::from(found.name.clone()).bold(),
-        Line::from(found.root.display().to_string()).dim(),
-        Line::from(""),
-    ];
+    }
+    lines.push(Line::from(""));
     match app.tickets.get(&project) {
         Some(Tickets::Failed(error)) => {
             lines.push(Line::from("Its tickets could not be fetched:").red());
@@ -182,14 +197,25 @@ fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
                 .dim(),
             );
         }
-        Some(Tickets::Loaded(_, tracker, mine)) => {
+        Some(Tickets::Loaded { tracker, mine, .. }) => {
             let whose = if *mine { " assigned to you" } else { "" };
-            lines.push(
-                Line::from(format!(
-                    "Its open tickets{whose} from {tracker}, newest first. ⏎ on one assigns an agent to it."
-                ))
-                .dim(),
-            );
+            if sharing.len() > 1 {
+                lines.push(
+                    Line::from(format!(
+                        "Their open tickets{whose} from {tracker}, newest first: these projects \
+                         list the same ones. ⏎ on one asks which of them it is for, and \
+                         assigns an agent to it there."
+                    ))
+                    .dim(),
+                );
+            } else {
+                lines.push(
+                    Line::from(format!(
+                        "Its open tickets{whose} from {tracker}, newest first. ⏎ on one assigns an agent to it."
+                    ))
+                    .dim(),
+                );
+            }
             let change = if *mine {
                 "Settings (4) can list every open ticket instead."
             } else {
@@ -212,13 +238,21 @@ fn ticket_text(
     let Some(ticket) = app.ticket(project, key) else {
         return Text::default();
     };
-    let project_name = app
-        .model
-        .project(project)
-        .map_or_else(|| "?".to_owned(), |found| found.name.clone());
+    let sharing = app.sharing(project);
+    let project_names: Vec<&str> = sharing
+        .iter()
+        .filter_map(|id| app.model.project(*id))
+        .map(|found| found.name.as_str())
+        .collect();
     let mut lines = vec![
         Line::from(ticket.title.clone()).bold(),
-        Line::from(format!("{} · {project_name} · {}", key.shown(), ticket.url)).dim(),
+        Line::from(format!(
+            "{} · {} · {}",
+            key.shown(),
+            project_names.join(", "),
+            ticket.url
+        ))
+        .dim(),
     ];
     let mut about = Vec::new();
     if let Some(author) = &ticket.author {
@@ -235,14 +269,15 @@ fn ticket_text(
     }
     lines.push(Line::from(""));
 
-    let agents = app.model.agents_on(project, key);
+    let agents = app.ticket_agents(project, key);
     if agents.is_empty() {
-        lines.push(
-            Line::from(
-                "No agent on it yet: ⏎ chooses one to start on it, in a worktree of its own.",
-            )
-            .dim(),
-        );
+        let first = if sharing.len() > 1 {
+            "No agent on it yet: ⏎ chooses which project it is for and an agent to start on it \
+             there, in a worktree of its own."
+        } else {
+            "No agent on it yet: ⏎ chooses one to start on it, in a worktree of its own."
+        };
+        lines.push(Line::from(first).dim());
     } else {
         let spent =
             muster_core::Spend::total(agents.iter().filter_map(|agent| agent.spend.as_ref()));
@@ -268,6 +303,17 @@ fn ticket_text(
             if let Some(spend) = &session.spend {
                 spans.push(Span::from(format!("  {}", spend.text())).dim());
             }
+            if sharing.len() > 1
+                && let Some(workspace) = app.model.workspace(session.workspace)
+                && let Some(found) = app.model.project(workspace.project)
+            {
+                // Which of the projects sharing the ticket it works in.
+                let colour = look::project_colour(app, found.id);
+                spans.push(Span::styled(
+                    format!("  {}", found.name),
+                    Style::default().fg(colour),
+                ));
+            }
             spans.push(Span::from(format!("  {branch}")).dim());
             if let Some(found) = app
                 .model
@@ -279,9 +325,12 @@ fn ticket_text(
             }
             lines.push(Line::from(spans));
         }
-        lines.push(
-            Line::from("⏎ opens the latest; a starts another, in a worktree of its own.").dim(),
-        );
+        let another = if sharing.len() > 1 {
+            "⏎ opens the latest; a starts another, in the project you choose."
+        } else {
+            "⏎ opens the latest; a starts another, in a worktree of its own."
+        };
+        lines.push(Line::from(another).dim());
     }
     lines.push(Line::from(""));
     match app.ticket_texts.get(&(project, key.clone())) {
@@ -303,7 +352,7 @@ fn ticket_text(
 pub(super) fn hints(app: &App) -> Vec<&'static str> {
     let mut hints = Vec::new();
     if let Some(TicketRow::Ticket(project, key)) = &app.tickets_selected {
-        if app.model.agents_on(*project, key).is_empty() {
+        if app.ticket_agents(*project, key).is_empty() {
             hints.push("⏎ start an agent");
         } else {
             hints.extend(["⏎ open agent", "a another agent"]);

@@ -61,6 +61,7 @@ fn on_tickets() -> World {
         &mut world,
         req_id,
         Ok(Reply::Issues {
+            source: None,
             tracker: "GitHub issues".to_owned(),
             issues: vec![issue(42, "Fix the login redirect"), issue(7, "Dark mode")],
             mine: false,
@@ -254,7 +255,10 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
     );
     assert!(render(&world.app).contains("Starting Codex on #42…"));
 
-    // Codex is offered first next time; esc starts nothing.
+    // Codex is offered first next time, in a worktree of its own once
+    // the ticket has one; esc starts nothing.
+    agent_on_42(&mut world, "muster/issue-42-fix-the-login-redirect", 10);
+    world.app.mode = Mode::Browse;
     press(&mut world.app, KeyCode::Char('a'));
     let Mode::Dialog(Dialog::AssignAgent {
         harness, another, ..
@@ -291,7 +295,7 @@ fn the_agents_on_a_ticket_are_those_on_branches_named_for_it() {
     let agents: Vec<_> = world
         .app
         .model
-        .agents_on(world.project.id, &key(42))
+        .agents_on(&[world.project.id], &key(42))
         .iter()
         .map(|session| session.id)
         .collect();

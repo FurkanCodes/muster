@@ -126,6 +126,7 @@ fn enter_turns_it_on_and_the_tickets_are_fetched_again_as_chosen() {
         &mut world,
         req_id,
         Ok(Reply::Issues {
+            source: None,
             issues: Vec::new(),
             tracker: "GitHub issues".to_owned(),
             mine: false,
@@ -179,6 +180,7 @@ fn enter_turns_it_on_and_the_tickets_are_fetched_again_as_chosen() {
         &mut world,
         req_id,
         Ok(Reply::Issues {
+            source: None,
             issues: Vec::new(),
             tracker: "GitHub issues".to_owned(),
             mine: true,

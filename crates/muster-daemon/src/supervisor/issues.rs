@@ -67,6 +67,7 @@ impl Supervisor {
                     issues,
                     tracker: source.describe(),
                     mine: source.only_mine(),
+                    source: source.source(),
                 })
             }
             .await

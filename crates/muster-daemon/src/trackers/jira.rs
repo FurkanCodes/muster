@@ -566,6 +566,11 @@ impl TicketSource for Jira {
         self.mine
     }
 
+    /// The site and the query as asked, `mine` in it.
+    fn source(&self) -> Option<String> {
+        Some(format!("jira {} {}", self.site.web, self.jql))
+    }
+
     fn list(&self) -> BoxFuture<'_, Result<Vec<Issue>, ServiceError>> {
         Box::pin(async move {
             let found = self.search().await?;
