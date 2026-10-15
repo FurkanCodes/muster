@@ -24,6 +24,8 @@ pub(super) struct FetchedIssue {
     pub(super) harness: String,
     pub(super) size: TermSize,
     pub(super) another: bool,
+    /// Whether its branch starts with `muster/`, as the project says.
+    pub(super) prefixed: bool,
     pub(super) detail: Result<IssueDetail, ServiceError>,
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
@@ -168,12 +170,15 @@ impl Supervisor {
         }
         let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
         tokio::spawn(async move {
+            let prefixed =
+                crate::config::muster_prefix(place.root.clone(), place.overrides.clone()).await;
             let detail = async { trackers.for_project(place).await?.view(&key).await }.await;
             let fetched = FetchedIssue {
                 project,
                 harness,
                 size,
                 another,
+                prefixed,
                 detail,
                 reply,
             };
@@ -192,9 +197,10 @@ impl Supervisor {
                     harness,
                     size,
                     another,
+                    prefixed,
                     ..
                 } = fetched;
-                self.start_issue(project, &detail, harness, size, another)
+                self.start_issue(project, &detail, harness, size, another, prefixed)
                     .await
             }
             Err(error) => Err(error.body()),
@@ -212,8 +218,9 @@ impl Supervisor {
         harness: String,
         size: TermSize,
         another: bool,
+        prefixed: bool,
     ) -> Result<Reply, ErrorBody> {
-        let branch = ticket_branch(&detail.issue.key, &detail.issue.title);
+        let branch = ticket_branch(&detail.issue.key, &detail.issue.title, prefixed);
         let existing = self.worktree_on(project, &branch).map(|found| found.id);
         let workspace = match (existing, another) {
             (Some(existing), false) => existing,

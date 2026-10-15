@@ -237,6 +237,9 @@ enum Then {
     SettingChanged(ProjectId),
     /// The same, after the person chose where its tickets come from.
     TicketsFromChanged(ProjectId),
+    /// Keep the project's settings as changed: whether its branches start
+    /// with `muster/`.
+    BranchesChanged(ProjectId),
     Say(&'static str),
 }
 

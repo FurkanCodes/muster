@@ -82,9 +82,13 @@ impl From<TicketKey> for String {
 }
 
 /// The ticket a branch Muster named for one is about: `muster/issue-42`,
-/// `muster/issue-42-fix-the-login`, `muster/issue-PROJ-7-fix-the-login-2`.
+/// `muster/issue-42-fix-the-login`, `muster/issue-PROJ-7-fix-the-login-2`,
+/// or the same without `muster/`, for a project whose branches go without
+/// it.
 pub fn issue_of_branch(branch: &str) -> Option<TicketKey> {
-    let rest = branch.strip_prefix("muster/issue-")?;
+    let rest = branch
+        .strip_prefix("muster/issue-")
+        .or_else(|| branch.strip_prefix("issue-"))?;
     let mut parts = rest.split('-');
     let first = parts.next()?;
     if !first.is_empty() && first.chars().all(|c| c.is_ascii_digit()) {
@@ -99,8 +103,10 @@ pub fn issue_of_branch(branch: &str) -> Option<TicketKey> {
 }
 
 /// The branch for work on ticket `key` titled `title`:
-/// `muster/issue-42-fix-the-login-redirect`, `muster/issue-PROJ-7-fix-it`.
-pub fn ticket_branch(key: &TicketKey, title: &str) -> String {
+/// `muster/issue-42-fix-the-login-redirect`, `muster/issue-PROJ-7-fix-it`;
+/// without `muster/` unless `prefixed`.
+pub fn ticket_branch(key: &TicketKey, title: &str, prefixed: bool) -> String {
+    let prefix = if prefixed { "muster/" } else { "" };
     let words: String = title
         .to_lowercase()
         .chars()
@@ -117,9 +123,9 @@ pub fn ticket_branch(key: &TicketKey, title: &str) -> String {
         slug.push_str(word);
     }
     if slug.is_empty() {
-        format!("muster/issue-{key}")
+        format!("{prefix}issue-{key}")
     } else {
-        format!("muster/issue-{key}-{slug}")
+        format!("{prefix}issue-{key}-{slug}")
     }
 }
 
@@ -184,24 +190,40 @@ mod tests {
         assert_eq!(issue_of_branch("muster/issue-"), None);
         assert_eq!(issue_of_branch("feature/issue-42"), None);
         assert_eq!(issue_of_branch("muster/ab12cd"), None);
+        // A project whose branches go without `muster/`.
+        assert_eq!(issue_of_branch("issue-42-fix-the-login"), Some(key("42")));
+        assert_eq!(
+            issue_of_branch("issue-PROJ-7-fix-it-2"),
+            Some(key("PROJ-7"))
+        );
+        assert_eq!(issue_of_branch("issue-fix-12"), None);
+        assert_eq!(issue_of_branch("tissue-42"), None);
         assert_eq!(issue_of_branch("detached at 1a2b3c4"), None);
     }
 
     #[test]
     fn a_ticket_s_branch_carries_its_key_and_a_short_title() {
         assert_eq!(
-            ticket_branch(&key("42"), "Fix the login redirect!"),
+            ticket_branch(&key("42"), "Fix the login redirect!", true),
             "muster/issue-42-fix-the-login-redirect"
         );
-        assert_eq!(ticket_branch(&key("7"), "🔥🔥"), "muster/issue-7");
+        assert_eq!(ticket_branch(&key("7"), "🔥🔥", true), "muster/issue-7");
         assert_eq!(
-            ticket_branch(&key("PROJ-7"), "Fix it"),
+            ticket_branch(&key("PROJ-7"), "Fix it", true),
             "muster/issue-PROJ-7-fix-it"
         );
-        let long = ticket_branch(&key("9"), &"word ".repeat(30));
+        assert_eq!(
+            ticket_branch(&key("42"), "Fix the login redirect!", false),
+            "issue-42-fix-the-login-redirect"
+        );
+        assert_eq!(ticket_branch(&key("7"), "🔥🔥", false), "issue-7");
+        let long = ticket_branch(&key("9"), &"word ".repeat(30), true);
         assert!(long.len() <= "muster/issue-9-".len() + 40, "{long}");
         for (key, title) in [(key("PROJ-7"), "Fix it"), (key("42"), "Fix the login")] {
-            assert_eq!(issue_of_branch(&ticket_branch(&key, title)), Some(key));
+            for prefixed in [true, false] {
+                let branch = ticket_branch(&key, title, prefixed);
+                assert_eq!(issue_of_branch(&branch), Some(key.clone()), "{branch}");
+            }
         }
     }
 }

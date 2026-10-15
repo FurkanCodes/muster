@@ -17,6 +17,8 @@ use crate::app::{App, SettingRow, Settings};
 const ONLY_MINE: &str = "Only my tickets";
 /// What the setting of where the tickets come from is called.
 const TICKETS_FROM: &str = "Tickets from";
+/// What the setting of the branches' prefix is called.
+const MUSTER_PREFIX: &str = "Branches with muster/";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Settings ", app.list_has_keys());
@@ -90,6 +92,18 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
             };
             labelled(TICKETS_FROM, value, width)
         }
+        SettingRow::MusterPrefix(_) => {
+            let value = match settings {
+                Some(Settings::Loaded(found)) => match found.muster_prefix {
+                    Some(prefix) if prefix.on => Span::from("on").green().bold(),
+                    Some(_) => Span::from("off").dim(),
+                    None => Span::from("?").red(),
+                },
+                Some(Settings::Failed(_)) => Span::from("?").red(),
+                None | Some(Settings::Loading) => Span::from("…").dim(),
+            };
+            labelled(MUSTER_PREFIX, value, width)
+        }
     }
 }
 
@@ -134,6 +148,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings),
                 SettingRow::TicketsFrom(_) => tickets_from_text(settings),
+                SettingRow::MusterPrefix(_) => muster_prefix_text(settings),
                 SettingRow::Project(project) => project_text(app, project, settings),
             },
             Some(Settings::Failed(error)) => Text::from(vec![
@@ -192,6 +207,46 @@ fn only_mine_text(settings: &ProjectSettings) -> Text<'static> {
         Line::from(
             "A change goes in your own settings file, never in the repository, and the tickets \
              are fetched again.",
+        )
+        .dim(),
+    ])
+}
+
+fn muster_prefix_text(settings: &ProjectSettings) -> Text<'static> {
+    let Some(toggle) = settings.muster_prefix else {
+        return Text::from("The daemon did not say how it names branches.").dim();
+    };
+    let (state, does, key) = if toggle.on {
+        (
+            Span::from("on").green().bold(),
+            "The branches Muster makes start with muster/: muster/issue-42-fix-the-login for a \
+             ticket, muster/4f2k9q for a worktree you give no name.",
+            "⏎ or space turns it off, for issue-42-fix-the-login and worktree-4f2k9q.",
+        )
+    } else {
+        (
+            Span::from("off").bold(),
+            "The branches Muster makes go without muster/: issue-42-fix-the-login for a ticket, \
+             worktree-4f2k9q for a worktree you give no name.",
+            "⏎ or space turns it on, for muster/issue-42-fix-the-login.",
+        )
+    };
+    let from = match toggle.from {
+        SettingSource::Yours => "your settings",
+        SettingSource::Project => "the project's muster.toml",
+        SettingSource::Default => "nothing yet: on unless set",
+    };
+    Text::from(vec![
+        Line::from(vec![Span::from(format!("{MUSTER_PREFIX}  ")).bold(), state]),
+        Line::from(does),
+        Line::from(""),
+        detail("Set by", from.to_owned()),
+        detail("Saved in", settings.file.display().to_string()),
+        Line::from(""),
+        Line::from(key).dim(),
+        Line::from(
+            "Branches already made keep their names, and a ticket's agents are found by either \
+             name. A change goes in your own settings file, never in the repository.",
         )
         .dim(),
     ])
@@ -287,6 +342,17 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
         Some(SettingRow::TicketsFrom(project)) => {
             if let Some(Settings::Loaded(_)) = app.settings.get(&project) {
                 hints.push("⏎ choose");
+            }
+        }
+        Some(SettingRow::MusterPrefix(project)) => {
+            if let Some(Settings::Loaded(settings)) = app.settings.get(&project)
+                && let Some(prefix) = settings.muster_prefix
+            {
+                hints.push(if prefix.on {
+                    "⏎ turn off"
+                } else {
+                    "⏎ turn on"
+                });
             }
         }
         Some(SettingRow::Project(_)) | None => {}

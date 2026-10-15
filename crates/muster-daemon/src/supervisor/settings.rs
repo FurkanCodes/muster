@@ -115,5 +115,9 @@ async fn settings_of(place: ProjectPlace) -> Result<Reply, ErrorBody> {
         tickets,
         tickets_set_by: sources.tracker,
         tickets_untold,
+        muster_prefix: Some(Toggle {
+            on: config.branches.muster_prefix,
+            from: sources.muster_prefix,
+        }),
     }))
 }

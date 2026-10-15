@@ -34,6 +34,10 @@ pub struct ProjectSettings {
     /// 17.
     #[serde(default)]
     pub tickets_untold: bool,
+    /// Whether the branches Muster makes start with `muster/`
+    /// (`[branches] muster_prefix`). From protocol 20.
+    #[serde(default)]
+    pub muster_prefix: Option<Toggle>,
 }
 
 /// A setting that is on or off, and where that comes from.
@@ -104,7 +108,16 @@ pub enum SettingChange {
     /// Where the tickets are; `None` follows the repository's `muster.toml`
     /// and the git remote again. From protocol 17.
     TicketsFrom(Option<TicketsFrom>),
+    /// Whether the branches Muster makes start with `muster/`. From
+    /// protocol 20.
+    MusterPrefix(bool),
 }
+
+/// The first protocol whose daemon takes `SettingChange::MusterPrefix`.
+pub const MUSTER_PREFIX_PROTOCOL: u32 = 20;
+
+/// Where the branches' prefix is written: `[branches] muster_prefix`.
+pub const MUSTER_PREFIX: (&str, &str) = ("branches", "muster_prefix");
 
 /// Where only-my-tickets is written: `[tickets] mine`.
 pub const ONLY_MINE: (&str, &str) = ("tickets", "mine");
