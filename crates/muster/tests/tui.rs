@@ -235,12 +235,12 @@ fn kep_welcomes_the_person_and_a_key_typed_ahead_goes_through() {
     ui.wait_for("Add a project");
     ui.keys(b"\x1b");
     ui.wait_without("Add a project");
-    // Kep sits beside the name in the pane, with nothing to show yet.
+    // Kep sits beside the name in the pane, with nothing to show yet: once
+    // the daemon the UI started answers, which the key typed ahead may
+    // well have come before.
+    ui.wait_for("No projects yet");
     let screen = ui.text();
-    assert!(
-        screen.contains("No projects yet") && screen.contains('▀'),
-        "{screen}"
-    );
+    assert!(screen.contains('▀'), "{screen}");
     ui.keys(b"q");
 }
 
