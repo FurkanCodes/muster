@@ -3,9 +3,9 @@
 //!
 //! The notch shows only while the person looks at no Muster window and an
 //! agent works or waits on them (a question asked, or news not yet seen),
-//! and only while Muster's own settings have it on. Under the notch, Kep's
-//! face on the left and the counts on the right; pointed at, the sessions
-//! that wait on the person, oldest first, then those working.
+//! and only while Muster's own settings have it on. Level with the notch,
+//! the counts: what waits on the person, and what works; pointed at, the
+//! sessions that wait on the person, oldest first, then those working.
 
 use muster_core::protocol::Snapshot;
 use muster_core::{Session, SessionId, SessionStatus, Timestamp, WaitReason};
@@ -18,7 +18,6 @@ pub const MOST_ROWS: usize = 8;
 pub struct Board {
     /// Whether it shows at all.
     pub shown: bool,
-    pub kep: Mood,
     /// Agents working.
     pub working: usize,
     /// Sessions waiting on the person: asking, or with news not yet seen.
@@ -27,26 +26,6 @@ pub struct Board {
     pub rows: Vec<Row>,
     /// Sessions waiting or working beyond the rows.
     pub more: usize,
-}
-
-/// How Kep looks, as in the UI's top bar.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mood {
-    /// Something waits on the person: ears up, and a bark.
-    Alert,
-    /// Something works.
-    Watching,
-}
-
-impl Mood {
-    /// Kep's face: ears, eyes either side of the nose, and a bark.
-    pub fn face(self, blink: bool) -> &'static str {
-        match (self, blink) {
-            (Self::Alert, _) => "▲•ᴥ•▲",
-            (Self::Watching, false) => "▼•ᴥ•▼",
-            (Self::Watching, true) => "▼-ᴥ-▼",
-        }
-    }
 }
 
 /// One session listed.
@@ -97,11 +76,6 @@ impl Board {
         let listed: Vec<&Session> = waiting.iter().chain(&working).copied().collect();
         Self {
             shown: connected && busy && !state.looked_at && state.preferences.notch,
-            kep: if waiting.is_empty() {
-                Mood::Watching
-            } else {
-                Mood::Alert
-            },
             working: working.len(),
             waiting: waiting.len(),
             rows: listed
@@ -117,7 +91,6 @@ impl Board {
     pub fn hidden() -> Self {
         Self {
             shown: false,
-            kep: Mood::Watching,
             working: 0,
             waiting: 0,
             rows: Vec::new(),
@@ -295,7 +268,6 @@ mod tests {
         let shown = board(&state);
         assert!(shown.shown);
         assert_eq!((shown.working, shown.waiting), (1, 0));
-        assert_eq!(shown.kep, Mood::Watching);
 
         // A Muster window looked at, the setting off, or no daemon: hidden.
         state.looked_at = true;
@@ -315,7 +287,7 @@ mod tests {
         state.sessions[1].unseen = true;
         let news = board(&state);
         assert!(news.shown);
-        assert_eq!((news.working, news.waiting, news.kep), (0, 1, Mood::Alert));
+        assert_eq!((news.working, news.waiting), (0, 1));
     }
 
     #[test]
