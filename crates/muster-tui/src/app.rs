@@ -6,6 +6,7 @@ mod events;
 mod harness_choice;
 mod link;
 mod motion;
+mod notch;
 mod picker;
 mod pointer;
 pub(crate) mod selection;
@@ -37,6 +38,8 @@ mod motion_tests;
 mod mouse_sweep_tests;
 #[cfg(test)]
 mod navigation_tests;
+#[cfg(test)]
+mod notch_tests;
 #[cfg(test)]
 mod picker_tests;
 #[cfg(test)]
@@ -88,6 +91,10 @@ pub(crate) enum Action {
     /// List the folders in this folder, for the folder picker
     /// ([`App::on_folders`]).
     ListFolders(PathBuf),
+    /// Start Muster's notch, unless it runs already.
+    StartNotch,
+    /// Bring the person's terminal, this window's, to the front.
+    Activate,
     Quit,
 }
 
@@ -247,6 +254,8 @@ enum Then {
     /// Keep the project's settings as changed: whether its branches start
     /// with `muster/`.
     BranchesChanged(ProjectId),
+    /// Say whether the notch is on now: turned on, or off.
+    NotchChanged(bool),
     Say(&'static str),
 }
 
@@ -344,6 +353,14 @@ pub(crate) struct App {
     /// The protocol the daemon agreed to speak: a change it does not know
     /// is never sent to it (`ARC-09`).
     pub(crate) daemon_protocol: u32,
+    /// Whether Muster's notch can show here: a Mac, with a program to
+    /// start it.
+    pub(crate) notch_here: bool,
+    /// Whether this UI has started the notch since it connected, or seen
+    /// it turned off since.
+    notch_started: bool,
+    /// The notch is being turned on or off: the answer is on its way.
+    pub(crate) notch_changing: bool,
 }
 
 impl App {
@@ -390,6 +407,9 @@ impl App {
             ticket_agent: HarnessChoice::Claude,
             ticket_projects: HashMap::new(),
             daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
+            notch_here: false,
+            notch_started: false,
+            notch_changing: false,
         }
     }
 

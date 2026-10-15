@@ -407,7 +407,13 @@ fn a_fetch_lost_with_the_daemon_is_asked_again() {
     press(&mut world.app, KeyCode::Char('i'));
     world.app.on_disconnected("gone".to_owned());
     let actions = world.app.on_connected("0.1.0".to_owned());
-    assert_eq!(actions, [Action::Send(ClientFrame::Subscribe)]);
+    assert_eq!(
+        actions,
+        [
+            Action::Send(ClientFrame::Subscribe),
+            Action::Send(ClientFrame::Looking { looking: true })
+        ]
+    );
     let actions = world
         .app
         .on_frame(ServerFrame::Snapshot(muster_core::protocol::Snapshot {

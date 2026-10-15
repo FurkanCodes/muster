@@ -313,7 +313,10 @@ fn screens_with_nothing_on_them_yet_say_so_with_character() {
     let mut app = App::new(PathBuf::from("/src"), SIZE);
     assert_eq!(
         app.on_connected("0.1.0".to_owned()),
-        [Action::Send(ClientFrame::Subscribe)]
+        [
+            Action::Send(ClientFrame::Subscribe),
+            Action::Send(ClientFrame::Looking { looking: true })
+        ]
     );
     let screen = render(&app);
     assert!(screen.contains(WORDMARK[0]), "{screen}");

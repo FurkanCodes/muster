@@ -16,7 +16,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{mpsc, watch};
 
 use crate::pty::PtyHandle;
-use crate::supervisor::{SupervisorHandle, TerminalLink, WatchGuard};
+use crate::supervisor::{LookGuard, SupervisorHandle, TerminalLink, WatchGuard};
 use crate::tasks::{self, Owned, Tasks};
 use crate::terminal::forward_output;
 
@@ -61,6 +61,8 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tas
         terminals: HashMap::new(),
         forwarders: HashMap::new(),
         watching: HashMap::new(),
+        looker: None,
+        version: MIN_PROTOCOL_VERSION,
     };
     if let Err(error) = session.run().await {
         // The writer sends this last, then closes.
@@ -100,6 +102,10 @@ struct Connection {
     /// The attached sessions this client's person is looking at; dropping
     /// a guard ends its watch.
     watching: HashMap<SessionId, WatchGuard>,
+    /// Held once the client says whether the person is looking at it.
+    looker: Option<LookGuard>,
+    /// The protocol agreed with the client.
+    version: u32,
 }
 
 impl Connection {
@@ -118,7 +124,8 @@ impl Connection {
                     ));
                 }
                 ClientFrame::Subscribe => {
-                    let pump = pump_state(self.supervisor.clone(), self.outgoing.clone());
+                    let pump =
+                        pump_state(self.supervisor.clone(), self.outgoing.clone(), self.version);
                     // Dropping the old one ends it.
                     self.pump = Some(tasks::owned(pump));
                 }
@@ -139,6 +146,7 @@ impl Connection {
                     self.terminals.remove(&session);
                 }
                 ClientFrame::Watch { session, watching } => self.watch(session, watching).await,
+                ClientFrame::Looking { looking } => self.looking(looking).await,
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await
                         && !pty.input(data).await
@@ -205,6 +213,17 @@ impl Connection {
         }
     }
 
+    /// The client says whether the person is looking at it; the first
+    /// time, it is counted among the clients that say so.
+    async fn looking(&mut self, looking: bool) {
+        if self.looker.is_none() {
+            self.looker = self.supervisor.add_looker(self.outgoing.clone()).await;
+        }
+        if let Some(looker) = &self.looker {
+            self.supervisor.looking(looker, looking).await;
+        }
+    }
+
     /// The session's current terminal, asking the Supervisor only the first
     /// time.
     async fn terminal(&mut self, session: SessionId) -> Option<PtyHandle> {
@@ -268,6 +287,7 @@ impl Connection {
             return Ok(false);
         };
         tracing::debug!(client = %hello.client, version, "client connected");
+        self.version = version;
         let _ = self
             .outgoing
             .send(ServerFrame::Welcome(Welcome {
@@ -289,10 +309,14 @@ impl Connection {
     }
 }
 
-/// Sends the client a snapshot and then every delta. A client that falls
-/// behind the broadcast is sent a fresh snapshot instead of the deltas it
-/// missed.
-pub(crate) async fn pump_state(supervisor: SupervisorHandle, outgoing: mpsc::Sender<ServerFrame>) {
+/// Sends the client a snapshot and then every delta its protocol `version`
+/// knows. A client that falls behind the broadcast is sent a fresh snapshot
+/// instead of the deltas it missed.
+pub(crate) async fn pump_state(
+    supervisor: SupervisorHandle,
+    outgoing: mpsc::Sender<ServerFrame>,
+    version: u32,
+) {
     while let Some((snapshot, mut deltas)) = supervisor.subscribe().await {
         if outgoing
             .send(ServerFrame::Snapshot(snapshot))
@@ -303,6 +327,7 @@ pub(crate) async fn pump_state(supervisor: SupervisorHandle, outgoing: mpsc::Sen
         }
         loop {
             match deltas.recv().await {
+                Ok(delta) if delta.since() > version => {}
                 Ok(delta) => {
                     if outgoing.send(ServerFrame::Delta(delta)).await.is_err() {
                         return;

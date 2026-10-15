@@ -36,6 +36,13 @@ pub struct Options {
     pub notify: bool,
     /// Let running sessions' marks spin and what needs the person pulse.
     pub motion: bool,
+    /// Starts Muster's notch, unless it runs already; `None` where there
+    /// is none (`ARC-22`).
+    pub start_notch: Option<Box<dyn Fn() -> std::io::Result<()> + Send + Sync>>,
+    /// The application the person's terminal is, by its bundle identifier
+    /// (`com.googlecode.iterm2`), brought to the front when the person
+    /// picks a session in the notch.
+    pub terminal_app: Option<String>,
 }
 
 impl std::fmt::Debug for Options {
@@ -46,6 +53,8 @@ impl std::fmt::Debug for Options {
             .field("cwd", &self.cwd)
             .field("notify", &self.notify)
             .field("motion", &self.motion)
+            .field("starts_notch", &self.start_notch.is_some())
+            .field("terminal_app", &self.terminal_app)
             .finish()
     }
 }
@@ -85,13 +94,15 @@ const CLIENT: &str = concat!("muster-tui ", env!("CARGO_PKG_VERSION"));
 
 /// Runs the UI until the person quits. The daemon, and every session, keep
 /// running.
-pub async fn run(options: Options) -> Result<(), TuiError> {
+pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut terminal = HostTerminal::enter()?;
     let size = terminal_size(&terminal.terminal)?;
     let mut app = App::new(options.cwd.clone(), size);
     app.notify = options.notify;
     app.motion = options.motion;
     app.welcome = true;
+    let outside = Outside::take(&mut options);
+    app.notch_here = outside.start_notch.is_some();
 
     // Unbounded on purpose: this loop also writes to the daemon, which
     // may be waiting to write to the link, so the link waiting on this loop
@@ -187,7 +198,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
             }
         };
         dirty = true;
-        let quit = perform(actions, &mut sender, &listed_folders).await;
+        let quit = perform(actions, &mut sender, &listed_folders, &outside).await;
         if quit {
             break Ok(());
         }
@@ -197,11 +208,28 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     outcome
 }
 
+/// What the runtime reaches outside the UI and its daemon.
+struct Outside {
+    start_notch: Option<Box<dyn Fn() -> std::io::Result<()> + Send + Sync>>,
+    terminal_app: Option<String>,
+}
+
+impl Outside {
+    /// What `options` say of it; the rest go to the link to the daemon.
+    fn take(options: &mut Options) -> Self {
+        Self {
+            start_notch: options.start_notch.take(),
+            terminal_app: options.terminal_app.take(),
+        }
+    }
+}
+
 /// Carries out what the app asked for; whether it asked to quit.
 async fn perform(
     actions: Vec<Action>,
     sender: &mut Option<FrameSender>,
     listed_folders: &mpsc::UnboundedSender<(PathBuf, Result<Vec<Folder>, String>)>,
+    outside: &Outside,
 ) -> bool {
     let mut quit = false;
     for action in actions {
@@ -210,6 +238,17 @@ async fn perform(
             Action::Notify(text) => notify(&text),
             Action::Open(url) => open_in_browser(&url),
             Action::Copy(text) => clipboard::copy(&text),
+            Action::StartNotch => {
+                if let Some(start) = &outside.start_notch {
+                    // Nothing to tell the person: the notch is a nicety.
+                    let _ = start();
+                }
+            }
+            Action::Activate => {
+                if let Some(app) = &outside.terminal_app {
+                    bring_to_front(app);
+                }
+            }
             Action::ListFolders(dir) => {
                 let listed = listed_folders.clone();
                 tokio::task::spawn_blocking(move || {
@@ -505,6 +544,39 @@ fn open_in_browser(url: &str) {
         });
 }
 
+/// Brings the application with bundle identifier `app` to the front, with
+/// the system's own `open` (found on `PATH`, so a test stands in for it);
+/// macOS only, and only an identifier, as the environment could hold
+/// anything.
+fn bring_to_front(app: &str) {
+    if !cfg!(target_os = "macos") || !is_bundle_id(app) {
+        return;
+    }
+    let _ = std::process::Command::new("open")
+        .args(["-b", app])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|mut child| {
+            // Reaped in the background: it returns at once.
+            let _ = std::thread::Builder::new()
+                .name("muster-open-wait".to_owned())
+                .spawn(move || child.wait());
+        });
+}
+
+/// Whether `app` reads as a bundle identifier, `com.example.App`: letters,
+/// digits, dots and hyphens, and no `-` first, which `open` would take for
+/// an option.
+fn is_bundle_id(app: &str) -> bool {
+    !app.is_empty()
+        && !app.starts_with('-')
+        && app
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
 /// Whether `url` is an http or https address and nothing else: a ticket's
 /// link could otherwise name a file or an application to open.
 fn is_web_address(url: &str) -> bool {
@@ -536,6 +608,21 @@ impl crossterm::Command for MouseReports {
 #[cfg(test)]
 #[expect(clippy::disallowed_methods, reason = "tests time themselves")]
 mod tests {
+    #[test]
+    fn only_a_bundle_identifier_is_handed_to_open() {
+        assert!(super::is_bundle_id("com.googlecode.iterm2"));
+        assert!(super::is_bundle_id("com.mitchellh.ghostty"));
+        for not_one in [
+            "",
+            "-a",
+            "com.apple.Terminal; rm",
+            "a b",
+            "/Applications/X.app",
+        ] {
+            assert!(!super::is_bundle_id(not_one), "{not_one}");
+        }
+    }
+
     #[test]
     fn drawing_waits_for_a_frame_to_finish_but_not_for_ever() {
         use std::time::{Duration, Instant};

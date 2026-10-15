@@ -341,7 +341,8 @@ impl Store {
             workspaces,
             sessions,
             runs,
-            resources: None,
+            // Not stored: the Supervisor fills them in.
+            ..Snapshot::default()
         })
     }
 

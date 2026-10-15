@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
+use muster_core::settings::Preferences;
 use muster_core::{
     Project, ProjectId, Run, Session, SessionId, SessionStatus, TicketKey, Workspace, WorkspaceId,
 };
@@ -28,6 +29,8 @@ pub(crate) struct Model {
     changed: HashMap<SessionId, u64>,
     clock: u64,
     resources: Option<ResourceReport>,
+    /// Muster's own settings.
+    preferences: Preferences,
     /// Whether a snapshot has arrived; until then the model is empty, not
     /// "no sessions".
     loaded: bool,
@@ -48,6 +51,7 @@ impl Model {
         self.sessions = sessions;
         self.runs = snapshot.runs;
         self.resources = snapshot.resources;
+        self.preferences = snapshot.preferences;
         self.loaded = true;
     }
 
@@ -106,7 +110,15 @@ impl Model {
             }
             Delta::Resources(report) => self.resources = Some(report),
             Delta::RunUpserted(run) => upsert(&mut self.runs, run, |r| r.id),
+            Delta::Preferences(preferences) => self.preferences = preferences,
+            // For the notch: this window says itself whether it is looked at.
+            Delta::LookedAt { .. } => {}
         }
+    }
+
+    /// Muster's own settings.
+    pub(crate) fn preferences(&self) -> &Preferences {
+        &self.preferences
     }
 
     /// The latest measurement of the host, if any.

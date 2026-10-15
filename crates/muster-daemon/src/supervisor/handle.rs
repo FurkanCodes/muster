@@ -4,12 +4,12 @@
 use std::path::PathBuf;
 
 use muster_core::protocol::{
-    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot,
+    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, ServerFrame, Snapshot,
 };
 use muster_core::{SessionId, WorkspaceId};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use super::{TerminalLink, containers, issues, pulls, runs};
+use super::{LookGuard, TerminalLink, containers, issues, pulls, runs};
 
 pub(super) type Subscription = (Snapshot, broadcast::Receiver<Delta>);
 
@@ -24,6 +24,17 @@ pub(super) enum Request {
         session: SessionId,
         watch: bool,
         reply: oneshot::Sender<Option<TerminalLink>>,
+    },
+    /// A client will say whether the person is looking at it; `outgoing`
+    /// takes the sessions to show in it.
+    AddLooker {
+        outgoing: mpsc::Sender<ServerFrame>,
+        reply: oneshot::Sender<LookGuard>,
+    },
+    /// A client says whether the person is looking at it.
+    Looking {
+        client: u64,
+        looking: bool,
     },
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
@@ -69,6 +80,8 @@ impl std::fmt::Debug for Request {
             Self::Subscribe(_) => f.write_str("Subscribe"),
             Self::Command { command, .. } => write!(f, "Command({command:?})"),
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
+            Self::AddLooker { .. } => f.write_str("AddLooker"),
+            Self::Looking { client, looking } => write!(f, "Looking({client}, {looking})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
             Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
@@ -192,6 +205,32 @@ impl SupervisorHandle {
     /// Hands over a measurement. `false` once the Supervisor has stopped.
     pub(crate) async fn record_resources(&self, report: ResourceReport) -> bool {
         self.requests.send(Request::Resources(report)).await.is_ok()
+    }
+
+    /// Counts a client that will say whether the person is looking at it,
+    /// until the guard is dropped; `None` once the Supervisor has stopped.
+    pub(crate) async fn add_looker(
+        &self,
+        outgoing: mpsc::Sender<ServerFrame>,
+    ) -> Option<LookGuard> {
+        let (reply, answer) = oneshot::channel();
+        self.requests
+            .send(Request::AddLooker { outgoing, reply })
+            .await
+            .ok()?;
+        answer.await.ok()
+    }
+
+    /// Tells whether the person is looking at the client. `false` once the
+    /// Supervisor has stopped.
+    pub(crate) async fn looking(&self, client: &LookGuard, looking: bool) -> bool {
+        self.requests
+            .send(Request::Looking {
+                client: client.client(),
+                looking,
+            })
+            .await
+            .is_ok()
     }
 
     /// A link to a session's terminal, if it still has one. With `watch`,

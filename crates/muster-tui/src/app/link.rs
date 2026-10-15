@@ -23,7 +23,11 @@ impl App {
         // A new connection is a new daemon, which numbers its terminals'
         // output afresh: positions in the old screens mean nothing to it.
         self.screens.clear();
-        vec![Action::Send(ClientFrame::Subscribe)]
+        // A new daemon may have outlived the notch, or come with none.
+        self.notch_started = false;
+        let mut actions = vec![Action::Send(ClientFrame::Subscribe)];
+        actions.extend(self.looking());
+        actions
     }
 
     pub(crate) fn on_disconnected(&mut self, reason: String) {
@@ -76,9 +80,11 @@ impl App {
             ServerFrame::Detached { session, reason } => {
                 self.screen(session).ended = Some(reason);
             }
+            ServerFrame::Reveal { session } => return self.reveal(session),
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
         }
         let mut actions: Vec<Action> = news.into_iter().collect();
+        actions.extend(self.start_notch());
         actions.extend(self.settle());
         actions
     }
@@ -160,6 +166,7 @@ impl App {
             }
             _ => Vec::new(),
         };
+        actions.extend(self.looking());
         if focused && self.view == View::Tickets && matches!(self.link, Link::Connected { .. }) {
             self.forget_failed_tickets();
             actions.extend(self.fetch_tickets());
@@ -237,6 +244,7 @@ impl App {
             }
             (Ok(_), Then::Say(text)) => self.say(text),
             (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
+            (outcome, Then::NotchChanged(on)) => self.notch_changed(on, outcome.map(drop)),
             (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
                 self.settings.insert(project, Settings::Loaded(settings));
             }
