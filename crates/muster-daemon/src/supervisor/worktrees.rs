@@ -30,7 +30,13 @@ impl Supervisor {
             .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no project {project}")))?;
         let branch = match branch.map(|name| name.trim().to_owned()) {
             Some(name) if !name.is_empty() => name,
-            _ => default_branch(),
+            _ => {
+                let overrides = self
+                    .config_dir
+                    .join("projects")
+                    .join(format!("{}.toml", project.id));
+                default_branch(crate::config::muster_prefix(project.root.clone(), overrides).await)
+            }
         };
         if !git::is_valid_branch_name(&project.root, &branch)
             .await
@@ -333,10 +339,12 @@ impl Supervisor {
     }
 }
 
-/// `muster/` and six random characters.
-fn default_branch() -> String {
+/// `muster/` and six random characters; without `muster/` unless
+/// `prefixed`, `worktree-` and six, as six alone can read as a commit.
+fn default_branch(prefixed: bool) -> String {
     let random = WorkspaceId::new().ulid().to_string().to_lowercase();
-    format!("muster/{}", &random[random.len() - 6..])
+    let prefix = if prefixed { "muster/" } else { "worktree-" };
+    format!("{prefix}{}", &random[random.len() - 6..])
 }
 
 /// A file-name-safe form of `name`: `muster/fix-login` becomes `muster-fix-login`.
@@ -440,9 +448,12 @@ mod tests {
 
     #[test]
     fn default_branches_are_namespaced_and_short() {
-        let branch = default_branch();
+        let branch = default_branch(true);
         assert!(branch.starts_with("muster/"));
         assert_eq!(branch.len(), "muster/".len() + 6);
-        assert_ne!(branch, default_branch());
+        assert_ne!(branch, default_branch(true));
+        let without = default_branch(false);
+        assert!(without.starts_with("worktree-"), "{without}");
+        assert_eq!(without.len(), "worktree-".len() + 6);
     }
 }

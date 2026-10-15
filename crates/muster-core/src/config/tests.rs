@@ -183,3 +183,21 @@ fn sizes_and_durations_read_as_people_write_them() {
         assert_eq!(parse_duration(bad), None, "{bad:?}");
     }
 }
+
+#[test]
+fn branches_start_with_muster_unless_the_person_says_not() {
+    assert!(parse("").unwrap().branches.muster_prefix);
+    let without = ProjectConfig::parse(
+        Some("[branches]\nmuster_prefix = true"),
+        Some("[branches]\nmuster_prefix = false"),
+        NAMES,
+    )
+    .unwrap();
+    assert!(!without.branches.muster_prefix, "the person's own wins");
+    let wrong = message("[branches]\nmuster_prefix = \"no\"");
+    assert!(
+        wrong.contains("muster.toml") && wrong.contains("bool"),
+        "{wrong}"
+    );
+    assert!(message("[branches]\nprefix = false").contains("prefix"));
+}

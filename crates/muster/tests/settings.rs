@@ -288,3 +288,93 @@ async fn a_project_on_a_company_s_own_server_gets_its_tickets_from_jira_here() {
     assert!(back.tickets_untold);
     assert_eq!(back.tickets_set_by, SettingSource::Default);
 }
+
+#[tokio::test]
+async fn branches_go_without_muster_once_the_person_says_so() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    std::fs::write(
+        sandbox.fake_gh().join("issue-3.json"),
+        serde_json::json!({"number": 3, "title": "Typo in README",
+            "url": "https://github.com/o/app/issues/3", "labels": [],
+            "author": {"login": "x"}, "body": "teh"})
+        .to_string(),
+    )
+    .unwrap();
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let project = add(&mut connection, root).await;
+    let file = sandbox.paths().project_overrides(project);
+
+    let before = settings(&mut connection, Command::ProjectSettings { project }).await;
+    let prefix = before.muster_prefix.unwrap();
+    assert!(prefix.on);
+    assert_eq!(prefix.from, SettingSource::Default);
+    let off = settings(
+        &mut connection,
+        Command::ChangeSetting {
+            project,
+            change: SettingChange::MusterPrefix(false),
+        },
+    )
+    .await;
+    let prefix = off.muster_prefix.unwrap();
+    assert!(!prefix.on);
+    assert_eq!(prefix.from, SettingSource::Yours);
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        written.ends_with("[branches]\nmuster_prefix = false\n"),
+        "{written}"
+    );
+    let config = sandbox.run(&["project", "config", "app"]);
+    let said = String::from_utf8_lossy(&config.stdout).into_owned();
+    assert!(
+        said.contains("branches      issue-42-…, without muster/"),
+        "{said}"
+    );
+
+    // A ticket's branch, and a worktree's with no name given.
+    let Reply::IssueStarted { workspace, .. } = connection
+        .command(Command::StartFromIssue {
+            project,
+            key: muster_core::TicketKey::number(3),
+            harness: "shell".to_owned(),
+            size: muster_core::protocol::TermSize::default(),
+            another: false,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected IssueStarted");
+    };
+    let Reply::WorktreeCreated { id: unnamed } = connection
+        .command(Command::CreateWorktree {
+            project,
+            branch: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected WorktreeCreated");
+    };
+    let snapshot = connection.subscribe().await.unwrap();
+    let branch = |id| {
+        snapshot
+            .workspaces
+            .iter()
+            .find(|found| found.id == id)
+            .unwrap()
+            .kind
+            .branch()
+            .to_owned()
+    };
+    assert_eq!(branch(workspace), "issue-3-typo-in-readme");
+    let unnamed = branch(unnamed);
+    assert!(
+        unnamed.starts_with("worktree-") && unnamed.len() == "worktree-".len() + 6,
+        "{unnamed}"
+    );
+    // Listed as any worktree is.
+    let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
+    assert!(status.contains("  issue-3-typo-in-readme  "), "{status}");
+}

@@ -19,6 +19,10 @@ pub(super) fn settings(on: bool, from: SettingSource) -> ProjectSettings {
         tickets: None,
         tickets_set_by: SettingSource::Default,
         tickets_untold: false,
+        muster_prefix: Some(Toggle {
+            on: true,
+            from: SettingSource::Default,
+        }),
     }
 }
 
@@ -84,6 +88,7 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::Project(project),
             SettingRow::OnlyMine(project),
             SettingRow::TicketsFrom(project),
+            SettingRow::MusterPrefix(project),
         ]
     );
     // The first setting is selected, so ⏎ does something at once.
@@ -107,7 +112,7 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
         "{screen}"
     );
     assert!(screen.contains("projects/p.toml"), "{screen}");
-    assert!(screen.contains("⏎ turn on"), "{screen}");
+    assert!(screen.contains("⏎ or space turns it on"), "{screen}");
 }
 
 #[test]
@@ -340,4 +345,71 @@ fn a_click_picks_a_setting_and_the_details_are_only_to_read() {
         world.app.tickets.get(&project),
         Some(Tickets::Loading)
     ));
+}
+
+#[test]
+fn branches_go_without_muster_once_turned_off_where_the_daemon_can_say() {
+    let mut world = on_settings(false);
+    let project = world.project.id;
+    press(&mut world.app, KeyCode::Down);
+    press(&mut world.app, KeyCode::Down);
+    assert_eq!(
+        world.app.settings_selected,
+        Some(SettingRow::MusterPrefix(project))
+    );
+    let screen = render(&world.app);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("Branches with muster/"))
+        .unwrap();
+    assert!(
+        row.trim_end_matches('│').trim_end().ends_with("on"),
+        "{row}"
+    );
+    assert!(
+        screen.contains("muster/issue-42-fix-the-login for a"),
+        "{screen}"
+    );
+    assert!(screen.contains("⏎ turn off"), "{screen}");
+
+    let actions = press(&mut world.app, KeyCode::Enter);
+    let (req_id, change) = command(&actions);
+    assert_eq!(
+        change,
+        Command::ChangeSetting {
+            project,
+            change: SettingChange::MusterPrefix(false)
+        }
+    );
+    let mut off = settings(false, SettingSource::Default);
+    off.muster_prefix = Some(Toggle {
+        on: false,
+        from: SettingSource::Yours,
+    });
+    let actions = reply(&mut world, req_id, Ok(Reply::ProjectSettings(off)));
+    assert!(
+        commands(&actions).is_empty(),
+        "the tickets are not fetched again: {actions:?}"
+    );
+    assert_eq!(
+        world.app.note.as_ref().unwrap().text,
+        "New branches in app go without muster/: issue-42-fix-the-login."
+    );
+    let screen = render(&world.app);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("Branches with muster/"))
+        .unwrap();
+    assert!(row.contains("off") && !row.contains('…'), "{row}");
+    assert!(screen.contains("worktree-4f2k9q for a"), "{screen}");
+    assert!(screen.contains("⏎ or space turns it on"), "{screen}");
+
+    // A daemon from before the setting cannot change it: no row for it.
+    world.app.daemon_protocol = 19;
+    assert!(
+        !world
+            .app
+            .setting_rows()
+            .contains(&SettingRow::MusterPrefix(project))
+    );
 }

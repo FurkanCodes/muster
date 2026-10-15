@@ -41,6 +41,25 @@ pub struct ProjectConfig {
     pub tickets: Tickets,
     /// Where its pull requests are opened, if not where its remote says.
     pub pull_requests: PullRequests,
+    /// How Muster names the branches it makes.
+    pub branches: Branches,
+}
+
+/// How Muster names the branches it makes for the person's work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Branches {
+    /// Whether they start with `muster/` (`[branches] muster_prefix`): a
+    /// ticket's `muster/issue-42-fix-the-login`, or without,
+    /// `issue-42-fix-the-login`.
+    pub muster_prefix: bool,
+}
+
+impl Default for Branches {
+    fn default() -> Self {
+        Self {
+            muster_prefix: true,
+        }
+    }
 }
 
 /// The commands that decide whether work is good enough to show a person.
@@ -103,6 +122,7 @@ impl Default for ProjectConfig {
             },
             tickets: Tickets::default(),
             pull_requests: PullRequests::default(),
+            branches: Branches::default(),
         }
     }
 }
@@ -185,6 +205,13 @@ struct Raw {
     intake: RawIntake,
     tickets: services::RawTickets,
     pull_requests: services::RawPullRequests,
+    branches: RawBranches,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct RawBranches {
+    muster_prefix: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -367,6 +394,12 @@ impl Raw {
             },
             tickets: self.tickets.validate()?,
             pull_requests: self.pull_requests.validate()?,
+            branches: Branches {
+                muster_prefix: self
+                    .branches
+                    .muster_prefix
+                    .unwrap_or(defaults.branches.muster_prefix),
+            },
         })
     }
 }

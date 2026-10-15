@@ -238,7 +238,15 @@ impl App {
             (Ok(Reply::ProjectSettings(settings)), Then::TicketsFromChanged(project)) => {
                 self.tickets_from_changed(project, settings);
             }
-            (Err(error), Then::SettingChanged(project) | Then::TicketsFromChanged(project)) => {
+            (Ok(Reply::ProjectSettings(settings)), Then::BranchesChanged(project)) => {
+                self.branches_changed(project, settings);
+            }
+            (
+                Err(error),
+                Then::SettingChanged(project)
+                | Then::TicketsFromChanged(project)
+                | Then::BranchesChanged(project),
+            ) => {
                 self.setting_refused(project, error.message);
             }
             (Err(error), Then::Closing(session)) => {

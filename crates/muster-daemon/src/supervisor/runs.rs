@@ -197,7 +197,11 @@ impl Supervisor {
                 self.unused_run_branch(
                     project,
                     &root,
-                    &muster_core::tickets::ticket_branch(&detail.issue.key, &detail.issue.title),
+                    &muster_core::tickets::ticket_branch(
+                        &detail.issue.key,
+                        &detail.issue.title,
+                        true,
+                    ),
                 )
                 .await,
                 RunMachine::new(limits),

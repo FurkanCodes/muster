@@ -256,6 +256,14 @@ pub(crate) async fn show_config(
     if let Some(host) = config.pull_requests.host {
         println!("pull requests {}", host.name());
     }
+    println!(
+        "branches      {}",
+        if config.branches.muster_prefix {
+            "muster/issue-42-…, with muster/"
+        } else {
+            "issue-42-…, without muster/"
+        }
+    );
     match &config.intake.label {
         Some(label) => println!(
             "pickup        issues labelled {:?} by {}",

@@ -5,7 +5,9 @@
 use std::path::{Path, PathBuf};
 
 use muster_core::config::{ConfigError, ProjectConfig, edit};
-use muster_core::settings::{ONLY_MINE, SettingChange, SettingSource, TICKETS_FROM_KEYS, TRACKER};
+use muster_core::settings::{
+    MUSTER_PREFIX, ONLY_MINE, SettingChange, SettingSource, TICKETS_FROM_KEYS, TRACKER,
+};
 
 /// The repository's settings file.
 pub const FILE_NAME: &str = "muster.toml";
@@ -47,6 +49,7 @@ pub fn load(root: &Path, overrides: &Path) -> Result<Loaded, ConfigError> {
 pub struct Sources {
     pub only_mine: SettingSource,
     pub tracker: SettingSource,
+    pub muster_prefix: SettingSource,
 }
 
 /// The settings, and where the ones the person changes come from.
@@ -63,6 +66,7 @@ pub fn load_with_sources(
         Sources {
             only_mine: source(ONLY_MINE),
             tracker: source(TRACKER),
+            muster_prefix: source(MUSTER_PREFIX),
         },
     ))
 }
@@ -85,6 +89,10 @@ pub fn change(root: &Path, overrides: &Path, change: SettingChange) -> Result<()
             let (table, key) = ONLY_MINE;
             edit::set_flag(local.as_deref(), table, key, on)
         }
+        SettingChange::MusterPrefix(on) => {
+            let (table, key) = MUSTER_PREFIX;
+            edit::set_flag(local.as_deref(), table, key, on)
+        }
         // Written whole: what the last tracker needed goes with it.
         SettingChange::TicketsFrom(from) => {
             let values: Vec<(&str, Option<&str>)> = match &from {
@@ -101,6 +109,17 @@ pub fn change(root: &Path, overrides: &Path, change: SettingChange) -> Result<()
         (&repository_file.display().to_string(), &shown),
     )?;
     write(overrides, &changed).map_err(|error| invalid(format!("cannot be written: {error}")))
+}
+
+/// Whether the branches Muster makes in the project at `root` start with
+/// `muster/`, read off the caller's loop; settings that cannot be read
+/// leave them as they are by default.
+pub(crate) async fn muster_prefix(root: PathBuf, overrides: PathBuf) -> bool {
+    tokio::task::spawn_blocking(move || load(&root, &overrides))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .is_none_or(|loaded| loaded.config.branches.muster_prefix)
 }
 
 /// Writes `text` to `path` whole: into a file beside it, then moved over
