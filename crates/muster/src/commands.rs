@@ -33,6 +33,20 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
         "The daemon is running: muster {} (pid {}, protocol {}).",
         welcome.daemon_version, welcome.daemon_pid, welcome.version
     );
+    // Counts that fall back as work and clients end; one that only grows
+    // is a leak (`ARC-13`, `ARC-14`). Older daemons do not know to answer.
+    if welcome.version >= 22
+        && let Ok(Reply::Health(health)) = connection.command(Command::Health).await
+    {
+        let count = |n: u64, noun| count(usize::try_from(n).unwrap_or(usize::MAX), noun);
+        println!(
+            "Inside: {} ({} at work), {}, {}.",
+            count(health.tasks, "task"),
+            health.work,
+            count(health.clients, "client"),
+            count(health.terminals, "terminal")
+        );
+    }
     let going: Vec<&muster_core::Run> = snapshot
         .runs
         .iter()

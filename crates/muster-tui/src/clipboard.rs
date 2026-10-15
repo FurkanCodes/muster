@@ -58,14 +58,17 @@ fn piped(program: &str, args: &[&str], text: &str) -> bool {
         return false;
     };
     let text = text.to_owned();
-    std::thread::spawn(move || {
-        // Closed once written, so the program goes on.
-        if let Some(mut input) = child.stdin.take() {
-            let _ = input.write_all(text.as_bytes());
-        }
-        let _ = child.wait();
-    });
-    true
+    // Ends once the program has its text and has exited.
+    std::thread::Builder::new()
+        .name("muster-clipboard".to_owned())
+        .spawn(move || {
+            // Closed once written, so the program goes on.
+            if let Some(mut input) = child.stdin.take() {
+                let _ = input.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+        })
+        .is_ok()
 }
 
 /// The OSC 52 sequence asking a terminal to put `text` on the clipboard.

@@ -58,7 +58,7 @@ impl Supervisor {
     /// `purpose` in [`on_credential`](Self::on_credential).
     pub(super) fn fetch_credential(&self, purpose: Purpose) {
         let (requests, credentials) = (self.requests.clone(), self.credentials.clone());
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let secret = credentials.claude().await;
             let fetched = CredentialFetched { secret, purpose };
             let _ = requests

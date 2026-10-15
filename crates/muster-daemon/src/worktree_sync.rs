@@ -117,14 +117,18 @@ pub(crate) async fn run(supervisor: SupervisorHandle, every: Duration) {
             };
             let due = match seen.get(&project.project) {
                 None => true,
-                Some((last, at)) => *last != stamp || missing || at.elapsed() >= ANYWAY,
+                Some((last, at)) => {
+                    *last != stamp
+                        || missing
+                        || crate::clock::monotonic().saturating_duration_since(*at) >= ANYWAY
+                }
             };
             if !due {
                 continue;
             }
             match git::list_worktrees(&project.root).await {
                 Ok(output) => {
-                    seen.insert(project.project, (stamp, Instant::now()));
+                    seen.insert(project.project, (stamp, crate::clock::monotonic()));
                     if !supervisor
                         .worktrees_listed(project.project, parse(&output))
                         .await

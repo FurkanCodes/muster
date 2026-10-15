@@ -152,7 +152,7 @@ mod tests {
         std::fs::create_dir_all(&chats).unwrap();
         let path = chats.join("session-2026-01-20T20-35-dea9457f.json");
         std::fs::write(&path, recording(&[100, 250])).unwrap();
-        let now = Instant::now();
+        let now = crate::clock::monotonic();
         let mut gemini = Gemini::default();
         assert_eq!(gemini.read(dir.path(), ID, now), Some(350));
         std::fs::write(&path, recording(&[100, 250, 4_000])).unwrap();

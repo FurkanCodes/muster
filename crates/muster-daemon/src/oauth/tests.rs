@@ -157,6 +157,10 @@ async fn a_whole_sign_in_registers_signs_in_keeps_and_refreshes() {
         )
         .route("/token", post(token))
         .with_state(seen.clone());
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's task ends with the test"
+    )]
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     let http = reqwest::Client::new();
@@ -182,6 +186,10 @@ async fn a_whole_sign_in_registers_signs_in_keeps_and_refreshes() {
             "{}?code=the-code&state={}",
             query["redirect_uri"], query["state"]
         );
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "a test's task ends with the test"
+        )]
         tokio::spawn(async move {
             let page = reqwest::get(back).await.unwrap().text().await.unwrap();
             assert!(page.contains("Signed in to Muster"));

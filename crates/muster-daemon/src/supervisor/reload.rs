@@ -3,8 +3,6 @@
 //! sessions over, from the daemon's previous version as it starts, or back
 //! from a restart that did not happen.
 
-use std::time::Instant;
-
 use muster_core::SessionId;
 use muster_state::session::SessionMachine;
 use tokio::sync::oneshot;
@@ -43,7 +41,7 @@ impl Supervisor {
     /// machine, token and history as carried. Sessions whose program has
     /// ended stay, as their output alone is left.
     pub(super) async fn hand_over_sessions(&mut self) -> Vec<HandedSession> {
-        let now = Instant::now();
+        let now = self.clock.instant();
         let running: Vec<SessionId> = self
             .live
             .iter()
@@ -65,7 +63,7 @@ impl Supervisor {
                 id,
                 live.harness.id.to_owned(),
                 live.token.clone(),
-                live.launched.elapsed(),
+                now.saturating_duration_since(live.launched),
                 live.resumed,
                 live.machine.carry(now),
                 terminal.terminal,
@@ -85,7 +83,7 @@ impl Supervisor {
     /// never having stopped. One it does not know is let go: closing its
     /// terminal hangs its program up.
     pub(super) fn adopt_sessions(&mut self, sessions: Vec<HandedSession>) {
-        let now = Instant::now();
+        let now = self.clock.instant();
         for HandedSession { session, master } in sessions {
             let id = session.id;
             let known = self

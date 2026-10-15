@@ -14,6 +14,7 @@ mod glab;
 mod handoff;
 mod harness;
 mod hooks;
+mod log_files;
 mod mcp;
 mod oauth;
 mod pty;
@@ -24,6 +25,7 @@ mod server;
 mod service;
 mod spend;
 mod supervisor;
+mod tasks;
 mod terminal;
 mod trackers;
 mod worktree_sync;
@@ -45,6 +47,7 @@ use std::time::Duration;
 use muster_core::Paths;
 use tokio::net::UnixListener;
 
+pub use crate::log_files::LogLimits;
 pub use crate::runs::credentials::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
 
 /// Keeps `value` in the Keychain for `account`, as `muster auth` does:
@@ -133,6 +136,7 @@ pub const LINEAR_KEY_ACCOUNT: &str = trackers::linear::KEY_ACCOUNT;
 
 use crate::clock::{Clock, SystemClock};
 use crate::store::{Store, StoreError, StoreHandle};
+use crate::tasks::Tasks;
 
 /// How to run a daemon.
 #[derive(Clone, Debug)]
@@ -158,6 +162,8 @@ pub struct DaemonConfig {
     pub pr_interval: Duration,
     /// How often sessions' agents' records are read for what they used.
     pub spend_interval: Duration,
+    /// When `daemon.log` moves on to a fresh file (`ARC-15`).
+    pub log_limits: LogLimits,
 }
 
 impl DaemonConfig {
@@ -172,6 +178,7 @@ impl DaemonConfig {
             start_grace: muster_state::session::Timing::default().start_grace,
             pr_interval: Duration::from_secs(60),
             spend_interval: Duration::from_secs(5),
+            log_limits: LogLimits::default(),
         }
     }
 }
@@ -272,11 +279,13 @@ pub async fn run(
     let store = StoreHandle::spawn(store)
         .map_err(io_error("cannot start the store for", &paths.database()))?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let log_clock = clock.clone();
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
     let credentials: Arc<dyn runs::credentials::Credentials> =
         Arc::new(runs::credentials::PersonsCredentials);
     // Runs, set aside, open their pull requests on GitHub.
     let git_host: Arc<dyn githost::GitHost> = Arc::new(githost::GitHub);
+    let tasks = Tasks::default();
     let supervisor = supervisor::spawn(supervisor::Settings {
         store,
         clock,
@@ -289,7 +298,12 @@ pub async fn run(
             start_grace: config.start_grace,
             ..muster_state::session::Timing::default()
         },
-        work: Arc::new(run_work(paths, credentials.clone(), git_host.clone())),
+        work: Arc::new(run_work(
+            paths,
+            credentials.clone(),
+            git_host.clone(),
+            tasks.clone(),
+        )),
         trackers: Arc::new(trackers::choose::ServiceTrackers {
             secrets: Arc::new(secrets::Keychain::default()),
             http: service::http_client(),
@@ -302,23 +316,32 @@ pub async fn run(
             http: service::http_client(),
         }),
         adopted,
+        tasks: tasks.clone(),
     })
     .await?;
-    let sampler = tokio::spawn(resources::run(supervisor.clone(), config.sample_interval));
-    let branch_watcher = tokio::spawn(branches::run(supervisor.clone(), config.branch_interval));
-    let worktree_sync = tokio::spawn(worktree_sync::run(
-        supervisor.clone(),
-        config.worktree_interval,
-    ));
-    let pr_watch = tokio::spawn(watch_pull_requests(supervisor.clone(), config.pr_interval));
-    let spend_reader = tokio::spawn(spend::run(
-        supervisor.clone(),
-        config.spend_interval,
-        spend::Places::from_env(),
-    ));
+    // Each runs until the daemon stops and drops it (`ARC-13`).
+    let watchers = [
+        tasks::owned(resources::run(supervisor.clone(), config.sample_interval)),
+        tasks::owned(branches::run(supervisor.clone(), config.branch_interval)),
+        tasks::owned(worktree_sync::run(
+            supervisor.clone(),
+            config.worktree_interval,
+        )),
+        tasks::owned(watch_pull_requests(supervisor.clone(), config.pr_interval)),
+        tasks::owned(spend::run(
+            supervisor.clone(),
+            config.spend_interval,
+            spend::Places::from_env(),
+        )),
+        tasks::owned(log_files::run(
+            paths.runtime_dir.join("daemon.log"),
+            config.log_limits,
+            log_clock,
+        )),
+    ];
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
-    let hook_server = tokio::spawn(hooks::serve(
+    let hook_server = tasks::owned(hooks::serve(
         serving(&hook_listener, &hook_socket)?,
         hook_deliveries,
         async {
@@ -330,7 +353,7 @@ pub async fn run(
     let mut listener = serving(&socket_listener, &socket)?;
     loop {
         let mut stop = None;
-        server::serve(listener, supervisor.clone(), async {
+        server::serve(listener, supervisor.clone(), &tasks, async {
             stop = stops.recv().await;
         })
         .await;
@@ -354,13 +377,13 @@ pub async fn run(
         listener = serving(&socket_listener, &socket)?;
     }
 
-    sampler.abort();
-    branch_watcher.abort();
-    worktree_sync.abort();
-    pr_watch.abort();
-    spend_reader.abort();
+    drop(watchers);
     let _ = stop_hooks.send(());
     let _ = hook_server.await;
+    let left = tasks.finish(tasks::STOP_GRACE).await;
+    if left > 0 {
+        tracing::info!(left, "work still under way when the daemon stopped");
+    }
     let _ = std::fs::remove_file(&hook_socket);
     let _ = std::fs::remove_file(&socket);
     drop(lock);
@@ -423,6 +446,7 @@ fn run_work(
     paths: &Paths,
     credentials: Arc<dyn runs::credentials::Credentials>,
     git_host: Arc<dyn githost::GitHost>,
+    tasks: Tasks,
 ) -> runs::work::DockerWork {
     runs::work::DockerWork::new(
         paths.data_dir.clone(),
@@ -432,6 +456,7 @@ fn run_work(
         std::env::var("MUSTER_RUN_IMAGE")
             .ok()
             .filter(|image| !image.trim().is_empty()),
+        tasks,
     )
 }
 

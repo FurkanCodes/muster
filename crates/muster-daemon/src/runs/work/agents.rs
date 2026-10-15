@@ -412,8 +412,9 @@ impl Inner {
                     return Err(Halt::failed("the run's container stopped under its work"));
                 }
                 Err(error) => {
-                    let since = *unreachable_since.get_or_insert_with(std::time::Instant::now);
-                    if since.elapsed() > DOCKER_PATIENCE {
+                    let now = crate::clock::monotonic();
+                    let since = *unreachable_since.get_or_insert(now);
+                    if now.saturating_duration_since(since) > DOCKER_PATIENCE {
                         return Err(Halt::failed(format!(
                             "lost touch with the container: {error}"
                         )));

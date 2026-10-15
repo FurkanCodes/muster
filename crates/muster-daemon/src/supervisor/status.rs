@@ -47,7 +47,7 @@ impl Supervisor {
         let Some(live) = self.live.get_mut(&session) else {
             return;
         };
-        let effects = live.machine.step(signal, std::time::Instant::now());
+        let effects = live.machine.step(signal, self.clock.instant());
         for effect in effects {
             self.apply(session, effect).await;
         }

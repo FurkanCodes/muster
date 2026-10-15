@@ -316,6 +316,29 @@ async fn the_progress_sequence_is_reported() {
 }
 
 #[tokio::test]
+async fn a_program_retitling_itself_in_a_loop_sends_only_the_latest_titles() {
+    let (pty, events) = shell(vec![], vec![]);
+    // Five hundred titles in one write.
+    pty.input(
+        b"s=''; i=0; while [ $i -lt 500 ]; do s=\"$s$(printf '\\033]0;t-%d\\007' $i)\"; \
+          i=$((i+1)); done; printf '%s' \"$s\"; echo; echo done-$((6*6))\n"
+            .to_vec(),
+    )
+    .await;
+    read_until(&pty, None, "done-36").await;
+    let titles: Vec<_> = events
+        .all()
+        .into_iter()
+        .filter_map(|event| match event {
+            PtyEvent::Title(title) if title.starts_with("t-") => Some(title),
+            _ => None,
+        })
+        .collect();
+    assert!(titles.len() < 50, "{} titles: {titles:?}", titles.len());
+    assert_eq!(titles.last().map(String::as_str), Some("t-499"));
+}
+
+#[tokio::test]
 async fn an_exit_is_reported_after_its_output_and_the_output_stays_readable() {
     let (pty, events) = shell(vec![], vec![]);
     pty.input(b"echo bye-$((2*4)); exit 3\n".to_vec()).await;

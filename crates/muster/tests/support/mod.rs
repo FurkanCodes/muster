@@ -350,7 +350,28 @@ impl Sandbox {
     }
 
     pub(crate) fn start(&self) -> Daemon {
-        Daemon::start(self)
+        let log = File::create(self.log()).unwrap();
+        Daemon::start(self, self.log(), log, &[])
+    }
+
+    /// Starts the daemon as the UI does: its standard error appended to
+    /// `daemon.log` in the runtime directory. `env` is set for it.
+    #[allow(dead_code)]
+    pub(crate) fn start_as_the_ui_does(&self, env: &[(&str, &str)]) -> Daemon {
+        use std::os::unix::fs::DirBuilderExt;
+        let runtime = self.paths().runtime_dir;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&runtime)
+            .unwrap();
+        let path = runtime.join("daemon.log");
+        let log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        Daemon::start(self, path, log, env)
     }
 
     fn log(&self) -> PathBuf {
@@ -373,13 +394,13 @@ pub(crate) struct Daemon {
 }
 
 impl Daemon {
-    fn start(sandbox: &Sandbox) -> Self {
-        let log = sandbox.log();
+    fn start(sandbox: &Sandbox, log: PathBuf, stderr: File, env: &[(&str, &str)]) -> Self {
         let child = sandbox
             .command()
             .arg("daemon")
+            .envs(env.iter().copied())
             .stdout(Stdio::null())
-            .stderr(File::create(&log).unwrap())
+            .stderr(stderr)
             .spawn()
             .unwrap();
         let daemon = Self {

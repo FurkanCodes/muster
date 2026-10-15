@@ -33,7 +33,11 @@
 //! version 19 what each session's agent has used (`Session::spend`, the
 //! same); version 20 whether a project's branches start with `muster/`
 //! (`SettingChange::MusterPrefix`, sent only to a daemon of 20 or later, and
-//! `ProjectSettings::muster_prefix`).
+//! `ProjectSettings::muster_prefix`); version 21 where a listing's tickets
+//! are, so projects sharing them are offered together
+//! (`Reply::Issues::source`); version 22 how the daemon is doing inside,
+//! for `muster status` (`Command::Health`, sent only to a daemon of 22 or
+//! later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -49,7 +53,7 @@ use crate::settings::{ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 21;
+pub const PROTOCOL_VERSION: u32 = 22;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -352,6 +356,9 @@ pub enum Command {
     /// The project's settings that the person can change, as they stand;
     /// answered with [`Reply::ProjectSettings`].
     ProjectSettings { project: ProjectId },
+    /// How the daemon is doing inside, answered with [`Reply::Health`].
+    /// Sent only to a daemon of protocol 22 or later.
+    Health,
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with
@@ -460,6 +467,8 @@ pub enum Reply {
     },
     /// A project's settings that the person can change.
     ProjectSettings(ProjectSettings),
+    /// How the daemon is doing inside.
+    Health(Health),
     /// The run is the person's; `session` is its agent, in its container.
     RunTakenOver {
         workspace: WorkspaceId,
@@ -467,6 +476,23 @@ pub enum Reply {
     },
     /// The command was carried out and has nothing to report.
     Done,
+}
+
+/// What the daemon holds and has under way: counts that should fall back
+/// when the work and the clients behind them end (`ARC-13`, `ARC-14`), so
+/// one that only grows is a leak to look into.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Health {
+    /// Every task on the daemon's runtime.
+    pub tasks: u64,
+    /// Short-lived work under way, such as a call to a ticket source; a
+    /// client's request for this is one.
+    pub work: u64,
+    /// Clients connected, this one included.
+    pub clients: u64,
+    /// Terminals held: running sessions, and ended ones whose output is
+    /// still readable.
+    pub terminals: u64,
 }
 
 /// The daemon's whole state, as a client needs it.

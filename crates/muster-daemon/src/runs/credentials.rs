@@ -84,6 +84,7 @@ async fn keychain() -> Option<String> {
             ])
             .stdin(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
             .output(),
     )
     .await

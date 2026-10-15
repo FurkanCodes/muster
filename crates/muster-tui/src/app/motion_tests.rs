@@ -156,6 +156,28 @@ fn only_a_running_session_or_something_waiting_asks_for_drawing() {
     assert!(world.app.animating());
 }
 
+#[test]
+fn an_idle_screen_wants_no_steps_and_its_times_change_by_the_minute() {
+    let mut world = world();
+    settle(&mut world);
+    // An idle session: nothing moves, so the UI takes no steps.
+    assert!(!world.app.wants_steps());
+    assert_eq!(world.app.clock_every(), Some(60_000));
+    // A note is let go after a while: steps until it has gone.
+    world.app.note = Some(super::Note {
+        text: "Copied".to_owned(),
+        error: false,
+        shown_at: world.app.step,
+    });
+    assert!(world.app.wants_steps());
+    world.app.on_step(world.app.step + crate::motion::NOTE_GOES);
+    assert!(!world.app.wants_steps());
+    // A running session spins, and its time reads by the second.
+    with_status(&mut world, SessionStatus::Running);
+    assert!(world.app.wants_steps());
+    assert_eq!(world.app.clock_every(), Some(1_000));
+}
+
 /// The cell where `text` first starts on screen.
 fn cell_at<'a>(buffer: &'a Buffer, text: &str) -> &'a ratatui::buffer::Cell {
     for y in 0..buffer.area.height {

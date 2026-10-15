@@ -48,6 +48,7 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
             http: crate::service::http_client(),
         }),
         adopted: Vec::new(),
+        tasks: crate::tasks::Tasks::default(),
     })
     .await
     .unwrap()
@@ -69,6 +70,17 @@ fn add(root: &Path, name: Option<&str>) -> Command {
 
 async fn refused(supervisor: &SupervisorHandle, command: Command) -> ErrorCode {
     supervisor.command(command).await.unwrap_err().code
+}
+
+#[tokio::test]
+async fn health_counts_the_daemons_tasks_and_terminals() {
+    let supervisor = start(16).await;
+    let Ok(Reply::Health(health)) = supervisor.command(Command::Health).await else {
+        panic!("no health");
+    };
+    // The Supervisor's own loop at least; nothing started, nothing held.
+    assert!(health.tasks >= 1, "{health:?}");
+    assert_eq!((health.work, health.clients, health.terminals), (0, 0, 0));
 }
 
 #[tokio::test]
@@ -246,6 +258,10 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
     let supervisor = start(2).await;
     // Room for one frame: the pump blocks on the second while the test is not reading.
     let (outgoing, mut frames) = mpsc::channel(1);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's task ends with the test"
+    )]
     tokio::spawn(pump_state(supervisor.clone(), outgoing));
     assert!(matches!(
         frames.recv().await,
@@ -342,6 +358,7 @@ async fn every_nth_measurement_is_kept_in_history() {
             http: crate::service::http_client(),
         }),
         adopted: Vec::new(),
+        tasks: crate::tasks::Tasks::default(),
     })
     .await
     .unwrap();

@@ -180,7 +180,7 @@ impl Supervisor {
             root: path.clone(),
             overrides: overrides.clone(),
         };
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let opened = async {
                 // Which host first: a project it cannot tell is refused
                 // before anything is pushed.

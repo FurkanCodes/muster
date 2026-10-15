@@ -92,7 +92,7 @@ impl Supervisor {
             self.pulls.under_way = Some(self.pulls.ticks);
         }
         let (requests, hosts) = (self.requests.clone(), self.hosts.clone());
-        tokio::spawn(async move {
+        self.tasks.spawn(async move {
             let mut looked = look(hosts, projects).await;
             looked.whole = whole;
             let _ = requests

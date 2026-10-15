@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use muster_core::protocol::{
-    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot, TermSize,
+    Command, Delta, ErrorBody, ErrorCode, Health, Reply, ResourceReport, Snapshot, TermSize,
 };
 use muster_core::{RunId, SessionId};
 use muster_state::run::RunEvent;
@@ -46,6 +46,7 @@ use crate::pty::{PtyEvent, PtyHandle};
 use crate::runs::credentials::Credentials;
 use crate::runs::{Report, Reports, RunWork};
 use crate::store::{StoreClosed, StoreError, StoreHandle};
+use crate::tasks::Tasks;
 use crate::trackers::Trackers;
 
 /// What the Supervisor needs to start.
@@ -78,6 +79,8 @@ pub(crate) struct Settings {
     /// Sessions the daemon's previous version handed over, to take over
     /// before anything else.
     pub(crate) adopted: Vec<crate::handoff::HandedSession>,
+    /// Where its work off the loop runs (`ARC-13`).
+    pub(crate) tasks: Tasks,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -89,8 +92,23 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         .await
         .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))??;
     let (requests, queue) = mpsc::channel(256);
+    // Unbounded on purpose (`ARC-14`): the Supervisor sends terminals and
+    // runs' work requests and waits on some replies, so either waiting on
+    // a full queue back to it could leave both waiting forever.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: terminals' events; a title at most once per chunk of output, progress only as it flips, an exit once"
+    )]
     let (pty_events, pty_queue) = mpsc::unbounded_channel();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: sent once as each watch ends, from Drop, which cannot wait"
+    )]
     let (unwatched, unwatched_queue) = mpsc::unbounded_channel();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: a few reports per step of a run, and only runs under way take steps"
+    )]
     let (run_reports, run_report_queue) = mpsc::unbounded_channel();
     let mut supervisor = Supervisor {
         requests: requests.clone(),
@@ -118,6 +136,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         docker: settings.docker,
         hosts: settings.hosts,
         pulls: pulls::Looks::default(),
+        tasks: settings.tasks,
     };
     supervisor.ensure_checkouts().await;
     // Running sessions handed over keep running: taken over before any is
@@ -128,6 +147,10 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
     supervisor.recover_sessions().await;
     supervisor.drop_stale_container_workspaces().await;
     supervisor.remove_ended_runs_containers();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-13: the Supervisor keeps its own queue open, so it runs as long as the daemon"
+    )]
     tokio::spawn(supervisor.run(
         queue,
         pty_queue,
@@ -196,6 +219,8 @@ struct Supervisor {
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
     /// Looks at branches' pull requests.
     pulls: pulls::Looks,
+    /// Its work off the loop (`ARC-13`).
+    tasks: Tasks,
 }
 
 impl Supervisor {
@@ -337,6 +362,7 @@ impl Supervisor {
     async fn handle(&mut self, command: Command) -> Result<Reply, ErrorBody> {
         match command {
             Command::Ping => Ok(Reply::Pong),
+            Command::Health => Ok(Reply::Health(self.health())),
             Command::AddProject { root, name } => self.add_project(root, name).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
             Command::CreateWorktree { project, branch } => {
@@ -444,7 +470,7 @@ impl Supervisor {
     }
 
     async fn tick(&mut self) {
-        let now = std::time::Instant::now();
+        let now = self.clock.instant();
         let due: Vec<SessionId> = self
             .live
             .iter()
@@ -477,6 +503,17 @@ impl Supervisor {
         }
     }
 
+    fn health(&self) -> Health {
+        let counts = self.tasks.counts();
+        let count = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
+        Health {
+            tasks: count(counts.all),
+            work: count(counts.work),
+            clients: count(counts.connections),
+            terminals: count(self.live.len()),
+        }
+    }
+
     fn broadcast(&self, delta: Delta) {
         // Nobody listening is fine; the change is already stored.
         let _ = self.deltas.send(delta);
@@ -487,6 +524,7 @@ impl Supervisor {
 fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Ping => "ping",
+        Command::Health => "health",
         Command::AddProject { .. } => "add project",
         Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",
