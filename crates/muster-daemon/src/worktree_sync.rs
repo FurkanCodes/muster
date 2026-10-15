@@ -31,9 +31,23 @@ pub(crate) struct Listed {
     pub(crate) prunable: bool,
 }
 
+/// Whether git is still making one of the listed worktrees: listed, but
+/// its HEAD not yet written (all zeros), so it has no branch to tell.
+pub(crate) fn being_made(output: &str) -> bool {
+    output
+        .split('\0')
+        .filter_map(|line| line.strip_prefix("HEAD "))
+        .any(is_unwritten)
+}
+
+fn is_unwritten(head: &str) -> bool {
+    !head.is_empty() && head.chars().all(|c| c == '0')
+}
+
 /// Reads `git worktree list --porcelain -z`: records of NUL-ended
 /// `key value` lines, each record ended by an empty one. The main checkout
-/// comes first and is left out; a bare repository's entry too.
+/// comes first and is left out; a bare repository's entry too, and a
+/// worktree git is still making, which the next look finds whole.
 pub(crate) fn parse(output: &str) -> Vec<Listed> {
     let mut listed = Vec::new();
     for (index, record) in output.split("\0\0").enumerate() {
@@ -60,7 +74,7 @@ pub(crate) fn parse(output: &str) -> Vec<Listed> {
             }
         }
         let Some(path) = path else { continue };
-        if index == 0 || bare {
+        if index == 0 || bare || head.as_deref().is_some_and(is_unwritten) {
             continue;
         }
         let branch = branch
@@ -128,7 +142,13 @@ pub(crate) async fn run(supervisor: SupervisorHandle, every: Duration) {
             }
             match git::list_worktrees(&project.root).await {
                 Ok(output) => {
-                    seen.insert(project.project, (stamp, crate::clock::monotonic()));
+                    // One still being made is looked at again next time,
+                    // though nothing in `.git/worktrees` will say so.
+                    if being_made(&output) {
+                        seen.remove(&project.project);
+                    } else {
+                        seen.insert(project.project, (stamp, crate::clock::monotonic()));
+                    }
                     if !supervisor
                         .worktrees_listed(project.project, parse(&output))
                         .await
@@ -156,6 +176,25 @@ fn changed_at(root: &Path) -> Option<SystemTime> {
 mod tests {
     use super::*;
     use crate::git::tests::{git, repository};
+
+    #[test]
+    fn a_worktree_git_is_still_making_waits_for_the_next_look() {
+        let output = "worktree /r\0HEAD 1111111111111111111111111111111111111111\0branch refs/heads/main\0\0\
+                      worktree /half\0HEAD 0000000000000000000000000000000000000000\0detached\0\0\
+                      worktree /whole\0HEAD 2222222222222222222222222222222222222222\0branch refs/heads/w\0\0";
+        assert!(being_made(output));
+        assert_eq!(
+            parse(output),
+            [Listed {
+                path: PathBuf::from("/whole"),
+                branch: "w".to_owned(),
+                prunable: false,
+            }]
+        );
+        assert!(!being_made(
+            "worktree /r\0HEAD 1111111111111111111111111111111111111111\0branch refs/heads/main\0\0"
+        ));
+    }
 
     #[test]
     fn the_porcelain_list_is_read_without_the_main_checkout() {
