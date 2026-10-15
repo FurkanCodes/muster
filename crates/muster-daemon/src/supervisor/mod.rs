@@ -10,12 +10,14 @@
 
 mod by_hand;
 mod containers;
+mod handle;
 mod issues;
 mod projects;
 mod reload;
 mod runs;
 mod sessions;
 mod settings;
+mod status;
 mod terminals;
 mod worktrees;
 
@@ -26,11 +28,13 @@ use std::sync::Arc;
 use muster_core::protocol::{
     Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, Snapshot, TermSize,
 };
-use muster_core::{RunId, SessionId, SessionStatus, WorkspaceId};
+use muster_core::{RunId, SessionId};
 use muster_state::run::RunEvent;
-use muster_state::session::{Effect, SessionMachine, Signal, Timing};
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use muster_state::session::{SessionMachine, Signal, Timing};
+use tokio::sync::{broadcast, mpsc, watch};
 
+use self::handle::Request;
+pub(crate) use self::handle::SupervisorHandle;
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
 use crate::githost::choose::Hosts;
@@ -41,176 +45,6 @@ use crate::runs::credentials::Credentials;
 use crate::runs::{Report, Reports, RunWork};
 use crate::store::{StoreClosed, StoreError, StoreHandle};
 use crate::trackers::Trackers;
-
-type Subscription = (Snapshot, broadcast::Receiver<Delta>);
-
-enum Request {
-    Subscribe(oneshot::Sender<Subscription>),
-    Command {
-        command: Command,
-        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
-    },
-    /// A client wants a session's terminal; `watch` when it will show it.
-    Terminal {
-        session: SessionId,
-        watch: bool,
-        reply: oneshot::Sender<Option<TerminalLink>>,
-    },
-    /// An issue fetched off the loop, back to start work on it.
-    IssueFetched(Box<issues::FetchedIssue>),
-    /// A ticket fetched off the loop, back to start a run on it.
-    RunTicketFetched(Box<runs::FetchedRun>),
-    /// The runs' credential fetched off the loop, back to start an agent.
-    CredentialFetched(Box<containers::CredentialFetched>),
-    /// Time to look at runs' pull requests.
-    CheckPullRequests,
-    /// The sampler asks which sessions run under which process.
-    RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
-    /// The branch watcher asks where each workspace is and what it had
-    /// checked out.
-    Workspaces(oneshot::Sender<Vec<(WorkspaceId, PathBuf, String)>>),
-    /// The branch watcher's findings.
-    Branches(Vec<(WorkspaceId, String)>),
-    /// The worktree sync asks for the projects and their worktrees.
-    ProjectsForSync(oneshot::Sender<Vec<crate::worktree_sync::ProjectWorktrees>>),
-    /// Git's list of a project's worktrees.
-    WorktreesListed {
-        project: muster_core::ProjectId,
-        listed: Vec<crate::worktree_sync::Listed>,
-    },
-    /// The sampler's measurement.
-    Resources(ResourceReport),
-    /// Hand every running session over, for the daemon's restart in place.
-    HandOver(oneshot::Sender<Vec<crate::handoff::HandedSession>>),
-    /// Take sessions over that were handed over.
-    Adopt(Vec<crate::handoff::HandedSession>, oneshot::Sender<()>),
-}
-
-impl std::fmt::Debug for Request {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Subscribe(_) => f.write_str("Subscribe"),
-            Self::Command { command, .. } => write!(f, "Command({command:?})"),
-            Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
-            Self::IssueFetched(_) => f.write_str("IssueFetched"),
-            Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
-            Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
-            Self::CheckPullRequests => f.write_str("CheckPullRequests"),
-            Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
-            Self::Workspaces(_) => f.write_str("Workspaces"),
-            Self::Branches(_) => f.write_str("Branches"),
-            Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
-            Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
-            Self::Resources(_) => f.write_str("Resources"),
-            Self::HandOver(_) => f.write_str("HandOver"),
-            Self::Adopt(sessions, _) => write!(f, "Adopt({})", sessions.len()),
-        }
-    }
-}
-
-/// How connections reach the Supervisor.
-#[derive(Clone, Debug)]
-pub(crate) struct SupervisorHandle {
-    requests: mpsc::Sender<Request>,
-}
-
-impl SupervisorHandle {
-    /// The current state and every delta after it, or `None` once the
-    /// Supervisor has stopped.
-    pub(crate) async fn subscribe(&self) -> Option<Subscription> {
-        let (reply, answer) = oneshot::channel();
-        self.requests.send(Request::Subscribe(reply)).await.ok()?;
-        answer.await.ok()
-    }
-
-    /// Carries out a client's command.
-    pub(crate) async fn command(&self, command: Command) -> Result<Reply, ErrorBody> {
-        let stopped = || ErrorBody::new(ErrorCode::Internal, "the daemon is shutting down");
-        let (reply, answer) = oneshot::channel();
-        self.requests
-            .send(Request::Command { command, reply })
-            .await
-            .map_err(|_| stopped())?;
-        answer.await.map_err(|_| stopped())?
-    }
-
-    /// The running sessions and their programs' process ids, or `None` once
-    /// the Supervisor has stopped.
-    pub(crate) async fn running_processes(&self) -> Option<Vec<(SessionId, u32)>> {
-        let (reply, answer) = oneshot::channel();
-        self.requests
-            .send(Request::RunningProcesses(reply))
-            .await
-            .ok()?;
-        answer.await.ok()
-    }
-
-    /// Every workspace's place and last known branch, or `None` once the
-    /// Supervisor has stopped.
-    pub(crate) async fn workspaces(&self) -> Option<Vec<(WorkspaceId, PathBuf, String)>> {
-        let (reply, answer) = oneshot::channel();
-        self.requests.send(Request::Workspaces(reply)).await.ok()?;
-        answer.await.ok()
-    }
-
-    /// Hands over branches that changed. `false` once the Supervisor has
-    /// stopped.
-    pub(crate) async fn record_branches(&self, changes: Vec<(WorkspaceId, String)>) -> bool {
-        self.requests.send(Request::Branches(changes)).await.is_ok()
-    }
-
-    /// Each project's root and Muster's worktrees of it, or `None` once
-    /// the Supervisor has stopped.
-    pub(crate) async fn projects_for_sync(
-        &self,
-    ) -> Option<Vec<crate::worktree_sync::ProjectWorktrees>> {
-        let (reply, answer) = oneshot::channel();
-        self.requests
-            .send(Request::ProjectsForSync(reply))
-            .await
-            .ok()?;
-        answer.await.ok()
-    }
-
-    /// Hands over git's list of a project's worktrees. `false` once the
-    /// Supervisor has stopped.
-    pub(crate) async fn worktrees_listed(
-        &self,
-        project: muster_core::ProjectId,
-        listed: Vec<crate::worktree_sync::Listed>,
-    ) -> bool {
-        self.requests
-            .send(Request::WorktreesListed { project, listed })
-            .await
-            .is_ok()
-    }
-
-    /// Asks for runs' pull requests to be looked at. `false` once the
-    /// Supervisor has stopped.
-    pub(crate) async fn check_pull_requests(&self) -> bool {
-        self.requests.send(Request::CheckPullRequests).await.is_ok()
-    }
-
-    /// Hands over a measurement. `false` once the Supervisor has stopped.
-    pub(crate) async fn record_resources(&self, report: ResourceReport) -> bool {
-        self.requests.send(Request::Resources(report)).await.is_ok()
-    }
-
-    /// A link to a session's terminal, if it still has one. With `watch`,
-    /// the session counts as watched until the link is dropped.
-    pub(crate) async fn terminal(&self, session: SessionId, watch: bool) -> Option<TerminalLink> {
-        let (reply, answer) = oneshot::channel();
-        self.requests
-            .send(Request::Terminal {
-                session,
-                watch,
-                reply,
-            })
-            .await
-            .ok()?;
-        answer.await.ok().flatten()
-    }
-}
 
 /// What the Supervisor needs to start.
 #[derive(Debug)]
@@ -582,35 +416,6 @@ impl Supervisor {
         self.broadcast(Delta::Resources(report));
     }
 
-    /// A hook arrived: the token says whose it is, never the payload.
-    async fn on_hook(&mut self, delivery: HookDelivery) {
-        let Some(&session) = self.hook_tokens.get(&delivery.token) else {
-            tracing::debug!("ignored a hook with an unknown token");
-            return;
-        };
-        let Some(harness) = self.live.get(&session).map(|live| live.harness) else {
-            return;
-        };
-        if harness.hook_route() != Some(delivery.harness.as_str()) {
-            tracing::debug!("ignored a hook posted for another harness");
-            return;
-        }
-        let event = delivery.event.as_deref();
-        if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
-            if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {
-                self.set_activity(session, change);
-            }
-            self.step_session(
-                session,
-                Signal::Hook {
-                    agent_session,
-                    event,
-                },
-            )
-            .await;
-        }
-    }
-
     /// The earliest moment a session or run machine wants to be woken.
     fn next_deadline(&self) -> Option<std::time::Instant> {
         let sessions = self
@@ -637,85 +442,6 @@ impl Supervisor {
         }
         self.tick_runs(now).await;
     }
-
-    /// Feeds a session's machine and carries out what it decides.
-    async fn step_session(&mut self, session: SessionId, signal: Signal) {
-        let Some(live) = self.live.get_mut(&session) else {
-            return;
-        };
-        let effects = live.machine.step(signal, std::time::Instant::now());
-        for effect in effects {
-            self.apply(session, effect).await;
-        }
-    }
-
-    async fn apply(&mut self, session: SessionId, effect: Effect) {
-        match effect {
-            Effect::Status { status, unseen } => self.set_status(session, status, unseen).await,
-            Effect::SaveResumeId(resume_id) => {
-                let id = resume_id.clone();
-                self.write(move |store| store.save_resume_id(session, &id))
-                    .await;
-                if let Some(stored) = self.session_mut(session) {
-                    stored.resume_id = Some(resume_id);
-                }
-            }
-        }
-    }
-
-    async fn set_status(&mut self, session: SessionId, status: SessionStatus, unseen: bool) {
-        let at = self.clock.now();
-        self.write(move |store| store.record_status(session, status, unseen, at))
-            .await;
-        let mut since = at;
-        if let Some(stored) = self.session_mut(session) {
-            // Only a new status starts its clock again: the unseen mark
-            // alone changing leaves it.
-            if stored.status == status {
-                since = stored.status_since;
-            }
-            stored.status = status;
-            stored.unseen = unseen;
-            stored.status_since = since;
-        }
-        self.broadcast(Delta::SessionStatus {
-            session,
-            status,
-            unseen,
-            since,
-        });
-        // Done working and not waiting: nothing is going on to tell.
-        if !matches!(
-            status,
-            SessionStatus::Running | SessionStatus::NeedsYou { .. }
-        ) {
-            self.set_activity(session, crate::harness::activity::ActivityChange::Clear);
-        }
-    }
-
-    /// What a session is doing now, as its hooks tell; told to clients
-    /// when it changes, and never stored.
-    fn set_activity(
-        &mut self,
-        session: SessionId,
-        change: crate::harness::activity::ActivityChange,
-    ) {
-        let now = self.clock.now();
-        let Some(stored) = self.session_mut(session) else {
-            return;
-        };
-        let text = match change {
-            crate::harness::activity::ActivityChange::Set(text) => Some(text),
-            crate::harness::activity::ActivityChange::Clear => None,
-        };
-        if stored.activity.as_ref().map(|activity| &activity.text) == text.as_ref() {
-            return;
-        }
-        stored.activity = text.map(|text| muster_core::Activity { text, since: now });
-        let activity = stored.activity.clone();
-        self.broadcast(Delta::SessionActivity { session, activity });
-    }
-
     fn session_mut(&mut self, session: SessionId) -> Option<&mut muster_core::Session> {
         self.state
             .sessions
