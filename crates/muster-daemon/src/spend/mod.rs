@@ -165,7 +165,7 @@ pub(crate) async fn run(supervisor: SupervisorHandle, interval: Duration, places
             return;
         };
         let read = tokio::task::spawn_blocking(move || {
-            let changed = taken.read(&targets, Instant::now());
+            let changed = taken.read(&targets, crate::clock::monotonic());
             (taken, changed)
         })
         .await;
@@ -230,7 +230,7 @@ mod tests {
             tokens,
             cost_micros: None,
         };
-        let now = Instant::now();
+        let now = crate::clock::monotonic();
         assert_eq!(
             readers.read(&targets, now),
             [(claude, spend(110)), (codex, spend(700))]
@@ -262,7 +262,7 @@ mod tests {
         let (harness, id) = wanted.split_once(':').unwrap();
         let session = SessionId::new();
         let mut readers = Readers::new(Places::from_env());
-        let read = readers.read(&[target(session, harness, id)], Instant::now());
+        let read = readers.read(&[target(session, harness, id)], crate::clock::monotonic());
         println!("{harness}: {read:?}");
         assert_eq!(read.len(), 1, "its records were found and read");
     }

@@ -11,8 +11,6 @@
 //! watcher holds a [`WatchGuard`]; dropping it, however the watcher ends,
 //! stops the watch.
 
-use std::time::Instant;
-
 use muster_core::SessionId;
 use muster_state::session::Signal;
 use tokio::sync::{mpsc, watch};
@@ -151,7 +149,7 @@ impl Supervisor {
             && let Some(live) = self.live.get_mut(&session)
         {
             live.machine
-                .step(Signal::Watched { watching: true }, Instant::now());
+                .step(Signal::Watched { watching: true }, self.clock.instant());
         }
     }
 }

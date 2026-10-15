@@ -470,7 +470,7 @@ impl Supervisor {
     }
 
     async fn tick(&mut self) {
-        let now = std::time::Instant::now();
+        let now = self.clock.instant();
         let due: Vec<SessionId> = self
             .live
             .iter()

@@ -1,7 +1,7 @@
 //! Starting, stopping and resuming sessions, and what their terminals report.
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::text::one_line;
@@ -258,7 +258,7 @@ impl Supervisor {
                 reports_start: hooked && harness.reports_start(),
             },
             self.timing,
-            Instant::now(),
+            self.clock.instant(),
         );
         self.live.insert(
             session,
@@ -267,7 +267,7 @@ impl Supervisor {
                 machine,
                 harness,
                 token,
-                launched: Instant::now(),
+                launched: self.clock.instant(),
                 // In a container the program itself falls back to a fresh
                 // conversation when it has none to resume.
                 resumed: resume && on_host,
@@ -478,7 +478,13 @@ impl Supervisor {
                 }
                 self.forget_token(session);
                 let failed_resume = self.live.get(&session).is_some_and(|live| {
-                    live.resumed && !requested && live.launched.elapsed() < RESUME_GRACE
+                    live.resumed
+                        && !requested
+                        && self
+                            .clock
+                            .instant()
+                            .saturating_duration_since(live.launched)
+                            < RESUME_GRACE
                 });
                 if failed_resume && self.start_fresh_after_failed_resume(session).await {
                     return;

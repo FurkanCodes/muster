@@ -222,7 +222,7 @@ impl Supervisor {
             ended_at: None,
         };
         let id = run.id;
-        let (stored, saved) = (run.clone(), machine.save(Instant::now()));
+        let (stored, saved) = (run.clone(), machine.save(self.clock.instant()));
         let inserted = self
             .store
             .call(move |store| store.insert_run(&stored, &saved))
@@ -324,7 +324,7 @@ impl Supervisor {
             return false;
         };
         let cost = matches!(event, RunEvent::CostReported { .. });
-        let effects = active.machine.step(event, Instant::now());
+        let effects = active.machine.step(event, self.clock.instant());
         // The work hears of the new generation before any is asked for
         // under it, and work under the old one stops.
         active.generation.send_replace(active.machine.generation());
@@ -387,7 +387,7 @@ impl Supervisor {
         };
         let at = self.clock.now();
         let ended_at = to.is_over().then_some(at);
-        let machine = active.machine.save(Instant::now());
+        let machine = active.machine.save(self.clock.instant());
         let pr = active.context.pr.clone();
         let reason_now = active.machine.reason().map(str::to_owned);
         let transition = RunTransition {
@@ -443,7 +443,7 @@ impl Supervisor {
         let Some(active) = self.active_runs.get(&run) else {
             return;
         };
-        let machine = active.machine.save(Instant::now());
+        let machine = active.machine.save(self.clock.instant());
         let context = active.context.clone();
         self.write(move |store| {
             store.save_run(
@@ -548,7 +548,7 @@ impl Supervisor {
                     (ProjectConfig::default(), Some(error.message))
                 }
             };
-            let machine = RunMachine::restore(machine, Instant::now());
+            let machine = RunMachine::restore(machine, self.clock.instant());
             let context = RunContext {
                 run: run.id,
                 project: run.project,

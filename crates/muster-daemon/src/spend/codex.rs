@@ -130,7 +130,7 @@ pub(super) mod tests {
             [meta.to_owned(), token_count(Some(1_000)), token_count(None)].join("\n") + "\n",
         )
         .unwrap();
-        let now = Instant::now();
+        let now = crate::clock::monotonic();
         assert_eq!(Codex::default().read(dir.path(), "someone-else", now), None);
         let mut codex = Codex::default();
         assert_eq!(codex.read(dir.path(), "01a0f182-bea0", now), Some(1_000));
@@ -151,7 +151,7 @@ pub(super) mod tests {
     #[test]
     fn a_rollout_not_found_is_looked_for_again_only_after_a_while() {
         let dir = tempfile::tempdir().unwrap();
-        let now = Instant::now();
+        let now = crate::clock::monotonic();
         let mut codex = Codex::default();
         assert_eq!(codex.read(dir.path(), "t1", now), None);
         let day = dir.path().join("2026/10/15");
