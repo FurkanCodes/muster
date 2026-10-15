@@ -31,7 +31,7 @@ jobs:
       # Warnings fail the build, clippy's included (ARC-16).
       CARGO_BUILD_WARNINGS: deny
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Toolchain
         run: |
           version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -100,5 +100,5 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
