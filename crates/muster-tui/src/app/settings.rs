@@ -3,7 +3,8 @@
 //! the Tickets screen lists only the tickets assigned to the person, in
 //! whatever tracker the project's tickets are, where they come from
 //! (`tickets_from`), and whether the branches Muster makes start with
-//! `muster/`.
+//! `muster/`. Then, on a Mac, Muster's own: whether the notch shows the
+//! agents.
 //!
 //! ⏎ or space turns the selected setting on or off, or opens its dialog.
 //! The daemon writes the change into the person's own settings for the
@@ -27,15 +28,21 @@ pub(crate) enum SettingRow {
     TicketsFrom(ProjectId),
     /// Whether the branches Muster makes start with `muster/`.
     MusterPrefix(ProjectId),
+    /// Muster's own settings, for all of it.
+    Muster,
+    /// Whether the notch shows the agents.
+    Notch,
 }
 
 impl SettingRow {
-    pub(crate) fn project(self) -> ProjectId {
+    /// The project whose setting it is; `None` for Muster's own.
+    pub(crate) fn project(self) -> Option<ProjectId> {
         match self {
             Self::Project(project)
             | Self::OnlyMine(project)
             | Self::TicketsFrom(project)
-            | Self::MusterPrefix(project) => project,
+            | Self::MusterPrefix(project) => Some(project),
+            Self::Muster | Self::Notch => None,
         }
     }
 }
@@ -52,10 +59,12 @@ pub(crate) enum Settings {
 
 impl App {
     /// The settings list: each project, then its settings; the branches'
-    /// prefix only where the daemon can change it.
+    /// prefix only where the daemon can change it. Then Muster's own, where
+    /// it has any here: the notch, on a Mac.
     pub(crate) fn setting_rows(&self) -> Vec<SettingRow> {
         let prefix = self.daemon_protocol >= MUSTER_PREFIX_PROTOCOL;
-        self.model
+        let mut rows: Vec<SettingRow> = self
+            .model
             .projects()
             .iter()
             .flat_map(|project| {
@@ -67,7 +76,11 @@ impl App {
                 ]
             })
             .flatten()
-            .collect()
+            .collect();
+        if self.notch_known() && self.model.loaded() {
+            rows.extend([SettingRow::Muster, SettingRow::Notch]);
+        }
+        rows
     }
 
     /// A key on the Settings screen; the rest are inert here.
@@ -77,6 +90,7 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Enter | KeyCode::Char(' ') => match self.settings_selected {
                 Some(SettingRow::TicketsFrom(project)) => return self.choose_tickets_from(project),
+                Some(SettingRow::Notch) => return self.toggle_notch(),
                 _ => return self.toggle_setting(),
             },
             KeyCode::Char('r') => {
@@ -194,11 +208,11 @@ impl App {
         }
         self.settings_selected = self
             .settings_selected
-            .map(|row| SettingRow::Project(row.project()))
+            .and_then(|row| row.project().map(SettingRow::Project))
             .filter(|row| rows.contains(row))
             .or_else(|| {
                 rows.iter()
-                    .find(|row| matches!(row, SettingRow::OnlyMine(_)))
+                    .find(|row| matches!(row, SettingRow::OnlyMine(_) | SettingRow::Notch))
                     .copied()
             });
     }

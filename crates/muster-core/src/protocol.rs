@@ -37,7 +37,13 @@
 //! are, so projects sharing them are offered together
 //! (`Reply::Issues::source`); version 22 how the daemon is doing inside,
 //! for `muster status` (`Command::Health`, sent only to a daemon of 22 or
-//! later).
+//! later); version 23 the notch: whether the person looks at any client
+//! (`ClientFrame::Looking`, sent only to a daemon of 23 or later;
+//! `Snapshot::looked_at`, and `Delta::LookedAt`, sent only to a client of
+//! 23 or later), showing a session in the client looked at last
+//! (`Command::Reveal`, `ServerFrame::Reveal`), and Muster's own settings
+//! (`Snapshot::preferences`, `Delta::Preferences`,
+//! `Command::ChangePreference`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -49,11 +55,11 @@ use serde::{Deserialize, Serialize};
 use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
-use crate::settings::{ProjectSettings, SettingChange};
+use crate::settings::{PreferenceChange, Preferences, ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 22;
+pub const PROTOCOL_VERSION: u32 = 23;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -151,6 +157,11 @@ pub enum ClientFrame {
     },
     /// The client's view of a session's terminal changed size.
     Resize { session: SessionId, size: TermSize },
+    /// Whether the person is looking at this client's window: a UI says
+    /// so as it connects and whenever its window gains or loses focus. A
+    /// client that never says is not looked at. Sent only to a daemon of
+    /// 23 or later.
+    Looking { looking: bool },
 }
 
 fn watching_by_default() -> bool {
@@ -201,6 +212,12 @@ pub enum ServerFrame {
     Detached {
         session: SessionId,
         reason: DetachReason,
+    },
+    /// Show this session: the person asked for it elsewhere, in the notch.
+    /// Sent only to a client that said whether it is looked at
+    /// ([`ClientFrame::Looking`]), the one looked at last.
+    Reveal {
+        session: SessionId,
     },
 }
 
@@ -359,6 +376,14 @@ pub enum Command {
     /// How the daemon is doing inside, answered with [`Reply::Health`].
     /// Sent only to a daemon of protocol 22 or later.
     Health,
+    /// Show a session in the Muster window the person looked at last
+    /// ([`ServerFrame::Reveal`]); refused when no window is open. Sent
+    /// only to a daemon of 23 or later.
+    Reveal { session: SessionId },
+    /// Change one of Muster's own settings, in the person's own file;
+    /// answered with [`Reply::Done`], every client told by
+    /// [`Delta::Preferences`]. Sent only to a daemon of 23 or later.
+    ChangePreference(PreferenceChange),
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with
@@ -506,6 +531,13 @@ pub struct Snapshot {
     /// The latest measurement, once one has been taken.
     #[serde(default)]
     pub resources: Option<ResourceReport>,
+    /// Whether the person is looking at any client's window
+    /// ([`ClientFrame::Looking`]). From protocol 23.
+    #[serde(default)]
+    pub looked_at: bool,
+    /// Muster's own settings. From protocol 23.
+    #[serde(default)]
+    pub preferences: Preferences,
 }
 
 /// What the machine and each running session use, measured every couple of
@@ -560,6 +592,24 @@ pub enum Delta {
     Resources(ResourceReport),
     /// A run was picked up or changed.
     RunUpserted(crate::Run),
+    /// The person began or stopped looking at every client's window.
+    /// Sent only to a client of 23 or later.
+    LookedAt {
+        looked_at: bool,
+    },
+    /// Muster's own settings changed. Sent only to a client of 23 or later.
+    Preferences(Preferences),
+}
+
+impl Delta {
+    /// The first protocol that knows this delta: a client that agreed to
+    /// an older one is never sent it (`ARC-09`).
+    pub fn since(&self) -> u32 {
+        match self {
+            Self::LookedAt { .. } | Self::Preferences(_) => crate::settings::NOTCH_PROTOCOL,
+            _ => FIRST_PROTOCOL_VERSION,
+        }
+    }
 }
 
 /// A failure the client can act on: `code` is for code, `message` for people.

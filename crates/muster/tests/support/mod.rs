@@ -311,6 +311,9 @@ impl Sandbox {
             // Runs never reach the person's own credential: not the
             // Keychain, and not one in the environment the tests run in.
             .env("MUSTER_KEYCHAIN", "off")
+            // A UI under test shows no notch on the screen of whoever runs
+            // the tests.
+            .env("MUSTER_NOTCH", "off")
             .env("CLAUDE_CODE_OAUTH_TOKEN", "")
             .env("ANTHROPIC_API_KEY", "")
             // As if the daemon were started from inside an agent session,

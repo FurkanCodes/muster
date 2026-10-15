@@ -96,6 +96,18 @@ enum Commands {
     /// Bitbucket, and the autopilot's runs.
     #[command(subcommand)]
     Auth(AuthCommand),
+    /// Show the agents in the MacBook's notch while you look away from
+    /// Muster (macOS). The UI starts it, unless Muster's own settings have
+    /// it off; it ends when turned off, or when the daemon is gone.
+    Notch {
+        /// Start it apart from this process and its terminal, and return:
+        /// as the UI does.
+        #[arg(long)]
+        detach: bool,
+        /// The notch `--detach` starts, in a session of its own.
+        #[arg(long, hide = true)]
+        background: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -301,6 +313,11 @@ fn main() -> ExitCode {
         Ok(paths) => paths,
         Err(error) => return fail(error),
     };
+    // The notch takes the main thread, which AppKit needs, before any
+    // runtime is made on it.
+    if let Some(Commands::Notch { detach, background }) = cli.command {
+        return notch(&paths, detach, background);
+    }
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(error) => return fail(error),
@@ -381,6 +398,8 @@ fn main() -> ExitCode {
             Some(Commands::Auth(AuthCommand::Linear { token })) => {
                 return auth::linear(token).await;
             }
+            // Shown before the runtime was made.
+            Some(Commands::Notch { .. }) => Ok(()),
             Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
             Some(Commands::Review { worktree }) => commands::review(&socket, &worktree).await,
@@ -440,12 +459,28 @@ async fn ui(paths: Paths) -> ExitCode {
         std::env::var("MUSTER_MOTION").as_deref(),
         Ok("off" | "0" | "false" | "no")
     );
+    // MUSTER_NOTCH=off keeps the UI from starting the notch, whatever
+    // Muster's own settings say.
+    let notch = cfg!(target_os = "macos")
+        && !matches!(
+            std::env::var("MUSTER_NOTCH").as_deref(),
+            Ok("off" | "0" | "false" | "no")
+        );
+    let notch_paths = paths.clone();
+    let start_notch: Option<Box<dyn Fn() -> std::io::Result<()> + Send + Sync>> =
+        notch.then(|| {
+            Box::new(move || start_notch(&notch_paths))
+                as Box<dyn Fn() -> std::io::Result<()> + Send + Sync>
+        });
     let options = muster_tui::Options {
         socket: paths.socket(),
         start_daemon: Some(Box::new(move || start_daemon(&paths))),
         cwd,
         notify,
         motion,
+        start_notch,
+        // What macOS says the terminal is, to bring it to the front.
+        terminal_app: std::env::var("__CFBundleIdentifier").ok(),
     };
     match muster_tui::run(options).await {
         Ok(()) => ExitCode::SUCCESS,
@@ -481,6 +516,64 @@ fn start_daemon(paths: &Paths) -> std::io::Result<()> {
             let _ = daemon.wait();
         })?;
     Ok(())
+}
+
+/// Starts `muster notch --detach`, which starts the notch apart from the
+/// UI and returns at once; a notch already running keeps on, and the new
+/// one ends. A thread waits for the short-lived starter.
+fn start_notch(paths: &Paths) -> std::io::Result<()> {
+    let mut starter = std::process::Command::new(std::env::current_exe()?)
+        .args(["notch", "--detach"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .env("MUSTER_RUNTIME_DIR", &paths.runtime_dir)
+        .spawn()?;
+    std::thread::Builder::new()
+        .name("muster-reap-notch".to_owned())
+        .spawn(move || {
+            let _ = starter.wait();
+        })?;
+    Ok(())
+}
+
+/// `muster notch`: with `detach`, starts the notch as a process of its own,
+/// its errors in `notch.log` in the runtime directory (written afresh each
+/// time), and returns; otherwise shows it until it ends.
+fn notch(paths: &Paths, detach: bool, background: bool) -> ExitCode {
+    use std::os::unix::process::CommandExt;
+    if detach {
+        let started = std::fs::File::create(paths.runtime_dir.join("notch.log")).and_then(|log| {
+            std::process::Command::new(std::env::current_exe()?)
+                .args(["notch", "--background"])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(log)
+                .spawn()
+        });
+        return match started {
+            // Not waited for: it runs on once this process has gone.
+            Ok(_notch) => ExitCode::SUCCESS,
+            Err(error) => fail(format!("could not start the notch: {error}")),
+        };
+    }
+    if background {
+        // A session of its own, with no terminal to hang it up.
+        let _ = nix::unistd::setsid();
+    }
+    // Moves onto the program installed now, as the daemon has: the notch
+    // speaks its version's protocol and draws its version's notch.
+    let relaunch = |version: &str| match std::env::current_exe() {
+        Ok(exe) => std::process::Command::new(exe)
+            .args(["notch", "--background"])
+            .env(muster_notch::MOVED_FOR, version)
+            .exec(),
+        Err(error) => error,
+    };
+    match muster_notch::run(&paths.socket(), &paths.runtime_dir, relaunch) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => fail(error),
+    }
 }
 
 /// `muster daemon --detach`: starts the daemon as a process of its own and

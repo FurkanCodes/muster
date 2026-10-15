@@ -6,7 +6,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use muster_core::Timestamp;
-use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame, TermSize};
+use muster_core::protocol::{
+    Command, Delta, ErrorCode, PROTOCOL_VERSION, Reply, ServerFrame, TermSize,
+};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
@@ -25,6 +27,11 @@ impl Clock for FixedClock {
 }
 
 async fn start(delta_capacity: usize) -> SupervisorHandle {
+    start_in(delta_capacity, std::env::temp_dir()).await
+}
+
+/// A Supervisor whose person's settings are in `config_dir`.
+async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandle {
     let store = StoreHandle::spawn(Store::open_in_memory().unwrap()).unwrap();
     supervisor::spawn(supervisor::Settings {
         store,
@@ -40,7 +47,7 @@ async fn start(delta_capacity: usize) -> SupervisorHandle {
             secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
             http: crate::service::http_client(),
         }),
-        config_dir: std::env::temp_dir(),
+        config_dir,
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
         docker: "docker".to_owned(),
         hosts: Arc::new(crate::githost::choose::ServiceHosts {
@@ -262,7 +269,7 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
         clippy::disallowed_methods,
         reason = "a test's task ends with the test"
     )]
-    tokio::spawn(pump_state(supervisor.clone(), outgoing));
+    tokio::spawn(pump_state(supervisor.clone(), outgoing, PROTOCOL_VERSION));
     assert!(matches!(
         frames.recv().await,
         Some(ServerFrame::Snapshot(_))
@@ -387,4 +394,110 @@ async fn every_nth_measurement_is_kept_in_history() {
     let samples = kept().await;
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].memory_bytes, 1_000);
+}
+
+/// The next delta, waiting at most five seconds.
+async fn next_delta(deltas: &mut tokio::sync::broadcast::Receiver<Delta>) -> Delta {
+    timeout(Duration::from_secs(5), deltas.recv())
+        .await
+        .expect("a delta")
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_person_looks_at_any_window_or_at_none() {
+    let supervisor = start(16).await;
+    let (snapshot, mut deltas) = supervisor.subscribe().await.unwrap();
+    assert!(!snapshot.looked_at);
+    let (one, two) = (mpsc::channel(4).0, mpsc::channel(4).0);
+    let one = supervisor.add_looker(one).await.unwrap();
+    let two = supervisor.add_looker(two).await.unwrap();
+
+    supervisor.looking(&one, true).await;
+    assert_eq!(
+        next_delta(&mut deltas).await,
+        Delta::LookedAt { looked_at: true }
+    );
+    // Another window looked at, then the first looked away from: still
+    // looked at, so nothing is said.
+    supervisor.looking(&two, true).await;
+    supervisor.looking(&one, false).await;
+    assert!(supervisor.subscribe().await.unwrap().0.looked_at);
+    // The window looked at goes, however its client ended.
+    drop(two);
+    assert_eq!(
+        next_delta(&mut deltas).await,
+        Delta::LookedAt { looked_at: false }
+    );
+    assert!(!supervisor.subscribe().await.unwrap().0.looked_at);
+}
+
+#[tokio::test]
+async fn a_session_is_shown_only_if_it_and_a_window_are_there() {
+    let supervisor = start(16).await;
+    let unknown = muster_core::SessionId::new();
+    let refused = supervisor
+        .command(Command::Reveal { session: unknown })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::NotFound);
+}
+
+#[tokio::test]
+async fn a_client_of_an_older_protocol_is_sent_only_what_it_knows() {
+    let dir = tempfile::tempdir().unwrap();
+    let supervisor = start(16).await;
+    let (outgoing, mut frames) = mpsc::channel(16);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test's task ends with the test"
+    )]
+    tokio::spawn(pump_state(
+        supervisor.clone(),
+        outgoing,
+        muster_core::settings::NOTCH_PROTOCOL - 1,
+    ));
+    assert!(matches!(
+        frames.recv().await,
+        Some(ServerFrame::Snapshot(_))
+    ));
+    let window = supervisor.add_looker(mpsc::channel(4).0).await.unwrap();
+    supervisor.looking(&window, true).await;
+    supervisor
+        .command(add(&repository(dir.path(), "app"), None))
+        .await
+        .unwrap();
+    let first = timeout(Duration::from_secs(5), frames.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(first, ServerFrame::Delta(Delta::ProjectUpserted(_))),
+        "{first:?}"
+    );
+}
+
+#[tokio::test]
+async fn muster_s_own_settings_change_in_the_person_s_file_for_every_client() {
+    let dir = tempfile::tempdir().unwrap();
+    let supervisor = start_in(16, dir.path().to_owned()).await;
+    let (snapshot, mut deltas) = supervisor.subscribe().await.unwrap();
+    assert!(snapshot.preferences.notch);
+    assert_eq!(snapshot.preferences.file, dir.path().join("settings.toml"));
+
+    let change = muster_core::settings::PreferenceChange::Notch(false);
+    assert_eq!(
+        supervisor
+            .command(Command::ChangePreference(change))
+            .await
+            .unwrap(),
+        Reply::Done
+    );
+    let Delta::Preferences(changed) = next_delta(&mut deltas).await else {
+        panic!("not the settings");
+    };
+    assert!(!changed.notch);
+    let written = std::fs::read_to_string(dir.path().join("settings.toml")).unwrap();
+    assert!(written.contains("show = false"), "{written}");
+    assert!(!supervisor.subscribe().await.unwrap().0.preferences.notch);
 }

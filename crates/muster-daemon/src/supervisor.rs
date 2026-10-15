@@ -12,6 +12,7 @@ mod by_hand;
 mod containers;
 mod handle;
 mod issues;
+mod looking;
 mod projects;
 mod pulls;
 mod reload;
@@ -37,6 +38,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 
 use self::handle::Request;
 pub(crate) use self::handle::SupervisorHandle;
+pub(crate) use self::looking::LookGuard;
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
 use crate::githost::choose::Hosts;
@@ -86,11 +88,12 @@ pub(crate) struct Settings {
 /// Loads the state from the store, resumes or settles sessions the last
 /// daemon left running, and starts the Supervisor.
 pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreError> {
-    let (state, stored_runs) = settings
+    let (mut state, stored_runs) = settings
         .store
         .call(|store| Ok::<_, StoreError>((store.snapshot()?, store.runs()?)))
         .await
         .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))??;
+    state.preferences = preferences(settings.config_dir.clone()).await;
     let (requests, queue) = mpsc::channel(256);
     // Unbounded on purpose (`ARC-14`): the Supervisor sends terminals and
     // runs' work requests and waits on some replies, so either waiting on
@@ -105,6 +108,11 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         reason = "ARC-14: sent once as each watch ends, from Drop, which cannot wait"
     )]
     let (unwatched, unwatched_queue) = mpsc::unbounded_channel();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: sent once as each looking client ends, from Drop, which cannot wait"
+    )]
+    let (looker_gone, looker_gone_queue) = mpsc::unbounded_channel();
     #[expect(
         clippy::disallowed_methods,
         reason = "ARC-14: a few reports per step of a run, and only runs under way take steps"
@@ -122,6 +130,8 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         terminals: HashMap::new(),
         watchers: HashMap::new(),
         unwatched,
+        lookers: looking::Lookers::default(),
+        looker_gone,
         hook_tokens: HashMap::new(),
         pty_events,
         history_every: settings.history_every.max(1),
@@ -151,14 +161,49 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         clippy::disallowed_methods,
         reason = "ARC-13: the Supervisor keeps its own queue open, so it runs as long as the daemon"
     )]
-    tokio::spawn(supervisor.run(
-        queue,
-        pty_queue,
-        settings.hook_queue,
-        unwatched_queue,
-        run_report_queue,
-    ));
+    tokio::spawn(supervisor.run(Queues {
+        requests: queue,
+        pty: pty_queue,
+        hooks: settings.hook_queue,
+        unwatched: unwatched_queue,
+        looker_gone: looker_gone_queue,
+        run_reports: run_report_queue,
+    }));
     Ok(SupervisorHandle { requests })
+}
+
+/// Muster's own settings as written, or its defaults where they do not
+/// read, which is logged; read off the loop.
+async fn preferences(config_dir: PathBuf) -> muster_core::settings::Preferences {
+    let file = config_dir.join(muster_core::config::preferences::FILE_NAME);
+    let read = tokio::task::spawn_blocking(move || crate::config::preferences(&config_dir)).await;
+    match read {
+        Ok(Ok(preferences)) => preferences,
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "Muster's own settings do not read; using its defaults");
+            muster_core::settings::Preferences {
+                file,
+                ..Default::default()
+            }
+        }
+        Err(error) => {
+            tracing::warn!(%error, "could not read Muster's own settings");
+            muster_core::settings::Preferences {
+                file,
+                ..Default::default()
+            }
+        }
+    }
+}
+
+/// What the Supervisor listens to.
+struct Queues {
+    requests: mpsc::Receiver<Request>,
+    pty: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
+    hooks: mpsc::Receiver<HookDelivery>,
+    unwatched: mpsc::UnboundedReceiver<SessionId>,
+    looker_gone: mpsc::UnboundedReceiver<u64>,
+    run_reports: mpsc::UnboundedReceiver<(RunId, Report)>,
 }
 
 /// A session whose terminal the daemon holds: running, or exited with its
@@ -199,6 +244,10 @@ struct Supervisor {
     watchers: HashMap<SessionId, usize>,
     /// Where dropped watch guards report.
     unwatched: mpsc::UnboundedSender<SessionId>,
+    /// The clients that say whether the person is looking at them.
+    lookers: looking::Lookers,
+    /// Where dropped look guards report.
+    looker_gone: mpsc::UnboundedSender<u64>,
     /// Which session each issued hook token names (`ARC-11`).
     hook_tokens: HashMap<crate::secrets::Token, SessionId>,
     history_every: u32,
@@ -224,26 +273,20 @@ struct Supervisor {
 }
 
 impl Supervisor {
-    async fn run(
-        mut self,
-        mut queue: mpsc::Receiver<Request>,
-        mut pty_queue: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
-        mut hook_queue: mpsc::Receiver<HookDelivery>,
-        mut unwatched: mpsc::UnboundedReceiver<SessionId>,
-        mut run_reports: mpsc::UnboundedReceiver<(RunId, Report)>,
-    ) {
+    async fn run(mut self, mut queues: Queues) {
         loop {
             let deadline = self.next_deadline();
             let wake_at = deadline.map_or_else(tokio::time::Instant::now, Into::into);
             tokio::select! {
-                request = queue.recv() => match request {
+                request = queues.requests.recv() => match request {
                     Some(request) => self.on_request(request).await,
                     None => return,
                 },
-                Some((session, event)) = pty_queue.recv() => self.on_pty_event(session, event).await,
-                Some(delivery) = hook_queue.recv() => self.on_hook(delivery).await,
-                Some(session) = unwatched.recv() => self.unwatch(session).await,
-                Some((run, report)) = run_reports.recv() => self.on_run_report(run, report).await,
+                Some((session, event)) = queues.pty.recv() => self.on_pty_event(session, event).await,
+                Some(delivery) = queues.hooks.recv() => self.on_hook(delivery).await,
+                Some(session) = queues.unwatched.recv() => self.unwatch(session).await,
+                Some(client) = queues.looker_gone.recv() => self.remove_looker(client),
+                Some((run, report)) = queues.run_reports.recv() => self.on_run_report(run, report).await,
                 () = tokio::time::sleep_until(wake_at), if deadline.is_some() => self.tick().await,
             }
         }
@@ -360,6 +403,11 @@ impl Supervisor {
             Request::WorktreesListed { project, listed } => {
                 self.sync_worktrees(project, listed).await;
             }
+            Request::AddLooker { outgoing, reply } => {
+                // A client that left already drops the guard, which removes it.
+                let _ = reply.send(self.add_looker(outgoing));
+            }
+            Request::Looking { client, looking } => self.set_looking(client, looking),
             Request::Terminal {
                 session,
                 watch,
@@ -376,6 +424,8 @@ impl Supervisor {
         match command {
             Command::Ping => Ok(Reply::Pong),
             Command::Health => Ok(Reply::Health(self.health())),
+            Command::Reveal { session } => self.reveal(session),
+            Command::ChangePreference(change) => self.change_preference(&change),
             Command::AddProject { root, name } => self.add_project(root, name).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
             Command::CreateWorktree { project, branch } => {
@@ -538,6 +588,8 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Ping => "ping",
         Command::Health => "health",
+        Command::Reveal { .. } => "reveal",
+        Command::ChangePreference(_) => "change preference",
         Command::AddProject { .. } => "add project",
         Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",

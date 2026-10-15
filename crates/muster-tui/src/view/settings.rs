@@ -1,5 +1,6 @@
 //! The Settings screen: each project with the settings the person can
-//! change here, and what the selected one does and where it is kept.
+//! change here, then Muster's own, and what the selected one does and
+//! where it is kept.
 
 use muster_core::ProjectId;
 use muster_core::settings::{ProjectSettings, SettingSource};
@@ -19,6 +20,8 @@ const ONLY_MINE: &str = "Only my tickets";
 const TICKETS_FROM: &str = "Tickets from";
 /// What the setting of the branches' prefix is called.
 const MUSTER_PREFIX: &str = "Branches with muster/";
+/// What the setting of the notch is called.
+const NOTCH: &str = "Agents in the notch";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Settings ", app.list_has_keys());
@@ -52,7 +55,7 @@ pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
 
 /// A project's heading, or a setting with its value at the line's end.
 fn row_line(app: &App, row: SettingRow, width: usize) -> Line<'static> {
-    let edge = look::edge(app, Some(row.project()), app.settings_selected == Some(row));
+    let edge = look::edge(app, row.project(), app.settings_selected == Some(row));
     let mut line = row_text(app, row, width.saturating_sub(1));
     line.spans.insert(0, edge);
     line
@@ -60,8 +63,10 @@ fn row_line(app: &App, row: SettingRow, width: usize) -> Line<'static> {
 
 /// A row's line after its edge.
 fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
-    let settings = app.settings.get(&row.project());
+    let settings = row.project().and_then(|project| app.settings.get(&project));
     match row {
+        SettingRow::Muster => Line::from(Span::from("Muster").bold()),
+        SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -116,6 +121,17 @@ fn labelled(label: &str, value: Span<'static>, width: usize) -> Line<'static> {
     Line::from(vec![Span::raw(label), Span::raw(" ".repeat(gap)), value])
 }
 
+/// Whether the notch is on, or being turned on or off.
+fn notch_value(app: &App) -> Span<'static> {
+    if app.notch_changing {
+        Span::from("…").dim()
+    } else if app.model.preferences().notch {
+        Span::from("on").green().bold()
+    } else {
+        Span::from("off").dim()
+    }
+}
+
 /// Where the tickets come from, in a word or two: `Jira TURPAT`; `choose`
 /// where nothing can tell.
 fn tickets_value(settings: &ProjectSettings) -> Span<'static> {
@@ -144,15 +160,22 @@ fn project_name(app: &App, project: ProjectId) -> String {
 /// where a change goes; or the selected project's settings as a whole.
 pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let text = match app.settings_selected {
-        Some(row) => match app.settings.get(&row.project()) {
+        Some(SettingRow::Muster | SettingRow::Notch) => notch_text(app),
+        Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings),
                 SettingRow::TicketsFrom(_) => tickets_from_text(settings),
                 SettingRow::MusterPrefix(_) => muster_prefix_text(settings),
                 SettingRow::Project(project) => project_text(app, project, settings),
+                SettingRow::Muster | SettingRow::Notch => notch_text(app),
             },
             Some(Settings::Failed(error)) => Text::from(vec![
-                Line::from(project_name(app, row.project())).bold(),
+                Line::from(
+                    row.project()
+                        .map(|project| project_name(app, project))
+                        .unwrap_or_default(),
+                )
+                .bold(),
                 Line::from(""),
                 Line::from("Its settings cannot be read:").red(),
                 Line::from(error.clone()),
@@ -209,6 +232,38 @@ fn only_mine_text(settings: &ProjectSettings) -> Text<'static> {
              are fetched again.",
         )
         .dim(),
+    ])
+}
+
+fn notch_text(app: &App) -> Text<'static> {
+    let preferences = app.model.preferences();
+    let (state, does, key) = if preferences.notch {
+        (
+            Span::from("on").green().bold(),
+            "On a MacBook with a notch, the agents show around it while you look away from \
+             Muster: how many work, how many wait on you. Point at it for the list, and click one \
+             to come back to it here.",
+            "⏎ or space turns it off.",
+        )
+    } else {
+        (
+            Span::from("off").bold(),
+            "Muster leaves the notch alone.",
+            "⏎ or space turns it on.",
+        )
+    };
+    Text::from(vec![
+        Line::from(vec![Span::from(format!("{NOTCH}  ")).bold(), state]),
+        Line::from(does),
+        Line::from(""),
+        detail(
+            "Shown",
+            "while an agent works or waits on you, and no Muster window has your eyes".to_owned(),
+        ),
+        detail("Saved in", preferences.file.display().to_string()),
+        Line::from(""),
+        Line::from(key).dim(),
+        Line::from("Muster's own settings are yours, for all of it, not any project's.").dim(),
     ])
 }
 
@@ -355,7 +410,14 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
                 });
             }
         }
-        Some(SettingRow::Project(_)) | None => {}
+        Some(SettingRow::Notch) if !app.notch_changing => {
+            hints.push(if app.model.preferences().notch {
+                "⏎ turn off"
+            } else {
+                "⏎ turn on"
+            });
+        }
+        Some(SettingRow::Project(_) | SettingRow::Muster | SettingRow::Notch) | None => {}
     }
     hints.push("r read again");
     hints

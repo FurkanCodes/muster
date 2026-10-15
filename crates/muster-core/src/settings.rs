@@ -119,6 +119,40 @@ pub const MUSTER_PREFIX_PROTOCOL: u32 = 20;
 /// Where the branches' prefix is written: `[branches] muster_prefix`.
 pub const MUSTER_PREFIX: (&str, &str) = ("branches", "muster_prefix");
 
+/// Muster's own settings, the person's for all of Muster rather than a
+/// project's, as they stand. From protocol 23.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Preferences {
+    /// Show the agents in the MacBook's notch while no Muster window has
+    /// the person's eyes (`[notch] show`).
+    pub notch: bool,
+    /// Where they are written: the person's own file, never a repository.
+    pub file: PathBuf,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            notch: true,
+            file: PathBuf::new(),
+        }
+    }
+}
+
+/// A change the person makes to Muster's own settings. From protocol 23.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PreferenceChange {
+    /// Show the agents in the notch, or leave it alone.
+    Notch(bool),
+}
+
+/// The first protocol whose daemon knows who looks at its clients, shows
+/// a session in one, and keeps Muster's own settings (`ARC-09`).
+pub const NOTCH_PROTOCOL: u32 = 23;
+
+/// Where showing the notch is written: `[notch] show`.
+pub const NOTCH: (&str, &str) = ("notch", "show");
+
 /// Where only-my-tickets is written: `[tickets] mine`.
 pub const ONLY_MINE: (&str, &str) = ("tickets", "mine");
 

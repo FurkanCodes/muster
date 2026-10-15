@@ -4,9 +4,11 @@
 
 use std::path::{Path, PathBuf};
 
+use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::settings::{
-    MUSTER_PREFIX, ONLY_MINE, SettingChange, SettingSource, TICKETS_FROM_KEYS, TRACKER,
+    MUSTER_PREFIX, NOTCH, ONLY_MINE, PreferenceChange, Preferences, SettingChange, SettingSource,
+    TICKETS_FROM_KEYS, TRACKER,
 };
 
 /// The repository's settings file.
@@ -111,6 +113,39 @@ pub fn change(root: &Path, overrides: &Path, change: &SettingChange) -> Result<(
     write(overrides, &changed).map_err(|error| invalid(format!("cannot be written: {error}")))
 }
 
+/// Muster's own settings, from `settings.toml` in the person's settings
+/// folder `config_dir`.
+pub fn preferences(config_dir: &Path) -> Result<Preferences, ConfigError> {
+    let file = config_dir.join(preferences::FILE_NAME);
+    let config = MusterConfig::parse(read(&file)?.as_deref(), &file.display().to_string())?;
+    Ok(Preferences {
+        notch: config.notch,
+        file,
+    })
+}
+
+/// Makes `change` in Muster's own settings in `config_dir`, keeping the
+/// rest of the file as written; refused, writing nothing, if they would not
+/// read with it.
+pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result<(), ConfigError> {
+    let file = config_dir.join(preferences::FILE_NAME);
+    let shown = file.display().to_string();
+    let invalid = |message: String| ConfigError::Invalid {
+        file: shown.clone(),
+        message,
+    };
+    let text = read(&file)?;
+    let changed = match change {
+        PreferenceChange::Notch(on) => {
+            let (table, key) = NOTCH;
+            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+        }
+    }
+    .map_err(|error| invalid(error.to_string()))?;
+    MusterConfig::parse(Some(&changed), &shown)?;
+    write(&file, &changed).map_err(|error| invalid(format!("cannot be written: {error}")))
+}
+
 /// Whether the branches Muster makes in the project at `root` start with
 /// `muster/`, read off the caller's loop; settings that cannot be read
 /// leave them as they are by default.
@@ -155,6 +190,46 @@ fn read(path: &Path) -> Result<Option<String>, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn muster_s_own_settings_are_read_and_changed_in_the_person_s_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        assert_eq!(
+            preferences(&config_dir).unwrap(),
+            Preferences {
+                notch: true,
+                file: file.clone()
+            }
+        );
+
+        // No file yet: one is made, saying what it is.
+        change_preference(&config_dir, &PreferenceChange::Notch(false)).unwrap();
+        assert!(!preferences(&config_dir).unwrap().notch);
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.starts_with(preferences::NEW_FILE), "{text}");
+
+        // The person's comments stay.
+        std::fs::write(&file, "# mine\n[notch]\nshow = false # for now\n").unwrap();
+        change_preference(&config_dir, &PreferenceChange::Notch(true)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "# mine\n[notch]\nshow = true # for now\n"
+        );
+
+        // A file that does not read is left alone, and said so.
+        std::fs::write(&file, "[notch]\nshwo = true\n").unwrap();
+        let error = change_preference(&config_dir, &PreferenceChange::Notch(false))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("shwo"), "{error}");
+        assert!(preferences(&config_dir).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "[notch]\nshwo = true\n"
+        );
+    }
 
     #[test]
     fn both_files_are_read_and_either_may_be_missing() {

@@ -75,6 +75,8 @@ allow-build-scripts = [
     "nix",
     "ntapi",
     "num-traits",
+    # Reads the target and prints cfgs (Mac Catalyst, simulators); no IO.
+    "objc2",
     "parking_lot_core",
     "portable-atomic",
     "proc-macro2",

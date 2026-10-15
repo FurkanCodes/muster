@@ -35,7 +35,10 @@ pub(super) fn world() -> World {
     let mut app = App::new(PathBuf::from("/src"), SIZE);
     assert_eq!(
         app.on_connected("0.1.0".to_owned()),
-        [Action::Send(ClientFrame::Subscribe)]
+        [
+            Action::Send(ClientFrame::Subscribe),
+            Action::Send(ClientFrame::Looking { looking: true })
+        ]
     );
     let project = project("app");
     let worktree = worktree(project.id, "work");

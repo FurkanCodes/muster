@@ -1,5 +1,7 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+# Names written as people write them, not code; ".." keeps clippy's own list.
+doc-valid-idents = ["MacBook", "AppKit", ".."]
 
 disallowed-methods = [
     { path = "tokio::spawn", reason = "ARC-13: start work through `tasks::Tasks`, or hold the handle; where a bare spawn is right, an #[expect] names its owner" },

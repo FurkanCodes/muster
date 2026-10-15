@@ -31,6 +31,18 @@ pub fn set_flag(
     key: &str,
     value: bool,
 ) -> Result<String, EditError> {
+    set_flag_in(text, NEW_FILE, table, key, value)
+}
+
+/// [`set_flag`] in a file of another kind: a new one starts with
+/// `new_file`, saying what it is.
+pub fn set_flag_in(
+    text: Option<&str>,
+    new_file: &str,
+    table: &str,
+    key: &str,
+    value: bool,
+) -> Result<String, EditError> {
     let mut document: toml_edit::DocumentMut = text
         .unwrap_or_default()
         .parse()
@@ -56,7 +68,7 @@ pub fn set_flag(
     }
     Ok(match text {
         Some(_) => document.to_string(),
-        None => format!("{NEW_FILE}\n{document}"),
+        None => format!("{new_file}\n{document}"),
     })
 }
 

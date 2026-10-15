@@ -16,6 +16,7 @@ muster-state = { path = "crates/muster-state" }
 muster-daemon = { path = "crates/muster-daemon" }
 muster-tui = { path = "crates/muster-tui" }
 muster-client = { path = "crates/muster-client" }
+muster-notch = { path = "crates/muster-notch" }
 
 base64 = "0.23.1"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -49,6 +50,13 @@ tokio = { version = "~1.53.2", features = ["fs", "io-util", "macros", "net", "pr
 tokio-util = { version = "0.7.20", default-features = false, features = ["rt"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+# The notch (`ARC-22`), on macOS only: AppKit through Rust's own bindings,
+# each framework's default features (every class it has) turned off.
+dispatch2 = { version = "0.3.1", default-features = false, features = ["std"] }
+objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std"] }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std"] }
 
 [workspace.lints.rust]
 # Denied everywhere; allowed in one audited module only, the daemon's

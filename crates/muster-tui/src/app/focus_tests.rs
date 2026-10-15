@@ -37,17 +37,23 @@ fn looking_away_and_back_switches_watching_the_attached_session() {
     assert_eq!(world.app.focused_session(), Some(id));
     assert_eq!(
         world.app.on_focus(false),
-        [Action::Send(ClientFrame::Watch {
-            session: id,
-            watching: false
-        })]
+        [
+            Action::Send(ClientFrame::Watch {
+                session: id,
+                watching: false
+            }),
+            Action::Send(ClientFrame::Looking { looking: false })
+        ]
     );
     assert_eq!(
         world.app.on_focus(true),
-        [Action::Send(ClientFrame::Watch {
-            session: id,
-            watching: true
-        })]
+        [
+            Action::Send(ClientFrame::Watch {
+                session: id,
+                watching: true
+            }),
+            Action::Send(ClientFrame::Looking { looking: true })
+        ]
     );
 }
 
