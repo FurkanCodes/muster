@@ -37,6 +37,8 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     ui.wait_for("Add a project");
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
+    // Its checkout too, which can come after the reply.
+    ui.wait_for("⌂ main");
 
     // w: a worktree on a new branch.
     ui.keys(b"w");
@@ -95,6 +97,8 @@ fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
     ui.keys(b"a");
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
+    // Its checkout too, which can come after the reply.
+    ui.wait_for("⌂ main");
     ui.keys(b"n");
     ui.wait_for("New session");
     ui.keys(b"\x1b[Z");
@@ -386,6 +390,8 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     ui.keys(b"a");
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
+    // Its checkout too, which can come after the reply.
+    ui.wait_for("⌂ main");
 
     // n on the project: a shell in its own checkout, beside the list.
     ui.keys(b"n");
@@ -418,6 +424,8 @@ fn drag_over_two_lines(sandbox: &Sandbox, env: &[(&str, &str)]) -> Ui {
     ui.keys(b"a");
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
+    // Its checkout too, which can come after the reply.
+    ui.wait_for("⌂ main");
     ui.keys(b"n");
     ui.wait_for("New session");
     ui.keys(b"\x1b[Z");
@@ -485,6 +493,8 @@ fn shell_with_output(sandbox: &Sandbox, env: &[(&str, &str)]) -> Ui {
     ui.keys(b"a");
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
+    // Its checkout too, which can come after the reply.
+    ui.wait_for("⌂ main");
     ui.keys(b"n");
     ui.wait_for("New session");
     ui.keys(b"\x1b[Z");
