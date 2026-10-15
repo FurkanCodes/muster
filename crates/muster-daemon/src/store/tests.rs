@@ -31,6 +31,7 @@ fn worktree(project: ProjectId) -> Workspace {
             branch: "muster/fix-login".to_owned(),
         },
         created_at: at(2),
+        pull_request: None,
     }
 }
 
@@ -511,6 +512,7 @@ fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
             branch: stored_run.branch.clone(),
         },
         created_at: at(5),
+        pull_request: None,
     };
     store.insert_workspace(&container).unwrap();
     let mut agent = session(container.id);

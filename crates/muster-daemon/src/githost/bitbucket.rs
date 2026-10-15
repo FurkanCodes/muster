@@ -13,9 +13,9 @@
 
 use std::path::Path;
 
-use muster_core::PullRequest;
 use muster_core::remote::Remote;
 use muster_core::text::one_line;
+use muster_core::{PullRequest, PullRequestState, PullRequestStatus, Review};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -190,6 +190,47 @@ impl Bitbucket {
             .and_then(|found| found.pull_request()))
     }
 
+    /// The newest pull request from `branch`, in any state.
+    async fn newest_from(&self, branch: &str) -> Result<Option<PullRequestStatus>, ServiceError> {
+        let page = match &self.repository {
+            Repository::Cloud { .. } => {
+                let query = format!(
+                    "source.branch.name=\"{}\" AND (draft=true OR draft=false)",
+                    branch.replace('"', "")
+                );
+                self.get(
+                    &self.pulls(),
+                    &[
+                        ("q", &query),
+                        ("state", "OPEN"),
+                        ("state", "MERGED"),
+                        ("state", "DECLINED"),
+                        ("state", "SUPERSEDED"),
+                        ("sort", "-created_on"),
+                        ("pagelen", "1"),
+                    ],
+                )
+                .await?
+            }
+            Repository::DataCenter { .. } => {
+                let at = format!("refs/heads/{branch}");
+                self.get(
+                    &self.pulls(),
+                    &[
+                        ("at", &at),
+                        ("direction", "OUTGOING"),
+                        ("state", "ALL"),
+                        ("order", "NEWEST"),
+                        ("limit", "1"),
+                    ],
+                )
+                .await?
+            }
+        };
+        let page: Page = serde_json::from_value(page).map_err(unreadable)?;
+        Ok(page.values.into_iter().next().and_then(Pull::status))
+    }
+
     /// A Data Center pull request's version, which a change must name.
     async fn version(&self, number: u64) -> Result<u64, ServiceError> {
         let found: Pull =
@@ -260,6 +301,31 @@ struct Pull {
     /// A Data Center's, for changes.
     #[serde(default)]
     version: Option<u64>,
+    #[serde(default)]
+    draft: bool,
+    /// A Data Center's reviewers, each with their verdict.
+    #[serde(default)]
+    reviewers: Vec<Reviewer>,
+    /// Cloud's reviewers and others, where the answer carries them.
+    #[serde(default)]
+    participants: Vec<Participant>,
+}
+
+/// A Data Center reviewer: `APPROVED`, `NEEDS_WORK` or `UNAPPROVED`.
+#[derive(Debug, Deserialize)]
+struct Reviewer {
+    #[serde(default)]
+    status: String,
+}
+
+/// A Cloud participant: a reviewer's `state` is `approved` or
+/// `changes_requested` once they have said.
+#[derive(Debug, Deserialize)]
+struct Participant {
+    #[serde(default)]
+    role: String,
+    #[serde(default)]
+    state: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -287,6 +353,51 @@ impl Pull {
         Some(PullRequest {
             number: self.id,
             url: one_line(&url),
+        })
+    }
+}
+
+impl Pull {
+    /// Where it stands. Bitbucket's builds are not read, so its checks go
+    /// unsaid.
+    fn status(self) -> Option<PullRequestStatus> {
+        let state = match (state(&self.state), self.draft) {
+            (PrState::Merged, _) => PullRequestState::Merged,
+            (PrState::Closed, _) => PullRequestState::Closed,
+            (PrState::Open, true) => PullRequestState::Draft,
+            (PrState::Open, false) => PullRequestState::Open,
+        };
+        let verdicts: Vec<&str> = self
+            .reviewers
+            .iter()
+            .map(|reviewer| match reviewer.status.as_str() {
+                "APPROVED" => "approved",
+                "NEEDS_WORK" => "changes_requested",
+                _ => "",
+            })
+            .chain(
+                self.participants
+                    .iter()
+                    .filter(|participant| participant.role == "REVIEWER")
+                    .map(|participant| participant.state.as_deref().unwrap_or_default()),
+            )
+            .collect();
+        let review = if verdicts.contains(&"changes_requested") {
+            Some(Review::ChangesRequested)
+        } else if verdicts.contains(&"approved") {
+            Some(Review::Approved)
+        } else if verdicts.is_empty() {
+            None
+        } else {
+            Some(Review::Required)
+        };
+        let found = self.pull_request()?;
+        Some(PullRequestStatus {
+            number: found.number,
+            url: found.url,
+            state,
+            checks: None,
+            review,
         })
     }
 }
@@ -392,6 +503,14 @@ impl GitHost for Bitbucket {
             Ok(state(&found.state))
         })
     }
+
+    fn pull_request_of<'a>(
+        &'a self,
+        _root: &'a Path,
+        branch: &'a str,
+    ) -> BoxFuture<'a, Result<Option<PullRequestStatus>, ServiceError>> {
+        Box::pin(self.newest_from(branch))
+    }
 }
 
 #[cfg(test)]
@@ -455,6 +574,42 @@ mod tests {
         assert_eq!(state("DECLINED"), PrState::Closed);
         assert_eq!(state("SUPERSEDED"), PrState::Closed);
         assert_eq!(state("OPEN"), PrState::Open);
+    }
+
+    #[test]
+    fn a_pull_request_s_state_and_reviews_are_read_from_either() {
+        let data_center: Pull = serde_json::from_str(
+            r#"{"id":5,"version":3,"state":"OPEN","draft":false,"reviewers":[{"user":{"name":"a"},"status":"APPROVED"},{"user":{"name":"b"},"status":"UNAPPROVED"}],"links":{"self":[{"href":"https://bitbucket.example.com/projects/PROJ/repos/app/pull-requests/5"}]}}"#,
+        )
+        .unwrap();
+        let status = data_center.status().unwrap();
+        assert_eq!(
+            (status.number, status.state, status.review, status.checks),
+            (5, PullRequestState::Open, Some(Review::Approved), None)
+        );
+        let needs_work: Pull = serde_json::from_str(
+            r#"{"id":6,"state":"OPEN","draft":true,"reviewers":[{"status":"APPROVED"},{"status":"NEEDS_WORK"}],"links":{"self":[{"href":"https://b/6"}]}}"#,
+        )
+        .unwrap();
+        let status = needs_work.status().unwrap();
+        assert_eq!(status.state, PullRequestState::Draft);
+        assert_eq!(status.review, Some(Review::ChangesRequested));
+        let cloud: Pull = serde_json::from_str(
+            r#"{"id":17,"state":"OPEN","draft":false,"participants":[{"role":"PARTICIPANT","state":"approved"},{"role":"REVIEWER","approved":false,"state":null}],"links":{"html":{"href":"https://bitbucket.org/ws/app/pull-requests/17"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(cloud.status().unwrap().review, Some(Review::Required));
+        let merged: Pull = serde_json::from_str(
+            r#"{"id":18,"state":"MERGED","links":{"html":{"href":"https://bitbucket.org/ws/app/pull-requests/18"}}}"#,
+        )
+        .unwrap();
+        let status = merged.status().unwrap();
+        assert_eq!(
+            (status.state, status.review),
+            (PullRequestState::Merged, None)
+        );
+        let nowhere: Pull = serde_json::from_str(r#"{"id":19,"state":"OPEN"}"#).unwrap();
+        assert!(nowhere.status().is_none(), "no address, nothing to show");
     }
 
     #[test]

@@ -52,6 +52,12 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
                         Span::raw(workspace.kind.branch().to_owned()),
                     ]));
                 }
+                if let Some(found) = &workspace.pull_request {
+                    lines.push(Line::from(vec![
+                        Span::from("PR      ").dim(),
+                        Span::raw(found.summary()),
+                    ]));
+                }
                 lines.extend([
                     Line::from(vec![
                         Span::from("Path    ").dim(),
@@ -78,6 +84,9 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
                     })
                     .dim(),
                 );
+                if workspace.pull_request.is_some() {
+                    lines.push(Line::from("b opens its pull request in the browser.").dim());
+                }
                 Text::from(lines)
             }
             None => Text::default(),

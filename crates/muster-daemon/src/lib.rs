@@ -28,6 +28,8 @@ mod trackers;
 mod worktree_sync;
 
 #[cfg(test)]
+mod pulls_tests;
+#[cfg(test)]
 mod run_tests;
 #[cfg(test)]
 mod tests;

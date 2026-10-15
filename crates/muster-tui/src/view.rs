@@ -15,6 +15,7 @@ mod dialogs;
 pub(crate) mod kep;
 pub(crate) mod look;
 mod preview;
+mod pull_request;
 mod selection;
 mod sessions;
 mod settings;

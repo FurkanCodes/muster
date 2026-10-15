@@ -159,6 +159,26 @@ impl Model {
         agents
     }
 
+    /// The pull request that says most of how ticket `key`'s work stands,
+    /// of those from its worktrees' branches: a merged one, then an open
+    /// one, then a draft, then a closed one; the newest of each.
+    pub(crate) fn ticket_pull_request(
+        &self,
+        project: ProjectId,
+        key: &TicketKey,
+    ) -> Option<&muster_core::PullRequestStatus> {
+        let rank = |state| match state {
+            muster_core::PullRequestState::Merged => 3,
+            muster_core::PullRequestState::Open => 2,
+            muster_core::PullRequestState::Draft => 1,
+            muster_core::PullRequestState::Closed => 0,
+        };
+        self.worktrees_for(project, key)
+            .into_iter()
+            .filter_map(|id| self.workspace(id)?.pull_request.as_ref())
+            .max_by_key(|found| (rank(found.state), found.number))
+    }
+
     pub(crate) fn projects(&self) -> &[Project] {
         &self.projects
     }
@@ -320,6 +340,7 @@ pub(crate) mod tests {
                 branch: branch.to_owned(),
             },
             created_at: Timestamp::from_millis(2),
+            pull_request: None,
         }
     }
 

@@ -77,6 +77,7 @@ impl Supervisor {
                 branch,
             },
             created_at: self.clock.now(),
+            pull_request: None,
         };
         let stored = workspace.clone();
         let inserted = self
@@ -264,6 +265,7 @@ impl Supervisor {
                 branch: muster_core::text::one_line(&branch),
             },
             created_at: self.clock.now(),
+            pull_request: None,
         };
         let stored = workspace.clone();
         match self

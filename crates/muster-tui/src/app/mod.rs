@@ -43,6 +43,8 @@ mod pointer_tests;
 #[cfg(test)]
 mod project_tests;
 #[cfg(test)]
+mod pull_request_tests;
+#[cfg(test)]
 mod selection_tests;
 #[cfg(test)]
 mod settings_tests;

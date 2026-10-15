@@ -203,6 +203,23 @@ async fn a_draft_pull_request_by_hand_pushes_the_branch_and_opens_or_finds_it() 
         ),
         "{calls}"
     );
+    // Shown on the worktree at once, not at the pull requests' next look.
+    let mut status = String::new();
+    for _ in 0..100 {
+        status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
+        if status.contains("pull request #17 · draft") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(status.contains("    pull request #17 · draft"), "{status}");
+    assert!(
+        std::fs::read_to_string(sandbox.fake_gh().join("calls"))
+            .unwrap()
+            .contains("pr list --head feature --state all"),
+        "looked up on the host"
+    );
+
     // Asked again, it finds the one open rather than opening another.
     let again = sandbox.run(&["pr", "feature"]);
     assert!(again.status.success());

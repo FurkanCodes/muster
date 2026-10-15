@@ -194,6 +194,7 @@ impl App {
             KeyCode::Char('c') if self.view == View::Sessions => return self.check(),
             KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
+            KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
             _ => {}
         }
         Vec::new()
@@ -367,6 +368,23 @@ impl App {
             Command::OpenPullRequest { workspace },
             Then::ShowPullRequest,
         )]
+    }
+
+    /// `b`: the pull request from the selected worktree's branch, in the
+    /// browser.
+    fn browse_pull_request(&mut self) -> Vec<Action> {
+        let found = self
+            .selected
+            .and_then(|row| self.model.worktree_of(row))
+            .and_then(|workspace| self.model.workspace(workspace))
+            .and_then(|workspace| workspace.pull_request.as_ref());
+        match found {
+            Some(found) => vec![Action::Open(found.url.clone())],
+            None => {
+                self.complain("No pull request from this branch is known; o opens one.");
+                Vec::new()
+            }
+        }
     }
 
     fn new_worktree(&mut self) {
