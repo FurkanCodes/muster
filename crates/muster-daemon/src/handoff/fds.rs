@@ -103,10 +103,10 @@ mod tests {
     fn only_open_descriptors_beyond_stdio_are_inherited() {
         assert!(inherit(0).is_err());
         assert!(inherit(2).is_err());
-        let closed = tempfile::tempfile().unwrap().into_raw_fd();
-        // SAFETY: `closed` was just given up by the file that owned it.
-        drop(unsafe { OwnedFd::from_raw_fd(closed) });
-        assert!(inherit(closed).is_err());
+        // Not a descriptor just closed: tests run side by side, and another
+        // could be given its number meanwhile, which this one would then
+        // own and close under it. No file is ever given this one.
+        assert!(inherit(RawFd::MAX - 1).is_err());
     }
 
     #[test]
