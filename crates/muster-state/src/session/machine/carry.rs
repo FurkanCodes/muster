@@ -113,6 +113,7 @@ impl SessionMachine {
 }
 
 #[cfg(test)]
+#[expect(clippy::disallowed_methods, reason = "tests time themselves")]
 mod tests {
     use super::*;
     use crate::session::{HookEvent, Launch, Signal, Start};

@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "tests time themselves")]
+
 use std::path::PathBuf;
 
 use muster_core::{

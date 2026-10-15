@@ -1,0 +1,8 @@
+# The toolchain Muster builds with, here and in CI (`ARC-18`). Bumped by a
+# pull request each Rust release, so new lints arrive in a reviewed change.
+# `rust-version` in Cargo.toml is the oldest Rust it must still build on;
+# CI checks that too.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

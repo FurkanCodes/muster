@@ -121,14 +121,14 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     let mut input = EventStream::new();
     let mut sender: Option<FrameSender> = None;
     let mut dirty = true;
-    let mut next_draw = Instant::now();
+    let mut next_draw = monotonic();
     let mut hold = FrameHold::default();
-    let mut steps = motion::Steps::new(Instant::now());
+    let mut steps = motion::Steps::new(monotonic());
     let outcome = loop {
         // Asleep until an event or something of its own is due: idle, the
         // UI wakes for a time on screen to change, and not at all with no
         // sessions.
-        let now = Instant::now();
+        let now = monotonic();
         let wake = next_wake(
             now,
             wall_clock().as_millis(),
@@ -144,7 +144,7 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
         };
         // The step and the clock first, so what an event starts is timed
         // from now.
-        let now = Instant::now();
+        let now = monotonic();
         if let Some(step) = steps.due(now)
             && app.on_step(step)
         {
@@ -229,7 +229,7 @@ fn draw_if_due(
     next_draw: &mut Instant,
     hold: &mut FrameHold,
 ) -> Result<(), TuiError> {
-    let now = Instant::now();
+    let now = monotonic();
     if !*dirty || now < *next_draw {
         return Ok(());
     }
@@ -266,8 +266,19 @@ async fn sleep_until(wake: Option<Instant>) {
     }
 }
 
+/// The time now, for the loop's own timing: read here, so the app and the
+/// view never read the clock (`ARC-03`).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "ARC-03: the UI's one monotonic clock"
+)]
+fn monotonic() -> Instant {
+    Instant::now()
+}
+
 /// The time now, for how long sessions have run or waited: read here, so
 /// the app and the view never read the clock (`ARC-03`).
+#[expect(clippy::disallowed_methods, reason = "ARC-03: the UI's one wall clock")]
 fn wall_clock() -> muster_core::Timestamp {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -352,8 +363,10 @@ async fn connect(
     let Some(start) = &options.start_daemon else {
         return Connection::connect(&options.socket, CLIENT).await;
     };
-    if last_start.is_none_or(|at| at.elapsed() > Duration::from_secs(10)) {
-        *last_start = Some(Instant::now());
+    if last_start
+        .is_none_or(|at| monotonic().saturating_duration_since(at) > Duration::from_secs(10))
+    {
+        *last_start = Some(monotonic());
         if let Err(error) = start() {
             return Err(ClientError::Unreachable {
                 path: options.socket.display().to_string(),
@@ -361,10 +374,10 @@ async fn connect(
             });
         }
     }
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = monotonic() + Duration::from_secs(5);
     loop {
         match Connection::connect(&options.socket, CLIENT).await {
-            Err(ClientError::Unreachable { .. }) if Instant::now() < deadline => {
+            Err(ClientError::Unreachable { .. }) if monotonic() < deadline => {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
             other => return other,
@@ -511,6 +524,7 @@ impl crossterm::Command for MouseReports {
 }
 
 #[cfg(test)]
+#[expect(clippy::disallowed_methods, reason = "tests time themselves")]
 mod tests {
     #[test]
     fn drawing_waits_for_a_frame_to_finish_but_not_for_ever() {

@@ -7,6 +7,9 @@
 //! `screen` and `keys` handle session terminals, and `runtime` connects it
 //! all to the person's terminal and the daemon.
 
+// No unsafe code here, ever: it lives in one audited daemon module (`ARC-12`).
+#![forbid(unsafe_code)]
+
 mod app;
 mod clipboard;
 mod folders;

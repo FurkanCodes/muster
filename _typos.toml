@@ -1,0 +1,24 @@
+# Spelling, checked in CI (`typos`).
+
+[files]
+extend-exclude = [
+    # Reference material and research notes, quoted as written.
+    "docs/research/",
+    "research_notes/",
+    "reports/",
+    ".codegraph/",
+    # Recorded agent output.
+    "**/fixtures/**",
+]
+
+[default.extend-words]
+# Names, not typos.
+ratatui = "ratatui"
+# GraphQL's "not in" (Linear's API).
+nin = "nin"
+# Misspelt on purpose, in tests that a mistyped key or text is refused or
+# kept as it is.
+comands = "comands"
+projet = "projet"
+memroy = "memroy"
+teh = "teh"

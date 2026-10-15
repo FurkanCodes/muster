@@ -116,6 +116,7 @@ impl Steps {
 }
 
 #[cfg(test)]
+#[expect(clippy::disallowed_methods, reason = "tests time themselves")]
 mod tests {
     use super::*;
 

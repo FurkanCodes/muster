@@ -3,7 +3,15 @@
 //! daemon itself, also one from another build.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "end-to-end tests: a failed step is the test failing"
+)]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "tests time themselves and start their own threads and tasks; ARC-03, ARC-13 and ARC-14 bind Muster's own code"
+)]
 
 mod support;
 
@@ -366,10 +374,6 @@ fn daemon_stop_reaches_a_daemon_from_an_older_build() {
     let pid = process.id();
     let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test's thread ends with the test"
-    )]
     let old = std::thread::spawn(move || {
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         while std::time::Instant::now() < deadline {

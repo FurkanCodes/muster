@@ -10,7 +10,7 @@
 //! Everything else about descriptors (keeping one open across `exec`,
 //! reading, polling) goes through safe interfaces on owned values.
 
-#![allow(unsafe_code)]
+#![expect(unsafe_code, reason = "ARC-12: the one audited module, as above")]
 
 use std::io;
 use std::os::fd::{BorrowedFd, FromRawFd, OwnedFd, RawFd};

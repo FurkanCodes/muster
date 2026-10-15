@@ -179,7 +179,10 @@ impl Supervisor {
     /// from before is mistaken for one after and every client starts the
     /// new program on a clean screen. `unseen` starts the session with news
     /// for the person, unless someone is already watching it.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each of its callers chooses every one of these differently"
+    )]
     pub(super) fn launch(
         &mut self,
         session: SessionId,

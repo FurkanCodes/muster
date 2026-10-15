@@ -160,7 +160,11 @@ pub(crate) fn spend(body: &[u8]) -> Option<Spend> {
     if !sane(tokens, 1e15) || !sane(cost, 1e9) {
         return None;
     }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "both checked finite and in range above"
+    )]
     Some(Spend {
         tokens: tokens as u64,
         cost_micros: Some((cost * 1_000_000.0).round() as u64),

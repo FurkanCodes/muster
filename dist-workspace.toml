@@ -17,3 +17,6 @@ targets = [
 unix-archive = ".tar.gz"
 github-attestations = true
 pr-run-mode = "plan"
+# Dependabot may move release.yml's actions/checkout on; dist accepts that
+# rather than failing the release, and `dist generate` rewrites it anyway.
+allow-dirty = ["ci"]

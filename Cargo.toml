@@ -50,13 +50,23 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # Denied everywhere; allowed in one audited module only, the daemon's
 # descriptor handoff (`ARC-12`), which no safe interface can express.
 unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
 missing_debug_implementations = "warn"
 unreachable_pub = "warn"
 
+# Warnings fail CI (`CARGO_BUILD_WARNINGS=deny`). A suppression is an
+# #[expect] with a reason (`ARC-16`).
 [workspace.lints.clippy]
 dbg_macro = "warn"
 todo = "warn"
 unwrap_used = "warn"
+expect_used = "warn"
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+get_unwrap = "warn"
+mem_forget = "warn"
+large_futures = "warn"
 
 [profile.release]
 lto = "thin"

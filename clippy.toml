@@ -7,4 +7,6 @@ disallowed-methods = [
     { path = "std::thread::spawn", reason = "ARC-13: name the thread with `std::thread::Builder`, and say what owns it" },
     { path = "tokio::sync::mpsc::unbounded_channel", reason = "ARC-14: bound the queue, or #[expect] it with why its producer is bounded" },
     { path = "std::sync::mpsc::channel", reason = "ARC-14: bound the queue (`sync_channel`), or #[expect] it with why its producer is bounded" },
+    { path = "std::time::Instant::now", reason = "ARC-03: the daemon reads time through its Clock, each other program in one place" },
+    { path = "std::time::SystemTime::now", reason = "ARC-03: the daemon reads time through its Clock, each other program in one place" },
 ]

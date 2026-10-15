@@ -3,5 +3,8 @@
 //!
 //! This crate does no IO and keeps no clock of its own (`ARC-01`).
 
+// No unsafe code here, ever: it lives in one audited daemon module (`ARC-12`).
+#![forbid(unsafe_code)]
+
 pub mod run;
 pub mod session;

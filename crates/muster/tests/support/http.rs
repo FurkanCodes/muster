@@ -41,10 +41,6 @@ pub(crate) fn serve(
     let address = format!("http://{}", listener.local_addr().unwrap());
     let recorded: Recorded = Arc::default();
     let record = recorded.clone();
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test's thread ends with the test"
-    )]
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };

@@ -28,6 +28,10 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> Timestamp {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-03: the system's wall clock, read here alone"
+        )]
         let since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();

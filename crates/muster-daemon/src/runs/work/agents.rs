@@ -78,7 +78,10 @@ impl Inner {
     /// Starts the building agent's turn: in its conversation where the
     /// container still has it; otherwise (a first attempt, a new container)
     /// in a new one, given everything.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a builder's turn needs the run, its container, job, attempt, feedback and credential"
+    )]
     async fn start_builder(
         &self,
         context: &RunContext,
@@ -315,7 +318,10 @@ impl Inner {
 
     /// Reads a headless agent's output as it comes, reporting its cost and,
     /// for the building agent, its conversation, until it ends.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "followed per role and generation, each reported apart"
+    )]
     async fn follow_agent(
         &self,
         context: &RunContext,
