@@ -66,7 +66,6 @@ pub(crate) struct CarriedSession {
 }
 
 impl CarriedSession {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         id: SessionId,
         harness: String,
@@ -147,7 +146,10 @@ pub(crate) async fn can_take_over(program: &Path) -> Result<(), String> {
 /// Replaces this process with `program`, handing it `sessions` and the
 /// lock and sockets. Returns only if that failed, with why and the
 /// sessions, every descriptor closed on `exec` again.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the exec boundary names everything it hands across, each a different thing"
+)]
 pub(crate) fn exec_into(
     program: &Path,
     arguments: &[String],

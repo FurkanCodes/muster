@@ -261,7 +261,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 - **End to end:** the real daemon binary per test, isolated directories through environment variables, an RAII guard that stops it on drop, and a raw protocol client. Hooks are tested by typing `curl` into the fake agent's terminal; the progress signal by typing `printf` escape sequences.
 - **Restart:** kill the daemon with a worktree session and a run in flight, start it again, assert both come back.
 - **Real Docker:** a suite gated by `MUSTER_DOCKER_TESTS=1`, run in CI on Linux.
-- **CI:** `fmt`, `clippy -D warnings`, tests on Ubuntu and macOS, `cargo deny` for licenses, advisories, banned crates and an allowlist of dependencies that may run build scripts, and a **failing** file-size check (`ARC-08`).
+- **CI:** on the pinned toolchain (`ARC-18`), with warnings failing the build (`CARGO_BUILD_WARNINGS=deny`, `ARC-16`): `fmt`, `typos`, `cargo shear` for unused dependencies, `clippy`, `cargo doc`, the tests through `cargo nextest` (each in its own process, with a time limit) on Ubuntu and macOS; a build on the oldest Rust Muster declares (`rust-version`); `cargo deny` for licenses, advisories, banned crates and an allowlist of dependencies that may run build scripts; and a **failing** file-size check (`ARC-08`). `muster-state`'s `no_io` test fails if anything below the pure crates does IO (`ARC-01`).
 
 ## 14. Rules
 
@@ -280,6 +280,9 @@ Following Nebula's strategy, which is the best part of its codebase.
 - **ARC-13** Every task and thread has an owner that can count it and stop it. Long-lived ones are held by what started them and end with it; short-lived work runs under the daemon's task tracker, and every wait on an external system in it has a deadline. A panic is logged, never lost. Clippy refuses a bare `tokio::spawn` or `std::thread::spawn`; where one is right, an `#[expect]` beside it names its owner.
 - **ARC-14** Queues and caches are bounded. An unbounded channel is allowed only where its producer is bounded, with an `#[expect]` beside it saying why (clippy refuses one without). Every entry keyed by a session, run, connection or project leaves when that entity ends.
 - **ARC-15** Logs are bounded: the daemon's log starts a new file each day or when it grows past its size limit, and keeps seven; nothing is appended forever.
+- **ARC-16** Lints live in `[workspace.lints]` and `clippy.toml`, and warnings fail CI. A suppression is an `#[expect(lint, reason = "…")]` saying why, citing the rule it serves where there is one; an `#[allow]`, with its reason too, only where `#[expect]` cannot work, as in code every test crate shares. A function takes at most seven arguments unless its `#[expect]` says why.
+- **ARC-17** A dependency earns its place: its reason in the commit that adds it, default features it does not need turned off, and a build script only by an entry in `deny.toml`'s allowlist. Dependabot proposes updates weekly, three days after their release; an unused dependency fails CI.
+- **ARC-18** The toolchain is pinned in `rust-toolchain.toml` and moved on by a reviewed change each Rust release; `rust-version` is the oldest Rust Muster still builds on, and CI checks it does.
 
 ## 15. Milestone 1 plan — Cockpit
 

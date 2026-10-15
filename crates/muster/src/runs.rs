@@ -256,12 +256,13 @@ pub(crate) fn find_run<'a>(snapshot: &'a Snapshot, wanted: &str) -> Result<&'a R
     let several = || format!("issue #{number} has runs in several projects; use the run's id");
     match going.as_slice() {
         [run] => Ok(run),
-        [] if on_issue.is_empty() => Err(format!("no run on issue #{number}")),
         [] if !one_project => Err(several()),
-        [] => Ok(on_issue
+        // None going: the latest that was.
+        [] => on_issue
             .iter()
+            .copied()
             .max_by_key(|run| run.created_at)
-            .expect("not empty")),
+            .ok_or_else(|| format!("no run on issue #{number}")),
         _ => Err(several()),
     }
 }
@@ -396,6 +397,12 @@ fn cut(text: &str, max: usize) -> String {
     kept
 }
 
+/// The time now, for how long ago a run did something: a command's one
+/// wall clock (`ARC-03`).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "ARC-03: a command's one wall clock"
+)]
 fn now() -> Timestamp {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

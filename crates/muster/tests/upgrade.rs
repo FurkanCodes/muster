@@ -3,7 +3,15 @@
 //! once its checksum matches, and is left alone when it does not.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "end-to-end tests: a failed step is the test failing"
+)]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "tests time themselves and start their own threads and tasks; ARC-03, ARC-13 and ARC-14 bind Muster's own code"
+)]
 
 mod support;
 
@@ -30,10 +38,6 @@ fn target() -> &'static str {
 fn serve(files: HashMap<String, Vec<u8>>) -> String {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = format!("http://{}", listener.local_addr().unwrap());
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test's thread ends with the test"
-    )]
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };

@@ -42,7 +42,10 @@ macro_rules! id_type {
             pub const PREFIX: &'static str = $prefix;
 
             /// A new, unique identifier.
-            #[allow(clippy::new_without_default)]
+            #[expect(
+                clippy::new_without_default,
+                reason = "each new id is unique; a Default would read as a fixed value"
+            )]
             pub fn new() -> Self {
                 Self(Ulid::generate())
             }

@@ -1,7 +1,10 @@
 //! Runs the real `muster` binary as a daemon in its own directories.
 
 // Each test file compiles its own copy of this module and uses a different part.
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "every test crate includes it and uses only some of it; #[expect] would fail in the rest"
+)]
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -356,7 +359,6 @@ impl Sandbox {
 
     /// Starts the daemon as the UI does: its standard error appended to
     /// `daemon.log` in the runtime directory. `env` is set for it.
-    #[allow(dead_code)]
     pub(crate) fn start_as_the_ui_does(&self, env: &[(&str, &str)]) -> Daemon {
         use std::os::unix::fs::DirBuilderExt;
         let runtime = self.paths().runtime_dir;
@@ -379,7 +381,6 @@ impl Sandbox {
     }
 
     /// What the daemon started here has logged, at debug level.
-    #[allow(dead_code)]
     pub(crate) fn daemon_log(&self) -> PathBuf {
         self.log()
     }

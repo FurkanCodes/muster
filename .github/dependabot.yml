@@ -1,0 +1,31 @@
+# Dependency updates (`ARC-17`): weekly, grouped, and only once a release
+# has been out three days, so a compromised one is usually pulled before it
+# reaches Muster. Security updates come at once, apart from this schedule.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      crates:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      actions:
+        patterns: ["*"]
+    # release.yml is dist's: these it keeps to the versions it was made
+    # with, and `dist generate` brings them up to date.
+    ignore:
+      - dependency-name: actions/upload-artifact
+      - dependency-name: actions/download-artifact
+      - dependency-name: actions/attest

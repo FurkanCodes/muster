@@ -1334,7 +1334,6 @@ version = "0.3.15"
 dependencies = [
  "axum",
  "base64",
- "futures-util",
  "muster-client",
  "muster-core",
  "muster-state",

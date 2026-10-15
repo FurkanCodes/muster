@@ -3,6 +3,9 @@
 //! `muster` command, the daemon itself (for its side of the transport) and
 //! the end-to-end tests.
 
+// No unsafe code here, ever: it lives in one audited daemon module (`ARC-12`).
+#![forbid(unsafe_code)]
+
 pub mod connection;
 pub mod transport;
 

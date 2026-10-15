@@ -30,6 +30,17 @@ pub(super) struct FetchedIssue {
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
 
+/// Work on a ticket the person asked for (`Command::StartFromIssue`).
+pub(super) struct TicketStart {
+    pub(super) project: ProjectId,
+    pub(super) key: TicketKey,
+    /// A harness id, such as `claude` or `shell`.
+    pub(super) harness: String,
+    pub(super) size: TermSize,
+    /// Another agent on it, in a worktree of its own.
+    pub(super) another: bool,
+}
+
 impl Supervisor {
     /// Where the project is, for finding its tracker.
     pub(super) fn tracker_place(&self, project: ProjectId) -> Result<ProjectPlace, ErrorBody> {
@@ -140,14 +151,15 @@ impl Supervisor {
 
     /// Fetches a ticket on a task of its own, then continues in
     /// [`start_fetched_issue`](Self::start_fetched_issue).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn fetch_issue(
         &self,
-        project: ProjectId,
-        key: TicketKey,
-        harness: String,
-        size: TermSize,
-        another: bool,
+        TicketStart {
+            project,
+            key,
+            harness,
+            size,
+            another,
+        }: TicketStart,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         // Work on a ticket goes in a worktree of its own.

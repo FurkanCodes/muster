@@ -2,7 +2,15 @@
 //! `gh` answers from fixture files; a stand-in `claude` records its prompt.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "end-to-end tests: a failed step is the test failing"
+)]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "tests time themselves and start their own threads and tasks; ARC-03, ARC-13 and ARC-14 bind Muster's own code"
+)]
 
 mod support;
 
@@ -310,10 +318,6 @@ async fn a_slow_github_call_does_not_hold_up_other_commands() {
     std::fs::write(setup.sandbox.fake_gh().join("GH_SLOW"), "").unwrap();
     let mut slow = setup.daemon.connect().await;
     let project = setup.project;
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test's task ends with the test"
-    )]
     let listing = tokio::spawn(async move { slow.command(Command::ListIssues { project }).await });
     tokio::time::sleep(Duration::from_millis(200)).await;
 

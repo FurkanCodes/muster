@@ -55,7 +55,7 @@ pub(crate) async fn reload_daemon(socket: &Path, runtime_dir: &Path) -> ExitCode
     // It stops answering as it starts over; whoever answers next is the
     // daemon after: the new version, or this one carrying on.
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let deadline = crate::instant_now() + std::time::Duration::from_secs(30);
     let after = loop {
         let asked = tokio::time::timeout(
             std::time::Duration::from_secs(5),
@@ -70,7 +70,7 @@ pub(crate) async fn reload_daemon(socket: &Path, runtime_dir: &Path) -> ExitCode
                     log.display()
                 ));
             }
-            _ if std::time::Instant::now() >= deadline => {
+            _ if crate::instant_now() >= deadline => {
                 return crate::fail(format!(
                     "the daemon (pid {pid}) has not answered for 30 seconds; see {}",
                     log.display()

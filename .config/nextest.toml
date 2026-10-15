@@ -1,0 +1,22 @@
+# How tests run: `cargo nextest run --workspace` (doc tests run apart, with
+# `cargo test --doc`). Each test runs in a process of its own.
+
+[profile.default]
+# A test taking over a minute is reported; past three it is ended, so a hung
+# one cannot hold CI for good.
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+[profile.ci]
+# Every failure in one run, not only the first.
+fail-fast = false
+# No retries: a test that passes on a second try hides a race, as the
+# Codex title bug of v0.3.14 would have been hidden.
+retries = 0
+
+[test-groups]
+# Real Docker, where enabled: one at a time.
+docker = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = "binary(docker_runs) | test(/docker/)"
+test-group = "docker"

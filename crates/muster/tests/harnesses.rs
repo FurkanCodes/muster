@@ -7,7 +7,15 @@
 //! plugin's reports posted as the plugin posts them.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "end-to-end tests: a failed step is the test failing"
+)]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "tests time themselves and start their own threads and tasks; ARC-03, ARC-13 and ARC-14 bind Muster's own code"
+)]
 
 mod support;
 

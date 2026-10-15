@@ -295,7 +295,16 @@ impl Supervisor {
                     harness,
                     size,
                     another,
-                } => self.fetch_issue(project, key, harness, size, another, reply),
+                } => self.fetch_issue(
+                    issues::TicketStart {
+                        project,
+                        key,
+                        harness,
+                        size,
+                        another,
+                    },
+                    reply,
+                ),
                 command => {
                     let name = command_name(&command);
                     let outcome = self.handle(command).await;

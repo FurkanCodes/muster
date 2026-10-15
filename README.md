@@ -192,10 +192,12 @@ A Rust workspace of six crates around one rule: the daemon owns everything, and 
 ## Development
 
 ```bash
-cargo test --workspace
+cargo nextest run --workspace   # or: cargo test --workspace
 ```
 
-The suite (over 600 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, clippy with warnings as errors, a 1,000-line file limit, `cargo deny`, and the tests on macOS and Linux.
+The toolchain is pinned in `rust-toolchain.toml`; rustup installs it on first use. CI also runs `typos` and `cargo shear` (`cargo install --locked cargo-nextest cargo-shear typos-cli`).
+
+The suite (over 700 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, spelling, clippy and the docs with warnings as errors, a check for unused dependencies, a 1,000-line file limit, `cargo deny`, a build on the oldest Rust it supports, and the tests (through `cargo nextest`) on macOS and Linux.
 
 ## Credits
 

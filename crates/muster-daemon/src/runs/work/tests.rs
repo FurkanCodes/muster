@@ -3,6 +3,8 @@
 //! git host and fake credentials, and a real run machine fed by the
 //! work's reports.
 
+#![expect(clippy::disallowed_methods, reason = "tests time themselves")]
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;

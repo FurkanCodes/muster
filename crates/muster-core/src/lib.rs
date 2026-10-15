@@ -3,6 +3,9 @@
 //!
 //! This crate does no IO (`ARC-01`).
 
+// No unsafe code here, ever: it lives in one audited daemon module (`ARC-12`).
+#![forbid(unsafe_code)]
+
 pub mod config;
 pub mod credentials;
 pub mod entities;

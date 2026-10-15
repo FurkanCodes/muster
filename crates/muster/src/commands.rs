@@ -414,10 +414,10 @@ pub(crate) async fn stop_daemon(socket: &Path) -> ExitCode {
     if let Err(error) = nix::sys::signal::kill(process, nix::sys::signal::Signal::SIGTERM) {
         return crate::fail(format!("could not stop the daemon (pid {pid}): {error}"));
     }
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = crate::instant_now() + std::time::Duration::from_secs(10);
     // Gone once it no longer answers; it removes its socket as it stops.
     while muster_client::daemon_pid(socket, CLIENT).await.is_ok() {
-        if std::time::Instant::now() >= deadline {
+        if crate::instant_now() >= deadline {
             return crate::fail(format!(
                 "the daemon (pid {pid}) is still running after 10 seconds; `kill -9 {pid}` ends it"
             ));

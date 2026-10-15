@@ -247,13 +247,15 @@ pub(crate) fn spawn(
             let _ = exit.send(success);
         })?;
     start(
-        master,
-        pid,
-        exited,
-        Ring::starting_at(RING_CAPACITY, first_seq),
-        QueryScanner::default(),
-        spec.size,
-        false,
+        Starting {
+            master,
+            pid,
+            exited,
+            ring: Ring::starting_at(RING_CAPACITY, first_seq),
+            queries: QueryScanner::default(),
+            size: spec.size,
+            stopping: false,
+        },
         events,
     )
 }
@@ -275,13 +277,15 @@ pub(crate) fn adopt(
             let _ = exit.send(wait_for(pid));
         })?;
     start(
-        master,
-        pid,
-        exited,
-        ring,
-        QueryScanner::adopt(carried.modes),
-        carried.size,
-        carried.stopping,
+        Starting {
+            master,
+            pid,
+            exited,
+            ring,
+            queries: QueryScanner::adopt(carried.modes),
+            size: carried.size,
+            stopping: carried.stopping,
+        },
         events,
     )
 }
@@ -304,16 +308,31 @@ fn wait_for(pid: Option<u32>) -> bool {
     }
 }
 
-/// Starts the actor for a terminal and its threads.
-#[allow(clippy::too_many_arguments)]
-fn start(
+/// A terminal about to get its actor: new, or taken over from the
+/// daemon's previous version.
+struct Starting {
     master: OwnedFd,
     pid: Option<u32>,
+    /// Whether its program exited cleanly, once it has.
     exited: oneshot::Receiver<bool>,
     ring: Ring,
     queries: QueryScanner,
     size: TermSize,
+    /// Its program was being stopped when it was handed over.
     stopping: bool,
+}
+
+/// Starts the actor for a terminal and its threads.
+fn start(
+    Starting {
+        master,
+        pid,
+        exited,
+        ring,
+        queries,
+        size,
+        stopping,
+    }: Starting,
     events: impl Fn(PtyEvent) + Send + 'static,
 ) -> std::io::Result<PtyHandle> {
     let process_group = pid

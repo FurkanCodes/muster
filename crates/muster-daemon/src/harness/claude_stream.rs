@@ -12,7 +12,10 @@
 //! seconds for input first.
 
 // Wired into runs by a later M2 step; until then only its tests use it.
-#![cfg_attr(not(test), allow(dead_code))]
+#![cfg_attr(
+    not(test),
+    expect(dead_code, reason = "wired into runs by a later M2 step")
+)]
 
 use serde_json::Value;
 

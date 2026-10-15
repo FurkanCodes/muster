@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "tests time themselves")]
+
 use std::time::{Duration, Instant};
 
 use muster_core::RunStage;

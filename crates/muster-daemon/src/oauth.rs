@@ -112,10 +112,10 @@ struct Tokens {
     expires_in: Option<u64>,
 }
 
+/// Seconds since the Unix epoch, as tokens' expiry is told.
 fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs())
+    use crate::clock::Clock;
+    u64::try_from(crate::clock::SystemClock.now().as_millis()).unwrap_or(0) / 1000
 }
 
 fn unavailable(what: &str, error: impl std::fmt::Display) -> ServiceError {

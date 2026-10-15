@@ -2,6 +2,9 @@
 //! the daemon if none is running; its subcommands run the daemon and drive it
 //! from scripts.
 
+// No unsafe code here, ever: it lives in one audited daemon module (`ARC-12`).
+#![forbid(unsafe_code)]
+
 mod auth;
 mod commands;
 mod reload;
@@ -279,6 +282,16 @@ enum SessionCommand {
     Restart { session: String },
     /// Take ended SESSION off the list; its history is kept.
     Remove { session: String },
+}
+
+/// The time now, for a command's own deadlines. The daemon reads time
+/// through its `Clock` (`ARC-03`); a command reads it here.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "ARC-03: a command's one monotonic clock"
+)]
+pub(crate) fn instant_now() -> std::time::Instant {
+    std::time::Instant::now()
 }
 
 fn main() -> ExitCode {
