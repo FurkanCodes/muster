@@ -1,8 +1,9 @@
 //! Muster's notch (`ARC-22`): on a MacBook with a notch, the agents shown
-//! at it while the person looks away from every Muster window. Kep's face
-//! and how many agents work and wait sit in a strip just under the notch,
-//! no wider than it; pointed at, it opens downwards into the list of them,
-//! and a click on one shows it in the Muster window looked at last.
+//! at it while the person looks away from every Muster window. How many
+//! wait and how many work sit level with the notch, in a slim side either
+//! side of it, as the notch itself has no pixels; pointed at, it opens
+//! downwards into the list of them, and a click on one shows it in the
+//! Muster window looked at last.
 //!
 //! The notch is a client of the daemon like the UI: it learns everything
 //! from the daemon's state and changes nothing but through its commands.

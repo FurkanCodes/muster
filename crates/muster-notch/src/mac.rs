@@ -1,8 +1,8 @@
 //! The notch on screen, through AppKit (`ARC-22`): a borderless panel that
 //! never takes focus, above the menu bar on every Space, flush with the top
-//! of the screen and no wider than the notch, black like it. At rest it is
-//! the notch and a strip under it, Kep's face and the counts in the strip;
-//! pointed at, it opens downwards into the list.
+//! of the screen, black like the notch. At rest it is the notch's own height
+//! with a slim side either side, the counts in them, so they read as part
+//! of the notch; pointed at, it opens downwards into the list.
 //!
 //! AppKit is used from the main thread only: the link to the daemon runs on
 //! a thread of its own and hands each board over on the main queue. The
@@ -31,8 +31,8 @@ use objc2_foundation::{MainThreadMarker, NSObject, NSPoint, NSRect, NSSize, NSSt
 use objc2_quartz_core::CACornerMask;
 use tokio::sync::mpsc;
 
-use crate::board::{Board, MOST_ROWS, Mark, Mood};
-use crate::geometry::{self, BAND, Notch, Rect};
+use crate::board::{Board, MOST_ROWS, Mark};
+use crate::geometry::{self, Notch, Rect, SIDE};
 use crate::link::{self, Ended, ToScreen};
 use crate::{MOVED_FOR, NotchError};
 
@@ -276,6 +276,17 @@ impl Label {
         width
     }
 
+    /// Shows `text` as wide as it is drawn, centred on `middle`.
+    fn centre(&mut self, text: &str, colour: Colour, middle: f64, y: f64, height: f64) {
+        self.show(text, colour, Rect::new(0.0, y, 1.0, height));
+        let width = self.width();
+        self.show(
+            text,
+            colour,
+            Rect::new(middle - width / 2.0, y, width, height),
+        );
+    }
+
     fn fade(&self, alpha: f64) {
         self.field.setAlphaValue(alpha);
     }
@@ -295,7 +306,6 @@ struct Screen {
     mtm: MainThreadMarker,
     panel: Retained<NSPanel>,
     view: Retained<NotchView>,
-    face: Label,
     waiting: Label,
     working: Label,
     lines: Vec<Line>,
@@ -355,13 +365,12 @@ impl Screen {
         }
         panel.setContentView(Some(&view));
 
-        let strip = NSFont::monospacedDigitSystemFontOfSize_weight(12.0, 0.3);
+        let sides = NSFont::monospacedDigitSystemFontOfSize_weight(12.0, 0.3);
         let text = NSFont::systemFontOfSize(12.0);
         let small = NSFont::systemFontOfSize(11.0);
         let small_bold = NSFont::boldSystemFontOfSize(11.0);
-        let face = Label::new(mtm, &view, &strip, false);
-        let waiting = Label::new(mtm, &view, &strip, false);
-        let working = Label::new(mtm, &view, &strip, true);
+        let waiting = Label::new(mtm, &view, &sides, false);
+        let working = Label::new(mtm, &view, &sides, false);
         let lines = (0..MOST_ROWS)
             .map(|_| Line {
                 mark: Label::new(mtm, &view, &text, false),
@@ -373,14 +382,13 @@ impl Screen {
             .collect();
         let more = Label::new(mtm, &view, &small, false);
         let note = Label::new(mtm, &view, &small, false);
-        // Two lines, so a reason fits as narrow as the notch.
+        // Two lines, so a reason fits the list's width.
         note.field.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
         note.field.setMaximumNumberOfLines(2);
         Self {
             mtm,
             panel,
             view,
-            face,
             waiting,
             working,
             lines,
@@ -438,7 +446,7 @@ impl Screen {
         if let Some(layer) = self.view.layer() {
             layer.setCornerRadius(if self.open { 14.0 } else { 10.0 });
         }
-        self.draw_strip(notch, frame);
+        self.draw_sides(notch, frame);
         self.draw_list(notch, frame);
         if !self.visible {
             self.panel.orderFrontRegardless();
@@ -454,43 +462,35 @@ impl Screen {
         self.open = false;
     }
 
-    /// Kep and the counts in the strip under the notch, in the view's
-    /// coordinates (y up): Kep on the left, the counts on the right.
-    fn draw_strip(&mut self, notch: Notch, frame: Rect) {
-        let text_height = 16.0;
-        let y = frame.height - notch.frame.height - BAND + (BAND - text_height) / 2.0;
-        let blink = self.step % 40 >= 38;
-        self.face.show(
-            self.board.kep.face(blink),
-            if self.board.kep == Mood::Alert {
-                Colour::Asking
-            } else {
-                Colour::White
-            },
-            Rect::new(10.0, y, frame.width / 2.0 - 10.0, text_height),
-        );
-        // From the right edge leftwards: what works, then what waits.
-        let mut right = frame.width - 10.0;
-        if self.board.working > 0 {
-            let text = format!("{}{}", spinner(self.step), self.board.working);
-            right -= self
-                .working
-                .fit(&text, Colour::Working, right, y, text_height)
-                + 6.0;
-        } else {
-            self.working.hide();
-        }
+    /// The counts in the slim sides, level with the notch, in the view's
+    /// coordinates (y up): what waits on the person on the left, pulsing,
+    /// and what works on the right, each centred in its side.
+    fn draw_sides(&mut self, notch: Notch, frame: Rect) {
+        let height = 16.0;
+        let y = frame.height - notch.frame.height + (notch.frame.height - height) / 2.0;
         if self.board.waiting > 0 {
             let text = format!("▲{}", self.board.waiting);
             self.waiting
-                .fit(&text, Colour::Asking, right, y, text_height);
+                .centre(&text, Colour::Asking, SIDE / 2.0 + 1.0, y, height);
             self.waiting.fade(pulse(self.step));
         } else {
             self.waiting.hide();
         }
+        if self.board.working > 0 {
+            let text = format!("{}{}", self.board.working, spinner(self.step));
+            self.working.centre(
+                &text,
+                Colour::Working,
+                frame.width - SIDE / 2.0 - 1.0,
+                y,
+                height,
+            );
+        } else {
+            self.working.hide();
+        }
     }
 
-    /// The list under the strip, while it is open: each session on two
+    /// The list under the notch, while it is open: each session on two
     /// lines, its mark, title and time, then its project and what it is
     /// doing.
     fn draw_list(&mut self, notch: Notch, frame: Rect) {
