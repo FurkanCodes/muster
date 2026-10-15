@@ -175,7 +175,7 @@ impl Supervisor {
                 return;
             }
         };
-        let hosts = self.hosts.clone();
+        let (hosts, requests) = (self.hosts.clone(), self.requests.clone());
         let place = crate::service::ProjectPlace {
             root: path.clone(),
             overrides: overrides.clone(),
@@ -217,8 +217,14 @@ impl Supervisor {
                 Ok(Reply::PullRequestOpened { pr })
             };
             let outcome = opened.await;
-            if let Err(error) = &outcome {
-                tracing::info!(command = "open pull request", %error, "command refused");
+            match &outcome {
+                // Shown beside the worktree at once, not at the next look.
+                Ok(_) => {
+                    let _ = requests.send(super::Request::LookAtBranch(workspace)).await;
+                }
+                Err(error) => {
+                    tracing::info!(command = "open pull request", %error, "command refused");
+                }
             }
             let _ = reply.send(outcome);
         });
@@ -276,7 +282,7 @@ impl Supervisor {
 }
 
 /// The settings of the repository at `root`, with the overrides.
-async fn load_settings(
+pub(super) async fn load_settings(
     root: PathBuf,
     overrides: PathBuf,
 ) -> Result<muster_core::config::ProjectConfig, ErrorBody> {
@@ -290,7 +296,7 @@ async fn load_settings(
 /// What a change in the repository at `path` is to merge into: the base
 /// the settings name, or the remote's default branch, as the remote has it
 /// (`origin/<base>`) where it can be; `main` failing all else.
-async fn base_of(path: &Path, configured: Option<&str>) -> String {
+pub(super) async fn base_of(path: &Path, configured: Option<&str>) -> String {
     let remote = |branch: &str| format!("refs/remotes/origin/{branch}");
     if let Some(branch) = configured {
         let has = crate::git::answer(path, &["show-ref", "--verify", "--quiet", &remote(branch)])

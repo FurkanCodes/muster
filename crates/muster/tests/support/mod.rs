@@ -86,7 +86,7 @@ case "$1 $2" in
   "pr list") if [ -f "$dir/pr.json" ]; then cat "$dir/pr.json"; else echo "[]"; fi ;;
   "pr create")
     cat > "$dir/pr-body"
-    echo '[{"number":17,"url":"https://github.com/o/app/pull/17"}]' > "$dir/pr.json"
+    echo '[{"number":17,"url":"https://github.com/o/app/pull/17","state":"OPEN","isDraft":true}]' > "$dir/pr.json"
     echo "https://github.com/o/app/pull/17" ;;
   "pr ready") echo "$3 $4" >> "$dir/ready" ;;
   "pr review") { cat; echo; echo "-----"; } >> "$dir/reviews" ;;

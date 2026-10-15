@@ -9,7 +9,7 @@ use muster_core::protocol::{
 use muster_core::{SessionId, WorkspaceId};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use super::{TerminalLink, containers, issues, runs};
+use super::{TerminalLink, containers, issues, pulls, runs};
 
 pub(super) type Subscription = (Snapshot, broadcast::Receiver<Delta>);
 
@@ -31,8 +31,12 @@ pub(super) enum Request {
     RunTicketFetched(Box<runs::FetchedRun>),
     /// The runs' credential fetched off the loop, back to start an agent.
     CredentialFetched(Box<containers::CredentialFetched>),
-    /// Time to look at runs' pull requests.
+    /// Time to look at pull requests: runs', and each branch's.
     CheckPullRequests,
+    /// A look at branches' pull requests, back from off the loop.
+    PullRequestsLooked(Box<pulls::Looked>),
+    /// Look at the pull request of one workspace's branch now.
+    LookAtBranch(WorkspaceId),
     /// The sampler asks which sessions run under which process.
     RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
     /// The branch watcher asks where each workspace is and what it had
@@ -65,6 +69,8 @@ impl std::fmt::Debug for Request {
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
             Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
             Self::CheckPullRequests => f.write_str("CheckPullRequests"),
+            Self::PullRequestsLooked(_) => f.write_str("PullRequestsLooked"),
+            Self::LookAtBranch(workspace) => write!(f, "LookAtBranch({workspace})"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
             Self::Branches(_) => f.write_str("Branches"),
@@ -154,8 +160,8 @@ impl SupervisorHandle {
             .is_ok()
     }
 
-    /// Asks for runs' pull requests to be looked at. `false` once the
-    /// Supervisor has stopped.
+    /// Asks for pull requests to be looked at: runs', and each branch's.
+    /// `false` once the Supervisor has stopped.
     pub(crate) async fn check_pull_requests(&self) -> bool {
         self.requests.send(Request::CheckPullRequests).await.is_ok()
     }

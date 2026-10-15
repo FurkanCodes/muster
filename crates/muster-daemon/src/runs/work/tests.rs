@@ -141,6 +141,14 @@ impl GitHost for FakeHost {
     ) -> BoxFuture<'a, Result<PrState, ServiceError>> {
         Box::pin(async { Ok(PrState::Open) })
     }
+
+    fn pull_request_of<'a>(
+        &'a self,
+        _root: &'a Path,
+        _branch: &'a str,
+    ) -> BoxFuture<'a, Result<Option<muster_core::PullRequestStatus>, ServiceError>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 #[derive(Debug)]

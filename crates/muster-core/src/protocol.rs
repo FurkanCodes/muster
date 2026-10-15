@@ -27,7 +27,9 @@
 //! Since the first release, a change keeps older peers working where it
 //! can: version 17 (from 16) is where a project's tickets are chosen on the
 //! Settings screen (`SettingChange::TicketsFrom`, sent only to a daemon of
-//! 17 or later), and the settings saying where they are written.
+//! 17 or later), and the settings saying where they are written; version
+//! 18 the pull request from each workspace's branch
+//! (`Workspace::pull_request`, an optional field older clients pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -43,7 +45,7 @@ use crate::settings::{ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 17;
+pub const PROTOCOL_VERSION: u32 = 18;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 

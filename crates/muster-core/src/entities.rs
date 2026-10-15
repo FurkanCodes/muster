@@ -27,6 +27,10 @@ pub struct Workspace {
     pub project: ProjectId,
     pub kind: WorkspaceKind,
     pub created_at: Timestamp,
+    /// The pull request from its branch, as the git host last said; kept
+    /// only while the branch is checked out there, and never stored.
+    #[serde(default)]
+    pub pull_request: Option<crate::pulls::PullRequestStatus>,
 }
 
 /// The kinds of workspace.

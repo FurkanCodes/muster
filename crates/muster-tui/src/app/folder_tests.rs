@@ -28,6 +28,7 @@ fn with_folder() -> (World, Project, Workspace) {
             branch: String::new(),
         },
         created_at: Timestamp::from_millis(60),
+        pull_request: None,
     };
     world
         .app

@@ -8,7 +8,7 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{look, panel, shorten, status_symbol};
+use super::{look, panel, pull_request, shorten, status_symbol};
 use crate::app::{App, View};
 use crate::model::Row;
 use crate::motion;
@@ -87,7 +87,16 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
                 spans.push(Span::from(run.stage.label()).dim());
                 spans.push(Span::raw(format!("  {branch}")));
             } else {
-                spans.push(Span::raw(branch));
+                let lead = pull_request::width(&spans);
+                let found = app
+                    .model
+                    .workspace(id)
+                    .and_then(|workspace| workspace.pull_request.as_ref());
+                spans.extend(branch_and_pull_request(
+                    branch,
+                    found,
+                    width.saturating_sub(lead),
+                ));
             }
             ListItem::new(Line::from(spans))
         }
@@ -99,6 +108,31 @@ fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
             None => ListItem::new(""),
         },
     }
+}
+
+/// A worktree's branch and, at the line's end, the pull request from it,
+/// in `room` cells: short of room, the pull request's word goes first,
+/// then the branch is cut short.
+fn branch_and_pull_request(
+    branch: String,
+    found: Option<&muster_core::PullRequestStatus>,
+    room: usize,
+) -> Vec<Span<'static>> {
+    let Some(found) = found else {
+        return vec![Span::raw(branch)];
+    };
+    let mut badge = pull_request::badge(found, false);
+    if branch.chars().count() + 1 + pull_request::width(&badge) > room {
+        badge = pull_request::badge(found, true);
+    }
+    let badge_width = pull_request::width(&badge);
+    let branch = shorten(&branch, room.saturating_sub(badge_width + 1).max(6));
+    let gap = room
+        .saturating_sub(branch.chars().count() + badge_width)
+        .max(1);
+    let mut spans = vec![Span::raw(branch), Span::raw(" ".repeat(gap))];
+    spans.extend(badge);
+    spans
 }
 
 /// The fewest characters of a session's title a list line keeps before it

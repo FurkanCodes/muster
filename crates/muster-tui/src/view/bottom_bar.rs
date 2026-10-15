@@ -132,6 +132,13 @@ fn hints(app: &App) -> String {
                 if kind.is_some_and(|kind| kind.run().is_none()) {
                     hints.extend(["c check", "v review", "o PR"]);
                 }
+                if app
+                    .model
+                    .workspace(id)
+                    .is_some_and(|workspace| workspace.pull_request.is_some())
+                {
+                    hints.push("b browser");
+                }
                 hints.extend(["w worktree", "i tickets"]);
             }
         }

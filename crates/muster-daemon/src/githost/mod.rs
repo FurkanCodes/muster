@@ -9,10 +9,13 @@
 //! own pull request, nor be asked to review it: the reviewer agent's
 //! verdict is posted as a review comment, and a ready pull request waits
 //! in Needs you.
+//!
+//! The cockpit only reads: where each worktree's branch's pull request
+//! stands (`pull_request_of`), looked at now and then (`supervisor::pulls`).
 
 use std::path::Path;
 
-use muster_core::PullRequest;
+use muster_core::{PullRequest, PullRequestStatus};
 
 pub(crate) mod bitbucket;
 pub(crate) mod choose;
@@ -31,7 +34,7 @@ pub(crate) enum PrState {
     Closed,
 }
 
-/// What runs need from the git host.
+/// What runs and the cockpit need from the git host.
 pub(crate) trait GitHost: Send + Sync + std::fmt::Debug {
     /// The open pull request for `branch`, or a new draft one into `base`.
     fn open_draft<'a>(
@@ -68,4 +71,13 @@ pub(crate) trait GitHost: Send + Sync + std::fmt::Debug {
         root: &'a Path,
         number: u64,
     ) -> BoxFuture<'a, Result<PrState, ServiceError>>;
+
+    /// The pull request from `branch`, open, merged or closed (the newest,
+    /// if it had several), and how its checks and reviews stand where the
+    /// host says; `None` when the branch has none.
+    fn pull_request_of<'a>(
+        &'a self,
+        root: &'a Path,
+        branch: &'a str,
+    ) -> BoxFuture<'a, Result<Option<PullRequestStatus>, ServiceError>>;
 }

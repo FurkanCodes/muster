@@ -116,6 +116,7 @@ fn agent_for_42(world: &World, branch: &str, created: i64) -> (Workspace, muster
             branch: branch.to_owned(),
         },
         created_at: Timestamp::from_millis(created),
+        pull_request: None,
     };
     let mut agent = session(workspace.id, "#42 Fix the login redirect", created);
     agent.harness = "claude".to_owned();
@@ -518,4 +519,79 @@ fn declining_the_clean_up_leaves_the_work_alone() {
     reply(&mut world, req_id, Ok(Reply::Done));
     assert!(commands(&press(&mut world.app, KeyCode::Char('n'))).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);
+}
+
+#[test]
+fn a_ticket_shows_the_pull_request_its_agents_opened_the_furthest_along_first() {
+    let mut world = on_tickets();
+    let (mut drafted, agent) = agent_for_42(&world, "muster/issue-42-fix-the-login-redirect", 3);
+    drafted.pull_request = Some(muster_core::PullRequestStatus {
+        number: 50,
+        url: "https://github.com/o/app/pull/50".to_owned(),
+        state: muster_core::PullRequestState::Draft,
+        checks: Some(muster_core::Checks::Failing),
+        review: None,
+    });
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(drafted)));
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(agent)));
+    let screen = render(&world.app);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("#42 Fix"))
+        .unwrap()
+        .to_owned();
+    assert!(row.contains("#50 ✗"), "{row}");
+    assert!(screen.contains("#50 draft ✗"), "the agent's line: {screen}");
+
+    // Another agent's pull request merged: that is how the ticket stands.
+    let (mut merged, other) = agent_for_42(&world, "muster/issue-42-fix-the-login-redirect-2", 4);
+    merged.pull_request = Some(muster_core::PullRequestStatus {
+        number: 51,
+        url: "https://github.com/o/app/pull/51".to_owned(),
+        state: muster_core::PullRequestState::Merged,
+        checks: None,
+        review: None,
+    });
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(merged)));
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(other)));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("#50 draft ✗") && screen.contains("#51 merged"),
+        "each agent's line: {screen}"
+    );
+    let row = |screen: &str| {
+        screen
+            .lines()
+            .find(|line| line.contains("#42 Fix"))
+            .unwrap()
+            .to_owned()
+    };
+    // Too narrow to keep a readable title beside it: left to the details.
+    let narrow = row(&screen);
+    assert!(
+        narrow.contains("Fix the login") && !narrow.contains("#51"),
+        "{narrow}"
+    );
+    let mut wide = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 30)).unwrap();
+    wide.draw(|frame| crate::view::draw(frame, &world.app))
+        .unwrap();
+    let buffer = wide.backend().buffer();
+    let wide: String = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+                + "\n"
+        })
+        .collect();
+    let row = row(&wide);
+    assert!(row.contains("#51 merged"), "{row}");
 }

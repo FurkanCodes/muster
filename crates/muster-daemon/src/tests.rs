@@ -294,6 +294,7 @@ async fn every_nth_measurement_is_kept_in_history() {
             branch: "work".to_owned(),
         },
         created_at: Timestamp::from_millis(1),
+        pull_request: None,
     };
     let session = Session {
         id: SessionId::new(),

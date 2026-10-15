@@ -219,6 +219,7 @@ impl Supervisor {
                 branch,
             },
             created_at: self.clock.now(),
+            pull_request: None,
         }
     }
 
@@ -255,6 +256,8 @@ impl Supervisor {
                 | WorkspaceKind::Checkout { branch: known, .. }
                 | WorkspaceKind::Container { branch: known, .. } => known.clone_from(&branch),
             }
+            // The last branch's; the next look finds this one's.
+            found.pull_request = None;
             let updated = found.clone();
             self.write(move |store| store.update_branch(workspace, &branch))
                 .await;

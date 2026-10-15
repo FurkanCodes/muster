@@ -13,6 +13,7 @@ mod containers;
 mod handle;
 mod issues;
 mod projects;
+mod pulls;
 mod reload;
 mod runs;
 mod sessions;
@@ -115,6 +116,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         credentials: settings.credentials,
         docker: settings.docker,
         hosts: settings.hosts,
+        pulls: pulls::Looks::default(),
     };
     supervisor.ensure_checkouts().await;
     // Running sessions handed over keep running: taken over before any is
@@ -191,6 +193,8 @@ struct Supervisor {
     hosts: Arc<dyn Hosts>,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
+    /// Looks at branches' pull requests.
+    pulls: pulls::Looks,
 }
 
 impl Supervisor {
@@ -279,7 +283,12 @@ impl Supervisor {
             Request::IssueFetched(fetched) => self.start_fetched_issue(*fetched).await,
             Request::RunTicketFetched(fetched) => self.start_fetched_run(*fetched).await,
             Request::CredentialFetched(fetched) => self.on_credential(*fetched).await,
-            Request::CheckPullRequests => self.check_pull_requests(),
+            Request::CheckPullRequests => {
+                self.check_pull_requests();
+                self.tick_pull_requests();
+            }
+            Request::PullRequestsLooked(looked) => self.pull_requests_looked(*looked),
+            Request::LookAtBranch(workspace) => self.look_at_pull_requests(Some(workspace)),
             Request::RunningProcesses(reply) => {
                 let running = self
                     .live

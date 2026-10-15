@@ -103,6 +103,9 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
                 "(not a git repository)".to_owned()
             };
             println!("  {branch}{place}");
+            if let Some(pull_request) = &workspace.pull_request {
+                println!("    pull request {}", shown(&pull_request.summary()));
+            }
             for session in snapshot
                 .sessions
                 .iter()

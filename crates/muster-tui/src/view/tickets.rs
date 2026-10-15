@@ -7,11 +7,14 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{describe, look, panel, shorten, status_symbol};
+use super::{describe, look, panel, pull_request, shorten, status_symbol};
 use crate::app::{App, HarnessChoice, TicketRow, TicketText, Tickets};
 
 /// The most agents shown on a ticket's line; the rest are counted.
 const AGENTS_SHOWN: usize = 4;
+
+/// The least of a ticket's title its line keeps to show its pull request.
+const TITLE_KEPT: usize = 12;
 
 pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Tickets ", app.list_has_keys());
@@ -115,11 +118,23 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
             if agents.len() > AGENTS_SHOWN {
                 marks.push(Span::from(format!(" +{}", agents.len() - AGENTS_SHOWN)).dim());
             }
-            let marks_width: usize = marks.iter().map(|mark| mark.content.chars().count()).sum();
             let number_text = format!("  {} ", key.shown());
-            let room = width
-                .saturating_sub(number_text.chars().count() + marks_width + 1)
-                .max(8);
+            let room_beside = |marks: &[Span<'_>]| {
+                let marks_width: usize =
+                    marks.iter().map(|mark| mark.content.chars().count()).sum();
+                width.saturating_sub(number_text.chars().count() + marks_width + 1)
+            };
+            // Its pull request where the title keeps a readable length;
+            // the ticket's details show it anyway.
+            if let Some(found) = app.model.ticket_pull_request(project, key) {
+                let mut with = marks.clone();
+                with.push(Span::raw("  "));
+                with.extend(pull_request::badge(found, true));
+                if room_beside(&with) >= TITLE_KEPT {
+                    marks = with;
+                }
+            }
+            let room = room_beside(&marks).max(8);
             let mut spans = vec![
                 Span::from(number_text).dim(),
                 Span::raw(shorten(&ticket.title, room)),
@@ -239,12 +254,21 @@ fn ticket_text(
                 .branch(session.workspace)
                 .unwrap_or("?")
                 .to_owned();
-            lines.push(Line::from(vec![
+            let mut spans = vec![
                 Span::styled(format!(" {symbol} "), style),
                 Span::from(format!("{}  ", agent_name(&session.harness))).bold(),
                 Span::raw(describe(session.status)),
                 Span::from(format!("  {branch}")).dim(),
-            ]));
+            ];
+            if let Some(found) = app
+                .model
+                .workspace(session.workspace)
+                .and_then(|workspace| workspace.pull_request.as_ref())
+            {
+                spans.push(Span::raw("  "));
+                spans.extend(pull_request::badge(found, false));
+            }
+            lines.push(Line::from(spans));
         }
         lines.push(
             Line::from("⏎ opens the latest; a starts another, in a worktree of its own.").dim(),

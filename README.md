@@ -13,6 +13,7 @@
 - **Survives restarts.** Sessions belong to the daemon. After a daemon restart, agent sessions resume their conversations (`--resume`, `codex resume`, `opencode --session`); one that cannot falls back to a fresh start.
 - **Tickets, wherever they are.** A screen of each project's open tickets — GitHub or GitLab issues (through your `gh` or `glab`), Jira work items (Cloud or Data Center), or Linear issues — with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<key>-<title>` (`#42`'s, or `APP-7`'s), starts the agent you choose there (Claude Code, Codex, Gemini CLI, OpenCode or Copilot CLI), and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file one. A credential someone pasted into a ticket (a token in a `curl` command, an API key, a password) is shown and handed on as `[hidden by Muster]`; the ticket itself is left as it is. More agents on the same ticket get worktrees of their own. When the work is done, close the ticket from Muster (`x`, after asking) and let it close the ticket's agents and remove its worktrees, keeping the branches. That is the only change Muster makes in a tracker.
 - **The stages by hand.** On any worktree: run the project's checks as a session, have Claude Code review the change in plan mode, or push the branch and open a draft pull request.
+- **Pull requests in view.** Each worktree shows the pull request from its branch, as GitHub, GitLab or Bitbucket last said (about every minute while the UI is open): `#42 approved ✓`, `#17 draft ✗`, `#9 merged`. Its details say it in words, `b` opens it in your browser, and a ticket's agents show theirs. Muster only reads it.
 - **Resources.** Memory and CPU for each session's whole process tree, and the machine's memory.
 
 ## Security and privacy
@@ -60,6 +61,7 @@ muster
 | `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `v` | have Claude Code review the selected worktree's change, in plan mode (it changes nothing) |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
+| `b` | open the pull request from the selected worktree's branch in your browser |
 | `⇥` `⇧⇥` | the next or previous tab: *Sessions*, *Needs you*, *Tickets*, *Settings* |
 | `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
 | `4` | the *Settings* tab, from the list |

@@ -22,6 +22,7 @@ fn with_checkout() -> (World, Workspace) {
         },
         // Added after the worktree, as for a project from before checkouts.
         created_at: Timestamp::from_millis(50),
+        pull_request: None,
     };
     world
         .app
@@ -210,6 +211,7 @@ fn with_container() -> (World, Workspace) {
             branch: run.branch.clone(),
         },
         created_at: Timestamp::from_millis(1),
+        pull_request: None,
     };
     world
         .app

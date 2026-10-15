@@ -366,6 +366,7 @@ impl Supervisor {
                 branch: active.context.branch.clone(),
             },
             created_at: self.clock.now(),
+            pull_request: None,
         };
         let stored = workspace.clone();
         self.store
