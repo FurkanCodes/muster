@@ -7,7 +7,7 @@
 mod support;
 
 use std::os::unix::fs::PermissionsExt;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use muster_client::{ClientError, FramedRead, FramedWrite};
 use muster_core::protocol::{
@@ -257,4 +257,43 @@ fn the_command_line_reports_status_and_adds_projects() {
     let again = sandbox.run(&["project", "add", root.to_str().unwrap()]);
     assert!(!again.status.success());
     assert!(String::from_utf8_lossy(&again.stderr).contains("already a project"));
+}
+
+/// ARC-15: started as the UI starts it, the daemon's log moves on to a
+/// fresh file past its size, keeps seven, and what it logs after goes to the
+/// fresh one.
+#[test]
+fn the_daemons_log_moves_on_to_a_fresh_file_and_keeps_seven() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start_as_the_ui_does(&[
+        ("MUSTER_LOG_MAX_BYTES", "1000"),
+        ("MUSTER_LOG_CHECK_MS", "20"),
+    ]);
+    let runtime = sandbox.paths().runtime_dir;
+    let logs = || {
+        std::fs::read_dir(&runtime)
+            .unwrap()
+            .filter_map(|entry| {
+                let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+                name.starts_with("daemon.log").then_some(name)
+            })
+            .count()
+    };
+    // Each `status` is a client coming and going, which the daemon logs.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !runtime.join("daemon.log.6").exists() {
+        assert!(Instant::now() < deadline, "{} logs", logs());
+        assert!(sandbox.run(&["status"]).status.success());
+        assert!(logs() <= 7, "{} logs", logs());
+    }
+    for _ in 0..20 {
+        assert!(sandbox.run(&["status"]).status.success());
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(logs(), 7);
+    let fresh = std::fs::read_to_string(runtime.join("daemon.log")).unwrap();
+    assert!(fresh.len() < 20_000, "{} bytes", fresh.len());
+    // What the daemon logged after went to the fresh file.
+    assert!(fresh.contains("a fresh log"), "{fresh}");
+    drop(daemon);
 }

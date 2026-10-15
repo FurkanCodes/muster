@@ -531,6 +531,12 @@ async fn daemon(paths: Paths, background: bool, adopt: Option<i32>) -> ExitCode 
     if let Some(ms) = millis("MUSTER_SPEND_MS") {
         config.spend_interval = std::time::Duration::from_millis(ms.max(10));
     }
+    if let Some(ms) = millis("MUSTER_LOG_CHECK_MS") {
+        config.log_limits.every = std::time::Duration::from_millis(ms.max(10));
+    }
+    if let Some(bytes) = millis("MUSTER_LOG_MAX_BYTES") {
+        config.log_limits.max_bytes = bytes.max(1);
+    }
     // Listening from the start, so no signal arrives before it is caught:
     // uncaught, SIGUSR1 would end the daemon.
     #[expect(

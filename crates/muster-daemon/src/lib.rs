@@ -14,6 +14,7 @@ mod glab;
 mod handoff;
 mod harness;
 mod hooks;
+mod log_files;
 mod mcp;
 mod oauth;
 mod pty;
@@ -46,6 +47,7 @@ use std::time::Duration;
 use muster_core::Paths;
 use tokio::net::UnixListener;
 
+pub use crate::log_files::LogLimits;
 pub use crate::runs::credentials::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
 
 /// Keeps `value` in the Keychain for `account`, as `muster auth` does:
@@ -160,6 +162,8 @@ pub struct DaemonConfig {
     pub pr_interval: Duration,
     /// How often sessions' agents' records are read for what they used.
     pub spend_interval: Duration,
+    /// When `daemon.log` moves on to a fresh file (`ARC-15`).
+    pub log_limits: LogLimits,
 }
 
 impl DaemonConfig {
@@ -174,6 +178,7 @@ impl DaemonConfig {
             start_grace: muster_state::session::Timing::default().start_grace,
             pr_interval: Duration::from_secs(60),
             spend_interval: Duration::from_secs(5),
+            log_limits: LogLimits::default(),
         }
     }
 }
@@ -274,6 +279,7 @@ pub async fn run(
     let store = StoreHandle::spawn(store)
         .map_err(io_error("cannot start the store for", &paths.database()))?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let log_clock = clock.clone();
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
     let credentials: Arc<dyn runs::credentials::Credentials> =
         Arc::new(runs::credentials::PersonsCredentials);
@@ -326,6 +332,11 @@ pub async fn run(
             supervisor.clone(),
             config.spend_interval,
             spend::Places::from_env(),
+        )),
+        tasks::owned(log_files::run(
+            paths.runtime_dir.join("daemon.log"),
+            config.log_limits,
+            log_clock,
         )),
     ];
 
