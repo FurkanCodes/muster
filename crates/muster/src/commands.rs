@@ -124,8 +124,12 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
                         )
                     })
                     .unwrap_or_default();
+                let spend = session
+                    .spend
+                    .map(|spend| format!("  {}", spend.text()))
+                    .unwrap_or_default();
                 println!(
-                    "   {mark} {}  {}  {}{usage}",
+                    "   {mark} {}  {}  {}{usage}{spend}",
                     session.id,
                     shown(&session.title),
                     describe(session.status)

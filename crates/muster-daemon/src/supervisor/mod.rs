@@ -18,6 +18,7 @@ mod reload;
 mod runs;
 mod sessions;
 mod settings;
+mod spend;
 mod status;
 mod terminals;
 mod worktrees;
@@ -299,6 +300,10 @@ impl Supervisor {
                 let _ = reply.send(running);
             }
             Request::Resources(report) => self.record_resources(report).await,
+            Request::SpendTargets(reply) => {
+                let _ = reply.send(self.spend_targets());
+            }
+            Request::Spends(spends) => self.record_spends(spends),
             Request::HandOver(reply) => {
                 let handed = self.hand_over_sessions().await;
                 let _ = reply.send(handed);

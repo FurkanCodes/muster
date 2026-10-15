@@ -244,6 +244,15 @@ impl Harness {
         }
     }
 
+    /// What a report says the session has used, for a harness that reports
+    /// it: OpenCode's plugin, at each turn's end.
+    pub(crate) fn spend(self, body: &[u8]) -> Option<muster_core::Spend> {
+        match self.kind {
+            Kind::OpenCode => opencode::spend(body),
+            _ => None,
+        }
+    }
+
     /// What its window title says, for a harness whose title says how it
     /// is doing.
     pub(crate) fn read_title(self, title: &str) -> Option<TitleState> {

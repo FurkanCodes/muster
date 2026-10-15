@@ -244,7 +244,13 @@ fn ticket_text(
             .dim(),
         );
     } else {
-        lines.push(Line::from("Agents").bold());
+        let spent =
+            muster_core::Spend::total(agents.iter().filter_map(|agent| agent.spend.as_ref()));
+        let mut heading = vec![Span::from("Agents").bold()];
+        if let Some(spent) = spent {
+            heading.push(Span::from(format!(" · {}", spent.text())).dim());
+        }
+        lines.push(Line::from(heading));
         for session in &agents {
             // Their titles all name the ticket: what tells them apart is
             // which agent each is, how it is doing and where it works.
@@ -258,8 +264,11 @@ fn ticket_text(
                 Span::styled(format!(" {symbol} "), style),
                 Span::from(format!("{}  ", agent_name(&session.harness))).bold(),
                 Span::raw(describe(session.status)),
-                Span::from(format!("  {branch}")).dim(),
             ];
+            if let Some(spend) = &session.spend {
+                spans.push(Span::from(format!("  {}", spend.text())).dim());
+            }
+            spans.push(Span::from(format!("  {branch}")).dim());
             if let Some(found) = app
                 .model
                 .workspace(session.workspace)

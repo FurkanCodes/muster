@@ -22,6 +22,7 @@ mod runs;
 mod secrets;
 mod server;
 mod service;
+mod spend;
 mod supervisor;
 mod terminal;
 mod trackers;
@@ -155,6 +156,8 @@ pub struct DaemonConfig {
     /// How often runs' pull requests are looked at (`ARCHITECTURE.md` §10:
     /// GitHub has no way to tell a local daemon, so it asks).
     pub pr_interval: Duration,
+    /// How often sessions' agents' records are read for what they used.
+    pub spend_interval: Duration,
 }
 
 impl DaemonConfig {
@@ -168,6 +171,7 @@ impl DaemonConfig {
             worktree_interval: Duration::from_secs(3),
             start_grace: muster_state::session::Timing::default().start_grace,
             pr_interval: Duration::from_secs(60),
+            spend_interval: Duration::from_secs(5),
         }
     }
 }
@@ -307,6 +311,11 @@ pub async fn run(
         config.worktree_interval,
     ));
     let pr_watch = tokio::spawn(watch_pull_requests(supervisor.clone(), config.pr_interval));
+    let spend_reader = tokio::spawn(spend::run(
+        supervisor.clone(),
+        config.spend_interval,
+        spend::Places::from_env(),
+    ));
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
     let hook_server = tokio::spawn(hooks::serve(
@@ -349,6 +358,7 @@ pub async fn run(
     branch_watcher.abort();
     worktree_sync.abort();
     pr_watch.abort();
+    spend_reader.abort();
     let _ = stop_hooks.send(());
     let _ = hook_server.await;
     let _ = std::fs::remove_file(&hook_socket);

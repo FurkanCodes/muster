@@ -518,6 +518,9 @@ async fn daemon(paths: Paths, background: bool, adopt: Option<i32>) -> ExitCode 
     if let Some(ms) = millis("MUSTER_PR_MS") {
         config.pr_interval = std::time::Duration::from_millis(ms.max(10));
     }
+    if let Some(ms) = millis("MUSTER_SPEND_MS") {
+        config.spend_interval = std::time::Duration::from_millis(ms.max(10));
+    }
     // Listening from the start, so no signal arrives before it is caught:
     // uncaught, SIGUSR1 would end the daemon.
     let (stops, stop_queue) = tokio::sync::mpsc::unbounded_channel();

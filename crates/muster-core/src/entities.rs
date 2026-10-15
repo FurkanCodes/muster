@@ -131,4 +131,8 @@ pub struct Session {
     /// or waits, and never stored.
     #[serde(default)]
     pub activity: Option<crate::session::Activity>,
+    /// What its agent has used so far, as the agent's own records say;
+    /// read again after a restart, and never stored.
+    #[serde(default)]
+    pub spend: Option<crate::session::Spend>,
 }
