@@ -57,6 +57,11 @@ impl Trackers for ServiceTrackers {
     }
 }
 
+/// How to say where a project's tickets are.
+const SAY: &str = "choose where its tickets are on the Settings screen, or say with \
+                   [tickets] tracker = \"github\", \"gitlab\", \"jira\" or \"linear\" in \
+                   muster.toml";
+
 /// Which tracker a project's tickets are in: the one written, or the one
 /// its git host comes with, the host written or the remote's.
 pub(crate) fn choose(
@@ -67,9 +72,6 @@ pub(crate) fn choose(
     if let Some(tracker) = tickets.tracker {
         return Ok(tracker);
     }
-    const SAY: &str = "choose where its tickets are on the Settings screen, or say with \
-                       [tickets] tracker = \"github\", \"gitlab\", \"jira\" or \"linear\" in \
-                       muster.toml";
     let Some(host) = host.or_else(|| origin.remote().and_then(Remote::kind)) else {
         let why = origin.why_untold("tickets");
         return Err(ServiceError::NotConfigured(match origin {

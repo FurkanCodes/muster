@@ -200,6 +200,7 @@ fn context(root: PathBuf) -> RunContext {
 }
 
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one scenario, start to end")]
 async fn real_docker_takes_a_run_from_pickup_to_ready_through_a_failed_check() {
     if std::env::var("MUSTER_DOCKER_TESTS").as_deref() != Ok("1") {
         return;

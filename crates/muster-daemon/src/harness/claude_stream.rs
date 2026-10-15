@@ -167,7 +167,7 @@ fn turn_end(value: &Value, subtype: Option<&str>) -> TurnEnd {
         .get("total_cost_usd")
         .and_then(Value::as_f64)
         .filter(|usd| usd.is_finite() && *usd >= 0.0)
-        .map(|usd| (usd * 1_000_000.0).round() as u64);
+        .map(|usd| muster_core::num::round_u64(usd * 1_000_000.0));
     TurnEnd {
         result: (outcome == TurnOutcome::Success)
             .then_some(result)

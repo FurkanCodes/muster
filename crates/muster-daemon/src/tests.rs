@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use muster_core::Timestamp;
-use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame};
+use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame, TermSize};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
@@ -203,7 +203,7 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
                 project,
                 key: muster_core::TicketKey::number(1),
                 harness: "shell".to_owned(),
-                size: Default::default(),
+                size: TermSize::default(),
                 another: false,
             },
             "notes is a plain folder, not a git repository; worktrees for tickets need one",
@@ -225,7 +225,7 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
         (
             Command::ReviewWorkspace {
                 workspace: checkout,
-                size: Default::default(),
+                size: TermSize::default(),
             },
             "it has no branch to review or push",
         ),
@@ -277,7 +277,7 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
         loop {
             match frames.recv().await {
                 Some(ServerFrame::Snapshot(snapshot)) => return snapshot,
-                Some(ServerFrame::Delta(_)) => continue,
+                Some(ServerFrame::Delta(_)) => {}
                 other => panic!("unexpected {other:?}"),
             }
         }

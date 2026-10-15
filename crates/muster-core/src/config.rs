@@ -104,7 +104,7 @@ impl Default for ProjectConfig {
             millicpus: 2_000,
             checks: Checks {
                 commands: Vec::new(),
-                timeout: Duration::from_secs(30 * 60),
+                timeout: Duration::from_mins(30),
             },
             agents: Agents {
                 builder: "claude".to_owned(),
@@ -113,7 +113,7 @@ impl Default for ProjectConfig {
             },
             limits: RunLimits {
                 attempts: 3,
-                run_timeout: Duration::from_secs(90 * 60),
+                run_timeout: Duration::from_mins(90),
                 max_cost_usd: None,
             },
             intake: Intake {
@@ -126,6 +126,11 @@ impl Default for ProjectConfig {
         }
     }
 }
+
+/// Runs need checks, and the settings have none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("runs need checks: add `[checks] commands = [\"…\"]` to muster.toml")]
+pub struct NoChecks;
 
 /// Why the settings could not be read.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -171,11 +176,9 @@ impl ProjectConfig {
 
     /// Whether runs can use these settings: they need checks, since a run
     /// shows the person only what passed them (`PRD-02`).
-    pub fn ready_for_runs(&self) -> Result<(), String> {
+    pub fn ready_for_runs(&self) -> Result<(), NoChecks> {
         if self.checks.commands.is_empty() {
-            return Err(
-                "runs need checks: add `[checks] commands = [\"…\"]` to muster.toml".to_owned(),
-            );
+            return Err(NoChecks);
         }
         Ok(())
     }
@@ -269,80 +272,105 @@ impl Raw {
             .transpose()?;
         let memory_bytes = match self.project.memory {
             None => defaults.memory_bytes,
-            Some(text) => {
-                let bytes = parse_size(&text).ok_or_else(|| {
-                    format!("project.memory {text:?} is not a size like \"6g\" or \"512m\"")
-                })?;
-                if bytes < MIN_MEMORY {
-                    return Err(format!(
-                        "project.memory {text:?} is below the 512m an agent needs"
-                    ));
-                }
-                bytes
-            }
+            Some(text) => memory(&text)?,
         };
         let millicpus = match self.project.cpus {
             None => defaults.millicpus,
-            Some(value) => {
-                let cpus = value
-                    .as_float()
-                    .or_else(|| value.as_integer().map(|n| n as f64))
-                    .filter(|cpus| (0.1..=256.0).contains(cpus))
-                    .ok_or_else(|| {
-                        format!(
-                            "project.cpus {} must be a number from 0.1 to 256",
-                            shown(&value)
-                        )
-                    })?;
-                (cpus * 1000.0).round() as u32
-            }
+            Some(value) => millicpus(&value)?,
         };
+        Ok(ProjectConfig {
+            base_branch,
+            dockerfile,
+            memory_bytes,
+            millicpus,
+            checks: self.checks.validate(&defaults.checks)?,
+            agents: self.agents.validate(defaults.agents)?,
+            limits: self.limits.validate(&defaults.limits)?,
+            intake: self.intake.validate()?,
+            tickets: self.tickets.validate()?,
+            pull_requests: self.pull_requests.validate()?,
+            branches: Branches {
+                muster_prefix: self
+                    .branches
+                    .muster_prefix
+                    .unwrap_or(defaults.branches.muster_prefix),
+            },
+        })
+    }
+}
 
-        let commands: Vec<String> = self
-            .checks
-            .commands
-            .iter()
-            .map(|c| c.trim().to_owned())
-            .collect();
+/// `project.memory`, at least what an agent needs.
+fn memory(text: &str) -> Result<u64, String> {
+    let bytes = parse_size(text)
+        .ok_or_else(|| format!("project.memory {text:?} is not a size like \"6g\" or \"512m\""))?;
+    if bytes < MIN_MEMORY {
+        return Err(format!(
+            "project.memory {text:?} is below the 512m an agent needs"
+        ));
+    }
+    Ok(bytes)
+}
+
+/// `project.cpus`, in thousandths of a CPU.
+fn millicpus(value: &toml::Value) -> Result<u32, String> {
+    let cpus = value
+        .as_float()
+        .or_else(|| value.as_integer().map(crate::num::fraction_signed))
+        .filter(|cpus| (0.1..=256.0).contains(cpus))
+        .ok_or_else(|| {
+            format!(
+                "project.cpus {} must be a number from 0.1 to 256",
+                shown(value)
+            )
+        })?;
+    Ok(crate::num::round_u32(cpus * 1000.0))
+}
+
+impl RawChecks {
+    fn validate(self, defaults: &Checks) -> Result<Checks, String> {
+        let commands: Vec<String> = self.commands.iter().map(|c| c.trim().to_owned()).collect();
         if commands.iter().any(String::is_empty) {
             return Err("checks.commands has an empty command".to_owned());
         }
-        let checks = Checks {
+        Ok(Checks {
             commands,
-            timeout: duration(
-                "checks.timeout",
-                self.checks.timeout,
-                defaults.checks.timeout,
-            )?,
-        };
+            timeout: duration("checks.timeout", self.timeout, defaults.timeout)?,
+        })
+    }
+}
 
+impl RawAgents {
+    fn validate(self, defaults: Agents) -> Result<Agents, String> {
         let harness = |key: &str, value: Option<String>, default: String| match value {
             Some(id) if id.trim().is_empty() => Err(format!("agents.{key} must name a harness")),
             Some(id) => Ok(id.trim().to_owned()),
             None => Ok(default),
         };
-        let agents = Agents {
-            builder: harness("builder", self.agents.builder, defaults.agents.builder)?,
-            reviewer: harness("reviewer", self.agents.reviewer, defaults.agents.reviewer)?,
+        Ok(Agents {
+            builder: harness("builder", self.builder, defaults.builder)?,
+            reviewer: harness("reviewer", self.reviewer, defaults.reviewer)?,
             instructions: self
-                .agents
                 .instructions
                 .iter()
                 .map(|path| inside_repository("agents.instructions", path))
                 .collect::<Result<_, _>>()?,
-        };
+        })
+    }
+}
 
-        let attempts = match self.limits.attempts {
-            None => defaults.limits.attempts,
+impl RawLimits {
+    fn validate(self, defaults: &RunLimits) -> Result<RunLimits, String> {
+        let attempts = match self.attempts {
+            None => defaults.attempts,
             Some(n @ 1..=20) => u32::try_from(n).unwrap_or(1),
             Some(n) => return Err(format!("limits.attempts {n} must be from 1 to 20")),
         };
-        let max_cost_usd = match self.limits.max_cost_usd {
+        let max_cost_usd = match self.max_cost_usd {
             None => None,
             Some(value) => Some(
                 value
                     .as_float()
-                    .or_else(|| value.as_integer().map(|n| n as f64))
+                    .or_else(|| value.as_integer().map(crate::num::fraction_signed))
                     .filter(|usd| *usd > 0.0 && usd.is_finite())
                     .ok_or_else(|| {
                         format!(
@@ -352,22 +380,21 @@ impl Raw {
                     })?,
             ),
         };
-        let limits = RunLimits {
+        Ok(RunLimits {
             attempts,
-            run_timeout: duration(
-                "limits.run_timeout",
-                self.limits.run_timeout,
-                defaults.limits.run_timeout,
-            )?,
+            run_timeout: duration("limits.run_timeout", self.run_timeout, defaults.run_timeout)?,
             max_cost_usd,
-        };
+        })
+    }
+}
 
-        let label = self.intake.label.map(|label| label.trim().to_owned());
+impl RawIntake {
+    fn validate(self) -> Result<Intake, String> {
+        let label = self.label.map(|label| label.trim().to_owned());
         if label.as_deref() == Some("") {
             return Err("intake.label must not be empty".to_owned());
         }
         let allowed_accounts: Vec<String> = self
-            .intake
             .allowed_accounts
             .iter()
             .map(|account| account.trim().to_owned())
@@ -380,26 +407,9 @@ impl Raw {
                     .to_owned(),
             );
         }
-        Ok(ProjectConfig {
-            base_branch,
-            dockerfile,
-            memory_bytes,
-            millicpus,
-            checks,
-            agents,
-            limits,
-            intake: Intake {
-                label,
-                allowed_accounts,
-            },
-            tickets: self.tickets.validate()?,
-            pull_requests: self.pull_requests.validate()?,
-            branches: Branches {
-                muster_prefix: self
-                    .branches
-                    .muster_prefix
-                    .unwrap_or(defaults.branches.muster_prefix),
-            },
+        Ok(Intake {
+            label,
+            allowed_accounts,
         })
     }
 }
@@ -484,8 +494,9 @@ pub fn parse_size(text: &str) -> Option<u64> {
         _ => (text, 1),
     };
     let value: f64 = number.trim().parse().ok()?;
-    let bytes = value * unit as f64;
-    (value.is_finite() && value > 0.0 && bytes < u64::MAX as f64).then(|| bytes.round() as u64)
+    let bytes = value * crate::num::fraction(unit);
+    (value.is_finite() && value > 0.0 && bytes < crate::num::fraction(u64::MAX))
+        .then(|| crate::num::round_u64(bytes))
 }
 
 #[cfg(test)]

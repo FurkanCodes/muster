@@ -2,7 +2,7 @@
 //!
 //! The harnesses: `shell`, the person's own shell in the workspace; the
 //! coding agents `claude` (Claude Code), `codex` (Codex), `gemini` (Gemini
-//! CLI), `opencode` (OpenCode) and `copilot` (GitHub Copilot CLI); and two
+//! CLI), `opencode` (`OpenCode`) and `copilot` (GitHub Copilot CLI); and two
 //! Muster runs by hand, `checks` and `review`. A harness says how to start,
 //! resume and hear from its program; the daemon does the rest. Each agent
 //! is heard the way it allows without editing the person's config
@@ -178,7 +178,7 @@ impl Harness {
     }
 
     /// Whether Muster chooses the agent's session id at launch, as Claude
-    /// Code, Gemini CLI and Copilot CLI let it. Codex and OpenCode choose
+    /// Code, Gemini CLI and Copilot CLI let it. Codex and `OpenCode` choose
     /// their own, which their reports then carry.
     pub(crate) fn chooses_session_id(self) -> bool {
         matches!(
@@ -245,7 +245,7 @@ impl Harness {
     }
 
     /// What a report says the session has used, for a harness that reports
-    /// it: OpenCode's plugin, at each turn's end.
+    /// it: `OpenCode`'s plugin, at each turn's end.
     pub(crate) fn spend(self, body: &[u8]) -> Option<muster_core::Spend> {
         match self.kind {
             Kind::OpenCode => opencode::spend(body),
@@ -289,7 +289,7 @@ impl Harness {
 #[derive(Clone, Debug)]
 pub(crate) struct HookEndpoint {
     pub(crate) socket: PathBuf,
-    pub(crate) token: String,
+    pub(crate) token: crate::secrets::Token,
 }
 
 /// Where a session's program runs.
@@ -413,19 +413,19 @@ pub(crate) fn hook_command(route: &str, event: Option<&str>) -> String {
 }
 
 /// How to start `harness` for `launch`.
-pub(crate) fn spawn_spec(harness: Harness, launch: Launch) -> SpawnSpec {
+pub(crate) fn spawn_spec(harness: Harness, launch: &Launch) -> SpawnSpec {
     let env = vec![
         ("TERM".to_owned(), "xterm-256color".to_owned()),
         ("COLORTERM".to_owned(), "truecolor".to_owned()),
         ("MUSTER_SESSION".to_owned(), launch.session.to_string()),
     ];
     match &launch.place {
-        Place::Host(cwd) => on_host(harness, &launch, cwd.clone(), env),
+        Place::Host(cwd) => on_host(harness, launch, cwd.clone(), env),
         Place::Container {
             docker,
             container,
             secret,
-        } => in_container(harness, &launch, (docker, container), secret.as_ref(), env),
+        } => in_container(harness, launch, (docker, container), secret.as_ref(), env),
     }
 }
 
@@ -440,7 +440,10 @@ fn on_host(
             "MUSTER_HOOK_SOCKET".to_owned(),
             hooks.socket.to_string_lossy().into_owned(),
         ));
-        env.push(("MUSTER_HOOK_TOKEN".to_owned(), hooks.token.clone()));
+        env.push((
+            "MUSTER_HOOK_TOKEN".to_owned(),
+            hooks.token.value().to_owned(),
+        ));
     }
     let place = cwd.to_string_lossy().into_owned();
     // The files of Muster's own, where hooks are heard.
@@ -572,7 +575,7 @@ pub(crate) fn new_token() -> std::io::Result<String> {
     use std::io::Read;
     let mut bytes = [0; 32];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(muster_core::hex::encode(&bytes))
 }
 
 #[cfg(test)]

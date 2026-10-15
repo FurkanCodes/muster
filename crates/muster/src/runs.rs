@@ -384,7 +384,7 @@ fn age(run: &Run, now: Timestamp) -> u64 {
 
 /// Dollars, where the harness reported a cost.
 fn cost(micros: Option<u64>) -> Option<String> {
-    micros.map(|micros| format!("${:.2}", micros as f64 / 1_000_000.0))
+    micros.map(|micros| format!("${:.2}", muster_core::num::fraction(micros) / 1_000_000.0))
 }
 
 /// `text` cut to `max` characters, marked when cut.

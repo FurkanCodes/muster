@@ -169,7 +169,7 @@ struct Live {
     machine: SessionMachine,
     harness: Harness,
     /// The token its hooks carry, while it runs.
-    token: Option<String>,
+    token: Option<crate::secrets::Token>,
     launched: std::time::Instant,
     /// Started with `--resume`; a quick exit means the resume failed.
     resumed: bool,
@@ -200,7 +200,7 @@ struct Supervisor {
     /// Where dropped watch guards report.
     unwatched: mpsc::UnboundedSender<SessionId>,
     /// Which session each issued hook token names (`ARC-11`).
-    hook_tokens: HashMap<String, SessionId>,
+    hook_tokens: HashMap<crate::secrets::Token, SessionId>,
     history_every: u32,
     /// Measurements received, to keep every `history_every`-th.
     measurements: u32,
@@ -249,6 +249,10 @@ impl Supervisor {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one arm for each request the Supervisor serves"
+    )]
     async fn on_request(&mut self, request: Request) {
         match request {
             Request::Subscribe(reply) => {
@@ -263,7 +267,7 @@ impl Supervisor {
                 }
                 Command::ProjectSettings { project } => self.project_settings(project, reply),
                 Command::ChangeSetting { project, change } => {
-                    self.change_setting(project, change, reply);
+                    self.change_setting(project, &change, reply);
                 }
                 Command::StartRun {
                     project,
@@ -565,6 +569,10 @@ fn store_closed(_: StoreClosed) -> ErrorBody {
     ErrorBody::new(ErrorCode::Internal, "the store is not available")
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a converter for .map_err(f), which hands it the error by value"
+)]
 fn store_error(error: StoreError) -> ErrorBody {
     let code = match error {
         StoreError::Conflict(_) => ErrorCode::Conflict,

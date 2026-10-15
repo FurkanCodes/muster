@@ -34,8 +34,9 @@ pub(super) fn id_text(id: impl std::fmt::Display) -> String {
 }
 
 pub(super) fn path_text(path: &Path) -> Result<&str> {
-    path.to_str()
-        .ok_or_else(|| StoreError::Invalid(format!("the path {path:?} is not valid UTF-8")))
+    path.to_str().ok_or_else(|| {
+        StoreError::Invalid(format!("the path {} is not valid UTF-8", path.display()))
+    })
 }
 
 pub(super) fn status_json(status: SessionStatus) -> Result<String> {

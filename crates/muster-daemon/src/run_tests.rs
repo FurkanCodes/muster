@@ -143,7 +143,7 @@ impl FakeWork {
 }
 
 struct Setup {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     root: PathBuf,
     database: PathBuf,
     work: Arc<FakeWork>,
@@ -232,7 +232,7 @@ async fn setup_with(muster_toml: &str, token: Option<&str>) -> Setup {
         panic!("expected ProjectAdded");
     };
     Setup {
-        _dir: dir,
+        dir,
         root,
         database,
         work,
@@ -566,7 +566,7 @@ async fn a_restarted_daemon_carries_on_with_the_work_under_way() {
 
     // A new daemon on the same store.
     let Setup {
-        _dir: dir,
+        dir,
         database,
         supervisor,
         ..
@@ -724,7 +724,7 @@ async fn a_run_resumed_with_unreadable_settings_stops_for_the_person_until_they_
     )
     .unwrap();
     let Setup {
-        _dir: dir,
+        dir,
         database,
         supervisor,
         root,
@@ -815,7 +815,7 @@ async fn containers_of_runs_that_ended_go_even_when_they_come_late() {
 
     // A daemon starting again clears what is left of ended runs.
     let Setup {
-        _dir: dir,
+        dir,
         database,
         supervisor,
         ..

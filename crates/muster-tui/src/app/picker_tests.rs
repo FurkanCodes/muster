@@ -41,7 +41,7 @@ fn opened() -> World {
     let mut world = world();
     let actions = press(&mut world.app, KeyCode::Char('a'));
     assert_eq!(actions, [Action::ListFolders(PathBuf::from("/src"))]);
-    world.app.on_folders(PathBuf::from("/src"), Ok(src()));
+    world.app.on_folders(&PathBuf::from("/src"), Ok(src()));
     world
 }
 
@@ -137,10 +137,10 @@ fn tab_opens_a_folder_and_shift_tab_goes_back_up() {
     assert!(render(&world.app).contains("Listing…"));
 
     // A listing for a folder no longer shown is dropped.
-    world.app.on_folders(PathBuf::from("/src"), Ok(src()));
+    world.app.on_folders(&PathBuf::from("/src"), Ok(src()));
     assert!(render(&world.app).contains("Listing…"));
     world.app.on_folders(
-        PathBuf::from("/src/muster"),
+        &PathBuf::from("/src/muster"),
         Ok(vec![folder("crates", false)]),
     );
     assert!(render(&world.app).contains("crates/"));
@@ -160,7 +160,7 @@ fn a_folder_that_cannot_be_read_says_why_and_typing_still_works() {
     world.app.on_key(super::tests::ctrl('u'));
     typed(&mut world.app, "/private/");
     world.app.on_folders(
-        PathBuf::from("/private"),
+        &PathBuf::from("/private"),
         Err("cannot read it: Permission denied (os error 13)".to_owned()),
     );
     assert!(render(&world.app).contains("Permission denied"));
@@ -178,7 +178,7 @@ fn a_long_list_scrolls_with_the_choice_and_says_where_it_is() {
     let many = (1..=20)
         .map(|n| folder(&format!("f{n:02}"), false))
         .collect();
-    world.app.on_folders(PathBuf::from("/src"), Ok(many));
+    world.app.on_folders(&PathBuf::from("/src"), Ok(many));
     assert!(render(&world.app).contains("1–8 of 20"));
     for _ in 0..10 {
         press(&mut world.app, KeyCode::Down);

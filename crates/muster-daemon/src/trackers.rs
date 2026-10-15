@@ -14,6 +14,7 @@ pub(crate) mod gitlab;
 pub(crate) mod jira;
 pub(crate) mod linear;
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use muster_core::config::TrackerKind;
@@ -155,9 +156,10 @@ pub(crate) fn issue_prompt(detail: &IssueDetail, fence: &str) -> String {
             .find(|index| body.is_char_boundary(*index))
             .unwrap_or(0);
         body.truncate(cut);
-        body.push_str(&format!(
+        let _ = write!(
+            body,
             "\n[…the rest of the {word} is cut; read it at the link above]"
-        ));
+        );
     }
     if body.is_empty() {
         body = format!("(The {word} has no description.)");
@@ -180,7 +182,7 @@ pub(crate) fn new_fence() -> std::io::Result<String> {
     use std::io::Read;
     let mut bytes = [0; 4];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(muster_core::hex::encode(&bytes))
 }
 
 #[cfg(test)]

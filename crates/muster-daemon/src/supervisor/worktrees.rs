@@ -402,6 +402,10 @@ fn is_dirty(stderr: &str) -> bool {
     stderr.contains("modified or untracked") || stderr.contains("contains modified")
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a converter for .map_err(f), which hands it the error by value"
+)]
 fn git_failure(error: GitError) -> ErrorBody {
     let code = match &error {
         GitError::Failed { stderr, .. } if stderr.contains("already") => ErrorCode::Conflict,

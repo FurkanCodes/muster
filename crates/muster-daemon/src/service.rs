@@ -12,9 +12,10 @@ use crate::github::GitHubError;
 pub(crate) type BoxFuture<'a, T> =
     std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
-/// Why a tracker or a git host could not answer.
+/// Why a tracker or a git host could not answer, or a sign-in could not
+/// be made: what kind of failure it was, with a message for the person.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum ServiceError {
+pub enum ServiceError {
     /// The project does not say where its tickets or pull requests go, and
     /// its remote does not tell.
     #[error("{0}")]

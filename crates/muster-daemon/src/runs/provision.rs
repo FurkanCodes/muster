@@ -22,7 +22,7 @@ pub(crate) const STATE_DIR: &str = "/tmp/muster";
 const LABEL_PROJECT: &str = "muster.project";
 
 /// How long making the clone may take.
-const SETUP_LIMIT: Duration = Duration::from_secs(15 * 60);
+const SETUP_LIMIT: Duration = Duration::from_mins(15);
 
 /// A container ready for work, and the branch runs start from.
 #[derive(Clone, Debug, PartialEq, Eq)]

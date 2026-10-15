@@ -1,5 +1,6 @@
 //! Drawing the app. Pure: reads the app, writes the frame.
 
+use muster_core::num::fraction;
 use muster_core::{SessionStatus, WaitReason};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
@@ -204,7 +205,7 @@ pub(crate) fn bytes(count: u64) -> String {
     const MB: u64 = 1_000_000;
     const GB: u64 = 1_000_000_000;
     if count >= GB {
-        format!("{:.1} GB", count as f64 / GB as f64)
+        format!("{:.1} GB", fraction(count) / fraction(GB))
     } else {
         format!("{} MB", count.div_ceil(MB))
     }

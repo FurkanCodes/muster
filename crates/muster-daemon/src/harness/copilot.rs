@@ -144,7 +144,7 @@ mod tests {
             prompt: prompt.map(str::to_owned),
             hooks: Some(HookEndpoint {
                 socket: PathBuf::from("/run/hooks.sock"),
-                token: "t".to_owned(),
+                token: crate::secrets::Token::new("t"),
             }),
             place: Place::Host(PathBuf::from("/work")),
             size: TermSize::default(),

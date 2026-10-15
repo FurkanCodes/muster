@@ -51,7 +51,7 @@ impl OscScanner {
         let mut reports = Vec::new();
         for &byte in bytes {
             self.state = match (self.state, byte) {
-                (State::Text, 0x1b) | (State::Escape, 0x1b) => State::Escape,
+                (State::Text | State::Escape, 0x1b) => State::Escape,
                 (State::Escape | State::OscEscape, b']') => self.start_osc(),
                 (State::Text | State::Escape, _) => State::Text,
                 (State::Osc, 0x07) | (State::OscEscape, b'\\') => {

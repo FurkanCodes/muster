@@ -65,7 +65,7 @@ const GEMINI: &[&str] = &[
     "GEMINI_PLANS_DIR",
 ];
 
-/// Set by OpenCode 1.4 for what it runs.
+/// Set by `OpenCode` 1.4 for what it runs.
 const OPENCODE: &[&str] = &[
     "OPENCODE",
     "OPENCODE_PID",

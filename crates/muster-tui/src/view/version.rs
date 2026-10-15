@@ -40,7 +40,7 @@ mod tests {
     fn only_a_newer_daemon_is_warned_of() {
         let warned = warning("0.3.2", "0.3.3").unwrap();
         assert!(warned.contains("runs muster 0.3.2; the daemon is 0.3.3"));
-        assert!(warned.contains("q"));
+        assert!(warned.contains('q'));
         assert!(
             warning("0.3.9", "0.3.10").is_some(),
             "by number, not by text"

@@ -49,7 +49,7 @@ pub(crate) fn tree_usage(table: &[ProcessUse], root: u32) -> (u64, u32) {
         cpu += process.cpu_percent.max(0.0);
         stack.extend(children.get(&process.pid).into_iter().flatten());
     }
-    (memory, (cpu * 10.0).round() as u32)
+    (memory, muster_core::num::round_u32(f64::from(cpu) * 10.0))
 }
 
 /// Measures processes and the host.
@@ -85,7 +85,7 @@ impl Sampler {
             .iter()
             .map(|(pid, process)| ProcessUse {
                 pid: pid.as_u32(),
-                parent: process.parent().map(|parent| parent.as_u32()),
+                parent: process.parent().map(sysinfo::Pid::as_u32),
                 memory_bytes: process.memory(),
                 cpu_percent: process.cpu_usage(),
             })

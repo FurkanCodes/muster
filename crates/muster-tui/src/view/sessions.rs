@@ -47,7 +47,7 @@ pub(super) fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn row_item<'a>(app: &'a App, row: Row, width: usize) -> ListItem<'a> {
+fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
     let selected = app.view == View::Sessions && app.selected == Some(row);
     let edge = look::edge(app, app.model.project_of(row), selected);
     match row {

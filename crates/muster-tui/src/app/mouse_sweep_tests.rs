@@ -90,6 +90,7 @@ fn step(world: &mut World, dice: &mut Dice, modes_change: bool) -> String {
         12 => {
             let seq = world.app.screens[&id].next_seq().unwrap_or(0);
             let lines = dice.below(40);
+            #[expect(clippy::format_collect, reason = "test input")]
             let data: String = (0..lines).map(|n| format!("more{n}\r\n")).collect();
             world.app.on_frame(ServerFrame::Output {
                 session: id,

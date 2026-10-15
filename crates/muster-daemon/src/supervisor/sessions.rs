@@ -214,7 +214,7 @@ impl Supervisor {
         let hooks = if hooked {
             Some(HookEndpoint {
                 socket: self.hook_socket.clone(),
-                token: harness::new_token()?,
+                token: crate::secrets::Token::new(harness::new_token()?),
             })
         } else {
             None
@@ -231,7 +231,7 @@ impl Supervisor {
         });
         let spec = harness::spawn_spec(
             harness,
-            harness::Launch {
+            &harness::Launch {
                 session,
                 agent_session: agent_session.clone(),
                 resume,
@@ -244,7 +244,7 @@ impl Supervisor {
             },
         );
         let events = self.pty_events.clone();
-        let pty = pty::spawn(spec, first_seq, move |event| {
+        let pty = pty::spawn(&spec, first_seq, move |event| {
             let _ = events.send((session, event));
         })?;
 

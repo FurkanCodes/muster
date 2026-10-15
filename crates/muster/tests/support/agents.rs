@@ -1,5 +1,5 @@
 //! Stand-ins for the coding agents other than Claude Code: Codex, Gemini
-//! CLI, OpenCode and Copilot CLI.
+//! CLI, `OpenCode` and Copilot CLI.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ use super::Sandbox;
 
 /// Stands in for each of them, by the name it was started as: records its
 /// arguments and the environment Muster gave it (the hook socket and
-/// token, Gemini CLI's defaults file, OpenCode's config), then behaves like
+/// token, Gemini CLI's defaults file, `OpenCode`'s config), then behaves like
 /// a shell so tests can type into it.
 pub(super) const FAKE_AGENT: &str = r#"#!/bin/sh
 dir="$FAKE_AGENT_DIR/$(basename "$0")/$MUSTER_SESSION"

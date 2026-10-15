@@ -457,14 +457,14 @@ fn a_lost_container_starts_over_in_a_new_one_with_the_persons_notes() {
 #[test]
 fn time_counts_only_while_the_run_works_on_its_own() {
     let mut run = Run::with(Limits {
-        run_timeout: Duration::from_secs(60 * 60),
+        run_timeout: Duration::from_hours(1),
         ..Limits::default()
     });
     assert_eq!(run.machine.next_deadline(), None, "queued: not working");
     run.at(10).send(RunEvent::SlotGranted);
     assert_eq!(
         run.machine.next_deadline(),
-        Some(run.start + Duration::from_secs(70 * 60))
+        Some(run.start + Duration::from_mins(70))
     );
     run.at(20).container_ready();
     run.agent_done();
@@ -478,7 +478,7 @@ fn time_counts_only_while_the_run_works_on_its_own() {
     });
     assert_eq!(
         run.machine.next_deadline(),
-        Some(run.start + Duration::from_secs(250 * 60)),
+        Some(run.start + Duration::from_mins(250)),
         "the 30 minutes left of the hour"
     );
     assert!(run.at(249).send(RunEvent::Tick).is_empty());
@@ -491,7 +491,7 @@ fn time_counts_only_while_the_run_works_on_its_own() {
     run.at(300).send(RunEvent::Retry { notes: None });
     assert_eq!(
         run.machine.next_deadline(),
-        Some(run.start + Duration::from_secs(360 * 60))
+        Some(run.start + Duration::from_hours(6))
     );
 }
 
@@ -704,7 +704,7 @@ fn every_transition_comes_first_and_bumps_the_generation() {
 #[test]
 fn a_saved_machine_comes_back_as_it_was_with_its_time_spent() {
     let mut run = Run::with(Limits {
-        run_timeout: Duration::from_secs(60 * 60),
+        run_timeout: Duration::from_hours(1),
         ..Limits::default()
     });
     run.send(RunEvent::SlotGranted);
@@ -712,19 +712,19 @@ fn a_saved_machine_comes_back_as_it_was_with_its_time_spent() {
     run.agent_done();
     run.checks(false);
     // Twenty minutes into the hour, saved and stored as JSON.
-    let saved = run.machine.save(run.start + Duration::from_secs(20 * 60));
+    let saved = run.machine.save(run.start + Duration::from_mins(20));
     let json = serde_json::to_string(&saved).unwrap();
     let stored: RunMachine = serde_json::from_str(&json).unwrap();
 
     // The daemon comes back two hours later; downtime is not the run's.
-    let later = run.start + Duration::from_secs(140 * 60);
+    let later = run.start + Duration::from_mins(140);
     let restored = RunMachine::restore(stored, later);
     assert_eq!(restored.stage(), RunStage::Building);
     assert_eq!(restored.generation(), run.generation());
     assert_eq!(restored.attempt(), 2);
     assert_eq!(
         restored.next_deadline(),
-        Some(later + Duration::from_secs(40 * 60))
+        Some(later + Duration::from_mins(40))
     );
     // And it goes on deciding as before: the budget's last attempt.
     let mut restored = restored;

@@ -1,9 +1,9 @@
 //! End-to-end tests for the coding agents beside Claude Code (M6): Codex,
-//! Gemini CLI, OpenCode and Copilot CLI. A stand-in for each records how
+//! Gemini CLI, `OpenCode` and Copilot CLI. A stand-in for each records how
 //! it was started; what each reports is sent the way the real one sends
 //! it: Codex's turn notice through the very program its `-c notify` names,
 //! and its state in its window title; Gemini CLI's and Copilot CLI's hooks
-//! through the commands in the files Muster pointed them at; OpenCode's
+//! through the commands in the files Muster pointed them at; `OpenCode`'s
 //! plugin's reports posted as the plugin posts them.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
@@ -111,7 +111,7 @@ async fn expect_until(connection: &mut Connection, session: SessionId, wanted: S
 }
 
 /// Stops the daemon and starts it again: running sessions are resumed.
-async fn restarted(setup: Setup, connection: Connection) -> (Sandbox, Daemon) {
+fn restarted(setup: Setup, connection: Connection) -> (Sandbox, Daemon) {
     drop(connection);
     let Setup {
         sandbox, daemon, ..
@@ -205,7 +205,7 @@ async fn codex_is_heard_through_its_title_and_turn_notices_and_resumes_its_threa
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
-    let (sandbox, daemon) = restarted(setup, connection).await;
+    let (sandbox, daemon) = restarted(setup, connection);
     let launches = sandbox.wait_for_agent("codex", session, 2);
     assert_eq!(
         launches[1].args[..4],
@@ -301,7 +301,7 @@ async fn gemini_s_hooks_come_from_muster_s_own_defaults_file() {
         SessionStatus::Finished
     );
 
-    let (sandbox, daemon) = restarted(setup, connection).await;
+    let (sandbox, daemon) = restarted(setup, connection);
     let launches = sandbox.wait_for_agent("gemini", session, 2);
     assert_eq!(launches[1].value("--resume"), Some(id.as_str()));
     drop(daemon);
@@ -346,7 +346,7 @@ async fn opencode_s_plugin_is_added_for_the_session_and_its_reports_drive_it() {
         SessionStatus::Finished
     );
 
-    let (sandbox, daemon) = restarted(setup, connection).await;
+    let (sandbox, daemon) = restarted(setup, connection);
     let launches = sandbox.wait_for_agent("opencode", session, 2);
     assert_eq!(launches[1].value("--session"), Some("ses_root"));
     assert_eq!(launches[1].value("--prompt"), None);
@@ -418,7 +418,7 @@ async fn copilot_s_hooks_come_from_a_plugin_folder_of_muster_s_own() {
         SessionStatus::Finished
     );
 
-    let (sandbox, daemon) = restarted(setup, connection).await;
+    let (sandbox, daemon) = restarted(setup, connection);
     let launches = sandbox.wait_for_agent("copilot", session, 2);
     assert_eq!(launches[1].args[0], format!("--resume={id}"));
     drop(daemon);

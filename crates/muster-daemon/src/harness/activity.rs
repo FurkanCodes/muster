@@ -64,12 +64,11 @@ fn tool_of(body: &[u8]) -> Option<(String, Value)> {
     let input = ["tool_input", "toolArgs", "args"]
         .iter()
         .find_map(|key| payload.get(*key))
-        .map(|input| match input {
+        .map_or(Value::Null, |input| match input {
             // Copilot CLI sends its arguments as JSON in a string.
             Value::String(text) => serde_json::from_str(text).unwrap_or(Value::Null),
             other => other.clone(),
-        })
-        .unwrap_or(Value::Null);
+        });
     Some((tool, input))
 }
 
@@ -151,7 +150,7 @@ fn file_name(path: &str) -> Option<String> {
 fn program(command: &str) -> Option<String> {
     let word = command
         .split_whitespace()
-        .find(|word| !(word.contains('=') && !word.starts_with('=')))?;
+        .find(|word| !word.contains('=') || word.starts_with('='))?;
     let word = word.rsplit('/').next().unwrap_or(word);
     clean_word(word.trim_matches(|c| matches!(c, '(' | ')' | '"' | '\'')))
 }
@@ -198,6 +197,10 @@ mod tests {
         )
     }
 
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "compared with what the reader returns, an Option"
+    )]
     fn set(text: &str) -> Option<ActivityChange> {
         Some(ActivityChange::Set(text.to_owned()))
     }

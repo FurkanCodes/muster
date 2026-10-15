@@ -294,6 +294,7 @@ pub(crate) fn instant_now() -> std::time::Instant {
     std::time::Instant::now()
 }
 
+#[expect(clippy::too_many_lines, reason = "one arm for each subcommand")]
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let paths = match Paths::resolve(|key| std::env::var_os(key), nix::unistd::getuid().as_raw()) {

@@ -67,91 +67,102 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
         count(going.len(), "run")
     );
     for project in &snapshot.projects {
-        println!(
-            "\n{}  {}  ({})",
-            shown(&project.name),
-            shown(&project.root.display().to_string()),
-            project.id
-        );
-        for run in going.iter().filter(|run| run.project == project.id) {
-            let reason = run
-                .reason
-                .as_deref()
-                .map(|reason| format!(": {}", shown(reason)))
-                .unwrap_or_default();
-            println!(
-                "  run #{}  {}{reason}  ({})",
-                run.ticket.number,
-                run.stage.label(),
-                run.id
-            );
-        }
-        for workspace in snapshot
-            .workspaces
-            .iter()
-            .filter(|w| w.project == project.id)
-        {
-            let place = match (&workspace.kind, workspace.kind.host_path()) {
-                (muster_core::WorkspaceKind::Checkout { .. }, Some(path)) => format!(
-                    "  {}  ({})  (the project's checkout)",
-                    shown(&path.display().to_string()),
-                    workspace.id
-                ),
-                (_, Some(path)) => format!(
-                    "  {}  ({})",
-                    shown(&path.display().to_string()),
-                    workspace.id
-                ),
-                (_, None) => {
-                    let number = workspace
-                        .kind
-                        .run()
-                        .and_then(|run| snapshot.runs.iter().find(|found| found.id == run))
-                        .map_or_else(String::new, |run| format!(" #{}", run.ticket.number));
-                    format!("  ({})  (the container of run{number})", workspace.id)
-                }
-            };
-            let branch = if workspace.kind.in_git() {
-                shown(workspace.kind.branch())
-            } else {
-                "(not a git repository)".to_owned()
-            };
-            println!("  {branch}{place}");
-            if let Some(pull_request) = &workspace.pull_request {
-                println!("    pull request {}", shown(&pull_request.summary()));
-            }
-            for session in snapshot
-                .sessions
-                .iter()
-                .filter(|s| s.workspace == workspace.id)
-            {
-                let mark = if session.unseen { "•" } else { " " };
-                let usage = snapshot
-                    .resources
-                    .as_ref()
-                    .and_then(|report| report.sessions.iter().find(|u| u.session == session.id))
-                    .map(|usage| {
-                        format!(
-                            "  {} MB, {}% CPU",
-                            usage.memory_bytes.div_ceil(1_000_000),
-                            usage.cpu_permille.div_ceil(10)
-                        )
-                    })
-                    .unwrap_or_default();
-                let spend = session
-                    .spend
-                    .map(|spend| format!("  {}", spend.text()))
-                    .unwrap_or_default();
-                println!(
-                    "   {mark} {}  {}  {}{usage}{spend}",
-                    session.id,
-                    shown(&session.title),
-                    describe(session.status)
-                );
-            }
-        }
+        print_project(&snapshot, project, &going);
     }
     ExitCode::SUCCESS
+}
+
+/// A project as `muster status` prints it: its runs under way, then each
+/// workspace with its sessions.
+fn print_project(snapshot: &Snapshot, project: &Project, going: &[&muster_core::Run]) {
+    println!(
+        "\n{}  {}  ({})",
+        shown(&project.name),
+        shown(&project.root.display().to_string()),
+        project.id
+    );
+    for run in going.iter().filter(|run| run.project == project.id) {
+        let reason = run
+            .reason
+            .as_deref()
+            .map(|reason| format!(": {}", shown(reason)))
+            .unwrap_or_default();
+        println!(
+            "  run #{}  {}{reason}  ({})",
+            run.ticket.number,
+            run.stage.label(),
+            run.id
+        );
+    }
+    for workspace in snapshot
+        .workspaces
+        .iter()
+        .filter(|w| w.project == project.id)
+    {
+        print_workspace(snapshot, workspace);
+    }
+}
+
+/// A workspace as `muster status` prints it, with its sessions.
+fn print_workspace(snapshot: &Snapshot, workspace: &Workspace) {
+    let place = match (&workspace.kind, workspace.kind.host_path()) {
+        (muster_core::WorkspaceKind::Checkout { .. }, Some(path)) => format!(
+            "  {}  ({})  (the project's checkout)",
+            shown(&path.display().to_string()),
+            workspace.id
+        ),
+        (_, Some(path)) => format!(
+            "  {}  ({})",
+            shown(&path.display().to_string()),
+            workspace.id
+        ),
+        (_, None) => {
+            let number = workspace
+                .kind
+                .run()
+                .and_then(|run| snapshot.runs.iter().find(|found| found.id == run))
+                .map_or_else(String::new, |run| format!(" #{}", run.ticket.number));
+            format!("  ({})  (the container of run{number})", workspace.id)
+        }
+    };
+    let branch = if workspace.kind.in_git() {
+        shown(workspace.kind.branch())
+    } else {
+        "(not a git repository)".to_owned()
+    };
+    println!("  {branch}{place}");
+    if let Some(pull_request) = &workspace.pull_request {
+        println!("    pull request {}", shown(&pull_request.summary()));
+    }
+    for session in snapshot
+        .sessions
+        .iter()
+        .filter(|s| s.workspace == workspace.id)
+    {
+        let mark = if session.unseen { "•" } else { " " };
+        let usage = snapshot
+            .resources
+            .as_ref()
+            .and_then(|report| report.sessions.iter().find(|u| u.session == session.id))
+            .map(|usage| {
+                format!(
+                    "  {} MB, {}% CPU",
+                    usage.memory_bytes.div_ceil(1_000_000),
+                    usage.cpu_permille.div_ceil(10)
+                )
+            })
+            .unwrap_or_default();
+        let spend = session
+            .spend
+            .map(|spend| format!("  {}", spend.text()))
+            .unwrap_or_default();
+        println!(
+            "   {mark} {}  {}  {}{usage}{spend}",
+            session.id,
+            shown(&session.title),
+            describe(session.status)
+        );
+    }
 }
 
 pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>) -> Outcome {
@@ -184,6 +195,10 @@ pub(crate) async fn remove_project(socket: &Path, project: &str) -> Outcome {
     Ok(())
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "every setting, in muster.toml's order"
+)]
 pub(crate) async fn show_config(
     socket: &Path,
     paths: &muster_core::Paths,
@@ -210,7 +225,7 @@ pub(crate) async fn show_config(
         println!("Neither exists yet; these are the defaults.");
     }
     let config = &loaded.config;
-    let gib = |bytes: u64| bytes as f64 / f64::from(1u32 << 30);
+    let gib = |bytes: u64| muster_core::num::fraction(bytes) / f64::from(1u32 << 30);
     println!(
         "\nbase branch   {}",
         config

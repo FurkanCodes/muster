@@ -90,7 +90,7 @@ pub(crate) fn new_session_id() -> std::io::Result<String> {
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    let hex = muster_core::hex::encode(&bytes);
     Ok(format!(
         "{}-{}-{}-{}-{}",
         &hex[..8],
@@ -337,7 +337,7 @@ mod tests {
             prompt: prompt.map(str::to_owned),
             hooks: Some(HookEndpoint {
                 socket: PathBuf::from("/s"),
-                token: "t".to_owned(),
+                token: crate::secrets::Token::new("t"),
             }),
             place: crate::harness::Place::Host(PathBuf::from("/w")),
             size: TermSize::default(),

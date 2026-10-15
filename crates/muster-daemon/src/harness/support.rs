@@ -1,4 +1,4 @@
-//! The files some harnesses read Muster's hooks from: an OpenCode plugin,
+//! The files some harnesses read Muster's hooks from: an `OpenCode` plugin,
 //! a Gemini CLI defaults file and a Copilot CLI plugin. They live in a
 //! folder of Muster's own, in its private runtime directory, and the
 //! harness is pointed at them for the session only: never the person's
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use super::{Kind, copilot, gemini, opencode};
 
-/// The OpenCode plugin in `dir`.
+/// The `OpenCode` plugin in `dir`.
 pub(crate) fn opencode_plugin(dir: &Path) -> PathBuf {
     dir.join("opencode").join("muster.js")
 }

@@ -75,7 +75,7 @@ pub fn load_with_sources(
 /// rest of that file as written. The repository's `muster.toml` is only
 /// read (`ARC-05`). Refused, writing nothing, if the settings would not
 /// read with the change.
-pub fn change(root: &Path, overrides: &Path, change: SettingChange) -> Result<(), ConfigError> {
+pub fn change(root: &Path, overrides: &Path, change: &SettingChange) -> Result<(), ConfigError> {
     let repository_file = root.join(FILE_NAME);
     let repository = read(&repository_file)?;
     let local = read(overrides)?;
@@ -87,11 +87,11 @@ pub fn change(root: &Path, overrides: &Path, change: SettingChange) -> Result<()
     let changed = match change {
         SettingChange::OnlyMyTickets(on) => {
             let (table, key) = ONLY_MINE;
-            edit::set_flag(local.as_deref(), table, key, on)
+            edit::set_flag(local.as_deref(), table, key, *on)
         }
         SettingChange::MusterPrefix(on) => {
             let (table, key) = MUSTER_PREFIX;
-            edit::set_flag(local.as_deref(), table, key, on)
+            edit::set_flag(local.as_deref(), table, key, *on)
         }
         // Written whole: what the last tracker needed goes with it.
         SettingChange::TicketsFrom(from) => {
@@ -102,7 +102,7 @@ pub fn change(root: &Path, overrides: &Path, change: SettingChange) -> Result<()
             edit::set_texts(local.as_deref(), TRACKER.0, &values)
         }
     }
-    .map_err(invalid)?;
+    .map_err(|error| invalid(error.to_string()))?;
     ProjectConfig::parse(
         repository.as_deref(),
         Some(&changed),
@@ -197,7 +197,7 @@ mod tests {
         assert_eq!(from.only_mine, SettingSource::Project);
 
         // No file of the person's yet: one is made, folders and all.
-        change(&root, &overrides, SettingChange::OnlyMyTickets(false)).unwrap();
+        change(&root, &overrides, &SettingChange::OnlyMyTickets(false)).unwrap();
         let written = std::fs::read_to_string(&overrides).unwrap();
         assert!(written.starts_with(edit::NEW_FILE), "{written}");
         let (config, from) = load_with_sources(&root, &overrides).unwrap();
@@ -210,7 +210,7 @@ mod tests {
         );
 
         std::fs::write(&overrides, "# kept\n[project]\nmemory = \"8g\"\n").unwrap();
-        change(&root, &overrides, SettingChange::OnlyMyTickets(true)).unwrap();
+        change(&root, &overrides, &SettingChange::OnlyMyTickets(true)).unwrap();
         assert_eq!(
             std::fs::read_to_string(&overrides).unwrap(),
             "# kept\n[project]\nmemory = \"8g\"\n\n[tickets]\nmine = true\n"
@@ -244,7 +244,7 @@ mod tests {
         change(
             &root,
             &overrides,
-            SettingChange::TicketsFrom(Some(jira.clone())),
+            &SettingChange::TicketsFrom(Some(jira.clone())),
         )
         .unwrap();
         assert_eq!(
@@ -266,7 +266,7 @@ mod tests {
             jql: None,
             team: Some("ENG".to_owned()),
         };
-        change(&root, &overrides, SettingChange::TicketsFrom(Some(linear))).unwrap();
+        change(&root, &overrides, &SettingChange::TicketsFrom(Some(linear))).unwrap();
         assert_eq!(
             std::fs::read_to_string(&overrides).unwrap(),
             "# mine\n[tickets]\nmine = true\ntracker = \"linear\"\nteam = \"ENG\"\n"
@@ -278,7 +278,7 @@ mod tests {
         let error = change(
             &root,
             &overrides,
-            SettingChange::TicketsFrom(Some(siteless)),
+            &SettingChange::TicketsFrom(Some(siteless)),
         )
         .unwrap_err()
         .to_string();
@@ -286,7 +286,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&overrides).unwrap(), before);
 
         // Back to the git remote: only the person's other settings stay.
-        change(&root, &overrides, SettingChange::TicketsFrom(None)).unwrap();
+        change(&root, &overrides, &SettingChange::TicketsFrom(None)).unwrap();
         assert_eq!(
             std::fs::read_to_string(&overrides).unwrap(),
             "# mine\n[tickets]\nmine = true\n"
@@ -302,7 +302,7 @@ mod tests {
         let overrides = dir.path().join("p.toml");
         // Already broken: the reason is given, and the file left alone.
         std::fs::write(&overrides, "[tickets]\nmien = true\n").unwrap();
-        let error = change(dir.path(), &overrides, SettingChange::OnlyMyTickets(true))
+        let error = change(dir.path(), &overrides, &SettingChange::OnlyMyTickets(true))
             .unwrap_err()
             .to_string();
         assert!(error.contains("mien"), "{error}");
@@ -311,7 +311,7 @@ mod tests {
             "[tickets]\nmien = true\n"
         );
         std::fs::write(&overrides, "tickets = \"jira\"\n").unwrap();
-        let error = change(dir.path(), &overrides, SettingChange::OnlyMyTickets(true))
+        let error = change(dir.path(), &overrides, &SettingChange::OnlyMyTickets(true))
             .unwrap_err()
             .to_string();
         assert!(error.contains("not a table"), "{error}");

@@ -102,13 +102,13 @@ pub(crate) struct NotYetBuilt;
 #[cfg(test)]
 impl RunWork for NotYetBuilt {
     fn start(&self, context: RunContext, effect: RunEffect, reports: Reports) {
-        let generation = match effect {
-            RunEffect::StartContainer { generation }
-            | RunEffect::StartBuilder { generation, .. }
-            | RunEffect::RunChecks { generation }
-            | RunEffect::PublishBranch { generation }
-            | RunEffect::StartReviewer { generation } => generation,
-            _ => return,
+        let (RunEffect::StartContainer { generation }
+        | RunEffect::StartBuilder { generation, .. }
+        | RunEffect::RunChecks { generation }
+        | RunEffect::PublishBranch { generation }
+        | RunEffect::StartReviewer { generation }) = effect
+        else {
+            return;
         };
         let _ = reports.send((
             context.run,

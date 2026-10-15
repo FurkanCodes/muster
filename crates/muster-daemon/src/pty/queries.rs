@@ -285,7 +285,7 @@ impl QueryScanner {
                     // The spec: at the limit, the oldest entry goes.
                     self.kitty_flags.remove(0);
                 }
-                self.kitty_flags.push(number(rest).unwrap_or(0) as u8);
+                self.kitty_flags.push(kitty_bits(number(rest).unwrap_or(0)));
             }
             (b'u', [b'<', rest @ ..]) => {
                 let count = number(rest).unwrap_or(1).max(1) as usize;
@@ -294,7 +294,7 @@ impl QueryScanner {
             }
             (b'u', [b'=', rest @ ..]) => {
                 let mut fields = rest.split(|&byte| byte == b';');
-                let flags = fields.next().and_then(number).unwrap_or(0) as u8;
+                let flags = kitty_bits(fields.next().and_then(number).unwrap_or(0));
                 let mode = fields.next().and_then(number).unwrap_or(1);
                 if self.kitty_flags.is_empty() {
                     self.kitty_flags.push(0);
@@ -378,6 +378,12 @@ impl QueryScanner {
             self.mouse_encoding = MouseEncoding::Default;
         }
     }
+}
+
+/// The kitty keyboard flags in a number a program sent: the five the
+/// protocol defines, and no others.
+fn kitty_bits(number: u32) -> u8 {
+    u8::try_from(number & 0b1_1111).unwrap_or(0)
 }
 
 fn number(digits: &[u8]) -> Option<u32> {
@@ -480,7 +486,10 @@ mod tests {
         scanner.scan(b"\x1b[?1l");
         assert!(!scanner.modes().application_cursor);
         scanner.scan(b"\x1b[?1h\x1bc");
-        assert_eq!(scanner.modes(), Default::default());
+        assert_eq!(
+            scanner.modes(),
+            muster_core::protocol::TerminalModes::default()
+        );
     }
 
     #[test]
@@ -513,7 +522,10 @@ mod tests {
         scanner.scan(b"\x1b[?9h");
         assert_eq!(scanner.modes().mouse, MouseTracking::Press);
         scanner.scan(b"\x1b[?1003h\x1bc");
-        assert_eq!(scanner.modes(), Default::default());
+        assert_eq!(
+            scanner.modes(),
+            muster_core::protocol::TerminalModes::default()
+        );
     }
 
     #[test]

@@ -83,6 +83,10 @@ impl Session {
 
 /// The authorization server's endpoints.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "OAuth's own names for them (RFC 8414), as served"
+)]
 pub(crate) struct Metadata {
     pub(crate) authorization_endpoint: String,
     pub(crate) token_endpoint: String,
@@ -100,14 +104,14 @@ struct ResourceMetadata {
 struct Registered {
     client_id: String,
     #[serde(default)]
-    client_secret: Option<String>,
+    client_secret: Option<Token>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Tokens {
-    access_token: String,
+    access_token: Token,
     #[serde(default)]
-    refresh_token: Option<String>,
+    refresh_token: Option<Token>,
     #[serde(default)]
     expires_in: Option<u64>,
 }
@@ -398,16 +402,16 @@ pub(crate) async fn sign_in(
         ("resource", provider.resource.as_str()),
     ];
     if let Some(secret) = &client.client_secret {
-        form.push(("client_secret", secret));
+        form.push(("client_secret", secret.value()));
     }
     let tokens = tokens(http, &metadata.token_endpoint, &form).await?;
     let session = Session {
         client_id: client.client_id,
-        client_secret: client.client_secret,
+        client_secret: client.client_secret.map(Token::into_value),
         token_endpoint: metadata.token_endpoint,
         resource: provider.resource.clone(),
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
+        access_token: tokens.access_token.into_value(),
+        refresh_token: tokens.refresh_token.map(Token::into_value),
         expires_at: tokens.expires_in.map(|seconds| now() + seconds),
     };
     keep(secrets, provider.account, &session).await
@@ -453,9 +457,9 @@ pub(crate) async fn access_token(
         form.push(("client_secret", secret));
     }
     let tokens = tokens(http, &session.token_endpoint, &form).await?;
-    session.access_token = tokens.access_token;
-    if tokens.refresh_token.is_some() {
-        session.refresh_token = tokens.refresh_token;
+    session.access_token = tokens.access_token.into_value();
+    if let Some(refresh) = tokens.refresh_token {
+        session.refresh_token = Some(refresh.into_value());
     }
     session.expires_at = tokens.expires_in.map(|seconds| now() + seconds);
     keep(secrets, account, &session).await?;

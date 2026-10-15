@@ -187,7 +187,7 @@ fn shell(env: Vec<(&str, &str)>, env_remove: Vec<&str>) -> (PtyHandle, Events) {
         env_remove: env_remove.into_iter().map(str::to_owned).collect(),
         size: TermSize::default(),
     };
-    (spawn(spec, 0, events.sink()).unwrap(), events)
+    (spawn(&spec, 0, events.sink()).unwrap(), events)
 }
 
 /// Collects a session's output from `from` until it contains `marker`.
@@ -238,6 +238,23 @@ async fn a_terminal_handed_over_is_adopted_with_its_program_running() {
     // The same shell, still running: it remembers what it was told.
     adopted.input(b"echo still-$MARK-$((6*7))\n".to_vec()).await;
     read_until(&adopted, Some(carried_end), "still-kept-42").await;
+}
+
+#[tokio::test]
+async fn a_terminal_flooded_with_output_is_still_handed_over() {
+    let (pty, _) = shell(vec![], vec![]);
+    // Output faster than the actor takes it, so the reader's queue fills
+    // and the reader waits on it.
+    pty.input(b"echo flood-$((4*4)); yes muster-flood\n".to_vec())
+        .await;
+    read_until(&pty, None, "flood-16").await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let handed = tokio::time::timeout(std::time::Duration::from_secs(10), pty.hand_over())
+        .await
+        .expect("handed over while its program floods it")
+        .expect("its program still runs");
+    // Closing the terminal hangs `yes` up.
+    drop(handed);
 }
 
 #[tokio::test]

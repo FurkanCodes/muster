@@ -209,14 +209,11 @@ impl Connection {
     /// time.
     async fn terminal(&mut self, session: SessionId) -> Option<PtyHandle> {
         if !self.terminals.contains_key(&session) {
-            match self.supervisor.terminal(session, false).await {
-                Some(link) => {
-                    self.terminals.insert(session, link.current);
-                }
-                None => {
-                    self.detached(session).await;
-                    return None;
-                }
+            if let Some(link) = self.supervisor.terminal(session, false).await {
+                self.terminals.insert(session, link.current);
+            } else {
+                self.detached(session).await;
+                return None;
             }
         }
         let current = self.terminals.get(&session)?;
