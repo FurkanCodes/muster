@@ -27,7 +27,7 @@ use crate::tasks::Tasks;
 /// How long a quick question to a container may take.
 const QUICK: Duration = Duration::from_secs(60);
 /// How long docker may be unreachable before a job's work is given up.
-const DOCKER_PATIENCE: Duration = Duration::from_secs(10 * 60);
+const DOCKER_PATIENCE: Duration = Duration::from_mins(10);
 
 /// Does runs' work with Docker, git and the git host.
 #[derive(Clone, Debug)]
@@ -263,7 +263,7 @@ impl RunWork for DockerWork {
                 }
                 Ok(PrState::Open) => {}
                 Err(error) => {
-                    tracing::debug!(run = %context.run, %error, "could not look at a pull request")
+                    tracing::debug!(run = %context.run, %error, "could not look at a pull request");
                 }
             }
         });
@@ -304,19 +304,18 @@ impl Inner {
 
     async fn start_container(&self, context: &RunContext, generation: u64) -> Result<String, Halt> {
         let mirror = self.refresh_mirror(context).await?;
-        let image = match &self.image {
-            Some(image) => image.clone(),
-            None => {
-                let version = self.claude_version.get_or_init(image::claude_version).await;
-                image::image_for(
-                    &self.docker,
-                    &context.root,
-                    context.config.dockerfile.as_deref(),
-                    version,
-                )
-                .await
-                .map_err(Halt::failed)?
-            }
+        let image = if let Some(image) = &self.image {
+            image.clone()
+        } else {
+            let version = self.claude_version.get_or_init(image::claude_version).await;
+            image::image_for(
+                &self.docker,
+                &context.root,
+                context.config.dockerfile.as_deref(),
+                version,
+            )
+            .await
+            .map_err(Halt::failed)?
         };
         // Building the image can take long; the run may have ended since.
         if context.overtaken(generation) {

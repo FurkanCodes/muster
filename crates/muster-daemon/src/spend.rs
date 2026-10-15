@@ -3,7 +3,7 @@
 //! transcripts, Codex's rollouts and Gemini CLI's chat recordings. Every
 //! few seconds the reader asks the Supervisor which sessions to read, reads
 //! what each record has gained since, off the Supervisor's loop, and hands
-//! back the totals that changed. OpenCode's plugin reports its own, cost
+//! back the totals that changed. `OpenCode`'s plugin reports its own, cost
 //! included (`harness::opencode`); Copilot CLI writes its usage only as it
 //! exits, so its sessions say none.
 //!
@@ -75,7 +75,7 @@ enum Reader {
 #[derive(Debug)]
 pub(crate) struct Readers {
     places: Places,
-    readers: HashMap<SessionId, (String, Reader)>,
+    open: HashMap<SessionId, (String, Reader)>,
     told: HashMap<SessionId, u64>,
 }
 
@@ -83,7 +83,7 @@ impl Readers {
     pub(crate) fn new(places: Places) -> Self {
         Self {
             places,
-            readers: HashMap::new(),
+            open: HashMap::new(),
             told: HashMap::new(),
         }
     }
@@ -91,10 +91,10 @@ impl Readers {
     /// Reads each target's records, and says the totals that changed since
     /// they were last told. Sessions no longer targeted are let go.
     pub(crate) fn read(&mut self, targets: &[Target], now: Instant) -> Vec<(SessionId, Spend)> {
-        self.readers
+        self.open
             .retain(|session, _| targets.iter().any(|target| target.session == *session));
         self.told
-            .retain(|session, _| self.readers.contains_key(session));
+            .retain(|session, _| self.open.contains_key(session));
         let mut changed = Vec::new();
         for target in targets {
             let fresh = || match target.harness.as_str() {
@@ -106,15 +106,15 @@ impl Readers {
             // A new agent session, as after a resume that could not, has
             // records of its own.
             if self
-                .readers
+                .open
                 .get(&target.session)
                 .is_none_or(|(agent_session, _)| *agent_session != target.agent_session)
             {
                 let Some(reader) = fresh() else { continue };
-                self.readers
+                self.open
                     .insert(target.session, (target.agent_session.clone(), reader));
             }
-            let Some((_, reader)) = self.readers.get_mut(&target.session) else {
+            let Some((_, reader)) = self.open.get_mut(&target.session) else {
                 continue;
             };
             let id = target.agent_session.as_str();
@@ -246,7 +246,7 @@ mod tests {
             readers.read(&[target(claude, "claude", "c2")], now),
             [(claude, spend(120))]
         );
-        assert!(readers.readers.len() == 1, "the others let go");
+        assert!(readers.open.len() == 1, "the others let go");
         assert!(!readable("shell") && !readable("copilot") && readable("review"));
     }
 

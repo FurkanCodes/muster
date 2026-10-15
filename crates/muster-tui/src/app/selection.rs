@@ -73,7 +73,7 @@ impl Selection {
 
 /// The cell of `screen` (an area of the window) under `event`, as (row,
 /// column), kept inside it: a drag or the wheel may be beside it.
-pub(super) fn cell(screen: Rect, event: &MouseEvent) -> (u16, u16) {
+pub(super) fn cell(screen: Rect, event: MouseEvent) -> (u16, u16) {
     let row = event
         .row
         .clamp(screen.y, screen.bottom().saturating_sub(1).max(screen.y));
@@ -91,7 +91,7 @@ impl App {
     pub(super) fn select_with_mouse(
         &mut self,
         session: SessionId,
-        event: &MouseEvent,
+        event: MouseEvent,
         screen: Rect,
         tracked: bool,
     ) -> Option<Vec<Action>> {
@@ -125,7 +125,7 @@ impl App {
     pub(super) fn select_from_preview(
         &mut self,
         session: SessionId,
-        event: &MouseEvent,
+        event: MouseEvent,
         screen: Rect,
     ) {
         let tracked = self

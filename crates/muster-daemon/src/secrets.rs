@@ -22,8 +22,11 @@ pub(crate) const SERVICE: &str = "muster";
 /// How long `security` may take.
 const TIME_LIMIT: Duration = Duration::from_secs(10);
 
-/// A token, never shown.
-#[derive(Clone, PartialEq, Eq)]
+/// A token or any other secret: never shown, not even by `{:?}`, so no log
+/// line can carry it (`ARC-20`). It has no `Display`; `value` is the one
+/// way to its text. Kept and carried as the plain string it is.
+#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub(crate) struct Token(String);
 
 impl Token {
@@ -33,6 +36,10 @@ impl Token {
 
     pub(crate) fn value(&self) -> &str {
         &self.0
+    }
+
+    pub(crate) fn into_value(self) -> String {
+        self.0
     }
 }
 
@@ -278,6 +285,17 @@ impl Secrets for Kept {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_token_is_kept_as_its_plain_string_and_hidden_in_collections() {
+        let token = Token::new("s3cret-value");
+        let shown = format!("{:#?}", vec![Some(token.clone())]);
+        assert!(!shown.contains("s3cret"), "{shown}");
+        // Kept, and carried across a restart in place, as before.
+        let json = serde_json::to_string(&token).unwrap();
+        assert_eq!(json, "\"s3cret-value\"");
+        assert_eq!(serde_json::from_str::<Token>(&json).unwrap(), token);
+    }
 
     #[test]
     fn a_token_never_shows_its_value() {

@@ -440,7 +440,7 @@ fn silent_subagents_are_presumed_gone() {
     session.at(0).hook(subagent_started("a"));
     session.at(10).hook(HookEvent::TurnEnded);
     session.at(60).hook(tool_started(sub("a")));
-    let quiet_at = session.start + Duration::from_secs(60 + 30 * 60);
+    let quiet_at = session.start + Duration::from_mins(31);
     assert_eq!(session.machine.next_deadline(), Some(quiet_at));
 
     session.at(60 + 30 * 60).send(Signal::Tick);

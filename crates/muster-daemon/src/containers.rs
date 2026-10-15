@@ -2,7 +2,7 @@
 //!
 //! The command rather than the Engine API: it finds the person's runtime
 //! the way they use it (the current Docker context: Docker Desktop,
-//! OrbStack, Colima), much as `gh` brings their GitHub login, and tests
+//! `OrbStack`, Colima), much as `gh` brings their GitHub login, and tests
 //! fake it on `PATH` like `gh` and `claude`. It runs without a shell, with
 //! a time limit, and values meant for a container's processes go through
 //! the command's environment (`-e NAME`), never its arguments, which other
@@ -330,8 +330,7 @@ impl Docker {
     /// Removes the container, stopping it first; one already gone is fine.
     pub(crate) async fn remove(&self, container: &str) -> Result<(), RuntimeError> {
         match self.quick(&["rm", "--force", container], &[]).await {
-            Ok(_) => Ok(()),
-            Err(RuntimeError::NoContainer(_)) => Ok(()),
+            Ok(_) | Err(RuntimeError::NoContainer(_)) => Ok(()),
             Err(RuntimeError::Failed { stderr, .. }) if stderr.contains("No such container") => {
                 Ok(())
             }

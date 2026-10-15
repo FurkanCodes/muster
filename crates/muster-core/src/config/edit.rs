@@ -5,6 +5,17 @@
 
 use crate::settings::SettingSource;
 
+/// Why the overrides could not be changed.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum EditError {
+    #[error("is not valid TOML: {0}")]
+    Syntax(String),
+    #[error("{0} is not a table")]
+    NotATable(String),
+    #[error("{0} is not a value")]
+    NotAValue(String),
+}
+
 /// What a new overrides file starts with, so a person who finds it knows
 /// what it is.
 pub const NEW_FILE: &str = "# Your own settings for this project, over the muster.toml in its \
@@ -14,31 +25,33 @@ pub const NEW_FILE: &str = "# Your own settings for this project, over the muste
 /// with `[table] key` set to `value`. A table written inline or with
 /// dotted keys is changed where it is; a value already there keeps its
 /// comment.
-pub fn set_flag(text: Option<&str>, table: &str, key: &str, value: bool) -> Result<String, String> {
+pub fn set_flag(
+    text: Option<&str>,
+    table: &str,
+    key: &str,
+    value: bool,
+) -> Result<String, EditError> {
     let mut document: toml_edit::DocumentMut = text
         .unwrap_or_default()
         .parse()
-        .map_err(|error: toml_edit::TomlError| format!("is not valid TOML: {}", error.message()))?;
+        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
     let item = document.entry(table).or_insert_with(toml_edit::table);
     let Some(entries) = item.as_table_like_mut() else {
-        return Err(format!("{table} is not a table"));
+        return Err(EditError::NotATable(table.to_owned()));
     };
-    match entries.get_mut(key) {
-        Some(existing) => {
-            let Some(written) = existing.as_value_mut() else {
-                return Err(format!("{table}.{key} is not a value"));
-            };
-            let decor = written.decor().clone();
-            *written = toml_edit::Value::from(value);
-            *written.decor_mut() = decor;
-        }
-        None => {
-            entries.insert(key, toml_edit::value(value));
-            // A table written inline is spaced afresh, or its last value's
-            // spacing would come before the new one's comma.
-            if let Some(inline) = item.as_inline_table_mut() {
-                inline.fmt();
-            }
+    if let Some(existing) = entries.get_mut(key) {
+        let Some(written) = existing.as_value_mut() else {
+            return Err(EditError::NotAValue(format!("{table}.{key}")));
+        };
+        let decor = written.decor().clone();
+        *written = toml_edit::Value::from(value);
+        *written.decor_mut() = decor;
+    } else {
+        entries.insert(key, toml_edit::value(value));
+        // A table written inline is spaced afresh, or its last value's
+        // spacing would come before the new one's comma.
+        if let Some(inline) = item.as_inline_table_mut() {
+            inline.fmt();
         }
     }
     Ok(match text {
@@ -55,20 +68,20 @@ pub fn set_texts(
     text: Option<&str>,
     table: &str,
     values: &[(&str, Option<&str>)],
-) -> Result<String, String> {
+) -> Result<String, EditError> {
     let mut document: toml_edit::DocumentMut = text
         .unwrap_or_default()
         .parse()
-        .map_err(|error: toml_edit::TomlError| format!("is not valid TOML: {}", error.message()))?;
+        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
     let item = document.entry(table).or_insert_with(toml_edit::table);
     let Some(entries) = item.as_table_like_mut() else {
-        return Err(format!("{table} is not a table"));
+        return Err(EditError::NotATable(table.to_owned()));
     };
     for (key, value) in values {
         match (entries.get_mut(key), value) {
             (Some(existing), Some(value)) => {
                 let Some(written) = existing.as_value_mut() else {
-                    return Err(format!("{table}.{key} is not a value"));
+                    return Err(EditError::NotAValue(format!("{table}.{key}")));
                 };
                 let decor = written.decor().clone();
                 *written = toml_edit::Value::from(*value);
@@ -176,16 +189,14 @@ mod tests {
 
     #[test]
     fn what_cannot_hold_the_value_is_refused_not_rewritten() {
-        assert!(
-            set_flag(Some("tickets = 3\n"), "tickets", "mine", true)
-                .unwrap_err()
-                .contains("tickets is not a table")
+        assert_eq!(
+            set_flag(Some("tickets = 3\n"), "tickets", "mine", true),
+            Err(EditError::NotATable("tickets".to_owned()))
         );
-        assert!(
-            set_flag(Some("[tickets]\nmine = ["), "tickets", "mine", true)
-                .unwrap_err()
-                .contains("not valid TOML")
-        );
+        assert!(matches!(
+            set_flag(Some("[tickets]\nmine = ["), "tickets", "mine", true),
+            Err(EditError::Syntax(_))
+        ));
     }
 
     #[test]
@@ -229,10 +240,9 @@ mod tests {
             set_texts(Some("tickets = { mine = true }\n"), "tickets", &jira[..1]).unwrap(),
             "tickets = { mine = true, tracker = \"jira\" }\n"
         );
-        assert!(
-            set_texts(Some("tickets = 3\n"), "tickets", &jira)
-                .unwrap_err()
-                .contains("not a table")
+        assert_eq!(
+            set_texts(Some("tickets = 3\n"), "tickets", &jira),
+            Err(EditError::NotATable("tickets".to_owned()))
         );
     }
 

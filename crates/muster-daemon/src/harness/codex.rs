@@ -19,6 +19,7 @@
 
 use muster_state::session::HookEvent;
 use serde_json::Value;
+use std::fmt::Write as _;
 
 use super::{Launch, TitleState, hook_curl};
 
@@ -70,7 +71,7 @@ fn toml_string(text: &str) -> String {
             '\n' => quoted.push_str("\\n"),
             '\t' => quoted.push_str("\\t"),
             character if character.is_control() => {
-                quoted.push_str(&format!("\\u{:04X}", u32::from(character)));
+                let _ = write!(quoted, "\\u{:04X}", u32::from(character));
             }
             character => quoted.push(character),
         }
@@ -130,7 +131,7 @@ mod tests {
             prompt: prompt.map(str::to_owned),
             hooks: Some(HookEndpoint {
                 socket: PathBuf::from("/run/hooks.sock"),
-                token: "t".to_owned(),
+                token: crate::secrets::Token::new("t"),
             }),
             place: Place::Host(PathBuf::from("/work")),
             size: TermSize::default(),

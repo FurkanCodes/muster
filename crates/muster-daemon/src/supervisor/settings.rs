@@ -43,7 +43,7 @@ impl Supervisor {
     pub(super) fn change_setting(
         &self,
         project: ProjectId,
-        change: SettingChange,
+        change: &SettingChange,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         let place = match self.tracker_place(project) {
@@ -53,7 +53,7 @@ impl Supervisor {
                 return;
             }
         };
-        if let Err(error) = crate::config::change(&place.root, &place.overrides, change.clone()) {
+        if let Err(error) = crate::config::change(&place.root, &place.overrides, change) {
             tracing::info!(command = "change setting", %error, "command refused");
             let _ = reply.send(Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -84,25 +84,22 @@ async fn settings_of(place: ProjectPlace) -> Result<Reply, ErrorBody> {
         jql: written.jql.clone(),
         team: written.team.clone(),
     });
-    let (tickets_from, tickets_untold) = match config.tickets.written() {
-        Some(written) => (written, false),
-        None => {
-            let origin = crate::service::origin(&place.root).await;
-            let host = config.pull_requests.host;
-            match (choose(&config.tickets, host, &origin), host) {
-                (Ok(tracker), Some(host)) => (
-                    format!(
-                        "{}, as its pull requests are on {}",
-                        tracker.name(),
-                        host.name()
-                    ),
-                    false,
+    let (tickets_from, tickets_untold) = if let Some(written) = config.tickets.written() {
+        (written, false)
+    } else {
+        let origin = crate::service::origin(&place.root).await;
+        let host = config.pull_requests.host;
+        match (choose(&config.tickets, host, &origin), host) {
+            (Ok(tracker), Some(host)) => (
+                format!(
+                    "{}, as its pull requests are on {}",
+                    tracker.name(),
+                    host.name()
                 ),
-                (Ok(tracker), None) => {
-                    (format!("{}, as its git remote says", tracker.name()), false)
-                }
-                (Err(error), _) => (error.to_string(), true),
-            }
+                false,
+            ),
+            (Ok(tracker), None) => (format!("{}, as its git remote says", tracker.name()), false),
+            (Err(error), _) => (error.to_string(), true),
         }
     };
     Ok(Reply::ProjectSettings(ProjectSettings {

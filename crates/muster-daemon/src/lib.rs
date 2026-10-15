@@ -49,6 +49,7 @@ use tokio::net::UnixListener;
 
 pub use crate::log_files::LogLimits;
 pub use crate::runs::credentials::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
+pub use crate::service::ServiceError;
 
 /// Keeps `value` in the Keychain for `account`, as `muster auth` does:
 /// handed to `security` on its standard input, never a command line.
@@ -75,7 +76,7 @@ pub enum SignIn {
 
 /// Signs the person in to `service` in their browser (`open` is given the
 /// address to show them) and keeps the sign-in in the Keychain.
-pub async fn sign_in(service: SignIn, open: impl FnOnce(&str)) -> Result<(), String> {
+pub async fn sign_in(service: SignIn, open: impl FnOnce(&str)) -> Result<(), ServiceError> {
     let provider = match service {
         SignIn::Jira => oauth::Provider {
             name: "Atlassian",
@@ -108,7 +109,6 @@ pub async fn sign_in(service: SignIn, open: impl FnOnce(&str)) -> Result<(), Str
         open,
     )
     .await
-    .map_err(|error| error.to_string())
 }
 
 /// A Jira site as written, read: its host, and whether it is Jira Cloud.
@@ -240,105 +240,31 @@ pub async fn run(
 
     let socket = paths.socket();
     let hook_socket = paths.hook_socket();
-    // The lock is held for the daemon's whole life, across a restart in
-    // place too; the operating system releases it however the process ends.
-    let (lock, socket_listener, hook_listener, adopted) = match adopt {
-        Some(state) => {
-            let inherited = handoff::inherit(state).map_err(io_error(
-                "cannot take over the handoff in",
-                &paths.runtime_dir,
-            ))?;
-            tracing::info!(
-                from = %inherited.from,
-                sessions = inherited.sessions.len(),
-                "taking over from the daemon's previous version"
-            );
-            (
-                inherited.lock,
-                inherited.socket,
-                inherited.hook_socket,
-                inherited.sessions,
-            )
-        }
-        None => {
-            let lock = lock(&paths.lock_file())?;
-            // Holding the lock means any socket left here belongs to a daemon
-            // that died.
-            for stale in [&socket, &hook_socket] {
-                match std::fs::remove_file(stale) {
-                    Ok(()) => tracing::info!(socket = %stale.display(), "removed a stale socket"),
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(io_error("cannot remove", stale)(error)),
-                }
-            }
-            (lock, listen(&socket)?, listen(&hook_socket)?, Vec::new())
-        }
-    };
+    let Held {
+        lock,
+        socket: socket_listener,
+        hook_socket: hook_listener,
+        adopted,
+    } = hold(paths, adopt)?;
 
     let store = Store::open(&paths.database())?;
     let store = StoreHandle::spawn(store)
         .map_err(io_error("cannot start the store for", &paths.database()))?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
-    let log_clock = clock.clone();
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
-    let credentials: Arc<dyn runs::credentials::Credentials> =
-        Arc::new(runs::credentials::PersonsCredentials);
-    // Runs, set aside, open their pull requests on GitHub.
-    let git_host: Arc<dyn githost::GitHost> = Arc::new(githost::GitHub);
     let tasks = Tasks::default();
-    let supervisor = supervisor::spawn(supervisor::Settings {
-        store,
-        clock,
-        worktrees_dir: paths.worktrees_dir.clone(),
-        hook_socket: hook_socket.clone(),
-        hook_queue,
-        delta_capacity: config.delta_capacity,
-        history_every: history_every(config.sample_interval, config.history_interval),
-        timing: muster_state::session::Timing {
-            start_grace: config.start_grace,
-            ..muster_state::session::Timing::default()
+    let supervisor = start_supervisor(
+        &config,
+        Started {
+            store,
+            clock: clock.clone(),
+            hook_queue,
+            adopted,
+            tasks: tasks.clone(),
         },
-        work: Arc::new(run_work(
-            paths,
-            credentials.clone(),
-            git_host.clone(),
-            tasks.clone(),
-        )),
-        trackers: Arc::new(trackers::choose::ServiceTrackers {
-            secrets: Arc::new(secrets::Keychain::default()),
-            http: service::http_client(),
-        }),
-        config_dir: paths.config_dir.clone(),
-        credentials,
-        docker: "docker".to_owned(),
-        hosts: Arc::new(githost::choose::ServiceHosts {
-            secrets: Arc::new(secrets::Keychain::default()),
-            http: service::http_client(),
-        }),
-        adopted,
-        tasks: tasks.clone(),
-    })
+    )
     .await?;
-    // Each runs until the daemon stops and drops it (`ARC-13`).
-    let watchers = [
-        tasks::owned(resources::run(supervisor.clone(), config.sample_interval)),
-        tasks::owned(branches::run(supervisor.clone(), config.branch_interval)),
-        tasks::owned(worktree_sync::run(
-            supervisor.clone(),
-            config.worktree_interval,
-        )),
-        tasks::owned(watch_pull_requests(supervisor.clone(), config.pr_interval)),
-        tasks::owned(spend::run(
-            supervisor.clone(),
-            config.spend_interval,
-            spend::Places::from_env(),
-        )),
-        tasks::owned(log_files::run(
-            paths.runtime_dir.join("daemon.log"),
-            config.log_limits,
-            log_clock,
-        )),
-    ];
+    let watchers = start_watchers(&config, &supervisor, clock);
 
     let (stop_hooks, hooks_stopped) = tokio::sync::oneshot::channel::<()>();
     let hook_server = tasks::owned(hooks::serve(
@@ -391,6 +317,138 @@ pub async fn run(
     Ok(())
 }
 
+/// What the daemon holds for its whole life, across a restart in place
+/// too: the lock, which the operating system releases however the process
+/// ends, and its sockets' listeners; with the sessions a previous version
+/// handed over.
+struct Held {
+    lock: File,
+    socket: std::os::unix::net::UnixListener,
+    hook_socket: std::os::unix::net::UnixListener,
+    adopted: Vec<handoff::HandedSession>,
+}
+
+/// Takes the lock and the sockets, or, with `adopt`, takes them over from
+/// the daemon's previous version.
+fn hold(paths: &Paths, adopt: Option<std::os::fd::RawFd>) -> Result<Held, DaemonError> {
+    if let Some(state) = adopt {
+        let inherited = handoff::inherit(state).map_err(io_error(
+            "cannot take over the handoff in",
+            &paths.runtime_dir,
+        ))?;
+        tracing::info!(
+            from = %inherited.from,
+            sessions = inherited.sessions.len(),
+            "taking over from the daemon's previous version"
+        );
+        return Ok(Held {
+            lock: inherited.lock,
+            socket: inherited.socket,
+            hook_socket: inherited.hook_socket,
+            adopted: inherited.sessions,
+        });
+    }
+    let (socket, hook_socket) = (paths.socket(), paths.hook_socket());
+    let lock = lock(&paths.lock_file())?;
+    // Holding the lock means any socket left here belongs to a daemon that
+    // died.
+    for stale in [&socket, &hook_socket] {
+        match std::fs::remove_file(stale) {
+            Ok(()) => tracing::info!(socket = %stale.display(), "removed a stale socket"),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_error("cannot remove", stale)(error)),
+        }
+    }
+    Ok(Held {
+        lock,
+        socket: listen(&socket)?,
+        hook_socket: listen(&hook_socket)?,
+        adopted: Vec::new(),
+    })
+}
+
+/// What the Supervisor starts with, made in `run`.
+struct Started {
+    store: StoreHandle,
+    clock: Arc<dyn Clock>,
+    hook_queue: tokio::sync::mpsc::Receiver<hooks::HookDelivery>,
+    adopted: Vec<handoff::HandedSession>,
+    tasks: Tasks,
+}
+
+/// Starts the Supervisor with the real systems behind its traits (`ARC-03`).
+async fn start_supervisor(
+    config: &DaemonConfig,
+    started: Started,
+) -> Result<supervisor::SupervisorHandle, DaemonError> {
+    let paths = &config.paths;
+    let credentials: Arc<dyn runs::credentials::Credentials> =
+        Arc::new(runs::credentials::PersonsCredentials);
+    // Runs, set aside, open their pull requests on GitHub.
+    let git_host: Arc<dyn githost::GitHost> = Arc::new(githost::GitHub);
+    Ok(supervisor::spawn(supervisor::Settings {
+        store: started.store,
+        clock: started.clock,
+        worktrees_dir: paths.worktrees_dir.clone(),
+        hook_socket: paths.hook_socket(),
+        hook_queue: started.hook_queue,
+        delta_capacity: config.delta_capacity,
+        history_every: history_every(config.sample_interval, config.history_interval),
+        timing: muster_state::session::Timing {
+            start_grace: config.start_grace,
+            ..muster_state::session::Timing::default()
+        },
+        work: Arc::new(run_work(
+            paths,
+            credentials.clone(),
+            git_host,
+            started.tasks.clone(),
+        )),
+        trackers: Arc::new(trackers::choose::ServiceTrackers {
+            secrets: Arc::new(secrets::Keychain::default()),
+            http: service::http_client(),
+        }),
+        config_dir: paths.config_dir.clone(),
+        credentials,
+        docker: "docker".to_owned(),
+        hosts: Arc::new(githost::choose::ServiceHosts {
+            secrets: Arc::new(secrets::Keychain::default()),
+            http: service::http_client(),
+        }),
+        adopted: started.adopted,
+        tasks: started.tasks,
+    })
+    .await?)
+}
+
+/// The daemon's watchers, each running until the daemon stops and drops it
+/// (`ARC-13`).
+fn start_watchers(
+    config: &DaemonConfig,
+    supervisor: &supervisor::SupervisorHandle,
+    clock: Arc<dyn Clock>,
+) -> [tasks::Owned; 6] {
+    [
+        tasks::owned(resources::run(supervisor.clone(), config.sample_interval)),
+        tasks::owned(branches::run(supervisor.clone(), config.branch_interval)),
+        tasks::owned(worktree_sync::run(
+            supervisor.clone(),
+            config.worktree_interval,
+        )),
+        tasks::owned(watch_pull_requests(supervisor.clone(), config.pr_interval)),
+        tasks::owned(spend::run(
+            supervisor.clone(),
+            config.spend_interval,
+            spend::Places::from_env(),
+        )),
+        tasks::owned(log_files::run(
+            config.paths.runtime_dir.join("daemon.log"),
+            config.log_limits,
+            clock,
+        )),
+    ]
+}
+
 /// Restarts in place as the program installed now, handing every running
 /// session over; returns only if that could not be done, the sessions
 /// taken back.
@@ -401,9 +459,8 @@ async fn reload(
     socket: &std::os::unix::net::UnixListener,
     hook_socket: &std::os::unix::net::UnixListener,
     relaunch: &[String],
-) -> Result<std::convert::Infallible, String> {
-    let program = handoff::next_program()
-        .map_err(|error| format!("cannot tell which program to run: {error}"))?;
+) -> Result<std::convert::Infallible, handoff::ReloadError> {
+    let program = handoff::next_program().map_err(handoff::ReloadError::NoProgram)?;
     // Before anything is handed over: an older Muster could not take it.
     handoff::can_take_over(&program).await?;
     let sessions = supervisor.hand_over().await;
@@ -423,7 +480,7 @@ async fn reload(
         sessions,
     );
     supervisor.adopt(sessions).await;
-    Err(format!("could not start {}: {error}", program.display()))
+    Err(handoff::ReloadError::NotStarted { program, error })
 }
 
 /// A listener the servers can use, the original kept for a handoff.

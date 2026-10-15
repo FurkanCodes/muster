@@ -31,7 +31,7 @@ async fn real_setup() -> Setup {
         panic!("expected ProjectAdded");
     };
     Setup {
-        _dir: dir,
+        dir,
         root,
         database,
         work,
@@ -138,7 +138,7 @@ async fn a_worktree_s_committed_work_goes_to_the_checks_first() {
 
     // A restarted daemon still knows the run took over a branch.
     let Setup {
-        _dir: dir,
+        dir,
         database,
         supervisor,
         ..
@@ -189,7 +189,7 @@ async fn work_that_cannot_go_to_a_run_is_refused_plainly() {
         .await
         .unwrap_err();
     assert_eq!(missing.code, ErrorCode::NotFound);
-    let other_root = repository(setup._dir.path(), "other");
+    let other_root = repository(setup.dir.path(), "other");
     let Reply::ProjectAdded { id: other } = setup
         .supervisor
         .command(Command::AddProject {

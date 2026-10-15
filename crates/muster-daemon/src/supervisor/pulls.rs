@@ -149,26 +149,25 @@ impl Supervisor {
             if !workspace.kind.in_git() || name.starts_with("detached at ") || name == "?" {
                 continue;
             }
-            let at = match projects
+            let at = if let Some(at) = projects
                 .iter()
                 .position(|project| project.project == workspace.project)
             {
-                Some(at) => at,
-                None => {
-                    let Some(root) = self.project_root(workspace.project) else {
-                        continue;
-                    };
-                    let overrides = self
-                        .config_dir
-                        .join("projects")
-                        .join(format!("{}.toml", workspace.project));
-                    projects.push(ProjectBranches {
-                        project: workspace.project,
-                        place: ProjectPlace { root, overrides },
-                        branches: Vec::new(),
-                    });
-                    projects.len() - 1
-                }
+                at
+            } else {
+                let Some(root) = self.project_root(workspace.project) else {
+                    continue;
+                };
+                let overrides = self
+                    .config_dir
+                    .join("projects")
+                    .join(format!("{}.toml", workspace.project));
+                projects.push(ProjectBranches {
+                    project: workspace.project,
+                    place: ProjectPlace { root, overrides },
+                    branches: Vec::new(),
+                });
+                projects.len() - 1
             };
             projects[at].branches.push(Branch {
                 workspace: workspace.id,

@@ -38,10 +38,14 @@ rmp-serde = "1.3.1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.11.0"
 tempfile = "3.27.0"
+# Property tests of what parses untrusted input, and of the state machines.
+proptest = { version = "1.12", default-features = false, features = ["std"] }
 thiserror = "2.0.21"
 toml = { version = "1.1.6", default-features = false, features = ["std", "parse", "serde"] }
 toml_edit = { version = "0.25.16", default-features = false, features = ["parse", "display"] }
-tokio = { version = "1.53.2", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+# The 1.53 line has Tokio's long-term support (to September 2027): fixes
+# backported, nothing new. Moving on is a decision, not an update.
+tokio = { version = "~1.53.2", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7.20", default-features = false, features = ["rt"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
@@ -57,6 +61,27 @@ unreachable_pub = "warn"
 # Warnings fail CI (`CARGO_BUILD_WARNINGS=deny`). A suppression is an
 # #[expect] with a reason (`ARC-16`).
 [workspace.lints.clippy]
+# Pedantic, but for lints that do not fit an application whose crates are
+# its own (each opted out below, with why).
+pedantic = { level = "warn", priority = -1 }
+# Muster's crates are not published; their callers are its own code.
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+return_self_not_must_use = "allow"
+# `assert_eq!(list, [])` shows what the list held when it fails;
+# `assert!(list.is_empty())` would not.
+assert_is_empty = "allow"
+# Names that differ by a letter are often the clearest (`run`, `runs`).
+similar_names = "allow"
+# Settings and flags read as bools.
+struct_excessive_bools = "allow"
+# Hook and escape tables list each case by what it matches, with its own
+# comment; merging them by their bodies would scatter that.
+match_same_arms = "allow"
+
+# One module file style: `foo.rs` beside `foo/`, as the Rust book has it.
+mod_module_files = "warn"
 dbg_macro = "warn"
 todo = "warn"
 unwrap_used = "warn"
@@ -68,6 +93,13 @@ get_unwrap = "warn"
 mem_forget = "warn"
 large_futures = "warn"
 
+# Line numbers in backtraces, without full debug info: faster builds.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
@@ -77,3 +109,10 @@ strip = "debuginfo"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+# A release build with symbols, for profilers (samply, Instruments):
+# `cargo build --profile profiling`.
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"

@@ -7,6 +7,7 @@ use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
+use std::fmt::Write as _;
 use tui_term::widget::PseudoTerminal;
 
 use super::{look, panel, selection, status_symbol, usage_text};
@@ -30,16 +31,16 @@ pub(super) fn draw_session(
         .map_or(0, crate::screen::Screen::scrolled_back);
     let mut title = format!(" {} · {} ", stored.title, look::doing(stored));
     if let Some(time) = look::session_time(app, stored) {
-        title.push_str(&format!("· {time} "));
+        let _ = write!(title, "· {time} ");
     }
     if let Some(usage) = app.model.usage(session) {
-        title.push_str(&format!("· {} ", usage_text(usage)));
+        let _ = write!(title, "· {} ", usage_text(usage));
     }
     if let Some(spend) = &stored.spend {
-        title.push_str(&format!("· {} ", spend.text()));
+        let _ = write!(title, "· {} ", spend.text());
     }
     if back > 0 {
-        title.push_str(&format!("· ↑ {back} lines back "));
+        let _ = write!(title, "· ↑ {back} lines back ");
     } else if typing {
         title.push_str("· Shift-Q back to the list ");
     }

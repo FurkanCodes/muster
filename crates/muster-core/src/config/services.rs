@@ -15,6 +15,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use std::fmt::Write as _;
 
 /// A ticket tracker Muster can read. On the wire, as in `muster.toml`, by
 /// its key: `"github"`.
@@ -120,14 +121,15 @@ impl Tickets {
     pub fn written(&self) -> Option<String> {
         let mut source = self.tracker?.name().to_owned();
         if let Some(site) = &self.site {
-            source.push_str(&format!(" at {site}"));
+            let _ = write!(source, " at {site}");
         }
-        match (&self.jql, &self.project, &self.team) {
-            (Some(jql), _, _) => source.push_str(&format!(", {jql}")),
-            (None, Some(project), _) => source.push_str(&format!(", project {project}")),
-            (None, None, Some(team)) => source.push_str(&format!(", team {team}")),
-            (None, None, None) => {}
-        }
+        // Writing to a String cannot fail.
+        let _ = match (&self.jql, &self.project, &self.team) {
+            (Some(jql), _, _) => write!(source, ", {jql}"),
+            (None, Some(project), _) => write!(source, ", project {project}"),
+            (None, None, Some(team)) => write!(source, ", team {team}"),
+            (None, None, None) => Ok(()),
+        };
         Some(source)
     }
 }

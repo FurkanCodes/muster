@@ -36,6 +36,7 @@ pub(super) fn open_with_output(lines: usize, full: bool) -> (World, SessionId) {
     );
     assert_eq!(world.app.mode, Mode::Terminal(id));
     assert_eq!(world.app.full_screen, full);
+    #[expect(clippy::format_collect, reason = "test input")]
     let output: String = (1..=lines).map(|n| format!("line{n}\r\n")).collect();
     world.app.on_frame(ServerFrame::Replay {
         session: id,
@@ -239,6 +240,7 @@ fn page_keys_scroll_the_preview() {
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
+    #[expect(clippy::format_collect, reason = "test input")]
     let output: String = (1..=200).map(|n| format!("line{n}\r\n")).collect();
     world.app.on_frame(ServerFrame::Replay {
         session: id,

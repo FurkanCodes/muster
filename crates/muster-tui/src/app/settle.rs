@@ -131,15 +131,14 @@ impl App {
     /// the place of one that went away, or the last line.
     fn keep_selection(&mut self) {
         let rows = self.model.rows();
-        match self
+        if let Some(at) = self
             .selected
             .and_then(|row| rows.iter().position(|r| *r == row))
         {
-            Some(at) => self.selected_at = at,
-            None => {
-                let at = self.selected_at.min(rows.len().saturating_sub(1));
-                self.selected = rows.get(at).copied();
-            }
+            self.selected_at = at;
+        } else {
+            let at = self.selected_at.min(rows.len().saturating_sub(1));
+            self.selected = rows.get(at).copied();
         }
         // Screens of sessions that are gone are not drawn again.
         let model = &self.model;

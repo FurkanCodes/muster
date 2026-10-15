@@ -14,10 +14,10 @@ use crate::containers::Docker;
 
 /// How long building an image may take: the base image downloads Node and
 /// Claude Code.
-const BUILD_LIMIT: Duration = Duration::from_secs(30 * 60);
+const BUILD_LIMIT: Duration = Duration::from_mins(30);
 
 /// Muster's base image recipe; `{CLAUDE}` is the Claude Code version.
-const BASE: &str = r#"FROM node:22-bookworm-slim
+const BASE: &str = r"FROM node:22-bookworm-slim
 RUN apt-get update \
  && apt-get install --yes --no-install-recommends git ca-certificates curl procps util-linux \
  && rm -rf /var/lib/apt/lists/*
@@ -28,7 +28,7 @@ USER muster
 WORKDIR /work
 # The version is the person's; an unprivileged user cannot update it anyway.
 ENV DISABLE_AUTOUPDATER=1
-"#;
+";
 
 /// The image for a run of the project at `root`, built if need be.
 pub(crate) async fn image_for(
@@ -37,21 +37,18 @@ pub(crate) async fn image_for(
     dockerfile: Option<&Path>,
     claude_version: &str,
 ) -> Result<String, String> {
-    let (tag, recipe, context) = match dockerfile {
-        Some(relative) => {
-            let recipe = tokio::fs::read_to_string(root.join(relative))
-                .await
-                .map_err(|error| format!("cannot read {}: {error}", relative.display()))?;
-            let tag = format!(
-                "muster-project:{}",
-                short_hash(&format!("{}{recipe}", root.display()))
-            );
-            (tag, recipe, Some(root))
-        }
-        None => {
-            let recipe = BASE.replace("{CLAUDE}", claude_version);
-            (format!("muster-base:{}", short_hash(&recipe)), recipe, None)
-        }
+    let (tag, recipe, context) = if let Some(relative) = dockerfile {
+        let recipe = tokio::fs::read_to_string(root.join(relative))
+            .await
+            .map_err(|error| format!("cannot read {}: {error}", relative.display()))?;
+        let tag = format!(
+            "muster-project:{}",
+            short_hash(&format!("{}{recipe}", root.display()))
+        );
+        (tag, recipe, Some(root))
+    } else {
+        let recipe = BASE.replace("{CLAUDE}", claude_version);
+        (format!("muster-base:{}", short_hash(&recipe)), recipe, None)
     };
     if docker
         .has_image(&tag)

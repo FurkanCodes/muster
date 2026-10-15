@@ -243,7 +243,8 @@ impl Supervisor {
                 self.new_worktree(project, branch).await?
             }
         };
-        let takes_prompt = harness::find(&harness).is_some_and(|found| found.takes_prompt());
+        let takes_prompt =
+            harness::find(&harness).is_some_and(super::super::harness::Harness::takes_prompt);
         let prompt = match takes_prompt.then(trackers::new_fence).transpose() {
             Ok(fence) => fence.map(|fence| trackers::issue_prompt(detail, &fence)),
             Err(error) => {

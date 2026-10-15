@@ -84,7 +84,7 @@ fn every_older_schema_migrates_to_the_latest() {
             for migration in &MIGRATIONS[..applied] {
                 conn.execute_batch(migration).unwrap();
             }
-            conn.pragma_update(None, "user_version", applied as i64)
+            conn.pragma_update(None, "user_version", i64::try_from(applied).unwrap())
                 .unwrap();
         }
         let store = Store::open(&path).unwrap();

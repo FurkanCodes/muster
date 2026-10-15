@@ -44,9 +44,10 @@ impl<R: AsyncRead + Unpin> FramedRead<R> {
             }
             let read = self.reader.read(&mut self.chunk).await?;
             if read == 0 {
-                return match self.decoder.has_partial_frame() {
-                    true => Err(TransportError::Truncated),
-                    false => Ok(None),
+                return if self.decoder.has_partial_frame() {
+                    Err(TransportError::Truncated)
+                } else {
+                    Ok(None)
                 };
             }
             self.decoder.push(&self.chunk[..read]);

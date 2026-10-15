@@ -63,7 +63,7 @@ impl App {
         };
         let modes = self.screen(session).modes;
         let tracked = modes.mouse != MouseTracking::Off;
-        if let Some(actions) = self.select_with_mouse(session, &event, screen, tracked) {
+        if let Some(actions) = self.select_with_mouse(session, event, screen, tracked) {
             return actions;
         }
         let wheel = matches!(
@@ -79,7 +79,7 @@ impl App {
         if !wheel && !screen.contains(at) {
             return Vec::new();
         }
-        let (row, column) = cell(screen, &event);
+        let (row, column) = cell(screen, event);
         if tracked {
             return encode_mouse(event.kind, event.modifiers, column, row, modes)
                 .map(|data| Action::Send(ClientFrame::Input { session, data }))
@@ -126,7 +126,7 @@ impl App {
                         // A program that takes the mouse scrolls its own
                         // view (Claude Code's transcript, on the alternate
                         // screen, which keeps no scrollback here).
-                        let (row, column) = cell(crate::view::session_area(full), &event);
+                        let (row, column) = cell(crate::view::session_area(full), event);
                         return encode_mouse(event.kind, event.modifiers, column, row, modes)
                             .map(|data| Action::Send(ClientFrame::Input { session, data }))
                             .into_iter()
@@ -149,7 +149,7 @@ impl App {
                     // no clicks.
                     self.open_selected();
                     if let Mode::Terminal(session) = self.mode {
-                        self.select_from_preview(session, &event, crate::view::session_area(full));
+                        self.select_from_preview(session, event, crate::view::session_area(full));
                     }
                 }
             }

@@ -40,6 +40,8 @@ jobs:
           tool: cargo-nextest,cargo-shear,typos
       - name: File size (ARC-08)
         run: scripts/check-file-size.sh
+      - name: No credentials (ARC-20)
+        run: scripts/check-no-secrets.sh
       - name: Format
         run: cargo fmt --all --check
       - name: Spelling

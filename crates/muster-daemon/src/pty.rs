@@ -24,6 +24,8 @@ mod queries;
 mod ring;
 
 #[cfg(test)]
+mod props;
+#[cfg(test)]
 mod tests;
 
 use std::fs::File;
@@ -206,7 +208,7 @@ impl PtyHandle {
 /// `first_seq`. `events` receives what it reports; the terminal is released
 /// when every handle to it has been dropped.
 pub(crate) fn spawn(
-    spec: SpawnSpec,
+    spec: &SpawnSpec,
     first_seq: u64,
     events: impl Fn(PtyEvent) + Send + 'static,
 ) -> std::io::Result<PtyHandle> {
@@ -410,9 +412,8 @@ fn read_output(mut reader: File, output: &mpsc::Sender<Vec<u8>>, stop: &AtomicBo
     let mut buffer = vec![0; 16 * 1024];
     while !stop.load(Ordering::Acquire) {
         match readable(&reader) {
-            Ok(false) => continue,
             Ok(true) => {}
-            Err(nix::errno::Errno::EINTR) => continue,
+            Ok(false) | Err(nix::errno::Errno::EINTR) => continue,
             Err(_) => return,
         }
         match reader.read(&mut buffer) {
@@ -504,7 +505,9 @@ impl Actor {
                 command = commands.recv() => match command {
                     Some(Command::HandOver(reply)) => {
                         let handed = if exit_status.is_none() && self.live.is_some() {
-                            self.stop_reader().await;
+                            for chunk in self.stop_reader(&mut output).await {
+                                self.on_output(chunk, &mut output, &events);
+                            }
                             // What the reader read before it stopped.
                             while let Ok(chunk) = output.try_recv() {
                                 self.on_output(chunk, &mut output, &events);
@@ -548,11 +551,26 @@ impl Actor {
         }
     }
 
-    /// Stops the reader between reads, for a handoff.
-    async fn stop_reader(&mut self) {
+    /// Stops the reader between reads, for a handoff; returns what it read
+    /// meanwhile. Its output is taken as it waits: a reader waiting on a
+    /// full queue would otherwise never look to see it should stop, and the
+    /// handoff would wait for ever. Once its last send goes through it
+    /// stops, so what is taken is at most a queue's worth.
+    async fn stop_reader(&mut self, output: &mut mpsc::Receiver<Vec<u8>>) -> Vec<Vec<u8>> {
         self.stop_reading.store(true, Ordering::Release);
-        if let Some(done) = self.reader_done.take() {
-            let _ = done.await;
+        let mut taken = Vec::new();
+        let Some(mut done) = self.reader_done.take() else {
+            return taken;
+        };
+        loop {
+            tokio::select! {
+                _ = &mut done => return taken,
+                chunk = output.recv() => match chunk {
+                    Some(chunk) => taken.push(chunk),
+                    // The reader has gone, so it has stopped.
+                    None => return taken,
+                },
+            }
         }
     }
 

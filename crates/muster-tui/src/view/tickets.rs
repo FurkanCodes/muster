@@ -230,6 +230,10 @@ fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
     Text::from(lines)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "a ticket's whole view, top to bottom"
+)]
 fn ticket_text(
     app: &App,
     project: muster_core::ProjectId,

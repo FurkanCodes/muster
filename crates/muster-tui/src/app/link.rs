@@ -167,6 +167,10 @@ impl App {
         actions
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one arm for each reply the daemon can send"
+    )]
     fn on_reply(&mut self, req_id: u64, outcome: Result<Reply, ErrorBody>) -> Vec<Action> {
         let Some(then) = self.pending.remove(&req_id) else {
             return Vec::new();
@@ -229,7 +233,7 @@ impl App {
                     .insert((project, key), TicketText::Failed(error.message));
             }
             (Ok(_), Then::RemovedWorktree(_)) => {
-                self.say("Removed the worktree; its branch is kept.")
+                self.say("Removed the worktree; its branch is kept.");
             }
             (Ok(_), Then::Say(text)) => self.say(text),
             (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),

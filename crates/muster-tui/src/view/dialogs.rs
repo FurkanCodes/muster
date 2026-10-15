@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use muster_core::config::TrackerKind;
+use muster_core::{ProjectId, TicketKey, WorkspaceId};
 
 use crate::app::tickets_from::{Field, TRACKERS, focused, tracker_label};
 use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
@@ -35,182 +36,38 @@ fn typed_line(input: &LineInput) -> Line<'static> {
     }
 }
 
+/// What a dialog shows: its title and text, the input with the cursor if
+/// it has one, what goes between that input and the hint, and the hint.
+struct Shape<'a> {
+    title: &'static str,
+    lines: Vec<Line<'static>>,
+    input: Option<&'a LineInput>,
+    below: Vec<Line<'static>>,
+    hint: &'static str,
+}
+
+impl<'a> Shape<'a> {
+    fn new(title: &'static str, lines: Vec<Line<'static>>, input: Option<&'a LineInput>) -> Self {
+        Self {
+            title,
+            lines,
+            input,
+            below: Vec::new(),
+            hint: "⏎ confirm   esc cancel",
+        }
+    }
+}
+
 pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
     let width = area.width.saturating_sub(4).min(72);
     let inner_width = width.saturating_sub(2).max(1);
-    // Lines between an input and its hint, and the hint.
-    let mut below = Vec::new();
-    let mut hint = "⏎ confirm   esc cancel";
-    let (title, lines, input) = match dialog {
-        Dialog::AddProject { path, picker } => {
-            below = picker_lines(picker, path.text(), usize::from(inner_width));
-            hint = "↑↓ choose   ⇥ open   ⇧⇥ up   ⏎ add   esc cancel";
-            (
-                " Add a project ",
-                vec![Line::from(
-                    "Folder to add (a git repository, or any folder):",
-                )],
-                Some(path),
-            )
-        }
-        Dialog::NewWorktree { branch, .. } => (
-            " New worktree ",
-            vec![Line::from(
-                "Branch (checked out if it exists; empty for muster/<random>):",
-            )],
-            Some(branch),
-        ),
-        Dialog::NewSession {
-            workspace,
-            harness,
-            prompt,
-        } => {
-            // A branch, or, in a plain folder, which has none, the project.
-            let place = match app.model.workspace(*workspace) {
-                Some(found) if !found.kind.in_git() => app
-                    .model
-                    .project(found.project)
-                    .map_or("?", |project| project.name.as_str()),
-                _ => app.model.branch(*workspace).unwrap_or("?"),
-            };
-            let mut run = vec![Span::raw("Run ")];
-            for option in HarnessChoice::ALL {
-                run.push(harness_option(option, *harness));
-            }
-            let mut lines = vec![Line::from(format!("In {place}")).dim(), Line::from(run)];
-            hint = "⇥ ⇧⇥ choose   ⏎ start   esc cancel";
-            if harness.is_agent() {
-                lines.push(Line::from("First prompt (optional):"));
-                (" New session ", lines, Some(prompt))
-            } else {
-                (" New session ", lines, None)
-            }
-        }
-        Dialog::AssignAgent {
-            project,
-            key,
-            harness,
-            another,
-            into,
-        } => {
-            let title = app
-                .ticket(*project, key)
-                .map_or(String::new(), |ticket| format!(" {}", ticket.title));
-            let mut lines = vec![Line::from(format!("{}{title}", key.shown()))];
-            let sharing = app.sharing(*project);
-            let keys = if sharing.len() > 1 {
-                // Nothing in the ticket says which repository it is for.
-                lines.push(Line::from("Which project is it for?").dim());
-                for choice_of in sharing {
-                    let name = app
-                        .model
-                        .project(choice_of)
-                        .map_or("?", |found| found.name.as_str());
-                    let mut line = vec![Span::raw(" "), choice(name, choice_of == *into)];
-                    let agents = app.model.agents_on(&[choice_of], key).len();
-                    if agents > 0 {
-                        let noun = if agents == 1 { "agent" } else { "agents" };
-                        line.push(Span::from(format!("  {agents} {noun} on it")).dim());
-                    }
-                    lines.push(Line::from(line));
-                }
-                "↑↓ project   ⇥ ⇧⇥ agent   ⏎ start   esc cancel"
-            } else {
-                "⇥ ⇧⇥ choose   ⏎ start   esc cancel"
-            };
-            let mut run = vec![Span::raw("Start ")];
-            for option in HarnessChoice::ALL.into_iter().filter(|o| o.is_agent()) {
-                run.push(harness_option(option, *harness));
-            }
-            let place = if app.starts_another(*into, key, *another) {
-                "In a worktree of its own, with the ticket as its first prompt."
-            } else {
-                "In the ticket's worktree, with the ticket as its first prompt."
-            };
-            lines.extend([
-                Line::from(""),
-                Line::from(run),
-                Line::from(place).dim(),
-                Line::from(""),
-                Line::from(keys).dim(),
-            ]);
-            (" Assign an agent ", lines, None)
-        }
-        Dialog::Confirm { question, .. } => (
-            " Confirm ",
-            vec![
-                Line::from(question.clone()),
-                Line::from(""),
-                Line::from("y yes   n no").dim(),
-            ],
-            None,
-        ),
-        Dialog::TicketsFrom {
-            project,
-            tracker,
-            site,
-            key,
-            on_key,
-        } => {
-            let name = app
-                .model
-                .project(*project)
-                .map_or("?", |found| found.name.as_str());
-            let mut from = vec![Span::raw("From ")];
-            for option in TRACKERS {
-                from.push(choice(tracker_label(option), option == *tracker));
-            }
-            let mut lines = vec![
-                Line::from(format!("Where {name}'s tickets come from")).bold(),
-                Line::from(from),
-                Line::from(""),
-            ];
-            let jira = *tracker == Some(TrackerKind::Jira);
-            let site_label = "Jira site, such as acme.atlassian.net:";
-            let key_label = if jira {
-                "Project key, such as APP:"
-            } else {
-                "Team key, such as ENG:"
-            };
-            hint = if jira {
-                "⇥ ⇧⇥ choose   ↑↓ field   ⏎ save   esc cancel"
-            } else {
-                "⇥ ⇧⇥ choose   ⏎ save   esc cancel"
-            };
-            match focused(*tracker, *on_key) {
-                Field::None => {
-                    lines.push(
-                        Line::from(match tracker {
-                            Some(TrackerKind::GitHub) => {
-                                "Its GitHub issues, through your gh login."
-                            }
-                            Some(TrackerKind::GitLab) => {
-                                "Its GitLab issues, through your glab login."
-                            }
-                            _ => "Where its git remote's host keeps them, as Muster can tell.",
-                        })
-                        .dim(),
-                    );
-                    lines.push(Line::from(""));
-                    lines.push(Line::from(hint).dim());
-                    (" Tickets from ", lines, None)
-                }
-                Field::Site => {
-                    lines.push(Line::from(site_label));
-                    below = vec![Line::from(key_label), typed_line(key)];
-                    (" Tickets from ", lines, Some(site))
-                }
-                Field::Key => {
-                    if jira {
-                        lines.push(Line::from(site_label));
-                        lines.push(typed_line(site));
-                    }
-                    lines.push(Line::from(key_label));
-                    (" Tickets from ", lines, Some(key))
-                }
-            }
-        }
-    };
+    let Shape {
+        title,
+        lines,
+        input,
+        mut below,
+        hint,
+    } = shape(app, dialog, inner_width);
     // Text wraps rather than being cut off; an input takes its line, a
     // blank one and its hint, with what goes below it and a blank between.
     let text_height: u16 = lines
@@ -253,6 +110,205 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
                 y: input_area.y,
             });
         }
+    }
+}
+
+/// What `dialog` shows, `inner_width` columns wide.
+fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
+    match dialog {
+        Dialog::AddProject { path, picker } => Shape {
+            below: picker_lines(picker, path.text(), usize::from(inner_width)),
+            hint: "↑↓ choose   ⇥ open   ⇧⇥ up   ⏎ add   esc cancel",
+            ..Shape::new(
+                " Add a project ",
+                vec![Line::from(
+                    "Folder to add (a git repository, or any folder):",
+                )],
+                Some(path),
+            )
+        },
+        Dialog::NewWorktree { branch, .. } => Shape::new(
+            " New worktree ",
+            vec![Line::from(
+                "Branch (checked out if it exists; empty for muster/<random>):",
+            )],
+            Some(branch),
+        ),
+        Dialog::NewSession {
+            workspace,
+            harness,
+            prompt,
+        } => new_session(app, *workspace, *harness, prompt),
+        Dialog::AssignAgent {
+            project,
+            key,
+            harness,
+            another,
+            into,
+        } => assign_agent(app, *project, key, *harness, *another, *into),
+        Dialog::Confirm { question, .. } => Shape::new(
+            " Confirm ",
+            vec![
+                Line::from(question.clone()),
+                Line::from(""),
+                Line::from("y yes   n no").dim(),
+            ],
+            None,
+        ),
+        Dialog::TicketsFrom {
+            project,
+            tracker,
+            site,
+            key,
+            on_key,
+        } => tickets_from(app, *project, *tracker, (site, key), *on_key),
+    }
+}
+
+fn new_session<'a>(
+    app: &App,
+    workspace: WorkspaceId,
+    harness: HarnessChoice,
+    prompt: &'a LineInput,
+) -> Shape<'a> {
+    // A branch, or, in a plain folder, which has none, the project.
+    let place = match app.model.workspace(workspace) {
+        Some(found) if !found.kind.in_git() => app
+            .model
+            .project(found.project)
+            .map_or("?", |project| project.name.as_str()),
+        _ => app.model.branch(workspace).unwrap_or("?"),
+    };
+    let mut run = vec![Span::raw("Run ")];
+    for option in HarnessChoice::ALL {
+        run.push(harness_option(option, harness));
+    }
+    let mut lines = vec![Line::from(format!("In {place}")).dim(), Line::from(run)];
+    let input = harness.is_agent().then(|| {
+        lines.push(Line::from("First prompt (optional):"));
+        prompt
+    });
+    Shape {
+        hint: "⇥ ⇧⇥ choose   ⏎ start   esc cancel",
+        ..Shape::new(" New session ", lines, input)
+    }
+}
+
+fn assign_agent(
+    app: &App,
+    project: ProjectId,
+    key: &TicketKey,
+    harness: HarnessChoice,
+    another: bool,
+    into: ProjectId,
+) -> Shape<'static> {
+    let title = app
+        .ticket(project, key)
+        .map_or(String::new(), |ticket| format!(" {}", ticket.title));
+    let mut lines = vec![Line::from(format!("{}{title}", key.shown()))];
+    let sharing = app.sharing(project);
+    let keys = if sharing.len() > 1 {
+        // Nothing in the ticket says which repository it is for.
+        lines.push(Line::from("Which project is it for?").dim());
+        for choice_of in sharing {
+            let name = app
+                .model
+                .project(choice_of)
+                .map_or("?", |found| found.name.as_str());
+            let mut line = vec![Span::raw(" "), choice(name, choice_of == into)];
+            let agents = app.model.agents_on(&[choice_of], key).len();
+            if agents > 0 {
+                let noun = if agents == 1 { "agent" } else { "agents" };
+                line.push(Span::from(format!("  {agents} {noun} on it")).dim());
+            }
+            lines.push(Line::from(line));
+        }
+        "↑↓ project   ⇥ ⇧⇥ agent   ⏎ start   esc cancel"
+    } else {
+        "⇥ ⇧⇥ choose   ⏎ start   esc cancel"
+    };
+    let mut run = vec![Span::raw("Start ")];
+    for option in HarnessChoice::ALL.into_iter().filter(|o| o.is_agent()) {
+        run.push(harness_option(option, harness));
+    }
+    let place = if app.starts_another(into, key, another) {
+        "In a worktree of its own, with the ticket as its first prompt."
+    } else {
+        "In the ticket's worktree, with the ticket as its first prompt."
+    };
+    lines.extend([
+        Line::from(""),
+        Line::from(run),
+        Line::from(place).dim(),
+        Line::from(""),
+        Line::from(keys).dim(),
+    ]);
+    Shape::new(" Assign an agent ", lines, None)
+}
+
+fn tickets_from<'a>(
+    app: &App,
+    project: ProjectId,
+    tracker: Option<TrackerKind>,
+    (site, key): (&'a LineInput, &'a LineInput),
+    on_key: bool,
+) -> Shape<'a> {
+    let name = app
+        .model
+        .project(project)
+        .map_or("?", |found| found.name.as_str());
+    let mut from = vec![Span::raw("From ")];
+    for option in TRACKERS {
+        from.push(choice(tracker_label(option), option == tracker));
+    }
+    let mut lines = vec![
+        Line::from(format!("Where {name}'s tickets come from")).bold(),
+        Line::from(from),
+        Line::from(""),
+    ];
+    let jira = tracker == Some(TrackerKind::Jira);
+    let site_label = "Jira site, such as acme.atlassian.net:";
+    let key_label = if jira {
+        "Project key, such as APP:"
+    } else {
+        "Team key, such as ENG:"
+    };
+    let hint = if jira {
+        "⇥ ⇧⇥ choose   ↑↓ field   ⏎ save   esc cancel"
+    } else {
+        "⇥ ⇧⇥ choose   ⏎ save   esc cancel"
+    };
+    let (input, below) = match focused(tracker, on_key) {
+        Field::None => {
+            lines.push(
+                Line::from(match tracker {
+                    Some(TrackerKind::GitHub) => "Its GitHub issues, through your gh login.",
+                    Some(TrackerKind::GitLab) => "Its GitLab issues, through your glab login.",
+                    _ => "Where its git remote's host keeps them, as Muster can tell.",
+                })
+                .dim(),
+            );
+            lines.push(Line::from(""));
+            lines.push(Line::from(hint).dim());
+            (None, Vec::new())
+        }
+        Field::Site => {
+            lines.push(Line::from(site_label));
+            (Some(site), vec![Line::from(key_label), typed_line(key)])
+        }
+        Field::Key => {
+            if jira {
+                lines.push(Line::from(site_label));
+                lines.push(typed_line(site));
+            }
+            lines.push(Line::from(key_label));
+            (Some(key), Vec::new())
+        }
+    };
+    Shape {
+        below,
+        hint,
+        ..Shape::new(" Tickets from ", lines, input)
     }
 }
 

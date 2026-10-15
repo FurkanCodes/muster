@@ -17,8 +17,10 @@ use super::{Action, App, Dialog, Mode, Then};
 use crate::folders::Folder;
 use crate::input::{Edit, LineInput};
 
-/// How many folders the dialog shows at once.
-pub(crate) const PICKER_ROWS: usize = 8;
+/// A page up or down the picker.
+const PICKER_PAGE: isize = 8;
+/// How many folders the dialog shows at once: a page.
+pub(crate) const PICKER_ROWS: usize = PICKER_PAGE.unsigned_abs();
 
 /// The folder browser under the path field.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -125,8 +127,8 @@ impl App {
         match key.code {
             KeyCode::Down => picker.step(1, count),
             KeyCode::Up => picker.step(-1, count),
-            KeyCode::PageDown => picker.step(PICKER_ROWS as isize, count),
-            KeyCode::PageUp => picker.step(-(PICKER_ROWS as isize), count),
+            KeyCode::PageDown => picker.step(PICKER_PAGE, count),
+            KeyCode::PageUp => picker.step(-PICKER_PAGE, count),
             // Into the chosen folder, or the first shown.
             KeyCode::Tab => {
                 let into = picker.chosen(path.text()).map(|folder| folder.name.clone());
@@ -182,12 +184,12 @@ impl App {
     /// The folders listed in `dir`, for the dialog if it still shows them.
     pub(crate) fn on_folders(
         &mut self,
-        dir: PathBuf,
+        dir: &Path,
         folders: Result<Vec<Folder>, String>,
     ) -> Vec<Action> {
         if let Mode::Dialog(Dialog::AddProject { picker, .. }) = &mut self.mode
             && let Some((listed, listing)) = &mut picker.listing
-            && *listed == dir
+            && listed.as_path() == dir
         {
             *listing = match folders {
                 Ok(folders) => Listing::Loaded(folders),

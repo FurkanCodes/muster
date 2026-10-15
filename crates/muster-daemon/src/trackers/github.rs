@@ -76,6 +76,10 @@ fn number(key: &TicketKey) -> Result<String, ServiceError> {
         .ok_or_else(|| ServiceError::NotFound(format!("{key} is not a GitHub issue's number")))
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a converter for .map_err(f), which hands it the error by value"
+)]
 fn unreadable(error: serde_json::Error) -> ServiceError {
     GitHubError::Unreadable(error.to_string()).into()
 }

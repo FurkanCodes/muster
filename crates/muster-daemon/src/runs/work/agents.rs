@@ -202,6 +202,10 @@ impl Inner {
         Ok((ended.code == 0, report))
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "a review turn, step by step, as a run takes it"
+    )]
     pub(super) async fn review(
         &self,
         context: &RunContext,
@@ -535,7 +539,7 @@ mod tests {
 
     /// A clone in `/work` of a repository in the container, on `feature`
     /// made from `main`, as provisioning leaves it.
-    const SETUP: &str = r#"set -e
+    const SETUP: &str = r"set -e
 git config --global user.name Test && git config --global user.email test@example.com
 git config --global init.defaultBranch main
 git init -q --bare /tmp/origin.git
@@ -544,7 +548,7 @@ cd /work && echo base > base.txt && git add base.txt && git commit -q -m base
 git push -q origin HEAD:main && git fetch -q origin
 git checkout -q -b feature
 mkdir -p /tmp/muster && printf main > /tmp/muster/base
-"#;
+";
 
     #[tokio::test]
     async fn real_docker_checks_only_the_run_s_branch_with_work_on_it() {
@@ -600,12 +604,12 @@ mkdir -p /tmp/muster && printf main > /tmp/muster/base
         let name = guard.0.as_str();
         assert_eq!(sh(&docker, name, SETUP, &[]).await.0, 0);
         // The run's work, pushed; then a suggestion committed on GitHub.
-        let pushed = r#"set -e
+        let pushed = r"set -e
 cd /work && echo run > run.txt && git add run.txt && git commit -q -m run && git push -q origin feature
 git clone -q /tmp/origin.git /tmp/elsewhere 2>/dev/null && cd /tmp/elsewhere
 git checkout -q feature && echo suggested > suggestion.txt && git add suggestion.txt
 git commit -q -m suggestion && git push -q origin feature
-"#;
+";
         assert_eq!(sh(&docker, name, pushed, &[]).await.0, 0);
         // More work in the container, some of it left uncommitted.
         sh(&docker, name, "cd /work && echo more >> run.txt", &[]).await;
@@ -621,11 +625,11 @@ git commit -q -m suggestion && git push -q origin feature
         assert_eq!(sh(&docker, name, SYNC, &["feature"]).await.0, 0);
 
         // A change elsewhere to the same line conflicts: undone, and said.
-        let clash = r#"set -e
+        let clash = r"set -e
 cd /tmp/elsewhere && git pull -q origin feature 2>/dev/null; echo theirs > run.txt
 git commit -q -am theirs && git push -q origin feature
 cd /work && echo ours > run.txt && git commit -q -am ours
-"#;
+";
         assert_eq!(sh(&docker, name, clash, &[]).await.0, 0);
         let (code, _) = sh(&docker, name, SYNC, &["feature"]).await;
         assert_eq!(code, 3);

@@ -37,7 +37,7 @@ Install or update it with one command:
 curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/main/install.sh | sh
 ```
 
-It downloads the prebuilt binary for your machine from the latest release, checks it against its published checksum, and puts it in `~/.local/bin`. On a machine without a prebuilt binary it builds Muster from source, which needs [Rust](https://rustup.rs).
+It downloads the prebuilt binary for your machine from the latest release, checks it against its published checksum and, if the [GitHub CLI](https://cli.github.com) is signed in, against the attestation GitHub made as the release workflow built it, and puts it in `~/.local/bin`. `MUSTER_VERSION=v0.3.15` installs that release instead. On a machine without a prebuilt binary it builds the same release from source, which needs [Rust](https://rustup.rs). `muster upgrade` checks a new release the same way.
 
 Later, `muster upgrade` installs the newest release the same way and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
 
@@ -196,6 +196,8 @@ cargo nextest run --workspace   # or: cargo test --workspace
 ```
 
 The toolchain is pinned in `rust-toolchain.toml`; rustup installs it on first use. CI also runs `typos` and `cargo shear` (`cargo install --locked cargo-nextest cargo-shear typos-cli`).
+
+`scripts/soak.sh [minutes]` runs a daemon of its own under a steady churn of sessions and clients and prints its memory and what it holds every 30 seconds: a count that only climbs is a leak.
 
 The suite (over 700 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, spelling, clippy and the docs with warnings as errors, a check for unused dependencies, a 1,000-line file limit, `cargo deny`, a build on the oldest Rust it supports, and the tests (through `cargo nextest`) on macOS and Linux.
 

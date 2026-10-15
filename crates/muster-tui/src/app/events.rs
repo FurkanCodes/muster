@@ -22,8 +22,7 @@ pub(crate) fn leaves_terminal(key: &KeyEvent) -> bool {
     );
     let shift_q = key.code == KeyCode::Char('Q')
         || (key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::SHIFT));
-    (shift_q && !control && !alt)
-        || (control && matches!(key.code, KeyCode::Char(']') | KeyCode::Char('5')))
+    (shift_q && !control && !alt) || (control && matches!(key.code, KeyCode::Char(']' | '5')))
 }
 
 /// The screen Ctrl+1, Ctrl+2 or Ctrl+3 goes to, from anywhere, a session's
@@ -82,8 +81,10 @@ impl App {
                 let (path, picker) = (path.clone(), picker.clone());
                 self.picker_paste(path, picker, text)
             }
-            Mode::Dialog(Dialog::NewWorktree { branch: input, .. })
-            | Mode::Dialog(Dialog::NewSession { prompt: input, .. }) => {
+            Mode::Dialog(
+                Dialog::NewWorktree { branch: input, .. }
+                | Dialog::NewSession { prompt: input, .. },
+            ) => {
                 input.paste(text);
                 Vec::new()
             }
@@ -224,8 +225,7 @@ impl App {
             if list_len == 0 {
                 return None;
             }
-            let at = at.unwrap_or(0) as isize + by;
-            Some(at.clamp(0, list_len as isize - 1) as usize)
+            Some(at.unwrap_or(0).saturating_add_signed(by).min(list_len - 1))
         };
         match self.view {
             View::Sessions => {
@@ -378,12 +378,11 @@ impl App {
             .and_then(|row| self.model.worktree_of(row))
             .and_then(|workspace| self.model.workspace(workspace))
             .and_then(|workspace| workspace.pull_request.as_ref());
-        match found {
-            Some(found) => vec![Action::Open(found.url.clone())],
-            None => {
-                self.complain("No pull request from this branch is known; o opens one.");
-                Vec::new()
-            }
+        if let Some(found) = found {
+            vec![Action::Open(found.url.clone())]
+        } else {
+            self.complain("No pull request from this branch is known; o opens one.");
+            Vec::new()
         }
     }
 

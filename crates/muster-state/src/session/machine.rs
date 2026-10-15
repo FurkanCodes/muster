@@ -41,7 +41,7 @@ impl Default for Timing {
     fn default() -> Self {
         Self {
             drain_grace: Duration::from_secs(180),
-            subagent_quiet: Duration::from_secs(30 * 60),
+            subagent_quiet: Duration::from_mins(30),
             heal_window: Duration::from_secs(30),
             echo_window: Duration::from_secs(5),
             start_grace: Duration::from_secs(10),
@@ -267,7 +267,7 @@ impl SessionMachine {
                 self.note_activity(&origin, now);
                 self.wait_for(origin, WaitReason::Question);
             }
-            HookEvent::ToolStarted { origin } => self.on_tool_started(origin, now),
+            HookEvent::ToolStarted { origin } => self.on_tool_started(&origin, now),
             HookEvent::ToolFinished { origin, question } => {
                 self.note_activity(&origin, now);
                 let reason = if question {
@@ -303,10 +303,10 @@ impl SessionMachine {
         self.wait_for(origin, WaitReason::Permission);
     }
 
-    fn on_tool_started(&mut self, origin: Origin, now: Instant) {
-        self.note_activity(&origin, now);
-        self.answer(&origin, WaitReason::Permission, now);
-        if origin == Origin::Main {
+    fn on_tool_started(&mut self, origin: &Origin, now: Instant) {
+        self.note_activity(origin, now);
+        self.answer(origin, WaitReason::Permission, now);
+        if *origin == Origin::Main {
             // The main agent is working again, so its turn has not ended.
             self.hold = None;
             if matches!(self.status, SessionStatus::Fresh | SessionStatus::Finished) {

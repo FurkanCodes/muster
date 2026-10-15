@@ -38,11 +38,11 @@ pub(crate) struct Sandbox {
 
 /// Stands in for Claude Code: records how it was started (its arguments,
 /// then the hook socket and token it was given), then behaves like a shell
-/// so tests can type into it. While the FAKE_CLAUDE_RESUME_FAILS flag file
+/// so tests can type into it. While the `FAKE_CLAUDE_RESUME_FAILS` flag file
 /// exists, a resume exits at once, as a real one does when the conversation
-/// is gone; with FAKE_CLAUDE_RESUME_FAILS_LATE, it says so and exits after
+/// is gone; with `FAKE_CLAUDE_RESUME_FAILS_LATE`, it says so and exits after
 /// a second, long enough for a client to be watching. It announces its
-/// start through the SessionStart hook, unless FAKE_CLAUDE_SILENT exists.
+/// start through the `SessionStart` hook, unless `FAKE_CLAUDE_SILENT` exists.
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
 dir="$FAKE_CLAUDE_DIR/$MUSTER_SESSION"
 mkdir -p "$dir"
@@ -71,7 +71,7 @@ exec /bin/sh
 
 /// Stands in for the GitHub CLI: answers `issue list` and `issue view N`
 /// from fixture files, records `issue close N` for an issue it has, keeps one pull request (#17) once one is created,
-/// with what it is told about it, and records every call. While the GH_SLOW
+/// with what it is told about it, and records every call. While the `GH_SLOW`
 /// flag file exists it takes two seconds to answer, like a slow network.
 const FAKE_GH: &str = r#"#!/bin/sh
 dir="$FAKE_GH_DIR"
@@ -513,7 +513,7 @@ pub(crate) fn answers_hello(socket: &Path) -> bool {
         }
         match decoder.next_frame::<ServerFrame>() {
             Ok(Some(frame)) => return matches!(frame, ServerFrame::Welcome(_)),
-            Ok(None) => continue,
+            Ok(None) => {}
             Err(_) => return false,
         }
     }

@@ -1,6 +1,6 @@
 //! What each session's agent has used (`PRD-12`): the sessions whose
 //! records the reader reads (`crate::spend`), and the totals it, or
-//! OpenCode's plugin, hands back, kept on the session for clients and
+//! `OpenCode`'s plugin, hands back, kept on the session for clients and
 //! never stored.
 
 use muster_core::protocol::Delta;

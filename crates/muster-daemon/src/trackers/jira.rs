@@ -93,6 +93,10 @@ impl Site {
 #[derive(Debug)]
 enum Access {
     Mcp {
+        /// One MCP session, its calls one at a time. An async lock, held
+        /// across one request's calls, each bounded by the HTTP client's
+        /// 30 s, and never awaited inside a `select!`, so it cannot
+        /// futurelock (`ARC-13`).
         mcp: Mutex<Mcp>,
     },
     Rest {

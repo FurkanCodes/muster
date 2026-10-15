@@ -164,23 +164,20 @@ fn attributes(input: &str, mut at: usize) -> Option<(Vec<(String, String)>, usiz
                 if bytes.get(at) == Some(&b'=') {
                     at += 1;
                     skip_spaces(&mut at);
-                    match bytes.get(at) {
-                        Some(&quote @ (b'"' | b'\'')) => {
-                            let start = at + 1;
-                            let end = start + input[start..].find(char::from(quote))?;
-                            value = decode(&input[start..end]).into_owned();
-                            at = end + 1;
+                    if let Some(&quote @ (b'"' | b'\'')) = bytes.get(at) {
+                        let start = at + 1;
+                        let end = start + input[start..].find(char::from(quote))?;
+                        value = decode(&input[start..end]).into_owned();
+                        at = end + 1;
+                    } else {
+                        let start = at;
+                        while bytes
+                            .get(at)
+                            .is_some_and(|b| !b.is_ascii_whitespace() && *b != b'>')
+                        {
+                            at += 1;
                         }
-                        _ => {
-                            let start = at;
-                            while bytes
-                                .get(at)
-                                .is_some_and(|b| !b.is_ascii_whitespace() && *b != b'>')
-                            {
-                                at += 1;
-                            }
-                            value = decode(&input[start..at]).into_owned();
-                        }
+                        value = decode(&input[start..at]).into_owned();
                     }
                 }
                 found.push((name, value));
@@ -203,16 +200,13 @@ fn decode(text: &str) -> Cow<'_, str> {
         let named = rest[1..]
             .find(';')
             .filter(|end| *end <= 32)
-            .and_then(|end| Some((reference(&rest[1..1 + end])?, end + 2)));
-        match named {
-            Some((decoded, length)) => {
-                out.push(decoded);
-                rest = &rest[length..];
-            }
-            None => {
-                out.push('&');
-                rest = &rest[1..];
-            }
+            .and_then(|end| Some((reference(&rest[1..=end])?, end + 2)));
+        if let Some((decoded, length)) = named {
+            out.push(decoded);
+            rest = &rest[length..];
+        } else {
+            out.push('&');
+            rest = &rest[1..];
         }
     }
     out.push_str(rest);

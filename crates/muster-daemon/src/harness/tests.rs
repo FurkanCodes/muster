@@ -29,7 +29,7 @@ fn tokens_are_long_random_and_distinct() {
 fn checks_run_in_a_shell_with_their_limit_and_commands() {
     let spec = spawn_spec(
         CHECKS,
-        Launch {
+        &Launch {
             session: SessionId::new(),
             agent_session: None,
             resume: false,
@@ -39,7 +39,7 @@ fn checks_run_in_a_shell_with_their_limit_and_commands() {
             size: TermSize::default(),
             checks: Some(CheckCommands {
                 commands: vec!["cargo test".to_owned(), "cargo clippy".to_owned()],
-                limit: std::time::Duration::from_secs(1800),
+                limit: std::time::Duration::from_mins(30),
             }),
             support: None,
         },
@@ -63,14 +63,14 @@ fn a_review_is_claude_code_in_plan_mode_resumed_or_not() {
         checks: None,
         support: None,
     };
-    let fresh = spawn_spec(REVIEW, launch(false));
+    let fresh = spawn_spec(REVIEW, &launch(false));
     assert_eq!(fresh.program, "claude");
     assert_eq!(fresh.args[..2], ["--permission-mode", "plan"]);
     assert_eq!(
         fresh.args.last().map(String::as_str),
         Some("Review the change")
     );
-    let resumed = spawn_spec(REVIEW, launch(true));
+    let resumed = spawn_spec(REVIEW, &launch(true));
     assert_eq!(
         resumed.args[..4],
         ["--permission-mode", "plan", "--resume", "id"]
@@ -82,14 +82,14 @@ fn a_review_is_claude_code_in_plan_mode_resumed_or_not() {
 fn hooks_reach_the_program_through_its_environment() {
     let spec = spawn_spec(
         CLAUDE,
-        Launch {
+        &Launch {
             session: SessionId::new(),
             agent_session: Some("id".to_owned()),
             resume: false,
             prompt: None,
             hooks: Some(HookEndpoint {
                 socket: PathBuf::from("/run/hooks.sock"),
-                token: "secret".to_owned(),
+                token: crate::secrets::Token::new("secret"),
             }),
             place: Place::Host(PathBuf::from("/work")),
             size: TermSize::default(),
@@ -195,7 +195,7 @@ fn agent_launch(agent_session: Option<&str>, support: Option<&str>) -> Launch {
         prompt: Some("fix it".to_owned()),
         hooks: Some(HookEndpoint {
             socket: PathBuf::from("/run/hooks.sock"),
-            token: "secret".to_owned(),
+            token: crate::secrets::Token::new("secret"),
         }),
         place: Place::Host(PathBuf::from("/work")),
         size: TermSize::default(),
@@ -213,11 +213,11 @@ fn value<'a>(spec: &'a SpawnSpec, key: &str) -> Option<&'a str> {
 
 #[test]
 fn each_agent_runs_its_own_program_pointed_at_muster_s_files() {
-    let codex = spawn_spec(CODEX, agent_launch(None, Some("/run/support")));
+    let codex = spawn_spec(CODEX, &agent_launch(None, Some("/run/support")));
     assert_eq!(codex.program, "codex");
     assert_eq!(codex.args[..3], ["--no-daemon", "-C", "/work"]);
 
-    let gemini = spawn_spec(GEMINI, agent_launch(Some("g1"), Some("/run/support")));
+    let gemini = spawn_spec(GEMINI, &agent_launch(Some("g1"), Some("/run/support")));
     assert_eq!(gemini.program, "gemini");
     assert_eq!(gemini.args[..2], ["--session-id", "g1"]);
     if std::env::var_os(gemini::DEFAULTS_VARIABLE).is_none() {
@@ -227,7 +227,7 @@ fn each_agent_runs_its_own_program_pointed_at_muster_s_files() {
         );
     }
 
-    let opencode = spawn_spec(OPENCODE, agent_launch(None, Some("/run/support")));
+    let opencode = spawn_spec(OPENCODE, &agent_launch(None, Some("/run/support")));
     assert_eq!(opencode.program, "opencode");
     assert_eq!(opencode.args, ["/work", "--prompt", "fix it"]);
     if std::env::var_os(opencode::CONFIG_VARIABLE).is_none() {
@@ -237,7 +237,7 @@ fn each_agent_runs_its_own_program_pointed_at_muster_s_files() {
         );
     }
 
-    let copilot = spawn_spec(COPILOT, agent_launch(Some("c1"), Some("/run/support")));
+    let copilot = spawn_spec(COPILOT, &agent_launch(Some("c1"), Some("/run/support")));
     assert_eq!(copilot.program, "copilot");
     assert_eq!(
         copilot.args,
@@ -256,8 +256,8 @@ fn each_agent_runs_its_own_program_pointed_at_muster_s_files() {
 
 #[test]
 fn without_muster_s_files_an_agent_still_runs() {
-    let gemini = spawn_spec(GEMINI, agent_launch(Some("g1"), None));
+    let gemini = spawn_spec(GEMINI, &agent_launch(Some("g1"), None));
     assert_eq!(value(&gemini, gemini::DEFAULTS_VARIABLE), None);
-    let copilot = spawn_spec(COPILOT, agent_launch(Some("c1"), None));
+    let copilot = spawn_spec(COPILOT, &agent_launch(Some("c1"), None));
     assert!(!copilot.args.iter().any(|arg| arg == "--plugin-dir"));
 }

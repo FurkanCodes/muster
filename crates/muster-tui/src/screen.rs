@@ -164,6 +164,7 @@ mod tests {
     #[test]
     fn the_view_scrolls_back_within_what_was_kept_and_holds_still() {
         let mut screen = Screen::new(10, 3);
+        #[expect(clippy::format_collect, reason = "test input")]
         let lines: String = (1..=10).map(|n| format!("line{n}\r\n")).collect();
         screen.replay(0, lines.as_bytes(), true);
         assert_eq!(screen.scrolled_back(), 0);

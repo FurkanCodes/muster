@@ -180,37 +180,14 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
                     Vec::new()
                 }
             },
-            Woke::Folders((dir, folders)) => app.on_folders(dir, folders),
+            Woke::Folders((dir, folders)) => app.on_folders(&dir, folders),
             Woke::Time => {
                 draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
                 continue;
             }
         };
         dirty = true;
-        let mut quit = false;
-        for action in actions {
-            match action {
-                Action::Quit => quit = true,
-                Action::Notify(text) => notify(&text),
-                Action::Open(url) => open_in_browser(&url),
-                Action::Copy(text) => clipboard::copy(&text),
-                Action::ListFolders(dir) => {
-                    let listed = listed_folders.clone();
-                    tokio::task::spawn_blocking(move || {
-                        let folders = folders::list(&dir);
-                        let _ = listed.send((dir, folders));
-                    });
-                }
-                Action::Send(frame) => {
-                    if let Some(connected) = &mut sender
-                        && connected.send(&frame).await.is_err()
-                    {
-                        // The link task notices and reconnects.
-                        sender = None;
-                    }
-                }
-            }
-        }
+        let quit = perform(actions, &mut sender, &listed_folders).await;
         if quit {
             break Ok(());
         }
@@ -218,6 +195,39 @@ pub async fn run(options: Options) -> Result<(), TuiError> {
     };
     drop(terminal);
     outcome
+}
+
+/// Carries out what the app asked for; whether it asked to quit.
+async fn perform(
+    actions: Vec<Action>,
+    sender: &mut Option<FrameSender>,
+    listed_folders: &mpsc::UnboundedSender<(PathBuf, Result<Vec<Folder>, String>)>,
+) -> bool {
+    let mut quit = false;
+    for action in actions {
+        match action {
+            Action::Quit => quit = true,
+            Action::Notify(text) => notify(&text),
+            Action::Open(url) => open_in_browser(&url),
+            Action::Copy(text) => clipboard::copy(&text),
+            Action::ListFolders(dir) => {
+                let listed = listed_folders.clone();
+                tokio::task::spawn_blocking(move || {
+                    let folders = folders::list(&dir);
+                    let _ = listed.send((dir, folders));
+                });
+            }
+            Action::Send(frame) => {
+                if let Some(connected) = sender
+                    && connected.send(&frame).await.is_err()
+                {
+                    // The link task notices and reconnects.
+                    *sender = None;
+                }
+            }
+        }
+    }
+    quit
 }
 
 /// Draws what changed, at most once a `FRAME`, and not while the session
@@ -459,7 +469,7 @@ fn restore_modes(out: &mut Stdout, enhanced_keys: bool) {
 }
 
 /// Shows `text` as a desktop notification where the terminal supports it
-/// (OSC 9: iTerm2, WezTerm, Ghostty, kitty, Windows Terminal) and rings its
+/// (OSC 9: iTerm2, `WezTerm`, Ghostty, kitty, Windows Terminal) and rings its
 /// bell, which the others show as a badge or a bounce. The text can carry
 /// an issue's title, so control characters are taken out first: they could
 /// end the sequence and send the terminal commands of their own.

@@ -7,6 +7,7 @@
 //! its commits out and pushes them itself (`ARC-06`). The reviewer reads
 //! the change and ends with a JSON verdict, which the daemon checks.
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use muster_core::Ticket;
@@ -180,7 +181,7 @@ impl ReviewVerdict {
                 Some(line) => format!("{}:{line}", comment.path),
                 None => comment.path.clone(),
             };
-            text.push_str(&format!("\n\n- `{place}`: {}", comment.body.trim()));
+            let _ = write!(text, "\n\n- `{place}`: {}", comment.body.trim());
         }
         text
     }

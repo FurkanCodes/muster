@@ -1,23 +1,23 @@
-//! OpenCode: its command line, its plugin, and what the plugin reports.
+//! `OpenCode`: its command line, its plugin, and what the plugin reports.
 //!
-//! OpenCode hears from plugins, never hooks. Muster's plugin is a file of
+//! `OpenCode` hears from plugins, never hooks. Muster's plugin is a file of
 //! its own, added for the session only through `OPENCODE_CONFIG_CONTENT`,
-//! which OpenCode merges over the person's config with plugin lists joined,
+//! which `OpenCode` merges over the person's config with plugin lists joined,
 //! not replaced (`PRD-13`); a value the person set is kept and the plugin
 //! added to it. The plugin posts the events that matter to the daemon's
 //! hook socket with the session's token, read from its environment.
 //!
-//! OpenCode chooses its own session ids. The plugin reports each session
+//! `OpenCode` chooses its own session ids. The plugin reports each session
 //! as it starts; a subagent's is a child session, which the plugin names by
 //! the session at the root of it, so the machine sees one agent session
 //! with subagents in it.
 //!
 //! At each turn's end the plugin also says what the session and its
-//! subagents' sessions have used, as OpenCode counts it through its own
+//! subagents' sessions have used, as `OpenCode` counts it through its own
 //! API: every token and the cost (`PRD-12`), which it alone of the agents
 //! reports.
 //!
-//! Verified against OpenCode 1.4.6: the variable loads a `file://` plugin,
+//! Verified against `OpenCode` 1.4.6: the variable loads a `file://` plugin,
 //! which sees the session's environment; the event names and fields read
 //! below are those of its bus; the client's `session.children` and
 //! `session.messages`, and a message's `cost` and `tokens`, are those of
@@ -32,10 +32,10 @@ use super::Launch;
 /// The variable carrying config for this session only.
 pub(crate) const CONFIG_VARIABLE: &str = "OPENCODE_CONFIG_CONTENT";
 
-/// OpenCode's tool for asking the person a question.
+/// `OpenCode`'s tool for asking the person a question.
 const QUESTION_TOOL: &str = "question";
 
-/// OpenCode's arguments for `launch` in `cwd`.
+/// `OpenCode`'s arguments for `launch` in `cwd`.
 pub(crate) fn arguments(launch: &Launch, cwd: &str) -> Vec<String> {
     let mut args = vec![cwd.to_owned()];
     match (&launch.agent_session, launch.resume, &launch.prompt) {
@@ -67,7 +67,7 @@ pub(crate) fn config_content(own: Option<&str>, plugin: &str) -> Option<String> 
     Some(config.to_string())
 }
 
-/// The plugin. Plain JavaScript with no imports, run by OpenCode's Bun: it
+/// The plugin. Plain JavaScript with no imports, run by `OpenCode`'s Bun: it
 /// posts with `fetch` over the hook socket, never waits on the daemon for
 /// long, and swallows every failure, so it can never hold up or break a
 /// session. Streamed text is never sent.
@@ -160,14 +160,9 @@ pub(crate) fn spend(body: &[u8]) -> Option<Spend> {
     if !sane(tokens, 1e15) || !sane(cost, 1e9) {
         return None;
     }
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "both checked finite and in range above"
-    )]
     Some(Spend {
-        tokens: tokens as u64,
-        cost_micros: Some((cost * 1_000_000.0).round() as u64),
+        tokens: muster_core::num::round_u64(tokens),
+        cost_micros: Some(muster_core::num::round_u64(cost * 1_000_000.0)),
     })
 }
 

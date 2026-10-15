@@ -83,6 +83,10 @@ async fn start_claude(
 }
 
 /// A payload shaped like Claude Code's, for `agent_session`.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers build the extra fields in place; a borrow would not outlive them"
+)]
 fn payload(agent_session: &str, event: &str, extra: serde_json::Value) -> serde_json::Value {
     let mut payload = json!({
         "session_id": agent_session,

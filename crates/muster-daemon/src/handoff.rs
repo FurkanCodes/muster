@@ -21,6 +21,7 @@ use std::io::{self, Read, Seek, Write};
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 use std::os::unix::net::UnixListener;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -53,7 +54,7 @@ pub(crate) struct CarriedSession {
     pub(crate) id: SessionId,
     pub(crate) harness: String,
     /// The token its hooks carry (`ARC-11`).
-    pub(crate) token: Option<String>,
+    pub(crate) token: Option<crate::secrets::Token>,
     /// How long it had been running.
     pub(crate) running_for: Duration,
     pub(crate) resumed: bool,
@@ -69,7 +70,7 @@ impl CarriedSession {
     pub(crate) fn new(
         id: SessionId,
         harness: String,
-        token: Option<String>,
+        token: Option<crate::secrets::Token>,
         running_for: Duration,
         resumed: bool,
         machine: muster_state::session::Carried,
@@ -119,9 +120,24 @@ pub(crate) fn next_program() -> io::Result<PathBuf> {
     })
 }
 
+/// Why the daemon could not restart in place; it carries on as it was.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ReloadError {
+    #[error("cannot tell which program to run: {0}")]
+    NoProgram(io::Error),
+    #[error("{} cannot take over this daemon (an older Muster?)", .0.display())]
+    Refused(PathBuf),
+    #[error("cannot run {}: {error}", .program.display())]
+    Unrunnable { program: PathBuf, error: io::Error },
+    #[error("{} did not say whether it can take over", .0.display())]
+    NoAnswer(PathBuf),
+    #[error("could not start {}: {error}", .program.display())]
+    NotStarted { program: PathBuf, error: io::Error },
+}
+
 /// Whether `program` can take over from this daemon: it must say so for
 /// this handoff's format, as an older Muster cannot.
-pub(crate) async fn can_take_over(program: &Path) -> Result<(), String> {
+pub(crate) async fn can_take_over(program: &Path) -> Result<(), ReloadError> {
     let asked = tokio::process::Command::new(program)
         .args(["daemon", "--can-adopt", &FORMAT.to_string()])
         .stdin(std::process::Stdio::null())
@@ -131,15 +147,12 @@ pub(crate) async fn can_take_over(program: &Path) -> Result<(), String> {
         .status();
     match tokio::time::timeout(ASK_LIMIT, asked).await {
         Ok(Ok(status)) if status.success() => Ok(()),
-        Ok(Ok(_)) => Err(format!(
-            "{} cannot take over this daemon (an older Muster?)",
-            program.display()
-        )),
-        Ok(Err(error)) => Err(format!("cannot run {}: {error}", program.display())),
-        Err(_) => Err(format!(
-            "{} did not say whether it can take over",
-            program.display()
-        )),
+        Ok(Ok(_)) => Err(ReloadError::Refused(program.to_owned())),
+        Ok(Err(error)) => Err(ReloadError::Unrunnable {
+            program: program.to_owned(),
+            error,
+        }),
+        Err(_) => Err(ReloadError::NoAnswer(program.to_owned())),
     }
 }
 
@@ -202,7 +215,6 @@ pub(crate) fn exec_into(
     if let Err(error) = kept {
         return (error, back(manifest, masters));
     }
-    use std::os::unix::process::CommandExt;
     let error = std::process::Command::new(program)
         .args(arguments)
         .arg("--adopt")
@@ -279,6 +291,7 @@ fn listener(fd: RawFd) -> io::Result<UnixListener> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn the_handoff_is_written_with_no_name_and_read_back() {
@@ -300,7 +313,6 @@ mod tests {
             (read.format, read.from, read.lock),
             (FORMAT, "0.2.0".into(), 7)
         );
-        use std::os::unix::fs::PermissionsExt;
         assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
     }
 

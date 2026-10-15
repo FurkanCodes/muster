@@ -4,6 +4,7 @@
 //! there is room.
 
 use muster_core::SessionStatus;
+use muster_core::num::fraction;
 use muster_core::protocol::ResourceReport;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -190,8 +191,8 @@ fn memory(report: &ResourceReport) -> Vec<Span<'static>> {
 /// counts.
 fn amount(used: u64, total: u64) -> String {
     const GB: f64 = 1_000_000_000.0;
-    if total as f64 >= GB {
-        format!("{:.1}/{:.1} GB", used as f64 / GB, total as f64 / GB)
+    if fraction(total) >= GB {
+        format!("{:.1}/{:.1} GB", fraction(used) / GB, fraction(total) / GB)
     } else {
         format!("{}/{}", bytes(used), bytes(total))
     }

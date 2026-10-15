@@ -48,13 +48,13 @@ fn the_documented_example_reads_as_written() {
     assert_eq!(config.memory_bytes, 6 * 1024 * 1024 * 1024);
     assert_eq!(config.millicpus, 4_000);
     assert_eq!(config.checks.commands.len(), 2);
-    assert_eq!(config.checks.timeout, Duration::from_secs(30 * 60));
+    assert_eq!(config.checks.timeout, Duration::from_mins(30));
     assert_eq!(
         config.agents.instructions,
         [PathBuf::from("AGENTS.md"), PathBuf::from("RULES.md")]
     );
     assert_eq!(config.limits.attempts, 3);
-    assert_eq!(config.limits.run_timeout, Duration::from_secs(90 * 60));
+    assert_eq!(config.limits.run_timeout, Duration::from_mins(90));
     assert_eq!(config.limits.max_cost_usd, Some(10.0));
     assert_eq!(config.intake.label.as_deref(), Some("muster"));
     assert_eq!(config.intake.allowed_accounts, ["furkan"]);
@@ -68,12 +68,8 @@ fn nothing_written_means_the_defaults_and_no_runs() {
         parse("").unwrap(),
     ] {
         assert_eq!(config, ProjectConfig::default());
-        assert!(
-            config
-                .ready_for_runs()
-                .unwrap_err()
-                .contains("runs need checks")
-        );
+        assert_eq!(config.ready_for_runs(), Err(NoChecks));
+        assert!(NoChecks.to_string().contains("runs need checks"));
     }
 }
 
@@ -176,8 +172,8 @@ fn sizes_and_durations_read_as_people_write_them() {
     for bad in ["", "g", "-1g", "1x", "nan"] {
         assert_eq!(parse_size(bad), None, "{bad:?}");
     }
-    assert_eq!(parse_duration("90m"), Some(Duration::from_secs(5400)));
-    assert_eq!(parse_duration("1h30m"), Some(Duration::from_secs(5400)));
+    assert_eq!(parse_duration("90m"), Some(Duration::from_mins(90)));
+    assert_eq!(parse_duration("1h30m"), Some(Duration::from_mins(90)));
     assert_eq!(parse_duration("45s"), Some(Duration::from_secs(45)));
     for bad in ["", "90", "m", "1.5h", "1d", "h1"] {
         assert_eq!(parse_duration(bad), None, "{bad:?}");

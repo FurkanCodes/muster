@@ -127,9 +127,10 @@ async fn take_over(setup: &Setup, run: RunId) -> (WorkspaceId, SessionId) {
 }
 
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one scenario, start to end")]
 async fn the_person_drives_the_run_s_agent_in_its_container_and_hands_it_back() {
     let setup = setup(CHECKS).await;
-    let dir = setup._dir.path().to_owned();
+    let dir = setup.dir.path().to_owned();
     let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
     let run = building(&setup, &mut deltas).await;
 
@@ -320,7 +321,7 @@ async fn taking_over_needs_the_credential_and_a_container() {
 #[tokio::test]
 async fn a_daemon_restart_starts_the_person_s_agent_again_and_ends_their_shells() {
     let setup = setup(CHECKS).await;
-    let dir = setup._dir.path().to_owned();
+    let dir = setup.dir.path().to_owned();
     let (_, mut deltas) = setup.supervisor.subscribe().await.unwrap();
     let run = building(&setup, &mut deltas).await;
     let (workspace, agent) = take_over(&setup, run).await;
@@ -342,7 +343,7 @@ async fn a_daemon_restart_starts_the_person_s_agent_again_and_ends_their_shells(
     wait_for_launches(&dir, shell, 1).await;
 
     let Setup {
-        _dir: kept,
+        dir: kept,
         database,
         supervisor,
         ..
@@ -394,7 +395,7 @@ async fn a_container_left_by_a_run_that_ended_goes_when_the_daemon_starts() {
 
     // As if the daemon had stopped before the run's container left.
     let Setup {
-        _dir: kept,
+        dir: kept,
         database,
         supervisor,
         project,

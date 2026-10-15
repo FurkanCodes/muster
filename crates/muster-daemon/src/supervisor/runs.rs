@@ -136,6 +136,10 @@ impl Supervisor {
 
     /// Picks the fetched ticket up: stores the run, then gives it room to
     /// run (`M3` adds a scheduler that waits for memory).
+    #[expect(
+        clippy::too_many_lines,
+        reason = "a run's start, step by step, each stored before the next (ARC-10)"
+    )]
     pub(super) async fn start_fetched_run(&mut self, fetched: FetchedRun) {
         let FetchedRun {
             project,
@@ -189,7 +193,7 @@ impl Supervisor {
             max_cost_micros: config
                 .limits
                 .max_cost_usd
-                .map(|usd| (usd * 1_000_000.0).round() as u64),
+                .map(|usd| muster_core::num::round_u64(usd * 1_000_000.0)),
         };
         let (branch, machine) = match handed {
             Some(branch) => (branch, RunMachine::handed_off(limits)),
@@ -747,7 +751,7 @@ async fn settings_for_runs(root: PathBuf, overrides: PathBuf) -> Result<ProjectC
     let config = loaded.config;
     config
         .ready_for_runs()
-        .map_err(|reason| ErrorBody::new(ErrorCode::BadRequest, reason))?;
+        .map_err(|reason| ErrorBody::new(ErrorCode::BadRequest, reason.to_string()))?;
     for (role, harness) in [
         ("builder", &config.agents.builder),
         ("reviewer", &config.agents.reviewer),

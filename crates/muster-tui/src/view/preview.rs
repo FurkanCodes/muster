@@ -1,7 +1,7 @@
 //! The pane beside the list when the list has the keys: the selected
 //! session's terminal, or a worktree's or a project's details.
 
-use muster_core::WorkspaceKind;
+use muster_core::{Project, Workspace, WorkspaceKind};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Stylize;
@@ -24,108 +24,14 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .then_some(app.selected)
         .flatten()
     {
-        Some(Row::Worktree(id)) => match app.model.workspace(id) {
-            Some(workspace) => {
-                let sessions = app.model.sessions_of(id).count();
-                let mut lines = Vec::new();
-                if !workspace.kind.in_git() {
-                    lines.push(
-                        Line::from("The project's own folder, where you work too. It is not a git repository.")
-                            .dim(),
-                    );
-                } else if workspace.kind.is_checkout() {
-                    lines.push(Line::from("The project's own checkout, where you work too.").dim());
-                }
-                if let Some(run) = app.model.run_of(id) {
-                    lines.push(
-                        Line::from(format!(
-                            "The container of the run on #{} ({}), with a clone of its own.",
-                            run.ticket.number,
-                            run.stage.label()
-                        ))
-                        .dim(),
-                    );
-                }
-                if workspace.kind.in_git() {
-                    lines.push(Line::from(vec![
-                        Span::from("Branch  ").dim(),
-                        Span::raw(workspace.kind.branch().to_owned()),
-                    ]));
-                }
-                if let Some(found) = &workspace.pull_request {
-                    lines.push(Line::from(vec![
-                        Span::from("PR      ").dim(),
-                        Span::raw(found.summary()),
-                    ]));
-                }
-                lines.extend([
-                    Line::from(vec![
-                        Span::from("Path    ").dim(),
-                        Span::raw(workspace.kind.host_path().map_or_else(
-                            || "in the run's container".to_owned(),
-                            |path| path.display().to_string(),
-                        )),
-                    ]),
-                    Line::from(vec![
-                        Span::from("Sessions ").dim(),
-                        Span::raw(sessions.to_string()),
-                    ]),
-                    Line::from(""),
-                ]);
-                lines.push(
-                    Line::from(match &workspace.kind {
-                        WorkspaceKind::Checkout { .. } => "Press n or ⏎ to start a session here.",
-                        WorkspaceKind::Worktree { .. } => {
-                            "Press n or ⏎ to start a session here, x to remove the worktree."
-                        }
-                        WorkspaceKind::Container { .. } => {
-                            "Press n or ⏎ for a shell in it; it goes when the run ends."
-                        }
-                    })
-                    .dim(),
-                );
-                if workspace.pull_request.is_some() {
-                    lines.push(Line::from("b opens its pull request in the browser.").dim());
-                }
-                Text::from(lines)
-            }
-            None => Text::default(),
-        },
-        Some(Row::Project(id)) => match app.model.project(id) {
-            Some(project) if app.model.is_plain_folder(id) => Text::from(vec![
-                Line::from(vec![
-                    Span::from("Folder  ").dim(),
-                    Span::raw(project.root.display().to_string()),
-                ]),
-                Line::from(""),
-                Line::from("Press n or ⏎ to start a session in the folder.").dim(),
-                Line::from(
-                    "It is not a git repository, so it has no worktrees or tickets; git init there makes it one.",
-                )
-                .dim(),
-            ]),
-            Some(project) => {
-                let worktrees = app
-                    .model
-                    .workspaces_of(id)
-                    .filter(|workspace| !workspace.kind.is_checkout())
-                    .count();
-                Text::from(vec![
-                    Line::from(vec![
-                        Span::from("Repository  ").dim(),
-                        Span::raw(project.root.display().to_string()),
-                    ]),
-                    Line::from(vec![
-                        Span::from("Worktrees   ").dim(),
-                        Span::raw(worktrees.to_string()),
-                    ]),
-                    Line::from(""),
-                    Line::from("Press w or ⏎ to create a worktree for a new piece of work,").dim(),
-                    Line::from("n to start a session in the project's own checkout.").dim(),
-                ])
-            }
-            None => Text::default(),
-        },
+        Some(Row::Worktree(id)) => app
+            .model
+            .workspace(id)
+            .map_or_else(Text::default, |workspace| workspace_details(app, workspace)),
+        Some(Row::Project(id)) => app
+            .model
+            .project(id)
+            .map_or_else(Text::default, |project| project_details(app, project)),
         _ if !app.model.loaded() => {
             return kep::draw_empty_pane(frame, area, "Connecting to the daemon…", &[]);
         }
@@ -145,4 +51,107 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
             .block(panel(" Details ", false)),
         area,
     );
+}
+
+/// A worktree's or a checkout's details, and what can be done with it.
+fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
+    let id = workspace.id;
+    let sessions = app.model.sessions_of(id).count();
+    let mut lines = Vec::new();
+    if !workspace.kind.in_git() {
+        lines.push(
+            Line::from("The project's own folder, where you work too. It is not a git repository.")
+                .dim(),
+        );
+    } else if workspace.kind.is_checkout() {
+        lines.push(Line::from("The project's own checkout, where you work too.").dim());
+    }
+    if let Some(run) = app.model.run_of(id) {
+        lines.push(
+            Line::from(format!(
+                "The container of the run on #{} ({}), with a clone of its own.",
+                run.ticket.number,
+                run.stage.label()
+            ))
+            .dim(),
+        );
+    }
+    if workspace.kind.in_git() {
+        lines.push(Line::from(vec![
+            Span::from("Branch  ").dim(),
+            Span::raw(workspace.kind.branch().to_owned()),
+        ]));
+    }
+    if let Some(found) = &workspace.pull_request {
+        lines.push(Line::from(vec![
+            Span::from("PR      ").dim(),
+            Span::raw(found.summary()),
+        ]));
+    }
+    lines.extend([
+        Line::from(vec![
+            Span::from("Path    ").dim(),
+            Span::raw(workspace.kind.host_path().map_or_else(
+                || "in the run's container".to_owned(),
+                |path| path.display().to_string(),
+            )),
+        ]),
+        Line::from(vec![
+            Span::from("Sessions ").dim(),
+            Span::raw(sessions.to_string()),
+        ]),
+        Line::from(""),
+    ]);
+    lines.push(
+        Line::from(match &workspace.kind {
+            WorkspaceKind::Checkout { .. } => "Press n or ⏎ to start a session here.",
+            WorkspaceKind::Worktree { .. } => {
+                "Press n or ⏎ to start a session here, x to remove the worktree."
+            }
+            WorkspaceKind::Container { .. } => {
+                "Press n or ⏎ for a shell in it; it goes when the run ends."
+            }
+        })
+        .dim(),
+    );
+    if workspace.pull_request.is_some() {
+        lines.push(Line::from("b opens its pull request in the browser.").dim());
+    }
+    Text::from(lines)
+}
+
+/// A project's details, and what can be done with it.
+fn project_details(app: &App, project: &Project) -> Text<'static> {
+    if app.model.is_plain_folder(project.id) {
+        return Text::from(vec![
+            Line::from(vec![
+                Span::from("Folder  ").dim(),
+                Span::raw(project.root.display().to_string()),
+            ]),
+            Line::from(""),
+            Line::from("Press n or ⏎ to start a session in the folder.").dim(),
+            Line::from(
+                "It is not a git repository, so it has no worktrees or tickets; git init there makes it one.",
+            )
+            .dim(),
+        ]);
+    }
+    let worktrees = app
+        .model
+        .workspaces_of(project.id)
+        .filter(|workspace| !workspace.kind.is_checkout())
+        .count();
+    Text::from(vec![
+        Line::from(vec![
+            Span::from("Repository  ").dim(),
+            Span::raw(project.root.display().to_string()),
+        ]),
+        Line::from(vec![
+            Span::from("Worktrees   ").dim(),
+            Span::raw(worktrees.to_string()),
+        ]),
+        Line::from(""),
+        Line::from("Press w or ⏎ to create a worktree for a new piece of work,").dim(),
+        Line::from("n to start a session in the project's own checkout.").dim(),
+    ])
 }

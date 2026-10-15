@@ -7,7 +7,7 @@
 //! the checkout's remote. Bitbucket's own issue tracker is gone (2026):
 //! its teams' tickets are in Jira.
 //!
-//! Checked against Bitbucket's OpenAPI descriptions (Cloud, and Data
+//! Checked against Bitbucket's `OpenAPI` descriptions (Cloud, and Data
 //! Center 10): draft pull requests (Cloud since April 2025, Data Center
 //! since 8.18), finding a branch's open one, comments, and states.
 
@@ -183,11 +183,7 @@ impl Bitbucket {
             }
         };
         let page: Page = serde_json::from_value(page).map_err(unreadable)?;
-        Ok(page
-            .values
-            .into_iter()
-            .next()
-            .and_then(|found| found.pull_request()))
+        Ok(page.values.into_iter().next().and_then(Pull::pull_request))
     }
 
     /// The newest pull request from `branch`, in any state.
@@ -279,6 +275,10 @@ fn refusal(status: u16, host: &str, text: &str) -> ServiceError {
     }
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a converter for .map_err(f), which hands it the error by value"
+)]
 fn unreadable(error: serde_json::Error) -> ServiceError {
     ServiceError::Unreadable(format!("Bitbucket answered something unexpected: {error}"))
 }

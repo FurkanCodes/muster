@@ -339,6 +339,7 @@ async fn atlassian_s_mcp_server_lists_views_and_closes_on_the_site_s_cloud() {
 /// `muster auth jira` and prints the sites it reaches and the tools named.
 #[tokio::test]
 #[ignore = "reads the person's Atlassian sign-in and reaches Atlassian"]
+#[expect(clippy::too_many_lines, reason = "one scenario, start to end")]
 async fn live_atlassian_sites_and_tools() {
     let secrets = crate::secrets::Keychain::default();
     let http = crate::service::http_client();
@@ -402,31 +403,6 @@ async fn live_atlassian_sites_and_tools() {
     }
     let tool = mcp.tool(&["getAccessibleAtlassianResources"]).unwrap();
     let resources = mcp.call(&tool, json!({})).await.unwrap();
-    // The shape of one search result, one ticket and its transitions, never
-    // their text: keys only, and the transitions' categories.
-    fn shape(value: &Value, depth: usize) -> String {
-        match value {
-            Value::Object(map) if depth > 0 => format!(
-                "{{{}}}",
-                map.iter()
-                    .map(|(key, value)| format!("{key}: {}", shape(value, depth - 1)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            Value::Array(items) if depth > 0 => format!(
-                "[{} × {}]",
-                items.len(),
-                items
-                    .first()
-                    .map_or("-".to_owned(), |item| shape(item, depth - 1))
-            ),
-            Value::String(_) => "str".to_owned(),
-            Value::Number(_) => "num".to_owned(),
-            Value::Bool(_) => "bool".to_owned(),
-            Value::Null => "null".to_owned(),
-            _ => "…".to_owned(),
-        }
-    }
     let cloud = resources
         .pointer("/data/resources/0/cloudId")
         .cloned()
@@ -697,4 +673,30 @@ async fn live_jira_descriptions_read_as_text() {
         );
     }
     println!("tags used: {tags:?}");
+}
+
+// The shape of one search result, one ticket and its transitions, never
+// their text: keys only, and the transitions' categories.
+fn shape(value: &Value, depth: usize) -> String {
+    match value {
+        Value::Object(map) if depth > 0 => format!(
+            "{{{}}}",
+            map.iter()
+                .map(|(key, value)| format!("{key}: {}", shape(value, depth - 1)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Value::Array(items) if depth > 0 => format!(
+            "[{} × {}]",
+            items.len(),
+            items
+                .first()
+                .map_or("-".to_owned(), |item| shape(item, depth - 1))
+        ),
+        Value::String(_) => "str".to_owned(),
+        Value::Number(_) => "num".to_owned(),
+        Value::Bool(_) => "bool".to_owned(),
+        Value::Null => "null".to_owned(),
+        _ => "…".to_owned(),
+    }
 }

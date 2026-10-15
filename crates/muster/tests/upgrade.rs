@@ -17,6 +17,7 @@ mod support;
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -82,7 +83,6 @@ fn release(dir: &Path, checksum: Option<&str>) -> HashMap<String, Vec<u8>> {
         "#!/bin/sh\n[ \"$1\" = --version ] && echo 'muster 9.9.9'\nexit 0\n",
     )
     .unwrap();
-    use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let archive = dir.join(format!("{name}.tar.gz"));
     let packed = Command::new("tar")
@@ -95,10 +95,7 @@ fn release(dir: &Path, checksum: Option<&str>) -> HashMap<String, Vec<u8>> {
         .unwrap();
     assert!(packed.success());
     let bytes = std::fs::read(&archive).unwrap();
-    let right: String = Sha256::digest(&bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let right = muster_core::hex::encode(&Sha256::digest(&bytes));
     let sum = format!("{}  {name}.tar.gz\n", checksum.unwrap_or(&right));
     HashMap::from([
         (format!("/{name}.tar.gz"), bytes),

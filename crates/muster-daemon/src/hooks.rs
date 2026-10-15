@@ -25,7 +25,7 @@ const MAX_BODY: usize = 32 * 1024 * 1024;
 /// One accepted hook post.
 #[derive(Debug)]
 pub(crate) struct HookDelivery {
-    pub(crate) token: String,
+    pub(crate) token: crate::secrets::Token,
     /// The harness the address names: a session's token is good only for
     /// its own harness's reports.
     pub(crate) harness: String,
@@ -82,7 +82,7 @@ fn deliver(
         return StatusCode::UNAUTHORIZED;
     };
     let delivery = HookDelivery {
-        token,
+        token: crate::secrets::Token::new(token),
         harness,
         event,
         body,

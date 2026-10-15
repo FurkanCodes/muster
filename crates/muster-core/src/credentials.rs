@@ -7,7 +7,7 @@
 //!
 //! What is hidden: private keys; JSON Web Tokens; what follows `Bearer` or
 //! `Basic`; well-known token forms (GitHub, GitLab, Slack, Anthropic,
-//! OpenAI, AWS, Google, Linear, Atlassian, npm, PyPI); the values of keys
+//! `OpenAI`, AWS, Google, Linear, Atlassian, npm, `PyPI`); the values of keys
 //! that name a secret (`api_key`, `x-api-key`, `token`, `password`,
 //! `client_secret`, `cookie`, …) written `key: value` or `key=value`; and
 //! the password in a web address. It errs towards hiding: a value is cheap

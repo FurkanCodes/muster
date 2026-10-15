@@ -25,7 +25,7 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             attempts: 3,
-            run_timeout: Duration::from_secs(90 * 60),
+            run_timeout: Duration::from_mins(90),
             max_cost_micros: None,
         }
     }
