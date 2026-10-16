@@ -111,12 +111,16 @@ async fn a_session_picked_in_the_notch_is_shown_in_the_window_looked_at_last() {
     );
 
     // Two windows; the person looks at one, then the other, then away.
+    // Each window's frames reach the daemon on a connection of their own,
+    // so each step waits for the daemon to have heard it.
     let mut first = Window::open(daemon.connect().await);
     let mut second = Window::open(daemon.connect().await);
     first.looking(true).await;
     looked_at(&mut notch, true).await;
-    second.looking(true).await;
     first.looking(false).await;
+    looked_at(&mut notch, false).await;
+    second.looking(true).await;
+    looked_at(&mut notch, true).await;
     second.looking(false).await;
     looked_at(&mut notch, false).await;
 
