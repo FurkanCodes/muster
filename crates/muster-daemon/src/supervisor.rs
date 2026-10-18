@@ -12,6 +12,7 @@ mod by_hand;
 mod changes;
 mod clashes;
 mod containers;
+mod explain;
 mod handle;
 mod issues;
 mod looking;
@@ -238,6 +239,11 @@ struct Live {
     /// What its window title last said, for a harness whose title says how
     /// it is doing.
     title: Option<crate::harness::TitleState>,
+    /// The turn under way, by the id the harness's records know it by
+    /// (Claude Code's prompt id), once a prompt has named one.
+    turn: Option<String>,
+    /// The signals its machine last received, for explaining its status.
+    signals: explain::Recent,
 }
 
 #[derive(Debug)]
@@ -446,6 +452,7 @@ impl Supervisor {
                 let _ = reply.send(self.spend_targets());
             }
             Request::Spends(spends) => self.record_spends(spends),
+            Request::Interrupted(turns) => self.record_interrupted(turns).await,
             Request::HandOver(reply) => {
                 let handed = self.hand_over_sessions().await;
                 let _ = reply.send(handed);
@@ -485,6 +492,7 @@ impl Supervisor {
         match command {
             Command::Ping => Ok(Reply::Pong),
             Command::Health => Ok(Reply::Health(self.health())),
+            Command::ExplainSession { session } => self.explain_session(session),
             Command::Reveal { session } => self.reveal(session),
             Command::ChangePreference(change) => self.change_preference(&change),
             Command::AddProject { root, name } => self.add_project(root, name).await,
@@ -662,6 +670,7 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Ping => "ping",
         Command::Health => "health",
+        Command::ExplainSession { .. } => "explain session",
         Command::WorkspaceChanges { .. } => "workspace changes",
         Command::FileDiff { .. } => "file diff",
         Command::Timeline { .. } => "timeline",

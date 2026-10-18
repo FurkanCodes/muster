@@ -244,6 +244,17 @@ impl Harness {
         }
     }
 
+    /// The turn a report says began, by the id the harness's own record of
+    /// the conversation knows it by: Claude Code's prompt id, which its
+    /// transcript carries, so an interruption written there can be matched
+    /// to the turn it ended.
+    pub(crate) fn turn_begun(self, body: &[u8]) -> Option<String> {
+        match self.kind {
+            Kind::Claude | Kind::Review => claude::turn_begun(&claude::HookPayload::parse(body)?),
+            _ => None,
+        }
+    }
+
     /// What a report says the session has used, for a harness that reports
     /// it: `OpenCode`'s plugin, at each turn's end.
     pub(crate) fn spend(self, body: &[u8]) -> Option<muster_core::Spend> {

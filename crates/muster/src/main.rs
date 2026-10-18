@@ -7,6 +7,7 @@
 
 mod auth;
 mod commands;
+mod explain;
 mod launchd;
 mod reload;
 mod runs;
@@ -299,6 +300,10 @@ enum SessionCommand {
     Restart { session: String },
     /// Take ended SESSION off the list; its history is kept.
     Remove { session: String },
+    /// Say why SESSION (its id) has its status: whom it waits on and for
+    /// what, whether its turn is held for subagents, its next deadline,
+    /// and the last signals it received.
+    Explain { session: String },
 }
 
 /// The time now, for a command's own deadlines. The daemon reads time
@@ -402,6 +407,9 @@ fn main() -> ExitCode {
             }
             Some(Commands::Session(SessionCommand::Remove { session })) => {
                 commands::remove_session(&socket, &session).await
+            }
+            Some(Commands::Session(SessionCommand::Explain { session })) => {
+                explain::explain_session(&socket, &session).await
             }
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
             Some(Commands::Auth(AuthCommand::Bitbucket { host })) => {

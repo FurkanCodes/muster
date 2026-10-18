@@ -24,9 +24,11 @@ fn hook() -> impl Strategy<Value = HookEvent> {
         Just(HookEvent::SessionStarted),
         Just(HookEvent::PromptSubmitted),
         Just(HookEvent::TurnEnded),
+        Just(HookEvent::TurnInterrupted),
         (origin(), any::<bool>())
             .prop_map(|(origin, deferred)| HookEvent::PermissionRequested { origin, deferred }),
-        origin().prop_map(|origin| HookEvent::QuestionAsked { origin }),
+        (origin(), any::<bool>())
+            .prop_map(|(origin, deferred)| HookEvent::QuestionAsked { origin, deferred }),
         origin().prop_map(|origin| HookEvent::ToolStarted { origin }),
         (origin(), any::<bool>())
             .prop_map(|(origin, question)| HookEvent::ToolFinished { origin, question }),

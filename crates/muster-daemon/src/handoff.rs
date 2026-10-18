@@ -64,6 +64,10 @@ pub(crate) struct CarriedSession {
     #[serde(default)]
     master: RawFd,
     pub(crate) terminal: crate::pty::Carried,
+    /// The turn under way, by the id its harness's records know it by;
+    /// none from a daemon before it was carried.
+    #[serde(default)]
+    pub(crate) turn: Option<String>,
 }
 
 impl CarriedSession {
@@ -85,6 +89,7 @@ impl CarriedSession {
             machine,
             master: -1,
             terminal,
+            turn: None,
         }
     }
 }

@@ -29,8 +29,9 @@ const EVENTS: &[(&str, Option<&str>)] = &[
     ("UserPromptSubmit", None),
     ("Stop", None),
     ("PermissionRequest", None),
-    // Unmatched: both `permission_prompt` and `idle_prompt` matter. The
-    // second is the only signal when a turn ends without a Stop.
+    // Unmatched: `permission_prompt`, `idle_prompt` and the elicitation
+    // notices all matter. `idle_prompt` is the only signal when a turn
+    // ends without a Stop.
     ("Notification", None),
     // Only the question tool: its start is the agent asking the person.
     ("PreToolUse", Some(QUESTION_TOOL)),
@@ -40,6 +41,12 @@ const EVENTS: &[(&str, Option<&str>)] = &[
     ("PostToolUse", None),
     ("SubagentStart", None),
     ("SubagentStop", None),
+    // An MCP server's form for the person (an elicitation), unmatched, as
+    // the matcher is the server's name: its dialog opening is a question,
+    // and the person's response, whatever it is, the answer. The hook
+    // prints nothing and exits 0, so the dialog is left to the person.
+    ("Elicitation", None),
+    ("ElicitationResult", None),
 ];
 
 /// The command each hook runs. It does nothing outside a Muster session,
@@ -112,6 +119,8 @@ pub(crate) struct HookPayload {
     pub(crate) tool_name: Option<String>,
     /// Set when a subagent raised the event.
     pub(crate) agent_id: Option<String>,
+    /// The turn it belongs to: the prompt that began it.
+    pub(crate) prompt_id: Option<String>,
 }
 
 impl HookPayload {
@@ -127,8 +136,18 @@ impl HookPayload {
             notification_type: text("notification_type"),
             tool_name: text("tool_name"),
             agent_id: text("agent_id"),
+            prompt_id: text("prompt_id"),
         })
     }
+}
+
+/// The turn a prompt being submitted begins, by the id Claude Code gives
+/// it, which its transcript writes beside each line of that turn: how a
+/// turn the person interrupted there is known for this one.
+pub(crate) fn turn_begun(payload: &HookPayload) -> Option<String> {
+    (payload.hook_event_name.as_deref() == Some("UserPromptSubmit"))
+        .then(|| payload.prompt_id.clone())
+        .flatten()
 }
 
 /// What a payload means to the session machine, with the harness session
@@ -147,7 +166,10 @@ pub(crate) fn translate(payload: &HookPayload) -> Option<(Option<String>, HookEv
         // (2.1.296 sends this right after the tool's PreToolUse): it is the
         // question again, answered when the tool finishes, not a second
         // prompt that only the next tool to finish would close.
-        "PermissionRequest" if is_question => HookEvent::QuestionAsked { origin: origin() },
+        "PermissionRequest" if is_question => HookEvent::QuestionAsked {
+            origin: origin(),
+            deferred: false,
+        },
         "PermissionRequest" => HookEvent::PermissionRequested {
             origin: origin(),
             deferred: false,
@@ -158,9 +180,31 @@ pub(crate) fn translate(payload: &HookPayload) -> Option<(Option<String>, HookEv
                 deferred: true,
             },
             "idle_prompt" => HookEvent::Idle,
+            // Six seconds into an MCP server's form, as for a permission:
+            // a notice of the question the Elicitation hook asked.
+            "elicitation_dialog" | "elicitation_url_dialog" => HookEvent::QuestionAsked {
+                origin: origin(),
+                deferred: true,
+            },
+            "elicitation_response" => HookEvent::ToolFinished {
+                origin: origin(),
+                question: true,
+            },
             _ => return None,
         },
-        "PreToolUse" if is_question => HookEvent::QuestionAsked { origin: origin() },
+        "Elicitation" => HookEvent::QuestionAsked {
+            origin: origin(),
+            deferred: false,
+        },
+        // Sent for an answer, a decline and Esc alike (`cancel`).
+        "ElicitationResult" => HookEvent::ToolFinished {
+            origin: origin(),
+            question: true,
+        },
+        "PreToolUse" if is_question => HookEvent::QuestionAsked {
+            origin: origin(),
+            deferred: false,
+        },
         "PreToolUse" => HookEvent::ToolStarted { origin: origin() },
         "PostToolUse" => HookEvent::ToolFinished {
             origin: origin(),
@@ -220,6 +264,10 @@ mod tests {
 
         let prompt = r#"{"session_id":"6f3c2a10-8b1e-4c5d-9a7f-0123456789ab","hook_event_name":"UserPromptSubmit","prompt":"hi","prompt_id":"p1"}"#;
         assert_eq!(event(prompt), HookEvent::PromptSubmitted);
+
+        // A submitted prompt names the turn it begins; nothing else does.
+        assert_eq!(turn_begun(&payload(prompt)).as_deref(), Some("p1"));
+        assert_eq!(turn_begun(&payload(stop)), None);
     }
 
     #[test]
@@ -255,6 +303,7 @@ mod tests {
             )),
             HookEvent::QuestionAsked {
                 origin: Origin::Subagent("a1".to_owned()),
+                deferred: false,
             }
         );
         // The question's own permission dialog is the same question.
@@ -264,6 +313,7 @@ mod tests {
             )),
             HookEvent::QuestionAsked {
                 origin: Origin::Main,
+                deferred: false,
             }
         );
         assert_eq!(
