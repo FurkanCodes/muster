@@ -281,6 +281,7 @@ impl Supervisor {
                 resumed: resume && on_host,
                 ended: None,
                 title: None,
+                turn: None,
             },
         );
         self.carry_watch(session);

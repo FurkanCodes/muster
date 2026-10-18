@@ -112,6 +112,8 @@ pub(crate) struct HookPayload {
     pub(crate) tool_name: Option<String>,
     /// Set when a subagent raised the event.
     pub(crate) agent_id: Option<String>,
+    /// The turn it belongs to: the prompt that began it.
+    pub(crate) prompt_id: Option<String>,
 }
 
 impl HookPayload {
@@ -127,8 +129,18 @@ impl HookPayload {
             notification_type: text("notification_type"),
             tool_name: text("tool_name"),
             agent_id: text("agent_id"),
+            prompt_id: text("prompt_id"),
         })
     }
+}
+
+/// The turn a prompt being submitted begins, by the id Claude Code gives
+/// it, which its transcript writes beside each line of that turn: how a
+/// turn the person interrupted there is known for this one.
+pub(crate) fn turn_begun(payload: &HookPayload) -> Option<String> {
+    (payload.hook_event_name.as_deref() == Some("UserPromptSubmit"))
+        .then(|| payload.prompt_id.clone())
+        .flatten()
 }
 
 /// What a payload means to the session machine, with the harness session
@@ -220,6 +232,10 @@ mod tests {
 
         let prompt = r#"{"session_id":"6f3c2a10-8b1e-4c5d-9a7f-0123456789ab","hook_event_name":"UserPromptSubmit","prompt":"hi","prompt_id":"p1"}"#;
         assert_eq!(event(prompt), HookEvent::PromptSubmitted);
+
+        // A submitted prompt names the turn it begins; nothing else does.
+        assert_eq!(turn_begun(&payload(prompt)).as_deref(), Some("p1"));
+        assert_eq!(turn_begun(&payload(stop)), None);
     }
 
     #[test]

@@ -854,3 +854,6 @@ fn a_display_that_appears_has_started() {
     assert!(session.send(Signal::Tick).is_empty());
     assert_eq!(session.status(), SessionStatus::Fresh);
 }
+
+// Waits the person closes without an answer the harness reports
+mod closing;

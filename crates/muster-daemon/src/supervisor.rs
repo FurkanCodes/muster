@@ -236,6 +236,9 @@ struct Live {
     /// What its window title last said, for a harness whose title says how
     /// it is doing.
     title: Option<crate::harness::TitleState>,
+    /// The turn under way, by the id the harness's records know it by
+    /// (Claude Code's prompt id), once a prompt has named one.
+    turn: Option<String>,
 }
 
 #[derive(Debug)]
@@ -442,6 +445,7 @@ impl Supervisor {
                 let _ = reply.send(self.spend_targets());
             }
             Request::Spends(spends) => self.record_spends(spends),
+            Request::Interrupted(turns) => self.record_interrupted(turns).await,
             Request::HandOver(reply) => {
                 let handed = self.hand_over_sessions().await;
                 let _ = reply.send(handed);

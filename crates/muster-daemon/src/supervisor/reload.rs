@@ -59,7 +59,7 @@ impl Supervisor {
             let Some(live) = self.live.get(&id) else {
                 continue;
             };
-            let session = CarriedSession::new(
+            let mut session = CarriedSession::new(
                 id,
                 live.harness.id.to_owned(),
                 live.token.clone(),
@@ -68,6 +68,7 @@ impl Supervisor {
                 live.machine.carry(now),
                 terminal.terminal,
             );
+            session.turn.clone_from(&live.turn);
             // Its hooks and terminal are the next daemon's now.
             self.release_terminal(id);
             handed.push(HandedSession {
@@ -119,6 +120,7 @@ impl Supervisor {
                     resumed: session.resumed,
                     ended: None,
                     title: None,
+                    turn: session.turn,
                 },
             );
             self.carry_watch(id);

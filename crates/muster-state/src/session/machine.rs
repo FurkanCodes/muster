@@ -260,6 +260,10 @@ impl SessionMachine {
                 self.save_resume_id(effects);
                 self.end_turn(now);
             }
+            HookEvent::TurnInterrupted => {
+                self.save_resume_id(effects);
+                self.interrupt(now);
+            }
             HookEvent::PermissionRequested { origin, deferred } => {
                 self.on_permission(origin, deferred, now);
             }
@@ -440,6 +444,32 @@ impl SessionMachine {
                 drained_at: None,
             });
         }
+    }
+
+    /// The person cut the turn short. Whatever dialog was on screen, theirs
+    /// or a subagent's, is gone with it, so every open prompt closes; the
+    /// session holds only for subagents still at work. They ended it
+    /// themselves, so it is no news.
+    fn interrupt(&mut self, now: Instant) {
+        if !matches!(
+            self.status,
+            SessionStatus::Running | SessionStatus::NeedsYou { .. }
+        ) {
+            return;
+        }
+        self.waits.clear();
+        if self.subagents.is_empty() {
+            self.finish(now);
+        } else {
+            self.status = SessionStatus::Running;
+            if self.hold.is_none() {
+                self.hold = Some(Hold {
+                    since: now,
+                    drained_at: None,
+                });
+            }
+        }
+        self.unseen = false;
     }
 
     fn finish(&mut self, now: Instant) {

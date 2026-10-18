@@ -23,6 +23,11 @@ pub enum HookEvent {
     PromptSubmitted,
     /// The main agent ended its turn.
     TurnEnded,
+    /// The person cut the main agent's turn short: they stopped it as it
+    /// worked, or declined a permission it asked for, which ends the turn
+    /// too. Every prompt open on screen goes with it. Claude Code runs no
+    /// hook for either; its own record of the conversation says so.
+    TurnInterrupted,
     /// The agent asked permission to use a tool. `deferred` marks a notice
     /// that trails the request itself (Claude Code's permission notification),
     /// which can arrive after the person has already answered.

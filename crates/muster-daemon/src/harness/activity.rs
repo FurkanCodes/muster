@@ -45,9 +45,10 @@ pub(crate) fn change(event: &HookEvent, body: &[u8]) -> Option<ActivityChange> {
         }
         HookEvent::ToolFinished { .. } | HookEvent::PromptSubmitted => set("thinking"),
         HookEvent::QuestionAsked { .. } => set("has a question for you"),
-        HookEvent::TurnEnded | HookEvent::SessionStarted | HookEvent::Idle => {
-            Some(ActivityChange::Clear)
-        }
+        HookEvent::TurnEnded
+        | HookEvent::TurnInterrupted
+        | HookEvent::SessionStarted
+        | HookEvent::Idle => Some(ActivityChange::Clear),
         HookEvent::PermissionRequested { deferred: true, .. }
         | HookEvent::SubagentStarted { .. }
         | HookEvent::SubagentStopped { .. } => None,
@@ -311,6 +312,7 @@ mod tests {
         );
         for ended in [
             HookEvent::TurnEnded,
+            HookEvent::TurnInterrupted,
             HookEvent::SessionStarted,
             HookEvent::Idle,
         ] {

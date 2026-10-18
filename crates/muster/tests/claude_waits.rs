@@ -1,0 +1,196 @@
+//! End-to-end tests of how a Claude Code session's waits on the person
+//! close when no tool event answers them: a permission the person
+//! declines, which Claude Code tells only in its transcript. A stand-in
+//! `claude` runs the exact hook commands Muster gave it.
+
+// Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "end-to-end tests: a failed step is the test failing"
+)]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "tests time themselves; ARC-03 binds Muster's own code"
+)]
+
+mod support;
+
+use std::time::Duration;
+
+use muster_client::Connection;
+use muster_core::protocol::{Command, Delta, Reply, ServerFrame, TermSize};
+use muster_core::{SessionId, SessionStatus, WaitReason, WorkspaceId};
+use serde_json::json;
+
+use support::{Daemon, Sandbox, expect_event};
+
+struct Setup {
+    sandbox: Sandbox,
+    daemon: Daemon,
+    workspace: WorkspaceId,
+}
+
+async fn setup() -> Setup {
+    // The transcript is read often, so a test need not wait long.
+    let sandbox = Sandbox::new().with_env("MUSTER_SPEND_MS", "100");
+    let root = sandbox.repository("app");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let Reply::ProjectAdded { id: project } = connection
+        .command(Command::AddProject { root, name: None })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    let Reply::WorktreeCreated { id: workspace } = connection
+        .command(Command::CreateWorktree {
+            project,
+            branch: Some("work".to_owned()),
+            on: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected WorktreeCreated");
+    };
+    Setup {
+        sandbox,
+        daemon,
+        workspace,
+    }
+}
+
+async fn start_claude(connection: &mut Connection, workspace: WorkspaceId) -> SessionId {
+    match connection
+        .command(Command::StartSession {
+            workspace,
+            harness: "claude".to_owned(),
+            title: None,
+            size: TermSize::default(),
+            prompt: None,
+        })
+        .await
+        .unwrap()
+    {
+        Reply::SessionStarted { id } => id,
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+/// A payload shaped like Claude Code's, for `agent_session`.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers build the extra fields in place; a borrow would not outlive them"
+)]
+fn payload(agent_session: &str, event: &str, extra: serde_json::Value) -> serde_json::Value {
+    let mut payload = json!({
+        "session_id": agent_session,
+        "hook_event_name": event,
+        "cwd": "/work",
+        "transcript_path": "/claude/projects/-work/x.jsonl",
+    });
+    if let (Some(payload), Some(extra)) = (payload.as_object_mut(), extra.as_object()) {
+        payload.extend(extra.clone());
+    }
+    payload
+}
+
+async fn expect_status(connection: &mut Connection, session: SessionId) -> (SessionStatus, bool) {
+    expect_event(connection, |frame| match frame {
+        ServerFrame::Delta(Delta::SessionStatus {
+            session: changed,
+            status,
+            unseen,
+            ..
+        }) if *changed == session => Some((*status, *unseen)),
+        _ => None,
+    })
+    .await
+}
+
+/// What Claude Code 2.1.296 writes to its transcript as the person
+/// declines a permission in the turn `prompt` began: the tool's result,
+/// then the marker, then the turn's length. Content shortened.
+fn declined(prompt: &str) -> String {
+    [
+        json!({
+            "type": "user", "isSidechain": false, "promptId": prompt,
+            "toolUseResult": "User rejected tool use", "toolDenialKind": "user-rejected",
+            "message": {"role": "user", "content": [{
+                "type": "tool_result", "is_error": true, "tool_use_id": "toolu_1",
+                "content": "The user doesn't want to proceed with this tool use."
+            }]}
+        }),
+        json!({
+            "type": "user", "isSidechain": false, "promptId": prompt,
+            "message": {"role": "user", "content": [
+                {"type": "text", "text": "[Request interrupted by user for tool use]"}
+            ]}
+        }),
+        json!({"type": "system", "subtype": "turn_duration", "durationMs": 1477}),
+    ]
+    .map(|line| line.to_string() + "\n")
+    .concat()
+}
+
+fn append(path: &std::path::Path, text: &str) {
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .unwrap()
+        .write_all(text.as_bytes())
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_permission_the_person_declines_needs_them_no_more() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str, extra| launch.fire(event, &payload(&id, event, extra));
+    // An earlier turn the person cut short is in the transcript already.
+    let slug = setup.sandbox.claude_projects().join("-work");
+    std::fs::create_dir_all(&slug).unwrap();
+    let transcript = slug.join(format!("{id}.jsonl"));
+    append(&transcript, &declined("p0"));
+
+    fire(
+        "UserPromptSubmit",
+        json!({ "prompt": "tidy up", "prompt_id": "p1" }),
+    );
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Running, false)
+    );
+    fire(
+        "PermissionRequest",
+        json!({ "tool_name": "Bash", "prompt_id": "p1" }),
+    );
+    let needs_permission = SessionStatus::NeedsYou {
+        reason: WaitReason::Permission,
+    };
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (needs_permission, true)
+    );
+    // The earlier turn's interruption is no word about this one.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let snapshot = setup.daemon.connect().await.subscribe().await.unwrap();
+    assert_eq!(snapshot.sessions[0].status, needs_permission);
+
+    // The person presses Esc at the dialog: Claude Code runs no hook, and
+    // writes the turn's end to its transcript.
+    append(&transcript, &declined("p1"));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false),
+        "it waits on nobody, and the person, who ended it, has seen it"
+    );
+}
