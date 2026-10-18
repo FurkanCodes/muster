@@ -33,9 +33,11 @@ impl App {
         actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
+        // A narrow window's list shows no session, so none is streamed.
         let focus = self
             .focused_session()
-            .filter(|s| self.model.session(*s).is_some());
+            .filter(|s| self.model.session(*s).is_some())
+            .filter(|_| self.session_drawn());
         if focus == self.attached {
             return actions;
         }

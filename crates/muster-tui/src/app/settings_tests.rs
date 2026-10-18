@@ -89,6 +89,8 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::OnlyMine(project),
             SettingRow::TicketsFrom(project),
             SettingRow::MusterPrefix(project),
+            SettingRow::Muster,
+            SettingRow::SideBySide,
         ]
     );
     // The first setting is selected, so ⏎ does something at once.

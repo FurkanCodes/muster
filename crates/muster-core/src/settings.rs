@@ -128,6 +128,12 @@ pub struct Preferences {
     pub notch: bool,
     /// Where they are written: the person's own file, never a repository.
     pub file: PathBuf,
+    /// The fewest columns a window has for a session's terminal to sit
+    /// beside the list; in a narrower one, the list or the session fills
+    /// it. 0 keeps them side by side at any width (`[layout]
+    /// side_by_side_from`). From protocol 30.
+    #[serde(default = "default_side_by_side_from")]
+    pub side_by_side_from: u16,
 }
 
 impl Default for Preferences {
@@ -135,16 +141,43 @@ impl Default for Preferences {
         Self {
             notch: true,
             file: PathBuf::new(),
+            side_by_side_from: SIDE_BY_SIDE_FROM,
         }
     }
 }
+
+/// From how many columns a session sits beside the list unless the person
+/// says otherwise: the 34 the list takes at least, its border and a
+/// session 64 columns wide, which still holds an agent's prompt and a
+/// diff's lines without wrapping them; narrower, the session would wrap
+/// what it draws.
+pub const SIDE_BY_SIDE_FROM: u16 = 100;
+
+fn default_side_by_side_from() -> u16 {
+    SIDE_BY_SIDE_FROM
+}
+
+/// The widths the Settings screen offers for
+/// [`Preferences::side_by_side_from`], narrowest first: 0 for any width.
+pub const SIDE_BY_SIDE_CHOICES: [u16; 8] = [0, 80, 90, 100, 110, 120, 140, 160];
 
 /// A change the person makes to Muster's own settings. From protocol 23.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PreferenceChange {
     /// Show the agents in the notch, or leave it alone.
     Notch(bool),
+    /// From how many columns a session sits beside the list; 0 at any
+    /// width. From protocol 30.
+    SideBySideFrom(u16),
 }
+
+/// The first protocol whose daemon keeps
+/// [`Preferences::side_by_side_from`] and takes
+/// [`PreferenceChange::SideBySideFrom`] (`ARC-09`).
+pub const SIDE_BY_SIDE_PROTOCOL: u32 = 30;
+
+/// Where it is written: `[layout] side_by_side_from`.
+pub const SIDE_BY_SIDE: (&str, &str) = ("layout", "side_by_side_from");
 
 /// The first protocol whose daemon knows who looks at its clients, shows
 /// a session in one, and keeps Muster's own settings (`ARC-09`).

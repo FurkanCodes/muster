@@ -148,7 +148,11 @@ const SETTINGS: &[Section] = &[
         "On the settings",
         &[
             MOVING,
-            ("⏎ space", "turn the setting on or off, or open its dialog"),
+            (
+                "⏎ space",
+                "turn the setting on or off, go to its next choice, or open its dialog",
+            ),
+            ("← →", "a smaller or a larger choice"),
             ("r", "read the settings again, after editing a file by hand"),
         ],
     ),

@@ -11,6 +11,7 @@ mod help;
 mod link;
 mod menu;
 mod motion;
+mod narrow;
 mod notch;
 mod picker;
 mod pointer;
@@ -58,6 +59,8 @@ mod menu_tests;
 mod motion_tests;
 #[cfg(test)]
 mod mouse_sweep_tests;
+#[cfg(test)]
+mod narrow_tests;
 #[cfg(test)]
 mod navigation_tests;
 #[cfg(test)]
@@ -308,6 +311,8 @@ enum Then {
     BranchesChanged(ProjectId),
     /// Say whether the notch is on now: turned on, or off.
     NotchChanged(bool),
+    /// Say from how many columns a session sits beside the list now.
+    SideBySideChanged(u16),
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.
@@ -432,6 +437,8 @@ pub(crate) struct App {
     notch_started: bool,
     /// The notch is being turned on or off: the answer is on its way.
     pub(crate) notch_changing: bool,
+    /// The width a session sits beside the list from is being changed.
+    pub(crate) side_by_side_changing: bool,
 }
 
 impl App {
@@ -484,6 +491,7 @@ impl App {
             notch_here: false,
             notch_started: false,
             notch_changing: false,
+            side_by_side_changing: false,
         }
     }
 
@@ -547,15 +555,22 @@ impl App {
         self.terminal_size = size;
         // The session's screen is drawn again at another size.
         self.selection = None;
-        self.keep_in_view();
-        self.fit_attached()
+        // Narrower or wider than a session beside the list needs, the
+        // session shown may be another, or none.
+        let attached = self.attached;
+        let mut actions = self.settle();
+        if self.attached == attached {
+            actions.extend(self.fit_attached());
+        }
+        actions
     }
 
     /// The size sessions' programs are given: the pane beside the list, or
-    /// the window below the top bar while one fills it. Programs draw for
-    /// their terminal's size, so it is always the size they are shown at.
+    /// the window below the top bar while one fills it, as it does in a
+    /// window too narrow for both. Programs draw for their terminal's size,
+    /// so it is always the size they are shown at.
     pub(crate) fn session_size(&self) -> TermSize {
-        if self.full_screen && matches!(self.mode, Mode::Terminal(_)) {
+        if self.fills_window() || self.narrow() {
             return self.terminal_size;
         }
         let window =

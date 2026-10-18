@@ -22,6 +22,9 @@ const TICKETS_FROM: &str = "Tickets from";
 const MUSTER_PREFIX: &str = "Branches with muster/";
 /// What the setting of the notch is called.
 const NOTCH: &str = "Agents in the notch";
+/// What the setting of the width a session sits beside the list from is
+/// called.
+const SIDE_BY_SIDE: &str = "Session beside the list from";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Settings ", app.list_has_keys());
@@ -67,6 +70,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
     match row {
         SettingRow::Muster => Line::from(Span::from("Muster").bold()),
         SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
+        SettingRow::SideBySide => labelled(SIDE_BY_SIDE, side_by_side_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -132,6 +136,18 @@ fn notch_value(app: &App) -> Span<'static> {
     }
 }
 
+/// From how many columns a session sits beside the list, or that it is
+/// being changed.
+fn side_by_side_value(app: &App) -> Span<'static> {
+    if app.side_by_side_changing {
+        return Span::from("…").dim();
+    }
+    match app.model.preferences().side_by_side_from {
+        0 => Span::from("any width").bold(),
+        columns => Span::from(format!("{columns} columns")).bold(),
+    }
+}
+
 /// Where the tickets come from, in a word or two: `Jira TURPAT`; `choose`
 /// where nothing can tell.
 fn tickets_value(settings: &ProjectSettings) -> Span<'static> {
@@ -161,6 +177,7 @@ fn project_name(app: &App, project: ProjectId) -> String {
 pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let text = match app.settings_selected {
         Some(SettingRow::Muster | SettingRow::Notch) => notch_text(app),
+        Some(SettingRow::SideBySide) => side_by_side_text(app),
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings),
@@ -168,6 +185,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::MusterPrefix(_) => muster_prefix_text(settings),
                 SettingRow::Project(project) => project_text(app, project, settings),
                 SettingRow::Muster | SettingRow::Notch => notch_text(app),
+                SettingRow::SideBySide => side_by_side_text(app),
             },
             Some(Settings::Failed(error)) => Text::from(vec![
                 Line::from(
@@ -263,6 +281,36 @@ fn notch_text(app: &App) -> Text<'static> {
         detail("Saved in", preferences.file.display().to_string()),
         Line::from(""),
         Line::from(key).dim(),
+        Line::from("Muster's own settings are yours, for all of it, not any project's.").dim(),
+    ])
+}
+
+fn side_by_side_text(app: &App) -> Text<'static> {
+    let preferences = app.model.preferences();
+    let does = match preferences.side_by_side_from {
+        0 => "A session's terminal sits beside the list in a window of any width.".to_owned(),
+        columns => format!(
+            "A session's terminal sits beside the list in a window of {columns} columns or more. \
+             In a narrower one, the list takes the whole width: ⏎ opens a session over it, as \
+             full screen does, and Shift-Q goes back."
+        ),
+    };
+    let now = if app.narrow() {
+        format!("{} columns: the list or a session", app.terminal_size.cols)
+    } else {
+        format!("{} columns: both, side by side", app.terminal_size.cols)
+    };
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{SIDE_BY_SIDE}  ")).bold(),
+            side_by_side_value(app),
+        ]),
+        Line::from(does),
+        Line::from(""),
+        detail("This window", now),
+        detail("Saved in", preferences.file.display().to_string()),
+        Line::from(""),
+        Line::from("⏎ or space goes to the next width, ← → to a smaller or larger one.").dim(),
         Line::from("Muster's own settings are yours, for all of it, not any project's.").dim(),
     ])
 }
@@ -417,7 +465,16 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
                 "⏎ turn on"
             });
         }
-        Some(SettingRow::Project(_) | SettingRow::Muster | SettingRow::Notch) | None => {}
+        Some(SettingRow::SideBySide) if !app.side_by_side_changing => {
+            hints.extend(["⏎ next width", "← → smaller, larger"]);
+        }
+        Some(
+            SettingRow::Project(_)
+            | SettingRow::Muster
+            | SettingRow::Notch
+            | SettingRow::SideBySide,
+        )
+        | None => {}
     }
     hints.push("r read again");
     hints

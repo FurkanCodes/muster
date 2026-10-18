@@ -20,11 +20,17 @@ pub struct MusterConfig {
     /// Show the agents in the MacBook's notch while the person looks
     /// elsewhere (`[notch] show`).
     pub notch: bool,
+    /// The fewest columns a window has for a session to sit beside the
+    /// list; 0 at any width (`[layout] side_by_side_from`).
+    pub side_by_side_from: u16,
 }
 
 impl Default for MusterConfig {
     fn default() -> Self {
-        Self { notch: true }
+        Self {
+            notch: true,
+            side_by_side_from: crate::settings::SIDE_BY_SIDE_FROM,
+        }
     }
 }
 
@@ -33,12 +39,20 @@ impl Default for MusterConfig {
 struct File {
     #[serde(default)]
     notch: Notch,
+    #[serde(default)]
+    layout: Layout,
 }
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Notch {
     show: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Layout {
+    side_by_side_from: Option<u16>,
 }
 
 impl MusterConfig {
@@ -56,8 +70,13 @@ impl MusterConfig {
             file: file.to_owned(),
             message: error.message().to_owned(),
         })?;
+        let default = Self::default();
         Ok(Self {
-            notch: read.notch.show.unwrap_or(Self::default().notch),
+            notch: read.notch.show.unwrap_or(default.notch),
+            side_by_side_from: read
+                .layout
+                .side_by_side_from
+                .unwrap_or(default.side_by_side_from),
         })
     }
 }
@@ -82,6 +101,23 @@ mod tests {
                 .unwrap()
                 .notch
         );
+    }
+
+    #[test]
+    fn a_session_sits_beside_the_list_from_a_hundred_columns_unless_written() {
+        let nothing = MusterConfig::parse(None, "f").unwrap();
+        assert_eq!(nothing.side_by_side_from, 100);
+        let written =
+            MusterConfig::parse(Some("[layout]\nside_by_side_from = 120\n"), "f").unwrap();
+        assert_eq!(written.side_by_side_from, 120);
+        assert!(written.notch, "the rest as by default");
+        let any = MusterConfig::parse(Some("[layout]\nside_by_side_from = 0\n"), "f").unwrap();
+        assert_eq!(any.side_by_side_from, 0);
+        // Not a width: said, naming the file.
+        let error = MusterConfig::parse(Some("[layout]\nside_by_side_from = -4\n"), "s.toml")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("s.toml"), "{error}");
     }
 
     #[test]

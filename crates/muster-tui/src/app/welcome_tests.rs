@@ -188,7 +188,15 @@ fn with_nothing_to_show_kep_sits_beside_the_name_in_the_pane() {
         name < under && under < press_a,
         "the name, the line and the hint in order: {screen}"
     );
-    // Too narrow a pane for Kep: the name alone, as before.
+    // Too narrow a pane for Kep: the name alone, as before. (Side by
+    // side at any width: otherwise a window this narrow shows the list
+    // alone.)
+    app.on_frame(ServerFrame::Delta(Delta::Preferences(
+        muster_core::settings::Preferences {
+            side_by_side_from: 0,
+            ..muster_core::settings::Preferences::default()
+        },
+    )));
     app.on_resize(TermSize { cols: 70, rows: 29 });
     let screen = drawn(&app, 70, 30).join("\n");
     assert!(!kep_large(&screen), "{screen}");

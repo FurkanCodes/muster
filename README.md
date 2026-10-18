@@ -97,6 +97,7 @@ While you type in a session, beside the list or full screen, every key goes to t
 | Key | On the *Settings* screen |
 |---|---|
 | `⏎` `space` | turn the selected setting on or off, per project: *Only my tickets*, which lists only the tickets assigned to you, in whichever tracker the project's tickets are; *Branches with muster/*, whether the branches Muster makes start with `muster/`; and, on a Mac, Muster's own *Agents in the notch* |
+| `←` `→` | on *Session beside the list from*, a smaller or a larger width (`⏎` goes to the next): in a window narrower than it, the list takes the whole window and `⏎` opens a session over it |
 | `r` | read the settings again, after editing a file by hand |
 
 A change on the *Settings* screen goes into your own settings for the project (`~/.config/muster/projects/<project id>.toml`, over its `muster.toml`; comments and the rest of the file are kept), never into the repository. Muster's own settings, for all of it, go into `~/.config/muster/settings.toml`.

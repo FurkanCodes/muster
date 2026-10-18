@@ -51,7 +51,7 @@ impl App {
         let pressed = event.kind == MouseEventKind::Down(MouseButton::Left);
         // Where the program's screen is: below the top bar when it fills
         // the window, else inside the pane beside the list.
-        let screen = if self.full_screen {
+        let screen = if self.fills_window() {
             let screen = crate::view::terminal_area(window);
             if pressed && !screen.contains(at) {
                 // The top bar, as the list beside a session.

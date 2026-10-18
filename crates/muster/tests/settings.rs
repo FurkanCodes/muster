@@ -20,7 +20,7 @@ mod support;
 use muster_client::{ClientError, Connection};
 use muster_core::ProjectId;
 use muster_core::protocol::{Command, ErrorBody, ErrorCode, Reply};
-use muster_core::settings::{ProjectSettings, SettingChange, SettingSource};
+use muster_core::settings::{PreferenceChange, ProjectSettings, SettingChange, SettingSource};
 
 use support::{Sandbox, git};
 
@@ -387,4 +387,34 @@ async fn branches_go_without_muster_once_the_person_says_so() {
     // Listed as any worktree is.
     let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
     assert!(status.contains("  issue-3-typo-in-readme  "), "{status}");
+}
+
+#[tokio::test]
+async fn the_width_a_session_sits_beside_the_list_from_is_the_person_s_own() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let snapshot = connection.subscribe().await.unwrap();
+    assert_eq!(snapshot.preferences.side_by_side_from, 100);
+    assert_eq!(
+        connection
+            .command(Command::ChangePreference(PreferenceChange::SideBySideFrom(
+                120
+            )))
+            .await
+            .unwrap(),
+        Reply::Done
+    );
+    let file = sandbox.paths().config_dir.join("settings.toml");
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        written.contains("[layout]\nside_by_side_from = 120"),
+        "{written}"
+    );
+    // Kept across a restart.
+    drop(connection);
+    drop(daemon);
+    let daemon = sandbox.start();
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    assert_eq!(snapshot.preferences.side_by_side_from, 120);
 }

@@ -245,6 +245,9 @@ impl App {
             (Ok(_), Then::Say(text)) => self.say(text),
             (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
             (outcome, Then::NotchChanged(on)) => self.notch_changed(on, outcome.map(drop)),
+            (outcome, Then::SideBySideChanged(columns)) => {
+                self.side_by_side_changed(columns, outcome.map(drop));
+            }
             (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Ok(changes));
             }
