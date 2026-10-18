@@ -7,6 +7,7 @@
 
 mod auth;
 mod commands;
+mod output;
 mod reload;
 mod runs;
 mod upgrade;

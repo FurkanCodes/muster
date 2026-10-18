@@ -1,8 +1,12 @@
 //! The socket server: one reader loop and one writer task per connection, so
 //! replies and pushed frames never interleave mid-frame (`ARCHITECTURE.md` §6).
+//! What the writer sends, and in which order, is its outbox's (`outbox`).
+
+pub(crate) mod outbox;
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 
 use muster_client::{FramedRead, FramedWrite, TransportError};
 use muster_core::SessionId;
@@ -10,19 +14,21 @@ use muster_core::protocol::{
     ClientFrame, DetachReason, ErrorBody, ErrorCode, Incompatible, MIN_PROTOCOL_VERSION,
     PROTOCOL_VERSION, ServerFrame, Welcome, negotiate,
 };
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::unix::OwnedReadHalf;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{mpsc, watch};
 
+use self::outbox::{LANE_BUDGET, Outbox};
 use crate::pty::PtyHandle;
 use crate::supervisor::{ClientGuard, SupervisorHandle, TerminalLink, WatchGuard};
 use crate::tasks::{self, Owned, Tasks};
 use crate::terminal::forward_output;
 
-/// Frames queued for one client before the sender waits. A subscriber that
-/// stops reading makes its delta pump wait, falls behind the broadcast, and
-/// is sent a fresh snapshot when it catches up.
+/// Frames queued for one client before the sender waits: everything but
+/// terminal output, which waits in its session's lane (`outbox`). A
+/// subscriber that stops reading makes its delta pump wait, falls behind
+/// the broadcast, and is sent a fresh snapshot when it catches up.
 const OUTGOING_FRAMES: usize = 256;
 
 /// Accepts connections until `shutdown` completes. Each is counted in
@@ -50,11 +56,17 @@ pub(crate) async fn serve(
 async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tasks) {
     let (read, write) = stream.into_split();
     let (outgoing, queue) = mpsc::channel(OUTGOING_FRAMES);
-    let writer = tasks::owned(write_frames(FramedWrite::new(write), queue));
+    let streams = Outbox::new(LANE_BUDGET);
+    let writer = tasks::owned(outbox::write_frames(
+        FramedWrite::new(write),
+        queue,
+        streams.clone(),
+    ));
 
     let mut session = Connection {
         reader: FramedRead::new(read),
         outgoing,
+        streams,
         supervisor,
         tasks,
         pump: None,
@@ -75,22 +87,13 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tas
     let _ = writer.await;
 }
 
-async fn write_frames(
-    mut writer: FramedWrite<OwnedWriteHalf>,
-    mut queue: mpsc::Receiver<ServerFrame>,
-) {
-    while let Some(frame) = queue.recv().await {
-        let last = matches!(frame, ServerFrame::Error(_) | ServerFrame::Incompatible(_));
-        if writer.send(&frame).await.is_err() || last {
-            break;
-        }
-    }
-    let _ = writer.shutdown().await;
-}
-
 struct Connection {
     reader: FramedRead<OwnedReadHalf>,
+    /// Frames that must all arrive, in order.
     outgoing: mpsc::Sender<ServerFrame>,
+    /// Each attached session's stream, which a client that cannot keep up
+    /// resumes from the ring rather than queues.
+    streams: Arc<Outbox>,
     supervisor: SupervisorHandle,
     tasks: Tasks,
     /// Streams state to the client once it subscribes.
@@ -199,7 +202,7 @@ impl Connection {
         }) = link
         else {
             self.stop_forwarding(session).await;
-            self.detached(session).await;
+            self.detached(session);
             return;
         };
         // The new watch is counted before the old one ends, so a re-attach
@@ -213,17 +216,20 @@ impl Connection {
             latest,
         };
         self.terminals.insert(session, linked);
-        let forwarder = forward_output(session, current, from_seq, self.outgoing.clone());
+        let forwarder = forward_output(session, current, from_seq, self.streams.clone());
         self.forwarders.insert(session, tasks::owned(forwarder));
     }
 
-    /// Stops streaming `session` to this client, and watching it.
+    /// Stops streaming `session` to this client, and watching it. What of
+    /// its stream still waits is dropped: the client attaches again from
+    /// what it has, or not at all.
     async fn stop_forwarding(&mut self, session: SessionId) {
         self.watching.remove(&session);
         if let Some(forwarder) = self.forwarders.remove(&session) {
             forwarder.abort();
             let _ = forwarder.await;
         }
+        self.streams.clear(session);
     }
 
     /// Starts or stops watching an attached session.
@@ -272,7 +278,7 @@ impl Connection {
                 None => None,
             };
             let Some(link) = link else {
-                self.detached(session).await;
+                self.detached(session);
                 return None;
             };
             let linked = Linked {
@@ -318,17 +324,16 @@ impl Connection {
     /// The terminal was released: tell the client and stop using it.
     async fn forget(&mut self, session: SessionId) {
         self.let_go(session).await;
-        self.detached(session).await;
+        self.detached(session);
     }
 
-    async fn detached(&self, session: SessionId) {
+    /// Tells the client the session's stream ended, after what of it
+    /// still waits.
+    fn detached(&self, session: SessionId) {
+        let reason = DetachReason::NotRunning;
         let _ = self
-            .outgoing
-            .send(ServerFrame::Detached {
-                session,
-                reason: DetachReason::NotRunning,
-            })
-            .await;
+            .streams
+            .push(session, ServerFrame::Detached { session, reason });
     }
 
     /// Handles the hello. `false` means the client was turned away politely.
