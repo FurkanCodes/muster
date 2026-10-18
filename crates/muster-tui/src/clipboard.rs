@@ -1,11 +1,24 @@
 //! The person's clipboard, for text copied from a session: through the
 //! system's own command where the UI runs on the person's machine, else
 //! through their terminal (OSC 52), which reaches it over SSH too.
+//!
+//! Text gets there two ways: the person drags over a session's text, or a
+//! program in the session they look at copies with OSC 52
+//! (`ESC ] 52 ; c ; <base64> ST`), as it would in their own terminal. A
+//! program's copy is taken only from the output it writes while the
+//! person looks on, never from a session's history replayed as a client
+//! attaches, which would copy again on every look; it must be text, and
+//! no larger than [`MAX_COPY`]. A program asking to read the clipboard is
+//! never answered. What is copied is never logged (`PRD-06`).
 
 use std::io::Write;
 use std::process::{Command, Stdio};
 
 use base64::Engine;
+use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
+
+/// The most a program may copy, decoded.
+pub(crate) const MAX_COPY: usize = 192 * 1024;
 
 /// How copied text reaches the clipboard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,6 +84,27 @@ fn piped(program: &str, args: &[&str], text: &str) -> bool {
         .is_ok()
 }
 
+/// What a program's OSC 52 copy holds, from its base64 `data`: text of at
+/// most [`MAX_COPY`] bytes, valid UTF-8 with no control characters but
+/// tabs and line breaks, and not empty. Anything else copies nothing.
+pub(crate) fn from_program(data: &[u8]) -> Option<String> {
+    // Larger encoded than the most it may hold decoded: not decoded at all.
+    if data.len() > MAX_COPY.div_ceil(3) * 4 {
+        return None;
+    }
+    // Padded or not, as programs send it either way.
+    let lenient = GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    );
+    let bytes = lenient.decode(data).ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    let text_only = text
+        .chars()
+        .all(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'));
+    (!text.is_empty() && text.len() <= MAX_COPY && text_only).then_some(text)
+}
+
 /// The OSC 52 sequence asking a terminal to put `text` on the clipboard.
 fn osc52(text: &str) -> Vec<u8> {
     let encoded = base64::engine::general_purpose::STANDARD.encode(text);
@@ -101,5 +135,39 @@ mod tests {
     #[test]
     fn the_terminal_is_sent_the_text_encoded() {
         assert_eq!(osc52("copy-42\nok"), b"\x1b]52;c;Y29weS00Mgpvaw==\x07");
+    }
+
+    #[test]
+    fn a_program_s_copy_is_its_text_padded_or_not() {
+        assert_eq!(
+            from_program(b"Y29weS00Mgpvaw==").as_deref(),
+            Some("copy-42\nok")
+        );
+        assert_eq!(
+            from_program(b"Y29weS00Mgpvaw").as_deref(),
+            Some("copy-42\nok")
+        );
+        assert_eq!(
+            from_program(b"aMOpbGxvCXdvcmxk").as_deref(),
+            Some("héllo\tworld")
+        );
+    }
+
+    #[test]
+    fn a_program_copies_only_text_of_at_most_the_limit() {
+        let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        // Nothing, bytes that are not UTF-8, control characters, and what
+        // is not base64 at all.
+        assert_eq!(from_program(b""), None);
+        assert_eq!(from_program(encode(&[0xff, 0xfe, 0x00]).as_bytes()), None);
+        assert_eq!(from_program(encode(b"rm -rf /\x1b[8m").as_bytes()), None);
+        assert_eq!(from_program(encode(b"a\0b").as_bytes()), None);
+        assert_eq!(from_program(b"!!!!"), None);
+        // At the limit, and past it.
+        let most = "x".repeat(MAX_COPY);
+        assert_eq!(from_program(encode(most.as_bytes()).as_bytes()), Some(most));
+        let more = "x".repeat(MAX_COPY + 1);
+        assert_eq!(from_program(encode(more.as_bytes()).as_bytes()), None);
+        assert_eq!(from_program(&vec![b'A'; 4 * MAX_COPY]), None);
     }
 }

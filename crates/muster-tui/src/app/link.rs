@@ -50,6 +50,7 @@ impl App {
 
     pub(crate) fn on_frame(&mut self, frame: ServerFrame) -> Vec<Action> {
         let mut news = None;
+        let mut copied = None;
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
             ServerFrame::Delta(delta) => {
@@ -82,7 +83,14 @@ impl App {
                 data,
                 reset,
             } => self.screen(session).replay(seq, &data, reset),
-            ServerFrame::Output { session, seq, data } => self.screen(session).output(seq, &data),
+            ServerFrame::Output { session, seq, data } => {
+                let screen = self.screen(session);
+                screen.output(seq, &data);
+                // What the program copied as the person looked on.
+                copied = screen
+                    .take_copy()
+                    .filter(|_| self.attached == Some(session));
+            }
             ServerFrame::Modes { session, modes } => self.screen(session).modes = modes,
             ServerFrame::Detached { session, reason } => {
                 self.screen(session).ended = Some(reason);
@@ -91,6 +99,13 @@ impl App {
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
         }
         let mut actions: Vec<Action> = news.into_iter().collect();
+        if let Some(text) = copied {
+            match text.lines().count() {
+                0 | 1 => self.say("The session copied a line."),
+                lines => self.say(format!("The session copied {lines} lines.")),
+            }
+            actions.push(Action::Copy(text));
+        }
         actions.extend(self.start_notch());
         actions.extend(self.settle());
         actions
