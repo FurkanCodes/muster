@@ -223,16 +223,17 @@ impl Supervisor {
         let agent_session = self.run_agent_session(run).await?;
         let place = self.container_place(run, Some(secret))?;
         let session = self
-            .add_session(workspace, harness, None, Start::Idle)
+            .add_session(workspace, &harness, None, Start::Idle)
             .await?;
         let mode = Mode::Resume { agent_session };
         let size = TermSize::default();
+        let label = harness.label().to_owned();
         if let Err(error) = self.launch(session, harness, place, size, mode, Start::Idle, false) {
             self.end_session(session, SessionStatus::Exited { success: false }, true)
                 .await;
             return Err(ErrorBody::new(
                 ErrorCode::Internal,
-                format!("could not start {}: {error}", harness.label),
+                format!("could not start {label}: {error}"),
             ));
         }
         Ok((workspace, session))

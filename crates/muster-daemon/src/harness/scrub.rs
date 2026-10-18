@@ -81,6 +81,13 @@ const COPILOT: &[&str] = &[
     "PLUGIN_ROOT",
 ];
 
+/// Set by Muster for each session it starts, which sets its own again where
+/// a session has hooks. A daemon started from inside a Muster session would
+/// otherwise hand that session's hook token to every session it starts
+/// without hooks, a shell or an agent the person added, which could then
+/// report as it (`ARC-11`).
+const MUSTER: &[&str] = &["MUSTER_SESSION", "MUSTER_HOOK_SOCKET", "MUSTER_HOOK_TOKEN"];
+
 /// Prefixes of the same, for families of them.
 const PREFIXES: &[&str] = &[
     "CLAUDE_AGENT_SDK_",
@@ -94,7 +101,7 @@ const TERMINAL: &[&str] = &["TERM_SESSION_ID", "ITERM_SESSION_ID"];
 /// Which of `keys` a session must not inherit.
 pub(crate) fn scrubbed(keys: impl Iterator<Item = String>) -> Vec<String> {
     keys.filter(|key| {
-        [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL]
+        [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL, MUSTER]
             .iter()
             .any(|names| names.contains(&key.as_str()))
             || PREFIXES.iter().any(|prefix| key.starts_with(prefix))
@@ -126,6 +133,9 @@ mod tests {
             "OPENCODE_PID",
             "COPILOT_CLI",
             "COPILOT_AGENT_SESSION_ID",
+            "MUSTER_HOOK_TOKEN",
+            "MUSTER_HOOK_SOCKET",
+            "MUSTER_SESSION",
             // The person's own settings.
             "PATH",
             "HOME",
@@ -163,6 +173,9 @@ mod tests {
                 "OPENCODE_PID",
                 "COPILOT_CLI",
                 "COPILOT_AGENT_SESSION_ID",
+                "MUSTER_HOOK_TOKEN",
+                "MUSTER_HOOK_SOCKET",
+                "MUSTER_SESSION",
             ]
         );
     }

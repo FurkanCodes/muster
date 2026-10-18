@@ -19,7 +19,7 @@ use muster_state::session::Start;
 use super::sessions::Mode;
 use super::timeline::working;
 use super::{Request, Supervisor};
-use crate::harness::{self, Place};
+use crate::harness::Place;
 use crate::tidy::{self, TidyError};
 
 /// What each tidy under way began from, and where.
@@ -37,15 +37,16 @@ impl Supervisor {
         harness: &str,
         size: TermSize,
     ) -> Result<Reply, ErrorBody> {
-        let harness = harness::find(harness)
-            .filter(|found| found.is_agent() && found.id != "review")
+        let harness = self
+            .harness(harness)
+            .filter(|found| found.is_agent() && found.takes_prompt() && found.id() != "review")
             .ok_or_else(|| {
                 ErrorBody::new(
                     ErrorCode::BadRequest,
                     format!("{harness:?} is not a coding agent that can tidy commits"),
                 )
             })?;
-        let place = self.place_for(workspace, harness)?;
+        let place = self.place_for(workspace, &harness)?;
         let Place::Host(path) = &place else {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -77,9 +78,9 @@ impl Supervisor {
             })?;
         let from: String = start.from.chars().take(7).collect();
         let prompt = crate::runs::prompts::tidy_by_hand(&branch, &start.from, start.commits);
-        let title = format!("Tidy commits · {}", harness.label);
+        let title = format!("Tidy commits · {}", harness.label());
         let id = self
-            .add_session(workspace, harness, Some(title), Start::WithPrompt)
+            .add_session(workspace, &harness, Some(title), Start::WithPrompt)
             .await?;
         let mode = Mode::Fresh {
             prompt: Some(prompt),

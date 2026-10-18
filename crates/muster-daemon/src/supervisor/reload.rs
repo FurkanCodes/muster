@@ -9,7 +9,7 @@ use tokio::sync::oneshot;
 
 use super::{Live, Request, Supervisor, SupervisorHandle};
 use crate::handoff::{CarriedSession, HandedSession};
-use crate::{harness, pty};
+use crate::pty;
 
 impl SupervisorHandle {
     /// Hands every running session over; the Supervisor no longer holds
@@ -61,7 +61,7 @@ impl Supervisor {
             };
             let mut session = CarriedSession::new(
                 id,
-                live.harness.id.to_owned(),
+                live.harness.id().to_owned(),
                 live.token.clone(),
                 now.saturating_duration_since(live.launched),
                 live.resumed,
@@ -92,7 +92,7 @@ impl Supervisor {
                 .sessions
                 .iter()
                 .any(|stored| stored.id == id && stored.ended_at.is_none());
-            let Some(harness) = harness::find(&session.harness).filter(|_| known) else {
+            let Some(harness) = known.then(|| self.running_harness(&session.harness)) else {
                 tracing::warn!(session = %id, "a session handed over is not known here; let go");
                 continue;
             };

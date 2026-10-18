@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+pub mod agents;
 pub mod edit;
 pub mod preferences;
 mod services;
@@ -140,6 +141,13 @@ pub enum ConfigError {
     Syntax { file: String, message: String },
     #[error("{file}: {message}")]
     Invalid { file: String, message: String },
+    /// A coding agent the person added does not read: the error names its
+    /// key.
+    #[error("{file}: {error}")]
+    Agent {
+        file: String,
+        error: agents::AgentError,
+    },
 }
 
 impl ProjectConfig {

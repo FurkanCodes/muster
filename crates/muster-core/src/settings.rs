@@ -128,6 +128,14 @@ pub struct Preferences {
     pub notch: bool,
     /// Where they are written: the person's own file, never a repository.
     pub file: PathBuf,
+    /// The coding agents the person added there (`[agents.<name>]`), by
+    /// name, offered beside Muster's own. From protocol 29.
+    #[serde(default)]
+    pub agents: Vec<AddedAgent>,
+    /// Why the file does not read, naming the key, while it does not: the
+    /// rest are then Muster's defaults. From protocol 29.
+    #[serde(default)]
+    pub problem: Option<String>,
 }
 
 impl Default for Preferences {
@@ -135,9 +143,36 @@ impl Default for Preferences {
         Self {
             notch: true,
             file: PathBuf::new(),
+            agents: Vec::new(),
+            problem: None,
         }
     }
 }
+
+/// A coding agent the person added in Muster's own settings, as clients
+/// offer it beside Muster's own (`muster_core::config::agents`). Only what
+/// a client shows: never its program's environment. From protocol 29.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AddedAgent {
+    /// What sessions name it by: a harness id, like `claude`.
+    pub name: String,
+    /// What it is called on screen.
+    pub label: String,
+    /// One character, shown where Muster's own agents show theirs.
+    pub mark: String,
+    /// The mark's colour: a name from the terminal's sixteen (`green`,
+    /// `light-blue`) or `#rrggbb`.
+    #[serde(default)]
+    pub colour: Option<String>,
+    /// Whether it takes a first prompt, as a ticket's agent is given its
+    /// ticket.
+    pub takes_prompt: bool,
+}
+
+/// The first protocol whose daemon knows the agents the person added and
+/// reads Muster's own settings again when asked
+/// ([`crate::protocol::Command::ReadPreferences`]).
+pub const AGENTS_PROTOCOL: u32 = 29;
 
 /// A change the person makes to Muster's own settings. From protocol 23.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

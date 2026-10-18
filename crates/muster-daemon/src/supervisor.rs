@@ -16,6 +16,7 @@ mod explain;
 mod handle;
 mod issues;
 mod looking;
+mod own_settings;
 mod projects;
 mod pulls;
 mod recovery;
@@ -102,7 +103,8 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         .call(|store| Ok::<_, StoreError>((store.snapshot()?, store.runs()?)))
         .await
         .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))??;
-    state.preferences = preferences(settings.config_dir.clone()).await;
+    let (preferences, agents) = own_settings::read(settings.config_dir.clone()).await;
+    state.preferences = preferences;
     let (requests, queue) = mpsc::channel(256);
     // Unbounded on purpose (`ARC-14`): the Supervisor sends terminals and
     // runs' work requests and waits on some replies, so either waiting on
@@ -162,6 +164,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         tidies: tidy::Tidies::default(),
         resumes: recovery::Resumes::default(),
         tasks: settings.tasks,
+        agents,
     };
     supervisor.ensure_checkouts().await;
     // Running sessions handed over keep running: taken over before any is
@@ -185,30 +188,6 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         run_reports: run_report_queue,
     }));
     Ok(SupervisorHandle { requests })
-}
-
-/// Muster's own settings as written, or its defaults where they do not
-/// read, which is logged; read off the loop.
-async fn preferences(config_dir: PathBuf) -> muster_core::settings::Preferences {
-    let file = config_dir.join(muster_core::config::preferences::FILE_NAME);
-    let read = tokio::task::spawn_blocking(move || crate::config::preferences(&config_dir)).await;
-    match read {
-        Ok(Ok(preferences)) => preferences,
-        Ok(Err(error)) => {
-            tracing::warn!(%error, "Muster's own settings do not read; using its defaults");
-            muster_core::settings::Preferences {
-                file,
-                ..Default::default()
-            }
-        }
-        Err(error) => {
-            tracing::warn!(%error, "could not read Muster's own settings");
-            muster_core::settings::Preferences {
-                file,
-                ..Default::default()
-            }
-        }
-    }
 }
 
 /// What the Supervisor listens to.
@@ -301,6 +280,9 @@ struct Supervisor {
     resumes: recovery::Resumes,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
+    /// The coding agents the person added in Muster's own settings, as
+    /// last read.
+    agents: Vec<Arc<muster_core::config::agents::AgentDefinition>>,
 }
 
 impl Supervisor {
@@ -495,6 +477,7 @@ impl Supervisor {
             Command::ExplainSession { session } => self.explain_session(session),
             Command::Reveal { session } => self.reveal(session),
             Command::ChangePreference(change) => self.change_preference(&change),
+            Command::ReadPreferences => Ok(self.read_preferences()),
             Command::AddProject { root, name } => self.add_project(root, name).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
             Command::CreateWorktree {
@@ -680,6 +663,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::MoveOnto { .. } => "move onto",
         Command::Reveal { .. } => "reveal",
         Command::ChangePreference(_) => "change preference",
+        Command::ReadPreferences => "read preferences",
         Command::AddProject { .. } => "add project",
         Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",

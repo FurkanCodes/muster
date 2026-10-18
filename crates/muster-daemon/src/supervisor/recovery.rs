@@ -19,7 +19,7 @@ use muster_state::session::Start;
 use super::Supervisor;
 use super::sessions::Mode;
 use crate::harness::activity::ActivityChange;
-use crate::harness::{self, Harness, Place};
+use crate::harness::{Harness, Place};
 
 /// How long after one session's program has been started again the next
 /// one's starts.
@@ -143,15 +143,19 @@ impl Supervisor {
         if stored.ended_at.is_some() || self.live.contains_key(&session) {
             return false;
         }
-        let conversation = harness::find(&stored.harness)
-            .and_then(|harness| Some((harness, resumable(harness, &stored)?)));
+        let conversation = self
+            .harness(&stored.harness)
+            .and_then(|harness| {
+                let agent_session = resumable(&harness, &stored)?;
+                Some((harness, agent_session))
+            });
         let Some((harness, agent_session)) = conversation else {
             tracing::info!(%session, "a session ended when the daemon stopped");
             self.end_session(session, SessionStatus::Exited { success: false }, true)
                 .await;
             return false;
         };
-        if let Some(holder) = self.conversation_holder(harness, &agent_session, session) {
+        if let Some(holder) = self.conversation_holder(&harness, &agent_session, session) {
             tracing::info!(%session, %holder, "not resumed: another session has its conversation");
             self.end_session(session, SessionStatus::Exited { success: false }, true)
                 .await;
@@ -171,14 +175,14 @@ impl Supervisor {
     /// `harness`'s conversation `agent_session`, if one is.
     pub(super) fn conversation_holder(
         &self,
-        harness: Harness,
+        harness: &Harness,
         agent_session: &str,
         except: SessionId,
     ) -> Option<SessionId> {
         self.state
             .sessions
             .iter()
-            .filter(|other| other.id != except && other.harness == harness.id)
+            .filter(|other| other.id != except && other.harness == harness.id())
             .find(|other| {
                 self.live.get(&other.id).is_some_and(|live| {
                     !live.machine.status().is_exited()
@@ -229,8 +233,13 @@ impl Supervisor {
 /// The harness session to resume `session` from: one whose harness can
 /// resume, whose id was saved after a turn ran, and whose transcript has
 /// not been deleted. An unreadable transcript folder is no verdict, so the
-/// resume is tried; if it fails the session starts fresh.
-pub(super) fn resumable(harness: Harness, session: &Session) -> Option<String> {
+/// resume is tried; if it fails the session starts fresh. An agent the
+/// person added reports no id: it carries on its last conversation by its
+/// resume arguments, with none (`""`).
+pub(super) fn resumable(harness: &Harness, session: &Session) -> Option<String> {
+    if harness.resumes_without_id() {
+        return Some(String::new());
+    }
     let agent_session = session.resume_id.clone().filter(|_| harness.can_resume())?;
     if harness.has_conversation(&agent_session) == Some(false) {
         tracing::info!(session = %session.id, "no transcript to resume");

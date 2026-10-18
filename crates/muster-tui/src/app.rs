@@ -28,6 +28,8 @@ pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
 #[cfg(test)]
+mod agents_tests;
+#[cfg(test)]
 mod by_hand_tests;
 #[cfg(test)]
 mod changes_tests;
@@ -414,6 +416,12 @@ pub(crate) struct App {
 }
 
 impl App {
+    /// The coding agents the person added in Muster's own settings, as the
+    /// daemon last said.
+    pub(crate) fn added_agents(&self) -> &[muster_core::settings::AddedAgent] {
+        &self.model.preferences().agents
+    }
+
     pub(crate) fn new(cwd: PathBuf, terminal_size: TermSize) -> Self {
         Self {
             model: Model::default(),

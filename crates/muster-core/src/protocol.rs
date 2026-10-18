@@ -57,9 +57,14 @@
 //! work (`Workspace::stacked_on`, the same; `CreateWorktree::on` and
 //! `StartFromIssue::on`, and `Command::MoveOnto`, sent only to a daemon of
 //! 28 or later; a timeline's entries of `EntryKind::Moved` reach an older
-//! client as `EntryKind::Between`, [`Reply::for_version`]); version 30 why
-//! a session has its status (`Command::ExplainSession`, sent only to a
-//! daemon of 30 or later, answered with `Reply::Explanation`).
+//! client as `EntryKind::Between`, [`Reply::for_version`]); version 29 the
+//! coding agents the person added in Muster's own settings
+//! (`Preferences::agents`, and why those settings do not read,
+//! `Preferences::problem`, fields older clients pass over), and reading
+//! those settings again (`Command::ReadPreferences`, sent only to a daemon
+//! of 29 or later); version 30 why a session has its status
+//! (`Command::ExplainSession`, sent only to a daemon of 30 or later,
+//! answered with `Reply::Explanation`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -349,7 +354,8 @@ pub enum Command {
     /// Start a session in a workspace.
     StartSession {
         workspace: WorkspaceId,
-        /// A harness id: `shell` or `claude`.
+        /// A harness id: `shell`, `claude`, or an agent the person added
+        /// ([`Preferences::agents`]).
         harness: String,
         title: Option<String>,
         size: TermSize,
@@ -461,6 +467,11 @@ pub enum Command {
     /// answered with [`Reply::Done`], every client told by
     /// [`Delta::Preferences`]. Sent only to a daemon of 23 or later.
     ChangePreference(PreferenceChange),
+    /// Read Muster's own settings again, after the person edited them by
+    /// hand: the agents they added among them. Answered with
+    /// [`Reply::Done`], every client told by [`Delta::Preferences`]. Sent
+    /// only to a daemon of 29 or later.
+    ReadPreferences,
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with

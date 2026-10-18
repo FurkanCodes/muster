@@ -130,7 +130,7 @@ Main dependencies: tokio, portable-pty, vt100 + tui-term, the `docker` command (
 - **Picking a session:** a click on a listed session sends `Command::Reveal`; the daemon sends `ServerFrame::Reveal` to the client looked at last (the newest, if none has been), or refuses when none is open, which the notch says under its list. The UI opens the session beside the list with the keys, and brings the person's terminal to the front with `open -b`, by the bundle identifier macOS put in its environment (`__CFBundleIdentifier`), only an identifier.
 - **On screen:** a borderless, non-activating `NSPanel` two levels above the status bar, on every Space and over full-screen apps, never in the window cycle; black, its bottom corners rounded, what waits (▲, pulsing) in the left side and what works (with the spinner) in the right; text in `NSTextField` labels changed only as what they say changes; a view class of its own takes the first click without activating anything. The program is an accessory (no Dock icon, no menu bar). AppKit runs on the main thread; the link to the daemon (`link`, a current-thread Tokio runtime on a thread of its own) hands each board over on the main dispatch queue: on a change, and every motion step (100 ms) while shown, when the spinner turns, what waits pulses, times tick and the pointer is looked at (open over the panel at rest, closed once off the open one). Hidden, nothing is drawn and nothing wakes.
 - **Lifecycle:** the UI on a Mac starts `muster notch --detach` once its state says the notch is on (`MUSTER_NOTCH=off` keeps it from doing so), again after reconnecting, and again when it is turned back on; that starts the notch as a process of its own, in a session of its own (`--background`), its errors in `notch.log` in the runtime directory, written afresh each start. A lock in the runtime directory (`notch.lock`) keeps it to one; a screen without a notch ends it at once. It never starts the daemon: it ends when turned off, when the daemon speaks no notch, and when the daemon has been gone 30 seconds (a restart in place is back within one). A daemon of another version has it move onto the program installed now (`exec`, with `MUSTER_NOTCH_FOR` naming that version, so it is done once).
-- **Muster's own settings:** `settings.toml` in the person's settings folder, beside the projects' overrides: `[notch] show`. The daemon reads it as it starts, keeps it in the state (`Snapshot::preferences`), and changes it on the Settings screen's row (`Command::ChangePreference`, keeping the rest of the file as written), telling every client (`Delta::Preferences`).
+- **Muster's own settings:** `settings.toml` in the person's settings folder, beside the projects' overrides: `[notch] show`, and the coding agents the person added (`[agents.<name>]`, §7). The daemon reads it as it starts, keeps it in the state (`Snapshot::preferences`, with each agent as clients offer it and, while the file does not read, why: `Preferences::agents`, `Preferences::problem`, protocol 29), changes it on the Settings screen's row (`Command::ChangePreference`, keeping the rest of the file as written), and reads it again when the person asks after editing it by hand (`r` there, `Command::ReadPreferences`), telling every client (`Delta::Preferences`).
 - **Tested:** the board, geometry and the copy of the state by unit tests; the UI's side (looking, the reveal, starting the notch, the Settings row) by the app's tests; the daemon's (lookers, the pump's filter, the setting) by the Supervisor's; the whole by end-to-end tests against the real daemon (`tests/notch.rs`). What AppKit draws is checked by hand on a MacBook, as no test can see the screen.
 
 ## 6. Protocol
@@ -151,7 +151,8 @@ Copied from Nebula where it is good, fixed where it is not.
 
 A harness is **data plus a parser**, following Nebula's descriptor idea.
 
-- **Descriptor:** id, program, interactive arguments, headless arguments, session-id and resume templates (`--session-id <uuid>`, `--resume <uuid>` for Claude Code, so Muster chooses the id up front and never has to discover it), model and permission-mode flags, how hooks are passed at launch (or none), headless output parser id, credential kind for containers, image install recipe, and which home directories a container keeps on a volume. Users override fields in their config; contradictory entries are rejected at load.
+- **Descriptor:** id, program, interactive arguments, headless arguments, session-id and resume templates (`--session-id <uuid>`, `--resume <uuid>` for Claude Code, so Muster chooses the id up front and never has to discover it), model and permission-mode flags, how hooks are passed at launch (or none), headless output parser id, credential kind for containers, image install recipe, and which home directories a container keeps on a volume.
+- **The person's own agents** (`muster_core::config::agents`): a coding agent Muster does not know, added in Muster's own settings, never a repository's, as `[agents.<name>]` (§12): its program and fixed `args`; `prompt`, the arguments a first prompt goes in (`{prompt}` where it goes), or none, for an agent that takes none; `resume`, the arguments that carry on its last conversation, as it reports no id to resume by; more `env` (none of Muster's own `MUSTER_` names, and never logged); a `label`, a `mark` and its `colour` (one of the terminal's sixteen, or `#rrggbb`), drawn where Muster's own agents have their letter or picture; and `[agents.<name>.title]`, the words its window title says while it works, is ready or waits on the person. Read strictly: an unknown key, a value of the wrong kind, a name one of Muster's own harnesses has, or a prompt with nowhere to go is an error naming the key (`AgentError`, `ARC-05`, `ARC-19`), and the file does not read until it is put right. It is a `harness::Kind::Added`, data like the rest (`ARC-03`), offered after Muster's own in every dialog that offers an agent (a ticket and a tidy only those taking a prompt), and heard without hooks, the less status detail `PRD-13` allows: no hook token is issued, and none it inherits survives (the daemon scrubs `MUSTER_HOOK_*` from what sessions inherit, `ARC-11`). A session handed over in a restart in place whose agent the settings no longer define keeps running, known by its name alone, and cannot be started again.
 - **Hands-on agents** (`PRD-03`, `PRD-13`): each is started in its PTY and heard the way it allows without editing the person's config, and each resumes after a daemon restart from the id its reports carried.
 
   | Harness | Session id | Status | Resume |
@@ -161,6 +162,7 @@ A harness is **data plus a parser**, following Nebula's descriptor idea.
   | Gemini CLI (`gemini`) | chosen: `--session-id` | hooks in a defaults file of Muster's own, named by `GEMINI_CLI_SYSTEM_DEFAULTS_PATH` (the lowest of its settings; hooks from all of them run, and a defaults file the person names stays theirs); hooks run only in a folder the person trusts; the title (working or ready) besides | `--resume <id>` |
   | OpenCode (`opencode`) | its own, from the plugin's reports | a plugin of Muster's own, added through `OPENCODE_CONFIG_CONTENT` (merged over the person's config, plugin lists joined; a value they set is kept and added to), posting its bus's events with `fetch` over the hook socket; a child session is a subagent of its root | `--session <id>` |
   | Copilot CLI (`copilot`) | chosen: `--session-id` | a plugin folder of Muster's own, `--plugin-dir`, whose `hooks/hooks.json` posts each event to its own address; the progress sequence besides; its first hook comes with the first prompt, so no start is awaited | `--resume=<id>` |
+  | One the person added (`[agents.<name>]`) | none: it reports none | no hooks: the progress sequence (OSC 9;4), the words of its window title its settings name (waiting on the person among them: *needs you: action required*), and its exit; no start is awaited | its `resume` arguments, needing no id; with none, it is recorded as exited |
 
   Codex's hooks passed at launch run only once the person has trusted them, or with `--dangerously-bypass-hook-trust`, which would run their untrusted hooks too; Muster uses neither. The daemon writes the files (`harness/` in the runtime directory) before a launch, each whole or not at all; they hold no secret, as the token comes through the environment. Every agent suspends itself on Ctrl+Z, which the UI holds back. Variables each sets for what it runs are scrubbed from sessions' environments, as Claude Code's are. Checked against Codex 0.162.1, Gemini CLI 0.63.0, OpenCode 1.4.6 and Copilot CLI 1.0.95: the flags, variables and files are taken, the plugin and hooks load, and the title reads as above.
 - **What they used** (`spend/`, `PRD-12`): read from each agent's own records, which Muster only reads (`PRD-13`), every few seconds off the Supervisor's loop, each record from where the last read stopped; kept on `Session::spend`, an optional field older clients pass over (protocol 19), and never stored, so after a restart each record is read again from its start. Tokens are every token sent and got back, cached ones included, as each agent counts them; a cost only where the agent reports one. The same read of Claude Code's transcript finds a turn the person cut short, which no hook tells (§5, *Turns cut short*).
@@ -274,6 +276,25 @@ host = "gitlab"            # a host the remote's name does not tell (github, git
 
 [branches]
 muster_prefix = false      # issue-42-fix-the-login, not muster/issue-42-fix-the-login
+```
+
+In Muster's own `settings.toml`, never a project's, the person adds coding agents Muster does not know (§7):
+
+```toml
+[agents.my-agent]
+label = "My Agent"                    # its name on screen; the key otherwise
+program = "my-agent"                  # on PATH, or a path
+args = ["--no-banner"]                # always given, first
+prompt = ["--message", "{prompt}"]   # how a first prompt is given; leave out for none
+resume = ["--continue"]               # given instead after a restart, to carry on
+env = { MY_AGENT_THEME = "dark" }     # more environment
+mark = "M"                            # one character
+colour = "green"                      # a terminal colour, or "#rrggbb"
+
+[agents.my-agent.title]               # words its window title says, if it says any
+working = "Thinking"
+ready = "Ready"
+waiting = "Approve?"
 ```
 
 ## 13. Testing

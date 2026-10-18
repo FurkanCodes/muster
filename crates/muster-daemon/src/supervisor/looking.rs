@@ -148,10 +148,10 @@ impl Supervisor {
             ErrorBody::new(ErrorCode::BadRequest, error.to_string())
         };
         crate::config::change_preference(&self.config_dir, change).map_err(refused)?;
-        let preferences = crate::config::preferences(&self.config_dir).map_err(refused)?;
+        let own = crate::config::own_settings(&self.config_dir).map_err(refused)?;
         tracing::info!(?change, "changed one of Muster's own settings");
-        self.state.preferences = preferences.clone();
-        self.broadcast(Delta::Preferences(preferences));
+        let agents = own.agents.into_iter().map(std::sync::Arc::new).collect();
+        self.take_own_settings((own.preferences, agents));
         Ok(Reply::Done)
     }
 }

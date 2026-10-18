@@ -179,8 +179,9 @@ enum IssueCommand {
         project: String,
         #[arg(value_parser = ticket_key)]
         key: muster_core::TicketKey,
-        /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`
-        /// or `shell`.
+        /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`,
+        /// `shell`, or an agent you added as `[agents.<name>]` in Muster's
+        /// own settings (`~/.config/muster/settings.toml`).
         #[arg(long, default_value = "claude")]
         harness: String,
         /// Another agent on the issue, in a worktree of its own, rather
@@ -300,7 +301,9 @@ enum SessionCommand {
     Start {
         worktree: String,
         /// What to run: `shell`, or a coding agent: `claude`, `codex`,
-        /// `gemini`, `opencode` or `copilot`.
+        /// `gemini`, `opencode`, `copilot`, or one you added as
+        /// `[agents.<name>]` in Muster's own settings
+        /// (`~/.config/muster/settings.toml`).
         #[arg(long, default_value = "shell")]
         harness: String,
         #[arg(long)]
