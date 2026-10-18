@@ -7,6 +7,7 @@
 
 mod auth;
 mod commands;
+mod launchd;
 mod reload;
 mod runs;
 mod upgrade;
@@ -44,6 +45,10 @@ enum Commands {
         /// hang-ups.
         #[arg(long, hide = true)]
         background: bool,
+        /// What the launchd job `--detach` has run on macOS does: start the
+        /// daemon with the environment saved in FILE, then remove it.
+        #[arg(long, hide = true, value_name = "FILE")]
+        from_job: Option<PathBuf>,
         /// Take over from the daemon's previous version, whose handoff is
         /// at this descriptor: its restart in place (`muster reload`).
         #[arg(long, hide = true, value_name = "FD")]
@@ -309,6 +314,15 @@ pub(crate) fn instant_now() -> std::time::Instant {
 #[expect(clippy::too_many_lines, reason = "one arm for each subcommand")]
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // launchd's job, whose environment is launchd's until the daemon is
+    // given the person's.
+    if let Some(Commands::Daemon {
+        from_job: Some(file),
+        ..
+    }) = &cli.command
+    {
+        return launchd::run_job(file);
+    }
     let paths = match Paths::resolve(|key| std::env::var_os(key), nix::unistd::getuid().as_raw()) {
         Ok(paths) => paths,
         Err(error) => return fail(error),
@@ -335,6 +349,7 @@ fn main() -> ExitCode {
                 background,
                 adopt,
                 can_adopt,
+                ..
             }) => {
                 if let Some(format) = can_adopt {
                     return if format == muster_daemon::HANDOFF_FORMAT {
@@ -344,7 +359,7 @@ fn main() -> ExitCode {
                     };
                 }
                 if detach {
-                    return start_in_background();
+                    return start_in_background(&paths);
                 }
                 if background {
                     // A session of its own, with no terminal to hang it up.
@@ -578,9 +593,28 @@ fn notch(paths: &Paths, detach: bool, background: bool) -> ExitCode {
 
 /// `muster daemon --detach`: starts the daemon as a process of its own and
 /// returns. Once this one exits the daemon is no longer anyone's child but
-/// the system's, so nothing that walks this process's tree reaches it. Its
-/// errors go where this process's do (the UI's `daemon.log`).
-fn start_in_background() -> ExitCode {
+/// the system's, so nothing that walks this process's tree reaches it. On
+/// macOS, at the Mac's own screen, launchd starts it, so it is in no
+/// terminal app's job either and quitting the app leaves it running; its
+/// log is then `daemon.log` in the runtime directory. Where launchd does
+/// not, this process starts it, saying why, and its errors go where this
+/// process's do (the UI's `daemon.log`).
+fn start_in_background(paths: &Paths) -> ExitCode {
+    if launchd::wanted(|key| std::env::var_os(key)) {
+        let through_launchd = launchd::Job::for_this_process(&paths.runtime_dir)
+            .map_err(|error| format!("could not tell which muster this is: {error}"))
+            .and_then(|job| {
+                launchd::start(&launchd::System, &job, std::env::vars_os())
+                    .map_err(|error| error.to_string())
+            });
+        match through_launchd {
+            Ok(()) => return ExitCode::SUCCESS,
+            Err(error) => eprintln!(
+                "muster: starting the daemon directly, not through launchd: {}",
+                muster_core::text::multi_line(&error)
+            ),
+        }
+    }
     let started = std::env::current_exe().and_then(|exe| {
         std::process::Command::new(exe)
             .args(["daemon", "--background"])
