@@ -94,7 +94,13 @@ pub(super) fn command(actions: &[Action]) -> (u64, Command) {
 }
 
 pub(super) fn render(app: &App) -> String {
-    let mut terminal = Terminal::new(TestBackend::new(SIZE.cols, SIZE.rows + 1)).unwrap();
+    render_in(app, SIZE)
+}
+
+/// The app drawn in a window whose area below the top bar is `size`, as
+/// the app was last told (`App::on_resize`).
+pub(super) fn render_in(app: &App, size: TermSize) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(size.cols, size.rows + 1)).unwrap();
     terminal
         .draw(|frame| crate::view::draw(frame, app))
         .unwrap();

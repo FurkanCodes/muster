@@ -58,6 +58,7 @@ muster
 | `↑` `↓` | move (the selected session streams in beside the list) |
 | `⏎` | type in the selected session, beside the list; on a worktree or checkout (`⌂`), start a session; on a project, create a worktree (on a plain folder, start a session in it) |
 | `f` | the selected session full screen |
+| `e` | fold the selected project or worktree, hiding what is under it (its line still shows its most urgent session's mark, and how many it hides), or unfold it; on a session, fold its worktree. A click on a line's `▾` `▸` does the same |
 | `a` | add a project |
 | `w` | new worktree for the selected project |
 | `n` | new session in the selected worktree, or on a project in its own checkout: a coding agent with an optional first prompt, or a shell (`⇥` `⇧⇥` choose; it offers the one you last started first) |
@@ -77,6 +78,9 @@ muster
 | `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
 | `4` | the *Settings* tab, from the list |
 | `esc` `⌫` | back to *Sessions* from the other tabs |
+| `l` | the session that needed you last, as notified (a finish is told once it has stayed one two seconds) |
+| `h` | every key of the screen shown; type to narrow them (`?` works too) |
+| right-click | on a session, worktree or project: what can be done there, each with its key; choose one, or press its key |
 | `q` | quit the UI (sessions keep running) |
 
 While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but one: **Shift-Q** gives the keys back to the list, and so does a click on it. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
@@ -94,6 +98,7 @@ While you type in a session, beside the list or full screen, every key goes to t
 | Key | On the *Settings* screen |
 |---|---|
 | `⏎` `space` | turn the selected setting on or off, per project: *Only my tickets*, which lists only the tickets assigned to you, in whichever tracker the project's tickets are; *Branches with muster/*, whether the branches Muster makes start with `muster/`; and, on a Mac, Muster's own *Agents in the notch* |
+| `←` `→` | on *Session beside the list from*, a smaller or a larger width (`⏎` goes to the next): in a window narrower than it, the list takes the whole window and `⏎` opens a session over it |
 | `r` | read the settings again, after editing a file by hand: yours for the projects, and Muster's own, with the agents you added (*Your agents* says what is there, or which key does not read) |
 
 A change on the *Settings* screen goes into your own settings for the project (`~/.config/muster/projects/<project id>.toml`, over its `muster.toml`; comments and the rest of the file are kept), never into the repository. Muster's own settings, for all of it, go into `~/.config/muster/settings.toml`.

@@ -2,6 +2,11 @@
 //! counted among the windows the person may look at (`looking`) and among
 //! the clients of sessions' terminals (`sizing`), and a guard that takes
 //! all of that away when the connection ends, however it ends (`ARC-14`).
+//!
+//! The guard also keeps, for its connection, whether the person is looking
+//! at the client's window as the client last said: what a connection
+//! shows is watched only while it is (`terminals`), and one that never
+//! says counts as looked at.
 
 use tokio::sync::mpsc;
 
@@ -11,6 +16,9 @@ use super::Supervisor;
 #[derive(Debug)]
 pub(crate) struct ClientGuard {
     client: u64,
+    /// Whether the person is looking at the client, as it last said;
+    /// `None` until it says.
+    looking: Option<bool>,
     gone: mpsc::UnboundedSender<u64>,
 }
 
@@ -18,6 +26,23 @@ impl ClientGuard {
     /// The connection's key.
     pub(crate) fn id(&self) -> u64 {
         self.client
+    }
+
+    /// Whether the client has said whether the person is looking at it,
+    /// which counts it among the windows they may look at.
+    pub(crate) fn has_said(&self) -> bool {
+        self.looking.is_some()
+    }
+
+    /// Whether the person is looking at the client, as it last said; one
+    /// that never says counts as looked at.
+    pub(crate) fn looked_at(&self) -> bool {
+        self.looking.unwrap_or(true)
+    }
+
+    /// The client says whether the person is looking at it.
+    pub(crate) fn said(&mut self, looking: bool) {
+        self.looking = Some(looking);
     }
 }
 
@@ -34,6 +59,7 @@ impl Supervisor {
         self.next_client += 1;
         ClientGuard {
             client: self.next_client,
+            looking: None,
             gone: self.client_gone.clone(),
         }
     }

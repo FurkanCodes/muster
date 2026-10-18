@@ -70,7 +70,7 @@ impl App {
                     .is_some_and(|stored| stored.ended_at.is_some());
                 self.model.apply(delta);
                 if before == Some(false) {
-                    news = session.and_then(|id| self.news(id));
+                    news = session.and_then(|id| self.on_news(id));
                 }
                 if let Some(id) = session {
                     self.reattach_if_reopened(id, was_ended);
@@ -132,9 +132,9 @@ impl App {
         }
     }
 
-    /// A notification for a session that has just come to need the
-    /// person, if they are looking elsewhere and want to be told.
-    fn news(&self, session: SessionId) -> Option<Action> {
+    /// A notification for a session that has come to need the person, if
+    /// they are looking elsewhere and want to be told.
+    pub(super) fn news(&self, session: SessionId) -> Option<Action> {
         if !self.notify || self.focused != Some(false) {
             return None;
         }
@@ -271,6 +271,9 @@ impl App {
             (Ok(_), Then::Say(text)) => self.say(text),
             (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
             (outcome, Then::NotchChanged(on)) => self.notch_changed(on, outcome.map(drop)),
+            (outcome, Then::SideBySideChanged(columns)) => {
+                self.side_by_side_changed(columns, outcome.map(drop));
+            }
             (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Ok(changes));
             }

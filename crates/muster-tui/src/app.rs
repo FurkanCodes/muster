@@ -2,11 +2,17 @@
 //! daemon, and returns the frames to send. It does no IO, so every behaviour
 //! can be tested by feeding it events and drawing it into a test buffer.
 
+mod actions;
+mod alarm;
 mod changes;
 mod events;
+mod fold;
 mod harness_choice;
+mod help;
 mod link;
+mod menu;
 mod motion;
+mod narrow;
 mod notch;
 mod picker;
 mod pointer;
@@ -21,14 +27,19 @@ mod tidy;
 pub(crate) mod timeline;
 mod welcome;
 
+pub(crate) use actions::Here;
 pub(crate) use changes::{ChangeRow, ChangesPane, DiffPane, Pick};
 pub(crate) use harness_choice::HarnessChoice;
+pub(crate) use help::{Help, HelpLine};
+pub(crate) use menu::Menu;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
 #[cfg(test)]
 mod agents_tests;
+#[cfg(test)]
+mod alarm_tests;
 #[cfg(test)]
 mod by_hand_tests;
 #[cfg(test)]
@@ -38,15 +49,23 @@ mod clashes_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]
+mod fold_tests;
+#[cfg(test)]
 mod folder_tests;
+#[cfg(test)]
+mod help_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
 mod look_tests;
 #[cfg(test)]
+mod menu_tests;
+#[cfg(test)]
 mod motion_tests;
 #[cfg(test)]
 mod mouse_sweep_tests;
+#[cfg(test)]
+mod narrow_tests;
 #[cfg(test)]
 mod navigation_tests;
 #[cfg(test)]
@@ -80,7 +99,7 @@ mod tickets_tests;
 #[cfg(test)]
 mod welcome_tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use muster_core::config::TrackerKind;
@@ -162,6 +181,11 @@ pub(crate) enum Mode {
     /// keys go to them.
     Changes,
     Dialog(Dialog),
+    /// What can be done on the selected line, opened by a right-click on
+    /// it (`app::menu`).
+    Menu(Menu),
+    /// Every key of the screen shown, over it (`app::help`).
+    Help(Help),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -294,6 +318,8 @@ enum Then {
     BranchesChanged(ProjectId),
     /// Say whether the notch is on now: turned on, or off.
     NotchChanged(bool),
+    /// Say from how many columns a session sits beside the list now.
+    SideBySideChanged(u16),
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.
@@ -318,6 +344,9 @@ pub(crate) struct App {
     pub(crate) note: Option<Note>,
     /// The selected line of the sessions list, by identity.
     pub(crate) selected: Option<Row>,
+    /// The projects' and worktrees' lines folded in the sessions list,
+    /// hiding what is under them (`app::fold`).
+    folded: HashSet<Row>,
     /// Where the selected line was, so the selection stays nearby when
     /// that line goes away.
     selected_at: usize,
@@ -392,6 +421,12 @@ pub(crate) struct App {
     flashes: HashMap<SessionId, u64>,
     /// The step a session last finished at, while Kep is glad of it.
     glad_at: Option<u64>,
+    /// Finishes not told yet, each with the step it came at: held a
+    /// moment, in case the session goes straight back to work
+    /// (`app::alarm`). One for each session, gone once told or dropped.
+    held_news: Vec<(SessionId, u64)>,
+    /// The session told of last, which `l` goes to.
+    last_alarm: Option<SessionId>,
     /// The selected line whose name, cut short, slides along.
     slide: Option<motion::Slide>,
     /// Whether the welcome fills the window, as the UI starts.
@@ -423,6 +458,8 @@ pub(crate) struct App {
     /// One cell of the person's terminal in pixels, as its size says,
     /// read as the UI starts and as the window is resized.
     pub(crate) cell_pixels: Option<PixelSize>,
+    /// The width a session sits beside the list from is being changed.
+    pub(crate) side_by_side_changing: bool,
 }
 
 impl App {
@@ -440,6 +477,7 @@ impl App {
             link: Link::Connecting,
             note: None,
             selected: None,
+            folded: HashSet::new(),
             selected_at: 0,
             list_offset: 0,
             needs_offset: 0,
@@ -472,6 +510,8 @@ impl App {
             now: None,
             flashes: HashMap::new(),
             glad_at: None,
+            held_news: Vec::new(),
+            last_alarm: None,
             slide: None,
             welcome: false,
             last_harness: HarnessChoice::Claude,
@@ -483,6 +523,7 @@ impl App {
             notch_changing: false,
             colours: muster_core::colours::TerminalColours::default(),
             cell_pixels: None,
+            side_by_side_changing: false,
         }
     }
 
@@ -546,15 +587,22 @@ impl App {
         self.terminal_size = size;
         // The session's screen is drawn again at another size.
         self.selection = None;
-        self.keep_in_view();
-        self.fit_attached()
+        // Narrower or wider than a session beside the list needs, the
+        // session shown may be another, or none.
+        let attached = self.attached;
+        let mut actions = self.settle();
+        if self.attached == attached {
+            actions.extend(self.fit_attached());
+        }
+        actions
     }
 
     /// The size sessions' programs are given: the pane beside the list, or
-    /// the window below the top bar while one fills it. Programs draw for
-    /// their terminal's size, so it is always the size they are shown at.
+    /// the window below the top bar while one fills it, as it does in a
+    /// window too narrow for both. Programs draw for their terminal's size,
+    /// so it is always the size they are shown at.
     pub(crate) fn session_size(&self) -> TermSize {
-        if self.full_screen && matches!(self.mode, Mode::Terminal(_)) {
+        if self.fills_window() || self.narrow() {
             return self.terminal_size;
         }
         let window =

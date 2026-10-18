@@ -4,10 +4,12 @@
 //! whatever tracker the project's tickets are, where they come from
 //! (`tickets_from`), and whether the branches Muster makes start with
 //! `muster/`. Then Muster's own: on a Mac, whether the notch shows the
-//! agents; and the coding agents the person added in Muster's own settings,
-//! which are written by hand, so the row says what reads and what does not.
+//! agents; from how many columns a session sits beside the list; and the
+//! coding agents the person added in Muster's own settings, which are
+//! written by hand, so the row says what reads and what does not.
 //!
-//! ⏎ or space turns the selected setting on or off, or opens its dialog.
+//! ⏎ or space turns the selected setting on or off, goes to its next
+//! choice, or opens its dialog; ← → go to a smaller or larger choice.
 //! The daemon writes the change into the person's own settings for the
 //! project, never into its repository (`ARC-05`); a change to its tickets
 //! fetches them again.
@@ -35,6 +37,8 @@ pub(crate) enum SettingRow {
     Muster,
     /// Whether the notch shows the agents.
     Notch,
+    /// From how many columns a session sits beside the list.
+    SideBySide,
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -47,7 +51,7 @@ impl SettingRow {
             | Self::OnlyMine(project)
             | Self::TicketsFrom(project)
             | Self::MusterPrefix(project) => Some(project),
-            Self::Muster | Self::Notch | Self::Agents => None,
+            Self::Muster | Self::Notch | Self::SideBySide | Self::Agents => None,
         }
     }
 }
@@ -64,9 +68,10 @@ pub(crate) enum Settings {
 
 impl App {
     /// The settings list: each project, then its settings; the branches'
-    /// prefix only where the daemon can change it. Then Muster's own, where
-    /// it has any here: the notch, on a Mac, and the person's agents, where
-    /// the daemon knows them.
+    /// prefix only where the daemon can change it. Then Muster's own, those
+    /// the daemon keeps: the notch, on a Mac, the width a session sits
+    /// beside the list from, and the person's agents, where the daemon
+    /// knows them.
     pub(crate) fn setting_rows(&self) -> Vec<SettingRow> {
         let prefix = self.daemon_protocol >= MUSTER_PREFIX_PROTOCOL;
         let mut rows: Vec<SettingRow> = self
@@ -83,16 +88,14 @@ impl App {
             })
             .flatten()
             .collect();
-        let notch = self.notch_known() && self.model.loaded();
-        let agents = self.daemon_protocol >= AGENTS_PROTOCOL && self.model.loaded();
-        if notch || agents {
+        let own = [
+            (self.notch_known(), SettingRow::Notch),
+            (self.side_by_side_known(), SettingRow::SideBySide),
+            (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
+        ];
+        if self.model.loaded() && own.iter().any(|(known, _)| *known) {
             rows.push(SettingRow::Muster);
-        }
-        if notch {
-            rows.push(SettingRow::Notch);
-        }
-        if agents {
-            rows.push(SettingRow::Agents);
+            rows.extend(own.iter().filter(|(known, _)| *known).map(|(_, row)| *row));
         }
         rows
     }
@@ -105,8 +108,15 @@ impl App {
             KeyCode::Enter | KeyCode::Char(' ') => match self.settings_selected {
                 Some(SettingRow::TicketsFrom(project)) => return self.choose_tickets_from(project),
                 Some(SettingRow::Notch) => return self.toggle_notch(),
+                Some(SettingRow::SideBySide) => return self.step_side_by_side(1, true),
                 _ => return self.toggle_setting(),
             },
+            KeyCode::Left | KeyCode::Right
+                if self.settings_selected == Some(SettingRow::SideBySide) =>
+            {
+                let by = if key.code == KeyCode::Left { -1 } else { 1 };
+                return self.step_side_by_side(by, false);
+            }
             KeyCode::Char('r') => {
                 // Read again as they are shown, edits by hand included:
                 // Muster's own too, where the daemon reads them on asking.
@@ -230,13 +240,23 @@ impl App {
         {
             return;
         }
+        // Chosen as the screen shows, so the first is a project's once
+        // there is one, not Muster's own, listed before any project.
+        if self.settings_selected.is_none() && self.view != View::Settings {
+            return;
+        }
         self.settings_selected = self
             .settings_selected
             .and_then(|row| row.project().map(SettingRow::Project))
             .filter(|row| rows.contains(row))
             .or_else(|| {
                 rows.iter()
-                    .find(|row| matches!(row, SettingRow::OnlyMine(_) | SettingRow::Notch))
+                    .find(|row| {
+                        matches!(
+                            row,
+                            SettingRow::OnlyMine(_) | SettingRow::Notch | SettingRow::SideBySide
+                        )
+                    })
                     .copied()
             });
     }

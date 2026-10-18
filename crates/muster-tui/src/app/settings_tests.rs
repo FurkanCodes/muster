@@ -90,6 +90,7 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::TicketsFrom(project),
             SettingRow::MusterPrefix(project),
             SettingRow::Muster,
+            SettingRow::SideBySide,
             SettingRow::Agents,
         ]
     );

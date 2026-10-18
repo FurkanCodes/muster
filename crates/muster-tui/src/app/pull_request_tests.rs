@@ -53,6 +53,13 @@ fn a_worktree_shows_its_branch_s_pull_request_and_b_opens_it() {
         "{screen}"
     );
     assert!(screen.contains("b opens its pull request in the browser."));
+    // Its key among the hints, where they have the room.
+    let wide = muster_core::protocol::TermSize {
+        cols: 130,
+        rows: 29,
+    };
+    world.app.on_resize(wide);
+    let screen = super::tests::render_in(&world.app, wide);
     assert!(screen.contains("b browser"), "{screen}");
     assert_eq!(
         press(&mut world.app, KeyCode::Char('b')),
@@ -72,7 +79,7 @@ fn without_a_pull_request_nothing_is_shown_and_b_says_so() {
     let mut world = world();
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     let screen = render(&world.app);
-    assert!(!screen.contains("PR      "), "{screen}");
+    assert!(!screen.contains("│PR      "), "{screen}");
     assert!(!screen.contains("b browser"), "{screen}");
     assert!(press(&mut world.app, KeyCode::Char('b')).is_empty());
     let note = world.app.note.clone().unwrap();

@@ -229,16 +229,16 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
     let mut world = world();
     world.app.view = View::Settings;
     assert!(!world.app.setting_rows().contains(&SettingRow::Notch));
-    assert!(
-        world
-            .app
-            .setting_rows()
-            .ends_with(&[SettingRow::Muster, SettingRow::Agents])
-    );
+    assert!(world.app.setting_rows().ends_with(&[
+        SettingRow::Muster,
+        SettingRow::SideBySide,
+        SettingRow::Agents
+    ]));
     world.app.notch_here = true;
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::Notch,
+        SettingRow::SideBySide,
         SettingRow::Agents
     ]));
     world.app.daemon_protocol = NOTCH_PROTOCOL - 1;

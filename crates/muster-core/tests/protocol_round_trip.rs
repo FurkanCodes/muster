@@ -242,6 +242,7 @@ fn preferences() -> Preferences {
             takes_prompt: true,
         }],
         problem: Some("agents.other: `program` is missing".to_owned()),
+        side_by_side_from: 120,
     }
 }
 
@@ -455,6 +456,7 @@ fn commands() -> Vec<Command> {
         Command::ReadPreferences,
         Command::Reveal { session },
         Command::ChangePreference(PreferenceChange::Notch(false)),
+        Command::ChangePreference(PreferenceChange::SideBySideFrom(0)),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),

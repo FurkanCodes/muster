@@ -70,19 +70,13 @@ fn a_long_branch_on_the_selected_worktree_line_slides() {
     let (mut world, _) = long_world();
     let screen = render(&world.app);
     // Cut short with an ellipsis, as a title is, rather than at the border.
-    assert!(
-        screen.contains("⎇ muster/issue-2640-fix-the-l…"),
-        "{screen}"
-    );
+    assert!(screen.contains("⎇ muster/issue-2640-fix-the…"), "{screen}");
 
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     world.app.on_step(0);
-    world.app.on_step(15 + 2 * 17);
+    world.app.on_step(15 + 2 * 19);
     let screen = render(&world.app);
-    assert!(
-        screen.contains("⎇ …fix-the-login-redirect-loop"),
-        "{screen}"
-    );
+    assert!(screen.contains("⎇ …x-the-login-redirect-loop"), "{screen}");
 }
 
 #[test]
@@ -100,16 +94,13 @@ fn a_branch_slides_beside_its_pull_request() {
         .app
         .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(opened)));
     world.app.selected = Some(Row::Worktree(world.worktree.id));
-    // Seventeen cells for the branch, beside the pull request.
-    assert_eq!(crate::view::cut_name(&world.app), Some((45, 17)));
+    // Fifteen cells for the branch, beside the pull request.
+    assert_eq!(crate::view::cut_name(&world.app), Some((45, 15)));
     world.app.on_step(0);
-    assert!(render(&world.app).contains("⎇ muster/issue-264… #42 merged"));
-    world.app.on_step(15 + 2 * 28);
+    assert!(render(&world.app).contains("⎇ muster/issue-2… #42 merged"));
+    world.app.on_step(15 + 2 * 30);
     let screen = render(&world.app);
-    assert!(
-        screen.contains("⎇ …in-redirect-loop #42 merged"),
-        "{screen}"
-    );
+    assert!(screen.contains("⎇ …-redirect-loop #42 merged"), "{screen}");
 }
 
 #[test]
@@ -125,10 +116,7 @@ fn only_the_selected_line_slides() {
     world.app.on_step(40);
     let screen = render(&world.app);
     assert!(screen.contains("Fix the login redir…  idle"), "{screen}");
-    assert!(
-        screen.contains("⎇ muster/issue-2640-fix-the-l…"),
-        "{screen}"
-    );
+    assert!(screen.contains("⎇ muster/issue-2640-fix-the…"), "{screen}");
 }
 
 #[test]

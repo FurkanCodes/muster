@@ -31,6 +31,14 @@ impl App {
             Mode::Terminal(session) => return self.terminal_mouse(session, event),
             Mode::Browse => self.browse_mouse(event),
             Mode::Changes => self.changes_mouse(event),
+            Mode::Menu(ref menu) => {
+                let menu = menu.clone();
+                self.menu_mouse(&menu, event)
+            }
+            Mode::Help(ref help) => {
+                let help = help.clone();
+                self.help_mouse(help, event)
+            }
             Mode::Dialog(_) => Vec::new(),
         };
         actions.extend(self.settle());
@@ -43,7 +51,7 @@ impl App {
         let pressed = event.kind == MouseEventKind::Down(MouseButton::Left);
         // Where the program's screen is: below the top bar when it fills
         // the window, else inside the pane beside the list.
-        let screen = if self.full_screen {
+        let screen = if self.fills_window() {
             let screen = crate::view::terminal_area(window);
             if pressed && !screen.contains(at) {
                 // The top bar, as the list beside a session.
@@ -54,9 +62,14 @@ impl App {
             screen
         } else {
             let list = browse_areas(self, window).list;
-            if pressed && list.contains(at) {
+            let right = event.kind == MouseEventKind::Down(MouseButton::Right);
+            if (pressed || right) && list.contains(at) {
                 let mut actions = self.leave_terminal(session);
-                self.select_at(list, event.row);
+                if pressed {
+                    self.click_list(list, at);
+                } else {
+                    self.open_menu(list, at);
+                }
                 actions.extend(self.settle());
                 return actions;
             }
@@ -137,9 +150,12 @@ impl App {
                         .scroll(if up { WHEEL_LINES } else { -WHEEL_LINES });
                 }
             }
+            MouseEventKind::Down(MouseButton::Right) if areas.list.contains(at) => {
+                self.open_menu(areas.list, at);
+            }
             MouseEventKind::Down(MouseButton::Left) => {
                 if areas.list.contains(at) {
-                    self.select_at(areas.list, event.row);
+                    self.click_list(areas.list, at);
                 } else if areas.preview.contains(at)
                     && matches!(self.view, View::Sessions | View::NeedsYou)
                     && self.focused_session().is_some()
@@ -159,11 +175,30 @@ impl App {
         Vec::new()
     }
 
+    /// A click on the list at `at`: selects the line there, and on a
+    /// project's or a worktree's triangle folds or unfolds it.
+    fn click_list(&mut self, list: Rect, at: Position) {
+        self.select_at(list, at.y);
+        if self.view != View::Sessions {
+            return;
+        }
+        let rows = self.rows();
+        let Some(row) = line_at(list, at.y, rows.len(), self.list_offset).map(|index| rows[index])
+        else {
+            return;
+        };
+        let on_triangle =
+            crate::view::fold_column(row).is_some_and(|column| at.x == list.x + 1 + column);
+        if on_triangle && (self.foldable(row) || self.is_folded(row)) {
+            self.fold(row);
+        }
+    }
+
     /// Selects the list line drawn at `row`, if there is one.
     pub(super) fn select_at(&mut self, list: Rect, row: u16) {
         match self.view {
             View::Sessions => {
-                let rows = self.model.rows();
+                let rows = self.rows();
                 if let Some(index) = line_at(list, row, rows.len(), self.list_offset) {
                     self.selected = Some(rows[index]);
                 }

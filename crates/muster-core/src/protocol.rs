@@ -76,7 +76,11 @@
 //! which session has the person's keys, for programs that asked to be
 //! told as their terminal gains and loses focus (`ClientFrame::Keys`, the
 //! same), and the size of a session's terminal in pixels
-//! (`ClientFrame::Resize::pixels`, a field older daemons pass over).
+//! (`ClientFrame::Resize::pixels`, a field older daemons pass over);
+//! version 32 the width from which a session sits beside the list
+//! (`Preferences::side_by_side_from`, a field older clients pass over;
+//! `PreferenceChange::SideBySideFrom`, sent only to a daemon of 32 or
+//! later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -95,7 +99,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 31;
+pub const PROTOCOL_VERSION: u32 = 32;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 

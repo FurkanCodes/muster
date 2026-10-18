@@ -9,8 +9,12 @@
 //! Watching is counted per session: while anyone watches, nothing that
 //! happens in the session is news to the person (`Signal::Watched`). Each
 //! watcher holds a [`WatchGuard`]; dropping it, however the watcher ends,
-//! stops the watch. A client that links to a terminal is counted among its
-//! clients, whose sizes it takes (`sizing`).
+//! stops the watch. A connection holds its watches only while its client
+//! says the person is looking at it, as its
+//! [`ClientGuard`](super::ClientGuard) keeps (`server`), so a session is
+//! watched only while a window showing it is looked at. A client that
+//! links to a terminal is counted among its clients, whose sizes it takes
+//! (`sizing`).
 //!
 //! The person's keys are counted the same way: while a client has them in
 //! a session's terminal (the person entered it, in a window they look
