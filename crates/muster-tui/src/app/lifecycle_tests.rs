@@ -241,6 +241,27 @@ fn a_new_connection_starts_every_screen_over() {
 }
 
 #[test]
+fn an_ended_session_says_why_a_restart_did_not_resume_it_prd_09() {
+    let mut world = ended();
+    let screen = render(&world.app);
+    assert!(screen.contains("exited"), "{screen}");
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionActivity {
+            session: world.session.id,
+            activity: Some(muster_core::Activity {
+                text: "not resumed: another has its conversation".to_owned(),
+                since: Timestamp::from_millis(10),
+            }),
+        }));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("not resumed: another has its conversation"),
+        "{screen}"
+    );
+}
+
+#[test]
 fn hints_follow_the_selection() {
     let mut world = ended();
     let screen = render(&world.app);

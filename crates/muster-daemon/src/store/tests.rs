@@ -92,7 +92,7 @@ fn every_older_schema_migrates_to_the_latest() {
             conn.pragma_update(None, "user_version", i64::try_from(applied).unwrap())
                 .unwrap();
         }
-        let store = Store::open(&path).unwrap();
+        let store = Store::open(&path, at(1)).unwrap();
         assert_eq!(store.schema_version().unwrap(), latest_version());
         let problems: i64 = store
             .conn
@@ -122,7 +122,7 @@ fn sessions_written_by_the_first_schema_survive_the_upgrade() {
         )
         .unwrap();
     }
-    let store = Store::open(&path).unwrap();
+    let store = Store::open(&path, at(1)).unwrap();
     let sessions = store.snapshot().unwrap().sessions;
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].status, SessionStatus::Finished);
@@ -138,7 +138,7 @@ fn a_database_from_a_newer_muster_is_refused() {
         .unwrap()
         .pragma_update(None, "user_version", latest_version() + 1)
         .unwrap();
-    let error = Store::open(&path).unwrap_err();
+    let error = Store::open(&path, at(1)).unwrap_err();
     assert!(matches!(error, StoreError::NewerSchema { .. }));
 }
 
@@ -147,13 +147,189 @@ fn data_survives_reopening() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("muster.db");
     let project = project("/src/app");
-    Store::open(&path)
+    Store::open(&path, at(1))
         .unwrap()
         .insert_project(&project)
         .unwrap();
 
-    let reopened = Store::open(&path).unwrap();
+    let reopened = Store::open(&path, at(1)).unwrap();
     assert_eq!(reopened.snapshot().unwrap().projects, [project]);
+}
+
+// Copies before migrating (`PRD-09`)
+
+/// A database at `path` as a Muster of schema `version` left it, holding
+/// one project.
+fn database_at(path: &std::path::Path, version: usize) {
+    let conn = Connection::open(path).unwrap();
+    for migration in &MIGRATIONS[..version] {
+        conn.execute_batch(migration).unwrap();
+    }
+    conn.pragma_update(None, "user_version", i64::try_from(version).unwrap())
+        .unwrap();
+    conn.execute(
+        "INSERT INTO projects VALUES ('prj_01M4NG2BJY5GJ7C4GHEV9ZADAN', 'app', '/src/app', 1)",
+        [],
+    )
+    .unwrap();
+}
+
+/// The names in `folder`, sorted; none if it is not there.
+fn names_in(folder: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(folder)
+        .map(|entries| {
+            entries
+                .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+fn mode(path: &std::path::Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+#[test]
+fn an_older_database_is_copied_before_it_is_migrated_prd_09() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    database_at(&path, 1);
+    let now = at(1_792_333_353_123);
+
+    let store = Store::open(&path, now).unwrap();
+    assert_eq!(store.schema_version().unwrap(), latest_version());
+
+    let backups = dir.path().join("backups");
+    let name = format!(
+        "muster-2026-10-18T14-22-33.123Z-schema-1-to-{}.db",
+        latest_version()
+    );
+    assert_eq!(names_in(&backups), [name.as_str()]);
+    let copy = backups.join(name);
+    assert_eq!(mode(&copy), 0o600);
+    assert_eq!(mode(&backups), 0o700);
+    // The copy is the database as it was: its schema and what it held.
+    let copied = Connection::open(&copy).unwrap();
+    let version: u32 = copied
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 1);
+    let projects: i64 = copied
+        .query_row("SELECT count(*) FROM projects", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(projects, 1);
+}
+
+#[test]
+fn a_new_database_or_a_current_one_is_not_copied() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    drop(Store::open(&path, at(1)).unwrap());
+    drop(Store::open(&path, at(2)).unwrap());
+    assert!(!dir.path().join("backups").exists());
+}
+
+#[test]
+fn only_the_newest_three_copies_are_kept_and_nothing_else_there_goes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    let backups = dir.path().join("backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    std::fs::write(backups.join("notes.txt"), "the person's own").unwrap();
+    for upgrade in 1..=5 {
+        for file in ["muster.db", "muster.db-wal", "muster.db-shm"] {
+            let _ = std::fs::remove_file(dir.path().join(file));
+        }
+        database_at(&path, usize::try_from(latest_version()).unwrap() - 1);
+        drop(Store::open(&path, at(upgrade * 1_000)).unwrap());
+    }
+    let from = latest_version() - 1;
+    let kept: Vec<String> = [3, 4, 5]
+        .iter()
+        .map(|second| {
+            format!(
+                "muster-1970-01-01T00-00-0{second}.000Z-schema-{from}-to-{}.db",
+                latest_version()
+            )
+        })
+        .chain(["notes.txt".to_owned()])
+        .collect();
+    assert_eq!(names_in(&backups), kept);
+}
+
+#[test]
+fn a_copy_that_cannot_be_made_leaves_the_database_as_it_was_prd_09() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    database_at(&path, 1);
+    let backups = dir.path().join("backups");
+    std::fs::create_dir_all(&backups).unwrap();
+    // Older copies, and something already where this copy would go.
+    let older: Vec<String> = (1..=3)
+        .map(|second| format!("muster-1970-01-01T00-00-0{second}.000Z-schema-1-to-2.db"))
+        .collect();
+    for name in &older {
+        std::fs::write(backups.join(name), "").unwrap();
+    }
+    let blocked = format!(
+        "muster-1970-01-01T00-01-40.000Z-schema-1-to-{}.db",
+        latest_version()
+    );
+    std::fs::write(backups.join(&blocked), "not a copy").unwrap();
+
+    let error = Store::open(&path, at(100_000)).unwrap_err();
+    let StoreError::Backup {
+        database,
+        copy,
+        from,
+        to,
+        ..
+    } = &error
+    else {
+        panic!("{error}");
+    };
+    assert_eq!(
+        (database, copy, *from, *to),
+        (&path, &backups.join(&blocked), 1, latest_version())
+    );
+    let message = error.to_string();
+    assert!(message.contains(&*path.to_string_lossy()), "{message}");
+    assert!(message.contains(&blocked), "{message}");
+    assert!(message.contains("did not start"), "{message}");
+
+    // Not migrated, and no older copy let go.
+    let version: u32 = Connection::open(&path)
+        .unwrap()
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 1);
+    let mut expected = older;
+    expected.push(blocked.clone());
+    expected.sort();
+    assert_eq!(names_in(&backups), expected);
+    assert_eq!(
+        std::fs::read_to_string(backups.join(blocked)).unwrap(),
+        "not a copy"
+    );
+}
+
+#[test]
+fn a_copy_with_nowhere_to_go_is_refused_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    database_at(&path, 2);
+    // A file where the folder should be.
+    std::fs::write(dir.path().join("backups"), "").unwrap();
+    let error = Store::open(&path, at(1)).unwrap_err();
+    assert!(matches!(error, StoreError::Backup { .. }), "{error}");
+    let store_version: u32 = Connection::open(&path)
+        .unwrap()
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(store_version, 2);
 }
 
 // Entities

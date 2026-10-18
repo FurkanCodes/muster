@@ -417,7 +417,7 @@ async fn a_container_left_by_a_run_that_ended_goes_when_the_daemon_starts() {
         clashes: Vec::new(),
         stacked_on: None,
     };
-    let mut store = Store::open(&database).unwrap();
+    let mut store = Store::open(&database, muster_core::Timestamp::from_millis(0)).unwrap();
     store.insert_workspace(&left).unwrap();
     drop(store);
 
@@ -425,7 +425,7 @@ async fn a_container_left_by_a_run_that_ended_goes_when_the_daemon_starts() {
     let (snapshot, _) = supervisor.subscribe().await.unwrap();
     assert!(snapshot.workspaces.iter().all(|found| found.id != left.id));
     drop(supervisor);
-    let store = Store::open(&database).unwrap();
+    let store = Store::open(&database, muster_core::Timestamp::from_millis(0)).unwrap();
     assert!(
         store
             .snapshot()

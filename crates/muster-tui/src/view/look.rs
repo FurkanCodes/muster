@@ -84,12 +84,15 @@ pub(crate) fn session_time(app: &App, session: &Session) -> Option<String> {
 }
 
 /// What `session` is doing, for its line: its activity while it works or
-/// waits and its hooks say, else its status.
+/// waits and its hooks say, or why it ended where the daemon says (a
+/// restart did not resume it), else its status.
 pub(crate) fn doing(session: &Session) -> Cow<'_, str> {
     match (&session.activity, session.status, &session.tidy) {
-        (Some(activity), SessionStatus::Running | SessionStatus::NeedsYou { .. }, _) => {
-            Cow::Borrowed(activity.text.as_str())
-        }
+        (
+            Some(activity),
+            SessionStatus::Running | SessionStatus::NeedsYou { .. } | SessionStatus::Exited { .. },
+            _,
+        ) => Cow::Borrowed(activity.text.as_str()),
         // A tidy says what it comes to, until its agent waits or ends.
         (
             _,

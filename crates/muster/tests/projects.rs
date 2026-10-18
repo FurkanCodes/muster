@@ -184,7 +184,7 @@ async fn projects_added_before_checkouts_get_theirs_at_start() {
         root: root.clone(),
         created_at: Timestamp::from_millis(1),
     };
-    muster_daemon::store::Store::open(&paths.database())
+    muster_daemon::store::Store::open(&paths.database(), Timestamp::from_millis(1))
         .unwrap()
         .insert_project(&project)
         .unwrap();

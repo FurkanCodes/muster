@@ -218,7 +218,9 @@ struct SessionParts {
 /// what it is doing). Where it is short of room the title gives way
 /// first, down to a readable length; then a finished or ended session's
 /// time goes, then what it is doing, which is cut short only while it
-/// works or waits (a status alone says no more than its mark). The mark
+/// works or waits, or where it says more than a status (a tidy's outcome,
+/// why an ended session was not resumed); a status alone says no more
+/// than its mark. The mark
 /// always stays, and a working or waiting session's time, and its
 /// project's name.
 fn session_parts(
@@ -272,7 +274,7 @@ fn session_parts(
     // A tidy's outcome is worth a shortened line, as a working agent's is.
     let doing = if doing.chars().count() <= doing_room {
         doing
-    } else if (live || session.tidy.is_some()) && doing_room >= 8 {
+    } else if (live || session.tidy.is_some() || session.activity.is_some()) && doing_room >= 8 {
         shorten(&doing, doing_room)
     } else {
         String::new()
