@@ -46,7 +46,10 @@
 //! `Command::ChangePreference`); version 24 what a workspace's work has
 //! changed (`Workspace::changes`, an optional field older clients pass
 //! over; `Command::WorkspaceChanges` and `Command::FileDiff`, sent only to
-//! a daemon of 24 or later).
+//! a daemon of 24 or later); version 25 each workspace's timeline of turns
+//! and putting its files back from one (`Workspace::timeline`, the same;
+//! `Command::Timeline`, `Command::EntryDiff`, `Command::UndoPlan` and
+//! `Command::Undo`, sent only to a daemon of 25 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -61,9 +64,10 @@ use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
 use crate::settings::{PreferenceChange, Preferences, ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
+use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 24;
+pub const PROTOCOL_VERSION: u32 = 25;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -390,6 +394,28 @@ pub enum Command {
         part: ChangePart,
         path: String,
     },
+    /// A workspace's timeline: each agent's turn there, what changed
+    /// between them, and each undoing, newest first; answered with
+    /// [`Reply::Timeline`]. Sent only to a daemon of 25 or later.
+    Timeline { workspace: WorkspaceId },
+    /// What one entry of a workspace's timeline changed, as a diff;
+    /// answered with [`Reply::FileDiff`]. Sent only to a daemon of 25 or
+    /// later.
+    EntryDiff { workspace: WorkspaceId, number: u64 },
+    /// What putting the files back as they were before an entry would do;
+    /// answered with [`Reply::UndoPlan`]. Sent only to a daemon of 25 or
+    /// later.
+    UndoPlan { workspace: WorkspaceId, number: u64 },
+    /// Put a workspace's files back as they were before an entry, as the
+    /// person asked, and with `move_branch` its branch too where it can
+    /// go (`PRD-14`); refused while an agent works there. Answered with
+    /// [`Reply::Undone`]. Sent only to a daemon of 25 or later.
+    Undo {
+        workspace: WorkspaceId,
+        number: u64,
+        #[serde(default)]
+        move_branch: bool,
+    },
     /// How the daemon is doing inside, answered with [`Reply::Health`].
     /// Sent only to a daemon of protocol 22 or later.
     Health,
@@ -515,6 +541,17 @@ pub enum Reply {
     Changes(Changes),
     /// One changed file's diff.
     FileDiff(FileDiff),
+    /// A workspace's timeline.
+    Timeline(Timeline),
+    /// What an undo would do.
+    UndoPlan(UndoPlan),
+    /// The files are back; `entry` is the undoing's own entry, from which
+    /// it can be undone in turn.
+    Undone {
+        entry: u64,
+        #[serde(default)]
+        moved_branch: bool,
+    },
     /// The run is the person's; `session` is its agent, in its container.
     RunTakenOver {
         workspace: WorkspaceId,

@@ -85,6 +85,7 @@ impl Supervisor {
             created_at: self.clock.now(),
             pull_request: None,
             changes: None,
+            timeline: None,
         };
         let stored = workspace.clone();
         let inserted = self
@@ -274,6 +275,7 @@ impl Supervisor {
             created_at: self.clock.now(),
             pull_request: None,
             changes: None,
+            timeline: None,
         };
         let stored = workspace.clone();
         match self
@@ -330,6 +332,7 @@ impl Supervisor {
             .sessions
             .retain(|session| session.workspace != workspace);
         self.broadcast(Delta::WorkspaceRemoved { id: workspace });
+        self.forget_timeline(workspace);
     }
 
     /// The live worktree Muster made for `project` on `branch`, if any.

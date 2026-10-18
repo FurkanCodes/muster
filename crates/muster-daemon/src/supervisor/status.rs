@@ -103,6 +103,7 @@ impl Supervisor {
             self.set_activity(session, crate::harness::activity::ActivityChange::Clear);
         }
         self.after_turn(session, before, status);
+        self.timeline_after_status(session, before, status);
     }
 
     /// What a session is doing now, as its hooks tell; told to clients

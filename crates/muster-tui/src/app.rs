@@ -16,9 +16,10 @@ mod settle;
 mod sharing;
 mod tickets;
 pub(crate) mod tickets_from;
+pub(crate) mod timeline;
 mod welcome;
 
-pub(crate) use changes::{ChangeRow, ChangesPane, DiffPane, rows as change_rows};
+pub(crate) use changes::{ChangeRow, ChangesPane, DiffPane, Pick};
 pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use settings::{SettingRow, Settings};
@@ -184,6 +185,15 @@ pub(crate) enum Dialog {
         question: String,
         then: Confirmed,
     },
+    /// Whether to put a workspace's files back as they were before an
+    /// entry of its timeline (`what`), and its branch too where it can
+    /// go; `agent_remembers` names the agent whose turn it was.
+    Undo {
+        workspace: WorkspaceId,
+        plan: muster_core::timeline::UndoPlan,
+        what: String,
+        agent_remembers: Option<String>,
+    },
     /// Where a project's tickets come from: a tracker, or `None` for the
     /// one its git remote says; Jira's site and project's key, or Linear's
     /// team's key, as typed.
@@ -265,8 +275,14 @@ enum Then {
     NotchChanged(bool),
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
-    /// Show the file's diff in the pane.
-    Diff(WorkspaceId, muster_core::ChangePart, String),
+    /// Show the file's or the entry's diff in the pane.
+    Diff(WorkspaceId, Pick),
+    /// Show the workspace's timeline in the pane.
+    Timeline(WorkspaceId),
+    /// Ask the person whether to put the files back, as the plan says.
+    UndoPlan(WorkspaceId),
+    /// Say the files are back from that entry, and show what is there now.
+    Undone(WorkspaceId, u64),
     Say(&'static str),
 }
 

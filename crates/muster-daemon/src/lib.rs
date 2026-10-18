@@ -28,6 +28,7 @@ mod spend;
 mod supervisor;
 mod tasks;
 mod terminal;
+mod timeline;
 mod trackers;
 mod worktree_sync;
 
@@ -39,6 +40,8 @@ mod pulls_tests;
 mod run_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timeline_supervisor_tests;
 
 use std::fs::{DirBuilder, File, Permissions, TryLockError};
 use std::io;
@@ -393,6 +396,7 @@ async fn start_supervisor(
         store: started.store,
         clock: started.clock,
         worktrees_dir: paths.worktrees_dir.clone(),
+        data_dir: paths.data_dir.clone(),
         hook_socket: paths.hook_socket(),
         hook_queue: started.hook_queue,
         delta_capacity: config.delta_capacity,

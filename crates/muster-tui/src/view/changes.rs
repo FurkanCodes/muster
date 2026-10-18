@@ -1,9 +1,11 @@
-//! A workspace's changes in the pane beside the list: the listing, or one
-//! file's diff. Paths and subjects come from the repository, so they are
-//! drawn on one line, cleaned; a diff is cleaned by the daemon.
+//! A workspace's changes in the pane beside the list: the listing with the
+//! workspace's timeline, or one file's or entry's diff. Paths and subjects
+//! come from the repository, so they are drawn on one line, cleaned; a
+//! diff is cleaned by the daemon.
 
 use muster_core::changes::{ChangePart, ChangeSummary, FileChange, LineCounts};
 use muster_core::text::one_line;
+use muster_core::timeline::{Entry, Timeline};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style, Stylize};
@@ -11,14 +13,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::{look, panel, shorten};
-use crate::app::{App, ChangeRow, ChangesPane, DiffPane, change_rows};
+use crate::app::{App, ChangeRow, ChangesPane, DiffPane, Pick};
 
 pub(super) fn draw_changes(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let Some(pane) = &app.changes else {
         return;
     };
     match &pane.diff {
-        Some(diff) => draw_diff(frame, diff, area),
+        Some(diff) => draw_diff(frame, pane, diff, area),
         None => draw_listing(frame, app, pane, area),
     }
 }
@@ -29,49 +31,92 @@ fn draw_listing(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, area: Rect
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let width = usize::from(inner.width);
-    let lines: Vec<Line<'static>> = match &pane.listing {
-        None => vec![Line::from(" Asking git…").dim()],
-        Some(Err(error)) => vec![
-            Line::from(format!(" {}", one_line(error))).red(),
-            Line::from(" r asks again.").dim(),
-        ],
-        Some(Ok(changes)) => {
-            let selected = pane.selected_row();
-            change_rows(changes)
-                .iter()
-                .enumerate()
-                .skip(pane.offset)
-                .take(usize::from(inner.height))
-                .map(|(at, row)| row_line(row, width, selected == Some(at)))
-                .collect()
-        }
+    let selected = pane.selected_row();
+    let timeline = match &pane.timeline {
+        Some(Ok(timeline)) => Some(timeline),
+        _ => None,
     };
+    let lines: Vec<Line<'static>> = pane
+        .rows()
+        .iter()
+        .enumerate()
+        .skip(pane.offset)
+        .take(usize::from(inner.height))
+        .map(|(at, row)| row_line(app, timeline, row, width, selected == Some(at)))
+        .collect();
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// A line of the listing, `width` cells wide.
-fn row_line(row: &ChangeRow<'_>, width: usize, selected: bool) -> Line<'static> {
-    match row {
-        ChangeRow::Heading(text) => Line::from(format!(" {text}")).bold(),
-        ChangeRow::Note(text) => Line::from(format!(" {text}")).dim(),
-        ChangeRow::Commit(commit) => Line::from(vec![
-            Span::raw("   "),
-            Span::styled(one_line(&commit.id), Style::default().fg(Color::Yellow)),
-            Span::raw(" "),
-            Span::raw(shorten(
-                &commit.subject,
-                width.saturating_sub(commit.id.chars().count() + 4),
-            )),
-        ]),
-        ChangeRow::File(_, file) => {
-            let line = file_line(file, width);
-            if selected {
-                line.style(look::selected_style(true))
-            } else {
-                line
-            }
+fn row_line(
+    app: &App,
+    timeline: Option<&Timeline>,
+    row: &ChangeRow<'_>,
+    width: usize,
+    selected: bool,
+) -> Line<'static> {
+    let line = match row {
+        ChangeRow::Heading(text) => return Line::from(format!(" {text}")).bold(),
+        ChangeRow::Note(text) => return Line::from(format!(" {}", one_line(text))).dim(),
+        ChangeRow::Error(text) => return Line::from(format!(" {}", one_line(text))).red(),
+        ChangeRow::Commit(commit) => {
+            return Line::from(vec![
+                Span::raw("   "),
+                Span::styled(one_line(&commit.id), Style::default().fg(Color::Yellow)),
+                Span::raw(" "),
+                Span::raw(shorten(
+                    &commit.subject,
+                    width.saturating_sub(commit.id.chars().count() + 4),
+                )),
+            ]);
         }
+        ChangeRow::File(_, file) => file_line(file, width),
+        ChangeRow::Entry(entry) => entry_line(app, timeline, entry, width),
+    };
+    if selected {
+        line.style(look::selected_style(true))
+    } else {
+        line
     }
+}
+
+/// `   #7  Claude Code · turn 2      5m ago  +40 −2`: its number, what it
+/// was, when it ended, and what it changed.
+fn entry_line(
+    app: &App,
+    timeline: Option<&Timeline>,
+    entry: &Entry,
+    width: usize,
+) -> Line<'static> {
+    let number = format!("#{}", entry.number);
+    let when = app
+        .now
+        .map(|now| {
+            let ago = muster_core::time::between(entry.ended, now);
+            format!("{} ago", look::short_span(ago, false))
+        })
+        .unwrap_or_default();
+    let mut tail = vec![Span::from(when).dim(), Span::raw("  ")];
+    tail.extend(match entry.summary {
+        Some(changed) => summary(&changed),
+        None => vec![Span::from("no files").dim()],
+    });
+    let tail_width: usize = tail.iter().map(Span::width).sum();
+    let lead = 3 + number.chars().count() + 2;
+    let room = width.saturating_sub(lead + tail_width + 2);
+    let what = shorten(&crate::app::timeline::label(timeline, entry), room.max(4));
+    let gap = width
+        .saturating_sub(lead + what.chars().count() + tail_width + 1)
+        .max(1);
+    let mut spans = vec![
+        Span::raw("   "),
+        Span::from(number).dim(),
+        Span::raw("  "),
+        Span::raw(what),
+        Span::raw(" ".repeat(gap)),
+    ];
+    spans.extend(tail);
+    Line::from(spans)
 }
 
 /// `  M  src/view.rs        +12 −3`: its kind, where it is (and was), and
@@ -156,12 +201,33 @@ fn shorten_start(text: &str, max: usize) -> String {
     format!("…{kept}")
 }
 
-fn draw_diff(frame: &mut Frame<'_>, diff: &DiffPane, area: Rect) {
-    let part = match diff.part {
-        ChangePart::Uncommitted => "not committed",
-        ChangePart::Branch => "on the branch",
+fn draw_diff(frame: &mut Frame<'_>, pane: &ChangesPane, diff: &DiffPane, area: Rect) {
+    let title = match &diff.of {
+        Pick::File(part, path) => {
+            let part = match part {
+                ChangePart::Uncommitted => "not committed",
+                ChangePart::Branch => "on the branch",
+            };
+            format!(" {} · {part} ", one_line(path))
+        }
+        Pick::Entry(number) => {
+            let timeline = match &pane.timeline {
+                Some(Ok(timeline)) => Some(timeline),
+                _ => None,
+            };
+            let what = timeline
+                .and_then(|timeline| {
+                    let entry = timeline
+                        .entries
+                        .iter()
+                        .find(|entry| entry.number == *number)?;
+                    Some(crate::app::timeline::label(Some(timeline), entry))
+                })
+                .unwrap_or_default();
+            format!(" #{number} · {} ", one_line(&what))
+        }
     };
-    let block = panel(format!(" {} · {part} ", one_line(&diff.path)), true);
+    let block = panel(title, true);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let lines: Vec<Line<'static>> = match &diff.text {

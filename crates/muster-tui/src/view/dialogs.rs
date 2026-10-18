@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use muster_core::config::TrackerKind;
+use muster_core::text::one_line;
 use muster_core::{ProjectId, TicketKey, WorkspaceId};
 
 use crate::app::tickets_from::{Field, TRACKERS, focused, tracker_label};
@@ -162,7 +163,77 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             key,
             on_key,
         } => tickets_from(app, *project, *tracker, (site, key), *on_key),
+        Dialog::Undo {
+            plan,
+            what,
+            agent_remembers,
+            ..
+        } => Shape::new(
+            " Put the files back? ",
+            undo_lines(plan, what, agent_remembers.as_deref()),
+            None,
+        ),
     }
+}
+
+/// What putting the files back from an entry does, for the person to say
+/// yes to: what else goes with it, the branch, and what the agent keeps.
+fn undo_lines(
+    plan: &muster_core::timeline::UndoPlan,
+    what: &str,
+    agent: Option<&str>,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(format!(
+        "The files go back as they were before #{} ({}).",
+        plan.number,
+        one_line(what)
+    ))];
+    match plan.later {
+        0 => {}
+        1 => lines.push(Line::from("What 1 later entry changed goes too.")),
+        later => lines.push(Line::from(format!(
+            "What {later} later entries changed goes too."
+        ))),
+    }
+    lines.push(
+        Line::from("What is there now is kept as an entry of its own, so this can be undone too.")
+            .dim(),
+    );
+    if let Some(agent) = agent {
+        lines.push(
+            Line::from(format!(
+                "{} still remembers that turn: tell it what you put back.",
+                one_line(agent)
+            ))
+            .dim(),
+        );
+    }
+    let mut hint = "y put the files back   n no";
+    if let Some(branch) = &plan.branch {
+        let name = one_line(&branch.branch);
+        let commits = match branch.commits {
+            1 => "1 commit".to_owned(),
+            count => format!("{count} commits"),
+        };
+        lines.push(Line::from(""));
+        lines.push(Line::from(match (&branch.refused, branch.forward) {
+            (Some(why), _) => format!("{name} stays where it is: {}.", one_line(why)),
+            (None, false) => format!(
+                "b also moves {name} back to {}, before its {commits} since.",
+                one_line(&branch.to)
+            ),
+            (None, true) => format!(
+                "b also moves {name} forward to {}, over {commits}.",
+                one_line(&branch.to)
+            ),
+        }));
+        if branch.refused.is_none() {
+            hint = "y the files only   b and the branch   n no";
+        }
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(hint).dim());
+    lines
 }
 
 fn new_session<'a>(

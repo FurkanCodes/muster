@@ -117,7 +117,9 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     }
     if let Mode::Terminal(session) = app.mode {
         draw_session(frame, app, session, preview, true);
-    } else if app.mode == Mode::Changes {
+    } else if app.mode == Mode::Changes
+        || matches!(app.mode, Mode::Dialog(crate::app::Dialog::Undo { .. }))
+    {
         changes::draw_changes(frame, app, preview);
     } else if app.view == View::Tickets {
         tickets::draw_ticket_details(frame, app, preview);

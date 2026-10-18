@@ -23,6 +23,7 @@ mod settings;
 mod spend;
 mod status;
 mod terminals;
+mod timeline;
 mod worktrees;
 
 use std::collections::HashMap;
@@ -58,6 +59,8 @@ pub(crate) struct Settings {
     pub(crate) store: StoreHandle,
     pub(crate) clock: Arc<dyn Clock>,
     pub(crate) worktrees_dir: PathBuf,
+    /// Where Muster keeps its own data, such as workspaces' timelines.
+    pub(crate) data_dir: PathBuf,
     /// Where sessions' hooks report.
     pub(crate) hook_socket: PathBuf,
     /// What the hook receiver accepted.
@@ -124,6 +127,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         store: settings.store,
         clock: settings.clock,
         worktrees_dir: settings.worktrees_dir,
+        data_dir: settings.data_dir,
         hook_socket: settings.hook_socket,
         deltas: broadcast::channel(settings.delta_capacity).0,
         state,
@@ -148,6 +152,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         hosts: settings.hosts,
         pulls: pulls::Looks::default(),
         changes: changes::Looks::default(),
+        timelines: timeline::Timelines::default(),
         tasks: settings.tasks,
     };
     supervisor.ensure_checkouts().await;
@@ -235,6 +240,7 @@ struct Supervisor {
     store: StoreHandle,
     clock: Arc<dyn Clock>,
     worktrees_dir: PathBuf,
+    data_dir: PathBuf,
     hook_socket: PathBuf,
     deltas: broadcast::Sender<Delta>,
     state: Snapshot,
@@ -272,6 +278,8 @@ struct Supervisor {
     pulls: pulls::Looks,
     /// Looks at what workspaces' work has changed.
     changes: changes::Looks,
+    /// Keeps workspaces' timelines.
+    timelines: timeline::Timelines,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
 }
@@ -329,6 +337,18 @@ impl Supervisor {
                     part,
                     path,
                 } => self.file_diff(workspace, part, path, reply),
+                Command::Timeline { workspace } => self.workspace_timeline(workspace, reply),
+                Command::EntryDiff { workspace, number } => {
+                    self.entry_diff(workspace, number, reply);
+                }
+                Command::UndoPlan { workspace, number } => {
+                    self.undo_plan(workspace, number, reply);
+                }
+                Command::Undo {
+                    workspace,
+                    number,
+                    move_branch,
+                } => self.undo(workspace, number, move_branch, reply),
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }
@@ -380,10 +400,12 @@ impl Supervisor {
                 self.check_pull_requests();
                 self.tick_pull_requests();
                 self.tick_changes();
+                self.tick_timelines();
             }
             Request::PullRequestsLooked(looked) => self.pull_requests_looked(*looked),
             Request::LookAtBranch(workspace) => self.look_at_pull_requests(Some(workspace)),
             Request::ChangesLooked(looked) => self.changes_looked(*looked),
+            Request::TimelineJobDone(done) => self.timeline_job_done(*done),
             Request::RunningProcesses(reply) => {
                 let running = self
                     .live
@@ -500,7 +522,11 @@ impl Supervisor {
             | Command::TakeOverRun { .. }
             | Command::OpenPullRequest { .. }
             | Command::WorkspaceChanges { .. }
-            | Command::FileDiff { .. } => Err(ErrorBody::new(
+            | Command::FileDiff { .. }
+            | Command::Timeline { .. }
+            | Command::EntryDiff { .. }
+            | Command::UndoPlan { .. }
+            | Command::Undo { .. } => Err(ErrorBody::new(
                 ErrorCode::Internal,
                 "this command is answered off the Supervisor's loop",
             )),
@@ -605,6 +631,10 @@ fn command_name(command: &Command) -> &'static str {
         Command::Health => "health",
         Command::WorkspaceChanges { .. } => "workspace changes",
         Command::FileDiff { .. } => "file diff",
+        Command::Timeline { .. } => "timeline",
+        Command::EntryDiff { .. } => "entry diff",
+        Command::UndoPlan { .. } => "undo plan",
+        Command::Undo { .. } => "undo",
         Command::Reveal { .. } => "reveal",
         Command::ChangePreference(_) => "change preference",
         Command::AddProject { .. } => "add project",

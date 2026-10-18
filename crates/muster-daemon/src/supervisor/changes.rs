@@ -234,6 +234,12 @@ impl Supervisor {
         }
     }
 
+    /// Where a workspace's files are, where git can tell what changed
+    /// there.
+    pub(super) fn repository_path(&self, workspace: WorkspaceId) -> Result<PathBuf, ErrorBody> {
+        self.changes_place(workspace).map(|place| place.path)
+    }
+
     /// Where git can tell a workspace's changes: a worktree's or a
     /// checkout's on the host, in a repository; not a run's container,
     /// whose clone is its own.

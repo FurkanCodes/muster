@@ -132,6 +132,7 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
             created_at,
             pull_request: None,
             changes: None,
+            timeline: None,
         })
     })())
 }

@@ -360,6 +360,7 @@ pub(crate) mod tests {
             created_at: Timestamp::from_millis(2),
             pull_request: None,
             changes: None,
+            timeline: None,
         }
     }
 

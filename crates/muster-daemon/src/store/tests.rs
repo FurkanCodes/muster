@@ -35,6 +35,7 @@ fn worktree(project: ProjectId) -> Workspace {
         created_at: at(2),
         pull_request: None,
         changes: None,
+        timeline: None,
     }
 }
 
@@ -518,6 +519,7 @@ fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
         created_at: at(5),
         pull_request: None,
         changes: None,
+        timeline: None,
     };
     store.insert_workspace(&container).unwrap();
     let mut agent = session(container.id);

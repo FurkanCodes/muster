@@ -145,6 +145,7 @@ pub(crate) async fn setup() -> Setup {
         store: StoreHandle::spawn(Store::open_in_memory().unwrap()).unwrap(),
         clock: Arc::new(FixedClock),
         worktrees_dir: dir.path().join("worktrees"),
+        data_dir: dir.path().join("data"),
         hook_socket: dir.path().join("hooks.sock"),
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity: 64,

@@ -37,6 +37,7 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         store,
         clock: Arc::new(FixedClock),
         worktrees_dir: std::env::temp_dir().join("muster-unit-worktrees"),
+        data_dir: std::env::temp_dir().join("muster-unit-data"),
         hook_socket: std::env::temp_dir().join("muster-unit-hooks.sock"),
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity,
@@ -319,6 +320,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         created_at: Timestamp::from_millis(1),
         pull_request: None,
         changes: None,
+        timeline: None,
     };
     let session = Session {
         id: SessionId::new(),
@@ -348,6 +350,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         store: store.clone(),
         clock: Arc::new(FixedClock),
         worktrees_dir: std::env::temp_dir().join("muster-unit-worktrees"),
+        data_dir: std::env::temp_dir().join("muster-unit-data"),
         hook_socket: std::env::temp_dir().join("muster-unit-hooks.sock"),
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity: 16,

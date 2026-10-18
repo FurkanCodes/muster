@@ -35,6 +35,11 @@ pub struct Workspace {
     /// last said; kept only while it is a repository's, and never stored.
     #[serde(default)]
     pub changes: Option<crate::changes::ChangeSummary>,
+    /// The number of the newest entry in its timeline, as its store last
+    /// said: a client showing the timeline asks again when it changes.
+    /// Kept only while it is a repository's, and never stored.
+    #[serde(default)]
+    pub timeline: Option<u64>,
 }
 
 /// The kinds of workspace.

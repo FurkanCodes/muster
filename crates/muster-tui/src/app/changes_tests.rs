@@ -9,7 +9,7 @@ use muster_core::protocol::{Command, Delta, ErrorBody, ErrorCode, Reply, ServerF
 use muster_core::{PullRequestState, PullRequestStatus, Workspace, WorkspaceKind};
 
 use super::tests::{World, command, press, render, shift_q, world};
-use super::{Action, Mode};
+use super::{Action, Mode, Pick};
 use crate::model::Row;
 
 fn file(path: &str, kind: ChangeKind, added: u64, removed: u64) -> FileChange {
@@ -92,7 +92,10 @@ fn d_lists_what_is_not_committed_and_the_branch_s_commits_and_files() {
     let pane = world.app.changes.as_ref().unwrap();
     assert_eq!(
         pane.selected,
-        Some((ChangePart::Uncommitted, "src/view.rs".to_owned())),
+        Some(Pick::File(
+            ChangePart::Uncommitted,
+            "src/view.rs".to_owned()
+        )),
         "the first file listed"
     );
 }
@@ -125,7 +128,7 @@ fn enter_shows_a_file_s_diff_and_esc_goes_back_step_by_step() {
     let screen = render(&world.app);
     assert!(screen.contains("src/login.rs · on the branch"), "{screen}");
     assert!(screen.contains("+fn logout() {}"), "{screen}");
-    assert!(screen.contains("esc the files"), "{screen}");
+    assert!(screen.contains("esc the changes"), "{screen}");
 
     press(&mut world.app, KeyCode::Esc);
     assert_eq!(world.app.mode, Mode::Changes);

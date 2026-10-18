@@ -251,11 +251,35 @@ impl App {
             (Err(error), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Err(error.message));
             }
-            (Ok(Reply::FileDiff(diff)), Then::Diff(workspace, part, path)) => {
-                self.on_diff(workspace, part, &path, Ok(diff));
+            (Ok(Reply::FileDiff(diff)), Then::Diff(workspace, pick)) => {
+                self.on_diff(workspace, &pick, Ok(diff));
             }
-            (Err(error), Then::Diff(workspace, part, path)) => {
-                self.on_diff(workspace, part, &path, Err(error.message));
+            (Err(error), Then::Diff(workspace, pick)) => {
+                self.on_diff(workspace, &pick, Err(error.message));
+            }
+            (Ok(Reply::Timeline(timeline)), Then::Timeline(workspace)) => {
+                self.on_timeline(workspace, Ok(timeline));
+            }
+            (Err(error), Then::Timeline(workspace)) => {
+                self.on_timeline(workspace, Err(error.message));
+            }
+            (Ok(Reply::UndoPlan(plan)), Then::UndoPlan(workspace)) => {
+                self.on_undo_plan(workspace, Ok(plan));
+            }
+            (Err(error), Then::UndoPlan(workspace)) => {
+                self.on_undo_plan(workspace, Err(error.message));
+            }
+            (
+                Ok(Reply::Undone {
+                    entry,
+                    moved_branch,
+                }),
+                Then::Undone(workspace, number),
+            ) => {
+                return self.on_undone(workspace, number, Ok((entry, moved_branch)));
+            }
+            (Err(error), Then::Undone(workspace, number)) => {
+                return self.on_undone(workspace, number, Err(error.message));
             }
             (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
                 self.settings.insert(project, Settings::Loaded(settings));
