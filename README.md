@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/main/install.sh 
 
 It downloads the prebuilt binary for your machine from the latest release, checks it against its published checksum and, if the [GitHub CLI](https://cli.github.com) is signed in, against the attestation GitHub made as the release workflow built it, and puts it in `~/.local/bin`. `MUSTER_VERSION=v0.3.15` installs that release instead. On a machine without a prebuilt binary it builds the same release from source, which needs [Rust](https://rustup.rs). `muster upgrade` checks a new release the same way.
 
-Later, `muster upgrade` installs the newest release the same way and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
+Later, `muster upgrade` installs the newest release the same way and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. When a new version changes how Muster's database is laid out, it first keeps a copy of the database as it was, in `backups/` in Muster's data folder (the newest three), and does not start if it cannot. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
 
 ```bash
 muster

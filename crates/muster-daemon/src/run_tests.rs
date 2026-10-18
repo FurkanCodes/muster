@@ -180,7 +180,7 @@ async fn spawn_with(
     let docker = config_dir.join("docker");
     std::fs::write(&docker, FAKE_DOCKER).unwrap();
     std::fs::set_permissions(&docker, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-    let store = StoreHandle::spawn(Store::open(database).unwrap()).unwrap();
+    let store = StoreHandle::spawn(Store::open(database, FixedClock.now()).unwrap()).unwrap();
     let secret = token.map(|token| Secret::new("CLAUDE_CODE_OAUTH_TOKEN", token.to_owned()));
     supervisor::spawn(supervisor::Settings {
         store,

@@ -1,6 +1,7 @@
 //! The SQLite store (`ARCHITECTURE.md` §4). Synchronous; the daemon reaches it
 //! only through [`StoreHandle`], which runs it on its own thread.
 
+mod backups;
 mod handle;
 mod migrations;
 mod rows;
@@ -51,6 +52,23 @@ pub enum StoreError {
         "the database is at schema version {found}, newer than this Muster knows ({known}); upgrade Muster"
     )]
     NewerSchema { found: u32, known: u32 },
+    /// The copy made before an upgrade could not be written, so the
+    /// database was left as it was (`PRD-09`).
+    #[error(
+        "could not copy the database {} to {} before upgrading it from schema {from} to {to}: \
+         {cause}. The database was left as it was and Muster did not start; start it again \
+         once that copy can be written",
+        .database.display(),
+        .copy.display()
+    )]
+    Backup {
+        database: std::path::PathBuf,
+        copy: std::path::PathBuf,
+        from: u32,
+        to: u32,
+        #[source]
+        cause: std::io::Error,
+    },
     #[error("{0} already exists")]
     Conflict(String),
     #[error("{0} was not found")]
@@ -69,11 +87,28 @@ pub struct Store {
 
 impl Store {
     /// Opens or creates the database at `path` and migrates it. The parent
-    /// directory must exist.
-    pub fn open(path: &Path) -> Result<Self> {
+    /// directory must exist. A database from an older schema is first
+    /// copied into `backups/` beside it, named with the time `now`; if the
+    /// copy cannot be made, it is not migrated (`PRD-09`).
+    pub fn open(path: &Path, now: Timestamp) -> Result<Self> {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        let (found, latest) = (
+            migrations::schema_version(&conn)?,
+            migrations::latest_version(),
+        );
+        if (1..latest).contains(&found) {
+            backups::copy(&conn, &backups::folder(path), found, latest, now).map_err(
+                |(copy, cause)| StoreError::Backup {
+                    database: path.to_owned(),
+                    copy,
+                    from: found,
+                    to: latest,
+                    cause,
+                },
+            )?;
+        }
         Self::configure(conn)
     }
 
