@@ -8,7 +8,7 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{look, panel, pull_request, shorten, status_symbol};
+use super::{changes, look, panel, pull_request, shorten, status_symbol};
 use crate::app::{App, View};
 use crate::model::Row;
 use crate::motion;
@@ -88,12 +88,12 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
                 spans.push(Span::raw(format!("  {branch}")));
             } else {
                 let lead = pull_request::width(&spans);
-                let found = app
-                    .model
-                    .workspace(id)
-                    .and_then(|workspace| workspace.pull_request.as_ref());
+                let workspace = app.model.workspace(id);
+                let found = workspace.and_then(|workspace| workspace.pull_request.as_ref());
+                let summary = workspace.and_then(|workspace| workspace.changes.as_ref());
                 spans.extend(branch_and_pull_request(
                     branch,
+                    summary,
                     found,
                     width.saturating_sub(lead),
                 ));
@@ -110,28 +110,46 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
     }
 }
 
-/// A worktree's branch and, at the line's end, the pull request from it,
-/// in `room` cells: short of room, the pull request's word goes first,
-/// then the branch is cut short.
+/// A worktree's branch and, at the line's end, what its work has changed
+/// and the pull request from it, in `room` cells: short of room, the pull
+/// request's word goes first, then what changed, then the branch is cut
+/// short.
 fn branch_and_pull_request(
     branch: String,
+    summary: Option<&muster_core::ChangeSummary>,
     found: Option<&muster_core::PullRequestStatus>,
     room: usize,
 ) -> Vec<Span<'static>> {
-    let Some(found) = found else {
-        return vec![Span::raw(branch)];
+    let fits = |tail: &[Span<'_>]| {
+        tail.is_empty() || branch.chars().count() + 1 + pull_request::width(tail) <= room
     };
-    let mut badge = pull_request::badge(found, false);
-    if branch.chars().count() + 1 + pull_request::width(&badge) > room {
-        badge = pull_request::badge(found, true);
+    let tail = |summary: Option<&muster_core::ChangeSummary>, compact: bool| {
+        let mut tail: Vec<Span<'static>> = summary.map(changes::summary).unwrap_or_default();
+        if let Some(found) = found {
+            if !tail.is_empty() {
+                tail.push(Span::raw(" "));
+            }
+            tail.extend(pull_request::badge(found, compact));
+        }
+        tail
+    };
+    let mut chosen = tail(summary, false);
+    for (summary, compact) in [(summary, true), (None, false), (None, true)] {
+        if fits(&chosen) {
+            break;
+        }
+        chosen = tail(summary, compact);
     }
-    let badge_width = pull_request::width(&badge);
-    let branch = shorten(&branch, room.saturating_sub(badge_width + 1).max(6));
+    if chosen.is_empty() {
+        return vec![Span::raw(branch)];
+    }
+    let tail_width = pull_request::width(&chosen);
+    let branch = shorten(&branch, room.saturating_sub(tail_width + 1).max(6));
     let gap = room
-        .saturating_sub(branch.chars().count() + badge_width)
+        .saturating_sub(branch.chars().count() + tail_width)
         .max(1);
     let mut spans = vec![Span::raw(branch), Span::raw(" ".repeat(gap))];
-    spans.extend(badge);
+    spans.extend(chosen);
     spans
 }
 

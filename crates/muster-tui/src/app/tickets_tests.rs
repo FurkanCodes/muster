@@ -118,6 +118,7 @@ fn agent_for_42(world: &World, branch: &str, created: i64) -> (Workspace, muster
         },
         created_at: Timestamp::from_millis(created),
         pull_request: None,
+        changes: None,
     };
     let mut agent = session(workspace.id, "#42 Fix the login redirect", created);
     agent.harness = "claude".to_owned();

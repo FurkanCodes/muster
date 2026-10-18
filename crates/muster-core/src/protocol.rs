@@ -43,7 +43,10 @@
 //! 23 or later), showing a session in the client looked at last
 //! (`Command::Reveal`, `ServerFrame::Reveal`), and Muster's own settings
 //! (`Snapshot::preferences`, `Delta::Preferences`,
-//! `Command::ChangePreference`).
+//! `Command::ChangePreference`); version 24 what a workspace's work has
+//! changed (`Workspace::changes`, an optional field older clients pass
+//! over; `Command::WorkspaceChanges` and `Command::FileDiff`, sent only to
+//! a daemon of 24 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -52,6 +55,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::changes::{ChangePart, Changes, FileDiff};
 use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
@@ -59,7 +63,7 @@ use crate::settings::{PreferenceChange, Preferences, ProjectSettings, SettingCha
 use crate::tickets::TicketKey;
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 23;
+pub const PROTOCOL_VERSION: u32 = 24;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -373,6 +377,19 @@ pub enum Command {
     /// The project's settings that the person can change, as they stand;
     /// answered with [`Reply::ProjectSettings`].
     ProjectSettings { project: ProjectId },
+    /// What a workspace's work has changed: what is not committed, and
+    /// the branch's commits since it left the branch it is to merge into,
+    /// with their files; answered with [`Reply::Changes`]. Sent only to a
+    /// daemon of 24 or later.
+    WorkspaceChanges { workspace: WorkspaceId },
+    /// One changed file's diff, in one part of a workspace's change;
+    /// answered with [`Reply::FileDiff`]. Sent only to a daemon of 24 or
+    /// later.
+    FileDiff {
+        workspace: WorkspaceId,
+        part: ChangePart,
+        path: String,
+    },
     /// How the daemon is doing inside, answered with [`Reply::Health`].
     /// Sent only to a daemon of protocol 22 or later.
     Health,
@@ -494,6 +511,10 @@ pub enum Reply {
     ProjectSettings(ProjectSettings),
     /// How the daemon is doing inside.
     Health(Health),
+    /// What a workspace's work has changed.
+    Changes(Changes),
+    /// One changed file's diff.
+    FileDiff(FileDiff),
     /// The run is the person's; `session` is its agent, in its container.
     RunTakenOver {
         workspace: WorkspaceId,

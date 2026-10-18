@@ -58,6 +58,7 @@ impl App {
         let mut actions = match self.mode.clone() {
             Mode::Terminal(session) => return self.terminal_key(session, &key),
             Mode::Dialog(dialog) => self.dialog_key(dialog, &key),
+            Mode::Changes => self.changes_key(&key),
             Mode::Browse => self.browse_key(&key),
         };
         actions.extend(self.settle());
@@ -196,6 +197,7 @@ impl App {
             KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
             KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
+            KeyCode::Char('d') => return self.open_changes(),
             _ => {}
         }
         Vec::new()
@@ -205,7 +207,7 @@ impl App {
     /// one kept from the last visit; tickets that could not be fetched are
     /// tried again; the settings are read afresh, as they may have been
     /// edited by hand.
-    fn show(&mut self, view: View) -> Vec<Action> {
+    pub(super) fn show(&mut self, view: View) -> Vec<Action> {
         if view == View::NeedsYou && self.view != View::NeedsYou {
             self.needs_selected = self.model.needs_you().first().copied();
         }

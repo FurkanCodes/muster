@@ -6,6 +6,7 @@
 // No unsafe code here, ever: it lives in one audited daemon module (`ARC-12`).
 #![forbid(unsafe_code)]
 
+pub mod changes;
 pub mod config;
 pub mod credentials;
 pub mod entities;
@@ -25,6 +26,7 @@ pub mod text;
 pub mod tickets;
 pub mod time;
 
+pub use changes::{ChangeKind, ChangePart, ChangeSummary, Changes, FileChange, FileDiff};
 pub use entities::{Issue, Project, Session, Workspace, WorkspaceKind};
 pub use ids::{ParseIdError, ProjectId, RunId, SessionId, WorkspaceId};
 pub use paths::Paths;

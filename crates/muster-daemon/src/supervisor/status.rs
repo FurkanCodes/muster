@@ -77,7 +77,9 @@ impl Supervisor {
         self.write(move |store| store.record_status(session, status, unseen, at))
             .await;
         let mut since = at;
+        let mut before = status;
         if let Some(stored) = self.session_mut(session) {
+            before = stored.status;
             // Only a new status starts its clock again: the unseen mark
             // alone changing leaves it.
             if stored.status == status {
@@ -100,6 +102,7 @@ impl Supervisor {
         ) {
             self.set_activity(session, crate::harness::activity::ActivityChange::Clear);
         }
+        self.after_turn(session, before, status);
     }
 
     /// What a session is doing now, as its hooks tell; told to clients

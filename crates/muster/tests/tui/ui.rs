@@ -2,6 +2,12 @@
 //! it draws parsed into a screen, keystrokes and mouse reports typed into
 //! it.
 
+// Each UI test file compiles its own copy of this module and uses a different part.
+#![allow(
+    dead_code,
+    reason = "every UI test crate includes it and uses only some of it; #[expect] would fail in the rest"
+)]
+
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

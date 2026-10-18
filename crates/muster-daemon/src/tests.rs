@@ -318,6 +318,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         },
         created_at: Timestamp::from_millis(1),
         pull_request: None,
+        changes: None,
     };
     let session = Session {
         id: SessionId::new(),

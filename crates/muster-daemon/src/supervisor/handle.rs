@@ -9,7 +9,7 @@ use muster_core::protocol::{
 use muster_core::{SessionId, WorkspaceId};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use super::{LookGuard, TerminalLink, containers, issues, pulls, runs};
+use super::{LookGuard, TerminalLink, changes, containers, issues, pulls, runs};
 
 pub(super) type Subscription = (Snapshot, broadcast::Receiver<Delta>);
 
@@ -48,6 +48,8 @@ pub(super) enum Request {
     PullRequestsLooked(Box<pulls::Looked>),
     /// Look at the pull request of one workspace's branch now.
     LookAtBranch(WorkspaceId),
+    /// A look at workspaces' changes, back from off the loop.
+    ChangesLooked(Box<changes::Looked>),
     /// The sampler asks which sessions run under which process.
     RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
     /// The branch watcher asks where each workspace is and what it had
@@ -88,6 +90,7 @@ impl std::fmt::Debug for Request {
             Self::CheckPullRequests => f.write_str("CheckPullRequests"),
             Self::PullRequestsLooked(_) => f.write_str("PullRequestsLooked"),
             Self::LookAtBranch(workspace) => write!(f, "LookAtBranch({workspace})"),
+            Self::ChangesLooked(_) => f.write_str("ChangesLooked"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
             Self::Branches(_) => f.write_str("Branches"),

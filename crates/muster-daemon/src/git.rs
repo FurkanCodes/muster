@@ -6,6 +6,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
 
 /// How long one git command may take: a worktree checkout of a large
@@ -50,7 +51,8 @@ struct Outcome {
     stderr: String,
 }
 
-async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
+/// Git run in `cwd` with `args`, its output piped, its variables scrubbed.
+fn command(cwd: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
     command
         .args(args)
@@ -63,6 +65,11 @@ async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
     for variable in SCRUBBED {
         command.env_remove(variable);
     }
+    command
+}
+
+async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
+    let mut command = command(cwd, args);
     let output = tokio::time::timeout(TIME_LIMIT, command.output())
         .await
         .map_err(|_| GitError::TimedOut(args.join(" ")))?
@@ -107,6 +114,74 @@ fn reason(stderr: &str) -> String {
     } else {
         chosen.join(" · ")
     }
+}
+
+/// The most of git's error output kept from a command read with
+/// [`capped`].
+const MAX_STDERR: usize = 64 * 1024;
+
+/// What a git command printed, as it printed it (not trimmed: a listing
+/// with NUL separators can start with a space), read only up to `limit`
+/// bytes, with whether there was more; the command is stopped there. An
+/// exit code in `ok` is success, as `git diff --no-index` exits 1 when
+/// the files differ.
+pub(crate) async fn capped(
+    cwd: &Path,
+    args: &[&str],
+    limit: usize,
+    ok: &[i32],
+) -> Result<(Vec<u8>, bool), GitError> {
+    let mut child = command(cwd, args).spawn().map_err(GitError::Spawn)?;
+    let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
+    let work = async {
+        let printed = read_up_to(stdout, limit);
+        let complained = read_up_to(stderr, MAX_STDERR);
+        tokio::pin!(printed, complained);
+        let mut errors = None;
+        let (out, cut) = loop {
+            tokio::select! {
+                read = &mut printed => break read?,
+                read = &mut complained, if errors.is_none() => errors = Some(read?.0),
+            }
+        };
+        if cut {
+            // The rest is not wanted: git stops rather than wait to write it.
+            let _ = child.start_kill();
+        }
+        let errors = match errors {
+            Some(errors) => errors,
+            None => complained.await?.0,
+        };
+        let status = child.wait().await?;
+        Ok::<_, std::io::Error>((out, cut, status, errors))
+    };
+    let (out, cut, status, errors) = tokio::time::timeout(TIME_LIMIT, work)
+        .await
+        .map_err(|_| GitError::TimedOut(args.join(" ")))?
+        .map_err(GitError::Spawn)?;
+    if cut || status.code().is_some_and(|code| ok.contains(&code)) {
+        return Ok((out, cut));
+    }
+    Err(GitError::Failed {
+        args: args.join(" "),
+        stderr: reason(String::from_utf8_lossy(&errors).trim()),
+    })
+}
+
+/// Reads `pipe` to its end, keeping at most `limit` bytes, and says
+/// whether there was more; it stops reading there.
+async fn read_up_to(
+    pipe: Option<impl AsyncRead + Unpin>,
+    limit: usize,
+) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut read = Vec::new();
+    if let Some(pipe) = pipe {
+        let wanted = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+        pipe.take(wanted).read_to_end(&mut read).await?;
+    }
+    let cut = read.len() > limit;
+    read.truncate(limit);
+    Ok((read, cut))
 }
 
 /// Whether `name` is acceptable as a new branch's name.

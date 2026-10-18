@@ -29,6 +29,7 @@ impl App {
         }
         let mut actions = self.fetch_tickets();
         actions.extend(self.fetch_settings());
+        actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
         let focus = self

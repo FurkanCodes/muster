@@ -9,6 +9,7 @@
 //! session's [`PtyHandle`] and then talks to its actor directly.
 
 mod by_hand;
+mod changes;
 mod containers;
 mod handle;
 mod issues;
@@ -146,6 +147,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         docker: settings.docker,
         hosts: settings.hosts,
         pulls: pulls::Looks::default(),
+        changes: changes::Looks::default(),
         tasks: settings.tasks,
     };
     supervisor.ensure_checkouts().await;
@@ -268,6 +270,8 @@ struct Supervisor {
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
     /// Looks at branches' pull requests.
     pulls: pulls::Looks,
+    /// Looks at what workspaces' work has changed.
+    changes: changes::Looks,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
 }
@@ -318,6 +322,13 @@ impl Supervisor {
                     from,
                 } => self.fetch_run_ticket(project, number, from, reply),
                 Command::OpenPullRequest { workspace } => self.open_pull_request(workspace, reply),
+                // These ask git, which can take a while in a large repository.
+                Command::WorkspaceChanges { workspace } => self.workspace_changes(workspace, reply),
+                Command::FileDiff {
+                    workspace,
+                    part,
+                    path,
+                } => self.file_diff(workspace, part, path, reply),
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }
@@ -368,9 +379,11 @@ impl Supervisor {
             Request::CheckPullRequests => {
                 self.check_pull_requests();
                 self.tick_pull_requests();
+                self.tick_changes();
             }
             Request::PullRequestsLooked(looked) => self.pull_requests_looked(*looked),
             Request::LookAtBranch(workspace) => self.look_at_pull_requests(Some(workspace)),
+            Request::ChangesLooked(looked) => self.changes_looked(*looked),
             Request::RunningProcesses(reply) => {
                 let running = self
                     .live
@@ -485,7 +498,9 @@ impl Supervisor {
             | Command::StartFromIssue { .. }
             | Command::StartRun { .. }
             | Command::TakeOverRun { .. }
-            | Command::OpenPullRequest { .. } => Err(ErrorBody::new(
+            | Command::OpenPullRequest { .. }
+            | Command::WorkspaceChanges { .. }
+            | Command::FileDiff { .. } => Err(ErrorBody::new(
                 ErrorCode::Internal,
                 "this command is answered off the Supervisor's loop",
             )),
@@ -588,6 +603,8 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Ping => "ping",
         Command::Health => "health",
+        Command::WorkspaceChanges { .. } => "workspace changes",
+        Command::FileDiff { .. } => "file diff",
         Command::Reveal { .. } => "reveal",
         Command::ChangePreference(_) => "change preference",
         Command::AddProject { .. } => "add project",

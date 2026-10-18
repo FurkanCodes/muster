@@ -90,6 +90,15 @@ fn hints(app: &App) -> String {
     if matches!(app.mode, Mode::Terminal(_)) {
         return "keys go to the session   Shift-Q back to the list (or click it)".to_owned();
     }
+    if app.mode == Mode::Changes {
+        let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
+        return if diff {
+            "↑↓ scroll  PgUp PgDn page  esc the files  r again  d back to the list"
+        } else {
+            "↑↓ move  ⏎ its diff  r again  esc back to the list"
+        }
+        .to_owned();
+    }
     let session = app.focused_session().and_then(|id| app.model.session(id));
     let mut hints = vec!["↑↓ move"];
     if app.view == View::Tickets {
@@ -107,6 +116,7 @@ fn hints(app: &App) -> String {
             hints.extend([
                 "⏎ type in it",
                 "f full screen",
+                "d changes",
                 "x close",
                 "s stop",
                 "n session",
@@ -115,6 +125,7 @@ fn hints(app: &App) -> String {
         (_, _, Some(_)) => hints.extend([
             "⏎ open",
             "f full screen",
+            "d changes",
             "r restart",
             "x remove",
             "n session",
@@ -130,7 +141,7 @@ fn hints(app: &App) -> String {
                 hints.push("c check");
             } else {
                 if kind.is_some_and(|kind| kind.run().is_none()) {
-                    hints.extend(["c check", "v review", "o PR"]);
+                    hints.extend(["d changes", "c check", "v review", "o PR"]);
                 }
                 if app
                     .model

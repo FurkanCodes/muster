@@ -220,6 +220,7 @@ impl Supervisor {
             },
             created_at: self.clock.now(),
             pull_request: None,
+            changes: None,
         }
     }
 
@@ -258,10 +259,13 @@ impl Supervisor {
             }
             // The last branch's; the next look finds this one's.
             found.pull_request = None;
+            found.changes = None;
             let updated = found.clone();
             self.write(move |store| store.update_branch(workspace, &branch))
                 .await;
             self.broadcast(Delta::WorkspaceUpserted(updated));
+            // What changed on the branch before is not this one's.
+            self.look_at_changes(Some(workspace));
         }
     }
 }
