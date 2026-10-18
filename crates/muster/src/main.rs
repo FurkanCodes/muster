@@ -7,6 +7,7 @@
 
 mod auth;
 mod commands;
+mod json;
 mod reload;
 mod runs;
 mod upgrade;
@@ -62,7 +63,11 @@ enum Commands {
     /// checksum, and move the daemon onto it with every session running.
     Upgrade,
     /// Show whether the daemon is running and what it is tracking.
-    Status,
+    Status {
+        /// Print it as one JSON document, for scripts.
+        #[arg(long)]
+        json: bool,
+    },
     /// Manage the projects Muster tracks: git repositories, or any folder.
     #[command(subcommand)]
     Project(ProjectCommand),
@@ -156,7 +161,12 @@ enum DaemonCommand {
 enum IssueCommand {
     /// List PROJECT's open tickets (its name, id or path) from its tracker,
     /// with the agents on each.
-    List { project: String },
+    List {
+        project: String,
+        /// Print them as one JSON document, for scripts.
+        #[arg(long)]
+        json: bool,
+    },
     /// Start an agent on ticket KEY of PROJECT (`42`, `#42` or `APP-7`): a
     /// worktree for it and a session with the ticket as its first prompt.
     Start {
@@ -273,6 +283,12 @@ enum WorktreeCommand {
 
 #[derive(Debug, Subcommand)]
 enum SessionCommand {
+    /// List the sessions, in every project, with how each is doing.
+    List {
+        /// Print them as one JSON document, for scripts.
+        #[arg(long)]
+        json: bool,
+    },
     /// Start a session in WORKTREE (its id or branch, or a project's name
     /// for the project's own checkout).
     Start {
@@ -357,7 +373,7 @@ fn main() -> ExitCode {
                 return reload::reload_daemon(&socket, &paths.runtime_dir).await;
             }
             Some(Commands::Upgrade) => return upgrade::run(&socket, &paths.runtime_dir).await,
-            Some(Commands::Status) => return commands::status(&socket).await,
+            Some(Commands::Status { json }) => return commands::status(&socket, json).await,
             Some(Commands::Project(ProjectCommand::Add { path, name })) => {
                 commands::add_project(&socket, &path, name).await
             }
@@ -372,6 +388,9 @@ fn main() -> ExitCode {
             }
             Some(Commands::Worktree(WorktreeCommand::Remove { worktree, force })) => {
                 commands::remove_worktree(&socket, &worktree, force).await
+            }
+            Some(Commands::Session(SessionCommand::List { json })) => {
+                commands::list_sessions(&socket, json).await
             }
             Some(Commands::Session(SessionCommand::Start {
                 worktree,
@@ -406,8 +425,8 @@ fn main() -> ExitCode {
             Some(Commands::Pr { worktree }) => {
                 commands::open_pull_request(&socket, &worktree).await
             }
-            Some(Commands::Issue(IssueCommand::List { project })) => {
-                commands::list_issues(&socket, &project).await
+            Some(Commands::Issue(IssueCommand::List { project, json })) => {
+                commands::list_issues(&socket, &project, json).await
             }
             Some(Commands::Issue(IssueCommand::Close { project, key })) => {
                 commands::close_issue(&socket, &project, key).await

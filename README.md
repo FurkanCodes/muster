@@ -147,7 +147,17 @@ muster status
 ```
 
 ```bash
+muster session list
+```
+
+```bash
 muster session restart <session-id>
+```
+
+For your own scripts, `muster status`, `muster session list` and `muster issue list` take `--json` and print one JSON document instead of words. Each starts with `"format": 1`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
+
+```bash
+muster session list --json | jq -r '.sessions[] | select(.status == "needs_you") | .title'
 ```
 
 ### Where tickets and pull requests are

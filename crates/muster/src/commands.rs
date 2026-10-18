@@ -15,11 +15,18 @@ pub(crate) async fn connect(socket: &Path) -> Result<Connection, ClientError> {
     Connection::connect(socket, CLIENT).await
 }
 
-pub(crate) async fn status(socket: &Path) -> ExitCode {
+/// `muster status`: in words, or with `json` as one JSON document.
+pub(crate) async fn status(socket: &Path, json: bool) -> ExitCode {
     let mut connection = match connect(socket).await {
         Ok(connection) => connection,
         Err(ClientError::Unreachable { .. }) => {
-            println!("The daemon is not running. Start it with `muster daemon`.");
+            if json {
+                if let Err(error) = crate::json::print(&crate::json::NotRunning::new()) {
+                    return crate::fail(error);
+                }
+            } else {
+                println!("The daemon is not running. Start it with `muster daemon`.");
+            }
             return ExitCode::FAILURE;
         }
         Err(error) => return crate::fail(error),
@@ -28,16 +35,28 @@ pub(crate) async fn status(socket: &Path) -> ExitCode {
         Ok(snapshot) => snapshot,
         Err(error) => return crate::fail(error),
     };
-    let welcome = connection.welcome();
+    let welcome = connection.welcome().clone();
+    // Counts that fall back as work and clients end; one that only grows
+    // is a leak (`ARC-13`, `ARC-14`). Older daemons do not know to answer.
+    let health = if welcome.version >= 22 {
+        match connection.command(Command::Health).await {
+            Ok(Reply::Health(health)) => Some(health),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    if json {
+        return match crate::json::print(&crate::json::Status::new(&welcome, health, &snapshot)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => crate::fail(error),
+        };
+    }
     println!(
         "The daemon is running: muster {} (pid {}, protocol {}).",
         welcome.daemon_version, welcome.daemon_pid, welcome.version
     );
-    // Counts that fall back as work and clients end; one that only grows
-    // is a leak (`ARC-13`, `ARC-14`). Older daemons do not know to answer.
-    if welcome.version >= 22
-        && let Ok(Reply::Health(health)) = connection.command(Command::Health).await
-    {
+    if let Some(health) = health {
         let count = |n: u64, noun| count(usize::try_from(n).unwrap_or(usize::MAX), noun);
         println!(
             "Inside: {} ({} at work), {}, {}.",
@@ -460,7 +479,50 @@ pub(crate) async fn close_issue(
     Ok(())
 }
 
-pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
+/// `muster session list`: every session, in words or with `json` as one
+/// JSON document.
+pub(crate) async fn list_sessions(socket: &Path, json: bool) -> Outcome {
+    let snapshot = connect(socket).await?.subscribe().await?;
+    if json {
+        return Ok(crate::json::print(&crate::json::SessionList::new(
+            &snapshot,
+        ))?);
+    }
+    if snapshot.sessions.is_empty() {
+        println!("No sessions.");
+    }
+    for session in &snapshot.sessions {
+        let workspace = snapshot
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == session.workspace);
+        let project = workspace
+            .and_then(|workspace| {
+                snapshot
+                    .projects
+                    .iter()
+                    .find(|project| project.id == workspace.project)
+            })
+            .map_or_else(|| "?".to_owned(), |project| shown(&project.name));
+        let place = match workspace {
+            Some(workspace) if workspace.kind.in_git() => shown(workspace.kind.branch()),
+            Some(_) => "(not a git repository)".to_owned(),
+            None => "?".to_owned(),
+        };
+        let mark = if session.unseen { "•" } else { " " };
+        println!(
+            "{mark} {}  {}  {}  ({project}, {place})",
+            session.id,
+            shown(&session.title),
+            describe(session.status)
+        );
+    }
+    Ok(())
+}
+
+/// `muster issue list`: a project's tickets with the agents on each, in
+/// words or with `json` as one JSON document.
+pub(crate) async fn list_issues(socket: &Path, project: &str, json: bool) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
     let project = find_project(&snapshot, project)?.id;
@@ -474,6 +536,20 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
     else {
         return Err(unexpected(&reply));
     };
+    if json {
+        let tickets = issues
+            .into_iter()
+            .map(|issue| {
+                let agents = sessions_on(&snapshot, project, &issue.key)
+                    .into_iter()
+                    .map(|session| crate::json::session_entry(&snapshot, session))
+                    .collect();
+                (issue, agents)
+            })
+            .collect();
+        let document = crate::json::TicketList::new(project, tracker, mine, tickets);
+        return Ok(crate::json::print(&document)?);
+    }
     if issues.is_empty() {
         let whose = if mine { " assigned to you" } else { "" };
         println!("No open tickets{whose} in {}.", shown(&tracker));
@@ -503,13 +579,25 @@ pub(crate) async fn list_issues(socket: &Path, project: &str) -> Outcome {
     Ok(())
 }
 
-/// How each agent on ticket `key` is doing: the sessions in the project's
-/// worktrees on branches named for it, oldest first.
+/// How each agent on ticket `key` is doing.
 fn agents_on(
     snapshot: &Snapshot,
     project: muster_core::ProjectId,
     key: &muster_core::TicketKey,
 ) -> Vec<String> {
+    sessions_on(snapshot, project, key)
+        .iter()
+        .map(|session| describe(session.status))
+        .collect()
+}
+
+/// The agents on ticket `key`: the sessions in the project's worktrees on
+/// branches named for it, oldest first.
+fn sessions_on<'a>(
+    snapshot: &'a Snapshot,
+    project: muster_core::ProjectId,
+    key: &muster_core::TicketKey,
+) -> Vec<&'a muster_core::Session> {
     let mut agents: Vec<&muster_core::Session> = snapshot
         .sessions
         .iter()
@@ -525,9 +613,6 @@ fn agents_on(
         .collect();
     agents.sort_by_key(|session| (session.created_at, session.id));
     agents
-        .iter()
-        .map(|session| describe(session.status))
-        .collect()
 }
 
 pub(crate) async fn start_issue(
