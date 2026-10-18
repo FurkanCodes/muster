@@ -202,7 +202,7 @@ impl Connection {
         }) = link
         else {
             self.stop_forwarding(session).await;
-            self.detached(session);
+            self.detached(session).await;
             return;
         };
         // The new watch is counted before the old one ends, so a re-attach
@@ -278,7 +278,7 @@ impl Connection {
                 None => None,
             };
             let Some(link) = link else {
-                self.detached(session);
+                self.detached(session).await;
                 return None;
             };
             let linked = Linked {
@@ -324,16 +324,21 @@ impl Connection {
     /// The terminal was released: tell the client and stop using it.
     async fn forget(&mut self, session: SessionId) {
         self.let_go(session).await;
-        self.detached(session);
+        self.detached(session).await;
     }
 
-    /// Tells the client the session's stream ended, after what of it
-    /// still waits.
-    fn detached(&self, session: SessionId) {
+    /// Tells the client the session's stream ended: after what of it still
+    /// waits, if it is streamed; otherwise among the frames that wait their
+    /// turn, so a client asking after sessions it never reads of is held
+    /// back like any other (`ARC-14`).
+    async fn detached(&self, session: SessionId) {
         let reason = DetachReason::NotRunning;
-        let _ = self
-            .streams
-            .push(session, ServerFrame::Detached { session, reason });
+        let frame = ServerFrame::Detached { session, reason };
+        if self.forwarders.contains_key(&session) {
+            let _ = self.streams.push(session, frame);
+        } else {
+            let _ = self.outgoing.send(frame).await;
+        }
     }
 
     /// Handles the hello. `false` means the client was turned away politely.

@@ -133,8 +133,11 @@ async fn forward_program(
             data: replay.data,
             reset: replay.reset,
         });
-        if sent.is_none() {
-            return Ended::ClientGone;
+        match sent {
+            Some(Pushed::Queued) => {}
+            // It did not fit behind what waits: resume once caught up.
+            Some(Pushed::Behind) => continue,
+            None => return Ended::ClientGone,
         }
         let mut modes = attachment.modes;
         if !stream.modes(modes) {

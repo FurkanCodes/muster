@@ -9,7 +9,8 @@
 //! everything it missed, in the order it was written, long after. Each
 //! attached session's stream frames (replay, output, modes, the end) so
 //! wait in a lane of their own, ahead of nothing else, and a lane holds at
-//! most [`LANE_BUDGET`] bytes of output. Past that the client is behind:
+//! most [`LANE_BUDGET`] bytes of output, but for the one replay a client
+//! resumes with. Past that the client is behind:
 //! what waits in the lane is dropped, its stream marked to resume from the
 //! first byte dropped, and nothing more is queued for it. Once the writer
 //! has written a frame since, so the client is reading again, the session's
@@ -68,7 +69,8 @@ pub(crate) struct Lanes {
 
 #[derive(Debug, Default)]
 struct Lane {
-    frames: VecDeque<ServerFrame>,
+    /// Each frame, with the bytes of output it counts for.
+    frames: VecDeque<(ServerFrame, usize)>,
     /// Bytes of output waiting.
     bytes: usize,
     /// Output was dropped; the client resumes once the writer catches up.
@@ -92,16 +94,24 @@ impl Lanes {
     }
 
     /// Offers one of `session`'s stream frames. Output past the budget
-    /// drops what waits and puts the session behind; a replay or the
-    /// stream's end begins it afresh.
+    /// drops what waits and puts the session behind, as does a replay that
+    /// does not fit behind what waits. A replay into an empty lane, as a
+    /// client resumes, is not counted, so it is never dropped for its own
+    /// size; it and the stream's end begin the stream afresh. The same end
+    /// twice in a row is said once.
     pub(crate) fn push(&mut self, session: SessionId, frame: ServerFrame) -> Pushed {
         let lane = self.sessions.entry(session).or_default();
+        let mut cost = 0;
         match &frame {
-            ServerFrame::Output { seq, data, .. } => {
-                if lane.behind.is_some() {
+            ServerFrame::Output { seq, data, .. } | ServerFrame::Replay { seq, data, .. } => {
+                let replay = matches!(frame, ServerFrame::Replay { .. });
+                if lane.behind.is_some() && !replay {
                     return Pushed::Behind;
                 }
-                if lane.bytes + data.len() > self.budget {
+                if !(replay && lane.frames.is_empty()) {
+                    cost = data.len();
+                }
+                if lane.bytes + cost > self.budget {
                     let resume = lane.drop_waiting(*seq);
                     lane.behind = Some(Behind {
                         resume,
@@ -110,15 +120,21 @@ impl Lanes {
                     self.turns.retain(|waiting| *waiting != session);
                     return Pushed::Behind;
                 }
-                lane.bytes += data.len();
+                lane.behind = None;
             }
-            ServerFrame::Replay { .. } | ServerFrame::Detached { .. } => lane.behind = None,
+            ServerFrame::Detached { .. } => {
+                if lane.frames.back().is_some_and(|(last, _)| *last == frame) {
+                    return Pushed::Queued;
+                }
+                lane.behind = None;
+            }
             _ => {}
         }
         if lane.frames.is_empty() {
             self.turns.push_back(session);
         }
-        lane.frames.push_back(frame);
+        lane.bytes += cost;
+        lane.frames.push_back((frame, cost));
         Pushed::Queued
     }
 
@@ -128,12 +144,10 @@ impl Lanes {
             let Some(lane) = self.sessions.get_mut(&session) else {
                 continue;
             };
-            let Some(frame) = lane.frames.pop_front() else {
+            let Some((frame, cost)) = lane.frames.pop_front() else {
                 continue;
             };
-            if let ServerFrame::Output { data, .. } = &frame {
-                lane.bytes = lane.bytes.saturating_sub(data.len());
-            }
+            lane.bytes -= cost;
             if !lane.frames.is_empty() {
                 self.turns.push_back(session);
             } else if lane.behind.is_none() {
@@ -189,11 +203,11 @@ impl Lane {
     /// Drops every frame waiting; returns where the client resumes, given
     /// that `pushed` is the position of the output that did not fit.
     fn drop_waiting(&mut self, pushed: u64) -> Resume {
-        let first = self.frames.iter().find_map(|frame| match frame {
+        let first = self.frames.iter().find_map(|(frame, _)| match frame {
             ServerFrame::Replay { seq, .. } | ServerFrame::Output { seq, .. } => Some(*seq),
             _ => None,
         });
-        let reset = self.frames.iter().any(|frame| {
+        let reset = self.frames.iter().any(|(frame, _)| {
             matches!(
                 frame,
                 ServerFrame::Replay { reset: true, .. } | ServerFrame::Detached { .. }

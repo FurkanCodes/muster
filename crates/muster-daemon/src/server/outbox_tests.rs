@@ -128,6 +128,46 @@ fn a_dropped_stream_that_began_anew_resumes_from_the_start() {
 }
 
 #[test]
+fn a_replay_counts_unless_a_client_resumes_with_it_arc_14() {
+    let session = SessionId::new();
+    let mut lanes = Lanes::new(16);
+    // Resuming, into an empty lane: taken whatever its size, uncounted.
+    assert_eq!(
+        lanes.push(session, replay(session, 0, 100, true)),
+        Pushed::Queued
+    );
+    assert_eq!(
+        lanes.push(session, output(session, 100, 16)),
+        Pushed::Queued
+    );
+    // Behind what waits, as after the live stream lagged, it counts.
+    assert_eq!(
+        lanes.push(session, replay(session, 116, 4, false)),
+        Pushed::Behind
+    );
+    lanes.catch_up();
+    assert_eq!(
+        lanes.resume(session),
+        Some(Resume {
+            seq: 0,
+            reset: true
+        })
+    );
+}
+
+#[test]
+fn the_end_of_a_stream_is_said_once_however_often_it_is_asked_arc_14() {
+    let session = SessionId::new();
+    let mut lanes = Lanes::new(16);
+    let reason = DetachReason::NotRunning;
+    for _ in 0..1000 {
+        lanes.push(session, ServerFrame::Detached { session, reason });
+    }
+    assert!(lanes.pop().is_some());
+    assert!(lanes.pop().is_none());
+}
+
+#[test]
 fn a_lane_leaves_once_empty_or_cleared_arc_14() {
     let (one, two) = (SessionId::new(), SessionId::new());
     let mut lanes = Lanes::new(4);
