@@ -168,6 +168,47 @@ fn the_end_of_a_stream_is_said_once_however_often_it_is_asked_arc_14() {
 }
 
 #[test]
+fn a_stream_that_ends_while_its_client_is_behind_ends_after_a_reset_arc_14() {
+    let session = SessionId::new();
+    let mut lanes = Lanes::new(16);
+    assert_eq!(lanes.push(session, output(session, 0, 4)), Pushed::Queued);
+    assert!(lanes.pop().is_some());
+    lanes.push(session, output(session, 4, 8));
+    assert_eq!(lanes.push(session, output(session, 12, 8)), Pushed::Queued);
+    assert_eq!(lanes.push(session, output(session, 20, 8)), Pushed::Behind);
+    // Refused while behind: dropped too.
+    assert_eq!(lanes.push(session, output(session, 28, 2)), Pushed::Behind);
+    // The terminal is released before the client caught up, so nothing
+    // it missed is ever resent.
+    let reason = DetachReason::NotRunning;
+    let end = ServerFrame::Detached { session, reason };
+    assert_eq!(lanes.push(session, end.clone()), Pushed::Queued);
+    assert!(!lanes.is_behind(session));
+    let sent: Vec<_> = std::iter::from_fn(|| lanes.pop()).collect();
+    assert_eq!(
+        sent,
+        [
+            ServerFrame::Replay {
+                session,
+                seq: 30,
+                data: Vec::new(),
+                reset: true,
+            },
+            end.clone(),
+        ],
+        "the gap from 4 to 30 is a reset, before the end"
+    );
+    assert_eq!(lanes.len(), 0);
+    // Said again, the end is not said twice, nor the reset.
+    lanes.push(session, end.clone());
+    lanes.push(session, end.clone());
+    assert_eq!(
+        std::iter::from_fn(|| lanes.pop()).collect::<Vec<_>>(),
+        [end]
+    );
+}
+
+#[test]
 fn a_lane_leaves_once_empty_or_cleared_arc_14() {
     let (one, two) = (SessionId::new(), SessionId::new());
     let mut lanes = Lanes::new(4);

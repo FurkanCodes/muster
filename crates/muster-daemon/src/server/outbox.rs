@@ -16,8 +16,10 @@
 //! has written a frame since, so the client is reading again, the session's
 //! forwarder sends a replay from that byte, which the ring still holds, or
 //! the whole ring marked `reset` if it fell further behind than the ring
-//! holds (`ARC-14`). No byte reaches the client twice, and a gap is always
-//! a reset.
+//! holds (`ARC-14`). Should the stream end while its client is behind, so
+//! nothing is ever resent, the end follows an empty replay marked `reset`
+//! from the end of what was dropped. No byte reaches the client twice, and
+//! a gap is always a reset.
 //!
 //! The writer takes queued frames first, then each session's lanes in turn,
 //! one frame each.
@@ -80,6 +82,8 @@ struct Lane {
 #[derive(Debug)]
 struct Behind {
     resume: Resume,
+    /// The end of the output dropped, or refused since.
+    dropped_to: u64,
     /// The writer has written a frame since the output was dropped.
     caught_up: bool,
 }
@@ -98,23 +102,28 @@ impl Lanes {
     /// does not fit behind what waits. A replay into an empty lane, as a
     /// client resumes, is not counted, so it is never dropped for its own
     /// size; it and the stream's end begin the stream afresh. The same end
-    /// twice in a row is said once.
+    /// twice in a row is said once, and an end while the client is behind
+    /// follows a reset, as what it missed is never resent.
     pub(crate) fn push(&mut self, session: SessionId, frame: ServerFrame) -> Pushed {
         let lane = self.sessions.entry(session).or_default();
         let mut cost = 0;
+        let mut first = None;
         match &frame {
             ServerFrame::Output { seq, data, .. } | ServerFrame::Replay { seq, data, .. } => {
                 let replay = matches!(frame, ServerFrame::Replay { .. });
-                if lane.behind.is_some() && !replay {
+                let end = seq + data.len() as u64;
+                if let Some(behind) = lane.behind.as_mut().filter(|_| !replay) {
+                    behind.dropped_to = behind.dropped_to.max(end);
                     return Pushed::Behind;
                 }
                 if !(replay && lane.frames.is_empty()) {
                     cost = data.len();
                 }
                 if lane.bytes + cost > self.budget {
-                    let resume = lane.drop_waiting(*seq);
+                    let (resume, dropped_to) = lane.drop_waiting(*seq);
                     lane.behind = Some(Behind {
                         resume,
+                        dropped_to: dropped_to.max(end),
                         caught_up: false,
                     });
                     self.turns.retain(|waiting| *waiting != session);
@@ -126,13 +135,22 @@ impl Lanes {
                 if lane.frames.back().is_some_and(|(last, _)| *last == frame) {
                     return Pushed::Queued;
                 }
-                lane.behind = None;
+                // The stream ends with the client behind: what it missed is
+                // never resent, so it starts over, with nothing, where the
+                // output dropped ends (`ARC-14`).
+                first = lane.behind.take().map(|behind| ServerFrame::Replay {
+                    session,
+                    seq: behind.dropped_to,
+                    data: Vec::new(),
+                    reset: true,
+                });
             }
             _ => {}
         }
         if lane.frames.is_empty() {
             self.turns.push_back(session);
         }
+        lane.frames.extend(first.map(|reset| (reset, 0)));
         lane.bytes += cost;
         lane.frames.push_back((frame, cost));
         Pushed::Queued
@@ -201,12 +219,23 @@ impl Lanes {
 
 impl Lane {
     /// Drops every frame waiting; returns where the client resumes, given
-    /// that `pushed` is the position of the output that did not fit.
-    fn drop_waiting(&mut self, pushed: u64) -> Resume {
-        let first = self.frames.iter().find_map(|(frame, _)| match frame {
-            ServerFrame::Replay { seq, .. } | ServerFrame::Output { seq, .. } => Some(*seq),
+    /// that `pushed` is the position of the output that did not fit, and
+    /// the end of the output dropped.
+    fn drop_waiting(&mut self, pushed: u64) -> (Resume, u64) {
+        let output = |frame: &ServerFrame| match frame {
+            ServerFrame::Replay { seq, data, .. } | ServerFrame::Output { seq, data, .. } => {
+                Some((*seq, seq + data.len() as u64))
+            }
             _ => None,
-        });
+        };
+        let first = self.frames.iter().find_map(|(frame, _)| output(frame));
+        let end = self
+            .frames
+            .iter()
+            .filter_map(|(frame, _)| output(frame))
+            .map(|(_, end)| end)
+            .max()
+            .unwrap_or(pushed);
         let reset = self.frames.iter().any(|(frame, _)| {
             matches!(
                 frame,
@@ -215,10 +244,11 @@ impl Lane {
         });
         self.frames.clear();
         self.bytes = 0;
-        Resume {
-            seq: first.unwrap_or(pushed),
+        let resume = Resume {
+            seq: first.map_or(pushed, |(seq, _)| seq),
             reset,
-        }
+        };
+        (resume, end)
     }
 }
 
