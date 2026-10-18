@@ -33,6 +33,10 @@ enum Ended {
 /// and when a new program starts in it the client is sent that program's
 /// terminal from the start, with a reset. It ends when the session's
 /// terminal is released, or the client goes.
+///
+/// The first replay is history; each later one says where the output
+/// written since it begins (`live_from`), so a program's copy the client
+/// missed live still reaches it, and one in history never does.
 pub(crate) async fn forward_output(
     session: SessionId,
     mut current: watch::Receiver<Option<PtyHandle>>,
@@ -41,13 +45,16 @@ pub(crate) async fn forward_output(
 ) {
     let stream = Stream { session, outbox };
     let mut from = from_seq;
+    // The end of the first replay: what was written before the client
+    // attached.
+    let mut history = None;
     loop {
         let pty = current.borrow_and_update().clone();
         let Some(pty) = pty else {
             stream.ended(DetachReason::NotRunning);
             return;
         };
-        match forward_program(&stream, &pty, &mut from, &mut current).await {
+        match forward_program(&stream, &pty, &mut from, &mut history, &mut current).await {
             Ended::ClientGone => return,
             Ended::Released => {
                 stream.ended(DetachReason::NotRunning);
@@ -94,11 +101,13 @@ impl Stream {
 }
 
 /// Streams one program's terminal from `from`, which is kept at the next
-/// byte the client expects.
+/// byte the client expects; `history` is where the stream's first replay
+/// ended, once there was one.
 async fn forward_program(
     stream: &Stream,
     pty: &PtyHandle,
     from: &mut Option<u64>,
+    history: &mut Option<u64>,
     current: &mut watch::Receiver<Option<PtyHandle>>,
 ) -> Ended {
     let session = stream.session;
@@ -127,11 +136,14 @@ async fn forward_program(
         let replay = attachment.replay;
         let mut next = replay.seq + replay.data.len() as u64;
         *from = Some(next);
+        let live_from = *history;
+        history.get_or_insert(next);
         let sent = stream.send(ServerFrame::Replay {
             session,
             seq: replay.seq,
             data: replay.data,
             reset: replay.reset,
+            live_from,
         });
         match sent {
             Some(Pushed::Queued) => {}

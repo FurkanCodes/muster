@@ -85,7 +85,16 @@ impl App {
                 seq,
                 data,
                 reset,
-            } => self.screen(session).replay(seq, &data, reset),
+                live_from,
+            } => {
+                let screen = self.screen(session);
+                screen.replay(seq, &data, reset, live_from);
+                // What the program copied as the person looked on, which
+                // reached this client late.
+                copied = screen
+                    .take_copy()
+                    .filter(|_| self.attached == Some(session));
+            }
             ServerFrame::Output { session, seq, data } => {
                 let screen = self.screen(session);
                 screen.output(seq, &data);

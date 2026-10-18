@@ -88,6 +88,7 @@ fn a_session_reopened_elsewhere_is_attached_again_if_its_stream_had_ended() {
         seq: 0,
         data: b"$ ".to_vec(),
         reset: true,
+        live_from: None,
     });
     let mut again = reopened.clone();
     again.ended_at = Some(Timestamp::from_millis(20));
@@ -233,6 +234,7 @@ fn a_new_connection_starts_every_screen_over() {
         seq: 0,
         data: b"old daemon".to_vec(),
         reset: true,
+        live_from: None,
     });
     assert!(world.app.screens.contains_key(&id));
     world.app.on_disconnected("gone".to_owned());

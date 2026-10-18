@@ -23,6 +23,7 @@ fn replay(session: SessionId, seq: u64, len: usize, reset: bool) -> ServerFrame 
         seq,
         data: vec![b'r'; len],
         reset,
+        live_from: None,
     }
 }
 
@@ -193,6 +194,7 @@ fn a_stream_that_ends_while_its_client_is_behind_ends_after_a_reset_arc_14() {
                 seq: 30,
                 data: Vec::new(),
                 reset: true,
+                live_from: None,
             },
             end.clone(),
         ],
@@ -276,6 +278,7 @@ async fn forward(outbox: Arc<Outbox>, session: SessionId) {
                 seq: seq as u64,
                 data: stream[seq..end].to_vec(),
                 reset,
+                live_from: None,
             };
             assert_eq!(outbox.push(session, frame), Ok(Pushed::Queued));
             next = end;
@@ -319,6 +322,7 @@ async fn read_slowly(reader: tokio::io::DuplexStream, session: SessionId) -> See
                 seq,
                 data,
                 reset,
+                ..
             } if s == session => {
                 seen.replays += 1;
                 if reset {

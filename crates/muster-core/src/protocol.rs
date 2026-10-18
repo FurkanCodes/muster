@@ -80,7 +80,9 @@
 //! version 32 the width from which a session sits beside the list
 //! (`Preferences::side_by_side_from`, a field older clients pass over;
 //! `PreferenceChange::SideBySideFrom`, sent only to a daemon of 32 or
-//! later).
+//! later); version 33 where a replay's output was written while the client
+//! was attached (`ServerFrame::Replay::live_from`, a field older clients
+//! pass over), so a program's copy there reaches the clipboard.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -99,7 +101,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 32;
+pub const PROTOCOL_VERSION: u32 = 33;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -246,13 +248,23 @@ pub enum ServerFrame {
     Error(ErrorBody),
     /// The start of an attached terminal stream: the bytes from `seq` on.
     /// With `reset`, the client must clear its screen first, because the
-    /// bytes it last saw are no longer held.
+    /// bytes it last saw are no longer held. A stream starts again with one
+    /// when its client fell behind it, and when a new program starts in the
+    /// session.
     Replay {
         session: SessionId,
         seq: u64,
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
         reset: bool,
+        /// Where the output written while the client was attached begins,
+        /// in a replay that starts the stream again: from there it is live
+        /// output the client was not sent as it came, so what the program
+        /// does in it (a copy) counts as in [`ServerFrame::Output`].
+        /// `None` in the replay that starts a stream: it is all history.
+        /// Protocol 33; an older daemon says nothing, read as `None`.
+        #[serde(default)]
+        live_from: Option<u64>,
     },
     /// Terminal output that follows the replay; `seq` is the position of its
     /// first byte in everything the session has written.

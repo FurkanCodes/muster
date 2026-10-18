@@ -2,7 +2,8 @@
 //! output is not queued for. Its replies come first, not behind output
 //! long out of date; it catches up from the session's ring, no byte of
 //! output shown twice and no gap but one marked `reset`; and its screen
-//! ends as a client's that attaches then.
+//! ends as a client's that attaches then. What it was sent late is marked
+//! live, the history it attached to never.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -38,6 +39,8 @@ struct Screen {
     next: Option<u64>,
     replays: usize,
     resets: usize,
+    /// Where the first replay, the history attached to, ended.
+    history: Option<u64>,
     /// The newest output, to look for a marker in.
     tail: String,
 }
@@ -49,6 +52,7 @@ impl Screen {
             next: None,
             replays: 0,
             resets: 0,
+            history: None,
             tail: String::new(),
         }
     }
@@ -58,8 +62,15 @@ impl Screen {
     fn take(&mut self, frame: &ServerFrame) {
         match frame {
             ServerFrame::Replay {
-                seq, data, reset, ..
+                seq,
+                data,
+                reset,
+                live_from,
+                ..
             } => {
+                // History first; then, sent late, what was written live.
+                assert_eq!(*live_from, self.history, "replay {}", self.replays);
+                self.history.get_or_insert(seq + data.len() as u64);
                 self.replays += 1;
                 if *reset {
                     self.resets += 1;

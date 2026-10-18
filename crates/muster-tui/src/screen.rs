@@ -1,7 +1,9 @@
 //! A session's screen as this client draws it: a terminal emulator fed by
 //! the daemon's replay and output, and the program's input modes. It also
 //! keeps what the program copied (OSC 52) in its live output, for the
-//! person's clipboard (see `clipboard`).
+//! person's clipboard (see `clipboard`): output as it comes, and in a
+//! replay what the daemon says was written while this client was attached
+//! but sent late, as it fell behind; never history.
 
 use muster_core::protocol::{DetachReason, TerminalModes};
 
@@ -13,7 +15,8 @@ const FRAME_START: &[u8] = b"\x1b[?2026h";
 const FRAME_END: &[u8] = b"\x1b[?2026l";
 
 /// What the program copied while its output was live: what it writes as
-/// the person looks on, never its history replayed on attaching.
+/// the person looks on, never its history replayed on attaching, nor
+/// output this screen has already shown.
 #[derive(Debug, Default)]
 struct Copies {
     live: bool,
@@ -109,15 +112,19 @@ impl Screen {
     /// The start of a stream. With `reset`, or when there is a gap between
     /// what this screen shows and the replay, the screen starts over; a
     /// replay that overlaps it (frames already on their way when the client
-    /// attached again) adds only what is new.
-    pub(crate) fn replay(&mut self, seq: u64, data: &[u8], reset: bool) {
+    /// attached again) adds only what is new. Copies count from `live_from`
+    /// on, where the output written while the client was attached begins,
+    /// in what this screen had not shown; with none, the replay is history.
+    pub(crate) fn replay(&mut self, seq: u64, data: &[u8], reset: bool, live_from: Option<u64>) {
         self.ended = None;
         let end = seq + data.len() as u64;
+        // Never a copy again from output already shown.
+        let live_from = live_from.map(|from| from.max(self.next_seq.unwrap_or(0)));
         match self.next_seq {
             Some(next) if !reset && (seq..=end).contains(&next) => {
                 let skip = usize::try_from(next - seq).unwrap_or(usize::MAX);
                 let fresh = &data[skip.min(data.len())..];
-                self.process(fresh, false);
+                self.feed(next, fresh, live_from);
                 self.track_frames(fresh);
             }
             // Wholly behind what is shown: nothing new.
@@ -125,12 +132,23 @@ impl Screen {
             _ => {
                 let (rows, cols) = self.parser.screen().size();
                 self.parser = parser(rows, cols);
-                self.process(data, false);
+                self.feed(seq, data, live_from);
                 (self.in_frame, self.tail) = (false, Vec::new());
                 self.track_frames(data);
             }
         }
         self.next_seq = Some(end);
+    }
+
+    /// Feeds replayed `data`, whose first byte is at `start`: history up
+    /// to `live_from`, live from there.
+    fn feed(&mut self, start: u64, data: &[u8], live_from: Option<u64>) {
+        let split = live_from.map_or(data.len(), |from| {
+            usize::try_from(from.saturating_sub(start)).map_or(data.len(), |at| at.min(data.len()))
+        });
+        let (history, live) = data.split_at(split);
+        self.process(history, false);
+        self.process(live, true);
     }
 
     /// Output that follows the replay. Bytes already shown are skipped.
@@ -196,7 +214,7 @@ mod tests {
     #[test]
     fn output_follows_the_replay_and_overlap_is_skipped() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"hello ", true);
+        screen.replay(0, b"hello ", true, None);
         screen.output(6, b"world");
         screen.output(8, b"rld!");
         assert_eq!(text(&screen).trim(), "hello world!");
@@ -208,7 +226,7 @@ mod tests {
         let mut screen = Screen::new(10, 3);
         #[expect(clippy::format_collect, reason = "test input")]
         let lines: String = (1..=10).map(|n| format!("line{n}\r\n")).collect();
-        screen.replay(0, lines.as_bytes(), true);
+        screen.replay(0, lines.as_bytes(), true, None);
         assert_eq!(screen.scrolled_back(), 0);
         screen.scroll(2);
         assert_eq!(screen.scrolled_back(), 2);
@@ -229,14 +247,14 @@ mod tests {
     #[test]
     fn a_replay_overlapping_the_screen_adds_only_what_is_new() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"start ", true);
+        screen.replay(0, b"start ", true, None);
         screen.output(6, b"middle ");
         // Attached again from 6 while the output above was on its way.
-        screen.replay(6, b"middle end", false);
+        screen.replay(6, b"middle end", false, None);
         assert_eq!(text(&screen).trim(), "start middle end");
         assert_eq!(screen.next_seq(), Some(16));
         // Entirely old: changes nothing.
-        screen.replay(0, b"start", false);
+        screen.replay(0, b"start", false, None);
         assert_eq!(text(&screen).trim(), "start middle end");
         assert_eq!(screen.next_seq(), Some(16));
     }
@@ -244,19 +262,74 @@ mod tests {
     #[test]
     fn a_reset_or_a_gap_starts_the_screen_over() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"old", true);
-        screen.replay(100, b"new", false);
+        screen.replay(0, b"old", true, None);
+        screen.replay(100, b"new", false, None);
         assert_eq!(text(&screen).trim(), "new");
-        screen.replay(103, b"er", false);
+        screen.replay(103, b"er", false, None);
         assert_eq!(text(&screen).trim(), "newer");
-        screen.replay(105, b"fresh", true);
+        screen.replay(105, b"fresh", true, None);
         assert_eq!(text(&screen).trim(), "fresh");
+    }
+
+    /// "one", "two" and "six", copied.
+    const ONE: &[u8] = b"\x1b]52;c;b25l\x07";
+    const TWO: &[u8] = b"\x1b]52;c;dHdv\x07";
+    const SIX: &[u8] = b"\x1b]52;c;c2l4\x07";
+
+    fn at(seq: usize) -> u64 {
+        seq as u64
+    }
+
+    #[test]
+    fn a_replay_of_what_was_written_live_copies_only_what_this_screen_has_not_shown() {
+        // On attaching: history, so no copy.
+        let mut screen = Screen::new(20, 4);
+        screen.replay(0, ONE, true, None);
+        assert_eq!(screen.take_copy(), None);
+        let shown = ONE.len();
+        // Fell behind after attaching: the replay goes on from where the
+        // screen is, and starts with output already on its way and shown.
+        screen.output(at(shown), TWO);
+        assert_eq!(screen.take_copy().as_deref(), Some("two"));
+        let shown = shown + TWO.len();
+        let replay = [TWO, SIX].concat();
+        screen.replay(at(shown - TWO.len()), &replay, false, Some(at(ONE.len())));
+        assert_eq!(
+            screen.take_copy().as_deref(),
+            Some("six"),
+            "only the new copy"
+        );
+        // A replay of what is already all shown copies nothing again.
+        screen.replay(0, &[ONE, TWO].concat(), false, Some(0));
+        assert_eq!(screen.take_copy(), None);
+    }
+
+    #[test]
+    fn a_reset_replay_copies_from_where_the_live_output_begins_never_before() {
+        // The whole ring, after falling further behind than it holds: its
+        // history before the client attached, then live output.
+        let mut screen = Screen::new(20, 4);
+        screen.replay(0, b"$ ", true, None);
+        let ring = [ONE, b"$ ", TWO].concat();
+        screen.replay(1000, &ring, true, Some(at(1000 + ONE.len())));
+        assert_eq!(screen.take_copy().as_deref(), Some("two"));
+        // Starting over again, what this screen had shown copies nothing
+        // twice; only what follows it does.
+        let more = [ring.as_slice(), SIX].concat();
+        screen.replay(1000, &more, true, Some(at(1000 + ONE.len())));
+        assert_eq!(screen.take_copy().as_deref(), Some("six"));
+        // The same with nothing live in it: history.
+        screen.replay(5000, &ring, true, Some(at(5000 + ring.len())));
+        assert_eq!(screen.take_copy(), None);
+        // Attached again: history, whatever it holds.
+        screen.replay(9000, &ring, true, None);
+        assert_eq!(screen.take_copy(), None);
     }
 
     #[test]
     fn a_frame_in_progress_is_known_until_it_ends_also_when_split() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"old", true);
+        screen.replay(0, b"old", true, None);
         let feed = |screen: &mut Screen, data: &[u8]| {
             let seq = screen.next_seq().unwrap();
             screen.output(seq, data);
@@ -277,7 +350,7 @@ mod tests {
         assert_eq!(text(&screen).trim(), "new framexy");
         // A replay that starts over forgets a frame cut off.
         assert!(feed(&mut screen, b"\x1b[?2026h"));
-        screen.replay(0, b"fresh", true);
+        screen.replay(0, b"fresh", true, None);
         assert!(!screen.in_frame());
     }
 }

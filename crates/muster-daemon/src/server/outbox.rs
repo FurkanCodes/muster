@@ -143,6 +143,7 @@ impl Lanes {
                     seq: behind.dropped_to,
                     data: Vec::new(),
                     reset: true,
+                    live_from: None,
                 });
             }
             _ => {}

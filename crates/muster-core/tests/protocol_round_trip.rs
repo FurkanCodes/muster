@@ -699,6 +699,14 @@ fn server_frames() -> Vec<ServerFrame> {
             seq: 7,
             data: vec![0xff, 0x1b, b'['],
             reset: true,
+            live_from: None,
+        },
+        ServerFrame::Replay {
+            session,
+            seq: 10,
+            data: b"\x1b]52;c;aGk=\x07".to_vec(),
+            reset: false,
+            live_from: Some(8),
         },
         ServerFrame::Output {
             session,
@@ -909,4 +917,38 @@ fn every_protocol_message_reads_back_as_it_was_sent_arc_09() {
     for frame in &server {
         assert_round_trip(frame);
     }
+}
+
+/// A replay from a daemon before protocol 33, which says nothing of what
+/// in it is live, reads as all history (`ARC-09`).
+#[test]
+fn an_older_daemon_s_replay_reads_as_history_arc_09() {
+    #[derive(serde::Serialize)]
+    enum Older {
+        Replay {
+            session: SessionId,
+            seq: u64,
+            #[serde(with = "serde_bytes")]
+            data: Vec<u8>,
+            reset: bool,
+        },
+    }
+    let session = SessionId::new();
+    let older = Older::Replay {
+        session,
+        seq: 3,
+        data: b"abc".to_vec(),
+        reset: false,
+    };
+    let mut decoder = FrameDecoder::new();
+    decoder.push(&encode(&older).unwrap());
+    let read: ServerFrame = decoder.next_frame().unwrap().unwrap();
+    let expected = ServerFrame::Replay {
+        session,
+        seq: 3,
+        data: b"abc".to_vec(),
+        reset: false,
+        live_from: None,
+    };
+    assert_eq!(read, expected);
 }

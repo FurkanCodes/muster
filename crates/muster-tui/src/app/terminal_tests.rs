@@ -61,6 +61,7 @@ fn opened(history: &[u8]) -> World {
         seq: 0,
         data: history.to_vec(),
         reset: true,
+        live_from: None,
     });
     world
 }
@@ -114,9 +115,28 @@ fn a_copy_in_a_session_s_history_is_never_made_again_on_attaching() {
         seq: world.app.screens[&id].next_seq().unwrap(),
         data: b"\x1b]52;c;bmV4dC04\x07".to_vec(),
         reset: false,
+        live_from: None,
     });
     assert_eq!(copies(&actions), NONE);
     assert!(!render(&world.app).contains("copied"));
+}
+
+#[test]
+fn a_copy_the_client_was_sent_late_as_it_fell_behind_reaches_the_clipboard() {
+    let mut world = opened(b"$ ");
+    let id = world.session.id;
+    let next = world.app.screens[&id].next_seq().unwrap();
+    // What the program wrote while the person looked on, sent again from
+    // the ring as this client fell behind: "next-8".
+    let actions = world.app.on_frame(ServerFrame::Replay {
+        session: id,
+        seq: next,
+        data: b"\x1b]52;c;bmV4dC04\x07".to_vec(),
+        reset: false,
+        live_from: Some(next),
+    });
+    assert_eq!(copies(&actions), ["next-8"]);
+    assert!(render(&world.app).contains("The session copied a line."));
 }
 
 #[test]
