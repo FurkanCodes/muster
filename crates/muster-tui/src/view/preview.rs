@@ -97,6 +97,7 @@ fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
         }
         lines.push(Line::from(spans));
     }
+    lines.extend(super::clashes::detail_lines(app, &workspace.clashes));
     if let Some(found) = &workspace.pull_request {
         lines.push(Line::from(vec![
             Span::from("PR      ").dim(),

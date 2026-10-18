@@ -49,7 +49,9 @@
 //! a daemon of 24 or later); version 25 each workspace's timeline of turns
 //! and putting its files back from one (`Workspace::timeline`, the same;
 //! `Command::Timeline`, `Command::EntryDiff`, `Command::UndoPlan` and
-//! `Command::Undo`, sent only to a daemon of 25 or later).
+//! `Command::Undo`, sent only to a daemon of 25 or later); version 26 where
+//! the work in a project's workspaces meets (`Workspace::clashes`, a field
+//! older clients pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -67,7 +69,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 25;
+pub const PROTOCOL_VERSION: u32 = 26;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 

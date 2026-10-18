@@ -147,6 +147,7 @@ impl Supervisor {
         for workspace in workspaces {
             self.forget_timeline(workspace);
         }
+        self.forget_clashes_of(project);
         Ok(Reply::Done)
     }
 
@@ -225,6 +226,7 @@ impl Supervisor {
             pull_request: None,
             changes: None,
             timeline: None,
+            clashes: Vec::new(),
         }
     }
 
@@ -264,12 +266,15 @@ impl Supervisor {
             // The last branch's; the next look finds this one's.
             found.pull_request = None;
             found.changes = None;
+            found.clashes = Vec::new();
+            let project = found.project;
             let updated = found.clone();
             self.write(move |store| store.update_branch(workspace, &branch))
                 .await;
             self.broadcast(Delta::WorkspaceUpserted(updated));
             // What changed on the branch before is not this one's.
             self.look_at_changes(Some(workspace));
+            self.check_clashes(project);
         }
     }
 }

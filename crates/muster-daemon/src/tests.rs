@@ -321,6 +321,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         pull_request: None,
         changes: None,
         timeline: None,
+        clashes: Vec::new(),
     };
     let session = Session {
         id: SessionId::new(),

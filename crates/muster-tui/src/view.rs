@@ -13,6 +13,7 @@ use crate::motion;
 
 mod bottom_bar;
 mod changes;
+mod clashes;
 mod dialogs;
 pub(crate) mod kep;
 pub(crate) mod look;

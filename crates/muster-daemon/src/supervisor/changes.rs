@@ -34,12 +34,12 @@ pub(super) struct Looks {
 
 /// A workspace whose changes git can tell.
 #[derive(Debug, Clone)]
-struct Place {
-    workspace: WorkspaceId,
+pub(super) struct Place {
+    pub(super) workspace: WorkspaceId,
     /// What it had checked out when asked, so a summary found for one
     /// branch is not kept for the next.
-    branch: String,
-    path: PathBuf,
+    pub(super) branch: String,
+    pub(super) path: PathBuf,
     /// The person's overrides of its project's settings, which may name
     /// the base.
     overrides: PathBuf,
@@ -211,11 +211,15 @@ impl Supervisor {
     }
 
     /// Keeps each summary found on its workspace while it is still on the
-    /// branch it was found for, and tells clients of each change.
+    /// branch it was found for, and tells clients of each change. Where
+    /// the work meets others' is looked at again in each project whose
+    /// work moved, and after a look at one workspace, which follows an
+    /// agent's turn or a client's asking.
     pub(super) fn changes_looked(&mut self, looked: Looked) {
         if looked.whole {
             self.changes.under_way = None;
         }
+        let mut moved = Vec::new();
         for (workspace, branch, summary) in looked.found {
             let Some(stored) = self
                 .state
@@ -225,12 +229,21 @@ impl Supervisor {
             else {
                 continue;
             };
-            if stored.kind.branch() != branch || stored.changes == summary {
+            if stored.kind.branch() != branch {
+                continue;
+            }
+            if (stored.changes != summary || !looked.whole) && !moved.contains(&stored.project) {
+                moved.push(stored.project);
+            }
+            if stored.changes == summary {
                 continue;
             }
             stored.changes = summary;
             let updated = stored.clone();
             self.broadcast(Delta::WorkspaceUpserted(updated));
+        }
+        for project in moved {
+            self.check_clashes(project);
         }
     }
 
@@ -243,7 +256,7 @@ impl Supervisor {
     /// Where git can tell a workspace's changes: a worktree's or a
     /// checkout's on the host, in a repository; not a run's container,
     /// whose clone is its own.
-    fn changes_place(&self, workspace: WorkspaceId) -> Result<Place, ErrorBody> {
+    pub(super) fn changes_place(&self, workspace: WorkspaceId) -> Result<Place, ErrorBody> {
         let found = self
             .state
             .workspaces
@@ -283,7 +296,7 @@ impl Supervisor {
 /// What the workspace's branch is to merge into: the base its settings
 /// name (the branch's own `muster.toml`, with the person's overrides), or
 /// its remote's default branch. Settings that do not read name none.
-async fn base(place: &Place) -> String {
+pub(super) async fn base(place: &Place) -> String {
     let configured = by_hand::load_settings(place.path.clone(), place.overrides.clone())
         .await
         .ok()

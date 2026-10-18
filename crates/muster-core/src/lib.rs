@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 pub mod changes;
+pub mod clashes;
 pub mod config;
 pub mod credentials;
 pub mod entities;

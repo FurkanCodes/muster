@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use muster_core::protocol::Delta;
-use muster_core::{ProjectId, PullRequestStatus, WorkspaceId};
+use muster_core::{ProjectId, PullRequestState, PullRequestStatus, WorkspaceId};
 
 use super::{Request, Supervisor, by_hand};
 use crate::githost::choose::Hosts;
@@ -116,6 +116,7 @@ impl Supervisor {
                 self.pulls.failures.insert(project, error);
             }
         }
+        let mut merged = Vec::new();
         for (workspace, branch, found) in looked.found {
             let Some(stored) = self
                 .state
@@ -128,9 +129,19 @@ impl Supervisor {
             if stored.kind.branch() != branch || stored.pull_request == found {
                 continue;
             }
+            let merged_one = |pull: Option<&PullRequestStatus>| {
+                pull.is_some_and(|pull| pull.state == PullRequestState::Merged)
+            };
+            // A merged branch's work is in its base, no longer compared.
+            if merged_one(stored.pull_request.as_ref()) != merged_one(found.as_ref()) {
+                merged.push(stored.project);
+            }
             stored.pull_request = found;
             let updated = stored.clone();
             self.broadcast(Delta::WorkspaceUpserted(updated));
+        }
+        for project in merged {
+            self.check_clashes(project);
         }
     }
 

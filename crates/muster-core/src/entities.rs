@@ -40,6 +40,11 @@ pub struct Workspace {
     /// Kept only while it is a repository's, and never stored.
     #[serde(default)]
     pub timeline: Option<u64>,
+    /// The project's other workspaces whose work changes files its own
+    /// work changes, as git last said, those that would conflict first;
+    /// kept only while it is a repository's, and never stored.
+    #[serde(default)]
+    pub clashes: Vec<crate::clashes::Clash>,
 }
 
 /// The kinds of workspace.

@@ -30,6 +30,8 @@ mod by_hand_tests;
 #[cfg(test)]
 mod changes_tests;
 #[cfg(test)]
+mod clashes_tests;
+#[cfg(test)]
 mod focus_tests;
 #[cfg(test)]
 mod folder_tests;

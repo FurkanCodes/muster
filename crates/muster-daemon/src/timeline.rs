@@ -91,8 +91,9 @@ pub(crate) async fn remove(dir: &Path) {
 /// The files of a workspace at one moment.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Snapshot {
-    tree: String,
-    head: Option<String>,
+    pub(crate) tree: String,
+    /// What was checked out; `None` before the repository's first commit.
+    pub(crate) head: Option<String>,
 }
 
 /// An entry as the store keeps it.
@@ -113,12 +114,24 @@ pub(crate) struct Store {
     worktree: PathBuf,
     /// The workspace's repository's objects, which the store borrows.
     borrowed: PathBuf,
+    /// The index its snapshots of the workspace are taken with.
+    index: PathBuf,
 }
 
 impl Store {
     /// The timeline at `dir` of the workspace at `worktree`, made the
     /// first time, private to the person.
     pub(crate) async fn open(dir: &Path, worktree: &Path) -> Result<Self, TimelineError> {
+        Self::open_with_index(dir, worktree, dir.join("index")).await
+    }
+
+    /// [`Self::open`], snapshots taken with the index at `index`: a store
+    /// the workspaces of a project share keeps one for each.
+    pub(crate) async fn open_with_index(
+        dir: &Path,
+        worktree: &Path,
+        index: PathBuf,
+    ) -> Result<Self, TimelineError> {
         let common = git::checked(
             worktree,
             &["rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -146,6 +159,7 @@ impl Store {
                 dir: dir.to_owned(),
                 worktree: worktree.to_owned(),
                 borrowed: borrowed.clone(),
+                index: index.clone(),
             };
             store.inside(&["config", "gc.auto", "0"]).await?;
         }
@@ -157,15 +171,23 @@ impl Store {
                 .await
                 .map_err(|error| TimelineError::Io(dir.display().to_string(), error))?;
         }
+        if let Some(folder) = index.parent()
+            && !folder.exists()
+        {
+            tokio::fs::create_dir_all(folder)
+                .await
+                .map_err(|error| TimelineError::Io(folder.display().to_string(), error))?;
+        }
         Ok(Self {
             dir: dir.to_owned(),
             worktree: worktree.to_owned(),
             borrowed,
+            index,
         })
     }
 
     /// Git in the store itself, never in the person's repository.
-    async fn inside(&self, args: &[&str]) -> Result<String, GitError> {
+    pub(crate) async fn inside(&self, args: &[&str]) -> Result<String, GitError> {
         let dir = format!("--git-dir={}", self.dir.display());
         let mut all = vec![dir.as_str()];
         all.extend_from_slice(QUIET);
@@ -175,18 +197,28 @@ impl Store {
 
     /// [`Self::inside`], its output as it was printed.
     async fn inside_raw(&self, args: &[&str], limit: usize) -> Result<(Vec<u8>, bool), GitError> {
+        self.inside_allowing(args, limit, &[0]).await
+    }
+
+    /// [`Self::inside_raw`], git's exit codes in `ok` taken as success.
+    pub(crate) async fn inside_allowing(
+        &self,
+        args: &[&str],
+        limit: usize,
+        ok: &[i32],
+    ) -> Result<(Vec<u8>, bool), GitError> {
         let dir = format!("--git-dir={}", self.dir.display());
         let mut all = vec![dir.as_str()];
         all.extend_from_slice(QUIET);
         all.extend_from_slice(args);
-        git::capped(&self.dir, &all, limit, &[0]).await
+        git::capped(&self.dir, &all, limit, ok).await
     }
 
     /// What points git at the workspace's files with the store's index
     /// and objects.
     fn vars(&self) -> Vec<(&'static str, OsString)> {
         vec![
-            ("GIT_INDEX_FILE", self.dir.join("index").into_os_string()),
+            ("GIT_INDEX_FILE", self.index.clone().into_os_string()),
             (
                 "GIT_OBJECT_DIRECTORY",
                 self.dir.join("objects").into_os_string(),
@@ -214,7 +246,7 @@ impl Store {
     /// The workspace's files as they are now, and what is checked out.
     pub(crate) async fn snapshot(&self) -> Result<Snapshot, TimelineError> {
         let head = head(&self.worktree).await?;
-        if !self.dir.join("index").exists()
+        if !self.index.exists()
             && let Some(head) = &head
         {
             // So the files git tracks are not all taken for untracked.
@@ -258,7 +290,7 @@ impl Store {
 
     /// Keeps `tree` as a commit, with `parent` if any, `message` and
     /// `at`'s time.
-    async fn commit(
+    pub(crate) async fn commit(
         &self,
         tree: &str,
         parent: Option<&str>,
@@ -625,4 +657,4 @@ fn text((bytes, _cut): (Vec<u8>, bool)) -> String {
 
 #[cfg(test)]
 #[path = "timeline_tests.rs"]
-mod tests;
+pub(crate) mod tests;

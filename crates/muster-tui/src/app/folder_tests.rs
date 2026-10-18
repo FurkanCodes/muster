@@ -31,6 +31,7 @@ fn with_folder() -> (World, Project, Workspace) {
         pull_request: None,
         changes: None,
         timeline: None,
+        clashes: Vec::new(),
     };
     world
         .app

@@ -8,7 +8,7 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{changes, look, panel, pull_request, shorten, status_symbol};
+use super::{changes, clashes, look, panel, pull_request, shorten, status_symbol};
 use crate::app::{App, View};
 use crate::model::Row;
 use crate::motion;
@@ -91,8 +91,10 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
                 let workspace = app.model.workspace(id);
                 let found = workspace.and_then(|workspace| workspace.pull_request.as_ref());
                 let summary = workspace.and_then(|workspace| workspace.changes.as_ref());
+                let mark = clashes::mark(workspace.map_or(&[][..], |workspace| &workspace.clashes));
                 spans.extend(branch_and_pull_request(
                     branch,
+                    mark.as_ref(),
                     summary,
                     found,
                     width.saturating_sub(lead),
@@ -110,12 +112,14 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
     }
 }
 
-/// A worktree's branch and, at the line's end, what its work has changed
-/// and the pull request from it, in `room` cells: short of room, the pull
-/// request's word goes first, then what changed, then the branch is cut
-/// short.
+/// A worktree's branch and, at the line's end, whether its work meets
+/// other work, what it has changed and the pull request from it, in
+/// `room` cells: short of room, the pull request's word goes first, then
+/// what changed, then the branch is cut short; the word on other work
+/// stays.
 fn branch_and_pull_request(
     branch: String,
+    clash: Option<&Span<'static>>,
     summary: Option<&muster_core::ChangeSummary>,
     found: Option<&muster_core::PullRequestStatus>,
     room: usize,
@@ -124,7 +128,13 @@ fn branch_and_pull_request(
         tail.is_empty() || branch.chars().count() + 1 + pull_request::width(tail) <= room
     };
     let tail = |summary: Option<&muster_core::ChangeSummary>, compact: bool| {
-        let mut tail: Vec<Span<'static>> = summary.map(changes::summary).unwrap_or_default();
+        let mut tail: Vec<Span<'static>> = clash.cloned().into_iter().collect();
+        if let Some(summary) = summary {
+            if !tail.is_empty() {
+                tail.push(Span::raw(" "));
+            }
+            tail.extend(changes::summary(summary));
+        }
         if let Some(found) = found {
             if !tail.is_empty() {
                 tail.push(Span::raw(" "));

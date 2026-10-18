@@ -94,6 +94,7 @@ mod tests {
             pull_request: None,
             changes: None,
             timeline: None,
+            clashes: Vec::new(),
         };
         let session = Session {
             id: SessionId::new(),

@@ -7,6 +7,7 @@ pub mod store;
 
 mod branches;
 mod changes;
+mod clashes;
 mod containers;
 mod git;
 mod githost;
@@ -34,6 +35,8 @@ mod worktree_sync;
 
 #[cfg(test)]
 mod changes_tests;
+#[cfg(test)]
+mod clashes_supervisor_tests;
 #[cfg(test)]
 mod pulls_tests;
 #[cfg(test)]

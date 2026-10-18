@@ -59,6 +59,7 @@ fn row_line(
         ChangeRow::Heading(text) => return Line::from(format!(" {text}")).bold(),
         ChangeRow::Note(text) => return Line::from(format!(" {}", one_line(text))).dim(),
         ChangeRow::Error(text) => return Line::from(format!(" {}", one_line(text))).red(),
+        ChangeRow::Clash(clash) => return super::clashes::pane_line(app, clash, width),
         ChangeRow::Commit(commit) => {
             return Line::from(vec![
                 Span::raw("   "),
