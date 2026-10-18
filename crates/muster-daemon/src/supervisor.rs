@@ -6,11 +6,14 @@
 //! sees exactly the deltas after its snapshot, with no gap and no repeat.
 //!
 //! Terminal traffic does not pass through here: a connection asks once for a
-//! session's [`PtyHandle`] and then talks to its actor directly.
+//! session's [`PtyHandle`] and then talks to its actor directly. Only its
+//! resizes come here, as the Supervisor decides which client's size a
+//! terminal takes (`sizing`).
 
 mod by_hand;
 mod changes;
 mod clashes;
+mod clients;
 mod containers;
 mod handle;
 mod issues;
@@ -21,6 +24,7 @@ mod reload;
 mod runs;
 mod sessions;
 mod settings;
+mod sizing;
 mod spend;
 mod stacks;
 mod status;
@@ -41,9 +45,9 @@ use muster_state::run::RunEvent;
 use muster_state::session::{SessionMachine, Signal, Timing};
 use tokio::sync::{broadcast, mpsc, watch};
 
+pub(crate) use self::clients::ClientGuard;
 use self::handle::Request;
 pub(crate) use self::handle::SupervisorHandle;
-pub(crate) use self::looking::LookGuard;
 pub(crate) use self::terminals::{TerminalLink, WatchGuard};
 use crate::clock::Clock;
 use crate::githost::choose::Hosts;
@@ -117,9 +121,9 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
     let (unwatched, unwatched_queue) = mpsc::unbounded_channel();
     #[expect(
         clippy::disallowed_methods,
-        reason = "ARC-14: sent once as each looking client ends, from Drop, which cannot wait"
+        reason = "ARC-14: sent once as each connection ends, from Drop, which cannot wait"
     )]
-    let (looker_gone, looker_gone_queue) = mpsc::unbounded_channel();
+    let (client_gone, client_gone_queue) = mpsc::unbounded_channel();
     #[expect(
         clippy::disallowed_methods,
         reason = "ARC-14: a few reports per step of a run, and only runs under way take steps"
@@ -139,7 +143,9 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         watchers: HashMap::new(),
         unwatched,
         lookers: looking::Lookers::default(),
-        looker_gone,
+        sizing: sizing::Sizing::default(),
+        next_client: 0,
+        client_gone,
         hook_tokens: HashMap::new(),
         pty_events,
         history_every: settings.history_every.max(1),
@@ -178,7 +184,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         pty: pty_queue,
         hooks: settings.hook_queue,
         unwatched: unwatched_queue,
-        looker_gone: looker_gone_queue,
+        client_gone: client_gone_queue,
         run_reports: run_report_queue,
     }));
     Ok(SupervisorHandle { requests })
@@ -213,8 +219,8 @@ struct Queues {
     requests: mpsc::Receiver<Request>,
     pty: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
     hooks: mpsc::Receiver<HookDelivery>,
-    unwatched: mpsc::UnboundedReceiver<SessionId>,
-    looker_gone: mpsc::UnboundedReceiver<u64>,
+    unwatched: mpsc::UnboundedReceiver<(SessionId, u64)>,
+    client_gone: mpsc::UnboundedReceiver<u64>,
     run_reports: mpsc::UnboundedReceiver<(RunId, Report)>,
 }
 
@@ -256,11 +262,15 @@ struct Supervisor {
     /// How many clients watch each watched session.
     watchers: HashMap<SessionId, usize>,
     /// Where dropped watch guards report.
-    unwatched: mpsc::UnboundedSender<SessionId>,
+    unwatched: mpsc::UnboundedSender<(SessionId, u64)>,
     /// The clients that say whether the person is looking at them.
     lookers: looking::Lookers,
-    /// Where dropped look guards report.
-    looker_gone: mpsc::UnboundedSender<u64>,
+    /// The sizes clients gave sessions' terminals.
+    sizing: sizing::Sizing,
+    /// The key the last connection was given.
+    next_client: u64,
+    /// Where dropped client guards report.
+    client_gone: mpsc::UnboundedSender<u64>,
     /// Which session each issued hook token names (`ARC-11`).
     hook_tokens: HashMap<crate::secrets::Token, SessionId>,
     history_every: u32,
@@ -300,16 +310,31 @@ impl Supervisor {
             let wake_at = deadline.map_or_else(tokio::time::Instant::now, Into::into);
             tokio::select! {
                 request = queues.requests.recv() => match request {
-                    Some(request) => self.on_request(request).await,
+                    Some(request) => {
+                        self.take_dropped_guards(&mut queues).await;
+                        self.on_request(request).await;
+                    }
                     None => return,
                 },
                 Some((session, event)) = queues.pty.recv() => self.on_pty_event(session, event).await,
                 Some(delivery) = queues.hooks.recv() => self.on_hook(delivery).await,
-                Some(session) = queues.unwatched.recv() => self.unwatch(session).await,
-                Some(client) = queues.looker_gone.recv() => self.remove_looker(client),
+                Some((session, client)) = queues.unwatched.recv() => self.unwatch(session, client).await,
+                Some(client) = queues.client_gone.recv() => self.remove_client(client).await,
                 Some((run, report)) = queues.run_reports.recv() => self.on_run_report(run, report).await,
                 () = tokio::time::sleep_until(wake_at), if deadline.is_some() => self.tick().await,
             }
+        }
+    }
+
+    /// Takes the guards dropped before a request came: a client that stops
+    /// watching a session and then resizes it dropped its watch first, so
+    /// that is taken first, and a connection's steps keep their order.
+    async fn take_dropped_guards(&mut self, queues: &mut Queues) {
+        while let Ok((session, client)) = queues.unwatched.try_recv() {
+            self.unwatch(session, client).await;
+        }
+        while let Ok(client) = queues.client_gone.try_recv() {
+            self.remove_client(client).await;
         }
     }
 
@@ -460,20 +485,40 @@ impl Supervisor {
             Request::WorktreesListed { project, listed } => {
                 self.sync_worktrees(project, listed).await;
             }
-            Request::AddLooker { outgoing, reply } => {
+            Request::AddClient(reply) => {
                 // A client that left already drops the guard, which removes it.
-                let _ = reply.send(self.add_looker(outgoing));
+                let _ = reply.send(self.add_client());
             }
-            Request::Looking { client, looking } => self.set_looking(client, looking),
+            Request::AddLooker { client, outgoing } => self.add_looker(client, outgoing),
+            Request::Looking { client, looking } => self.set_looking(client, looking).await,
             Request::Terminal {
                 session,
                 watch,
+                client,
                 reply,
             } => {
-                let link = self.link_terminal(session, watch).await;
+                let link = self.link_terminal(session, watch, client).await;
                 // A client that left already drops the link, which unwatches.
                 let _ = reply.send(link);
             }
+            Request::Resize {
+                session,
+                client,
+                size,
+                done,
+            } => {
+                self.resize_for(session, client, size).await;
+                let _ = done.send(());
+            }
+            Request::Active {
+                session,
+                client,
+                done,
+            } => {
+                self.active_on(session, client).await;
+                let _ = done.send(());
+            }
+            Request::Leave { session, client } => self.leave_terminal(session, client).await,
         }
     }
 

@@ -4,12 +4,12 @@
 use std::path::PathBuf;
 
 use muster_core::protocol::{
-    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, ServerFrame, Snapshot,
+    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, ServerFrame, Snapshot, TermSize,
 };
 use muster_core::{SessionId, WorkspaceId};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use super::{LookGuard, TerminalLink, changes, containers, issues, pulls, runs};
+use super::{ClientGuard, TerminalLink, changes, containers, issues, pulls, runs};
 
 pub(super) type Subscription = (Snapshot, broadcast::Receiver<Delta>);
 
@@ -19,17 +19,38 @@ pub(super) enum Request {
         command: Command,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     },
+    /// A new connection's key.
+    AddClient(oneshot::Sender<ClientGuard>),
     /// A client wants a session's terminal; `watch` when it will show it.
     Terminal {
         session: SessionId,
         watch: bool,
+        client: u64,
         reply: oneshot::Sender<Option<TerminalLink>>,
+    },
+    /// A client shows a session's terminal at `size`.
+    Resize {
+        session: SessionId,
+        client: u64,
+        size: TermSize,
+        done: oneshot::Sender<()>,
+    },
+    /// A client types into a session after another was active on it.
+    Active {
+        session: SessionId,
+        client: u64,
+        done: oneshot::Sender<()>,
+    },
+    /// A client let a session's terminal go.
+    Leave {
+        session: SessionId,
+        client: u64,
     },
     /// A client will say whether the person is looking at it; `outgoing`
     /// takes the sessions to show in it.
     AddLooker {
+        client: u64,
         outgoing: mpsc::Sender<ServerFrame>,
-        reply: oneshot::Sender<LookGuard>,
     },
     /// A client says whether the person is looking at it.
     Looking {
@@ -89,8 +110,12 @@ impl std::fmt::Debug for Request {
         match self {
             Self::Subscribe(_) => f.write_str("Subscribe"),
             Self::Command { command, .. } => write!(f, "Command({command:?})"),
+            Self::AddClient(_) => f.write_str("AddClient"),
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
-            Self::AddLooker { .. } => f.write_str("AddLooker"),
+            Self::Resize { session, size, .. } => write!(f, "Resize({session}, {size:?})"),
+            Self::Active { session, .. } => write!(f, "Active({session})"),
+            Self::Leave { session, .. } => write!(f, "Leave({session})"),
+            Self::AddLooker { client, .. } => write!(f, "AddLooker({client})"),
             Self::Looking { client, looking } => write!(f, "Looking({client}, {looking})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
@@ -222,44 +247,98 @@ impl SupervisorHandle {
         self.requests.send(Request::Resources(report)).await.is_ok()
     }
 
+    /// A key for a new connection, held until the guard is dropped;
+    /// `None` once the Supervisor has stopped.
+    pub(crate) async fn add_client(&self) -> Option<ClientGuard> {
+        let (reply, answer) = oneshot::channel();
+        self.requests.send(Request::AddClient(reply)).await.ok()?;
+        answer.await.ok()
+    }
+
     /// Counts a client that will say whether the person is looking at it,
-    /// until the guard is dropped; `None` once the Supervisor has stopped.
+    /// until its connection ends. `false` once the Supervisor has stopped.
     pub(crate) async fn add_looker(
         &self,
+        client: &ClientGuard,
         outgoing: mpsc::Sender<ServerFrame>,
-    ) -> Option<LookGuard> {
-        let (reply, answer) = oneshot::channel();
+    ) -> bool {
         self.requests
-            .send(Request::AddLooker { outgoing, reply })
+            .send(Request::AddLooker {
+                client: client.id(),
+                outgoing,
+            })
             .await
-            .ok()?;
-        answer.await.ok()
+            .is_ok()
     }
 
     /// Tells whether the person is looking at the client. `false` once the
     /// Supervisor has stopped.
-    pub(crate) async fn looking(&self, client: &LookGuard, looking: bool) -> bool {
+    pub(crate) async fn looking(&self, client: &ClientGuard, looking: bool) -> bool {
         self.requests
             .send(Request::Looking {
-                client: client.client(),
+                client: client.id(),
                 looking,
             })
             .await
             .is_ok()
     }
 
-    /// A link to a session's terminal, if it still has one. With `watch`,
-    /// the session counts as watched until the link is dropped.
-    pub(crate) async fn terminal(&self, session: SessionId, watch: bool) -> Option<TerminalLink> {
+    /// A link to a session's terminal for `client`, if it still has one.
+    /// With `watch`, the session counts as watched until the link is
+    /// dropped.
+    pub(crate) async fn terminal(
+        &self,
+        session: SessionId,
+        watch: bool,
+        client: &ClientGuard,
+    ) -> Option<TerminalLink> {
         let (reply, answer) = oneshot::channel();
         self.requests
             .send(Request::Terminal {
                 session,
                 watch,
+                client: client.id(),
                 reply,
             })
             .await
             .ok()?;
         answer.await.ok().flatten()
+    }
+
+    /// The client shows the session at `size`; the session's terminal
+    /// takes it if the client is the one in charge of it (`sizing`).
+    /// Returns once any resize is on its way to the terminal, so keys sent
+    /// after it reach the program after it.
+    pub(crate) async fn resize(&self, session: SessionId, client: &ClientGuard, size: TermSize) {
+        let (done, answer) = oneshot::channel();
+        let request = Request::Resize {
+            session,
+            client: client.id(),
+            size,
+            done,
+        };
+        if self.requests.send(request).await.is_ok() {
+            let _ = answer.await;
+        }
+    }
+
+    /// The client types into the session after another was active on it.
+    /// Returns once any resize that follows is on its way to the terminal.
+    pub(crate) async fn active(&self, session: SessionId, client: &ClientGuard) {
+        let (done, answer) = oneshot::channel();
+        let request = Request::Active {
+            session,
+            client: client.id(),
+            done,
+        };
+        if self.requests.send(request).await.is_ok() {
+            let _ = answer.await;
+        }
+    }
+
+    /// The client let the session's terminal go.
+    pub(crate) async fn leave(&self, session: SessionId, client: &ClientGuard) {
+        let client = client.id();
+        let _ = self.requests.send(Request::Leave { session, client }).await;
     }
 }

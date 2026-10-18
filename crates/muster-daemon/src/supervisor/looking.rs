@@ -4,9 +4,9 @@
 //! notch is shown in the window they looked at last. Muster's own
 //! settings, which turn the notch on and off, are kept here too.
 //!
-//! A client says so first through [`Supervisor::add_looker`], which hands
-//! it a [`LookGuard`]; dropping the guard, however the client ends, takes
-//! it off the list.
+//! A client says so first through [`Supervisor::add_looker`], under its
+//! connection's key; it leaves the list as its connection ends
+//! ([`ClientGuard`](super::ClientGuard)).
 
 use std::collections::HashMap;
 
@@ -27,71 +27,53 @@ struct Looker {
     outgoing: mpsc::Sender<ServerFrame>,
 }
 
-/// The clients that say whether the person is looking at them.
+/// The clients that say whether the person is looking at them, by their
+/// connections' keys.
 #[derive(Debug, Default)]
 pub(super) struct Lookers {
     clients: HashMap<u64, Looker>,
-    /// The key the next client is given.
-    next: u64,
     /// Counts each time a client came to be looked at, so the one looked at
     /// last is known.
     looks: u64,
 }
 
-/// Counts one client among the lookers until dropped.
-#[derive(Debug)]
-pub(crate) struct LookGuard {
-    client: u64,
-    gone: mpsc::UnboundedSender<u64>,
-}
-
-impl LookGuard {
-    /// The client's key, for [`SupervisorHandle::looking`](super::SupervisorHandle::looking).
-    pub(crate) fn client(&self) -> u64 {
-        self.client
-    }
-}
-
-impl Drop for LookGuard {
-    fn drop(&mut self) {
-        // The Supervisor has stopped if this fails; nothing is left to count.
-        let _ = self.gone.send(self.client);
+impl Lookers {
+    /// Whether the person is looking at the client's window.
+    pub(super) fn is_looking(&self, client: u64) -> bool {
+        self.clients
+            .get(&client)
+            .is_some_and(|looker| looker.looking)
     }
 }
 
 impl Supervisor {
     /// Counts a client that will say whether the person is looking at it,
     /// at first not looked at.
-    pub(super) fn add_looker(&mut self, outgoing: mpsc::Sender<ServerFrame>) -> LookGuard {
-        let lookers = &mut self.lookers;
-        lookers.next += 1;
-        let client = lookers.next;
-        lookers.clients.insert(
-            client,
-            Looker {
-                looking: false,
-                looked: 0,
-                outgoing,
-            },
-        );
-        LookGuard {
-            client,
-            gone: self.looker_gone.clone(),
-        }
+    pub(super) fn add_looker(&mut self, client: u64, outgoing: mpsc::Sender<ServerFrame>) {
+        self.lookers.clients.entry(client).or_insert(Looker {
+            looking: false,
+            looked: 0,
+            outgoing,
+        });
     }
 
-    /// A client says whether the person is looking at it.
-    pub(super) fn set_looking(&mut self, client: u64, looking: bool) {
+    /// A client says whether the person is looking at it, which may change
+    /// which client's size its sessions take (`sizing`).
+    pub(super) async fn set_looking(&mut self, client: u64, looking: bool) {
         let lookers = &mut self.lookers;
         let Some(looker) = lookers.clients.get_mut(&client) else {
             return;
         };
+        let changed = looker.looking != looking;
         if looking && !looker.looking {
             lookers.looks += 1;
             looker.looked = lookers.looks;
         }
         looker.looking = looking;
         self.publish_looked_at();
+        if changed {
+            self.looked_changed(client, looking).await;
+        }
     }
 
     /// A client left.

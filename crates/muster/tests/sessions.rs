@@ -166,6 +166,64 @@ async fn the_terminal_size_follows_the_client() {
     read_terminal(&mut connection, session, "30 100").await;
 }
 
+/// Two clients of different sizes on one session (`ARC-02`): its terminal
+/// takes the size of the one active on it last; a client that stopped
+/// watching is remembered, not applied; once the one in charge lets the
+/// session go, the other's size applies.
+#[tokio::test]
+async fn two_clients_on_a_session_size_it_by_who_was_active_last_arc_02() {
+    let setup = setup().await;
+    let mut wide = setup.daemon.connect().await;
+    let session = start(&mut wide, setup.workspace).await;
+    wide.attach(session, None).await.unwrap();
+    let wide_size = TermSize {
+        cols: 100,
+        rows: 30,
+    };
+    wide.resize(session, wide_size).await.unwrap();
+    // A round trip, so the resize has been taken before the next client's.
+    wide.command(Command::Ping).await.unwrap();
+
+    let mut narrow = setup.daemon.connect().await;
+    narrow.attach(session, None).await.unwrap();
+    narrow
+        .resize(session, TermSize { cols: 70, rows: 20 })
+        .await
+        .unwrap();
+    narrow
+        .input(session, b"echo \"a-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut narrow, session, "a-20 70").await;
+
+    // Typing makes the wide one active again, before its keys arrive.
+    wide.input(session, b"echo \"b-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut wide, session, "b-30 100").await;
+
+    // The narrow one's window went out of focus: what it says is kept.
+    narrow.watch(session, false).await.unwrap();
+    narrow
+        .resize(session, TermSize { cols: 72, rows: 22 })
+        .await
+        .unwrap();
+    narrow
+        .input(session, b"echo \"c-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut narrow, session, "c-30 100").await;
+
+    // The wide one lets the session go: the narrow one's size applies.
+    wide.detach(session).await.unwrap();
+    wide.command(Command::Ping).await.unwrap();
+    narrow
+        .input(session, b"echo \"d-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut narrow, session, "d-22 72").await;
+}
+
 #[tokio::test]
 async fn parent_agent_variables_do_not_reach_sessions() {
     // The sandbox starts the daemon with CLAUDECODE=1.

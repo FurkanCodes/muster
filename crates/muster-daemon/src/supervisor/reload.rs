@@ -96,6 +96,7 @@ impl Supervisor {
                 continue;
             };
             let events = self.pty_events.clone();
+            let size = session.terminal.size;
             let pty = match pty::adopt(master, session.terminal, move |event| {
                 let _ = events.send((id, event));
             }) {
@@ -122,7 +123,7 @@ impl Supervisor {
                 },
             );
             self.carry_watch(id);
-            self.publish_terminal(id, pty);
+            self.publish_terminal(id, pty, size);
         }
     }
 }
