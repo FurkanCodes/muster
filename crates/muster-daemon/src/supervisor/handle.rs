@@ -9,7 +9,7 @@ use muster_core::protocol::{
 use muster_core::{SessionId, WorkspaceId};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use super::{LookGuard, TerminalLink, changes, containers, issues, pulls, runs};
+use super::{KeysGuard, LookGuard, TerminalLink, changes, containers, issues, pulls, runs};
 
 pub(super) type Subscription = (Snapshot, broadcast::Receiver<Delta>);
 
@@ -38,6 +38,12 @@ pub(super) enum Request {
     },
     /// A UI says the colours of the person's terminal.
     Colours(muster_core::colours::TerminalColours),
+    /// A client has the person's keys in a session's terminal, until it
+    /// drops the guard.
+    HoldKeys {
+        session: SessionId,
+        reply: oneshot::Sender<Option<KeysGuard>>,
+    },
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
     /// A ticket fetched off the loop, back to start a run on it.
@@ -95,6 +101,7 @@ impl std::fmt::Debug for Request {
             Self::AddLooker { .. } => f.write_str("AddLooker"),
             Self::Looking { client, looking } => write!(f, "Looking({client}, {looking})"),
             Self::Colours(_) => f.write_str("Colours"),
+            Self::HoldKeys { session, .. } => write!(f, "HoldKeys({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
             Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
@@ -256,6 +263,18 @@ impl SupervisorHandle {
     pub(crate) async fn colours(&self, colours: muster_core::colours::TerminalColours) {
         // Nothing to do once the Supervisor has stopped.
         let _ = self.requests.send(Request::Colours(colours)).await;
+    }
+
+    /// Counts the client among those with the person's keys in `session`'s
+    /// terminal until the guard is dropped; `None` for a session that is
+    /// not known, or once the Supervisor has stopped.
+    pub(crate) async fn hold_keys(&self, session: SessionId) -> Option<KeysGuard> {
+        let (reply, answer) = oneshot::channel();
+        self.requests
+            .send(Request::HoldKeys { session, reply })
+            .await
+            .ok()?;
+        answer.await.ok().flatten()
     }
 
     /// A link to a session's terminal, if it still has one. With `watch`,

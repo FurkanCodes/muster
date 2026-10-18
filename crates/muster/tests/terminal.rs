@@ -144,3 +144,43 @@ async fn a_session_is_told_its_terminal_is_muster_whatever_the_daemon_started_in
     );
     assert!(text.contains(&wanted), "{text:?}");
 }
+
+/// Says the person's keys are in `session`, or in none, and waits until
+/// the daemon has taken it in: it reads a client's frames in order.
+async fn keys(connection: &mut Connection, session: Option<SessionId>) {
+    connection.keys(session).await.unwrap();
+    connection.command(Command::Ping).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_program_that_asked_is_told_as_the_person_s_keys_come_and_go_in_any_client() {
+    let sandbox = Sandbox::new();
+    let (daemon, mut watching, session) = shell(&sandbox).await;
+    // Asks to be told of focus, then prints the 9 bytes it is sent.
+    let probe = "stty -echo -icanon min 1; printf '\\033[?1004h'; echo ready-$((1+2)); \
+                 r=$(dd bs=1 count=9 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"focus=$r=$((2*21))\"\n";
+    watching.input(session, probe.as_bytes()).await.unwrap();
+    read_terminal(&mut watching, session, "ready-3").await;
+
+    let mut one = daemon.connect().await;
+    let mut two = daemon.connect().await;
+    // In: the first client to have the keys says so.
+    keys(&mut one, Some(session)).await;
+    // A second has them too, and the first lets go: still in focus.
+    keys(&mut two, Some(session)).await;
+    keys(&mut one, None).await;
+    // Out, as the last one goes, however it goes.
+    drop(two);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // And in again.
+    keys(&mut one, Some(session)).await;
+
+    let (text, _) = read_terminal(&mut watching, session, "=42").await;
+    let told = text
+        .rsplit("focus=")
+        .next()
+        .and_then(|rest| rest.split('=').next())
+        .unwrap_or_default();
+    assert_eq!(told, "E[IE[OE[I", "{text:?}");
+}

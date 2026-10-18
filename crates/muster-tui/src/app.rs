@@ -350,6 +350,8 @@ pub(crate) struct App {
     pub(crate) selection: Option<Selection>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
+    /// The session the daemon was last told has the person's keys.
+    keys_told: Option<SessionId>,
     /// Something a reply named that the state may not show yet: replies and
     /// deltas travel separately, so either can arrive first. Selected (and,
     /// for a new session, opened) as soon as it appears.
@@ -443,6 +445,7 @@ impl App {
             changes: None,
             selection: None,
             attached: None,
+            keys_told: None,
             wanted: None,
             pending: HashMap::new(),
             next_req: 1,
@@ -549,6 +552,29 @@ impl App {
             cols: pane.width.max(1),
             rows: pane.height.max(1),
         }
+    }
+
+    /// The session whose terminal has the person's keys: one they entered,
+    /// in a window they look at (or one that never says).
+    pub(crate) fn keys_session(&self) -> Option<SessionId> {
+        match self.mode {
+            Mode::Terminal(session) if self.focused != Some(false) => Some(session),
+            _ => None,
+        }
+    }
+
+    /// Tells the daemon where the person's keys are now, if that changed,
+    /// so a program that asked learns it gained or lost focus. Not to a
+    /// daemon before it knew how (`ARC-09`).
+    pub(super) fn tell_keys(&mut self) -> Option<Action> {
+        let wanted = self.keys_session();
+        let knows = matches!(self.link, Link::Connected { .. })
+            && self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL;
+        if !knows || wanted == self.keys_told {
+            return None;
+        }
+        self.keys_told = wanted;
+        Some(Action::Send(ClientFrame::Keys { session: wanted }))
     }
 
     /// Whether the list has the keys, rather than a session's terminal.

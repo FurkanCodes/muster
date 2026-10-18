@@ -497,6 +497,30 @@ async fn a_program_asking_for_its_terminal_s_background_is_told_the_person_s() {
 }
 
 #[tokio::test]
+async fn a_program_that_asked_is_told_as_its_terminal_gains_and_loses_focus() {
+    let (pty, _) = shell(vec![], vec![]);
+    // Not asked yet: nothing is sent, but the terminal knows it has focus.
+    pty.focus(true).await;
+    // Asks (`CSI ? 1004 h`), then prints the 6 bytes it is sent.
+    let probe = "stty -echo -icanon min 1; printf '\\033[?1004h'; echo ready-$((1+2)); \
+                 r=$(dd bs=1 count=6 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"focus:$r:$((2*21))\"\n";
+    pty.input(probe.as_bytes().to_vec()).await;
+    let (_, next) = read_until(&pty, None, "ready-3").await;
+    // Told again what it knows: nothing; then out, and back in.
+    pty.focus(true).await;
+    pty.focus(false).await;
+    pty.focus(true).await;
+    let (text, _) = read_until(&pty, Some(next), ":42").await;
+    let told = text
+        .rsplit("focus:")
+        .next()
+        .and_then(|rest| rest.split(':').next())
+        .unwrap_or_default();
+    assert_eq!(told, "E[OE[I", "{text:?}");
+}
+
+#[tokio::test]
 async fn a_program_that_suspended_itself_is_continued_and_no_other_is() {
     let (pty, _) = shell(vec![], vec![]);
     // A loop that reports continues, like a program waiting for one. The

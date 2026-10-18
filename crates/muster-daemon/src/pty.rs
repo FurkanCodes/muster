@@ -142,6 +142,8 @@ enum Command {
     },
     Input(Vec<u8>),
     Resize(TermSize),
+    /// The person's keys came into the terminal, or left it.
+    Focus(bool),
     Stop,
     ResumeIfSuspended,
     /// Give the terminal up, with what goes with it, if its program still
@@ -180,6 +182,13 @@ impl PtyHandle {
 
     pub(crate) async fn resize(&self, size: TermSize) -> bool {
         self.commands.send(Command::Resize(size)).await.is_ok()
+    }
+
+    /// Says whether the person's keys are in the terminal: a program that
+    /// asked to be told (`CSI ? 1004 h`) is sent `CSI I` as they come and
+    /// `CSI O` as they go.
+    pub(crate) async fn focus(&self, focused: bool) {
+        let _ = self.commands.send(Command::Focus(focused)).await;
     }
 
     /// Hangs up the terminal, then kills its process group if it is still
@@ -388,6 +397,7 @@ fn start(
         queries,
         colours,
         cursor: None,
+        focused: None,
         size,
         stopping,
         kill_at: stopping.then(|| Instant::now() + STOP_GRACE),
@@ -481,6 +491,8 @@ struct Actor {
     colours: Colours,
     /// A screen for cursor-position answers, built at the first question.
     cursor: Option<CursorTracker>,
+    /// Whether the person's keys are in the terminal, once told.
+    focused: Option<bool>,
     size: TermSize,
     stopping: bool,
     kill_at: Option<Instant>,
@@ -701,6 +713,17 @@ impl Actor {
                     self.size = size;
                     if let Some(tracker) = &mut self.cursor {
                         tracker.resize(size.cols, size.rows);
+                    }
+                }
+            }
+            Command::Focus(focused) => {
+                // Told only as it changes, and only to a program that
+                // asked, as a terminal does.
+                if self.focused != Some(focused) {
+                    self.focused = Some(focused);
+                    if let (true, Some(input)) = (self.queries.focus_events(), &self.input) {
+                        let report = if focused { b"\x1b[I" } else { b"\x1b[O" };
+                        let _ = input.send(report.to_vec());
                     }
                 }
             }

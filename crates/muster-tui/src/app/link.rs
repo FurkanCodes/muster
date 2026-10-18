@@ -17,6 +17,8 @@ impl App {
         self.link = Link::Connected { daemon_version };
         self.keep_in_view();
         self.attached = None;
+        // A new daemon knows nothing of where the keys are.
+        self.keys_told = None;
         self.pending.clear();
         // Asked of the last daemon, never answered: asked again.
         self.forget_unanswered();
@@ -40,6 +42,7 @@ impl App {
     pub(crate) fn on_disconnected(&mut self, reason: String) {
         self.link = Link::Lost(reason);
         self.attached = None;
+        self.keys_told = None;
         self.pending.clear();
         self.forget_unanswered();
         // The reason takes lines from the list.
@@ -189,6 +192,7 @@ impl App {
             _ => Vec::new(),
         };
         actions.extend(self.looking());
+        actions.extend(self.tell_keys());
         if focused && self.view == View::Tickets && matches!(self.link, Link::Connected { .. }) {
             self.forget_failed_tickets();
             actions.extend(self.fetch_tickets());

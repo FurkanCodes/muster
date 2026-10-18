@@ -181,6 +181,14 @@ impl Connection {
         self.send(ClientFrame::Colours(colours)).await
     }
 
+    /// Says which session's terminal has the person's keys, if any. Only to
+    /// a daemon of
+    /// [`TERMINAL_PROTOCOL`](muster_core::colours::TERMINAL_PROTOCOL) or
+    /// later.
+    pub async fn keys(&mut self, session: Option<SessionId>) -> Result<(), ClientError> {
+        self.send(ClientFrame::Keys { session }).await
+    }
+
     async fn send(&mut self, frame: ClientFrame) -> Result<(), ClientError> {
         Ok(self.writer.send(&frame).await?)
     }

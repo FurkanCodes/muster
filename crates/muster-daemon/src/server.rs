@@ -16,7 +16,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{mpsc, watch};
 
 use crate::pty::PtyHandle;
-use crate::supervisor::{LookGuard, SupervisorHandle, TerminalLink, WatchGuard};
+use crate::supervisor::{KeysGuard, LookGuard, SupervisorHandle, TerminalLink, WatchGuard};
 use crate::tasks::{self, Owned, Tasks};
 use crate::terminal::forward_output;
 
@@ -62,6 +62,7 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tas
         forwarders: HashMap::new(),
         watching: HashMap::new(),
         looker: None,
+        keys: None,
         version: MIN_PROTOCOL_VERSION,
     };
     if let Err(error) = session.run().await {
@@ -104,6 +105,8 @@ struct Connection {
     watching: HashMap<SessionId, WatchGuard>,
     /// Held once the client says whether the person is looking at it.
     looker: Option<LookGuard>,
+    /// The session whose terminal has the person's keys in this client.
+    keys: Option<(SessionId, KeysGuard)>,
     /// The protocol agreed with the client.
     version: u32,
 }
@@ -153,6 +156,7 @@ impl Connection {
                 ClientFrame::Watch { session, watching } => self.watch(session, watching).await,
                 ClientFrame::Looking { looking } => self.looking(looking).await,
                 ClientFrame::Colours(colours) => self.supervisor.colours(colours).await,
+                ClientFrame::Keys { session } => self.keys(session).await,
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await
                         && !pty.input(data).await
@@ -227,6 +231,22 @@ impl Connection {
         }
         if let Some(looker) = &self.looker {
             self.supervisor.looking(looker, looking).await;
+        }
+    }
+
+    /// The person's keys are in `session`'s terminal now, or in none; the
+    /// one they were in is let go first.
+    async fn keys(&mut self, session: Option<SessionId>) {
+        if self.keys.as_ref().map(|(held, _)| *held) == session {
+            return;
+        }
+        self.keys = None;
+        if let Some(session) = session {
+            self.keys = self
+                .supervisor
+                .hold_keys(session)
+                .await
+                .map(|guard| (session, guard));
         }
     }
 

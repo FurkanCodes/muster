@@ -11,6 +11,12 @@
 //! watcher holds a [`WatchGuard`]; dropping it, however the watcher ends,
 //! stops the watch.
 //!
+//! The person's keys are counted the same way: while a client has them in
+//! a session's terminal (the person entered it, in a window they look
+//! at), its program is in focus, and it is told so as that starts and
+//! ends (`CSI I`, `CSI O`) if it asked. Each such client holds a
+//! [`KeysGuard`].
+//!
 //! Every terminal answers its program's questions about its colours from
 //! the person's terminal's, the last a UI told: a terminal reads them as
 //! it is asked, so one told later answers with them too.
@@ -43,6 +49,21 @@ impl Drop for WatchGuard {
     fn drop(&mut self) {
         // The Supervisor has stopped if this fails; nothing is left to count.
         let _ = self.unwatched.send(self.session);
+    }
+}
+
+/// Counts one client with the person's keys in a session's terminal until
+/// dropped.
+#[derive(Debug)]
+pub(crate) struct KeysGuard {
+    session: SessionId,
+    gone: mpsc::UnboundedSender<SessionId>,
+}
+
+impl Drop for KeysGuard {
+    fn drop(&mut self) {
+        // The Supervisor has stopped if this fails; nothing is left to count.
+        let _ = self.gone.send(self.session);
     }
 }
 
@@ -156,6 +177,45 @@ impl Supervisor {
             .map(|stored| stored.status);
         if let Some(status) = unseen {
             self.set_status(session, status, false).await;
+        }
+    }
+
+    /// A client has the person's keys in `session`'s terminal: the first
+    /// tells its program it is in focus.
+    pub(super) async fn hold_keys(&mut self, session: SessionId) -> Option<KeysGuard> {
+        if !self
+            .state
+            .sessions
+            .iter()
+            .any(|stored| stored.id == session)
+        {
+            return None;
+        }
+        let typing = self.typing.entry(session).or_insert(0);
+        *typing += 1;
+        if *typing == 1
+            && let Some(live) = self.live.get(&session)
+        {
+            live.pty.focus(true).await;
+        }
+        Some(KeysGuard {
+            session,
+            gone: self.keys_gone.clone(),
+        })
+    }
+
+    /// One client let go of the person's keys in `session`'s terminal: the
+    /// last tells its program it is out of focus.
+    pub(super) async fn let_go_keys(&mut self, session: SessionId) {
+        let Some(typing) = self.typing.get_mut(&session) else {
+            return;
+        };
+        *typing = typing.saturating_sub(1);
+        if *typing == 0 {
+            self.typing.remove(&session);
+            if let Some(live) = self.live.get(&session) {
+                live.pty.focus(false).await;
+            }
         }
     }
 

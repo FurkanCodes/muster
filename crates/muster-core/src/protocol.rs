@@ -60,7 +60,10 @@
 //! client as `EntryKind::Between`, [`Reply::for_version`]); version 29 a
 //! session's terminal as in a real one: the colours of the person's
 //! terminal, which programs in sessions are told when they ask
-//! (`ClientFrame::Colours`, sent only to a daemon of 29 or later).
+//! (`ClientFrame::Colours`, sent only to a daemon of 29 or later), and
+//! which session has the person's keys, for programs that asked to be
+//! told as their terminal gains and loses focus (`ClientFrame::Keys`, the
+//! same).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -187,6 +190,13 @@ pub enum ClientFrame {
     /// (OSC 10, 11 and 4) is told these, the last a UI said. Sent only to a
     /// daemon of 29 or later, and only with a colour in it.
     Colours(TerminalColours),
+    /// Which session's terminal has the person's keys in this client, if
+    /// any: one they have entered, in a window they look at. A program that
+    /// asked to be told its terminal's focus (`CSI ? 1004 h`) is sent
+    /// `CSI I` as its session gains the keys in any client and `CSI O` as
+    /// it loses them in every one. Sent whenever it changes, only to a
+    /// daemon of 29 or later.
+    Keys { session: Option<SessionId> },
 }
 
 fn watching_by_default() -> bool {

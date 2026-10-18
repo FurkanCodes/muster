@@ -14,7 +14,10 @@
 //! 11 and 4) are found here too, and answered from the person's terminal's
 //! colours (see `colours`).
 //!
-//! Also tracked, for clients: the kitty keyboard flags the program pushes,
+//! Also tracked: whether the program asked to be told as its terminal
+//! gains and loses focus (`CSI ? 1004 h`), which the actor tells it as
+//! the person's keys come and go. And, for clients: the kitty keyboard
+//! flags the program pushes,
 //! whether it turned bracketed paste on, whether cursor keys are in
 //! application mode, which mouse events it wants and how encoded, and
 //! whether it is on the alternate screen; these decide how a client encodes
@@ -110,6 +113,8 @@ pub(crate) struct QueryScanner {
     /// Inside a synchronized update (`CSI ? 2026 h`): the program is
     /// drawing a frame.
     synchronized: bool,
+    /// The program asked to be told of focus (`CSI ? 1004 h`).
+    focus_events: bool,
 }
 
 /// The input modes a program set, carried across the daemon's restart in
@@ -125,6 +130,9 @@ pub(crate) struct CarriedModes {
     mouse: MouseTracking,
     mouse_encoding: MouseEncoding,
     alternate_screen: bool,
+    /// Missing from a daemon before focus events, which had none.
+    #[serde(default)]
+    focus_events: bool,
 }
 
 impl QueryScanner {
@@ -138,6 +146,7 @@ impl QueryScanner {
             mouse: self.mouse,
             mouse_encoding: self.mouse_encoding,
             alternate_screen: self.alternate_screen,
+            focus_events: self.focus_events,
         }
     }
 
@@ -151,6 +160,7 @@ impl QueryScanner {
             mouse: modes.mouse,
             mouse_encoding: modes.mouse_encoding,
             alternate_screen: modes.alternate_screen,
+            focus_events: modes.focus_events,
             ..Self::default()
         }
     }
@@ -170,6 +180,7 @@ impl Default for QueryScanner {
             mouse_encoding: MouseEncoding::Default,
             alternate_screen: false,
             synchronized: false,
+            focus_events: false,
         }
     }
 }
@@ -184,6 +195,12 @@ impl QueryScanner {
     #[cfg(test)]
     pub(crate) fn bracketed_paste(&self) -> bool {
         self.bracketed_paste
+    }
+
+    /// Whether the program asked to be told as its terminal gains and
+    /// loses focus.
+    pub(crate) fn focus_events(&self) -> bool {
+        self.focus_events
     }
 
     /// Whether the program has ever turned bracketed paste on. A program
@@ -252,6 +269,7 @@ impl QueryScanner {
                     self.mouse_encoding = MouseEncoding::Default;
                     self.alternate_screen = false;
                     self.synchronized = false;
+                    self.focus_events = false;
                 }
                 if byte == ESC {
                     State::Escape
@@ -392,6 +410,7 @@ impl QueryScanner {
                         b"1006" => self.encode_mouse(MouseEncoding::Sgr, on),
                         b"47" | b"1047" | b"1049" => self.alternate_screen = on,
                         b"2026" => self.synchronized = on,
+                        b"1004" => self.focus_events = on,
                         _ => {}
                     }
                 }
@@ -424,6 +443,7 @@ impl QueryScanner {
             47 | 1047 | 1049 => self.alternate_screen,
             2004 => self.bracketed_paste,
             2026 => self.synchronized,
+            1004 => self.focus_events,
             _ => return None,
         })
     }
@@ -647,6 +667,56 @@ mod tests {
         assert_eq!(scanner.scan(b"\x1b[?20"), Answers::default());
         assert_eq!(scanner.scan(b"26$").replies, Vec::new());
         assert_eq!(scanner.scan(b"p").replies, bytes(b"\x1b[?2026;2$y"));
+    }
+
+    #[test]
+    fn focus_events_follow_their_mode_and_are_carried() {
+        let mut scanner = QueryScanner::default();
+        assert!(!scanner.focus_events());
+        assert_eq!(
+            scanner.scan(b"\x1b[?1004$p").replies,
+            bytes(b"\x1b[?1004;2$y")
+        );
+        scanner.scan(b"\x1b[?1004;2004h");
+        assert!(scanner.focus_events());
+        assert_eq!(
+            scanner.scan(b"\x1b[?1004$p").replies,
+            bytes(b"\x1b[?1004;1$y")
+        );
+        let adopted = QueryScanner::adopt(scanner.carry());
+        assert!(adopted.focus_events(), "carried to the next daemon");
+        scanner.scan(b"\x1b[?1004l");
+        assert!(!scanner.focus_events());
+        scanner.scan(b"\x1b[?1004h\x1bc");
+        assert!(!scanner.focus_events(), "a full reset turns it off");
+    }
+
+    #[test]
+    fn modes_carried_by_a_daemon_before_focus_events_read_as_none() {
+        // Named fields, as the handoff writes them, without the new one.
+        #[derive(serde::Serialize)]
+        struct Before {
+            kitty_flags: Vec<u8>,
+            bracketed_paste: bool,
+            paste_used: bool,
+            application_cursor: bool,
+            mouse: MouseTracking,
+            mouse_encoding: MouseEncoding,
+            alternate_screen: bool,
+        }
+        let bytes = rmp_serde::to_vec_named(&Before {
+            kitty_flags: vec![1],
+            bracketed_paste: true,
+            paste_used: true,
+            application_cursor: false,
+            mouse: MouseTracking::Off,
+            mouse_encoding: MouseEncoding::Default,
+            alternate_screen: false,
+        })
+        .unwrap();
+        let modes: CarriedModes = rmp_serde::from_slice(&bytes).unwrap();
+        let scanner = QueryScanner::adopt(modes);
+        assert!(scanner.modes().bracketed_paste && !scanner.focus_events());
     }
 
     #[test]
