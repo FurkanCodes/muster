@@ -56,7 +56,7 @@ impl App {
             let list = browse_areas(self, window).list;
             if pressed && list.contains(at) {
                 let mut actions = self.leave_terminal(session);
-                self.select_at(list, event.row);
+                self.click_list(list, at);
                 actions.extend(self.settle());
                 return actions;
             }
@@ -139,7 +139,7 @@ impl App {
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 if areas.list.contains(at) {
-                    self.select_at(areas.list, event.row);
+                    self.click_list(areas.list, at);
                 } else if areas.preview.contains(at)
                     && matches!(self.view, View::Sessions | View::NeedsYou)
                     && self.focused_session().is_some()
@@ -159,11 +159,30 @@ impl App {
         Vec::new()
     }
 
+    /// A click on the list at `at`: selects the line there, and on a
+    /// project's or a worktree's triangle folds or unfolds it.
+    fn click_list(&mut self, list: Rect, at: Position) {
+        self.select_at(list, at.y);
+        if self.view != View::Sessions {
+            return;
+        }
+        let rows = self.rows();
+        let Some(row) = line_at(list, at.y, rows.len(), self.list_offset).map(|index| rows[index])
+        else {
+            return;
+        };
+        let on_triangle =
+            crate::view::fold_column(row).is_some_and(|column| at.x == list.x + 1 + column);
+        if on_triangle && (self.foldable(row) || self.is_folded(row)) {
+            self.fold(row);
+        }
+    }
+
     /// Selects the list line drawn at `row`, if there is one.
     pub(super) fn select_at(&mut self, list: Rect, row: u16) {
         match self.view {
             View::Sessions => {
-                let rows = self.model.rows();
+                let rows = self.rows();
                 if let Some(index) = line_at(list, row, rows.len(), self.list_offset) {
                     self.selected = Some(rows[index]);
                 }

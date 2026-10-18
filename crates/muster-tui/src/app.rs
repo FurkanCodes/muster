@@ -2,8 +2,10 @@
 //! daemon, and returns the frames to send. It does no IO, so every behaviour
 //! can be tested by feeding it events and drawing it into a test buffer.
 
+mod actions;
 mod changes;
 mod events;
+mod fold;
 mod harness_choice;
 mod link;
 mod motion;
@@ -35,6 +37,8 @@ mod changes_tests;
 mod clashes_tests;
 #[cfg(test)]
 mod focus_tests;
+#[cfg(test)]
+mod fold_tests;
 #[cfg(test)]
 mod folder_tests;
 #[cfg(test)]
@@ -76,7 +80,7 @@ mod tickets_tests;
 #[cfg(test)]
 mod welcome_tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use muster_core::config::TrackerKind;
@@ -314,6 +318,9 @@ pub(crate) struct App {
     pub(crate) note: Option<Note>,
     /// The selected line of the sessions list, by identity.
     pub(crate) selected: Option<Row>,
+    /// The projects' and worktrees' lines folded in the sessions list,
+    /// hiding what is under them (`app::fold`).
+    folded: HashSet<Row>,
     /// Where the selected line was, so the selection stays nearby when
     /// that line goes away.
     selected_at: usize,
@@ -422,6 +429,7 @@ impl App {
             link: Link::Connecting,
             note: None,
             selected: None,
+            folded: HashSet::new(),
             selected_at: 0,
             list_offset: 0,
             needs_offset: 0,

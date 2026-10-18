@@ -29,6 +29,7 @@ mod version;
 
 use bottom_bar::{bottom_height, draw_bottom_bar};
 use preview::draw_preview;
+pub(crate) use sessions::fold_column;
 use sessions::{draw_needs_you, draw_sessions};
 use terminal::{draw_session, draw_terminal};
 

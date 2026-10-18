@@ -2,7 +2,6 @@
 //! the last note, or why the daemon cannot be reached, and a warning when
 //! this UI is older than the daemon.
 
-use muster_core::WorkspaceKind;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Stylize;
@@ -11,7 +10,6 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::{settings, tickets, version};
 use crate::app::{App, Link, Mode, View};
-use crate::model::Row;
 
 /// The most lines a message gets under the list.
 const MAX_NOTE_LINES: u16 = 3;
@@ -107,79 +105,24 @@ fn hints(app: &App) -> String {
             format!("↑↓ move  ⏎ its diff  r again{undo}  esc back to the list")
         };
     }
-    let session = app.focused_session().and_then(|id| app.model.session(id));
-    let mut hints = vec!["↑↓ move"];
-    if app.view == View::Tickets {
-        hints.extend(tickets::hints(app));
-        hints.extend(["⇥ next tab", "esc back", "q quit"]);
-        return hints.join("  ");
-    }
-    if app.view == View::Settings {
-        hints.extend(settings::hints(app));
-        hints.extend(["⇥ next tab", "esc back", "q quit"]);
-        return hints.join("  ");
-    }
-    match (app.view, app.selected, session) {
-        (_, _, Some(session)) if session.ended_at.is_none() => {
-            hints.extend([
-                "⏎ type in it",
-                "f full screen",
-                "d changes",
-                "x close",
-                "s stop",
-                "n session",
-            ]);
+    let mut hints = vec!["↑↓ move".to_owned()];
+    let general: &[&str] = match app.view {
+        View::Tickets => {
+            hints.extend(tickets::hints(app).into_iter().map(str::to_owned));
+            &["⇥ next tab", "esc back", "q quit"]
         }
-        (_, _, Some(_)) => hints.extend([
-            "⏎ open",
-            "f full screen",
-            "d changes",
-            "r restart",
-            "x remove",
-            "n session",
-        ]),
-        (View::Sessions, Some(Row::Worktree(id)), None) => {
-            let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
-            hints.push("⏎ session");
-            if kind.is_some_and(WorkspaceKind::is_worktree) {
-                hints.push("x remove");
-            }
-            if kind.is_some_and(|kind| !kind.in_git()) {
-                // A plain folder: its checks, and nothing that needs git.
-                hints.push("c check");
-            } else {
-                if kind.is_some_and(|kind| kind.run().is_none()) {
-                    hints.extend([
-                        "d changes",
-                        "c check",
-                        "v review",
-                        "t tidy",
-                        "u onto base",
-                        "o PR",
-                    ]);
-                }
-                if app
-                    .model
-                    .workspace(id)
-                    .is_some_and(|workspace| workspace.pull_request.is_some())
-                {
-                    hints.push("b browser");
-                }
-                hints.extend(["w worktree", "i tickets"]);
-            }
+        View::Settings => {
+            hints.extend(settings::hints(app).into_iter().map(str::to_owned));
+            &["⇥ next tab", "esc back", "q quit"]
         }
-        (View::Sessions, Some(Row::Project(id)), None) if app.model.is_plain_folder(id) => {
-            hints.extend(["⏎ session", "x remove"]);
-        }
-        (View::Sessions, Some(Row::Project(_)), None) => {
-            hints.extend(["⏎ worktree", "n session", "i tickets", "x remove"]);
-        }
-        _ => {}
-    }
-    match app.view {
-        View::Sessions => hints.extend(["a project", "⇥ next tab", "q quit"]),
-        View::NeedsYou => hints.extend(["⇥ next tab", "esc back", "q quit"]),
-        View::Tickets | View::Settings => {}
-    }
+        View::Sessions => &["a project", "⇥ next tab", "q quit"],
+        View::NeedsYou => &["⇥ next tab", "esc back", "q quit"],
+    };
+    hints.extend(
+        app.actions_here()
+            .into_iter()
+            .map(|here| format!("{} {}", here.key_name(), here.what)),
+    );
+    hints.extend(general.iter().map(|hint| (*hint).to_owned()));
     hints.join("  ")
 }

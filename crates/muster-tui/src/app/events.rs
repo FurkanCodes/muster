@@ -200,6 +200,7 @@ impl App {
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
             KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
             KeyCode::Char('d') => return self.open_changes(),
+            KeyCode::Char('e') if self.view == View::Sessions => self.toggle_fold(),
             _ => {}
         }
         Vec::new()
@@ -233,7 +234,7 @@ impl App {
         };
         match self.view {
             View::Sessions => {
-                let rows = self.model.rows();
+                let rows = self.rows();
                 let at = self
                     .selected
                     .and_then(|row| rows.iter().position(|r| *r == row));

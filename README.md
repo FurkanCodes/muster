@@ -58,6 +58,7 @@ muster
 | `↑` `↓` | move (the selected session streams in beside the list) |
 | `⏎` | type in the selected session, beside the list; on a worktree or checkout (`⌂`), start a session; on a project, create a worktree (on a plain folder, start a session in it) |
 | `f` | the selected session full screen |
+| `e` | fold the selected project or worktree, hiding what is under it (its line still shows its most urgent session's mark, and how many it hides), or unfold it; on a session, fold its worktree. A click on a line's `▾` `▸` does the same |
 | `a` | add a project |
 | `w` | new worktree for the selected project |
 | `n` | new session in the selected worktree, or on a project in its own checkout: a coding agent with an optional first prompt, or a shell (`⇥` `⇧⇥` choose; it offers the one you last started first) |
