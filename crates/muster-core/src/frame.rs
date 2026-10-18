@@ -2,7 +2,9 @@
 //!
 //! The transport (in `muster-client`) moves bytes; this module turns them into
 //! messages and back. A frame's length is checked before anything is buffered
-//! for it, so a hostile peer cannot make the reader allocate.
+//! for it, so a hostile peer cannot make the reader allocate. The header
+//! never changes: every protocol version's handshake is frozen with it
+//! (`tests/frozen_protocol.rs`, `ARC-09`).
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;

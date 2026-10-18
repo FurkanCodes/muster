@@ -289,7 +289,7 @@ impl Supervisor {
             },
         );
         self.carry_watch(session);
-        self.publish_terminal(session, pty);
+        self.publish_terminal(session, pty, size);
         Ok(())
     }
 

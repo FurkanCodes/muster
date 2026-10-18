@@ -808,13 +808,25 @@ async fn run_checks(socket: &Path, worktree: &str) -> Result<bool, Box<dyn std::
     };
     connection.attach(id, None).await?;
     let mut out = std::io::stdout();
+    let mut position = crate::output::Position::default();
     loop {
         match connection.next_event().await? {
             Some(
-                ServerFrame::Replay { session, data, .. }
-                | ServerFrame::Output { session, data, .. },
+                ServerFrame::Replay {
+                    session, seq, data, ..
+                }
+                | ServerFrame::Output { session, seq, data },
             ) if session == id => {
-                out.write_all(&data)?;
+                let fresh = position.take(seq, &data);
+                if fresh.missed > 0 {
+                    // This terminal fell behind the checks' output.
+                    out.flush()?;
+                    eprintln!(
+                        "\n[muster: {} bytes of output were not kept while this terminal fell behind]",
+                        fresh.missed
+                    );
+                }
+                out.write_all(fresh.data)?;
                 out.flush()?;
             }
             Some(ServerFrame::Detached { session, reason }) if session == id => {

@@ -10,6 +10,7 @@ mod commands;
 mod explain;
 mod json;
 mod launchd;
+mod output;
 mod reload;
 mod runs;
 mod upgrade;

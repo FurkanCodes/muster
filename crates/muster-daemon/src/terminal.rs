@@ -1,11 +1,14 @@
 //! Streaming one session's terminal to one client.
 
+use std::sync::Arc;
+
 use muster_core::SessionId;
 use muster_core::protocol::{DetachReason, ServerFrame, TerminalModes};
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
 use crate::pty::PtyHandle;
+use crate::server::outbox::{Outbox, Pushed};
 
 /// How streaming one program's terminal ended.
 enum Ended {
@@ -22,7 +25,9 @@ enum Ended {
 /// Sends a replay from `from_seq` and the input modes, then live output and
 /// any change of modes, then `Detached` when the program exits. A client
 /// that falls behind the live stream is sent a new replay from where it
-/// was, which is marked `reset` if the ring has since dropped those bytes.
+/// was, which is marked `reset` if the ring has since dropped those bytes;
+/// so is one that cannot take the output as fast as it comes, once it has
+/// caught up (`server::outbox`).
 ///
 /// The stream follows the session: `current` always holds its terminal,
 /// and when a new program starts in it the client is sent that program's
@@ -32,24 +37,25 @@ pub(crate) async fn forward_output(
     session: SessionId,
     mut current: watch::Receiver<Option<PtyHandle>>,
     from_seq: Option<u64>,
-    outgoing: mpsc::Sender<ServerFrame>,
+    outbox: Arc<Outbox>,
 ) {
+    let stream = Stream { session, outbox };
     let mut from = from_seq;
     loop {
         let pty = current.borrow_and_update().clone();
         let Some(pty) = pty else {
-            detached(&outgoing, session, DetachReason::NotRunning).await;
+            stream.ended(DetachReason::NotRunning);
             return;
         };
-        match forward_program(session, &pty, &mut from, &mut current, &outgoing).await {
+        match forward_program(&stream, &pty, &mut from, &mut current).await {
             Ended::ClientGone => return,
             Ended::Released => {
-                detached(&outgoing, session, DetachReason::NotRunning).await;
+                stream.ended(DetachReason::NotRunning);
                 return;
             }
             Ended::Replaced => {}
             Ended::Exited => {
-                if !detached(&outgoing, session, DetachReason::Exited).await {
+                if !stream.ended(DetachReason::Exited) {
                     return;
                 }
                 // Wait for a new program in the session, or its release.
@@ -61,35 +67,80 @@ pub(crate) async fn forward_output(
     }
 }
 
+/// One session's stream to one client, through its connection's outbox.
+struct Stream {
+    session: SessionId,
+    outbox: Arc<Outbox>,
+}
+
+impl Stream {
+    /// Offers a frame; `None` once the client is gone.
+    fn send(&self, frame: ServerFrame) -> Option<Pushed> {
+        self.outbox.push(self.session, frame).ok()
+    }
+
+    /// Tells the client the stream ended; `false` once the client is gone.
+    fn ended(&self, reason: DetachReason) -> bool {
+        let session = self.session;
+        self.send(ServerFrame::Detached { session, reason })
+            .is_some()
+    }
+
+    /// Tells the client the modes; `false` once it is gone.
+    fn modes(&self, modes: TerminalModes) -> bool {
+        let session = self.session;
+        self.send(ServerFrame::Modes { session, modes }).is_some()
+    }
+}
+
 /// Streams one program's terminal from `from`, which is kept at the next
 /// byte the client expects.
 async fn forward_program(
-    session: SessionId,
+    stream: &Stream,
     pty: &PtyHandle,
     from: &mut Option<u64>,
     current: &mut watch::Receiver<Option<PtyHandle>>,
-    outgoing: &mpsc::Sender<ServerFrame>,
 ) -> Ended {
+    let session = stream.session;
     loop {
+        // A client that could not keep up is sent more once it has caught
+        // up, from the first byte it missed, as the ring holds it.
+        if stream.outbox.is_behind(session) {
+            tokio::select! {
+                biased;
+                changed = current.changed() => {
+                    return match changed {
+                        Ok(()) => Ended::Replaced,
+                        Err(_) => Ended::Released,
+                    };
+                }
+                resume = stream.outbox.caught_up(session) => match resume {
+                    // Starting over, the client is sent all the ring holds.
+                    Ok(resume) => *from = (!resume.reset).then_some(resume.seq),
+                    Err(_) => return Ended::ClientGone,
+                },
+            }
+        }
         let Some(attachment) = pty.attach(*from).await else {
             return Ended::Released;
         };
         let replay = attachment.replay;
         let mut next = replay.seq + replay.data.len() as u64;
         *from = Some(next);
-        let sent = outgoing
-            .send(ServerFrame::Replay {
-                session,
-                seq: replay.seq,
-                data: replay.data,
-                reset: replay.reset,
-            })
-            .await;
-        if sent.is_err() {
-            return Ended::ClientGone;
+        let sent = stream.send(ServerFrame::Replay {
+            session,
+            seq: replay.seq,
+            data: replay.data,
+            reset: replay.reset,
+        });
+        match sent {
+            Some(Pushed::Queued) => {}
+            // It did not fit behind what waits: resume once caught up.
+            Some(Pushed::Behind) => continue,
+            None => return Ended::ClientGone,
         }
         let mut modes = attachment.modes;
-        if !send_modes(outgoing, session, modes).await {
+        if !stream.modes(modes) {
             return Ended::ClientGone;
         }
         let Some(mut live) = attachment.live else {
@@ -112,14 +163,17 @@ async fn forward_program(
                             seq: chunk.seq + skip as u64,
                             data: chunk.data[skip..].to_vec(),
                         };
-                        if outgoing.send(frame).await.is_err() {
-                            return Ended::ClientGone;
+                        match stream.send(frame) {
+                            Some(Pushed::Queued) => {}
+                            // It cannot keep up: resume once it has.
+                            Some(Pushed::Behind) => break,
+                            None => return Ended::ClientGone,
                         }
                         next = end;
                         *from = Some(next);
                         if chunk.modes != modes {
                             modes = chunk.modes;
-                            if !send_modes(outgoing, session, modes).await {
+                            if !stream.modes(modes) {
                                 return Ended::ClientGone;
                             }
                         }
@@ -137,28 +191,4 @@ async fn forward_program(
             }
         }
     }
-}
-
-/// Tells the client the stream ended; `false` once the client is gone.
-async fn detached(
-    outgoing: &mpsc::Sender<ServerFrame>,
-    session: SessionId,
-    reason: DetachReason,
-) -> bool {
-    outgoing
-        .send(ServerFrame::Detached { session, reason })
-        .await
-        .is_ok()
-}
-
-/// Tells the client the modes; `false` once it is gone.
-async fn send_modes(
-    outgoing: &mpsc::Sender<ServerFrame>,
-    session: SessionId,
-    modes: TerminalModes,
-) -> bool {
-    outgoing
-        .send(ServerFrame::Modes { session, modes })
-        .await
-        .is_ok()
 }

@@ -4,7 +4,12 @@
 //! - every change to these types bumps [`PROTOCOL_VERSION`];
 //! - a new optional field carries `#[serde(default)]`;
 //! - a new variant is sent only to a peer whose agreed version knows it;
-//! - removing or renaming anything also raises [`MIN_PROTOCOL_VERSION`].
+//! - removing or renaming anything also raises [`MIN_PROTOCOL_VERSION`];
+//! - the handshake ([`Hello`], [`Welcome`], [`Incompatible`], the error for
+//!   a frame before the hello) and the frame header never change shape:
+//!   each version's encoding of them is frozen in `tests/frozen/`, and
+//!   raising [`PROTOCOL_VERSION`] adds that version's (see
+//!   `tests/frozen_protocol.rs`).
 //!
 //! Until the first release the protocol may change in ways older peers
 //! cannot read, but each such change still bumps both versions, so a daemon

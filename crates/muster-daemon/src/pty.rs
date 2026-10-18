@@ -178,6 +178,12 @@ impl PtyHandle {
         self.commands.send(Command::Resize(size)).await.is_ok()
     }
 
+    /// Resizes without waiting, for a terminal just started, whose queue
+    /// has room; `false` if it had none or the terminal is gone.
+    pub(crate) fn resize_now(&self, size: TermSize) -> bool {
+        self.commands.try_send(Command::Resize(size)).is_ok()
+    }
+
     /// Hangs up the terminal, then kills its process group if it is still
     /// running after a grace period.
     pub(crate) async fn stop(&self) {
