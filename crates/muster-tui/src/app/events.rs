@@ -173,6 +173,7 @@ impl App {
             KeyCode::Char('2') => return self.show(View::NeedsYou),
             KeyCode::Char('3') => return self.show(View::Tickets),
             KeyCode::Char('4') => return self.show(View::Settings),
+            KeyCode::Char('l') => return self.go_to_last_alarm(),
             // The keys of the screen shown, on a letter; `?` from habit.
             KeyCode::Char('h' | '?') => {
                 self.open_help();

@@ -3,6 +3,7 @@
 //! can be tested by feeding it events and drawing it into a test buffer.
 
 mod actions;
+mod alarm;
 mod changes;
 mod events;
 mod fold;
@@ -35,6 +36,8 @@ pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
+#[cfg(test)]
+mod alarm_tests;
 #[cfg(test)]
 mod by_hand_tests;
 #[cfg(test)]
@@ -412,6 +415,12 @@ pub(crate) struct App {
     flashes: HashMap<SessionId, u64>,
     /// The step a session last finished at, while Kep is glad of it.
     glad_at: Option<u64>,
+    /// Finishes not told yet, each with the step it came at: held a
+    /// moment, in case the session goes straight back to work
+    /// (`app::alarm`). One for each session, gone once told or dropped.
+    held_news: Vec<(SessionId, u64)>,
+    /// The session told of last, which `l` goes to.
+    last_alarm: Option<SessionId>,
     /// The selected line whose name, cut short, slides along.
     slide: Option<motion::Slide>,
     /// Whether the welcome fills the window, as the UI starts.
@@ -482,6 +491,8 @@ impl App {
             now: None,
             flashes: HashMap::new(),
             glad_at: None,
+            held_news: Vec::new(),
+            last_alarm: None,
             slide: None,
             welcome: false,
             last_harness: HarnessChoice::Claude,

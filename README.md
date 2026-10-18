@@ -78,6 +78,7 @@ muster
 | `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
 | `4` | the *Settings* tab, from the list |
 | `esc` `⌫` | back to *Sessions* from the other tabs |
+| `l` | the session that needed you last, as notified (a finish is told once it has stayed one two seconds) |
 | `h` | every key of the screen shown; type to narrow them (`?` works too) |
 | right-click | on a session, worktree or project: what can be done there, each with its key; choose one, or press its key |
 | `q` | quit the UI (sessions keep running) |

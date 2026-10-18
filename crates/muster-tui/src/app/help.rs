@@ -38,6 +38,7 @@ const TAB_NUMBERS: Key = ("1 2 3 4", "Sessions, Needs you, Tickets, Settings");
 const BACK: Key = ("esc ⌫", "back to Sessions");
 const HELP: Key = ("h ?", "these keys");
 const QUIT: Key = ("q", "quit the UI (sessions keep running)");
+const LAST_ALARM: Key = ("l", "the session that needed you last, as notified");
 
 /// What goes to a session's program, and what does not.
 const IN_A_SESSION: Section = (
@@ -94,7 +95,10 @@ const SESSIONS: &[Section] = &[
         ],
     ),
     IN_A_SESSION,
-    ("Anywhere", &[TABS, TAB_NUMBERS, BACK, HELP, QUIT]),
+    (
+        "Anywhere",
+        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+    ),
 ];
 
 const NEEDS_YOU: &[Section] = &[
@@ -114,7 +118,10 @@ const NEEDS_YOU: &[Section] = &[
         ],
     ),
     IN_A_SESSION,
-    ("Anywhere", &[TABS, TAB_NUMBERS, BACK, HELP, QUIT]),
+    (
+        "Anywhere",
+        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+    ),
 ];
 
 const TICKETS: &[Section] = &[
@@ -140,7 +147,10 @@ const TICKETS: &[Section] = &[
             ("↑ ↓", "which project, where several share the tickets"),
         ],
     ),
-    ("Anywhere", &[TABS, TAB_NUMBERS, BACK, HELP, QUIT]),
+    (
+        "Anywhere",
+        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+    ),
 ];
 
 const SETTINGS: &[Section] = &[
@@ -156,7 +166,10 @@ const SETTINGS: &[Section] = &[
             ("r", "read the settings again, after editing a file by hand"),
         ],
     ),
-    ("Anywhere", &[TABS, TAB_NUMBERS, BACK, HELP, QUIT]),
+    (
+        "Anywhere",
+        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+    ),
 ];
 
 const CHANGES: &[Section] = &[

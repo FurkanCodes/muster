@@ -155,15 +155,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
         };
         // The step and the clock first, so what an event starts is timed
         // from now.
-        let now = monotonic();
-        if let Some(step) = steps.due(now)
-            && app.on_step(step)
-        {
-            dirty = true;
-        }
-        if app.on_clock(wall_clock()) {
-            dirty = true;
-        }
+        let due = tick(&mut app, &mut steps, &mut dirty);
         let actions = match woke {
             Woke::Input(event) => match event {
                 Some(Ok(Event::Key(key))) => app.on_key(key),
@@ -192,11 +184,13 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 }
             },
             Woke::Folders((dir, folders)) => app.on_folders(&dir, folders),
-            Woke::Time => {
+            Woke::Time if due.is_empty() => {
                 draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
                 continue;
             }
+            Woke::Time => Vec::new(),
         };
+        let actions: Vec<_> = due.into_iter().chain(actions).collect();
         dirty = true;
         let quit = perform(actions, &mut sender, &listed_folders, &outside).await;
         if quit {
@@ -206,6 +200,20 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     };
     drop(terminal);
     outcome
+}
+
+/// Hands the app the step and the clock as they are now, marking what
+/// they change to draw; and what a held finish, due now, tells.
+fn tick(app: &mut App, steps: &mut motion::Steps, dirty: &mut bool) -> Vec<Action> {
+    if let Some(step) = steps.due(monotonic())
+        && app.on_step(step)
+    {
+        *dirty = true;
+    }
+    if app.on_clock(wall_clock()) {
+        *dirty = true;
+    }
+    app.due_news()
 }
 
 /// What the runtime reaches outside the UI and its daemon.
