@@ -17,6 +17,7 @@ mod issues;
 mod looking;
 mod projects;
 mod pulls;
+mod recovery;
 mod reload;
 mod runs;
 mod sessions;
@@ -158,6 +159,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         timelines: timeline::Timelines::default(),
         clashes: clashes::Clashes::default(),
         tidies: tidy::Tidies::default(),
+        resumes: recovery::Resumes::default(),
         tasks: settings.tasks,
     };
     supervisor.ensure_checkouts().await;
@@ -289,6 +291,8 @@ struct Supervisor {
     clashes: clashes::Clashes,
     /// What each tidy of commits under way began from.
     tidies: tidy::Tidies,
+    /// Sessions the last daemon left running, waiting their turn to resume.
+    resumes: recovery::Resumes,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
 }
@@ -590,17 +594,15 @@ impl Supervisor {
         self.broadcast(Delta::Resources(report));
     }
 
-    /// The earliest moment a session or run machine wants to be woken.
+    /// The earliest moment a session or run machine wants to be woken, or
+    /// the next session waiting to resume may start.
     fn next_deadline(&self) -> Option<std::time::Instant> {
-        let sessions = self
-            .live
+        self.live
             .values()
             .filter_map(|live| live.machine.next_deadline())
-            .min();
-        match (sessions, self.next_run_deadline()) {
-            (Some(one), Some(other)) => Some(one.min(other)),
-            (one, other) => one.or(other),
-        }
+            .chain(self.next_run_deadline())
+            .chain(self.resumes.next_deadline())
+            .min()
     }
 
     async fn tick(&mut self) {
@@ -615,6 +617,7 @@ impl Supervisor {
             self.step_session(session, Signal::Tick).await;
         }
         self.tick_runs(now).await;
+        self.resume_next().await;
     }
     fn session_mut(&mut self, session: SessionId) -> Option<&mut muster_core::Session> {
         self.state

@@ -1,4 +1,5 @@
-//! Starting, stopping and resuming sessions, and what their terminals report.
+//! Starting, stopping and restarting sessions, and what their terminals
+//! report. Bringing them back after a daemon restart is `recovery`'s.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -8,6 +9,7 @@ use muster_core::text::one_line;
 use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start};
 
+use super::recovery::resumable;
 use super::{Live, Supervisor, store_closed, store_error};
 use crate::harness::{self, CheckCommands, Harness, HookEndpoint, Place, TitleState, claude};
 use crate::pty::{self, PtyEvent};
@@ -328,6 +330,16 @@ impl Supervisor {
                 Start::WithPrompt,
             ),
             (Place::Host(_), Some(agent_session)) => {
+                // A conversation is resumed in one session only.
+                if let Some(holder) = self.conversation_holder(harness, &agent_session, session) {
+                    let holder = self.stored_session(holder)?.title;
+                    return Err(ErrorBody::new(
+                        ErrorCode::Conflict,
+                        format!(
+                            "{holder} has this conversation open; stop it there to resume it here"
+                        ),
+                    ));
+                }
                 (Mode::Resume { agent_session }, Start::Resumed)
             }
             _ => (Mode::Fresh { prompt: None }, Start::Idle),
@@ -413,14 +425,20 @@ impl Supervisor {
         Ok(Reply::Done)
     }
 
-    /// Whether the session's program is running.
+    /// Whether the session's program is running, or waits its turn to be
+    /// started again after a restart.
     pub(super) fn is_running(&self, session: SessionId) -> bool {
-        self.live
-            .get(&session)
-            .is_some_and(|live| !live.machine.status().is_exited())
+        self.resumes.is_waiting(session)
+            || self
+                .live
+                .get(&session)
+                .is_some_and(|live| !live.machine.status().is_exited())
     }
 
     pub(super) async fn stop_session(&mut self, session: SessionId) -> Result<Reply, ErrorBody> {
+        if self.stop_waiting(session).await {
+            return Ok(Reply::Done);
+        }
         let live = self.live.get(&session).ok_or_else(|| {
             ErrorBody::new(ErrorCode::NotFound, format!("{session} is not running"))
         })?;
@@ -544,74 +562,6 @@ impl Supervisor {
         }
     }
 
-    /// Sessions the last daemon left running died with it, because it held
-    /// their terminals. A harness that can resume is resumed where its
-    /// transcript survives; the rest are recorded as exited, for the person
-    /// to see.
-    pub(super) async fn recover_sessions(&mut self) {
-        let orphaned: Vec<Session> = self
-            .state
-            .sessions
-            .iter()
-            .filter(|session| session.ended_at.is_none() && !self.live.contains_key(&session.id))
-            .cloned()
-            .collect();
-        for session in orphaned {
-            if let Some(run) = self.workspace_run(session.workspace) {
-                self.recover_in_container(&session, run).await;
-                continue;
-            }
-            if self.resume(&session).await {
-                continue;
-            }
-            tracing::info!(session = %session.id, "a session ended when the daemon stopped");
-            self.end_session(session.id, SessionStatus::Exited { success: false }, true)
-                .await;
-        }
-    }
-
-    /// Resumes `session` if it can be. A turn the restart cut short counts
-    /// as unseen.
-    async fn resume(&mut self, session: &Session) -> bool {
-        let Some(harness) = harness::find(&session.harness) else {
-            return false;
-        };
-        let (Some(agent_session), Some(cwd)) = (
-            resumable(harness, session),
-            self.workspace_path(session.workspace),
-        ) else {
-            return false;
-        };
-        let unseen = session.unseen
-            || matches!(
-                session.status,
-                SessionStatus::Running | SessionStatus::NeedsYou { .. }
-            );
-        let mode = Mode::Resume { agent_session };
-        let (size, place) = (TermSize::default(), Place::Host(cwd));
-        match self.launch(
-            session.id,
-            harness,
-            place,
-            size,
-            mode,
-            Start::Resumed,
-            unseen,
-        ) {
-            Ok(()) => {
-                tracing::info!(session = %session.id, "resumed");
-                if let Some((status, unseen)) = self.launched_status(session.id) {
-                    self.set_status(session.id, status, unseen).await;
-                }
-                true
-            }
-            Err(error) => {
-                tracing::warn!(session = %session.id, %error, "could not resume");
-                false
-            }
-        }
-    }
-
     /// Records that a session ended without its terminal reporting it.
     pub(super) async fn end_session(
         &mut self,
@@ -642,7 +592,7 @@ impl Supervisor {
     }
 
     /// Where a workspace is on the host; a run's container has no such place.
-    fn workspace_path(&self, workspace: WorkspaceId) -> Option<PathBuf> {
+    pub(super) fn workspace_path(&self, workspace: WorkspaceId) -> Option<PathBuf> {
         self.state
             .workspaces
             .iter()
@@ -666,24 +616,7 @@ impl Supervisor {
             .sessions
             .iter()
             .filter(|session| session.workspace == workspace)
-            .filter(|session| {
-                self.live
-                    .get(&session.id)
-                    .is_some_and(|live| !live.machine.status().is_exited())
-            })
+            .filter(|session| self.is_running(session.id))
             .count()
     }
-}
-
-/// The harness session to resume `session` from: one whose harness can
-/// resume, whose id was saved after a turn ran, and whose transcript has
-/// not been deleted. An unreadable transcript folder is no verdict, so the
-/// resume is tried; if it fails the session starts fresh.
-fn resumable(harness: Harness, session: &Session) -> Option<String> {
-    let agent_session = session.resume_id.clone().filter(|_| harness.can_resume())?;
-    if harness.has_conversation(&agent_session) == Some(false) {
-        tracing::info!(session = %session.id, "no transcript to resume");
-        return None;
-    }
-    Some(agent_session)
 }

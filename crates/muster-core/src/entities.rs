@@ -146,7 +146,8 @@ pub struct Session {
     /// waited or sat finished.
     pub status_since: Timestamp,
     /// What it is doing now, as its hooks tell; kept only while it works
-    /// or waits, and never stored.
+    /// or waits, and never stored. An ended session a daemon restart did
+    /// not resume carries why instead.
     #[serde(default)]
     pub activity: Option<crate::session::Activity>,
     /// What its agent has used so far, as the agent's own records say;

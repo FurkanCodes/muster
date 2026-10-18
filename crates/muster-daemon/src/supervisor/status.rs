@@ -109,7 +109,7 @@ impl Supervisor {
 
     /// What a session is doing now, as its hooks tell; told to clients
     /// when it changes, and never stored.
-    fn set_activity(
+    pub(super) fn set_activity(
         &mut self,
         session: SessionId,
         change: crate::harness::activity::ActivityChange,
