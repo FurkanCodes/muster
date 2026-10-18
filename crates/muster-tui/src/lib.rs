@@ -23,4 +23,4 @@ mod runtime;
 mod screen;
 mod view;
 
-pub use runtime::{Options, TuiError, run};
+pub use runtime::{Options, START_AGAIN_AFTER, START_WAIT, TuiError, run};

@@ -12,8 +12,7 @@ use crossterm::event::{
 };
 use crossterm::execute;
 use futures_util::StreamExt;
-use muster_client::{ClientError, Connection, FrameSender};
-use muster_core::protocol::{ServerFrame, TermSize, Welcome};
+use muster_core::protocol::TermSize;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 use tokio_util::task::AbortOnDropHandle;
@@ -24,6 +23,11 @@ use crate::colours;
 use crate::folders::{self, Folder};
 use crate::motion;
 use crate::view;
+
+mod link;
+
+use self::link::{LINK_EVENTS, LinkEvent, Outgoing, keep_linked};
+pub use self::link::{START_AGAIN_AFTER, START_WAIT};
 
 /// How the app finds, and if need be starts, the daemon.
 pub struct Options {
@@ -76,22 +80,11 @@ enum Woke {
     Time,
 }
 
-/// What the link task reports.
-enum LinkEvent {
-    Connected {
-        sender: FrameSender,
-        welcome: Welcome,
-    },
-    Frame(Box<ServerFrame>),
-    Lost(String),
-}
-
 /// The redraw rate's upper bound.
 const FRAME: Duration = Duration::from_millis(16);
 /// The longest drawing waits for a program to finish a frame it started
 /// (synchronized output), in case one never does.
 const FRAME_WAIT: Duration = Duration::from_millis(150);
-const CLIENT: &str = concat!("muster-tui ", env!("CARGO_PKG_VERSION"));
 
 /// Runs the UI until the person quits. The daemon, and every session, keep
 /// running.
@@ -107,15 +100,10 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let outside = Outside::take(&mut options);
     app.notch_here = outside.start_notch.is_some();
 
-    // Unbounded on purpose: this loop also writes to the daemon, which
-    // may be waiting to write to the link, so the link waiting on this loop
-    // could leave all three waiting. The daemon bounds what it sends: a
-    // client that falls behind gets a fresh snapshot instead.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "ARC-14: frames from the daemon, which queues at most 256 for a client"
-    )]
-    let (link_events, mut link) = mpsc::unbounded_channel();
+    // Bounded: a loop that falls behind stops the link reading, and the
+    // daemon treats this client as any slow one (`ARC-14`). The loop never
+    // waits on the daemon in turn: its frames go out through the link.
+    let (link_events, mut link) = mpsc::channel(LINK_EVENTS);
     // Ends when dropped, as the UI ends (`ARC-13`).
     #[expect(
         clippy::disallowed_methods,
@@ -133,7 +121,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
         mpsc::unbounded_channel::<(PathBuf, Result<Vec<Folder>, String>)>();
 
     let mut input = EventStream::new();
-    let mut sender: Option<FrameSender> = None;
+    let mut sender: Option<Outgoing> = None;
     let mut dirty = true;
     let mut next_draw = monotonic();
     let mut hold = FrameHold::default();
@@ -195,7 +183,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
         };
         let actions: Vec<_> = due.into_iter().chain(actions).collect();
         dirty = true;
-        let quit = perform(actions, &mut sender, &listed_folders, &outside).await;
+        let quit = perform(actions, &mut sender, &listed_folders, &outside);
         if quit {
             break Ok(());
         }
@@ -235,10 +223,11 @@ impl Outside {
     }
 }
 
-/// Carries out what the app asked for; whether it asked to quit.
-async fn perform(
+/// Carries out what the app asked for, never waiting on the daemon;
+/// whether it asked to quit.
+fn perform(
     actions: Vec<Action>,
-    sender: &mut Option<FrameSender>,
+    sender: &mut Option<Outgoing>,
     listed_folders: &mpsc::UnboundedSender<(PathBuf, Result<Vec<Folder>, String>)>,
     outside: &Outside,
 ) -> bool {
@@ -269,7 +258,7 @@ async fn perform(
             }
             Action::Send(frame) => {
                 if let Some(connected) = sender
-                    && connected.send(&frame).await.is_err()
+                    && !connected.send(frame)
                 {
                     // The link task notices and reconnects.
                     *sender = None;
@@ -368,80 +357,6 @@ impl FrameHold {
         }
         self.since = None;
         true
-    }
-}
-
-/// Connects, starting the daemon if needed, and reconnects whenever the
-/// connection is lost.
-async fn keep_linked(options: Options, events: mpsc::UnboundedSender<LinkEvent>) {
-    let mut last_start: Option<Instant> = None;
-    loop {
-        match connect(&options, &mut last_start).await {
-            Ok(connection) => {
-                let (sender, mut receiver, welcome) = connection.into_split();
-                if events
-                    .send(LinkEvent::Connected { sender, welcome })
-                    .is_err()
-                {
-                    return;
-                }
-                let reason = loop {
-                    match receiver.next().await {
-                        Ok(Some(frame)) => {
-                            if events.send(LinkEvent::Frame(Box::new(frame))).is_err() {
-                                return;
-                            }
-                        }
-                        Ok(None) => break "the daemon closed the connection".to_owned(),
-                        Err(error) => break error.to_string(),
-                    }
-                };
-                if events.send(LinkEvent::Lost(reason)).is_err() {
-                    return;
-                }
-            }
-            Err(error) => {
-                if events.send(LinkEvent::Lost(error.to_string())).is_err() {
-                    return;
-                }
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
-}
-
-/// Connects to the daemon, starting it if nothing answers and it was not
-/// started in the last ten seconds.
-async fn connect(
-    options: &Options,
-    last_start: &mut Option<Instant>,
-) -> Result<Connection, ClientError> {
-    match Connection::connect(&options.socket, CLIENT).await {
-        Err(ClientError::Unreachable { .. }) => {}
-        other => return other,
-    }
-    let Some(start) = &options.start_daemon else {
-        return Connection::connect(&options.socket, CLIENT).await;
-    };
-    if last_start
-        .is_none_or(|at| monotonic().saturating_duration_since(at) > Duration::from_secs(10))
-    {
-        *last_start = Some(monotonic());
-        if let Err(error) = start() {
-            return Err(ClientError::Unreachable {
-                path: options.socket.display().to_string(),
-                source: error,
-            });
-        }
-    }
-    let deadline = monotonic() + Duration::from_secs(5);
-    loop {
-        match Connection::connect(&options.socket, CLIENT).await {
-            Err(ClientError::Unreachable { .. }) if monotonic() < deadline => {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-            other => return other,
-        }
     }
 }
 
