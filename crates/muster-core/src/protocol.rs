@@ -57,7 +57,10 @@
 //! work (`Workspace::stacked_on`, the same; `CreateWorktree::on` and
 //! `StartFromIssue::on`, and `Command::MoveOnto`, sent only to a daemon of
 //! 28 or later; a timeline's entries of `EntryKind::Moved` reach an older
-//! client as `EntryKind::Between`, [`Reply::for_version`]).
+//! client as `EntryKind::Between`, [`Reply::for_version`]); version 29 a
+//! session's terminal as in a real one: the colours of the person's
+//! terminal, which programs in sessions are told when they ask
+//! (`ClientFrame::Colours`, sent only to a daemon of 29 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -67,6 +70,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::changes::{ChangePart, Changes, FileDiff};
+use crate::colours::TerminalColours;
 use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
@@ -75,7 +79,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 28;
+pub const PROTOCOL_VERSION: u32 = 29;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -178,6 +182,11 @@ pub enum ClientFrame {
     /// client that never says is not looked at. Sent only to a daemon of
     /// 23 or later.
     Looking { looking: bool },
+    /// The colours of the person's terminal, as the UI found them as it
+    /// started: a program in a session asking its terminal for its colours
+    /// (OSC 10, 11 and 4) is told these, the last a UI said. Sent only to a
+    /// daemon of 29 or later, and only with a colour in it.
+    Colours(TerminalColours),
 }
 
 fn watching_by_default() -> bool {

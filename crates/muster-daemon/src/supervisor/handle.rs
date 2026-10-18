@@ -36,6 +36,8 @@ pub(super) enum Request {
         client: u64,
         looking: bool,
     },
+    /// A UI says the colours of the person's terminal.
+    Colours(muster_core::colours::TerminalColours),
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
     /// A ticket fetched off the loop, back to start a run on it.
@@ -92,6 +94,7 @@ impl std::fmt::Debug for Request {
             Self::Terminal { session, .. } => write!(f, "Terminal({session})"),
             Self::AddLooker { .. } => f.write_str("AddLooker"),
             Self::Looking { client, looking } => write!(f, "Looking({client}, {looking})"),
+            Self::Colours(_) => f.write_str("Colours"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
             Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
@@ -246,6 +249,13 @@ impl SupervisorHandle {
             })
             .await
             .is_ok()
+    }
+
+    /// Tells the colours of the person's terminal, which programs in
+    /// sessions asking for their terminal's are told from now on.
+    pub(crate) async fn colours(&self, colours: muster_core::colours::TerminalColours) {
+        // Nothing to do once the Supervisor has stopped.
+        let _ = self.requests.send(Request::Colours(colours)).await;
     }
 
     /// A link to a session's terminal, if it still has one. With `watch`,

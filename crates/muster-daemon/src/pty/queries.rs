@@ -10,7 +10,9 @@
 //! synchronized output (2026) among them: each mode tracked here is answered
 //! as set or reset, any other as not recognized, so nothing waits out a
 //! timeout. Clients honour synchronized output: they draw a frame once the
-//! program has finished it.
+//! program has finished it. Questions about the terminal's colours (OSC 10,
+//! 11 and 4) are found here too, and answered from the person's terminal's
+//! colours (see `colours`).
 //!
 //! Also tracked, for clients: the kitty keyboard flags the program pushes,
 //! whether it turned bracketed paste on, whether cursor keys are in
@@ -29,11 +31,16 @@
 
 use muster_core::protocol::{MouseEncoding, MouseTracking};
 
+use super::colours::{self, Colour, Ending};
+
 const ESC: u8 = 0x1b;
 /// The deepest kitty flag stack the spec asks implementations to keep.
 const MAX_STACK: usize = 32;
 /// A real query has short parameters; anything longer is not for us.
 const MAX_PARAMS: usize = 16;
+/// The longest OSC body read: a question about all sixteen palette colours
+/// at once fits; a longer one (a copy, a picture) is passed over.
+const MAX_OSC: usize = 128;
 
 /// Answers owed to the program, in the order it asked: programs that probe
 /// for a feature key on which answer arrives first.
@@ -49,6 +56,9 @@ pub(crate) enum Reply {
     /// The cursor's position on the screen as it stood `at` bytes into the
     /// scanned chunk, just past the question. Needs a screen; see `cursor`.
     CursorPosition { at: usize },
+    /// One of the terminal's colours, ended as the question was. Needs the
+    /// person's terminal's colours; see `colours`.
+    Colour { colour: Colour, ending: Ending },
 }
 
 impl Answers {
@@ -71,12 +81,24 @@ enum State {
         poisoned: bool,
         intermediate: Option<u8>,
     },
+    /// Inside an OSC, its body collecting; one too long for a question is
+    /// poisoned, and read on to its end.
+    Osc {
+        poisoned: bool,
+    },
+    /// Saw ESC inside an OSC: `\` ends it, anything else starts another
+    /// sequence.
+    OscEscape {
+        poisoned: bool,
+    },
 }
 
 #[derive(Debug)]
 pub(crate) struct QueryScanner {
     state: State,
     params: Vec<u8>,
+    /// The body of the OSC being read.
+    osc: Vec<u8>,
     kitty_flags: Vec<u8>,
     bracketed_paste: bool,
     /// Whether bracketed paste was ever turned on, even within one chunk.
@@ -139,6 +161,7 @@ impl Default for QueryScanner {
         Self {
             state: State::Ground,
             params: Vec::new(),
+            osc: Vec::new(),
             kitty_flags: Vec::new(),
             bracketed_paste: false,
             paste_used: false,
@@ -194,6 +217,18 @@ impl QueryScanner {
 
     /// `end` is the offset in the scanned chunk just past `byte`.
     fn step(&mut self, byte: u8, end: usize, answers: &mut Answers) {
+        if let State::OscEscape { poisoned } = self.state {
+            if byte == b'\\' {
+                if !poisoned {
+                    self.dispatch_osc(Ending::St, answers);
+                }
+                self.state = State::Ground;
+                return;
+            }
+            // The ESC cut the OSC off and starts a sequence of its own,
+            // which this byte goes on.
+            self.state = State::Escape;
+        }
         self.state = match self.state {
             State::Ground if byte == ESC => State::Escape,
             State::Ground => State::Ground,
@@ -203,6 +238,10 @@ impl QueryScanner {
                     poisoned: false,
                     intermediate: None,
                 }
+            }
+            State::Escape if byte == b']' => {
+                self.osc.clear();
+                State::Osc { poisoned: false }
             }
             State::Escape => {
                 // RIS (`ESC c`) puts every mode back to its default.
@@ -248,7 +287,33 @@ impl QueryScanner {
                 // A cancelled or malformed sequence.
                 _ => State::Ground,
             },
+            State::Osc { poisoned } => match byte {
+                0x07 => {
+                    if !poisoned {
+                        self.dispatch_osc(Ending::Bel, answers);
+                    }
+                    State::Ground
+                }
+                ESC => State::OscEscape { poisoned },
+                // CAN and SUB cancel it.
+                0x18 | 0x1a => State::Ground,
+                _ if poisoned || self.osc.len() == MAX_OSC => State::Osc { poisoned: true },
+                _ => {
+                    self.osc.push(byte);
+                    State::Osc { poisoned }
+                }
+            },
+            // Handled above.
+            State::OscEscape { .. } => State::Ground,
         };
+    }
+
+    /// An OSC ended: the colours it asks for are owed, in order.
+    fn dispatch_osc(&mut self, ending: Ending, answers: &mut Answers) {
+        for colour in colours::questions(&self.osc) {
+            answers.replies.push(Reply::Colour { colour, ending });
+        }
+        self.osc.clear();
     }
 
     fn dispatch(
@@ -386,7 +451,7 @@ fn kitty_bits(number: u32) -> u8 {
     u8::try_from(number & 0b1_1111).unwrap_or(0)
 }
 
-fn number(digits: &[u8]) -> Option<u32> {
+pub(super) fn number(digits: &[u8]) -> Option<u32> {
     if digits.is_empty() || digits.len() > 9 || !digits.iter().all(u8::is_ascii_digit) {
         return None;
     }

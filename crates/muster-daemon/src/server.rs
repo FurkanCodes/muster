@@ -152,6 +152,7 @@ impl Connection {
                 }
                 ClientFrame::Watch { session, watching } => self.watch(session, watching).await,
                 ClientFrame::Looking { looking } => self.looking(looking).await,
+                ClientFrame::Colours(colours) => self.supervisor.colours(colours).await,
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await
                         && !pty.input(data).await

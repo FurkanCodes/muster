@@ -68,6 +68,8 @@ mod slide_tests;
 #[cfg(test)]
 mod spend_tests;
 #[cfg(test)]
+mod terminal_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tickets_from_tests;
@@ -411,6 +413,9 @@ pub(crate) struct App {
     notch_started: bool,
     /// The notch is being turned on or off: the answer is on its way.
     pub(crate) notch_changing: bool,
+    /// The colours of the person's terminal, as it said them as the UI
+    /// started, told to each daemon the UI connects to.
+    pub(crate) colours: muster_core::colours::TerminalColours,
 }
 
 impl App {
@@ -462,6 +467,7 @@ impl App {
             notch_here: false,
             notch_started: false,
             notch_changing: false,
+            colours: muster_core::colours::TerminalColours::default(),
         }
     }
 

@@ -20,6 +20,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::app::{Action, App};
 use crate::clipboard;
+use crate::colours;
 use crate::folders::{self, Folder};
 use crate::motion;
 use crate::view;
@@ -98,6 +99,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut terminal = HostTerminal::enter()?;
     let size = terminal_size(&terminal.terminal)?;
     let mut app = App::new(options.cwd.clone(), size);
+    app.colours = std::mem::take(&mut terminal.colours);
     app.notify = options.notify;
     app.motion = options.motion;
     app.welcome = true;
@@ -454,6 +456,8 @@ fn area_size(cols: u16, rows: u16) -> TermSize {
 struct HostTerminal {
     terminal: DefaultTerminal,
     enhanced_keys: bool,
+    /// Its colours, as it said them.
+    colours: muster_core::colours::TerminalColours,
 }
 
 impl HostTerminal {
@@ -469,7 +473,8 @@ impl HostTerminal {
             MouseReports(true),
             EnableFocusChange
         )?;
-        let enhanced_keys = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+        let keyboard = crossterm::terminal::supports_keyboard_enhancement();
+        let enhanced_keys = matches!(keyboard, Ok(true));
         if enhanced_keys {
             execute!(
                 out,
@@ -481,9 +486,18 @@ impl HostTerminal {
             restore_modes(&mut stdout(), enhanced_keys);
             previous(info);
         }));
+        // Asked before anything else reads the terminal's input, and only
+        // of a terminal that answered the keyboard question in time: one
+        // that answers nothing would only keep the UI waiting.
+        let colours = if keyboard.is_ok() {
+            colours::ask(monotonic() + colours::WAIT, monotonic)
+        } else {
+            muster_core::colours::TerminalColours::default()
+        };
         Ok(Self {
             terminal,
             enhanced_keys,
+            colours,
         })
     }
 }

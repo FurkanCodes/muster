@@ -12,6 +12,7 @@
 
 mod app;
 mod clipboard;
+mod colours;
 mod folders;
 mod input;
 mod keys;

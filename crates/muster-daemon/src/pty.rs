@@ -10,7 +10,9 @@
 //! The child is started by portable-pty, which makes it a session leader with
 //! the terminal as its controlling terminal and closes every inherited
 //! descriptor above stderr before `exec`. The actor also answers the
-//! questions programs ask their terminal (see `queries`).
+//! questions programs ask their terminal (see `queries`), those about its
+//! colours from the person's terminal's, as a UI last told them (see
+//! `colours`).
 //!
 //! An actor can hand its terminal over, for the daemon's restart in place
 //! (`handoff`): it stops its reader between reads, so no byte is taken from
@@ -18,6 +20,7 @@
 //! its ring, input modes and size; the program runs on, untouched. The next
 //! daemon adopts it into a new actor.
 
+mod colours;
 mod cursor;
 mod osc;
 mod queries;
@@ -36,12 +39,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use muster_core::colours::TerminalColours;
 use muster_core::protocol::{TermSize, TerminalModes};
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::time::Instant;
 
 use self::cursor::CursorTracker;
@@ -204,12 +208,17 @@ impl PtyHandle {
     }
 }
 
+/// The colours of the person's terminal, as a UI last told them, which a
+/// program asking its terminal for its colours is told.
+pub(crate) type Colours = watch::Receiver<TerminalColours>;
+
 /// Starts `spec` in a new terminal whose first byte of output is numbered
 /// `first_seq`. `events` receives what it reports; the terminal is released
 /// when every handle to it has been dropped.
 pub(crate) fn spawn(
     spec: &SpawnSpec,
     first_seq: u64,
+    colours: Colours,
     events: impl Fn(PtyEvent) + Send + 'static,
 ) -> std::io::Result<PtyHandle> {
     let pair = native_pty_system()
@@ -255,6 +264,7 @@ pub(crate) fn spawn(
             exited,
             ring: Ring::starting_at(RING_CAPACITY, first_seq),
             queries: QueryScanner::default(),
+            colours,
             size: spec.size,
             stopping: false,
         },
@@ -267,6 +277,7 @@ pub(crate) fn spawn(
 pub(crate) fn adopt(
     master: OwnedFd,
     carried: Carried,
+    colours: Colours,
     events: impl Fn(PtyEvent) + Send + 'static,
 ) -> std::io::Result<PtyHandle> {
     let mut ring = Ring::starting_at(RING_CAPACITY, carried.seq);
@@ -285,6 +296,7 @@ pub(crate) fn adopt(
             exited,
             ring,
             queries: QueryScanner::adopt(carried.modes),
+            colours,
             size: carried.size,
             stopping: carried.stopping,
         },
@@ -319,6 +331,7 @@ struct Starting {
     exited: oneshot::Receiver<bool>,
     ring: Ring,
     queries: QueryScanner,
+    colours: Colours,
     size: TermSize,
     /// Its program was being stopped when it was handed over.
     stopping: bool,
@@ -332,6 +345,7 @@ fn start(
         exited,
         ring,
         queries,
+        colours,
         size,
         stopping,
     }: Starting,
@@ -372,6 +386,7 @@ fn start(
         input: Some(input),
         osc: OscScanner::default(),
         queries,
+        colours,
         cursor: None,
         size,
         stopping,
@@ -462,6 +477,8 @@ struct Actor {
     input: Option<std::sync::mpsc::Sender<Vec<u8>>>,
     osc: OscScanner,
     queries: QueryScanner,
+    /// The person's terminal's colours, for questions about its own.
+    colours: Colours,
     /// A screen for cursor-position answers, built at the first question.
     cursor: Option<CursorTracker>,
     size: TermSize,
@@ -642,6 +659,15 @@ impl Actor {
                     tracker.feed(&data[fed..at]);
                     fed = at;
                     tracker.report()
+                }
+                Reply::Colour { colour, ending } => {
+                    // One no UI has said goes unanswered, as a terminal
+                    // that does not know it would.
+                    let known = colours::answer(colour, ending, &self.colours.borrow());
+                    let Some(bytes) = known else {
+                        continue;
+                    };
+                    bytes
                 }
             };
             if let Some(input) = &self.input {

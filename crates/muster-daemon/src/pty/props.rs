@@ -5,6 +5,7 @@
 use proptest::collection::vec;
 use proptest::prelude::*;
 
+use super::colours::{Colour, Ending};
 use super::osc::{OscScanner, Report};
 use super::queries::{QueryScanner, Reply};
 
@@ -39,19 +40,34 @@ fn output() -> impl Strategy<Value = Vec<u8>> {
         Just(b">5u".to_vec()),
         Just(b"6n".to_vec()),
         Just(b"c".to_vec()),
+        Just(b"10;?".to_vec()),
+        Just(b"11;?".to_vec()),
+        Just(b"4;1;?".to_vec()),
+        Just(b";?".to_vec()),
+        Just(b"\x18".to_vec()),
         vec(any::<u8>(), 0..8),
     ];
     vec(piece, 0..40).prop_map(|pieces| pieces.concat())
 }
 
-/// Replies as one stream: bytes run together, each cursor question kept.
-fn stream(replies: impl IntoIterator<Item = Reply>) -> Vec<Option<Vec<u8>>> {
-    let mut stream: Vec<Option<Vec<u8>>> = Vec::new();
+/// One part of the replies owed, however the output was read.
+#[derive(Debug, PartialEq, Eq)]
+enum Owed {
+    Bytes(Vec<u8>),
+    Cursor,
+    Colour(Colour, Ending),
+}
+
+/// Replies as one stream: bytes run together, each cursor and colour
+/// question kept.
+fn stream(replies: impl IntoIterator<Item = Reply>) -> Vec<Owed> {
+    let mut stream: Vec<Owed> = Vec::new();
     for reply in replies {
         match (reply, stream.last_mut()) {
-            (Reply::Bytes(bytes), Some(Some(pending))) => pending.extend(bytes),
-            (Reply::Bytes(bytes), _) => stream.push(Some(bytes)),
-            (Reply::CursorPosition { .. }, _) => stream.push(None),
+            (Reply::Bytes(bytes), Some(Owed::Bytes(pending))) => pending.extend(bytes),
+            (Reply::Bytes(bytes), _) => stream.push(Owed::Bytes(bytes)),
+            (Reply::CursorPosition { .. }, _) => stream.push(Owed::Cursor),
+            (Reply::Colour { colour, ending }, _) => stream.push(Owed::Colour(colour, ending)),
         }
     }
     stream

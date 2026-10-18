@@ -10,8 +10,13 @@
 //! happens in the session is news to the person (`Signal::Watched`). Each
 //! watcher holds a [`WatchGuard`]; dropping it, however the watcher ends,
 //! stops the watch.
+//!
+//! Every terminal answers its program's questions about its colours from
+//! the person's terminal's, the last a UI told: a terminal reads them as
+//! it is asked, so one told later answers with them too.
 
 use muster_core::SessionId;
+use muster_core::colours::TerminalColours;
 use muster_state::session::Signal;
 use tokio::sync::{mpsc, watch};
 
@@ -42,6 +47,23 @@ impl Drop for WatchGuard {
 }
 
 impl Supervisor {
+    /// The person's terminal's colours, as a UI found them. A UI whose
+    /// terminal said none changes nothing, and a palette is kept to the
+    /// colours that are asked for.
+    pub(super) fn set_colours(&mut self, mut colours: TerminalColours) {
+        if colours.is_empty() {
+            return;
+        }
+        colours.palette.truncate(muster_core::colours::PALETTE);
+        self.colours.send_replace(colours);
+    }
+
+    /// What a new terminal answers its program's questions about its
+    /// colours from.
+    pub(super) fn colours(&self) -> crate::pty::Colours {
+        self.colours.subscribe()
+    }
+
     /// Makes `pty` the session's current terminal, moving its clients to it.
     pub(super) fn publish_terminal(&mut self, session: SessionId, pty: PtyHandle) {
         match self.terminals.get(&session) {

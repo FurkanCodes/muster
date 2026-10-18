@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use muster_core::colours::{Rgb, TerminalColours};
 use muster_core::protocol::TermSize;
 use tokio::time::timeout;
 
@@ -174,6 +175,11 @@ impl Events {
     }
 }
 
+/// No UI has told the person's terminal's colours.
+fn no_colours() -> super::Colours {
+    tokio::sync::watch::channel(TerminalColours::default()).1
+}
+
 fn shell(env: Vec<(&str, &str)>, env_remove: Vec<&str>) -> (PtyHandle, Events) {
     let events = Events::default();
     let spec = SpawnSpec {
@@ -187,7 +193,10 @@ fn shell(env: Vec<(&str, &str)>, env_remove: Vec<&str>) -> (PtyHandle, Events) {
         env_remove: env_remove.into_iter().map(str::to_owned).collect(),
         size: TermSize::default(),
     };
-    (spawn(&spec, 0, events.sink()).unwrap(), events)
+    (
+        spawn(&spec, 0, no_colours(), events.sink()).unwrap(),
+        events,
+    )
 }
 
 /// Collects a session's output from `from` until it contains `marker`.
@@ -229,7 +238,7 @@ async fn a_terminal_handed_over_is_adopted_with_its_program_running() {
     let carried_end = handed.terminal.seq + handed.terminal.ring.len() as u64;
     assert!(carried_end >= end, "{carried_end} < {end}");
     let events = Events::default();
-    let adopted = adopt(handed.master, handed.terminal, events.sink()).unwrap();
+    let adopted = adopt(handed.master, handed.terminal, no_colours(), events.sink()).unwrap();
 
     // Its output so far, numbered as before, and its mode, carried.
     let attachment = adopted.attach(None).await.unwrap();
@@ -307,7 +316,7 @@ async fn a_session_s_program_is_told_its_terminal_is_muster() {
         args: Vec::new(),
         ..spawn_spec(find("shell").unwrap(), &launch)
     };
-    let pty = spawn(&spec, 0, Events::default().sink()).unwrap();
+    let pty = spawn(&spec, 0, no_colours(), Events::default().sink()).unwrap();
     // Whatever terminal ran these tests, the shell sees Muster as its own,
     // and nothing that addresses the other one.
     pty.input(
@@ -448,6 +457,43 @@ async fn a_program_learns_that_synchronized_output_is_supported() {
         .unwrap_or_default();
     // Known, and not in a frame now.
     assert_eq!(answer, "E[?2026;2$y", "{text:?}");
+}
+
+#[tokio::test]
+async fn a_program_asking_for_its_terminal_s_background_is_told_the_person_s() {
+    let (told, colours) = tokio::sync::watch::channel(TerminalColours::default());
+    let spec = SpawnSpec {
+        program: "/bin/sh".to_owned(),
+        args: Vec::new(),
+        cwd: std::env::temp_dir(),
+        env: Vec::new(),
+        env_remove: Vec::new(),
+        size: TermSize::default(),
+    };
+    let pty = spawn(&spec, 0, colours, Events::default().sink()).unwrap();
+    // Told after the terminal started, as a UI connects after it.
+    told.send_replace(TerminalColours {
+        background: Some(Rgb {
+            red: 0x1e1e,
+            green: 0x1e1e,
+            blue: 0x2e2e,
+        }),
+        ..TerminalColours::default()
+    });
+    // OSC 11 as programs ask it, ended with ST; the 25 bytes back.
+    let probe = "stty -echo -icanon min 1; printf '\\033]11;?\\033\\\\'; \
+                 r=$(dd bs=1 count=25 2>/dev/null | tr '\\033\\\\' 'EB'); stty echo icanon; \
+                 echo \"answer=$r=$((2*21))\"\n";
+    pty.input(probe.as_bytes().to_vec()).await;
+    // The answer holds colons, so `=` marks it off.
+    let (text, _) = read_until(&pty, None, "=42").await;
+    let answer = text
+        .rsplit("answer=")
+        .next()
+        .and_then(|rest| rest.split('=').next())
+        .unwrap_or_default();
+    // ESC made E, and the backslash of its ST B.
+    assert_eq!(answer, "E]11;rgb:1e1e/1e1e/2e2eEB", "{text:?}");
 }
 
 #[tokio::test]

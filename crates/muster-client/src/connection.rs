@@ -170,6 +170,17 @@ impl Connection {
         self.send(ClientFrame::Resize { session, size }).await
     }
 
+    /// Tells the colours of the person's terminal, which programs in
+    /// sessions asking their terminal's are told. Only to a daemon of
+    /// [`TERMINAL_PROTOCOL`](muster_core::colours::TERMINAL_PROTOCOL) or
+    /// later.
+    pub async fn colours(
+        &mut self,
+        colours: muster_core::colours::TerminalColours,
+    ) -> Result<(), ClientError> {
+        self.send(ClientFrame::Colours(colours)).await
+    }
+
     async fn send(&mut self, frame: ClientFrame) -> Result<(), ClientError> {
         Ok(self.writer.send(&frame).await?)
     }

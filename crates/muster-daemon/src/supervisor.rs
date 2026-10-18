@@ -138,6 +138,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         terminals: HashMap::new(),
         watchers: HashMap::new(),
         unwatched,
+        colours: watch::channel(muster_core::colours::TerminalColours::default()).0,
         lookers: looking::Lookers::default(),
         looker_gone,
         hook_tokens: HashMap::new(),
@@ -257,6 +258,10 @@ struct Supervisor {
     watchers: HashMap<SessionId, usize>,
     /// Where dropped watch guards report.
     unwatched: mpsc::UnboundedSender<SessionId>,
+    /// The colours of the person's terminal, as a UI last told them; every
+    /// terminal answers its program's questions about its colours from
+    /// them.
+    colours: watch::Sender<muster_core::colours::TerminalColours>,
     /// The clients that say whether the person is looking at them.
     lookers: looking::Lookers,
     /// Where dropped look guards report.
@@ -465,6 +470,7 @@ impl Supervisor {
                 let _ = reply.send(self.add_looker(outgoing));
             }
             Request::Looking { client, looking } => self.set_looking(client, looking),
+            Request::Colours(colours) => self.set_colours(colours),
             Request::Terminal {
                 session,
                 watch,
