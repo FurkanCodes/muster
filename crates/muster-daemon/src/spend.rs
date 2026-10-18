@@ -9,6 +9,11 @@
 //!
 //! Totals are kept nowhere: after a restart each record is read again from
 //! its start.
+//!
+//! Claude Code's transcript also says when the person cut a turn short,
+//! which no hook tells; the reader hands that back too, by the turn's
+//! prompt id, and the Supervisor ends the turn if it is still the one under
+//! way.
 
 mod claude;
 mod codex;
@@ -29,6 +34,16 @@ pub(crate) struct Target {
     pub(crate) session: SessionId,
     pub(crate) harness: String,
     pub(crate) agent_session: String,
+}
+
+/// A turn the person cut short, as a session's agent's records say.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Interrupted {
+    pub(crate) session: SessionId,
+    /// The agent's own id for the conversation the records are of.
+    pub(crate) agent_session: String,
+    /// The prompt that began the turn.
+    pub(crate) prompt: String,
 }
 
 /// Whose records Muster can read.
@@ -77,6 +92,8 @@ pub(crate) struct Readers {
     places: Places,
     open: HashMap<SessionId, (String, Reader)>,
     told: HashMap<SessionId, u64>,
+    /// Turns the last read found interrupted, until taken.
+    interrupted: Vec<Interrupted>,
 }
 
 impl Readers {
@@ -85,7 +102,13 @@ impl Readers {
             places,
             open: HashMap::new(),
             told: HashMap::new(),
+            interrupted: Vec::new(),
         }
+    }
+
+    /// The turns the last read found the person interrupted, once.
+    pub(crate) fn take_interrupted(&mut self) -> Vec<Interrupted> {
+        std::mem::take(&mut self.interrupted)
     }
 
     /// Reads each target's records, and says the totals that changed since
@@ -119,11 +142,21 @@ impl Readers {
             };
             let id = target.agent_session.as_str();
             let tokens = match reader {
-                Reader::Claude(claude) => self
-                    .places
-                    .claude_projects
-                    .as_deref()
-                    .and_then(|projects| claude.read(projects, id)),
+                Reader::Claude(claude) => {
+                    let tokens = self
+                        .places
+                        .claude_projects
+                        .as_deref()
+                        .and_then(|projects| claude.read(projects, id));
+                    if let Some(prompt) = claude.take_interrupted() {
+                        self.interrupted.push(Interrupted {
+                            session: target.session,
+                            agent_session: id.to_owned(),
+                            prompt,
+                        });
+                    }
+                    tokens
+                }
                 Reader::Codex(codex) => self
                     .places
                     .codex_sessions
@@ -166,15 +199,19 @@ pub(crate) async fn run(supervisor: SupervisorHandle, interval: Duration, places
         };
         let read = tokio::task::spawn_blocking(move || {
             let changed = taken.read(&targets, crate::clock::monotonic());
-            (taken, changed)
+            let interrupted = taken.take_interrupted();
+            (taken, changed, interrupted)
         })
         .await;
-        let Ok((returned, changed)) = read else {
+        let Ok((returned, changed, interrupted)) = read else {
             tracing::error!("reading sessions' spend failed");
             return;
         };
         readers = Some(returned);
         if !changed.is_empty() && !supervisor.record_spends(changed).await {
+            return;
+        }
+        if !interrupted.is_empty() && !supervisor.record_interrupted(interrupted).await {
             return;
         }
     }
@@ -248,6 +285,35 @@ mod tests {
         );
         assert!(readers.open.len() == 1, "the others let go");
         assert!(!readable("shell") && !readable("copilot") && readable("review"));
+    }
+
+    #[test]
+    fn a_turn_cut_short_is_handed_back_with_its_session_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = dir.path().join("claude/projects/-w-app");
+        std::fs::create_dir_all(&projects).unwrap();
+        std::fs::write(
+            projects.join("c1.jsonl"),
+            claude::tests::declined("p1") + "\n",
+        )
+        .unwrap();
+        let mut readers = Readers::new(Places {
+            claude_projects: Some(dir.path().join("claude/projects")),
+            ..Places::default()
+        });
+        let session = SessionId::new();
+        let targets = [target(session, "claude", "c1")];
+        readers.read(&targets, crate::clock::monotonic());
+        assert_eq!(
+            readers.take_interrupted(),
+            [Interrupted {
+                session,
+                agent_session: "c1".to_owned(),
+                prompt: "p1".to_owned(),
+            }]
+        );
+        readers.read(&targets, crate::clock::monotonic());
+        assert!(readers.take_interrupted().is_empty(), "told once");
     }
 
     /// `MUSTER_LIVE_SPEND=claude:<session id>` (or `codex:<thread id>`,

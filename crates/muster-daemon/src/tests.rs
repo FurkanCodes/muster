@@ -415,9 +415,10 @@ async fn the_person_looks_at_any_window_or_at_none() {
     let supervisor = start(16).await;
     let (snapshot, mut deltas) = supervisor.subscribe().await.unwrap();
     assert!(!snapshot.looked_at);
-    let (one, two) = (mpsc::channel(4).0, mpsc::channel(4).0);
-    let one = supervisor.add_looker(one).await.unwrap();
-    let two = supervisor.add_looker(two).await.unwrap();
+    let one = supervisor.add_client().await.unwrap();
+    let two = supervisor.add_client().await.unwrap();
+    assert!(supervisor.add_looker(&one, mpsc::channel(4).0).await);
+    assert!(supervisor.add_looker(&two, mpsc::channel(4).0).await);
 
     supervisor.looking(&one, true).await;
     assert_eq!(
@@ -467,7 +468,8 @@ async fn a_client_of_an_older_protocol_is_sent_only_what_it_knows() {
         frames.recv().await,
         Some(ServerFrame::Snapshot(_))
     ));
-    let window = supervisor.add_looker(mpsc::channel(4).0).await.unwrap();
+    let window = supervisor.add_client().await.unwrap();
+    assert!(supervisor.add_looker(&window, mpsc::channel(4).0).await);
     supervisor.looking(&window, true).await;
     supervisor
         .command(add(&repository(dir.path(), "app"), None))

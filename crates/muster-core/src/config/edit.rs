@@ -43,6 +43,28 @@ pub fn set_flag_in(
     key: &str,
     value: bool,
 ) -> Result<String, EditError> {
+    set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
+}
+
+/// [`set_flag_in`] for a whole number.
+pub fn set_number_in(
+    text: Option<&str>,
+    new_file: &str,
+    table: &str,
+    key: &str,
+    value: i64,
+) -> Result<String, EditError> {
+    set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
+}
+
+/// `[table] key` set to `value` in `text`, as [`set_flag_in`] says.
+fn set_value_in(
+    text: Option<&str>,
+    new_file: &str,
+    table: &str,
+    key: &str,
+    value: toml_edit::Value,
+) -> Result<String, EditError> {
     let mut document: toml_edit::DocumentMut = text
         .unwrap_or_default()
         .parse()
@@ -56,10 +78,10 @@ pub fn set_flag_in(
             return Err(EditError::NotAValue(format!("{table}.{key}")));
         };
         let decor = written.decor().clone();
-        *written = toml_edit::Value::from(value);
+        *written = value;
         *written.decor_mut() = decor;
     } else {
-        entries.insert(key, toml_edit::value(value));
+        entries.insert(key, toml_edit::Item::Value(value));
         // A table written inline is spaced afresh, or its last value's
         // spacing would come before the new one's comma.
         if let Some(inline) = item.as_inline_table_mut() {

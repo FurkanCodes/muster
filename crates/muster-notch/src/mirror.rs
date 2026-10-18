@@ -134,6 +134,7 @@ mod tests {
             Delta::Preferences(Preferences {
                 notch: false,
                 file: PathBuf::new(),
+                ..Preferences::default()
             }),
         );
         assert!(!state.preferences.notch);

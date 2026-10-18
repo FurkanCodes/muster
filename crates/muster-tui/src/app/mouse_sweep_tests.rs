@@ -175,9 +175,18 @@ fn still_works(world: &mut World, story: &str) {
     press(&mut world.app, KeyCode::Char('1'));
     assert_eq!(world.app.view, View::Sessions, "{story}");
 
-    // A click on the session's line selects it.
+    // A click on the session's line selects it, once what a click on a
+    // triangle folded away is unfolded.
+    for row in [
+        Row::Project(world.project.id),
+        Row::Worktree(world.worktree.id),
+    ] {
+        if world.app.is_folded(row) {
+            world.app.fold(row);
+        }
+    }
     let areas = crate::view::browse_areas(&world.app, window(world));
-    let rows = world.app.model.rows();
+    let rows = world.app.rows();
     let index = rows
         .iter()
         .position(|row| *row == Row::Session(id))

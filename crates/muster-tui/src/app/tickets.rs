@@ -182,7 +182,7 @@ impl App {
         self.mode = Mode::Dialog(Dialog::AssignAgent {
             project,
             key,
-            harness: self.ticket_agent,
+            harness: self.ticket_agent.clone(),
             another,
             into: self.project_to_offer(project),
             on: None,
@@ -217,9 +217,11 @@ impl App {
             KeyCode::Left | KeyCode::Char('h') if stacking => {
                 (harness, into, self.next_stack(into, on, true))
             }
-            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => (harness.next_agent(), into, on),
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
+                (harness.next_agent(self.added_agents()), into, on)
+            }
             KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
-                (harness.previous_agent(), into, on)
+                (harness.previous_agent(self.added_agents()), into, on)
             }
             // Another project's worktrees are its own to stack on.
             KeyCode::Down | KeyCode::Char('j') => {
@@ -230,11 +232,11 @@ impl App {
             }
             KeyCode::Enter => {
                 self.mode = Mode::Browse;
-                self.ticket_agent = harness;
+                self.ticket_agent = harness.clone();
                 self.remember_project(project, into);
                 let another = self.starts_another(into, &key, another);
                 let on = on.filter(|_| stacking);
-                return self.assign_agent(into, key, harness, another, on);
+                return self.assign_agent(into, key, &harness, another, on);
             }
             KeyCode::Esc => {
                 self.mode = Mode::Browse;
@@ -259,7 +261,7 @@ impl App {
         &mut self,
         project: ProjectId,
         key: TicketKey,
-        harness: HarnessChoice,
+        harness: &HarnessChoice,
         another: bool,
         on: Option<WorkspaceId>,
     ) -> Vec<Action> {

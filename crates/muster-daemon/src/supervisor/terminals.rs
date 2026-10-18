@@ -9,9 +9,27 @@
 //! Watching is counted per session: while anyone watches, nothing that
 //! happens in the session is news to the person (`Signal::Watched`). Each
 //! watcher holds a [`WatchGuard`]; dropping it, however the watcher ends,
-//! stops the watch.
+//! stops the watch. A connection holds its watches only while its client
+//! says the person is looking at it, as its
+//! [`ClientGuard`](super::ClientGuard) keeps (`server`), so a session is
+//! watched only while a window showing it is looked at. A client that
+//! links to a terminal is counted among its clients, whose sizes it takes
+//! (`sizing`).
+//!
+//! The person's keys are counted the same way: while a client has them in
+//! a session's terminal (the person entered it, in a window they look
+//! at), its program is in focus, and it is told so as that starts and
+//! ends (`CSI I`, `CSI O`) if it asked. Each such client holds a
+//! [`KeysGuard`], beside its connection's
+//! [`ClientGuard`](super::ClientGuard).
+//!
+//! Every terminal answers its program's questions about its colours from
+//! the person's terminal's, the last a UI told: a terminal reads them as
+//! it is asked, so one told later answers with them too.
 
 use muster_core::SessionId;
+use muster_core::colours::TerminalColours;
+use muster_core::protocol::TermSize;
 use muster_state::session::Signal;
 use tokio::sync::{mpsc, watch};
 
@@ -25,25 +43,63 @@ pub(crate) struct TerminalLink {
     pub(crate) current: watch::Receiver<Option<PtyHandle>>,
     /// Held while the client watches the session.
     pub(crate) watching: Option<WatchGuard>,
+    /// The client active on the session last (`sizing`).
+    pub(crate) latest: watch::Receiver<u64>,
 }
 
 /// Counts one watcher of a session until dropped.
 #[derive(Debug)]
 pub(crate) struct WatchGuard {
     session: SessionId,
-    unwatched: mpsc::UnboundedSender<SessionId>,
+    /// The connection watching.
+    client: u64,
+    unwatched: mpsc::UnboundedSender<(SessionId, u64)>,
 }
 
 impl Drop for WatchGuard {
     fn drop(&mut self) {
         // The Supervisor has stopped if this fails; nothing is left to count.
-        let _ = self.unwatched.send(self.session);
+        let _ = self.unwatched.send((self.session, self.client));
+    }
+}
+
+/// Counts one client with the person's keys in a session's terminal until
+/// dropped.
+#[derive(Debug)]
+pub(crate) struct KeysGuard {
+    session: SessionId,
+    gone: mpsc::UnboundedSender<SessionId>,
+}
+
+impl Drop for KeysGuard {
+    fn drop(&mut self) {
+        // The Supervisor has stopped if this fails; nothing is left to count.
+        let _ = self.gone.send(self.session);
     }
 }
 
 impl Supervisor {
-    /// Makes `pty` the session's current terminal, moving its clients to it.
-    pub(super) fn publish_terminal(&mut self, session: SessionId, pty: PtyHandle) {
+    /// The person's terminal's colours, as a UI found them. A UI whose
+    /// terminal said none changes nothing, and a palette is kept to the
+    /// colours that are asked for.
+    pub(super) fn set_colours(&mut self, mut colours: TerminalColours) {
+        if colours.is_empty() {
+            return;
+        }
+        colours.palette.truncate(muster_core::colours::PALETTE);
+        self.colours.send_replace(colours);
+    }
+
+    /// What a new terminal answers its program's questions about its
+    /// colours from.
+    pub(super) fn colours(&self) -> crate::pty::Colours {
+        self.colours.subscribe()
+    }
+
+    /// Makes `pty`, started at `size`, the session's current terminal,
+    /// moving its clients to it; it takes the size of the client in charge
+    /// of the session.
+    pub(super) fn publish_terminal(&mut self, session: SessionId, pty: PtyHandle, size: TermSize) {
         match self.terminals.get(&session) {
             Some(current) => {
                 current.send_replace(Some(pty));
@@ -52,6 +108,7 @@ impl Supervisor {
                 self.terminals.insert(session, watch::channel(Some(pty)).0);
             }
         }
+        self.fit_new_terminal(session, size);
     }
 
     /// Lets go of the session's terminal: its hooks are no longer accepted,
@@ -60,6 +117,7 @@ impl Supervisor {
     pub(super) fn release_terminal(&mut self, session: SessionId) {
         self.forget_token(session);
         self.live.remove(&session);
+        self.sizing.released(session);
         // A closed channel keeps its last value for receivers still held,
         // which would keep the terminal's output in memory; empty it, then
         // close it, which tells every client's stream it is gone.
@@ -68,12 +126,14 @@ impl Supervisor {
         }
     }
 
-    /// A link to the session's terminal, if it has one. With `watch`, the
-    /// link counts as watching the session until it is dropped.
+    /// A link to the session's terminal for `client`, if it has one,
+    /// counting the client among the terminal's. With `watch`, the link
+    /// counts as watching the session until it is dropped.
     pub(super) async fn link_terminal(
         &mut self,
         session: SessionId,
         watch: bool,
+        client: u64,
     ) -> Option<TerminalLink> {
         let Some(current) = self.terminals.get(&session).map(watch::Sender::subscribe) else {
             if watch {
@@ -81,19 +141,28 @@ impl Supervisor {
             }
             return None;
         };
+        let latest = self.sizing.join(session, client);
         let watching = if watch {
-            self.watch(session).await;
+            self.watch(session, client).await;
             Some(WatchGuard {
                 session,
+                client,
                 unwatched: self.unwatched.clone(),
             })
         } else {
             None
         };
-        Some(TerminalLink { current, watching })
+        Some(TerminalLink {
+            current,
+            watching,
+            latest,
+        })
     }
 
-    async fn watch(&mut self, session: SessionId) {
+    async fn watch(&mut self, session: SessionId, client: u64) {
+        // Beginning to watch is being active, so its size may now apply.
+        self.sizing.watching(session, client, true);
+        self.fit(session).await;
         let watchers = self.watchers.entry(session).or_insert(0);
         *watchers += 1;
         if let Some(live) = self.live.get(&session)
@@ -108,8 +177,10 @@ impl Supervisor {
         }
     }
 
-    /// One watcher of `session` stopped watching.
-    pub(super) async fn unwatch(&mut self, session: SessionId) {
+    /// One watch of `session` by `client` ended.
+    pub(super) async fn unwatch(&mut self, session: SessionId, client: u64) {
+        self.sizing.watching(session, client, false);
+        self.fit(session).await;
         let Some(watchers) = self.watchers.get_mut(&session) else {
             return;
         };
@@ -134,6 +205,45 @@ impl Supervisor {
             .map(|stored| stored.status);
         if let Some(status) = unseen {
             self.set_status(session, status, false).await;
+        }
+    }
+
+    /// A client has the person's keys in `session`'s terminal: the first
+    /// tells its program it is in focus.
+    pub(super) async fn hold_keys(&mut self, session: SessionId) -> Option<KeysGuard> {
+        if !self
+            .state
+            .sessions
+            .iter()
+            .any(|stored| stored.id == session)
+        {
+            return None;
+        }
+        let typing = self.typing.entry(session).or_insert(0);
+        *typing += 1;
+        if *typing == 1
+            && let Some(live) = self.live.get(&session)
+        {
+            live.pty.focus(true).await;
+        }
+        Some(KeysGuard {
+            session,
+            gone: self.keys_gone.clone(),
+        })
+    }
+
+    /// One client let go of the person's keys in `session`'s terminal: the
+    /// last tells its program it is out of focus.
+    pub(super) async fn let_go_keys(&mut self, session: SessionId) {
+        let Some(typing) = self.typing.get_mut(&session) else {
+            return;
+        };
+        *typing = typing.saturating_sub(1);
+        if *typing == 0 {
+            self.typing.remove(&session);
+            if let Some(live) = self.live.get(&session) {
+                live.pty.focus(false).await;
+            }
         }
     }
 

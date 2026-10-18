@@ -58,6 +58,8 @@ impl App {
         let mut actions = match self.mode.clone() {
             Mode::Terminal(session) => return self.terminal_key(session, &key),
             Mode::Dialog(dialog) => self.dialog_key(dialog, &key),
+            Mode::Menu(menu) => self.menu_key(menu, &key),
+            Mode::Help(help) => self.help_key(help, &key),
             Mode::Changes => self.changes_key(&key),
             Mode::Browse => self.browse_key(&key),
         };
@@ -81,6 +83,11 @@ impl App {
             Mode::Dialog(Dialog::AddProject { path, picker }) => {
                 let (path, picker) = (path.clone(), picker.clone());
                 self.picker_paste(path, picker, text)
+            }
+            Mode::Help(help) => {
+                let help = help.clone();
+                self.help_paste(help, text);
+                Vec::new()
             }
             Mode::Dialog(
                 Dialog::NewWorktree { branch: input, .. }
@@ -121,10 +128,9 @@ impl App {
         // A coding agent suspends itself on Ctrl+Z and waits for a shell's
         // `fg`; a session has no shell above it, so the key would only
         // freeze it.
-        let suspends = self
-            .model
-            .session(session)
-            .and_then(|stored| harness_choice::suspends_itself(&stored.harness));
+        let suspends = self.model.session(session).and_then(|stored| {
+            harness_choice::suspends_itself(&stored.harness, self.added_agents())
+        });
         if let Some(agent) = suspends
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && key.code == KeyCode::Char('z')
@@ -166,6 +172,12 @@ impl App {
             KeyCode::Char('2') => return self.show(View::NeedsYou),
             KeyCode::Char('3') => return self.show(View::Tickets),
             KeyCode::Char('4') => return self.show(View::Settings),
+            KeyCode::Char('l') => return self.go_to_last_alarm(),
+            // The keys of the screen shown, on a letter; `?` from habit.
+            KeyCode::Char('h' | '?') => {
+                self.open_help();
+                return Vec::new();
+            }
             // Back to the main screen; there, nothing to go back to.
             KeyCode::Esc | KeyCode::Backspace if self.view != View::Sessions => {
                 return self.show(View::Sessions);
@@ -200,6 +212,7 @@ impl App {
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
             KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
             KeyCode::Char('d') => return self.open_changes(),
+            KeyCode::Char('e') if self.view == View::Sessions => self.toggle_fold(),
             _ => {}
         }
         Vec::new()
@@ -233,7 +246,7 @@ impl App {
         };
         match self.view {
             View::Sessions => {
-                let rows = self.model.rows();
+                let rows = self.rows();
                 let at = self
                     .selected
                     .and_then(|row| rows.iter().position(|r| *r == row));
@@ -436,7 +449,7 @@ impl App {
                     harness: if in_container {
                         HarnessChoice::Shell
                     } else {
-                        self.last_harness
+                        self.last_harness.clone()
                     },
                     prompt: LineInput::default(),
                 });
@@ -599,9 +612,9 @@ impl App {
             } => {
                 if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
                     let harness = if key.code == KeyCode::Tab {
-                        harness.next()
+                        harness.next(self.added_agents())
                     } else {
-                        harness.previous()
+                        harness.previous(self.added_agents())
                     };
                     self.mode = Mode::Dialog(Dialog::NewSession {
                         workspace,
@@ -610,10 +623,11 @@ impl App {
                     });
                     return Vec::new();
                 }
-                let edit = if harness.is_agent() {
+                let edit = if harness.takes_prompt() {
                     prompt.handle(key)
                 } else {
-                    // A shell takes no prompt: only Enter and Esc matter.
+                    // A shell, or an agent that takes none, takes no
+                    // prompt: only Enter and Esc matter.
                     match key.code {
                         KeyCode::Enter => Edit::Submit,
                         KeyCode::Esc => Edit::Cancel,
@@ -623,9 +637,8 @@ impl App {
                 match edit {
                     Edit::Submit => {
                         self.mode = Mode::Browse;
-                        self.last_harness = harness;
                         let prompt = Some(prompt.text().trim().to_owned())
-                            .filter(|p| !p.is_empty() && harness.is_agent());
+                            .filter(|p| !p.is_empty() && harness.takes_prompt());
                         let command = Command::StartSession {
                             workspace,
                             harness: harness.id().to_owned(),
@@ -633,6 +646,7 @@ impl App {
                             size: self.session_size(),
                             prompt,
                         };
+                        self.last_harness = harness;
                         vec![self.command(command, Then::OpenSession)]
                     }
                     edit => self.keep_editing(

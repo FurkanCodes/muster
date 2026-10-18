@@ -157,6 +157,12 @@ impl Connection {
         self.send(ClientFrame::Watch { session, watching }).await
     }
 
+    /// Says whether the person is looking at this client's window: what it
+    /// watches is watched only while they do.
+    pub async fn looking(&mut self, looking: bool) -> Result<(), ClientError> {
+        self.send(ClientFrame::Looking { looking }).await
+    }
+
     /// Types into a session's terminal.
     pub async fn input(&mut self, session: SessionId, data: &[u8]) -> Result<(), ClientError> {
         self.send(ClientFrame::Input {
@@ -167,7 +173,41 @@ impl Connection {
     }
 
     pub async fn resize(&mut self, session: SessionId, size: TermSize) -> Result<(), ClientError> {
-        self.send(ClientFrame::Resize { session, size }).await
+        self.resize_in_pixels(session, size, None).await
+    }
+
+    /// As [`resize`](Self::resize), with the size in pixels too.
+    pub async fn resize_in_pixels(
+        &mut self,
+        session: SessionId,
+        size: TermSize,
+        pixels: Option<muster_core::protocol::PixelSize>,
+    ) -> Result<(), ClientError> {
+        self.send(ClientFrame::Resize {
+            session,
+            size,
+            pixels,
+        })
+        .await
+    }
+
+    /// Tells the colours of the person's terminal, which programs in
+    /// sessions asking their terminal's are told. Only to a daemon of
+    /// [`TERMINAL_PROTOCOL`](muster_core::colours::TERMINAL_PROTOCOL) or
+    /// later.
+    pub async fn colours(
+        &mut self,
+        colours: muster_core::colours::TerminalColours,
+    ) -> Result<(), ClientError> {
+        self.send(ClientFrame::Colours(colours)).await
+    }
+
+    /// Says which session's terminal has the person's keys, if any. Only to
+    /// a daemon of
+    /// [`TERMINAL_PROTOCOL`](muster_core::colours::TERMINAL_PROTOCOL) or
+    /// later.
+    pub async fn keys(&mut self, session: Option<SessionId>) -> Result<(), ClientError> {
+        self.send(ClientFrame::Keys { session }).await
     }
 
     async fn send(&mut self, frame: ClientFrame) -> Result<(), ClientError> {

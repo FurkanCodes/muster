@@ -86,6 +86,22 @@ impl AgentLaunch {
 }
 
 impl Sandbox {
+    /// Puts the stand-in on `PATH` as `name` too: a coding agent Muster does
+    /// not know, which the person adds in their own settings.
+    pub(crate) fn add_agent_program(&self, name: &str) {
+        let path = self.root().join("bin").join(name);
+        std::fs::write(&path, FAKE_AGENT).unwrap();
+        std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+    }
+
+    /// Writes Muster's own settings, the person's `settings.toml`.
+    pub(crate) fn own_settings(&self, text: &str) {
+        let dir = self.paths().config_dir;
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.toml"), text).unwrap();
+    }
+
     fn agent_dir(&self, agent: &str, session: muster_core::SessionId) -> PathBuf {
         self.root()
             .join("fake-agents")

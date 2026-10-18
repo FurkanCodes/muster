@@ -7,6 +7,10 @@
 
 mod auth;
 mod commands;
+mod explain;
+mod json;
+mod launchd;
+mod output;
 mod reload;
 mod runs;
 mod upgrade;
@@ -44,6 +48,10 @@ enum Commands {
         /// hang-ups.
         #[arg(long, hide = true)]
         background: bool,
+        /// What the launchd job `--detach` has run on macOS does: start the
+        /// daemon with the environment saved in FILE, then remove it.
+        #[arg(long, hide = true, value_name = "FILE")]
+        from_job: Option<PathBuf>,
         /// Take over from the daemon's previous version, whose handoff is
         /// at this descriptor: its restart in place (`muster reload`).
         #[arg(long, hide = true, value_name = "FD")]
@@ -62,7 +70,11 @@ enum Commands {
     /// checksum, and move the daemon onto it with every session running.
     Upgrade,
     /// Show whether the daemon is running and what it is tracking.
-    Status,
+    Status {
+        /// Print it as one JSON document, for scripts.
+        #[arg(long)]
+        json: bool,
+    },
     /// Manage the projects Muster tracks: git repositories, or any folder.
     #[command(subcommand)]
     Project(ProjectCommand),
@@ -156,15 +168,21 @@ enum DaemonCommand {
 enum IssueCommand {
     /// List PROJECT's open tickets (its name, id or path) from its tracker,
     /// with the agents on each.
-    List { project: String },
+    List {
+        project: String,
+        /// Print them as one JSON document, for scripts.
+        #[arg(long)]
+        json: bool,
+    },
     /// Start an agent on ticket KEY of PROJECT (`42`, `#42` or `APP-7`): a
     /// worktree for it and a session with the ticket as its first prompt.
     Start {
         project: String,
         #[arg(value_parser = ticket_key)]
         key: muster_core::TicketKey,
-        /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`
-        /// or `shell`.
+        /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`,
+        /// `shell`, or an agent you added as `[agents.<name>]` in Muster's
+        /// own settings (`~/.config/muster/settings.toml`).
         #[arg(long, default_value = "claude")]
         harness: String,
         /// Another agent on the issue, in a worktree of its own, rather
@@ -273,12 +291,20 @@ enum WorktreeCommand {
 
 #[derive(Debug, Subcommand)]
 enum SessionCommand {
+    /// List the sessions, in every project, with how each is doing.
+    List {
+        /// Print them as one JSON document, for scripts.
+        #[arg(long)]
+        json: bool,
+    },
     /// Start a session in WORKTREE (its id or branch, or a project's name
     /// for the project's own checkout).
     Start {
         worktree: String,
         /// What to run: `shell`, or a coding agent: `claude`, `codex`,
-        /// `gemini`, `opencode` or `copilot`.
+        /// `gemini`, `opencode`, `copilot`, or one you added as
+        /// `[agents.<name>]` in Muster's own settings
+        /// (`~/.config/muster/settings.toml`).
         #[arg(long, default_value = "shell")]
         harness: String,
         #[arg(long)]
@@ -294,6 +320,10 @@ enum SessionCommand {
     Restart { session: String },
     /// Take ended SESSION off the list; its history is kept.
     Remove { session: String },
+    /// Say why SESSION (its id) has its status: whom it waits on and for
+    /// what, whether its turn is held for subagents, its next deadline,
+    /// and the last signals it received.
+    Explain { session: String },
 }
 
 /// The time now, for a command's own deadlines. The daemon reads time
@@ -309,6 +339,15 @@ pub(crate) fn instant_now() -> std::time::Instant {
 #[expect(clippy::too_many_lines, reason = "one arm for each subcommand")]
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // launchd's job, whose environment is launchd's until the daemon is
+    // given the person's.
+    if let Some(Commands::Daemon {
+        from_job: Some(file),
+        ..
+    }) = &cli.command
+    {
+        return launchd::run_job(file);
+    }
     let paths = match Paths::resolve(|key| std::env::var_os(key), nix::unistd::getuid().as_raw()) {
         Ok(paths) => paths,
         Err(error) => return fail(error),
@@ -335,6 +374,7 @@ fn main() -> ExitCode {
                 background,
                 adopt,
                 can_adopt,
+                ..
             }) => {
                 if let Some(format) = can_adopt {
                     return if format == muster_daemon::HANDOFF_FORMAT {
@@ -344,7 +384,7 @@ fn main() -> ExitCode {
                     };
                 }
                 if detach {
-                    return start_in_background();
+                    return start_in_background(&paths);
                 }
                 if background {
                     // A session of its own, with no terminal to hang it up.
@@ -357,7 +397,7 @@ fn main() -> ExitCode {
                 return reload::reload_daemon(&socket, &paths.runtime_dir).await;
             }
             Some(Commands::Upgrade) => return upgrade::run(&socket, &paths.runtime_dir).await,
-            Some(Commands::Status) => return commands::status(&socket).await,
+            Some(Commands::Status { json }) => return commands::status(&socket, json).await,
             Some(Commands::Project(ProjectCommand::Add { path, name })) => {
                 commands::add_project(&socket, &path, name).await
             }
@@ -373,6 +413,9 @@ fn main() -> ExitCode {
             Some(Commands::Worktree(WorktreeCommand::Remove { worktree, force })) => {
                 commands::remove_worktree(&socket, &worktree, force).await
             }
+            Some(Commands::Session(SessionCommand::List { json })) => {
+                commands::list_sessions(&socket, json).await
+            }
             Some(Commands::Session(SessionCommand::Start {
                 worktree,
                 harness,
@@ -387,6 +430,9 @@ fn main() -> ExitCode {
             }
             Some(Commands::Session(SessionCommand::Remove { session })) => {
                 commands::remove_session(&socket, &session).await
+            }
+            Some(Commands::Session(SessionCommand::Explain { session })) => {
+                explain::explain_session(&socket, &session).await
             }
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
             Some(Commands::Auth(AuthCommand::Bitbucket { host })) => {
@@ -406,8 +452,8 @@ fn main() -> ExitCode {
             Some(Commands::Pr { worktree }) => {
                 commands::open_pull_request(&socket, &worktree).await
             }
-            Some(Commands::Issue(IssueCommand::List { project })) => {
-                commands::list_issues(&socket, &project).await
+            Some(Commands::Issue(IssueCommand::List { project, json })) => {
+                commands::list_issues(&socket, &project, json).await
             }
             Some(Commands::Issue(IssueCommand::Close { project, key })) => {
                 commands::close_issue(&socket, &project, key).await
@@ -578,9 +624,28 @@ fn notch(paths: &Paths, detach: bool, background: bool) -> ExitCode {
 
 /// `muster daemon --detach`: starts the daemon as a process of its own and
 /// returns. Once this one exits the daemon is no longer anyone's child but
-/// the system's, so nothing that walks this process's tree reaches it. Its
-/// errors go where this process's do (the UI's `daemon.log`).
-fn start_in_background() -> ExitCode {
+/// the system's, so nothing that walks this process's tree reaches it. On
+/// macOS, at the Mac's own screen, launchd starts it, so it is in no
+/// terminal app's job either and quitting the app leaves it running; its
+/// log is then `daemon.log` in the runtime directory. Where launchd does
+/// not, this process starts it, saying why, and its errors go where this
+/// process's do (the UI's `daemon.log`).
+fn start_in_background(paths: &Paths) -> ExitCode {
+    if launchd::wanted(|key| std::env::var_os(key)) {
+        let through_launchd = launchd::Job::for_this_process(&paths.runtime_dir)
+            .map_err(|error| format!("could not tell which muster this is: {error}"))
+            .and_then(|job| {
+                launchd::start(&launchd::System, &job, std::env::vars_os())
+                    .map_err(|error| error.to_string())
+            });
+        match through_launchd {
+            Ok(()) => return ExitCode::SUCCESS,
+            Err(error) => eprintln!(
+                "muster: starting the daemon directly, not through launchd: {}",
+                muster_core::text::multi_line(&error)
+            ),
+        }
+    }
     let started = std::env::current_exe().and_then(|exe| {
         std::process::Command::new(exe)
             .args(["daemon", "--background"])

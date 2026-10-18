@@ -8,6 +8,19 @@
 //! could not be resumed). The person's own settings stay, such as
 //! `CLAUDE_CODE_USE_BEDROCK`, `CODEX_HOME` or `GEMINI_API_KEY`: a session runs
 //! as if started in their terminal (`PRD-06`).
+//!
+//! The terminal the daemon was started in sets variables too, naming itself
+//! or addressing its window, tab, remote-control socket or shell
+//! integration. A session's terminal is Muster's, not that one: a program
+//! told otherwise would send it sequences of its own, or reach past Muster
+//! into the person's terminal (`kitty @`, `wezterm cli`, `tmux` would open
+//! windows there). Muster names itself instead (`TERM_PROGRAM`, set with
+//! the terminal type). Kept on purpose: `COLORTERM`, which says what colours
+//! Muster draws too; `TERMINFO`, which may be the person's own;
+//! `ITERM_SHELL_INTEGRATION_INSTALLED`, which keeps iTerm2's shell
+//! integration from loading inside Muster; and VS Code's git sign-in
+//! prompt (`GIT_ASKPASS` with its `VSCODE_GIT_*`), which git needs whole or
+//! not at all and which is the person's git, not their terminal.
 
 /// Set by Claude Code, or the app hosting it, for what it runs. Seen in
 /// Claude Code 2.1.296 and its desktop app.
@@ -81,6 +94,13 @@ const COPILOT: &[&str] = &[
     "PLUGIN_ROOT",
 ];
 
+/// Set by Muster for each session it starts, which sets its own again where
+/// a session has hooks. A daemon started from inside a Muster session would
+/// otherwise hand that session's hook token to every session it starts
+/// without hooks, a shell or an agent the person added, which could then
+/// report as it (`ARC-11`).
+const MUSTER: &[&str] = &["MUSTER_SESSION", "MUSTER_HOOK_SOCKET", "MUSTER_HOOK_TOKEN"];
+
 /// Prefixes of the same, for families of them.
 const PREFIXES: &[&str] = &[
     "CLAUDE_AGENT_SDK_",
@@ -88,13 +108,66 @@ const PREFIXES: &[&str] = &[
     "CODEX_NETWORK_PROXY_",
 ];
 
-/// Those naming the terminal tab the daemon was started in.
-const TERMINAL: &[&str] = &["TERM_SESSION_ID", "ITERM_SESSION_ID"];
+/// Set by the terminal the daemon was started in, or a multiplexer in it:
+/// they name it, or address its window, tab, socket or shell integration.
+const TERMINAL: &[&str] = &[
+    // macOS's Terminal and iTerm2.
+    "TERM_SESSION_ID",
+    "ITERM_SESSION_ID",
+    "LC_TERMINAL",
+    "LC_TERMINAL_VERSION",
+    // kitty: its window, process, remote control and shell integration.
+    "KITTY_WINDOW_ID",
+    "KITTY_PID",
+    "KITTY_LISTEN_ON",
+    "KITTY_PUBLIC_KEY",
+    "KITTY_INSTALLATION_DIR",
+    "KITTY_SHELL_INTEGRATION",
+    "WEZTERM_PANE",
+    "WEZTERM_EXECUTABLE",
+    "WEZTERM_EXECUTABLE_DIR",
+    "WEZTERM_UNIX_SOCKET",
+    "ALACRITTY_WINDOW_ID",
+    "ALACRITTY_SOCKET",
+    "ALACRITTY_LOG",
+    "GHOSTTY_BIN_DIR",
+    "GHOSTTY_RESOURCES_DIR",
+    "GHOSTTY_SHELL_FEATURES",
+    // GNOME Terminal and the others built on VTE.
+    "VTE_VERSION",
+    // Windows Terminal, for Linux under WSL.
+    "WT_SESSION",
+    "WT_PROFILE_ID",
+    // JetBrains' terminal.
+    "TERMINAL_EMULATOR",
+    "KONSOLE_DBUS_SESSION",
+    "KONSOLE_DBUS_SERVICE",
+    "KONSOLE_DBUS_WINDOW",
+    "KONSOLE_VERSION",
+    // VS Code's terminal: its shell integration, its window's socket.
+    "VSCODE_INJECTION",
+    "VSCODE_NONCE",
+    "VSCODE_SHELL_INTEGRATION",
+    "VSCODE_SHELL_ENV_REPORTING",
+    "VSCODE_STABLE",
+    "VSCODE_ENV_REPLACE",
+    "VSCODE_ENV_PREPEND",
+    "VSCODE_ENV_APPEND",
+    "VSCODE_IPC_HOOK_CLI",
+    "VSCODE_PID",
+    // Multiplexers: their server and pane.
+    "TMUX",
+    "TMUX_PANE",
+    "STY",
+    "ZELLIJ",
+    "ZELLIJ_SESSION_NAME",
+    "ZELLIJ_PANE_ID",
+];
 
 /// Which of `keys` a session must not inherit.
 pub(crate) fn scrubbed(keys: impl Iterator<Item = String>) -> Vec<String> {
     keys.filter(|key| {
-        [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL]
+        [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL, MUSTER]
             .iter()
             .any(|names| names.contains(&key.as_str()))
             || PREFIXES.iter().any(|prefix| key.starts_with(prefix))
@@ -126,6 +199,9 @@ mod tests {
             "OPENCODE_PID",
             "COPILOT_CLI",
             "COPILOT_AGENT_SESSION_ID",
+            "MUSTER_HOOK_TOKEN",
+            "MUSTER_HOOK_SOCKET",
+            "MUSTER_SESSION",
             // The person's own settings.
             "PATH",
             "HOME",
@@ -163,7 +239,50 @@ mod tests {
                 "OPENCODE_PID",
                 "COPILOT_CLI",
                 "COPILOT_AGENT_SESSION_ID",
+                "MUSTER_HOOK_TOKEN",
+                "MUSTER_HOOK_SOCKET",
+                "MUSTER_SESSION",
             ]
         );
+    }
+
+    #[test]
+    fn the_outer_terminal_s_names_and_addresses_are_scrubbed_and_colours_kept() {
+        let outer = [
+            "TERM_SESSION_ID",
+            "ITERM_SESSION_ID",
+            "LC_TERMINAL",
+            "LC_TERMINAL_VERSION",
+            "KITTY_WINDOW_ID",
+            "KITTY_LISTEN_ON",
+            "KITTY_PUBLIC_KEY",
+            "WEZTERM_PANE",
+            "WEZTERM_UNIX_SOCKET",
+            "ALACRITTY_SOCKET",
+            "GHOSTTY_RESOURCES_DIR",
+            "VTE_VERSION",
+            "WT_SESSION",
+            "TERMINAL_EMULATOR",
+            "KONSOLE_DBUS_SESSION",
+            "VSCODE_NONCE",
+            "VSCODE_IPC_HOOK_CLI",
+            "TMUX",
+            "TMUX_PANE",
+            "ZELLIJ",
+        ];
+        let kept = [
+            "TERM",
+            "COLORTERM",
+            "TERMINFO",
+            "LC_ALL",
+            "LC_CTYPE",
+            "ITERM_SHELL_INTEGRATION_INSTALLED",
+            "GIT_ASKPASS",
+            "VSCODE_GIT_IPC_HANDLE",
+            "WEZTERM_CONFIG_FILE",
+            "TMUX_TMPDIR",
+        ];
+        let keys = outer.iter().chain(&kept).map(|key| (*key).to_owned());
+        assert_eq!(scrubbed(keys), outer);
     }
 }

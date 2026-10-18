@@ -359,6 +359,8 @@ impl App {
                 return actions;
             }
             KeyCode::Char('z') => return self.ask_undo_plan().into_iter().collect(),
+            // `h` goes back from a diff here: the keys on `?` alone.
+            KeyCode::Char('?') => self.open_help(),
             KeyCode::Up | KeyCode::Char('k') if showing_diff => self.scroll_diff(-1),
             KeyCode::Down | KeyCode::Char('j') if showing_diff => self.scroll_diff(1),
             KeyCode::PageUp if showing_diff => self.scroll_diff(-page),

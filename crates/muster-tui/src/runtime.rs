@@ -12,17 +12,22 @@ use crossterm::event::{
 };
 use crossterm::execute;
 use futures_util::StreamExt;
-use muster_client::{ClientError, Connection, FrameSender};
-use muster_core::protocol::{ServerFrame, TermSize, Welcome};
+use muster_core::protocol::TermSize;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::app::{Action, App};
 use crate::clipboard;
+use crate::colours;
 use crate::folders::{self, Folder};
 use crate::motion;
 use crate::view;
+
+mod link;
+
+use self::link::{LINK_EVENTS, LinkEvent, Outgoing, keep_linked};
+pub use self::link::{START_AGAIN_AFTER, START_WAIT};
 
 /// How the app finds, and if need be starts, the daemon.
 pub struct Options {
@@ -75,22 +80,11 @@ enum Woke {
     Time,
 }
 
-/// What the link task reports.
-enum LinkEvent {
-    Connected {
-        sender: FrameSender,
-        welcome: Welcome,
-    },
-    Frame(Box<ServerFrame>),
-    Lost(String),
-}
-
 /// The redraw rate's upper bound.
 const FRAME: Duration = Duration::from_millis(16);
 /// The longest drawing waits for a program to finish a frame it started
 /// (synchronized output), in case one never does.
 const FRAME_WAIT: Duration = Duration::from_millis(150);
-const CLIENT: &str = concat!("muster-tui ", env!("CARGO_PKG_VERSION"));
 
 /// Runs the UI until the person quits. The daemon, and every session, keep
 /// running.
@@ -98,21 +92,18 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut terminal = HostTerminal::enter()?;
     let size = terminal_size(&terminal.terminal)?;
     let mut app = App::new(options.cwd.clone(), size);
+    app.colours = std::mem::take(&mut terminal.colours);
+    app.cell_pixels = cell_pixels();
     app.notify = options.notify;
     app.motion = options.motion;
     app.welcome = true;
     let outside = Outside::take(&mut options);
     app.notch_here = outside.start_notch.is_some();
 
-    // Unbounded on purpose: this loop also writes to the daemon, which
-    // may be waiting to write to the link, so the link waiting on this loop
-    // could leave all three waiting. The daemon bounds what it sends: a
-    // client that falls behind gets a fresh snapshot instead.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "ARC-14: frames from the daemon, which queues at most 256 for a client"
-    )]
-    let (link_events, mut link) = mpsc::unbounded_channel();
+    // Bounded: a loop that falls behind stops the link reading, and the
+    // daemon treats this client as any slow one (`ARC-14`). The loop never
+    // waits on the daemon in turn: its frames go out through the link.
+    let (link_events, mut link) = mpsc::channel(LINK_EVENTS);
     // Ends when dropped, as the UI ends (`ARC-13`).
     #[expect(
         clippy::disallowed_methods,
@@ -130,7 +121,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
         mpsc::unbounded_channel::<(PathBuf, Result<Vec<Folder>, String>)>();
 
     let mut input = EventStream::new();
-    let mut sender: Option<FrameSender> = None;
+    let mut sender: Option<Outgoing> = None;
     let mut dirty = true;
     let mut next_draw = monotonic();
     let mut hold = FrameHold::default();
@@ -155,15 +146,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
         };
         // The step and the clock first, so what an event starts is timed
         // from now.
-        let now = monotonic();
-        if let Some(step) = steps.due(now)
-            && app.on_step(step)
-        {
-            dirty = true;
-        }
-        if app.on_clock(wall_clock()) {
-            dirty = true;
-        }
+        let due = tick(&mut app, &mut steps, &mut dirty);
         let actions = match woke {
             Woke::Input(event) => match event {
                 Some(Ok(Event::Key(key))) => app.on_key(key),
@@ -171,7 +154,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
                 Some(Ok(Event::FocusGained)) => app.on_focus(true),
                 Some(Ok(Event::FocusLost)) => app.on_focus(false),
-                Some(Ok(Event::Resize(cols, rows))) => app.on_resize(area_size(cols, rows)),
+                Some(Ok(Event::Resize(cols, rows))) => resized(&mut app, cols, rows),
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
                 None => break Ok(()),
             },
@@ -192,13 +175,15 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 }
             },
             Woke::Folders((dir, folders)) => app.on_folders(&dir, folders),
-            Woke::Time => {
+            Woke::Time if due.is_empty() => {
                 draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
                 continue;
             }
+            Woke::Time => Vec::new(),
         };
+        let actions: Vec<_> = due.into_iter().chain(actions).collect();
         dirty = true;
-        let quit = perform(actions, &mut sender, &listed_folders, &outside).await;
+        let quit = perform(actions, &mut sender, &listed_folders, &outside);
         if quit {
             break Ok(());
         }
@@ -206,6 +191,20 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     };
     drop(terminal);
     outcome
+}
+
+/// Hands the app the step and the clock as they are now, marking what
+/// they change to draw; and what a held finish, due now, tells.
+fn tick(app: &mut App, steps: &mut motion::Steps, dirty: &mut bool) -> Vec<Action> {
+    if let Some(step) = steps.due(monotonic())
+        && app.on_step(step)
+    {
+        *dirty = true;
+    }
+    if app.on_clock(wall_clock()) {
+        *dirty = true;
+    }
+    app.due_news()
 }
 
 /// What the runtime reaches outside the UI and its daemon.
@@ -224,10 +223,11 @@ impl Outside {
     }
 }
 
-/// Carries out what the app asked for; whether it asked to quit.
-async fn perform(
+/// Carries out what the app asked for, never waiting on the daemon;
+/// whether it asked to quit.
+fn perform(
     actions: Vec<Action>,
-    sender: &mut Option<FrameSender>,
+    sender: &mut Option<Outgoing>,
     listed_folders: &mpsc::UnboundedSender<(PathBuf, Result<Vec<Folder>, String>)>,
     outside: &Outside,
 ) -> bool {
@@ -258,7 +258,7 @@ async fn perform(
             }
             Action::Send(frame) => {
                 if let Some(connected) = sender
-                    && connected.send(&frame).await.is_err()
+                    && !connected.send(frame)
                 {
                     // The link task notices and reconnects.
                     *sender = None;
@@ -360,83 +360,38 @@ impl FrameHold {
     }
 }
 
-/// Connects, starting the daemon if needed, and reconnects whenever the
-/// connection is lost.
-async fn keep_linked(options: Options, events: mpsc::UnboundedSender<LinkEvent>) {
-    let mut last_start: Option<Instant> = None;
-    loop {
-        match connect(&options, &mut last_start).await {
-            Ok(connection) => {
-                let (sender, mut receiver, welcome) = connection.into_split();
-                if events
-                    .send(LinkEvent::Connected { sender, welcome })
-                    .is_err()
-                {
-                    return;
-                }
-                let reason = loop {
-                    match receiver.next().await {
-                        Ok(Some(frame)) => {
-                            if events.send(LinkEvent::Frame(Box::new(frame))).is_err() {
-                                return;
-                            }
-                        }
-                        Ok(None) => break "the daemon closed the connection".to_owned(),
-                        Err(error) => break error.to_string(),
-                    }
-                };
-                if events.send(LinkEvent::Lost(reason)).is_err() {
-                    return;
-                }
-            }
-            Err(error) => {
-                if events.send(LinkEvent::Lost(error.to_string())).is_err() {
-                    return;
-                }
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
-}
-
-/// Connects to the daemon, starting it if nothing answers and it was not
-/// started in the last ten seconds.
-async fn connect(
-    options: &Options,
-    last_start: &mut Option<Instant>,
-) -> Result<Connection, ClientError> {
-    match Connection::connect(&options.socket, CLIENT).await {
-        Err(ClientError::Unreachable { .. }) => {}
-        other => return other,
-    }
-    let Some(start) = &options.start_daemon else {
-        return Connection::connect(&options.socket, CLIENT).await;
-    };
-    if last_start
-        .is_none_or(|at| monotonic().saturating_duration_since(at) > Duration::from_secs(10))
-    {
-        *last_start = Some(monotonic());
-        if let Err(error) = start() {
-            return Err(ClientError::Unreachable {
-                path: options.socket.display().to_string(),
-                source: error,
-            });
-        }
-    }
-    let deadline = monotonic() + Duration::from_secs(5);
-    loop {
-        match Connection::connect(&options.socket, CLIENT).await {
-            Err(ClientError::Unreachable { .. }) if monotonic() < deadline => {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-            other => return other,
-        }
-    }
-}
-
 fn terminal_size(terminal: &DefaultTerminal) -> std::io::Result<TermSize> {
     let size = terminal.size()?;
     Ok(area_size(size.width, size.height))
+}
+
+/// The person's window is now `cols` by `rows`, its cells perhaps of
+/// another size in pixels too.
+fn resized(app: &mut App, cols: u16, rows: u16) -> Vec<Action> {
+    app.cell_pixels = cell_pixels();
+    app.on_resize(area_size(cols, rows))
+}
+
+/// One cell of the person's terminal in pixels, from the size the system
+/// keeps for it; `None` where the terminal says no pixels, as some do not.
+fn cell_pixels() -> Option<muster_core::protocol::PixelSize> {
+    let size = crossterm::terminal::window_size().ok()?;
+    cell_of(size.width, size.height, size.columns, size.rows)
+}
+
+/// A cell's pixels in a window `width` by `height` pixels and `columns` by
+/// `rows` cells, if both are known.
+fn cell_of(
+    width: u16,
+    height: u16,
+    columns: u16,
+    rows: u16,
+) -> Option<muster_core::protocol::PixelSize> {
+    let cell = muster_core::protocol::PixelSize {
+        width: width.checked_div(columns)?,
+        height: height.checked_div(rows)?,
+    };
+    (cell.width > 0 && cell.height > 0).then_some(cell)
 }
 
 fn area_size(cols: u16, rows: u16) -> TermSize {
@@ -454,6 +409,8 @@ fn area_size(cols: u16, rows: u16) -> TermSize {
 struct HostTerminal {
     terminal: DefaultTerminal,
     enhanced_keys: bool,
+    /// Its colours, as it said them.
+    colours: muster_core::colours::TerminalColours,
 }
 
 impl HostTerminal {
@@ -469,7 +426,8 @@ impl HostTerminal {
             MouseReports(true),
             EnableFocusChange
         )?;
-        let enhanced_keys = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+        let keyboard = crossterm::terminal::supports_keyboard_enhancement();
+        let enhanced_keys = matches!(keyboard, Ok(true));
         if enhanced_keys {
             execute!(
                 out,
@@ -481,9 +439,18 @@ impl HostTerminal {
             restore_modes(&mut stdout(), enhanced_keys);
             previous(info);
         }));
+        // Asked before anything else reads the terminal's input, and only
+        // of a terminal that answered the keyboard question in time: one
+        // that answers nothing would only keep the UI waiting.
+        let colours = if keyboard.is_ok() {
+            colours::ask(monotonic() + colours::WAIT, monotonic)
+        } else {
+            muster_core::colours::TerminalColours::default()
+        };
         Ok(Self {
             terminal,
             enhanced_keys,
+            colours,
         })
     }
 }
@@ -674,6 +641,16 @@ mod tests {
             ),
             Some(now + ms(16))
         );
+    }
+
+    #[test]
+    fn a_cell_s_pixels_come_from_the_window_s_where_it_says_them() {
+        let cell = |width, height| Some(muster_core::protocol::PixelSize { width, height });
+        assert_eq!(super::cell_of(960, 576, 120, 36), cell(8, 16));
+        // A window a little larger than its cells, as with margins.
+        assert_eq!(super::cell_of(965, 580, 120, 36), cell(8, 16));
+        assert_eq!(super::cell_of(0, 0, 120, 36), None, "no pixels said");
+        assert_eq!(super::cell_of(960, 576, 0, 0), None);
     }
 
     #[test]

@@ -8,9 +8,11 @@
 
 pub mod changes;
 pub mod clashes;
+pub mod colours;
 pub mod config;
 pub mod credentials;
 pub mod entities;
+pub mod explain;
 pub mod frame;
 pub mod hex;
 pub mod html;

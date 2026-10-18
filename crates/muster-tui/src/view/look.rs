@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 
 use muster_core::{ProjectId, Session, SessionStatus};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::Span;
 
 use crate::app::App;
@@ -84,12 +84,15 @@ pub(crate) fn session_time(app: &App, session: &Session) -> Option<String> {
 }
 
 /// What `session` is doing, for its line: its activity while it works or
-/// waits and its hooks say, else its status.
+/// waits and its hooks say, or why it ended where the daemon says (a
+/// restart did not resume it), else its status.
 pub(crate) fn doing(session: &Session) -> Cow<'_, str> {
     match (&session.activity, session.status, &session.tidy) {
-        (Some(activity), SessionStatus::Running | SessionStatus::NeedsYou { .. }, _) => {
-            Cow::Borrowed(activity.text.as_str())
-        }
+        (
+            Some(activity),
+            SessionStatus::Running | SessionStatus::NeedsYou { .. } | SessionStatus::Exited { .. },
+            _,
+        ) => Cow::Borrowed(activity.text.as_str()),
         // A tidy says what it comes to, until its agent waits or ends.
         (
             _,
@@ -97,6 +100,30 @@ pub(crate) fn doing(session: &Session) -> Cow<'_, str> {
             Some(tidy),
         ) => Cow::Owned(tidy.words()),
         _ => Cow::Borrowed(crate::view::describe(session.status)),
+    }
+}
+
+/// The mark an agent is known by on a ticket's line, after a space: one of
+/// Muster's own by its letter, dim; one the person added by the mark its
+/// settings give it, in its colour where they give one.
+pub(crate) fn agent_mark(app: &App, harness: &str) -> Span<'static> {
+    let added = app
+        .added_agents()
+        .iter()
+        .find(|agent| agent.name == harness);
+    match added {
+        Some(agent) => {
+            let colour = agent
+                .colour
+                .as_deref()
+                .and_then(|colour| colour.parse::<Color>().ok());
+            let mark = Span::from(format!(" {}", agent.mark));
+            match colour {
+                Some(colour) => mark.fg(colour),
+                None => mark.dim(),
+            }
+        }
+        None => Span::from(format!(" {}", harness_letter(harness))).dim(),
     }
 }
 

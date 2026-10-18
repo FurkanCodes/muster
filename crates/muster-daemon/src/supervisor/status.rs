@@ -16,7 +16,7 @@ impl Supervisor {
             tracing::debug!("ignored a hook with an unknown token");
             return;
         };
-        let Some(harness) = self.live.get(&session).map(|live| live.harness) else {
+        let Some(harness) = self.live.get(&session).map(|live| live.harness.clone()) else {
             return;
         };
         if harness.hook_route() != Some(delivery.harness.as_str()) {
@@ -27,23 +27,65 @@ impl Supervisor {
             self.set_spend(session, spend);
             return;
         }
+        if let Some(turn) = harness.turn_begun(&delivery.body)
+            && let Some(live) = self.live.get_mut(&session)
+        {
+            live.turn = Some(turn);
+        }
         let event = delivery.event.as_deref();
         if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
             if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {
                 self.set_activity(session, change);
             }
-            self.step_session(
+            let tool = crate::harness::activity::tool_named(&delivery.body);
+            self.step_noted(
                 session,
                 Signal::Hook {
                     agent_session,
                     event,
                 },
+                tool,
             )
             .await;
         }
     }
+    /// Turns the person cut short, as the agents' records say: each ends
+    /// its session's turn if it is still the one under way, so a prompt
+    /// declined, or a turn stopped, waits on nobody. A turn begun since,
+    /// or before this daemon heard of any, is left as it is.
+    pub(super) async fn record_interrupted(&mut self, turns: Vec<crate::spend::Interrupted>) {
+        for interrupted in turns {
+            let current = self
+                .live
+                .get(&interrupted.session)
+                .and_then(|live| live.turn.as_deref());
+            if current != Some(interrupted.prompt.as_str()) {
+                continue;
+            }
+            self.set_activity(
+                interrupted.session,
+                crate::harness::activity::ActivityChange::Clear,
+            );
+            self.step_session(
+                interrupted.session,
+                Signal::Hook {
+                    agent_session: Some(interrupted.agent_session),
+                    event: muster_state::session::HookEvent::TurnInterrupted,
+                },
+            )
+            .await;
+        }
+    }
+
     /// Feeds a session's machine and carries out what it decides.
     pub(super) async fn step_session(&mut self, session: SessionId, signal: Signal) {
+        self.step_noted(session, signal, None).await;
+    }
+
+    /// The same, noting the signal, with the tool its hook named, for
+    /// explaining the session's status later.
+    async fn step_noted(&mut self, session: SessionId, signal: Signal, tool: Option<String>) {
+        self.note_signal(session, &signal, tool);
         let Some(live) = self.live.get_mut(&session) else {
             return;
         };
@@ -109,7 +151,7 @@ impl Supervisor {
 
     /// What a session is doing now, as its hooks tell; told to clients
     /// when it changes, and never stored.
-    fn set_activity(
+    pub(super) fn set_activity(
         &mut self,
         session: SessionId,
         change: crate::harness::activity::ActivityChange,

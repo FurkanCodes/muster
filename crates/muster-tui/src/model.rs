@@ -289,6 +289,33 @@ impl Model {
         waiting.into_iter().map(|session| session.id).collect()
     }
 
+    /// The sessions on a row: a project's in all its workspaces, a
+    /// worktree's, or the session itself.
+    pub(crate) fn sessions_on(&self, row: Row) -> impl Iterator<Item = &Session> {
+        self.sessions.iter().filter(move |session| match row {
+            Row::Project(project) => self
+                .workspace(session.workspace)
+                .is_some_and(|workspace| workspace.project == project),
+            Row::Worktree(workspace) => session.workspace == workspace,
+            Row::Session(id) => session.id == id,
+        })
+    }
+
+    /// The session that says most of how a row stands, in the order *Needs
+    /// you* goes: one asking the person something, then one with news not
+    /// seen, oldest first; else one at work. `None` while none is.
+    pub(crate) fn most_urgent(&self, row: Row) -> Option<&Session> {
+        let on: Vec<SessionId> = self.sessions_on(row).map(|session| session.id).collect();
+        self.needs_you()
+            .into_iter()
+            .find(|id| on.contains(id))
+            .and_then(|id| self.session(id))
+            .or_else(|| {
+                self.sessions_on(row)
+                    .find(|session| session.status == SessionStatus::Running)
+            })
+    }
+
     /// The project a row belongs to.
     pub(crate) fn project_of(&self, row: Row) -> Option<ProjectId> {
         match row {

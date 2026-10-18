@@ -3,11 +3,15 @@
 //! The harnesses: `shell`, the person's own shell in the workspace; the
 //! coding agents `claude` (Claude Code), `codex` (Codex), `gemini` (Gemini
 //! CLI), `opencode` (`OpenCode`) and `copilot` (GitHub Copilot CLI); and two
-//! Muster runs by hand, `checks` and `review`. A harness says how to start,
-//! resume and hear from its program; the daemon does the rest. Each agent
-//! is heard the way it allows without editing the person's config
-//! (`PRD-13`): hooks passed at launch, a plugin or settings file of Muster's
-//! own that it is pointed at, or what it shows in its window title.
+//! Muster runs by hand, `checks` and `review`; and any coding agent the
+//! person added in Muster's own settings (`[agents.<name>]`,
+//! `muster_core::config::agents`). A harness says how to start, resume and
+//! hear from its program; the daemon does the rest. Each agent is heard the
+//! way it allows without editing the person's config (`PRD-13`): hooks
+//! passed at launch, a plugin or settings file of Muster's own that it is
+//! pointed at, or what it shows in its window title. An agent the person
+//! added is heard without hooks: its terminal's progress sequence, the
+//! words of its window title its definition names, and its exit.
 
 pub(crate) mod activity;
 pub(crate) mod claude;
@@ -21,8 +25,10 @@ pub(crate) mod support;
 pub(crate) mod transcript;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use muster_core::SessionId;
+use muster_core::config::agents::{AgentDefinition, TitleSays};
 use muster_core::protocol::TermSize;
 use muster_state::session::HookEvent;
 
@@ -30,15 +36,12 @@ use crate::pty::SpawnSpec;
 use crate::runs::credentials::Secret;
 
 /// A harness Muster can start.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Harness {
-    pub(crate) id: &'static str,
-    /// The default title of its sessions.
-    pub(crate) label: &'static str,
     kind: Kind,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Shell,
     Claude,
@@ -51,63 +54,39 @@ pub(crate) enum Kind {
     /// Claude Code reviewing a workspace's change in plan mode, which
     /// changes nothing.
     Review,
+    /// A coding agent the person added in Muster's own settings.
+    Added(Arc<AgentDefinition>),
 }
 
-const SHELL: Harness = Harness {
-    id: "shell",
-    label: "Shell",
-    kind: Kind::Shell,
-};
+/// Muster's own harnesses.
+const BUILT_IN: [Kind; 8] = [
+    Kind::Shell,
+    Kind::Claude,
+    Kind::Codex,
+    Kind::Gemini,
+    Kind::OpenCode,
+    Kind::Copilot,
+    Kind::Checks,
+    Kind::Review,
+];
 
-const CLAUDE: Harness = Harness {
-    id: "claude",
-    label: "Claude Code",
-    kind: Kind::Claude,
-};
-
-const CODEX: Harness = Harness {
-    id: "codex",
-    label: "Codex",
-    kind: Kind::Codex,
-};
-
-const GEMINI: Harness = Harness {
-    id: "gemini",
-    label: "Gemini CLI",
-    kind: Kind::Gemini,
-};
-
-const OPENCODE: Harness = Harness {
-    id: "opencode",
-    label: "OpenCode",
-    kind: Kind::OpenCode,
-};
-
-const COPILOT: Harness = Harness {
-    id: "copilot",
-    label: "Copilot CLI",
-    kind: Kind::Copilot,
-};
-
-const CHECKS: Harness = Harness {
-    id: "checks",
-    label: "Checks",
-    kind: Kind::Checks,
-};
-
-const REVIEW: Harness = Harness {
-    id: "review",
-    label: "Review",
-    kind: Kind::Review,
-};
-
-/// The harness called `id`, if Muster knows it.
+/// Muster's own harness called `id`, if there is one.
 pub(crate) fn find(id: &str) -> Option<Harness> {
-    [
-        SHELL, CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, CHECKS, REVIEW,
-    ]
-    .into_iter()
-    .find(|harness| harness.id == id)
+    BUILT_IN
+        .into_iter()
+        .map(|kind| Harness { kind })
+        .find(|harness| harness.id() == id)
+}
+
+/// The harness called `id`: one of Muster's own, or else one of the agents
+/// the person `added`.
+pub(crate) fn find_with(id: &str, added: &[Arc<AgentDefinition>]) -> Option<Harness> {
+    find(id).or_else(|| {
+        added
+            .iter()
+            .find(|agent| agent.name == id)
+            .map(|agent| Harness::added(agent.clone()))
+    })
 }
 
 /// What the project's checks are, for a session that runs them.
@@ -153,8 +132,53 @@ pub(crate) enum TitleState {
 }
 
 impl Harness {
+    /// The agent the person added as `agent`.
+    pub(crate) fn added(agent: Arc<AgentDefinition>) -> Self {
+        Self {
+            kind: Kind::Added(agent),
+        }
+    }
+
+    /// What sessions name it by.
+    pub(crate) fn id(&self) -> &str {
+        match &self.kind {
+            Kind::Shell => "shell",
+            Kind::Claude => "claude",
+            Kind::Codex => "codex",
+            Kind::Gemini => "gemini",
+            Kind::OpenCode => "opencode",
+            Kind::Copilot => "copilot",
+            Kind::Checks => "checks",
+            Kind::Review => "review",
+            Kind::Added(agent) => &agent.name,
+        }
+    }
+
+    /// The default title of its sessions.
+    pub(crate) fn label(&self) -> &str {
+        match &self.kind {
+            Kind::Shell => "Shell",
+            Kind::Claude => "Claude Code",
+            Kind::Codex => "Codex",
+            Kind::Gemini => "Gemini CLI",
+            Kind::OpenCode => "OpenCode",
+            Kind::Copilot => "Copilot CLI",
+            Kind::Checks => "Checks",
+            Kind::Review => "Review",
+            Kind::Added(agent) => &agent.label,
+        }
+    }
+
+    /// The agent the person added, if it is one.
+    fn added_agent(&self) -> Option<&AgentDefinition> {
+        match &self.kind {
+            Kind::Added(agent) => Some(agent),
+            _ => None,
+        }
+    }
+
     /// Whether it is a coding agent, rather than a shell.
-    pub(crate) fn is_agent(self) -> bool {
+    pub(crate) fn is_agent(&self) -> bool {
         matches!(
             self.kind,
             Kind::Claude
@@ -163,24 +187,26 @@ impl Harness {
                 | Kind::Gemini
                 | Kind::OpenCode
                 | Kind::Copilot
+                | Kind::Added(_)
         )
     }
 
     /// Whether it runs the project's checks.
-    pub(crate) fn is_checks(self) -> bool {
+    pub(crate) fn is_checks(&self) -> bool {
         self.kind == Kind::Checks
     }
 
     /// Whether the program reports its state to the hook socket, and so
-    /// needs a hook token at launch.
-    pub(crate) fn has_hooks(self) -> bool {
-        self.is_agent()
+    /// needs a hook token at launch. An agent the person added has no
+    /// hooks Muster could pass it without editing its config.
+    pub(crate) fn has_hooks(&self) -> bool {
+        self.is_agent() && self.added_agent().is_none()
     }
 
     /// Whether Muster chooses the agent's session id at launch, as Claude
     /// Code, Gemini CLI and Copilot CLI let it. Codex and `OpenCode` choose
     /// their own, which their reports then carry.
-    pub(crate) fn chooses_session_id(self) -> bool {
+    pub(crate) fn chooses_session_id(&self) -> bool {
         matches!(
             self.kind,
             Kind::Claude | Kind::Review | Kind::Gemini | Kind::Copilot
@@ -191,38 +217,54 @@ impl Harness {
     /// silence past a grace means it is asking something first, such as
     /// whether to trust the folder. Copilot CLI says so only with its first
     /// prompt.
-    pub(crate) fn reports_start(self) -> bool {
+    pub(crate) fn reports_start(&self) -> bool {
         matches!(
             self.kind,
             Kind::Claude | Kind::Review | Kind::Codex | Kind::Gemini | Kind::OpenCode
         )
     }
 
-    /// Whether it can take a first prompt on its command line.
-    pub(crate) fn takes_prompt(self) -> bool {
-        self.is_agent()
+    /// Whether it can take a first prompt on its command line: an agent
+    /// the person added, where its definition says how.
+    pub(crate) fn takes_prompt(&self) -> bool {
+        match self.added_agent() {
+            Some(agent) => agent.takes_prompt(),
+            None => self.is_agent(),
+        }
     }
 
-    /// Whether a session can be resumed after the daemon restarts.
-    pub(crate) fn can_resume(self) -> bool {
-        self.is_agent()
+    /// Whether a session can be resumed after the daemon restarts: an
+    /// agent the person added, where its definition says how.
+    pub(crate) fn can_resume(&self) -> bool {
+        match self.added_agent() {
+            Some(agent) => agent.can_resume(),
+            None => self.is_agent(),
+        }
+    }
+
+    /// Whether it carries on its last conversation with no id to resume
+    /// by, as an agent the person added does: it reports none.
+    pub(crate) fn resumes_without_id(&self) -> bool {
+        self.added_agent().is_some_and(AgentDefinition::can_resume)
     }
 
     /// Whether the program suspends itself on Ctrl+Z and waits to be
-    /// continued (see `PtyHandle::resume_if_suspended`).
-    pub(crate) fn suspends_itself(self) -> bool {
+    /// continued (see `PtyHandle::resume_if_suspended`). An agent the
+    /// person added is taken to, as every coding agent Muster knows does:
+    /// continuing one that has not stopped does nothing.
+    pub(crate) fn suspends_itself(&self) -> bool {
         self.is_agent()
     }
 
     /// The hook socket's address for its reports: `/hooks/<route>`.
-    pub(crate) fn hook_route(self) -> Option<&'static str> {
+    pub(crate) fn hook_route(&self) -> Option<&'static str> {
         match self.kind {
             Kind::Claude | Kind::Review => Some("claude"),
             Kind::Codex => Some("codex"),
             Kind::Gemini => Some("gemini"),
             Kind::OpenCode => Some("opencode"),
             Kind::Copilot => Some("copilot"),
-            Kind::Shell | Kind::Checks => None,
+            Kind::Shell | Kind::Checks | Kind::Added(_) => None,
         }
     }
 
@@ -230,7 +272,7 @@ impl Harness {
     /// names it in the address) means to the session machine, with the
     /// agent session it came from.
     pub(crate) fn translate(
-        self,
+        &self,
         event: Option<&str>,
         body: &[u8],
     ) -> Option<(Option<String>, HookEvent)> {
@@ -240,13 +282,24 @@ impl Harness {
             Kind::Gemini => gemini::translate(body),
             Kind::OpenCode => opencode::translate(body),
             Kind::Copilot => copilot::translate(event?, body),
-            Kind::Shell | Kind::Checks => None,
+            Kind::Shell | Kind::Checks | Kind::Added(_) => None,
+        }
+    }
+
+    /// The turn a report says began, by the id the harness's own record of
+    /// the conversation knows it by: Claude Code's prompt id, which its
+    /// transcript carries, so an interruption written there can be matched
+    /// to the turn it ended.
+    pub(crate) fn turn_begun(&self, body: &[u8]) -> Option<String> {
+        match self.kind {
+            Kind::Claude | Kind::Review => claude::turn_begun(&claude::HookPayload::parse(body)?),
+            _ => None,
         }
     }
 
     /// What a report says the session has used, for a harness that reports
     /// it: `OpenCode`'s plugin, at each turn's end.
-    pub(crate) fn spend(self, body: &[u8]) -> Option<muster_core::Spend> {
+    pub(crate) fn spend(&self, body: &[u8]) -> Option<muster_core::Spend> {
         match self.kind {
             Kind::OpenCode => opencode::spend(body),
             _ => None,
@@ -254,24 +307,36 @@ impl Harness {
     }
 
     /// What its window title says, for a harness whose title says how it
-    /// is doing.
-    pub(crate) fn read_title(self, title: &str) -> Option<TitleState> {
-        match self.kind {
+    /// is doing: an agent the person added, by the words its definition
+    /// names.
+    pub(crate) fn read_title(&self, title: &str) -> Option<TitleState> {
+        match &self.kind {
             Kind::Codex => codex::read_title(title),
             Kind::Gemini => gemini::read_title(title),
+            Kind::Added(agent) => agent.title.read(title).map(|says| match says {
+                TitleSays::Working => TitleState::Working,
+                TitleSays::Ready => TitleState::Ready,
+                TitleSays::Waiting => TitleState::Waiting,
+            }),
             _ => None,
         }
     }
 
     /// Whether its title is its only word of waiting on the person, and of
-    /// its start: Codex's, which runs no hooks Muster could pass it.
-    pub(crate) fn title_reports_waits(self) -> bool {
-        self.kind == Kind::Codex
+    /// its start: Codex's, which runs no hooks Muster could pass it, and
+    /// that of an agent the person added whose definition names the words
+    /// it waits with.
+    pub(crate) fn title_reports_waits(&self) -> bool {
+        match &self.kind {
+            Kind::Codex => true,
+            Kind::Added(agent) => agent.title.waiting.is_some(),
+            _ => false,
+        }
     }
 
     /// Whether the agent still has `agent_session`'s conversation to resume:
     /// `None` if it cannot tell, and the resume is tried.
-    pub(crate) fn has_conversation(self, agent_session: &str) -> Option<bool> {
+    pub(crate) fn has_conversation(&self, agent_session: &str) -> Option<bool> {
         match self.kind {
             Kind::Claude | Kind::Review => transcript::projects_dir()
                 .and_then(|projects| transcript::exists(&projects, agent_session)),
@@ -280,8 +345,8 @@ impl Harness {
     }
 
     /// Writes the files of Muster's own it reads its hooks from into `dir`.
-    pub(crate) fn prepare_support(self, dir: &std::path::Path) -> std::io::Result<()> {
-        support::prepare(self.kind, dir)
+    pub(crate) fn prepare_support(&self, dir: &std::path::Path) -> std::io::Result<()> {
+        support::prepare(&self.kind, dir)
     }
 }
 
@@ -412,13 +477,23 @@ pub(crate) fn hook_command(route: &str, event: Option<&str>) -> String {
     )
 }
 
+/// The terminal every session's program is told it runs in: Muster's own,
+/// whatever terminal the daemon was started from (`scrub` takes that
+/// one's variables away).
+const TERMINAL_VARIABLES: [(&str, &str); 4] = [
+    ("TERM", "xterm-256color"),
+    ("COLORTERM", "truecolor"),
+    ("TERM_PROGRAM", "muster"),
+    ("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION")),
+];
+
 /// How to start `harness` for `launch`.
-pub(crate) fn spawn_spec(harness: Harness, launch: &Launch) -> SpawnSpec {
-    let env = vec![
-        ("TERM".to_owned(), "xterm-256color".to_owned()),
-        ("COLORTERM".to_owned(), "truecolor".to_owned()),
-        ("MUSTER_SESSION".to_owned(), launch.session.to_string()),
-    ];
+pub(crate) fn spawn_spec(harness: &Harness, launch: &Launch) -> SpawnSpec {
+    let mut env: Vec<(String, String)> = TERMINAL_VARIABLES
+        .iter()
+        .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+        .collect();
+    env.push(("MUSTER_SESSION".to_owned(), launch.session.to_string()));
     match &launch.place {
         Place::Host(cwd) => on_host(harness, launch, cwd.clone(), env),
         Place::Container {
@@ -430,7 +505,7 @@ pub(crate) fn spawn_spec(harness: Harness, launch: &Launch) -> SpawnSpec {
 }
 
 fn on_host(
-    harness: Harness,
+    harness: &Harness,
     launch: &Launch,
     cwd: PathBuf,
     mut env: Vec<(String, String)>,
@@ -449,7 +524,7 @@ fn on_host(
     // The files of Muster's own, where hooks are heard.
     let support = launch.support.as_deref().filter(|_| launch.hooks.is_some());
     let own = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
-    let (program, args) = match harness.kind {
+    let (program, args) = match &harness.kind {
         Kind::Shell => (
             own("SHELL").unwrap_or_else(|| "/bin/sh".to_owned()),
             Vec::new(),
@@ -508,6 +583,15 @@ fn on_host(
             args.extend(checks.commands);
             ("/bin/sh".to_owned(), args)
         }
+        // As the person would start it, with what its definition adds;
+        // after Muster's own variables, so a value it names wins.
+        Kind::Added(agent) => {
+            env.extend(agent.env.iter().cloned());
+            (
+                agent.program.clone(),
+                agent.arguments(launch.prompt.as_deref(), launch.resume),
+            )
+        }
     };
     SpawnSpec {
         program,
@@ -521,7 +605,7 @@ fn on_host(
 
 /// `docker exec` with a terminal, running [`START_IN_CONTAINER`].
 fn in_container(
-    harness: Harness,
+    harness: &Harness,
     launch: &Launch,
     (docker, container): (&str, &str),
     secret: Option<&Secret>,
@@ -547,7 +631,8 @@ fn in_container(
         | Kind::Codex
         | Kind::Gemini
         | Kind::OpenCode
-        | Kind::Copilot => "shell",
+        | Kind::Copilot
+        | Kind::Added(_) => "shell",
     };
     args.extend([
         container.to_owned(),

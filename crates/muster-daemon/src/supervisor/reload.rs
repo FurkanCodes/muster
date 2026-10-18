@@ -9,7 +9,7 @@ use tokio::sync::oneshot;
 
 use super::{Live, Request, Supervisor, SupervisorHandle};
 use crate::handoff::{CarriedSession, HandedSession};
-use crate::{harness, pty};
+use crate::pty;
 
 impl SupervisorHandle {
     /// Hands every running session over; the Supervisor no longer holds
@@ -59,15 +59,16 @@ impl Supervisor {
             let Some(live) = self.live.get(&id) else {
                 continue;
             };
-            let session = CarriedSession::new(
+            let mut session = CarriedSession::new(
                 id,
-                live.harness.id.to_owned(),
+                live.harness.id().to_owned(),
                 live.token.clone(),
                 now.saturating_duration_since(live.launched),
                 live.resumed,
                 live.machine.carry(now),
                 terminal.terminal,
             );
+            session.turn.clone_from(&live.turn);
             // Its hooks and terminal are the next daemon's now.
             self.release_terminal(id);
             handed.push(HandedSession {
@@ -91,12 +92,13 @@ impl Supervisor {
                 .sessions
                 .iter()
                 .any(|stored| stored.id == id && stored.ended_at.is_none());
-            let Some(harness) = harness::find(&session.harness).filter(|_| known) else {
+            let Some(harness) = known.then(|| self.running_harness(&session.harness)) else {
                 tracing::warn!(session = %id, "a session handed over is not known here; let go");
                 continue;
             };
             let events = self.pty_events.clone();
-            let pty = match pty::adopt(master, session.terminal, move |event| {
+            let size = session.terminal.size;
+            let pty = match pty::adopt(master, session.terminal, self.colours(), move |event| {
                 let _ = events.send((id, event));
             }) {
                 Ok(pty) => pty,
@@ -119,10 +121,13 @@ impl Supervisor {
                     resumed: session.resumed,
                     ended: None,
                     title: None,
+                    turn: session.turn,
+                    // Not carried: what this daemon has heard.
+                    signals: super::explain::Recent::default(),
                 },
             );
             self.carry_watch(id);
-            self.publish_terminal(id, pty);
+            self.publish_terminal(id, pty, size);
         }
     }
 }

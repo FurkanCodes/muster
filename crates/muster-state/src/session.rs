@@ -7,13 +7,15 @@
 //! - the main agent ending its turn does not finish the session while its
 //!   subagents still work; a grace period follows the last one;
 //! - a permission prompt closes on a tool event from whoever raised it, and a
-//!   question only on its own completion;
+//!   question only on its own completion, unless the person cuts the turn
+//!   short, which closes every prompt;
 //! - a progress idle with no busy edge before it is the startup state.
 //!
 //! Changed from Nebula: several prompts can be open at once, and a deferred
 //! permission notice is told apart from the request itself, so a real second
 //! request is never dropped as an echo.
 
+mod describe;
 mod machine;
 mod signal;
 

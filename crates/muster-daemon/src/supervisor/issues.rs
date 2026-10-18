@@ -14,7 +14,6 @@ use muster_core::{ProjectId, TicketKey};
 use tokio::sync::oneshot;
 
 use super::{Request, Supervisor};
-use crate::harness;
 use crate::trackers::{self, IssueDetail, ProjectPlace, ServiceError};
 
 /// A ticket fetched for starting work, on its way back to the Supervisor.
@@ -187,12 +186,8 @@ impl Supervisor {
                 return;
             }
         };
-        if harness::find(&harness).is_none() {
-            let error = ErrorBody::new(
-                ErrorCode::BadRequest,
-                format!("no harness called {harness:?}"),
-            );
-            let _ = reply.send(Err(error));
+        if self.harness(&harness).is_none() {
+            let _ = reply.send(Err(self.no_harness(&harness)));
             return;
         }
         let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
@@ -268,8 +263,9 @@ impl Supervisor {
                 self.new_worktree(project, branch, on).await?
             }
         };
-        let takes_prompt =
-            harness::find(&harness).is_some_and(super::super::harness::Harness::takes_prompt);
+        let takes_prompt = self
+            .harness(&harness)
+            .is_some_and(|found| found.takes_prompt());
         let prompt = match takes_prompt.then(trackers::new_fence).transpose() {
             Ok(fence) => fence.map(|fence| trackers::issue_prompt(detail, &fence)),
             Err(error) => {

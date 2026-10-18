@@ -31,8 +31,8 @@ impl App {
             self.complain("It is not a git repository, so it has no commits to tidy.");
             return Vec::new();
         }
-        let harness = if self.last_harness.is_agent() {
-            self.last_harness
+        let harness = if self.last_harness.takes_prompt() {
+            self.last_harness.clone()
         } else {
             HarnessChoice::Claude
         };
@@ -48,8 +48,12 @@ impl App {
         key: &KeyEvent,
     ) -> Vec<Action> {
         let harness = match key.code {
-            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => harness.next_agent(),
-            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => harness.previous_agent(),
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
+                harness.next_agent(self.added_agents())
+            }
+            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
+                harness.previous_agent(self.added_agents())
+            }
             KeyCode::Enter => {
                 self.mode = Mode::Browse;
                 self.say("Starting the tidy…");

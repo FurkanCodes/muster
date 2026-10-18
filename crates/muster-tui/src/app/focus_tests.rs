@@ -95,8 +95,11 @@ fn news_is_announced_only_while_the_person_looks_elsewhere() {
     // Still waiting: no second notice.
     assert!(notes(&status(&mut world, waiting, true)).is_empty());
     status(&mut world, SessionStatus::Running, false);
+    // A finish is told once it has stayed one a moment.
+    assert!(notes(&status(&mut world, SessionStatus::Finished, true)).is_empty());
+    world.app.on_step(super::alarm::HOLD_STEPS);
     assert_eq!(
-        notes(&status(&mut world, SessionStatus::Finished, true)),
+        notes(&world.app.due_news()),
         ["Shell in app (work) finished"]
     );
     status(&mut world, SessionStatus::Running, false);

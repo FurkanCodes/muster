@@ -4,7 +4,12 @@
 //! - every change to these types bumps [`PROTOCOL_VERSION`];
 //! - a new optional field carries `#[serde(default)]`;
 //! - a new variant is sent only to a peer whose agreed version knows it;
-//! - removing or renaming anything also raises [`MIN_PROTOCOL_VERSION`].
+//! - removing or renaming anything also raises [`MIN_PROTOCOL_VERSION`];
+//! - the handshake ([`Hello`], [`Welcome`], [`Incompatible`], the error for
+//!   a frame before the hello) and the frame header never change shape:
+//!   each version's encoding of them is frozen in `tests/frozen/`, and
+//!   raising [`PROTOCOL_VERSION`] adds that version's (see
+//!   `tests/frozen_protocol.rs`).
 //!
 //! Until the first release the protocol may change in ways older peers
 //! cannot read, but each such change still bumps both versions, so a daemon
@@ -57,7 +62,27 @@
 //! work (`Workspace::stacked_on`, the same; `CreateWorktree::on` and
 //! `StartFromIssue::on`, and `Command::MoveOnto`, sent only to a daemon of
 //! 28 or later; a timeline's entries of `EntryKind::Moved` reach an older
-//! client as `EntryKind::Between`, [`Reply::for_version`]).
+//! client as `EntryKind::Between`, [`Reply::for_version`]); version 29 the
+//! coding agents the person added in Muster's own settings
+//! (`Preferences::agents`, and why those settings do not read,
+//! `Preferences::problem`, fields older clients pass over), and reading
+//! those settings again (`Command::ReadPreferences`, sent only to a daemon
+//! of 29 or later); version 30 why a session has its status
+//! (`Command::ExplainSession`, sent only to a daemon of 30 or later,
+//! answered with `Reply::Explanation`); version 31 a
+//! session's terminal as in a real one: the colours of the person's
+//! terminal, which programs in sessions are told when they ask
+//! (`ClientFrame::Colours`, sent only to a daemon of 31 or later), and
+//! which session has the person's keys, for programs that asked to be
+//! told as their terminal gains and loses focus (`ClientFrame::Keys`, the
+//! same), and the size of a session's terminal in pixels
+//! (`ClientFrame::Resize::pixels`, a field older daemons pass over);
+//! version 32 the width from which a session sits beside the list
+//! (`Preferences::side_by_side_from`, a field older clients pass over;
+//! `PreferenceChange::SideBySideFrom`, sent only to a daemon of 32 or
+//! later); version 33 where a replay's output was written while the client
+//! was attached (`ServerFrame::Replay::live_from`, a field older clients
+//! pass over), so a program's copy there reaches the clipboard.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -67,6 +92,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::changes::{ChangePart, Changes, FileDiff};
+use crate::colours::TerminalColours;
 use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
@@ -75,7 +101,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 28;
+pub const PROTOCOL_VERSION: u32 = 33;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -172,12 +198,32 @@ pub enum ClientFrame {
         data: Vec<u8>,
     },
     /// The client's view of a session's terminal changed size.
-    Resize { session: SessionId, size: TermSize },
+    Resize {
+        session: SessionId,
+        size: TermSize,
+        /// Its size in pixels, where the person's terminal says its own:
+        /// for programs that size pictures or a cursor by it. From protocol
+        /// 31; older daemons pass it over.
+        #[serde(default)]
+        pixels: Option<PixelSize>,
+    },
     /// Whether the person is looking at this client's window: a UI says
     /// so as it connects and whenever its window gains or loses focus. A
     /// client that never says is not looked at. Sent only to a daemon of
     /// 23 or later.
     Looking { looking: bool },
+    /// The colours of the person's terminal, as the UI found them as it
+    /// started: a program in a session asking its terminal for its colours
+    /// (OSC 10, 11 and 4) is told these, the last a UI said. Sent only to a
+    /// daemon of 31 or later, and only with a colour in it.
+    Colours(TerminalColours),
+    /// Which session's terminal has the person's keys in this client, if
+    /// any: one they have entered, in a window they look at. A program that
+    /// asked to be told its terminal's focus (`CSI ? 1004 h`) is sent
+    /// `CSI I` as its session gains the keys in any client and `CSI O` as
+    /// it loses them in every one. Sent whenever it changes, only to a
+    /// daemon of 31 or later.
+    Keys { session: Option<SessionId> },
 }
 
 fn watching_by_default() -> bool {
@@ -202,13 +248,23 @@ pub enum ServerFrame {
     Error(ErrorBody),
     /// The start of an attached terminal stream: the bytes from `seq` on.
     /// With `reset`, the client must clear its screen first, because the
-    /// bytes it last saw are no longer held.
+    /// bytes it last saw are no longer held. A stream starts again with one
+    /// when its client fell behind it, and when a new program starts in the
+    /// session.
     Replay {
         session: SessionId,
         seq: u64,
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
         reset: bool,
+        /// Where the output written while the client was attached begins,
+        /// in a replay that starts the stream again: from there it is live
+        /// output the client was not sent as it came, so what the program
+        /// does in it (a copy) counts as in [`ServerFrame::Output`].
+        /// `None` in the replay that starts a stream: it is all history.
+        /// Protocol 33; an older daemon says nothing, read as `None`.
+        #[serde(default)]
+        live_from: Option<u64>,
     },
     /// Terminal output that follows the replay; `seq` is the position of its
     /// first byte in everything the session has written.
@@ -313,6 +369,13 @@ impl Default for TermSize {
     }
 }
 
+/// A terminal's size in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PixelSize {
+    pub width: u16,
+    pub height: u16,
+}
+
 /// Something a client asks the daemon to do.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
@@ -347,7 +410,8 @@ pub enum Command {
     /// Start a session in a workspace.
     StartSession {
         workspace: WorkspaceId,
-        /// A harness id: `shell` or `claude`.
+        /// A harness id: `shell`, `claude`, or an agent the person added
+        /// ([`Preferences::agents`]).
         harness: String,
         title: Option<String>,
         size: TermSize,
@@ -447,6 +511,10 @@ pub enum Command {
     /// How the daemon is doing inside, answered with [`Reply::Health`].
     /// Sent only to a daemon of protocol 22 or later.
     Health,
+    /// Why a session has its status: what its machine holds and the
+    /// signals it last received; answered with [`Reply::Explanation`].
+    /// Sent only to a daemon of 30 or later.
+    ExplainSession { session: SessionId },
     /// Show a session in the Muster window the person looked at last
     /// ([`ServerFrame::Reveal`]); refused when no window is open. Sent
     /// only to a daemon of 23 or later.
@@ -455,6 +523,11 @@ pub enum Command {
     /// answered with [`Reply::Done`], every client told by
     /// [`Delta::Preferences`]. Sent only to a daemon of 23 or later.
     ChangePreference(PreferenceChange),
+    /// Read Muster's own settings again, after the person edited them by
+    /// hand: the agents they added among them. Answered with
+    /// [`Reply::Done`], every client told by [`Delta::Preferences`]. Sent
+    /// only to a daemon of 29 or later.
+    ReadPreferences,
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with
@@ -570,6 +643,8 @@ pub enum Reply {
     ProjectSettings(ProjectSettings),
     /// How the daemon is doing inside.
     Health(Health),
+    /// Why a session has its status.
+    Explanation(Box<crate::explain::Explanation>),
     /// What a workspace's work has changed.
     Changes(Changes),
     /// One changed file's diff.

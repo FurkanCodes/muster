@@ -257,10 +257,10 @@ pub async fn run(
         adopted,
     } = hold(paths, adopt)?;
 
-    let store = Store::open(&paths.database())?;
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let store = Store::open(&paths.database(), clock.now())?;
     let store = StoreHandle::spawn(store)
         .map_err(io_error("cannot start the store for", &paths.database()))?;
-    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
     let tasks = Tasks::default();
     let supervisor = start_supervisor(

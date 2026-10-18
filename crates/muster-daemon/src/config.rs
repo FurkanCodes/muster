@@ -4,11 +4,12 @@
 
 use std::path::{Path, PathBuf};
 
+use muster_core::config::agents::AgentDefinition;
 use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::settings::{
-    MUSTER_PREFIX, NOTCH, ONLY_MINE, PreferenceChange, Preferences, SettingChange, SettingSource,
-    TICKETS_FROM_KEYS, TRACKER,
+    MUSTER_PREFIX, NOTCH, ONLY_MINE, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange,
+    SettingSource, TICKETS_FROM_KEYS, TRACKER,
 };
 
 /// The repository's settings file.
@@ -116,11 +117,30 @@ pub fn change(root: &Path, overrides: &Path, change: &SettingChange) -> Result<(
 /// Muster's own settings, from `settings.toml` in the person's settings
 /// folder `config_dir`.
 pub fn preferences(config_dir: &Path) -> Result<Preferences, ConfigError> {
+    own_settings(config_dir).map(|own| own.preferences)
+}
+
+/// Muster's own settings as clients are told them, and the coding agents
+/// the person added there as the daemon starts them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OwnSettings {
+    pub preferences: Preferences,
+    pub agents: Vec<AgentDefinition>,
+}
+
+/// Muster's own settings in `config_dir`, with the agents the person added.
+pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
     let file = config_dir.join(preferences::FILE_NAME);
     let config = MusterConfig::parse(read(&file)?.as_deref(), &file.display().to_string())?;
-    Ok(Preferences {
-        notch: config.notch,
-        file,
+    Ok(OwnSettings {
+        preferences: Preferences {
+            notch: config.notch,
+            file,
+            agents: config.agents.iter().map(AgentDefinition::added).collect(),
+            problem: None,
+            side_by_side_from: config.side_by_side_from,
+        },
+        agents: config.agents,
     })
 }
 
@@ -139,6 +159,11 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
         PreferenceChange::Notch(on) => {
             let (table, key) = NOTCH;
             edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+        }
+        PreferenceChange::SideBySideFrom(columns) => {
+            let (table, key) = SIDE_BY_SIDE;
+            let columns = i64::from(*columns);
+            edit::set_number_in(text.as_deref(), preferences::NEW_FILE, table, key, columns)
         }
     }
     .map_err(|error| invalid(error.to_string()))?;
@@ -200,7 +225,9 @@ mod tests {
             preferences(&config_dir).unwrap(),
             Preferences {
                 notch: true,
-                file: file.clone()
+                file: file.clone(),
+                side_by_side_from: 100,
+                ..Preferences::default()
             }
         );
 
@@ -229,6 +256,25 @@ mod tests {
             std::fs::read_to_string(&file).unwrap(),
             "[notch]\nshwo = true\n"
         );
+    }
+
+    #[test]
+    fn the_width_a_session_sits_beside_the_list_from_is_the_person_s_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(&file, "[notch]\nshow = false # for now\n").unwrap();
+        change_preference(&config_dir, &PreferenceChange::SideBySideFrom(120)).unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert_eq!(read.side_by_side_from, 120);
+        assert!(!read.notch, "the rest stays as written");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "[notch]\nshow = false # for now\n\n[layout]\nside_by_side_from = 120\n"
+        );
+        change_preference(&config_dir, &PreferenceChange::SideBySideFrom(0)).unwrap();
+        assert_eq!(preferences(&config_dir).unwrap().side_by_side_from, 0);
     }
 
     #[test]

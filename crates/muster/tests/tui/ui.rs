@@ -21,6 +21,8 @@ use crate::support::{self, Sandbox, daemon_pid};
 
 pub(crate) const COLS: u16 = 120;
 pub(crate) const ROWS: u16 = 36;
+/// The stand-in terminal's background, as it says it when asked.
+pub(crate) const BACKGROUND: &str = "rgb:2b2b/2b2b/3c3c";
 
 /// The UI running on a pseudo-terminal, with what it draws parsed into a
 /// screen.
@@ -74,7 +76,8 @@ impl Ui {
         let kept = written.clone();
         // Plays the person's terminal: draws what arrives and answers the
         // device-attributes question crossterm asks, without claiming the
-        // kitty keyboard protocol.
+        // kitty keyboard protocol, and the question about its background,
+        // with `BACKGROUND`, as terminals answer them: in order.
         let (input, queue) = std::sync::mpsc::channel::<Vec<u8>>();
         let writer_tx = input.clone();
         std::thread::spawn(move || {
@@ -84,6 +87,9 @@ impl Ui {
                     break;
                 }
                 let chunk = &buffer[..read];
+                if chunk.windows(6).any(|window| window == b"\x1b]11;?") {
+                    let _ = writer_tx.send(format!("\x1b]11;{BACKGROUND}\x1b\\").into_bytes());
+                }
                 if chunk.windows(3).any(|window| window == b"\x1b[c") {
                     let _ = writer_tx.send(b"\x1b[?6c".to_vec());
                 }

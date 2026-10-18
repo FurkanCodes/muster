@@ -45,13 +45,21 @@ pub(crate) fn change(event: &HookEvent, body: &[u8]) -> Option<ActivityChange> {
         }
         HookEvent::ToolFinished { .. } | HookEvent::PromptSubmitted => set("thinking"),
         HookEvent::QuestionAsked { .. } => set("has a question for you"),
-        HookEvent::TurnEnded | HookEvent::SessionStarted | HookEvent::Idle => {
-            Some(ActivityChange::Clear)
-        }
+        HookEvent::TurnEnded
+        | HookEvent::TurnInterrupted
+        | HookEvent::SessionStarted
+        | HookEvent::Idle => Some(ActivityChange::Clear),
         HookEvent::PermissionRequested { deferred: true, .. }
         | HookEvent::SubagentStarted { .. }
         | HookEvent::SubagentStopped { .. } => None,
     }
+}
+
+/// The tool a hook's payload names, by its name alone, if that is one
+/// plain word: what a signal's record keeps, never the tool's input.
+pub(crate) fn tool_named(body: &[u8]) -> Option<String> {
+    let (tool, _) = tool_of(body)?;
+    clean_word(&tool)
 }
 
 /// The tool a payload names and its input, as each harness writes them.
@@ -303,7 +311,8 @@ mod tests {
         assert_eq!(
             change(
                 &HookEvent::QuestionAsked {
-                    origin: Origin::Main
+                    origin: Origin::Main,
+                    deferred: false,
                 },
                 b"{}"
             ),
@@ -311,6 +320,7 @@ mod tests {
         );
         for ended in [
             HookEvent::TurnEnded,
+            HookEvent::TurnInterrupted,
             HookEvent::SessionStarted,
             HookEvent::Idle,
         ] {
@@ -342,5 +352,22 @@ mod tests {
         // Unreadable payloads change nothing.
         assert_eq!(started("not json"), None);
         assert_eq!(started(r#"{"tool_input":{}}"#), None);
+    }
+
+    #[test]
+    fn a_signal_s_record_keeps_a_tool_s_name_alone() {
+        let named = |body: &str| tool_named(body.as_bytes());
+        assert_eq!(
+            named(r#"{"tool_name":"Bash","tool_input":{"command":"TOKEN=s3cret make"}}"#)
+                .as_deref(),
+            Some("Bash")
+        );
+        assert_eq!(
+            named(r#"{"toolName":"mcp__tracker__create"}"#).as_deref(),
+            Some("mcp__tracker__create")
+        );
+        assert_eq!(named(r#"{"tool_name":"evil\u001b]0;x\u0007"}"#), None);
+        assert_eq!(named(r#"{"tool_name":"two words"}"#), None);
+        assert_eq!(named(r#"{"hook_event_name":"Stop"}"#), None);
     }
 }
