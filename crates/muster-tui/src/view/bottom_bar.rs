@@ -67,7 +67,7 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
         let warning = Line::from(note_text(&warning)).yellow();
         frame.render_widget(Paragraph::new(warning).wrap(Wrap { trim: false }), above);
-        frame.render_widget(Line::from(format!(" {}", hints(app))).dim(), hints_area);
+        draw_hints(frame, app, hints_area);
         return;
     }
     if let Some((text, error)) = message(app) {
@@ -80,13 +80,59 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), area);
         return;
     }
-    frame.render_widget(Line::from(format!(" {}", hints(app))).dim(), area);
+    draw_hints(frame, app, area);
 }
 
-/// The keys that do something for what is selected.
-fn hints(app: &App) -> String {
+/// What `h` is, at the bar's end while the list has the keys, so the
+/// way to every other key is always in view.
+const HELP_HINT: &str = "h help ";
+
+/// The hints in `area`, as many as fit whole, and at its end the key of
+/// the help, where it opens.
+fn draw_hints(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let help = app.mode == Mode::Browse;
+    let help_width = if help {
+        u16::try_from(HELP_HINT.chars().count()).unwrap_or(0)
+    } else {
+        0
+    };
+    let [left, right] =
+        Layout::horizontal([Constraint::Min(0), Constraint::Length(help_width)]).areas(area);
+    // A space before them, and two before the help.
+    let room = usize::from(left.width).saturating_sub(if help { 3 } else { 1 });
+    let text = fitting(&hints(app), room);
+    frame.render_widget(Line::from(format!(" {text}")).dim(), left);
+    if help {
+        frame.render_widget(Line::from(HELP_HINT).dim(), right);
+    }
+}
+
+/// As many of `hints` as fit in `room` cells, whole, two spaces apart:
+/// the first however long, cut where the bar ends.
+fn fitting(hints: &[String], room: usize) -> String {
+    let mut text = String::new();
+    for hint in hints {
+        if !text.is_empty() {
+            if text.chars().count() + 2 + hint.chars().count() > room {
+                break;
+            }
+            text.push_str("  ");
+        }
+        text.push_str(hint);
+    }
+    text
+}
+
+/// The keys that do something for what is selected, most used first.
+fn hints(app: &App) -> Vec<String> {
+    if let Mode::Menu(_) = app.mode {
+        return vec!["↑↓ choose  ⏎ do it, or press its key  esc close".to_owned()];
+    }
+    if let Mode::Help(_) = app.mode {
+        return vec!["type to narrow  ↑↓ scroll  esc close".to_owned()];
+    }
     if matches!(app.mode, Mode::Terminal(_)) {
-        return "keys go to the session   Shift-Q back to the list (or click it)".to_owned();
+        return vec!["keys go to the session   Shift-Q back to the list (or click it)".to_owned()];
     }
     if app.mode == Mode::Changes {
         let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
@@ -99,11 +145,11 @@ fn hints(app: &App) -> String {
         } else {
             ""
         };
-        return if diff {
+        return vec![if diff {
             format!("↑↓ scroll  PgUp PgDn page  esc the changes  r again{undo}  d back")
         } else {
             format!("↑↓ move  ⏎ its diff  r again{undo}  esc back to the list")
-        };
+        }];
     }
     let mut hints = vec!["↑↓ move".to_owned()];
     let general: &[&str] = match app.view {
@@ -124,5 +170,5 @@ fn hints(app: &App) -> String {
             .map(|here| format!("{} {}", here.key_name(), here.what)),
     );
     hints.extend(general.iter().map(|hint| (*hint).to_owned()));
-    hints.join("  ")
+    hints
 }

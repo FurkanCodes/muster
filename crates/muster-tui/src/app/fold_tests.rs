@@ -97,19 +97,37 @@ fn e_folds_a_worktree_which_keeps_its_mark_and_says_what_it_hides() {
     world.app.motion = false;
     shell_as(&mut world, SessionStatus::Running, false);
     world.app.selected = Some(Row::Worktree(world.worktree.id));
-    assert!(render(&world.app).contains("e fold"));
+    assert!(
+        world
+            .app
+            .actions_here()
+            .iter()
+            .any(|here| here.what == "fold"),
+        "the menu and the hints offer it"
+    );
 
     press(&mut world.app, KeyCode::Char('e'));
     let screen = render(&world.app);
     assert!(!screen.contains("Shell"), "{screen}");
     let line = line_with(&screen, "⎇ work");
     assert!(line.contains("▸ ⎇ work ● 1 session"), "{line}");
-    assert!(screen.contains("e unfold"), "{screen}");
+    assert!(
+        world
+            .app
+            .actions_here()
+            .iter()
+            .any(|here| here.what == "unfold"),
+        "{screen}"
+    );
 
     press(&mut world.app, KeyCode::Char('e'));
     let screen = render(&world.app);
     assert!(screen.contains("● Shell"), "{screen}");
     assert!(line_with(&screen, "⎇ work").contains("▾ ⎇ work ●"));
+
+    // On a project's line, where the hints have room, they say so.
+    world.app.selected = Some(Row::Project(world.project.id));
+    assert!(render(&world.app).contains("e fold"));
 }
 
 #[test]

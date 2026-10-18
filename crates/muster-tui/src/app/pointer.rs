@@ -31,6 +31,14 @@ impl App {
             Mode::Terminal(session) => return self.terminal_mouse(session, event),
             Mode::Browse => self.browse_mouse(event),
             Mode::Changes => self.changes_mouse(event),
+            Mode::Menu(ref menu) => {
+                let menu = menu.clone();
+                self.menu_mouse(&menu, event)
+            }
+            Mode::Help(ref help) => {
+                let help = help.clone();
+                self.help_mouse(help, event)
+            }
             Mode::Dialog(_) => Vec::new(),
         };
         actions.extend(self.settle());
@@ -54,9 +62,14 @@ impl App {
             screen
         } else {
             let list = browse_areas(self, window).list;
-            if pressed && list.contains(at) {
+            let right = event.kind == MouseEventKind::Down(MouseButton::Right);
+            if (pressed || right) && list.contains(at) {
                 let mut actions = self.leave_terminal(session);
-                self.click_list(list, at);
+                if pressed {
+                    self.click_list(list, at);
+                } else {
+                    self.open_menu(list, at);
+                }
                 actions.extend(self.settle());
                 return actions;
             }
@@ -136,6 +149,9 @@ impl App {
                     self.screen(session)
                         .scroll(if up { WHEEL_LINES } else { -WHEEL_LINES });
                 }
+            }
+            MouseEventKind::Down(MouseButton::Right) if areas.list.contains(at) => {
+                self.open_menu(areas.list, at);
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 if areas.list.contains(at) {

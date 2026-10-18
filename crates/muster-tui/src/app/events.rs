@@ -58,6 +58,8 @@ impl App {
         let mut actions = match self.mode.clone() {
             Mode::Terminal(session) => return self.terminal_key(session, &key),
             Mode::Dialog(dialog) => self.dialog_key(dialog, &key),
+            Mode::Menu(menu) => self.menu_key(menu, &key),
+            Mode::Help(help) => self.help_key(help, &key),
             Mode::Changes => self.changes_key(&key),
             Mode::Browse => self.browse_key(&key),
         };
@@ -81,6 +83,11 @@ impl App {
             Mode::Dialog(Dialog::AddProject { path, picker }) => {
                 let (path, picker) = (path.clone(), picker.clone());
                 self.picker_paste(path, picker, text)
+            }
+            Mode::Help(help) => {
+                let help = help.clone();
+                self.help_paste(help, text);
+                Vec::new()
             }
             Mode::Dialog(
                 Dialog::NewWorktree { branch: input, .. }
@@ -166,6 +173,11 @@ impl App {
             KeyCode::Char('2') => return self.show(View::NeedsYou),
             KeyCode::Char('3') => return self.show(View::Tickets),
             KeyCode::Char('4') => return self.show(View::Settings),
+            // The keys of the screen shown, on a letter; `?` from habit.
+            KeyCode::Char('h' | '?') => {
+                self.open_help();
+                return Vec::new();
+            }
             // Back to the main screen; there, nothing to go back to.
             KeyCode::Esc | KeyCode::Backspace if self.view != View::Sessions => {
                 return self.show(View::Sessions);

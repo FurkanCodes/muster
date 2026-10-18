@@ -15,8 +15,10 @@ mod bottom_bar;
 mod changes;
 mod clashes;
 mod dialogs;
+mod help;
 pub(crate) mod kep;
 pub(crate) mod look;
+mod menu;
 mod preview;
 mod pull_request;
 mod selection;
@@ -28,6 +30,7 @@ mod top_bar;
 mod version;
 
 use bottom_bar::{bottom_height, draw_bottom_bar};
+pub(crate) use menu::menu_area;
 use preview::draw_preview;
 pub(crate) use sessions::fold_column;
 use sessions::{draw_needs_you, draw_sessions};
@@ -120,7 +123,14 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     if let Mode::Terminal(session) = app.mode {
         draw_session(frame, app, session, preview, true);
     } else if app.mode == Mode::Changes
-        || matches!(app.mode, Mode::Dialog(crate::app::Dialog::Undo { .. }))
+        || matches!(
+            app.mode,
+            Mode::Dialog(crate::app::Dialog::Undo { .. })
+                | Mode::Help(crate::app::Help {
+                    over_changes: true,
+                    ..
+                })
+        )
     {
         changes::draw_changes(frame, app, preview);
     } else if app.view == View::Tickets {
@@ -131,8 +141,11 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         draw_preview(frame, app, preview);
     }
     draw_bottom_bar(frame, app, bottom);
-    if let Mode::Dialog(dialog) = &app.mode {
-        dialogs::draw_dialog(frame, app, dialog, area);
+    match &app.mode {
+        Mode::Dialog(dialog) => dialogs::draw_dialog(frame, app, dialog, area),
+        Mode::Menu(open) => menu::draw_menu(frame, open, area),
+        Mode::Help(open) => help::draw_help(frame, app, open, area),
+        _ => {}
     }
 }
 

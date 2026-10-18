@@ -7,7 +7,9 @@ mod changes;
 mod events;
 mod fold;
 mod harness_choice;
+mod help;
 mod link;
+mod menu;
 mod motion;
 mod notch;
 mod picker;
@@ -23,8 +25,11 @@ mod tidy;
 pub(crate) mod timeline;
 mod welcome;
 
+pub(crate) use actions::Here;
 pub(crate) use changes::{ChangeRow, ChangesPane, DiffPane, Pick};
 pub(crate) use harness_choice::HarnessChoice;
+pub(crate) use help::{Help, HelpLine};
+pub(crate) use menu::Menu;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
@@ -42,9 +47,13 @@ mod fold_tests;
 #[cfg(test)]
 mod folder_tests;
 #[cfg(test)]
+mod help_tests;
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
 mod look_tests;
+#[cfg(test)]
+mod menu_tests;
 #[cfg(test)]
 mod motion_tests;
 #[cfg(test)]
@@ -162,6 +171,11 @@ pub(crate) enum Mode {
     /// keys go to them.
     Changes,
     Dialog(Dialog),
+    /// What can be done on the selected line, opened by a right-click on
+    /// it (`app::menu`).
+    Menu(Menu),
+    /// Every key of the screen shown, over it (`app::help`).
+    Help(Help),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

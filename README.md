@@ -78,6 +78,8 @@ muster
 | `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
 | `4` | the *Settings* tab, from the list |
 | `esc` `⌫` | back to *Sessions* from the other tabs |
+| `h` | every key of the screen shown; type to narrow them (`?` works too) |
+| right-click | on a session, worktree or project: what can be done there, each with its key; choose one, or press its key |
 | `q` | quit the UI (sessions keep running) |
 
 While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but one: **Shift-Q** gives the keys back to the list, and so does a click on it. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
