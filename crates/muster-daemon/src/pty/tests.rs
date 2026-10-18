@@ -279,13 +279,38 @@ async fn re_attaching_from_a_position_replays_only_what_followed() {
 #[tokio::test]
 async fn the_terminal_takes_the_size_it_is_given() {
     let (pty, _) = shell(vec![], vec![]);
-    pty.resize(TermSize {
+    let size = TermSize {
         cols: 132,
         rows: 41,
-    })
-    .await;
+    };
+    pty.resize(size, None).await;
     pty.input(b"stty size\n".to_vec()).await;
-    read_until(&pty, None, "41 132").await;
+    let (_, next) = read_until(&pty, None, "41 132").await;
+    // No pixels given: a question about them goes unanswered, and the
+    // answer read is the device attributes asked after it.
+    let probe = "stty -echo -icanon min 1; printf '\\033[14t\\033[c'; \
+                 r=$(dd bs=1 count=5 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"none:$r:$((2*21))\"\n";
+    pty.input(probe.as_bytes().to_vec()).await;
+    let (text, next) = read_until(&pty, Some(next), ":42").await;
+    assert!(text.contains("none:E[?6c:42"), "{text:?}");
+
+    // Cells of 8 by 16 pixels: the system has the pixels, and the program
+    // asking is told the text area's and a cell's.
+    let pixels = muster_core::protocol::PixelSize {
+        width: 132 * 8,
+        height: 41 * 16,
+    };
+    pty.resize(size, Some(pixels)).await;
+    let probe = "stty -echo -icanon min 1; printf '\\033[14t\\033[16t'; \
+                 r=$(dd bs=1 count=22 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"pixels:$r:$((2*21))\"\n";
+    pty.input(probe.as_bytes().to_vec()).await;
+    let (text, _) = read_until(&pty, Some(next), ":42").await;
+    assert!(
+        text.contains("pixels:E[4;656;1056tE[6;16;8t:42"),
+        "{text:?}"
+    );
 }
 
 #[tokio::test]

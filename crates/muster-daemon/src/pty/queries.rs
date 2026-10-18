@@ -14,6 +14,9 @@
 //! 11 and 4) are found here too, and answered from the person's terminal's
 //! colours (see `colours`).
 //!
+//! Questions about the terminal's size in pixels (XTWINOPS 14 and 16) are
+//! answered from the size a client gave, where it gave one.
+//!
 //! Also tracked: whether the program asked to be told as its terminal
 //! gains and loses focus (`CSI ? 1004 h`), which the actor tells it as
 //! the person's keys come and go. And, for clients: the kitty keyboard
@@ -62,6 +65,9 @@ pub(crate) enum Reply {
     /// One of the terminal's colours, ended as the question was. Needs the
     /// person's terminal's colours; see `colours`.
     Colour { colour: Colour, ending: Ending },
+    /// The terminal's size in pixels (XTWINOPS 14), or with `cell` one
+    /// cell's (16). Needs the terminal's size as a client gave it.
+    PixelSize { cell: bool },
 }
 
 impl Answers {
@@ -424,6 +430,10 @@ impl QueryScanner {
             (b'n', [b'5']) => answers.reply(b"\x1b[0n"),
             // Cursor position: needs the screen.
             (b'n', [b'6']) => answers.replies.push(Reply::CursorPosition { at: end }),
+            // The text area's size in pixels, and a cell's (XTWINOPS):
+            // need the size a client gave.
+            (b't', b"14" | b"14;2") => answers.replies.push(Reply::PixelSize { cell: false }),
+            (b't', b"16") => answers.replies.push(Reply::PixelSize { cell: true }),
             _ => {}
         }
     }
@@ -667,6 +677,23 @@ mod tests {
         assert_eq!(scanner.scan(b"\x1b[?20"), Answers::default());
         assert_eq!(scanner.scan(b"26$").replies, Vec::new());
         assert_eq!(scanner.scan(b"p").replies, bytes(b"\x1b[?2026;2$y"));
+    }
+
+    #[test]
+    fn pixel_sizes_are_asked_in_order_and_other_window_operations_left_alone() {
+        let mut scanner = QueryScanner::default();
+        assert_eq!(
+            scanner.scan(b"\x1b[14t\x1b[c\x1b[16t\x1b[14;2t").replies,
+            [
+                Reply::PixelSize { cell: false },
+                Reply::Bytes(b"\x1b[?6c".to_vec()),
+                Reply::PixelSize { cell: true },
+                Reply::PixelSize { cell: false },
+            ]
+        );
+        // The window's place, a resize, iconifying, and the title stack.
+        let noise = b"\x1b[13t\x1b[8;24;80t\x1b[2t\x1b[22;0t\x1b[?14t";
+        assert_eq!(scanner.scan(noise), Answers::default());
     }
 
     #[test]

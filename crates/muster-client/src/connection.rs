@@ -167,7 +167,22 @@ impl Connection {
     }
 
     pub async fn resize(&mut self, session: SessionId, size: TermSize) -> Result<(), ClientError> {
-        self.send(ClientFrame::Resize { session, size }).await
+        self.resize_in_pixels(session, size, None).await
+    }
+
+    /// As [`resize`](Self::resize), with the size in pixels too.
+    pub async fn resize_in_pixels(
+        &mut self,
+        session: SessionId,
+        size: TermSize,
+        pixels: Option<muster_core::protocol::PixelSize>,
+    ) -> Result<(), ClientError> {
+        self.send(ClientFrame::Resize {
+            session,
+            size,
+            pixels,
+        })
+        .await
     }
 
     /// Tells the colours of the person's terminal, which programs in

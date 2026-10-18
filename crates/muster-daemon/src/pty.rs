@@ -40,7 +40,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use muster_core::colours::TerminalColours;
-use muster_core::protocol::{TermSize, TerminalModes};
+use muster_core::protocol::{PixelSize, TermSize, TerminalModes};
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
@@ -141,7 +141,7 @@ enum Command {
         reply: oneshot::Sender<Attachment>,
     },
     Input(Vec<u8>),
-    Resize(TermSize),
+    Resize(TermSize, Option<PixelSize>),
     /// The person's keys came into the terminal, or left it.
     Focus(bool),
     Stop,
@@ -180,8 +180,13 @@ impl PtyHandle {
         self.commands.send(Command::Input(data)).await.is_ok()
     }
 
-    pub(crate) async fn resize(&self, size: TermSize) -> bool {
-        self.commands.send(Command::Resize(size)).await.is_ok()
+    /// Sizes the terminal, in pixels too where a client knows them, for
+    /// programs that size pictures or a cursor by them.
+    pub(crate) async fn resize(&self, size: TermSize, pixels: Option<PixelSize>) -> bool {
+        self.commands
+            .send(Command::Resize(size, pixels))
+            .await
+            .is_ok()
     }
 
     /// Says whether the person's keys are in the terminal: a program that
@@ -412,12 +417,14 @@ fn start(
     Ok(PtyHandle { commands, pid })
 }
 
-fn winsize(size: TermSize) -> rustix::termios::Winsize {
+/// The terminal's size as the system keeps it; pixels 0 where unknown, as
+/// before any client said them.
+fn winsize(size: TermSize, pixels: Option<PixelSize>) -> rustix::termios::Winsize {
     rustix::termios::Winsize {
         ws_row: size.rows.max(1),
         ws_col: size.cols.max(1),
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+        ws_xpixel: pixels.map_or(0, |pixels| pixels.width),
+        ws_ypixel: pixels.map_or(0, |pixels| pixels.height),
     }
 }
 
@@ -681,6 +688,12 @@ impl Actor {
                     };
                     bytes
                 }
+                Reply::PixelSize { cell } => {
+                    let Some(bytes) = self.pixel_size(cell) else {
+                        continue;
+                    };
+                    bytes
+                }
             };
             if let Some(input) = &self.input {
                 let _ = input.send(bytes);
@@ -689,6 +702,26 @@ impl Actor {
         if let Some(tracker) = &mut self.cursor {
             tracker.feed(&data[fed..]);
         }
+    }
+
+    /// The answer to a question about the terminal's size in pixels, or a
+    /// cell's (`CSI 4 ; height ; width t`, `CSI 6 ; …`), from the size the
+    /// system keeps, which a handoff carries too; none where no client
+    /// gave pixels.
+    fn pixel_size(&self, cell: bool) -> Option<Vec<u8>> {
+        let size = rustix::termios::tcgetwinsize(self.master.as_ref()?).ok()?;
+        let (width, height) = (size.ws_xpixel, size.ws_ypixel);
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let answer = if cell {
+            let (cell_width, cell_height) =
+                (width / size.ws_col.max(1), height / size.ws_row.max(1));
+            format!("\x1b[6;{cell_height};{cell_width}t")
+        } else {
+            format!("\x1b[4;{height};{width}t")
+        };
+        Some(answer.into_bytes())
     }
 
     fn on_command(&mut self, command: Command) {
@@ -705,10 +738,10 @@ impl Actor {
                     let _ = input.send(data);
                 }
             }
-            Command::Resize(size) => {
+            Command::Resize(size, pixels) => {
                 if self.live.is_some() {
                     if let Some(master) = &self.master {
-                        let _ = rustix::termios::tcsetwinsize(master, winsize(size));
+                        let _ = rustix::termios::tcsetwinsize(master, winsize(size, pixels));
                     }
                     self.size = size;
                     if let Some(tracker) = &mut self.cursor {

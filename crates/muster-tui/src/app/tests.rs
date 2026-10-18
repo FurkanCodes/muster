@@ -187,7 +187,8 @@ fn selecting_a_session_streams_it_and_moving_away_stops() {
         [
             Action::Send(ClientFrame::Resize {
                 session: id,
-                size: PANE
+                size: PANE,
+                pixels: None,
             }),
             Action::Send(ClientFrame::Attach {
                 session: id,
@@ -264,7 +265,13 @@ fn f_fills_the_window_and_shift_q_puts_it_back_beside_the_list() {
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
     world.app.settle();
-    let resized = |size| Action::Send(ClientFrame::Resize { session: id, size });
+    let resized = |size| {
+        Action::Send(ClientFrame::Resize {
+            session: id,
+            size,
+            pixels: None,
+        })
+    };
 
     let keys = |session| Action::Send(ClientFrame::Keys { session });
     assert_eq!(

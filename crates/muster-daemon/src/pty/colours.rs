@@ -114,7 +114,7 @@ mod tests {
             .filter_map(|reply| match reply {
                 Reply::Colour { colour, ending } => answer(colour, ending, colours),
                 Reply::Bytes(bytes) => Some(bytes),
-                Reply::CursorPosition { .. } => None,
+                Reply::CursorPosition { .. } | Reply::PixelSize { .. } => None,
             })
             .flatten()
             .collect()

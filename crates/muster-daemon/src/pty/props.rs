@@ -44,6 +44,8 @@ fn output() -> impl Strategy<Value = Vec<u8>> {
         Just(b"11;?".to_vec()),
         Just(b"4;1;?".to_vec()),
         Just(b";?".to_vec()),
+        Just(b"14t".to_vec()),
+        Just(b"16t".to_vec()),
         Just(b"\x18".to_vec()),
         vec(any::<u8>(), 0..8),
     ];
@@ -56,6 +58,7 @@ enum Owed {
     Bytes(Vec<u8>),
     Cursor,
     Colour(Colour, Ending),
+    Pixels(bool),
 }
 
 /// Replies as one stream: bytes run together, each cursor and colour
@@ -68,6 +71,7 @@ fn stream(replies: impl IntoIterator<Item = Reply>) -> Vec<Owed> {
             (Reply::Bytes(bytes), _) => stream.push(Owed::Bytes(bytes)),
             (Reply::CursorPosition { .. }, _) => stream.push(Owed::Cursor),
             (Reply::Colour { colour, ending }, _) => stream.push(Owed::Colour(colour, ending)),
+            (Reply::PixelSize { cell }, _) => stream.push(Owed::Pixels(cell)),
         }
     }
     stream

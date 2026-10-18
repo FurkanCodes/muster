@@ -53,7 +53,11 @@ impl App {
                 .session(session)
                 .is_some_and(|stored| stored.ended_at.is_none());
             if running {
-                actions.push(Action::Send(ClientFrame::Resize { session, size }));
+                actions.push(Action::Send(ClientFrame::Resize {
+                    session,
+                    size,
+                    pixels: self.session_pixels(size),
+                }));
             }
             actions.push(Action::Send(ClientFrame::Attach {
                 session,

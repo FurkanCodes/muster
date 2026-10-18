@@ -164,9 +164,13 @@ impl Connection {
                         self.forget(session).await;
                     }
                 }
-                ClientFrame::Resize { session, size } => {
+                ClientFrame::Resize {
+                    session,
+                    size,
+                    pixels,
+                } => {
                     if let Some(pty) = self.terminal(session).await
-                        && !pty.resize(size).await
+                        && !pty.resize(size, pixels).await
                     {
                         self.forget(session).await;
                     }

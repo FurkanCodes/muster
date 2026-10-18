@@ -184,3 +184,21 @@ async fn a_program_that_asked_is_told_as_the_person_s_keys_come_and_go_in_any_cl
         .unwrap_or_default();
     assert_eq!(told, "E[IE[OE[I", "{text:?}");
 }
+
+#[tokio::test]
+async fn a_program_sizing_pictures_is_told_its_terminal_s_size_in_pixels() {
+    let sandbox = Sandbox::new();
+    let (_daemon, mut connection, session) = shell(&sandbox).await;
+    let size = TermSize { cols: 80, rows: 24 };
+    let pixels = muster_core::protocol::PixelSize {
+        width: 80 * 9,
+        height: 24 * 18,
+    };
+    connection
+        .resize_in_pixels(session, size, Some(pixels))
+        .await
+        .unwrap();
+    // The text area's pixels, then a cell's (XTWINOPS 14 and 16).
+    let told = asked(&mut connection, session, "\\033[14t\\033[16t", 21).await;
+    assert_eq!(told, "E[4;432;720tE[6;18;9t");
+}

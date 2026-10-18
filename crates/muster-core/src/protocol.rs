@@ -63,7 +63,8 @@
 //! (`ClientFrame::Colours`, sent only to a daemon of 29 or later), and
 //! which session has the person's keys, for programs that asked to be
 //! told as their terminal gains and loses focus (`ClientFrame::Keys`, the
-//! same).
+//! same), and the size of a session's terminal in pixels
+//! (`ClientFrame::Resize::pixels`, a field older daemons pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -179,7 +180,15 @@ pub enum ClientFrame {
         data: Vec<u8>,
     },
     /// The client's view of a session's terminal changed size.
-    Resize { session: SessionId, size: TermSize },
+    Resize {
+        session: SessionId,
+        size: TermSize,
+        /// Its size in pixels, where the person's terminal says its own:
+        /// for programs that size pictures or a cursor by it. From protocol
+        /// 29; older daemons pass it over.
+        #[serde(default)]
+        pixels: Option<PixelSize>,
+    },
     /// Whether the person is looking at this client's window: a UI says
     /// so as it connects and whenever its window gains or loses focus. A
     /// client that never says is not looked at. Sent only to a daemon of
@@ -330,6 +339,13 @@ impl Default for TermSize {
     fn default() -> Self {
         Self { cols: 80, rows: 24 }
     }
+}
+
+/// A terminal's size in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PixelSize {
+    pub width: u16,
+    pub height: u16,
 }
 
 /// Something a client asks the daemon to do.

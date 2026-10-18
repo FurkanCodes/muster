@@ -1,6 +1,7 @@
 //! A session's terminal as in a real one: the person's colours told to the
 //! daemon, a program's copy put on their clipboard, and the daemon told
-//! where the person's keys are, for programs that follow their focus.
+//! where the person's keys are, for programs that follow their focus, and
+//! a session's size in pixels.
 
 use std::path::PathBuf;
 
@@ -205,4 +206,45 @@ fn a_daemon_connected_again_is_told_the_keys_and_an_older_one_never() {
     actions.extend(world.app.on_focus(false));
     actions.extend(world.app.on_key(shift_q()));
     assert_eq!(keys_told(&actions), []);
+}
+
+#[test]
+fn a_session_s_size_in_pixels_is_scaled_from_the_person_s_cells() {
+    use muster_core::protocol::PixelSize;
+    let mut world = world();
+    let id = world.session.id;
+    world.app.cell_pixels = Some(PixelSize {
+        width: 8,
+        height: 16,
+    });
+    world.app.selected = Some(Row::Session(id));
+    let actions = world.app.settle();
+    let pixels = actions.iter().find_map(|action| match action {
+        Action::Send(ClientFrame::Resize { size, pixels, .. }) => Some((*size, *pixels)),
+        _ => None,
+    });
+    let pane = super::tests::PANE;
+    assert_eq!(
+        pixels,
+        Some((
+            pane,
+            Some(PixelSize {
+                width: pane.cols * 8,
+                height: pane.rows * 16
+            })
+        ))
+    );
+    // Full screen, at the window's size.
+    let actions = press(&mut world.app, KeyCode::Char('f'));
+    assert!(
+        actions.contains(&Action::Send(ClientFrame::Resize {
+            session: id,
+            size: SIZE,
+            pixels: Some(PixelSize {
+                width: SIZE.cols * 8,
+                height: SIZE.rows * 16
+            }),
+        })),
+        "{actions:?}"
+    );
 }
