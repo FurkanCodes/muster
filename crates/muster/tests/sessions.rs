@@ -247,6 +247,71 @@ async fn the_progress_signal_moves_the_status() {
     .await;
 }
 
+/// A turn in the shell, told by the progress signal: it works, then
+/// finishes. Whether the finish is news.
+async fn turn(connection: &mut Connection, session: SessionId) -> bool {
+    connection
+        .input(session, b"printf '\\033]9;4;3\\007'\n")
+        .await
+        .unwrap();
+    expect_status(connection, session, |status, _| {
+        status == SessionStatus::Running
+    })
+    .await;
+    connection
+        .input(session, b"printf '\\033]9;4;0\\007'\n")
+        .await
+        .unwrap();
+    expect_status(connection, session, |status, _| {
+        status == SessionStatus::Finished
+    })
+    .await
+    .1
+}
+
+#[tokio::test]
+async fn a_session_is_watched_only_while_a_window_showing_it_is_looked_at() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start(&mut connection, setup.workspace).await;
+
+    // A window shows it, and says nothing of where its person looks.
+    let mut window = setup.daemon.connect().await;
+    window.attach(session, None).await.unwrap();
+    window.command(Command::Ping).await.unwrap();
+    assert!(
+        !turn(&mut connection, session).await,
+        "it counts as looked at"
+    );
+
+    // Its person looks at another app; the window still shows it.
+    window.looking(false).await.unwrap();
+    window.command(Command::Ping).await.unwrap();
+    assert!(
+        turn(&mut connection, session).await,
+        "finished while nobody looked"
+    );
+    // Looking back sees it.
+    window.looking(true).await.unwrap();
+    expect_status(&mut connection, session, |status, unseen| {
+        status == SessionStatus::Finished && !unseen
+    })
+    .await;
+
+    // Another window looked at that shows it is enough.
+    let mut other = setup.daemon.connect().await;
+    other.looking(true).await.unwrap();
+    other.attach(session, None).await.unwrap();
+    window.looking(false).await.unwrap();
+    window.command(Command::Ping).await.unwrap();
+    other.command(Command::Ping).await.unwrap();
+    assert!(!turn(&mut connection, session).await, "the other looks");
+    other.looking(false).await.unwrap();
+    other.command(Command::Ping).await.unwrap();
+    assert!(turn(&mut connection, session).await, "nobody looks");
+}
+
 #[tokio::test]
 async fn an_exit_is_reported_and_its_output_stays_readable() {
     let setup = setup().await;

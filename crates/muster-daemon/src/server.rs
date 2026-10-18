@@ -1,7 +1,7 @@
 //! The socket server: one reader loop and one writer task per connection, so
 //! replies and pushed frames never interleave mid-frame (`ARCHITECTURE.md` §6).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 
 use muster_client::{FramedRead, FramedWrite, TransportError};
@@ -61,6 +61,8 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tas
         terminals: HashMap::new(),
         forwarders: HashMap::new(),
         watching: HashMap::new(),
+        asks_to_watch: HashSet::new(),
+        looked_at: true,
         looker: None,
         version: MIN_PROTOCOL_VERSION,
     };
@@ -100,8 +102,14 @@ struct Connection {
     /// One output stream per attached session.
     forwarders: HashMap<SessionId, Owned>,
     /// The attached sessions this client's person is looking at; dropping
-    /// a guard ends its watch.
+    /// a guard ends its watch. Held only while the client is looked at.
     watching: HashMap<SessionId, WatchGuard>,
+    /// The attached sessions the client shows and asks to watch, whether
+    /// or not its person looks at it just now.
+    asks_to_watch: HashSet<SessionId>,
+    /// Whether the client's person is looking at it, as it last said; one
+    /// that never says counts as looked at.
+    looked_at: bool,
     /// Held once the client says whether the person is looking at it.
     looker: Option<LookGuard>,
     /// The protocol agreed with the client.
@@ -172,8 +180,11 @@ impl Connection {
     }
 
     async fn attach(&mut self, session: SessionId, from_seq: Option<u64>, watch: bool) {
-        let Some(TerminalLink { current, watching }) =
-            self.supervisor.terminal(session, watch).await
+        // Watched only while the person looks at this client's window.
+        let Some(TerminalLink { current, watching }) = self
+            .supervisor
+            .terminal(session, watch && self.looked_at)
+            .await
         else {
             self.stop_forwarding(session).await;
             self.detached(session).await;
@@ -182,6 +193,9 @@ impl Connection {
         // The new watch is counted before the old one ends, so a re-attach
         // never looks away for a moment.
         self.stop_forwarding(session).await;
+        if watch {
+            self.asks_to_watch.insert(session);
+        }
         if let Some(guard) = watching {
             self.watching.insert(session, guard);
         }
@@ -192,6 +206,7 @@ impl Connection {
 
     /// Stops streaming `session` to this client, and watching it.
     async fn stop_forwarding(&mut self, session: SessionId) {
+        self.asks_to_watch.remove(&session);
         self.watching.remove(&session);
         if let Some(forwarder) = self.forwarders.remove(&session) {
             forwarder.abort();
@@ -199,13 +214,26 @@ impl Connection {
         }
     }
 
-    /// Starts or stops watching an attached session.
+    /// Starts or stops watching an attached session; started, it is
+    /// watched while the person looks at this client's window.
     async fn watch(&mut self, session: SessionId, watching: bool) {
         if !watching {
+            self.asks_to_watch.remove(&session);
             self.watching.remove(&session);
             return;
         }
-        if !self.forwarders.contains_key(&session) || self.watching.contains_key(&session) {
+        if !self.forwarders.contains_key(&session) {
+            return;
+        }
+        self.asks_to_watch.insert(session);
+        if self.looked_at {
+            self.start_watching(session).await;
+        }
+    }
+
+    /// Watches `session` for this client, unless it does already.
+    async fn start_watching(&mut self, session: SessionId) {
+        if self.watching.contains_key(&session) {
             return;
         }
         if let Some(guard) = self
@@ -219,13 +247,24 @@ impl Connection {
     }
 
     /// The client says whether the person is looking at it; the first
-    /// time, it is counted among the clients that say so.
+    /// time, it is counted among the clients that say so. What it shows is
+    /// watched only while it is looked at: looking away, what happens
+    /// there is news; looking back sees it.
     async fn looking(&mut self, looking: bool) {
         if self.looker.is_none() {
             self.looker = self.supervisor.add_looker(self.outgoing.clone()).await;
         }
         if let Some(looker) = &self.looker {
             self.supervisor.looking(looker, looking).await;
+        }
+        self.looked_at = looking;
+        if !looking {
+            self.watching.clear();
+            return;
+        }
+        let asked: Vec<SessionId> = self.asks_to_watch.iter().copied().collect();
+        for session in asked {
+            self.start_watching(session).await;
         }
     }
 

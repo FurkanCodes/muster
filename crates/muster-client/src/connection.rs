@@ -157,6 +157,12 @@ impl Connection {
         self.send(ClientFrame::Watch { session, watching }).await
     }
 
+    /// Says whether the person is looking at this client's window: what it
+    /// watches is watched only while they do.
+    pub async fn looking(&mut self, looking: bool) -> Result<(), ClientError> {
+        self.send(ClientFrame::Looking { looking }).await
+    }
+
     /// Types into a session's terminal.
     pub async fn input(&mut self, session: SessionId, data: &[u8]) -> Result<(), ClientError> {
         self.send(ClientFrame::Input {
