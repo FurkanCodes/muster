@@ -18,6 +18,8 @@ muster-notch.workspace = true
 muster-tui.workspace = true
 nix.workspace = true
 reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
@@ -27,7 +29,6 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 portable-pty.workspace = true
-serde_json.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 vt100.workspace = true
