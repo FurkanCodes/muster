@@ -55,6 +55,7 @@ impl Agent {
             .command(Command::CreateWorktree {
                 project,
                 branch: Some("work".to_owned()),
+                on: None,
             })
             .await
             .unwrap()

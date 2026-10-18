@@ -48,6 +48,7 @@ async fn setup_in(sandbox: Sandbox) -> Setup {
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()

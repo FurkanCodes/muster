@@ -18,7 +18,7 @@ use muster_state::session::Start;
 
 use super::sessions::Mode;
 use super::timeline::working;
-use super::{Request, Supervisor, by_hand};
+use super::{Request, Supervisor};
 use crate::harness::{self, Place};
 use crate::tidy::{self, TidyError};
 
@@ -68,8 +68,7 @@ impl Supervisor {
                 ),
             ));
         }
-        let configured = self.settings_in(workspace, &path).await?.base_branch;
-        let base = by_hand::base_of(&path, configured.as_deref()).await;
+        let base = self.base_for(workspace, &path).await?;
         let start = tidy::plan(&path, &base)
             .await
             .map_err(|error| match error {

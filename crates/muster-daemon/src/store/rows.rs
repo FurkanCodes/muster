@@ -109,6 +109,8 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
     let (kind, path, branch): (String, String, String) = (row.get(2)?, row.get(3)?, row.get(4)?);
     let created_at = Timestamp::from_millis(row.get(5)?);
     let run: Option<String> = row.get(6)?;
+    let stacked_on: Option<String> = row.get(7)?;
+    let stacked_at: Option<String> = row.get(8)?;
     Ok((|| {
         let kind = match kind.as_str() {
             "worktree" => WorkspaceKind::Worktree {
@@ -134,6 +136,9 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
             changes: None,
             timeline: None,
             clashes: Vec::new(),
+            stacked_on: stacked_on
+                .zip(stacked_at)
+                .map(|(branch, at)| muster_core::stacks::Stacked { branch, at }),
         })
     })())
 }

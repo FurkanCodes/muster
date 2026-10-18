@@ -233,19 +233,24 @@ pub(crate) async fn branch_exists(repo: &Path, name: &str) -> Result<bool, GitEr
 }
 
 /// Adds a worktree at `path`: on the existing `branch`, or on a new branch
-/// of that name from the repository's current commit.
+/// of that name from `start` (a commit's whole id), else from the
+/// repository's current commit.
 pub(crate) async fn add_worktree(
     repo: &Path,
     path: &Path,
     branch: &str,
     create_branch: bool,
+    start: Option<&str>,
 ) -> Result<(), GitError> {
     let path = path.to_string_lossy();
-    let args: Vec<&str> = if create_branch {
+    let mut args: Vec<&str> = if create_branch {
         vec!["worktree", "add", "-b", branch, &path]
     } else {
         vec!["worktree", "add", &path, branch]
     };
+    if let (true, Some(start)) = (create_branch, start) {
+        args.push(start);
+    }
     checked(repo, &args).await.map(drop)
 }
 
@@ -371,15 +376,17 @@ pub(crate) mod tests {
         let existing = dir.path().join("existing");
 
         assert!(!branch_exists(&repo, "feature").await.unwrap());
-        add_worktree(&repo, &fresh, "feature", true).await.unwrap();
+        add_worktree(&repo, &fresh, "feature", true, None)
+            .await
+            .unwrap();
         assert!(fresh.join("README.md").exists());
         assert!(branch_exists(&repo, "feature").await.unwrap());
 
         checked(&repo, &["branch", "other"]).await.unwrap();
-        add_worktree(&repo, &existing, "other", false)
+        add_worktree(&repo, &existing, "other", false, None)
             .await
             .unwrap();
-        let error = add_worktree(&repo, &dir.path().join("again"), "other", false)
+        let error = add_worktree(&repo, &dir.path().join("again"), "other", false, None)
             .await
             .unwrap_err();
         assert!(error.to_string().contains("already"), "{error}");

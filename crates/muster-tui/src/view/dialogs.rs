@@ -146,7 +146,8 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             harness,
             another,
             into,
-        } => assign_agent(app, *project, key, *harness, *another, *into),
+            on,
+        } => assign_agent(app, *project, key, *harness, (*another, *into, *on)),
         Dialog::Confirm { question, .. } => Shape::new(
             " Confirm ",
             vec![
@@ -298,9 +299,9 @@ fn assign_agent(
     project: ProjectId,
     key: &TicketKey,
     harness: HarnessChoice,
-    another: bool,
-    into: ProjectId,
+    (another, into, on): (bool, ProjectId, Option<WorkspaceId>),
 ) -> Shape<'static> {
+    let stacking = app.offers_stack(into, key, another);
     let title = app
         .ticket(project, key)
         .map_or(String::new(), |ticket| format!(" {}", ticket.title));
@@ -322,7 +323,13 @@ fn assign_agent(
             }
             lines.push(Line::from(line));
         }
-        "↑↓ project   ⇥ ⇧⇥ agent   ⏎ start   esc cancel"
+        if stacking {
+            "↑↓ project   ⇥ ⇧⇥ agent   ←→ on top of   ⏎ start   esc cancel"
+        } else {
+            "↑↓ project   ⇥ ⇧⇥ agent   ⏎ start   esc cancel"
+        }
+    } else if stacking {
+        "⇥ ⇧⇥ agent   ←→ on top of   ⏎ start   esc cancel"
     } else {
         "⇥ ⇧⇥ choose   ⏎ start   esc cancel"
     };
@@ -335,9 +342,19 @@ fn assign_agent(
     } else {
         "In the ticket's worktree, with the ticket as its first prompt."
     };
+    lines.extend([Line::from(""), Line::from(run)]);
+    if stacking {
+        let stacked = match on {
+            Some(on) => app.worktree_label(on),
+            None => "its base".to_owned(),
+        };
+        lines.push(Line::from(vec![
+            Span::raw("On top of ◂ "),
+            Span::from(stacked).reversed(),
+            Span::raw(" ▸"),
+        ]));
+    }
     lines.extend([
-        Line::from(""),
-        Line::from(run),
         Line::from(place).dim(),
         Line::from(""),
         Line::from(keys).dim(),

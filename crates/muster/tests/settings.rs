@@ -349,6 +349,7 @@ async fn branches_go_without_muster_once_the_person_says_so() {
             harness: "shell".to_owned(),
             size: muster_core::protocol::TermSize::default(),
             another: false,
+            on: None,
         })
         .await
         .unwrap()
@@ -359,6 +360,7 @@ async fn branches_go_without_muster_once_the_person_says_so() {
         .command(Command::CreateWorktree {
             project,
             branch: None,
+            on: None,
         })
         .await
         .unwrap()

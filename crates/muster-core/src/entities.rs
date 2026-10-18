@@ -45,6 +45,10 @@ pub struct Workspace {
     /// kept only while it is a repository's, and never stored.
     #[serde(default)]
     pub clashes: Vec<crate::clashes::Clash>,
+    /// The branch its own is stacked on, if it was made on top of
+    /// another's; stored.
+    #[serde(default)]
+    pub stacked_on: Option<crate::stacks::Stacked>,
 }
 
 /// The kinds of workspace.

@@ -185,6 +185,7 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
             Command::CreateWorktree {
                 project,
                 branch: Some("work".to_owned()),
+                on: None,
             },
             "notes is a plain folder, not a git repository; worktrees need one",
         ),
@@ -213,6 +214,7 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
                 harness: "shell".to_owned(),
                 size: TermSize::default(),
                 another: false,
+                on: None,
             },
             "notes is a plain folder, not a git repository; worktrees for tickets need one",
         ),
@@ -298,11 +300,8 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
 #[tokio::test]
 async fn every_nth_measurement_is_kept_in_history() {
     use muster_core::protocol::{ResourceReport, SessionUsage};
-    use muster_core::{
-        Project, ProjectId, Session, SessionId, SessionStatus, Workspace, WorkspaceId,
-        WorkspaceKind,
-    };
-
+    use muster_core::{Project, ProjectId, Session, SessionId, SessionStatus};
+    use muster_core::{Workspace, WorkspaceId, WorkspaceKind};
     let store = StoreHandle::spawn(Store::open_in_memory().unwrap()).unwrap();
     let project = Project {
         id: ProjectId::new(),
@@ -322,6 +321,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         changes: None,
         timeline: None,
         clashes: Vec::new(),
+        stacked_on: None,
     };
     let session = Session {
         id: SessionId::new(),

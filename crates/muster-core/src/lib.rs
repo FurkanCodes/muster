@@ -23,6 +23,7 @@ pub mod remote;
 pub mod run;
 pub mod session;
 pub mod settings;
+pub mod stacks;
 pub mod text;
 pub mod tickets;
 pub mod tidy;

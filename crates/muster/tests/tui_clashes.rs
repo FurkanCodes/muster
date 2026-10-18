@@ -47,6 +47,7 @@ async fn both_change_one_line(sandbox: &Sandbox, root: &Path) {
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()

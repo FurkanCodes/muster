@@ -362,6 +362,7 @@ pub(crate) mod tests {
             changes: None,
             timeline: None,
             clashes: Vec::new(),
+            stacked_on: None,
         }
     }
 

@@ -43,6 +43,7 @@ async fn an_agent_changing_the_line_the_person_changed_is_shown_to_conflict() {
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()

@@ -43,6 +43,8 @@ pub(super) struct Place {
     /// The person's overrides of its project's settings, which may name
     /// the base.
     overrides: PathBuf,
+    /// The branch it is stacked on, its base while the repository has it.
+    stacked: Option<muster_core::stacks::Stacked>,
 }
 
 /// What a look found: each workspace's summary, for the branch it was on.
@@ -289,14 +291,19 @@ impl Supervisor {
                 .config_dir
                 .join("projects")
                 .join(format!("{}.toml", found.project)),
+            stacked: found.stacked_on.clone(),
         })
     }
 }
 
-/// What the workspace's branch is to merge into: the base its settings
-/// name (the branch's own `muster.toml`, with the person's overrides), or
-/// its remote's default branch. Settings that do not read name none.
+/// What the workspace's branch is to merge into: the branch it is stacked
+/// on, the base its settings name (the branch's own `muster.toml`, with
+/// the person's overrides), or its remote's default branch. Settings that
+/// do not read name none.
 pub(super) async fn base(place: &Place) -> String {
+    if let Some(stacked) = super::stacks::stacked_base(&place.path, place.stacked.as_ref()).await {
+        return stacked;
+    }
     let configured = by_hand::load_settings(place.path.clone(), place.overrides.clone())
         .await
         .ok()

@@ -54,6 +54,8 @@ pub(super) enum Request {
     TimelineJobDone(Box<super::timeline::JobDone>),
     /// A look at where the work in a project's workspaces meets came back.
     ClashesFound(Box<super::clashes::Found>),
+    /// A branch moved: what it is stacked on now.
+    StackMoved(Box<(WorkspaceId, Option<muster_core::stacks::Stacked>)>),
     /// A check of a tidy of commits came back.
     TidyChecked(Box<(SessionId, Option<muster_core::tidy::TidyCheck>)>),
     /// The sampler asks which sessions run under which process.
@@ -100,6 +102,7 @@ impl std::fmt::Debug for Request {
             Self::TimelineJobDone(_) => f.write_str("TimelineJobDone"),
             Self::ClashesFound(_) => f.write_str("ClashesFound"),
             Self::TidyChecked(_) => f.write_str("TidyChecked"),
+            Self::StackMoved(_) => f.write_str("StackMoved"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
             Self::Branches(_) => f.write_str("Branches"),

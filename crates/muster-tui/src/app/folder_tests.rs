@@ -32,6 +32,7 @@ fn with_folder() -> (World, Project, Workspace) {
         changes: None,
         timeline: None,
         clashes: Vec::new(),
+        stacked_on: None,
     };
     world
         .app

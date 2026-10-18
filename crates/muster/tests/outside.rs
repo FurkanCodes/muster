@@ -145,6 +145,7 @@ async fn a_worktree_deleted_by_hand_is_forgotten_once_nothing_runs_in_it() {
         .command(Command::CreateWorktree {
             project,
             branch: Some("doomed".to_owned()),
+            on: None,
         })
         .await
         .unwrap()
@@ -207,6 +208,7 @@ async fn muster_s_own_worktrees_are_neither_doubled_nor_brought_back() {
             .command(Command::CreateWorktree {
                 project,
                 branch: Some(format!("race-{round}")),
+                on: None,
             })
             .await
             .unwrap()

@@ -45,6 +45,7 @@ pub(crate) fn label(timeline: Option<&Timeline>, entry: &Entry) -> String {
         }
         EntryKind::Between => "Edits between turns".to_owned(),
         EntryKind::Undo { of } => format!("Put back as before #{of}"),
+        EntryKind::Moved { onto } => format!("Moved onto {}", muster_core::text::one_line(onto)),
     }
 }
 

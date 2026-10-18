@@ -39,6 +39,7 @@ async fn an_agent_s_turn_ending_shows_what_it_changed_and_each_file_s_diff() {
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()

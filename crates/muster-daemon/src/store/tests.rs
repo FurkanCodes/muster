@@ -37,6 +37,7 @@ fn worktree(project: ProjectId) -> Workspace {
         changes: None,
         timeline: None,
         clashes: Vec::new(),
+        stacked_on: None,
     }
 }
 
@@ -523,6 +524,7 @@ fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
         changes: None,
         timeline: None,
         clashes: Vec::new(),
+        stacked_on: None,
     };
     store.insert_workspace(&container).unwrap();
     let mut agent = session(container.id);
@@ -550,4 +552,38 @@ fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
     let snapshot = store.snapshot().unwrap();
     assert!(!snapshot.workspaces.contains(&container));
     assert!(!snapshot.sessions.contains(&agent));
+}
+
+#[test]
+fn what_a_branch_is_stacked_on_is_kept_and_changed() {
+    let (mut store, project, workspace, _) = populated();
+    let mut stacked = worktree(project.id);
+    stacked.kind = WorkspaceKind::Worktree {
+        path: PathBuf::from("/data/worktrees/app/on-top"),
+        branch: "muster/on-top".to_owned(),
+    };
+    stacked.stacked_on = Some(muster_core::stacks::Stacked {
+        branch: "muster/fix-login".to_owned(),
+        at: "a".repeat(40),
+    });
+    store.insert_workspace(&stacked).unwrap();
+    let kept = |store: &Store| {
+        store
+            .snapshot()
+            .unwrap()
+            .workspaces
+            .into_iter()
+            .map(|found| (found.id, found.stacked_on))
+            .collect::<std::collections::HashMap<_, _>>()
+    };
+    let found = kept(&store);
+    assert_eq!(found[&workspace.id], None);
+    assert_eq!(found[&stacked.id], stacked.stacked_on);
+
+    store.update_stack(stacked.id, None).unwrap();
+    assert_eq!(kept(&store)[&stacked.id], None);
+    assert!(matches!(
+        store.update_stack(WorkspaceId::new(), None),
+        Err(StoreError::NotFound(_))
+    ));
 }

@@ -46,6 +46,7 @@ async fn worktree(setup: &Setup, branch: &str) -> (WorkspaceId, PathBuf) {
         .command(Command::CreateWorktree {
             project: setup.project,
             branch: Some(branch.to_owned()),
+            on: None,
         })
         .await
         .unwrap()
