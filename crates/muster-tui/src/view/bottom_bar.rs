@@ -92,12 +92,20 @@ fn hints(app: &App) -> String {
     }
     if app.mode == Mode::Changes {
         let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
-        return if diff {
-            "↑↓ scroll  PgUp PgDn page  esc the files  r again  d back to the list"
+        let entry = app
+            .changes
+            .as_ref()
+            .is_some_and(|pane| pane.selected_entry().is_some());
+        let undo = if entry {
+            "  z put back as before it"
         } else {
-            "↑↓ move  ⏎ its diff  r again  esc back to the list"
-        }
-        .to_owned();
+            ""
+        };
+        return if diff {
+            format!("↑↓ scroll  PgUp PgDn page  esc the changes  r again{undo}  d back")
+        } else {
+            format!("↑↓ move  ⏎ its diff  r again{undo}  esc back to the list")
+        };
     }
     let session = app.focused_session().and_then(|id| app.model.session(id));
     let mut hints = vec!["↑↓ move"];

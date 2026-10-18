@@ -186,6 +186,7 @@ async fn spawn_with(
         store,
         clock: Arc::new(FixedClock),
         worktrees_dir: config_dir.join("worktrees"),
+        data_dir: config_dir.join("data"),
         hook_socket: config_dir.join("hooks.sock"),
         hook_queue: mpsc::channel(1).1,
         delta_capacity: 256,

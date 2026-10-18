@@ -25,6 +25,7 @@ pub mod settings;
 pub mod text;
 pub mod tickets;
 pub mod time;
+pub mod timeline;
 
 pub use changes::{ChangeKind, ChangePart, ChangeSummary, Changes, FileChange, FileDiff};
 pub use entities::{Issue, Project, Session, Workspace, WorkspaceKind};

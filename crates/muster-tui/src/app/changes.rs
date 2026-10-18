@@ -1,6 +1,7 @@
 //! A workspace's changes beside the list (`d`): what is not committed yet,
-//! the branch's commits and what they changed, and one file's diff (⏎).
-//! The pane has the keys until `d`, Shift-Q or Esc gives them back. It is
+//! the branch's commits and what they changed, the workspace's timeline of
+//! turns (`app::timeline`), and one file's or one turn's diff (⏎). The
+//! pane has the keys until `d`, Shift-Q or Esc gives them back. It is
 //! asked of the daemon (`WorkspaceChanges`, `FileDiff`), asked again on `r`
 //! and whenever the workspace's summary in the state changes, as when an
 //! agent's turn ends there.
@@ -11,10 +12,19 @@ use muster_core::changes::{
     CHANGES_PROTOCOL, ChangePart, ChangeSummary, Changes, Commit, FileChange, FileDiff,
 };
 use muster_core::protocol::Command;
+use muster_core::timeline::{Entry, TIMELINE_PROTOCOL, Timeline};
 use ratatui::layout::{Margin, Position, Rect};
 
 use super::events::{leaves_terminal, screen_key};
 use super::{Action, App, Mode, Then, View};
+
+/// What the pane's selection is on: a file of the change, or an entry of
+/// the workspace's timeline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Pick {
+    File(ChangePart, String),
+    Entry(u64),
+}
 
 /// The pane's state while it is open.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,19 +37,25 @@ pub(crate) struct ChangesPane {
     /// The workspace's summary as the state last said: when it says
     /// another than the listing's, the listing is asked for again.
     seen: Option<ChangeSummary>,
-    /// The selected file, by part and path, so it holds across answers.
-    pub(crate) selected: Option<(ChangePart, String)>,
+    /// The workspace's timeline, newest first; `None` until it comes, and
+    /// from a daemon that keeps none.
+    pub(crate) timeline: Option<Result<Timeline, String>>,
+    pub(super) asking_timeline: bool,
+    /// The newest entry as the state last said, to ask again when it
+    /// says another.
+    pub(super) timeline_seen: Option<u64>,
+    /// The selected file or entry, so it holds across answers.
+    pub(crate) selected: Option<Pick>,
     /// The first line of the listing shown.
     pub(crate) offset: usize,
-    /// The file whose diff is shown instead of the listing.
+    /// The file or entry whose diff is shown instead of the listing.
     pub(crate) diff: Option<DiffPane>,
 }
 
-/// One file's diff, shown in the pane.
+/// One file's or one entry's diff, shown in the pane.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DiffPane {
-    pub(crate) part: ChangePart,
-    pub(crate) path: String,
+    pub(crate) of: Pick,
     /// `None` until it comes.
     pub(crate) text: Option<Result<FileDiff, String>>,
     /// The first line shown.
@@ -52,7 +68,20 @@ pub(crate) enum ChangeRow<'a> {
     Heading(String),
     File(ChangePart, &'a FileChange),
     Commit(&'a Commit),
+    Entry(&'a Entry),
     Note(String),
+    Error(String),
+}
+
+impl ChangeRow<'_> {
+    /// What selecting this line picks, if it can be selected.
+    pub(crate) fn pick(&self) -> Option<Pick> {
+        match self {
+            Self::File(part, file) => Some(Pick::File(*part, file.path.clone())),
+            Self::Entry(entry) => Some(Pick::Entry(entry.number)),
+            _ => None,
+        }
+    }
 }
 
 /// The listing's lines: what is not committed, then the branch's commits
@@ -118,29 +147,55 @@ fn files(count: usize) -> String {
 }
 
 impl ChangesPane {
-    /// The listing's rows that are files, in order.
-    fn files(&self) -> Vec<(ChangePart, String)> {
-        match &self.listing {
-            Some(Ok(changes)) => rows(changes)
-                .into_iter()
-                .filter_map(|row| match row {
-                    ChangeRow::File(part, file) => Some((part, file.path.clone())),
-                    _ => None,
-                })
-                .collect(),
-            _ => Vec::new(),
+    /// The pane's lines: the change as git last said, then the timeline.
+    pub(crate) fn rows(&self) -> Vec<ChangeRow<'_>> {
+        let mut lines = match &self.listing {
+            None => vec![ChangeRow::Note("Asking git…".to_owned())],
+            Some(Err(error)) => vec![
+                ChangeRow::Error(error.clone()),
+                ChangeRow::Note("r asks again.".to_owned()),
+            ],
+            Some(Ok(changes)) => rows(changes),
+        };
+        lines.extend(super::timeline::rows(self.timeline.as_ref()));
+        lines
+    }
+
+    /// What can be selected, in order.
+    fn picks(&self) -> Vec<Pick> {
+        self.rows().iter().filter_map(ChangeRow::pick).collect()
+    }
+
+    /// Where the selection is among the pane's rows.
+    pub(crate) fn selected_row(&self) -> Option<usize> {
+        let selected = self.selected.as_ref()?;
+        self.rows()
+            .iter()
+            .position(|row| row.pick().as_ref() == Some(selected))
+    }
+
+    /// The entry the selection is on, in the listing or in its diff.
+    pub(crate) fn selected_entry(&self) -> Option<u64> {
+        let pick = match &self.diff {
+            Some(diff) => &diff.of,
+            None => self.selected.as_ref()?,
+        };
+        match pick {
+            Pick::Entry(number) => Some(*number),
+            Pick::File(..) => None,
         }
     }
 
-    /// Where the selected file is among the listing's rows.
-    pub(crate) fn selected_row(&self) -> Option<usize> {
-        let Some(Ok(changes)) = &self.listing else {
-            return None;
-        };
-        let (part, path) = self.selected.as_ref()?;
-        rows(changes).iter().position(
-            |row| matches!(row, ChangeRow::File(at, file) if at == part && file.path == *path),
-        )
+    /// Keeps the selection on something still listed, else the first.
+    fn keep_selection(&mut self) {
+        let picks = self.picks();
+        if !self
+            .selected
+            .as_ref()
+            .is_some_and(|selected| picks.contains(selected))
+        {
+            self.selected = picks.into_iter().next();
+        }
     }
 }
 
@@ -181,17 +236,27 @@ impl App {
             listing: None,
             asking: false,
             seen: found.changes,
+            timeline: None,
+            asking_timeline: false,
+            timeline_seen: found.timeline,
             selected: None,
             offset: 0,
             diff: None,
         });
         self.mode = Mode::Changes;
         self.note = None;
-        self.ask_changes().into_iter().collect()
+        let mut actions: Vec<Action> = self.ask_changes().into_iter().collect();
+        actions.extend(self.ask_timeline());
+        actions
+    }
+
+    /// Whether the daemon keeps workspaces' timelines.
+    pub(super) fn knows_timelines(&self) -> bool {
+        self.daemon_protocol >= TIMELINE_PROTOCOL
     }
 
     /// Asks for the open pane's listing, unless an answer is on its way.
-    fn ask_changes(&mut self) -> Option<Action> {
+    pub(super) fn ask_changes(&mut self) -> Option<Action> {
         let pane = self.changes.as_mut()?;
         if pane.asking {
             return None;
@@ -204,25 +269,28 @@ impl App {
         ))
     }
 
-    /// Asks for the diff of the selected file, shown in the pane.
+    /// Asks for the diff of the selected file or entry, shown in the pane.
     fn ask_diff(&mut self) -> Option<Action> {
         let pane = self.changes.as_mut()?;
-        let (part, path) = pane.selected.clone()?;
+        let pick = pane.selected.clone()?;
         pane.diff = Some(DiffPane {
-            part,
-            path: path.clone(),
+            of: pick.clone(),
             text: None,
             scroll: 0,
         });
         let workspace = pane.workspace;
-        Some(self.command(
-            Command::FileDiff {
+        let command = match &pick {
+            Pick::File(part, path) => Command::FileDiff {
                 workspace,
-                part,
+                part: *part,
                 path: path.clone(),
             },
-            Then::Diff(workspace, part, path),
-        ))
+            Pick::Entry(number) => Command::EntryDiff {
+                workspace,
+                number: *number,
+            },
+        };
+        Some(self.command(command, Then::Diff(workspace, pick)))
     }
 
     /// Closes the pane and gives the list the keys back.
@@ -268,11 +336,13 @@ impl App {
             KeyCode::Esc | KeyCode::Backspace => self.close_changes(),
             KeyCode::Char('r') => {
                 let mut actions: Vec<Action> = self.ask_changes().into_iter().collect();
+                actions.extend(self.ask_timeline());
                 if showing_diff {
                     actions.extend(self.ask_diff());
                 }
                 return actions;
             }
+            KeyCode::Char('z') => return self.ask_undo_plan().into_iter().collect(),
             KeyCode::Up | KeyCode::Char('k') if showing_diff => self.scroll_diff(-1),
             KeyCode::Down | KeyCode::Char('j') if showing_diff => self.scroll_diff(1),
             KeyCode::PageUp if showing_diff => self.scroll_diff(-page),
@@ -328,12 +398,9 @@ impl App {
                 let Some(pane) = self.changes.as_mut() else {
                     return Vec::new();
                 };
-                let Some(Ok(changes)) = &pane.listing else {
-                    return Vec::new();
-                };
                 let index = pane.offset + usize::from(event.row - inner.y);
-                if let Some(ChangeRow::File(part, file)) = rows(changes).get(index) {
-                    pane.selected = Some((*part, file.path.clone()));
+                if let Some(pick) = pane.rows().get(index).and_then(ChangeRow::pick) {
+                    pane.selected = Some(pick);
                     return self.ask_diff().into_iter().collect();
                 }
             }
@@ -342,25 +409,25 @@ impl App {
         Vec::new()
     }
 
-    /// Moves the selection `by` files.
+    /// Moves the selection `by` files or entries.
     pub(super) fn move_file(&mut self, by: isize) {
         let height = self.pane_rows();
         let Some(pane) = self.changes.as_mut() else {
             return;
         };
-        let files = pane.files();
-        if files.is_empty() {
+        let picks = pane.picks();
+        if picks.is_empty() {
             return;
         }
         let at = pane
             .selected
             .as_ref()
-            .and_then(|selected| files.iter().position(|file| file == selected));
+            .and_then(|selected| picks.iter().position(|pick| pick == selected));
         let next = match at {
-            Some(at) => at.saturating_add_signed(by).min(files.len() - 1),
+            Some(at) => at.saturating_add_signed(by).min(picks.len() - 1),
             None => 0,
         };
-        pane.selected = Some(files[next].clone());
+        pane.selected = Some(picks[next].clone());
         keep_selected_in_view(pane, height);
     }
 
@@ -379,7 +446,7 @@ impl App {
     }
 
     /// How many lines the pane shows inside its border.
-    fn pane_rows(&self) -> usize {
+    pub(super) fn pane_rows(&self) -> usize {
         usize::from(self.session_size().rows).max(1)
     }
 
@@ -395,23 +462,35 @@ impl App {
         };
         pane.asking = false;
         pane.listing = Some(outcome);
-        let files = pane.files();
-        if !pane
-            .selected
-            .as_ref()
-            .is_some_and(|selected| files.contains(selected))
-        {
-            pane.selected = files.first().cloned();
-        }
+        pane.keep_selection();
         keep_selected_in_view(pane, height);
     }
 
-    /// The daemon's answer with a file's diff.
+    /// The daemon's answer with the timeline.
+    pub(super) fn on_timeline(
+        &mut self,
+        workspace: WorkspaceId,
+        outcome: Result<Timeline, String>,
+    ) {
+        let height = self.pane_rows();
+        let Some(pane) = self
+            .changes
+            .as_mut()
+            .filter(|pane| pane.workspace == workspace)
+        else {
+            return;
+        };
+        pane.asking_timeline = false;
+        pane.timeline = Some(outcome);
+        pane.keep_selection();
+        keep_selected_in_view(pane, height);
+    }
+
+    /// The daemon's answer with a file's or an entry's diff.
     pub(super) fn on_diff(
         &mut self,
         workspace: WorkspaceId,
-        part: ChangePart,
-        path: &str,
+        pick: &Pick,
         outcome: Result<FileDiff, String>,
     ) {
         let shown = self
@@ -419,7 +498,7 @@ impl App {
             .as_mut()
             .filter(|pane| pane.workspace == workspace)
             .and_then(|pane| pane.diff.as_mut())
-            .filter(|diff| diff.part == part && diff.path == path);
+            .filter(|diff| diff.of == *pick);
         if let Some(diff) = shown {
             diff.text = Some(outcome);
         }
@@ -429,15 +508,30 @@ impl App {
 
     /// Keeps the pane in step with the state: closed once its workspace
     /// is gone, asked again once its summary says something changed.
-    pub(super) fn settle_changes(&mut self) -> Option<Action> {
-        let workspace = self.changes.as_ref()?.workspace;
-        let Some(now) = self.model.workspace(workspace).map(|found| found.changes) else {
-            self.close_changes();
-            return None;
+    pub(super) fn settle_changes(&mut self) -> Vec<Action> {
+        let Some(workspace) = self.changes.as_ref().map(|pane| pane.workspace) else {
+            return Vec::new();
         };
-        let pane = self.changes.as_mut()?;
+        let Some((now, newest)) = self
+            .model
+            .workspace(workspace)
+            .map(|found| (found.changes, found.timeline))
+        else {
+            self.close_changes();
+            return Vec::new();
+        };
+        let mut actions = Vec::new();
+        if let Some(pane) = self.changes.as_mut()
+            && newest != pane.timeline_seen
+        {
+            pane.timeline_seen = newest;
+            actions.extend(self.ask_timeline());
+        }
+        let Some(pane) = self.changes.as_mut() else {
+            return actions;
+        };
         if now == pane.seen {
-            return None;
+            return actions;
         }
         pane.seen = now;
         // The listing's own summary is told to the state as it is
@@ -447,17 +541,23 @@ impl App {
             Some(Err(_)) => true,
             None => false,
         };
-        if stale { self.ask_changes() } else { None }
+        if stale {
+            actions.extend(self.ask_changes());
+        }
+        actions
     }
 }
 
-/// Moves the listing so the selected file is in view among `height` lines.
+/// Moves the listing so the selection is in view among `height` lines.
 fn keep_selected_in_view(pane: &mut ChangesPane, height: usize) {
     let Some(row) = pane.selected_row() else {
         return;
     };
-    // The heading above the first file shows with it.
-    let top = if row == 1 { 0 } else { row };
+    // The heading just above shows with it.
+    let heading_above = row
+        .checked_sub(1)
+        .is_some_and(|above| matches!(pane.rows().get(above), Some(ChangeRow::Heading(_))));
+    let top = if heading_above { row - 1 } else { row };
     if top < pane.offset {
         pane.offset = top;
     } else if row >= pane.offset + height {

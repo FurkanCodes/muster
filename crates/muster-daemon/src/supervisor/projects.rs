@@ -144,6 +144,9 @@ impl Supervisor {
             .retain(|workspace| workspace.project != project);
         self.state.projects.retain(|kept| kept.id != project);
         self.broadcast(Delta::ProjectRemoved { id: project });
+        for workspace in workspaces {
+            self.forget_timeline(workspace);
+        }
         Ok(Reply::Done)
     }
 
@@ -221,6 +224,7 @@ impl Supervisor {
             created_at: self.clock.now(),
             pull_request: None,
             changes: None,
+            timeline: None,
         }
     }
 

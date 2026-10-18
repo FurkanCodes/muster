@@ -2,6 +2,7 @@
 //! the git variables of whatever started the daemon, so a daemon launched
 //! from inside a git hook still talks to the repository it was asked about.
 
+use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -51,8 +52,13 @@ struct Outcome {
     stderr: String,
 }
 
-/// Git run in `cwd` with `args`, its output piped, its variables scrubbed.
-fn command(cwd: &Path, args: &[&str]) -> Command {
+/// Variables one command sets for git, after the scrubbed ones are gone,
+/// such as an index of Muster's own.
+pub(crate) type Vars<'a> = &'a [(&'a str, &'a OsStr)];
+
+/// Git run in `cwd` with `args`, its output piped, its variables scrubbed
+/// and then `vars` set.
+fn command(cwd: &Path, args: &[&str], vars: Vars<'_>) -> Command {
     let mut command = Command::new("git");
     command
         .args(args)
@@ -65,11 +71,18 @@ fn command(cwd: &Path, args: &[&str]) -> Command {
     for variable in SCRUBBED {
         command.env_remove(variable);
     }
+    for (name, value) in vars {
+        command.env(name, value);
+    }
     command
 }
 
 async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
-    let mut command = command(cwd, args);
+    run_with(cwd, args, &[]).await
+}
+
+async fn run_with(cwd: &Path, args: &[&str], vars: Vars<'_>) -> Result<Outcome, GitError> {
+    let mut command = command(cwd, args, vars);
     let output = tokio::time::timeout(TIME_LIMIT, command.output())
         .await
         .map_err(|_| GitError::TimedOut(args.join(" ")))?
@@ -83,7 +96,16 @@ async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
 
 /// Runs a git command that must succeed and returns what it printed.
 pub(crate) async fn checked(cwd: &Path, args: &[&str]) -> Result<String, GitError> {
-    let outcome = run(cwd, args).await?;
+    checked_with(cwd, args, &[]).await
+}
+
+/// [`checked`], with `vars` set for git.
+pub(crate) async fn checked_with(
+    cwd: &Path,
+    args: &[&str],
+    vars: Vars<'_>,
+) -> Result<String, GitError> {
+    let outcome = run_with(cwd, args, vars).await?;
     if outcome.success {
         Ok(outcome.stdout)
     } else {
@@ -131,7 +153,18 @@ pub(crate) async fn capped(
     limit: usize,
     ok: &[i32],
 ) -> Result<(Vec<u8>, bool), GitError> {
-    let mut child = command(cwd, args).spawn().map_err(GitError::Spawn)?;
+    capped_with(cwd, args, limit, ok, &[]).await
+}
+
+/// [`capped`], with `vars` set for git.
+pub(crate) async fn capped_with(
+    cwd: &Path,
+    args: &[&str],
+    limit: usize,
+    ok: &[i32],
+    vars: Vars<'_>,
+) -> Result<(Vec<u8>, bool), GitError> {
+    let mut child = command(cwd, args, vars).spawn().map_err(GitError::Spawn)?;
     let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
     let work = async {
         let printed = read_up_to(stdout, limit);
@@ -230,7 +263,16 @@ pub(crate) async fn remove_worktree(repo: &Path, path: &Path, force: bool) -> Re
 /// Whether a git command succeeded, and what it printed; for questions
 /// whose "no" is a failure exit.
 pub(crate) async fn answer(cwd: &Path, args: &[&str]) -> Result<Option<String>, GitError> {
-    let outcome = run(cwd, args).await?;
+    answer_with(cwd, args, &[]).await
+}
+
+/// [`answer`], with `vars` set for git.
+pub(crate) async fn answer_with(
+    cwd: &Path,
+    args: &[&str],
+    vars: Vars<'_>,
+) -> Result<Option<String>, GitError> {
+    let outcome = run_with(cwd, args, vars).await?;
     Ok(outcome.success.then_some(outcome.stdout))
 }
 

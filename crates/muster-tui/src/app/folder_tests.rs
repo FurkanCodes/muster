@@ -30,6 +30,7 @@ fn with_folder() -> (World, Project, Workspace) {
         created_at: Timestamp::from_millis(60),
         pull_request: None,
         changes: None,
+        timeline: None,
     };
     world
         .app

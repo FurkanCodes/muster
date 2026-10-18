@@ -560,6 +560,9 @@ impl App {
                 }
                 _ => Vec::new(),
             },
+            Dialog::Undo {
+                workspace, plan, ..
+            } => self.undo_key(workspace, &plan, key),
             Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
             dialog @ Dialog::TicketsFrom { .. } => self.tickets_from_key(dialog, key),
             Dialog::AssignAgent {
