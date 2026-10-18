@@ -5,7 +5,8 @@
 //! given, never reading the clock, so drawing stays a function of the app.
 //! While nothing runs or waits nothing moves, and nothing is drawn for it.
 //! Kep, at the top bar's start, blinks now and then while something works
-//! and is glad a moment when a session finishes.
+//! and is glad a moment when a session finishes. A name cut short on the
+//! selected line slides along, so it can be read whole.
 
 use std::time::{Duration, Instant};
 
@@ -35,6 +36,30 @@ const BLINK_STEPS: u64 = 2;
 
 /// How long Kep is glad of a session that finished: three seconds.
 pub(crate) const GLAD_STEPS: u64 = 30;
+
+/// Steps a name cut short rests at its start before it slides, and at its
+/// end before it starts again: a second and a half.
+const SLIDE_REST: u64 = 15;
+
+/// Steps a sliding name takes over each character: five a second, slow
+/// enough to read as it goes.
+const SLIDE_EVERY: u64 = 2;
+
+/// How many characters a name of `len`, shown in `room`, has slid `steps`
+/// after its line was selected: it rests, slides a character each
+/// `SLIDE_EVERY` steps until its end is in view, rests there, and starts
+/// again. A name that fits stays put.
+pub(crate) fn slide(len: usize, room: usize, steps: u64) -> usize {
+    let far = u64::try_from(len.saturating_sub(room)).unwrap_or(u64::MAX);
+    if far == 0 {
+        return 0;
+    }
+    let cycle = far
+        .saturating_mul(SLIDE_EVERY)
+        .saturating_add(2 * SLIDE_REST);
+    let by = ((steps % cycle).saturating_sub(SLIDE_REST) / SLIDE_EVERY).min(far);
+    usize::try_from(by).unwrap_or(0)
+}
 
 /// Whether Kep's eyes are shut for a blink at `step`.
 pub(crate) fn blinking(step: u64) -> bool {
@@ -165,6 +190,29 @@ mod tests {
         assert_eq!(flash(Color::Green, 5), Some(Flash::Tinted(tinted)));
         assert_eq!(flash(Color::Green, 9), Some(Flash::Tinted(tinted)));
         assert_eq!(flash(Color::Green, 10), None);
+    }
+
+    #[test]
+    fn a_cut_name_rests_slides_to_its_end_rests_and_starts_again() {
+        // Twenty characters in sixteen: four to slide.
+        let at = |steps| slide(20, 16, steps);
+        assert_eq!(at(0), 0);
+        assert_eq!(at(SLIDE_REST - 1), 0, "it rests first");
+        assert_eq!(at(SLIDE_REST + 1), 0);
+        assert_eq!(at(SLIDE_REST + 2), 1, "a character every two steps");
+        assert_eq!(at(SLIDE_REST + 7), 3);
+        assert_eq!(at(SLIDE_REST + 8), 4, "its end in view");
+        assert_eq!(at(2 * SLIDE_REST + 7), 4, "it rests at its end");
+        let cycle = 2 * SLIDE_REST + 8;
+        assert_eq!(at(cycle), 0, "then starts again");
+        assert_eq!(at(cycle + SLIDE_REST + 2), 1);
+    }
+
+    #[test]
+    fn a_name_that_fits_never_slides() {
+        assert!((0..100).all(|steps| slide(16, 16, steps) == 0));
+        assert!((0..100).all(|steps| slide(3, 16, steps) == 0));
+        assert_eq!(slide(usize::MAX, 0, u64::MAX), 0, "no overflow");
     }
 
     #[test]
