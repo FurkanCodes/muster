@@ -412,13 +412,23 @@ pub(crate) fn hook_command(route: &str, event: Option<&str>) -> String {
     )
 }
 
+/// The terminal every session's program is told it runs in: Muster's own,
+/// whatever terminal the daemon was started from (`scrub` takes that
+/// one's variables away).
+const TERMINAL_VARIABLES: [(&str, &str); 4] = [
+    ("TERM", "xterm-256color"),
+    ("COLORTERM", "truecolor"),
+    ("TERM_PROGRAM", "muster"),
+    ("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION")),
+];
+
 /// How to start `harness` for `launch`.
 pub(crate) fn spawn_spec(harness: Harness, launch: &Launch) -> SpawnSpec {
-    let env = vec![
-        ("TERM".to_owned(), "xterm-256color".to_owned()),
-        ("COLORTERM".to_owned(), "truecolor".to_owned()),
-        ("MUSTER_SESSION".to_owned(), launch.session.to_string()),
-    ];
+    let mut env: Vec<(String, String)> = TERMINAL_VARIABLES
+        .iter()
+        .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+        .collect();
+    env.push(("MUSTER_SESSION".to_owned(), launch.session.to_string()));
     match &launch.place {
         Place::Host(cwd) => on_host(harness, launch, cwd.clone(), env),
         Place::Container {

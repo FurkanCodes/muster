@@ -288,6 +288,41 @@ async fn the_environment_is_set_and_scrubbed() {
 }
 
 #[tokio::test]
+async fn a_session_s_program_is_told_its_terminal_is_muster() {
+    use crate::harness::{Launch, Place, find, spawn_spec};
+    let launch = Launch {
+        session: muster_core::SessionId::new(),
+        agent_session: None,
+        resume: false,
+        prompt: None,
+        hooks: None,
+        place: Place::Host(std::env::temp_dir()),
+        size: TermSize::default(),
+        checks: None,
+        support: None,
+    };
+    let spec = SpawnSpec {
+        // The person's own shell would read their startup files.
+        program: "/bin/sh".to_owned(),
+        args: Vec::new(),
+        ..spawn_spec(find("shell").unwrap(), &launch)
+    };
+    let pty = spawn(&spec, 0, Events::default().sink()).unwrap();
+    // Whatever terminal ran these tests, the shell sees Muster as its own,
+    // and nothing that addresses the other one.
+    pty.input(
+        b"echo \"is-$TERM_PROGRAM-$TERM_PROGRAM_VERSION $COLORTERM tmux-${TMUX:-none} lc-${LC_TERMINAL:-none}\"\n"
+            .to_vec(),
+    )
+    .await;
+    let wanted = format!(
+        "is-muster-{} truecolor tmux-none lc-none",
+        env!("CARGO_PKG_VERSION")
+    );
+    read_until(&pty, None, &wanted).await;
+}
+
+#[tokio::test]
 async fn the_child_inherits_no_descriptors_beyond_stdio() {
     // Something this process holds that a careless spawn would pass on.
     let _held_open = tempfile::tempfile().unwrap();

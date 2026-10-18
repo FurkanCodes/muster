@@ -212,6 +212,41 @@ fn value<'a>(spec: &'a SpawnSpec, key: &str) -> Option<&'a str> {
 }
 
 #[test]
+fn every_program_is_told_its_terminal_is_muster_on_the_host_and_in_a_container() {
+    let in_container = Launch {
+        place: Place::Container {
+            docker: "docker".to_owned(),
+            container: "run-1".to_owned(),
+            secret: None,
+        },
+        ..agent_launch(Some("id"), None)
+    };
+    let mut specs: Vec<SpawnSpec> = [SHELL, CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT]
+        .into_iter()
+        .map(|harness| spawn_spec(harness, &agent_launch(Some("id"), None)))
+        .collect();
+    specs.push(spawn_spec(SHELL, &in_container));
+    specs.push(spawn_spec(CLAUDE, &in_container));
+    for spec in &specs {
+        assert_eq!(value(spec, "TERM"), Some("xterm-256color"), "{spec:?}");
+        assert_eq!(value(spec, "COLORTERM"), Some("truecolor"));
+        assert_eq!(value(spec, "TERM_PROGRAM"), Some("muster"));
+        assert_eq!(
+            value(spec, "TERM_PROGRAM_VERSION"),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+    }
+    // In a container they reach the program through docker's environment.
+    for spec in &specs[specs.len() - 2..] {
+        let named = |key: &str| spec.args.windows(2).any(|pair| pair == ["--env", key]);
+        assert!(
+            named("TERM_PROGRAM") && named("TERM_PROGRAM_VERSION"),
+            "{spec:?}"
+        );
+    }
+}
+
+#[test]
 fn each_agent_runs_its_own_program_pointed_at_muster_s_files() {
     let codex = spawn_spec(CODEX, &agent_launch(None, Some("/run/support")));
     assert_eq!(codex.program, "codex");
