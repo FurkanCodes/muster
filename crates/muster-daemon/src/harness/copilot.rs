@@ -99,7 +99,10 @@ pub(crate) fn translate(event: &str, body: &[u8]) -> Option<(Option<String>, Hoo
         "userPromptSubmitted" => HookEvent::PromptSubmitted,
         "agentStop" => HookEvent::TurnEnded,
         // A permission asked for the question tool is the question itself.
-        "permissionRequest" if is_question => HookEvent::QuestionAsked { origin: main },
+        "permissionRequest" if is_question => HookEvent::QuestionAsked {
+            origin: main,
+            deferred: false,
+        },
         "permissionRequest" => HookEvent::PermissionRequested {
             origin: main,
             deferred: false,
@@ -109,11 +112,17 @@ pub(crate) fn translate(event: &str, body: &[u8]) -> Option<(Option<String>, Hoo
                 origin: main,
                 deferred: true,
             },
-            "elicitation_dialog" => HookEvent::QuestionAsked { origin: main },
+            "elicitation_dialog" => HookEvent::QuestionAsked {
+                origin: main,
+                deferred: false,
+            },
             "agent_idle" => HookEvent::Idle,
             _ => return None,
         },
-        "preToolUse" if is_question => HookEvent::QuestionAsked { origin: main },
+        "preToolUse" if is_question => HookEvent::QuestionAsked {
+            origin: main,
+            deferred: false,
+        },
         "preToolUse" => HookEvent::ToolStarted { origin: main },
         "postToolUse" | "postToolUseFailure" => HookEvent::ToolFinished {
             origin: main,
@@ -220,19 +229,22 @@ mod tests {
                 r#","notification_type":"elicitation_dialog""#
             ),
             Some(HookEvent::QuestionAsked {
-                origin: Origin::Main
+                origin: Origin::Main,
+                deferred: false,
             })
         );
         assert_eq!(
             event("preToolUse", r#","toolName":"ask_user""#),
             Some(HookEvent::QuestionAsked {
-                origin: Origin::Main
+                origin: Origin::Main,
+                deferred: false,
             })
         );
         assert_eq!(
             event("permissionRequest", r#","toolName":"ask_user""#),
             Some(HookEvent::QuestionAsked {
-                origin: Origin::Main
+                origin: Origin::Main,
+                deferred: false,
             })
         );
         assert_eq!(

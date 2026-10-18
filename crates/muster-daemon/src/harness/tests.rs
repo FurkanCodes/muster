@@ -172,6 +172,58 @@ fn a_report_is_read_by_its_own_harness() {
     assert_eq!(SHELL.translate(None, stop), None);
 }
 
+/// Shaped like what Claude Code 2.1.296 sent for an MCP server's form the
+/// person pressed Esc at, in order; paths and the schema left out.
+const ELICITED: [&str; 4] = [
+    r#"{"session_id":"s1","prompt_id":"p1","hook_event_name":"Elicitation","mcp_server_name":"probe","message":"Which name?","mode":"form"}"#,
+    r#"{"session_id":"s1","prompt_id":"p1","hook_event_name":"Notification","notification_type":"elicitation_dialog","message":"Claude Code needs your input"}"#,
+    r#"{"session_id":"s1","prompt_id":"p1","hook_event_name":"ElicitationResult","mcp_server_name":"probe","action":"cancel","mode":"form"}"#,
+    r#"{"session_id":"s1","prompt_id":"p1","hook_event_name":"Notification","notification_type":"elicitation_response","message":"Elicitation response for server \"probe\": cancel"}"#,
+];
+
+#[test]
+fn claude_s_mcp_form_is_a_question_until_the_person_responds() {
+    use muster_state::session::Origin;
+    let heard: Vec<_> = ELICITED
+        .iter()
+        .map(|body| {
+            CLAUDE
+                .translate(None, body.as_bytes())
+                .map(|(_, event)| event)
+        })
+        .collect();
+    let asked = |deferred| {
+        Some(HookEvent::QuestionAsked {
+            origin: Origin::Main,
+            deferred,
+        })
+    };
+    let answered = Some(HookEvent::ToolFinished {
+        origin: Origin::Main,
+        question: true,
+    });
+    assert_eq!(
+        heard,
+        [asked(false), asked(true), answered.clone(), answered]
+    );
+    // A subagent's form is its own question, answered by its own result.
+    let theirs = br#"{"session_id":"s1","agent_id":"a1","hook_event_name":"Elicitation","mcp_server_name":"probe"}"#;
+    assert_eq!(
+        CLAUDE.translate(None, theirs).map(|(_, event)| event),
+        Some(HookEvent::QuestionAsked {
+            origin: Origin::Subagent("a1".to_owned()),
+            deferred: false,
+        })
+    );
+    // Both hooks are passed at launch, unmatched (`PRD-13`).
+    let settings: serde_json::Value = serde_json::from_str(&claude::settings()).unwrap();
+    for event in ["Elicitation", "ElicitationResult"] {
+        let group = &settings["hooks"][event][0];
+        assert!(group.get("matcher").is_none(), "{event}");
+        assert_eq!(group["hooks"][0]["command"], claude::hook_command());
+    }
+}
+
 #[test]
 fn hooks_post_to_their_route_and_are_inert_outside_muster() {
     let command = hook_command("gemini", None);

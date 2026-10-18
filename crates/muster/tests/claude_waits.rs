@@ -1,7 +1,7 @@
-//! End-to-end tests of how a Claude Code session's waits on the person
-//! close when no tool event answers them: a permission the person
-//! declines, which Claude Code tells only in its transcript. A stand-in
-//! `claude` runs the exact hook commands Muster gave it.
+//! End-to-end tests of a Claude Code session's waits on the person beyond
+//! a tool's own events: a permission the person declines, which Claude
+//! Code tells only in its transcript, and an MCP server's form for the
+//! person. A stand-in `claude` runs the exact hook commands Muster gave it.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -192,5 +192,60 @@ async fn a_permission_the_person_declines_needs_them_no_more() {
         expect_status(&mut connection, session).await,
         (SessionStatus::Finished, false),
         "it waits on nobody, and the person, who ended it, has seen it"
+    );
+}
+
+#[tokio::test]
+async fn an_mcp_server_s_form_needs_the_person_until_they_respond() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str, extra| launch.fire(event, &payload(&id, event, extra));
+    fire("UserPromptSubmit", json!({ "prompt": "file it" }));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Running, false)
+    );
+    fire("PreToolUse", json!({ "tool_name": "mcp__tracker__create" }));
+    fire(
+        "Elicitation",
+        json!({ "mcp_server_name": "tracker", "message": "Which project?", "mode": "form" }),
+    );
+    let needs_answer = SessionStatus::NeedsYou {
+        reason: WaitReason::Question,
+    };
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (needs_answer, true)
+    );
+    // Its notice is the same question; the person's response answers it.
+    fire(
+        "Notification",
+        json!({ "notification_type": "elicitation_dialog", "message": "Claude Code needs your input" }),
+    );
+    fire(
+        "ElicitationResult",
+        json!({ "mcp_server_name": "tracker", "action": "cancel", "mode": "form" }),
+    );
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Running, false)
+    );
+    fire(
+        "Notification",
+        json!({ "notification_type": "elicitation_response", "message": "cancel" }),
+    );
+    fire(
+        "PostToolUse",
+        json!({ "tool_name": "mcp__tracker__create" }),
+    );
+    fire("Stop", json!({ "stop_hook_active": false }));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, true),
+        "nothing else opened on the way"
     );
 }

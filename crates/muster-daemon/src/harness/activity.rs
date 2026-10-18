@@ -304,7 +304,8 @@ mod tests {
         assert_eq!(
             change(
                 &HookEvent::QuestionAsked {
-                    origin: Origin::Main
+                    origin: Origin::Main,
+                    deferred: false,
                 },
                 b"{}"
             ),

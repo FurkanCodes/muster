@@ -1,6 +1,7 @@
-//! Waits that close although no tool event answers them: the person cut
-//! the turn short, which Claude Code says only in its own record of the
-//! conversation, never in a hook.
+//! Waits beyond a tool's own events: the person cutting the turn short,
+//! which Claude Code says only in its own record of the conversation,
+//! never in a hook; and an MCP server's form for the person, whose notice
+//! can trail the answer.
 
 use super::*;
 
@@ -24,6 +25,7 @@ fn an_interrupt_closes_a_question_and_a_subagents_prompt_too() {
     let mut session = Session::running_turn();
     session.hook(HookEvent::QuestionAsked {
         origin: Origin::Main,
+        deferred: false,
     });
     session.hook(subagent_started("a"));
     session.hook(permission(sub("a")));
@@ -86,4 +88,76 @@ fn an_interrupt_from_another_agent_session_is_ignored() {
             .is_empty()
     );
     assert_eq!(session.status(), NEEDS_PERMISSION);
+}
+
+// An MCP server's form for the person (an elicitation): a question, and
+// its notice, which can trail the answer
+
+fn form_asked(deferred: bool) -> HookEvent {
+    HookEvent::QuestionAsked {
+        origin: Origin::Main,
+        deferred,
+    }
+}
+
+fn form_answered() -> HookEvent {
+    HookEvent::ToolFinished {
+        origin: Origin::Main,
+        question: true,
+    }
+}
+
+#[test]
+fn an_mcp_form_needs_the_person_until_they_respond() {
+    let mut session = Session::running_turn();
+    session.hook(tool_started(Origin::Main));
+    session.at(1).hook(form_asked(false));
+    assert_eq!(session.status(), NEEDS_ANSWER);
+    // Its notice six seconds on is the same question.
+    assert!(session.at(7).hook(form_asked(true)).is_empty());
+    // An answer, a decline or Esc: the tool carries on with it.
+    session.at(10).hook(form_answered());
+    assert_eq!(session.status(), SessionStatus::Running);
+    // A notice that trails the response asks nothing new.
+    session.at(11).hook(form_asked(true));
+    assert_eq!(session.status(), SessionStatus::Running);
+    session.at(12).hook(HookEvent::TurnEnded);
+    assert_eq!(session.status(), SessionStatus::Finished);
+}
+
+#[test]
+fn a_form_s_notice_alone_asks_only_while_a_turn_runs() {
+    let mut session = Session::running_turn();
+    session.hook(form_asked(true));
+    assert_eq!(session.status(), NEEDS_ANSWER);
+    session.at(3).hook(form_answered());
+    assert_eq!(session.status(), SessionStatus::Running);
+
+    let mut finished = Session::running_turn();
+    finished.hook(HookEvent::TurnEnded);
+    finished.at(60).hook(form_asked(true));
+    assert_eq!(finished.status(), SessionStatus::Finished);
+}
+
+#[test]
+fn a_subagent_s_form_is_answered_by_its_own_response() {
+    let mut session = Session::running_turn();
+    session.hook(subagent_started("a"));
+    session.hook(HookEvent::QuestionAsked {
+        origin: sub("a"),
+        deferred: false,
+    });
+    // Claude Code's notices name no subagent: they ask nothing new.
+    session.at(6).hook(form_asked(true));
+    session.at(8).hook(form_answered());
+    assert_eq!(
+        session.status(),
+        NEEDS_ANSWER,
+        "the main agent answered nothing"
+    );
+    session.at(8).hook(HookEvent::ToolFinished {
+        origin: sub("a"),
+        question: true,
+    });
+    assert_eq!(session.status(), SessionStatus::Running);
 }

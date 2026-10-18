@@ -32,12 +32,17 @@ pub enum HookEvent {
     /// that trails the request itself (Claude Code's permission notification),
     /// which can arrive after the person has already answered.
     PermissionRequested { origin: Origin, deferred: bool },
-    /// The agent asked the person a question through its question tool.
-    QuestionAsked { origin: Origin },
+    /// The agent asked the person a question: through its question tool,
+    /// or for a tool's input, as an MCP server's form (an elicitation).
+    /// `deferred` marks a notice that trails the question itself (Claude
+    /// Code's elicitation notification), which can arrive after the person
+    /// has already answered.
+    QuestionAsked { origin: Origin, deferred: bool },
     /// A tool started. After a permission prompt, this means it was granted.
     ToolStarted { origin: Origin },
     /// A tool finished. `question` marks the question tool's own completion,
-    /// which is the only thing that answers a question.
+    /// or the person's answer to an MCP server's form, which is the only
+    /// thing that answers a question.
     ToolFinished { origin: Origin, question: bool },
     /// The harness reports it has sat idle at its prompt.
     Idle,

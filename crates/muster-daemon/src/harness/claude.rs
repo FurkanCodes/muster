@@ -29,8 +29,9 @@ const EVENTS: &[(&str, Option<&str>)] = &[
     ("UserPromptSubmit", None),
     ("Stop", None),
     ("PermissionRequest", None),
-    // Unmatched: both `permission_prompt` and `idle_prompt` matter. The
-    // second is the only signal when a turn ends without a Stop.
+    // Unmatched: `permission_prompt`, `idle_prompt` and the elicitation
+    // notices all matter. `idle_prompt` is the only signal when a turn
+    // ends without a Stop.
     ("Notification", None),
     // Only the question tool: its start is the agent asking the person.
     ("PreToolUse", Some(QUESTION_TOOL)),
@@ -40,6 +41,12 @@ const EVENTS: &[(&str, Option<&str>)] = &[
     ("PostToolUse", None),
     ("SubagentStart", None),
     ("SubagentStop", None),
+    // An MCP server's form for the person (an elicitation), unmatched, as
+    // the matcher is the server's name: its dialog opening is a question,
+    // and the person's response, whatever it is, the answer. The hook
+    // prints nothing and exits 0, so the dialog is left to the person.
+    ("Elicitation", None),
+    ("ElicitationResult", None),
 ];
 
 /// The command each hook runs. It does nothing outside a Muster session,
@@ -159,7 +166,10 @@ pub(crate) fn translate(payload: &HookPayload) -> Option<(Option<String>, HookEv
         // (2.1.296 sends this right after the tool's PreToolUse): it is the
         // question again, answered when the tool finishes, not a second
         // prompt that only the next tool to finish would close.
-        "PermissionRequest" if is_question => HookEvent::QuestionAsked { origin: origin() },
+        "PermissionRequest" if is_question => HookEvent::QuestionAsked {
+            origin: origin(),
+            deferred: false,
+        },
         "PermissionRequest" => HookEvent::PermissionRequested {
             origin: origin(),
             deferred: false,
@@ -170,9 +180,31 @@ pub(crate) fn translate(payload: &HookPayload) -> Option<(Option<String>, HookEv
                 deferred: true,
             },
             "idle_prompt" => HookEvent::Idle,
+            // Six seconds into an MCP server's form, as for a permission:
+            // a notice of the question the Elicitation hook asked.
+            "elicitation_dialog" | "elicitation_url_dialog" => HookEvent::QuestionAsked {
+                origin: origin(),
+                deferred: true,
+            },
+            "elicitation_response" => HookEvent::ToolFinished {
+                origin: origin(),
+                question: true,
+            },
             _ => return None,
         },
-        "PreToolUse" if is_question => HookEvent::QuestionAsked { origin: origin() },
+        "Elicitation" => HookEvent::QuestionAsked {
+            origin: origin(),
+            deferred: false,
+        },
+        // Sent for an answer, a decline and Esc alike (`cancel`).
+        "ElicitationResult" => HookEvent::ToolFinished {
+            origin: origin(),
+            question: true,
+        },
+        "PreToolUse" if is_question => HookEvent::QuestionAsked {
+            origin: origin(),
+            deferred: false,
+        },
         "PreToolUse" => HookEvent::ToolStarted { origin: origin() },
         "PostToolUse" => HookEvent::ToolFinished {
             origin: origin(),
@@ -271,6 +303,7 @@ mod tests {
             )),
             HookEvent::QuestionAsked {
                 origin: Origin::Subagent("a1".to_owned()),
+                deferred: false,
             }
         );
         // The question's own permission dialog is the same question.
@@ -280,6 +313,7 @@ mod tests {
             )),
             HookEvent::QuestionAsked {
                 origin: Origin::Main,
+                deferred: false,
             }
         );
         assert_eq!(

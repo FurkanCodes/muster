@@ -164,6 +164,7 @@ fn nothing_is_unseen_while_the_session_is_watched() {
     session.hook(tool_started(Origin::Main));
     session.hook(HookEvent::QuestionAsked {
         origin: Origin::Main,
+        deferred: false,
     });
     assert_eq!(session.status(), NEEDS_ANSWER);
     assert!(!session.unseen());
@@ -286,6 +287,7 @@ fn a_question_is_answered_only_by_its_own_completion() {
     let mut session = Session::running_turn();
     session.hook(HookEvent::QuestionAsked {
         origin: Origin::Main,
+        deferred: false,
     });
     assert_eq!(session.status(), NEEDS_ANSWER);
 
@@ -310,6 +312,7 @@ fn a_question_announced_twice_is_answered_once() {
     let mut session = Session::running_turn();
     let asked = || HookEvent::QuestionAsked {
         origin: Origin::Main,
+        deferred: false,
     };
     session.hook(asked());
     assert_eq!(session.hook(asked()), []);
@@ -324,7 +327,10 @@ fn a_question_announced_twice_is_answered_once() {
 fn several_open_prompts_keep_the_session_waiting_until_all_are_answered() {
     let mut session = Session::running_turn();
     session.hook(subagent_started("a"));
-    session.hook(HookEvent::QuestionAsked { origin: sub("a") });
+    session.hook(HookEvent::QuestionAsked {
+        origin: sub("a"),
+        deferred: false,
+    });
     session.hook(permission(Origin::Main));
     assert_eq!(session.status(), NEEDS_PERMISSION);
 
@@ -463,7 +469,10 @@ fn a_subagent_waiting_on_the_person_is_never_presumed_gone() {
 fn a_stopped_subagent_closes_its_own_prompts() {
     let mut session = Session::running_turn();
     session.hook(subagent_started("a"));
-    session.hook(HookEvent::QuestionAsked { origin: sub("a") });
+    session.hook(HookEvent::QuestionAsked {
+        origin: sub("a"),
+        deferred: false,
+    });
     session.hook(subagent_stopped("a"));
     assert_eq!(session.status(), SessionStatus::Running);
 }

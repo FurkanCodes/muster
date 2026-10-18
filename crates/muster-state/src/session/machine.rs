@@ -265,11 +265,10 @@ impl SessionMachine {
                 self.interrupt(now);
             }
             HookEvent::PermissionRequested { origin, deferred } => {
-                self.on_permission(origin, deferred, now);
+                self.on_ask(origin, WaitReason::Permission, deferred, now);
             }
-            HookEvent::QuestionAsked { origin } => {
-                self.note_activity(&origin, now);
-                self.wait_for(origin, WaitReason::Question);
+            HookEvent::QuestionAsked { origin, deferred } => {
+                self.on_ask(origin, WaitReason::Question, deferred, now);
             }
             HookEvent::ToolStarted { origin } => self.on_tool_started(&origin, now),
             HookEvent::ToolFinished { origin, question } => {
@@ -292,7 +291,9 @@ impl SessionMachine {
         }
     }
 
-    fn on_permission(&mut self, origin: Origin, deferred: bool, now: Instant) {
+    /// A permission or a question asked; a deferred notice of one opens a
+    /// wait only where none is shown and the person has not just answered.
+    fn on_ask(&mut self, origin: Origin, reason: WaitReason, deferred: bool, now: Instant) {
         self.note_activity(&origin, now);
         if deferred {
             let echo = self.answered.as_ref().is_some_and(|(answered, at)| {
@@ -304,7 +305,7 @@ impl SessionMachine {
                 return;
             }
         }
-        self.wait_for(origin, WaitReason::Permission);
+        self.wait_for(origin, reason);
     }
 
     fn on_tool_started(&mut self, origin: &Origin, now: Instant) {

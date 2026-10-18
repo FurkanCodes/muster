@@ -89,6 +89,7 @@ pub(crate) fn translate(body: &[u8]) -> Option<(Option<String>, HookEvent)> {
             if kind == Some(QUESTION_TOOL) {
                 HookEvent::QuestionAsked {
                     origin: Origin::Main,
+                    deferred: false,
                 }
             } else {
                 HookEvent::PermissionRequested {
@@ -99,6 +100,7 @@ pub(crate) fn translate(body: &[u8]) -> Option<(Option<String>, HookEvent)> {
         }
         "BeforeTool" if is_question => HookEvent::QuestionAsked {
             origin: Origin::Main,
+            deferred: false,
         },
         "BeforeTool" => HookEvent::ToolStarted {
             origin: Origin::Main,
@@ -215,7 +217,8 @@ mod tests {
                 r#""hook_event_name":"Notification","notification_type":"ToolPermission","details":{"type":"ask_user"}"#
             ),
             Some(HookEvent::QuestionAsked {
-                origin: Origin::Main
+                origin: Origin::Main,
+                deferred: false,
             })
         );
         assert_eq!(
