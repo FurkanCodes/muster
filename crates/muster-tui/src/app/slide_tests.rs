@@ -53,7 +53,8 @@ fn a_long_title_on_the_selected_line_rests_slides_to_its_end_and_starts_again() 
     assert!(render(&world.app).contains("…x the login redire…  idle"));
     assert!(!world.app.on_step(118), "a character each two steps");
     assert!(world.app.on_step(119));
-    assert!(render(&world.app).contains("… the login redirec…  idle"));
+    assert!(world.app.on_step(121));
+    assert!(render(&world.app).contains("…the login redirect…  idle"));
 
     // Its end in view, it rests there, then starts again.
     world.app.on_step(115 + 34);
