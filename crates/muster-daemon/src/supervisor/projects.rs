@@ -148,6 +148,7 @@ impl Supervisor {
             self.forget_timeline(workspace);
         }
         self.forget_clashes_of(project);
+        self.forget_tidies();
         Ok(Reply::Done)
     }
 

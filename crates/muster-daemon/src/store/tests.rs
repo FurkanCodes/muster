@@ -54,6 +54,7 @@ fn session(workspace: WorkspaceId) -> Session {
         status_since: at(3),
         activity: None,
         spend: None,
+        tidy: None,
     }
 }
 

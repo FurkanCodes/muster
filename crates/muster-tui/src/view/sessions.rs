@@ -190,7 +190,7 @@ fn session_line(
         SessionStatus::Running | SessionStatus::NeedsYou { .. }
     );
     let unseen = if session.unseen { " •" } else { "" };
-    let mut doing = look::doing(session).to_owned();
+    let mut doing = look::doing(session).into_owned();
     let mut project = Vec::new();
     if place {
         let branch = app.model.branch(session.workspace).unwrap_or("?");
@@ -226,9 +226,10 @@ fn session_line(
     }
     let room = width.saturating_sub(fixed + time_width(&time));
     let doing_room = room.saturating_sub(title_least + 2);
+    // A tidy's outcome is worth a shortened line, as a working agent's is.
     let doing = if doing.chars().count() <= doing_room {
         doing
-    } else if live && doing_room >= 8 {
+    } else if (live || session.tidy.is_some()) && doing_room >= 8 {
         shorten(&doing, doing_room)
     } else {
         String::new()
@@ -241,6 +242,13 @@ fn session_line(
     let title = shorten(&session.title, room.saturating_sub(doing_width).max(4));
     let doing_style = match (&session.activity, session.status) {
         (_, SessionStatus::NeedsYou { .. }) => Style::default().fg(Color::Red),
+        _ if session
+            .tidy
+            .as_ref()
+            .is_some_and(muster_core::tidy::Tidy::went_wrong) =>
+        {
+            Style::default().fg(Color::Red)
+        }
         (Some(_), SessionStatus::Running) => Style::default(),
         _ => Style::default().add_modifier(Modifier::DIM),
     };

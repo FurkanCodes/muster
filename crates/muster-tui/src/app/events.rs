@@ -195,6 +195,7 @@ impl App {
             KeyCode::Char('x') => return self.remove(),
             KeyCode::Char('c') if self.view == View::Sessions => return self.check(),
             KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
+            KeyCode::Char('t') if self.view == View::Sessions => return self.ask_tidy(),
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
             KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
             KeyCode::Char('d') => return self.open_changes(),
@@ -332,7 +333,7 @@ impl App {
     /// The workspace selected for a stage by hand: a worktree or checkout,
     /// or one a session runs in; not a run's container, whose run does its
     /// own.
-    fn hands_on_workspace(&mut self, what: &str) -> Option<WorkspaceId> {
+    pub(super) fn hands_on_workspace(&mut self, what: &str) -> Option<WorkspaceId> {
         let Some(workspace) = self.selected.and_then(|row| self.model.worktree_of(row)) else {
             self.complain(format!(
                 "Select a worktree, or a session in one, to {what}."
@@ -563,6 +564,7 @@ impl App {
             Dialog::Undo {
                 workspace, plan, ..
             } => self.undo_key(workspace, &plan, key),
+            Dialog::Tidy { workspace, harness } => self.tidy_key(workspace, harness, key),
             Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
             dialog @ Dialog::TicketsFrom { .. } => self.tickets_from_key(dialog, key),
             Dialog::AssignAgent {

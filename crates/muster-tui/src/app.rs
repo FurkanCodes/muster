@@ -16,6 +16,7 @@ mod settle;
 mod sharing;
 mod tickets;
 pub(crate) mod tickets_from;
+mod tidy;
 pub(crate) mod timeline;
 mod welcome;
 
@@ -195,6 +196,11 @@ pub(crate) enum Dialog {
         plan: muster_core::timeline::UndoPlan,
         what: String,
         agent_remembers: Option<String>,
+    },
+    /// Which agent tidies a workspace's commits not pushed yet.
+    Tidy {
+        workspace: WorkspaceId,
+        harness: HarnessChoice,
     },
     /// Where a project's tickets come from: a tracker, or `None` for the
     /// one its git remote says; Jira's site and project's key, or Linear's

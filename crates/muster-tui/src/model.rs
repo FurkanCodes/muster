@@ -379,6 +379,7 @@ pub(crate) mod tests {
             status_since: Timestamp::from_millis(created),
             activity: None,
             spend: None,
+            tidy: None,
         }
     }
 

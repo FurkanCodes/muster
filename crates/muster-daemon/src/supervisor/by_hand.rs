@@ -232,7 +232,7 @@ impl Supervisor {
 
     /// The branch checked out in `workspace`, if it can go anywhere: not
     /// detached, and not a run's container.
-    fn reviewable_branch(&self, workspace: WorkspaceId) -> Result<String, ErrorBody> {
+    pub(super) fn reviewable_branch(&self, workspace: WorkspaceId) -> Result<String, ErrorBody> {
         let found = self
             .state
             .workspaces
@@ -259,7 +259,7 @@ impl Supervisor {
 
     /// The settings in the workspace at `path`, with the person's
     /// overrides.
-    async fn settings_in(
+    pub(super) async fn settings_in(
         &self,
         workspace: WorkspaceId,
         path: &Path,

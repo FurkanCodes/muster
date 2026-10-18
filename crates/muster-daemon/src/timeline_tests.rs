@@ -476,3 +476,64 @@ async fn old_entries_go_and_the_store_is_private_and_removed_with_its_workspace(
     assert!(!store.dir.exists());
     remove(&store.dir).await;
 }
+
+#[tokio::test]
+async fn a_turn_that_rewrote_commits_not_pushed_can_be_undone_branch_and_all() {
+    let Setup {
+        _dir,
+        worktree,
+        store,
+        ..
+    } = setup().await;
+    let head = |dir: &Path| {
+        let out = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    write(&worktree, "notes.txt", "one\n");
+    git(&worktree, &["commit", "--quiet", "-am", "wip"]);
+    write(&worktree, "notes.txt", "one\ntwo\nthree\n");
+    git(&worktree, &["commit", "--quiet", "-am", "fixup"]);
+    let before = head(&worktree);
+
+    // A tidy: the two squashed into one, the files as they were.
+    let session = SessionId::new();
+    store.began(session, &[session], at(1)).await.unwrap();
+    git(&worktree, &["reset", "--quiet", "--soft", "HEAD~2"]);
+    git(&worktree, &["commit", "--quiet", "-m", "One clear change"]);
+    let tidied = head(&worktree);
+    let number = store
+        .ended(session, "Claude Code", at(2))
+        .await
+        .unwrap()
+        .expect("a turn that moved the branch is kept");
+
+    let planned = store.plan(number).await.unwrap().branch.unwrap();
+    assert_eq!(
+        (planned.commits, planned.forward, &planned.refused),
+        (1, false, &None)
+    );
+
+    // With the tidied commit pushed, the branch stays.
+    git(
+        &worktree,
+        &["update-ref", "refs/remotes/origin/feature", &tidied],
+    );
+    let refused = store.plan(number).await.unwrap().branch.unwrap();
+    assert!(refused.refused.unwrap().contains("pushed"));
+    git(
+        &worktree,
+        &["update-ref", "-d", "refs/remotes/origin/feature"],
+    );
+
+    let (_, moved) = store.undo(number, true, at(3)).await.unwrap();
+    assert!(moved);
+    assert_eq!(head(&worktree), before);
+    assert_eq!(
+        read(&worktree, "notes.txt").as_deref(),
+        Some("one\ntwo\nthree\n")
+    );
+}

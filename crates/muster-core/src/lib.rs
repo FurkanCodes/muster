@@ -25,6 +25,7 @@ pub mod session;
 pub mod settings;
 pub mod text;
 pub mod tickets;
+pub mod tidy;
 pub mod time;
 pub mod timeline;
 

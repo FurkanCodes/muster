@@ -109,6 +109,7 @@ mod tests {
             status_since: Timestamp::from_millis(0),
             activity: None,
             spend: None,
+            tidy: None,
         };
         let mut state = Snapshot::default();
         apply(&mut state, Delta::ProjectUpserted(project.clone()));
