@@ -116,6 +116,7 @@ impl Supervisor {
             status_since: now,
             activity: None,
             spend: None,
+            tidy: None,
         };
         let id = session.id;
         let stored = session.clone();

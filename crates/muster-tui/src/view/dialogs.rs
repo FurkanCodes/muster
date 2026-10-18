@@ -173,7 +173,35 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             undo_lines(plan, what, agent_remembers.as_deref()),
             None,
         ),
+        Dialog::Tidy { workspace, harness } => tidy(app, *workspace, *harness),
     }
+}
+
+/// Which agent tidies a workspace's commits, and what it is asked to do.
+fn tidy(app: &App, workspace: WorkspaceId, harness: HarnessChoice) -> Shape<'static> {
+    let branch = one_line(app.model.branch(workspace).unwrap_or("?"));
+    let mut run = vec![Span::raw("Tidy with ")];
+    for option in HarnessChoice::ALL.into_iter().filter(|o| o.is_agent()) {
+        run.push(harness_option(option, harness));
+    }
+    Shape::new(
+        " Tidy the commits ",
+        vec![
+            Line::from(format!(
+                "An agent rewrites the commits on {branch} not pushed yet into clear ones, the \
+                 files left as they are."
+            )),
+            Line::from(
+                "Muster checks the files once it stops; d lists its turn, and z puts it back.",
+            )
+            .dim(),
+            Line::from(""),
+            Line::from(run),
+            Line::from(""),
+            Line::from("⇥ ⇧⇥ choose   ⏎ start   esc cancel").dim(),
+        ],
+        None,
+    )
 }
 
 /// What putting the files back from an entry does, for the person to say

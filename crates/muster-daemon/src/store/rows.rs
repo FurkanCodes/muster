@@ -161,6 +161,7 @@ pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
             status_since,
             activity: None,
             spend: None,
+            tidy: None,
         })
     })())
 }

@@ -138,6 +138,27 @@ pub(crate) fn review_by_hand(branch: &str, base: &str) -> String {
     )
 }
 
+/// A tidy by hand of the `commits` newest commits on `branch`, those after
+/// `from`, none of them pushed: the agent rewrites them into clear ones
+/// and leaves the files as they are, which Muster then checks.
+pub(crate) fn tidy_by_hand(branch: &str, from: &str, commits: u64) -> String {
+    let which = if commits == 1 {
+        "the newest commit".to_owned()
+    } else {
+        format!("the {commits} newest commits")
+    };
+    format!(
+        "Tidy {which} on the branch `{branch}`, those after {from}; none of them is pushed yet. \
+         Make each commit one coherent change with a clear message: squash fixups and work in \
+         progress into the commits they belong to, and split a commit only where it mixes \
+         unrelated changes. Rewrite them with git yourself, without opening an editor (for \
+         example `git reset --soft {from}` and new commits, or `git rebase -i {from}` with \
+         `GIT_SEQUENCE_EDITOR`). Do not change any file: the files must end exactly as they are \
+         now, and Muster checks that they do. Leave the commits up to {from} as they are, do \
+         not push, and leave nothing uncommitted. End by listing the commits as they are now."
+    )
+}
+
 /// A reviewer's verdict, as the daemon reads it from the end of its reply.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub(crate) struct ReviewVerdict {

@@ -35,7 +35,9 @@ impl Store {
     }
 
     /// Moving the workspace's branch to `target`, where it is elsewhere
-    /// now: back over commits not pushed, or forward again.
+    /// now: back over commits not pushed, forward again, or back from
+    /// where it moved another way (a rebase, a tidy) where nothing it
+    /// leaves is pushed.
     async fn branch_move(&self, target: &str) -> Result<Option<BranchMove>, GitError> {
         let worktree = &self.worktree;
         let Some(now) = head(worktree).await? else {
@@ -95,7 +97,15 @@ impl Store {
             planned.forward = true;
             planned.commits = count(format!("{now}..{target}"), false).await?;
         } else {
-            planned.refused = Some("it has moved another way since, as by a rebase".to_owned());
+            // Moved another way, as by a rebase or a tidy: back only where
+            // nothing it leaves is pushed.
+            planned.commits = count(format!("{target}..{now}"), false).await?;
+            let unpushed = count(format!("{target}..{now}"), true).await?;
+            if unpushed < planned.commits {
+                planned.refused = Some(
+                    "it has moved another way since, and its commits since are pushed".to_owned(),
+                );
+            }
         }
         Ok(Some(planned))
     }

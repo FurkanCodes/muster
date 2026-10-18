@@ -149,4 +149,8 @@ pub struct Session {
     /// read again after a restart, and never stored.
     #[serde(default)]
     pub spend: Option<crate::session::Spend>,
+    /// The tidy of its branch's commits it was started for, and what
+    /// Muster found once its agent stopped; never stored.
+    #[serde(default)]
+    pub tidy: Option<crate::tidy::Tidy>,
 }

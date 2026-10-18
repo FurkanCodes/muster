@@ -3,6 +3,8 @@
 //! agents' letters, and Muster's wordmark. Colours are the terminal's own
 //! sixteen, so they follow the person's theme.
 
+use std::borrow::Cow;
+
 use muster_core::{ProjectId, Session, SessionStatus};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
@@ -83,12 +85,18 @@ pub(crate) fn session_time(app: &App, session: &Session) -> Option<String> {
 
 /// What `session` is doing, for its line: its activity while it works or
 /// waits and its hooks say, else its status.
-pub(crate) fn doing(session: &Session) -> &str {
-    match (&session.activity, session.status) {
-        (Some(activity), SessionStatus::Running | SessionStatus::NeedsYou { .. }) => {
-            activity.text.as_str()
+pub(crate) fn doing(session: &Session) -> Cow<'_, str> {
+    match (&session.activity, session.status, &session.tidy) {
+        (Some(activity), SessionStatus::Running | SessionStatus::NeedsYou { .. }, _) => {
+            Cow::Borrowed(activity.text.as_str())
         }
-        _ => crate::view::describe(session.status),
+        // A tidy says what it comes to, until its agent waits or ends.
+        (
+            _,
+            SessionStatus::Running | SessionStatus::Finished | SessionStatus::Fresh,
+            Some(tidy),
+        ) => Cow::Owned(tidy.words()),
+        _ => Cow::Borrowed(crate::view::describe(session.status)),
     }
 }
 

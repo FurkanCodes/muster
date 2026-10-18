@@ -336,6 +336,7 @@ impl Supervisor {
         self.broadcast(Delta::WorkspaceRemoved { id: workspace });
         self.forget_timeline(workspace);
         self.forget_clashes_with(workspace);
+        self.forget_tidies();
     }
 
     /// The live worktree Muster made for `project` on `branch`, if any.

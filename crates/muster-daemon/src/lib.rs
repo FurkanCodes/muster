@@ -29,6 +29,7 @@ mod spend;
 mod supervisor;
 mod tasks;
 mod terminal;
+mod tidy;
 mod timeline;
 mod trackers;
 mod worktree_sync;

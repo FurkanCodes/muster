@@ -95,7 +95,7 @@ pub(super) fn draw_terminal(
         let (symbol, style) = status_symbol(stored.status, app.motion_step());
         spans.push(Span::styled(symbol, style));
         spans.push(Span::raw(format!(" {}  ", stored.title)));
-        spans.push(Span::from(look::doing(stored).to_owned()).dim());
+        spans.push(Span::from(look::doing(stored).into_owned()).dim());
         if let Some(time) = look::session_time(app, stored) {
             spans.push(Span::from(format!(" · {time}")).dim());
         }

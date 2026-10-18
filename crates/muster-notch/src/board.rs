@@ -249,6 +249,7 @@ mod tests {
             status_since: Timestamp::from_millis(since),
             activity: None,
             spend: None,
+            tidy: None,
         }
     }
 

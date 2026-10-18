@@ -51,7 +51,9 @@
 //! `Command::Timeline`, `Command::EntryDiff`, `Command::UndoPlan` and
 //! `Command::Undo`, sent only to a daemon of 25 or later); version 26 where
 //! the work in a project's workspaces meets (`Workspace::clashes`, a field
-//! older clients pass over).
+//! older clients pass over); version 27 tidying a branch's commits
+//! (`Command::TidyCommits`, sent only to a daemon of 27 or later, and
+//! `Session::tidy`, a field older clients pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -69,7 +71,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 26;
+pub const PROTOCOL_VERSION: u32 = 27;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -358,6 +360,14 @@ pub enum Command {
     /// answered with [`Reply::SessionStarted`].
     ReviewWorkspace {
         workspace: WorkspaceId,
+        size: TermSize,
+    },
+    /// Have the agent `harness` tidy a workspace's branch's commits not
+    /// pushed yet, the files left as they are, as a session; answered with
+    /// [`Reply::SessionStarted`]. Refused while an agent works there.
+    TidyCommits {
+        workspace: WorkspaceId,
+        harness: String,
         size: TermSize,
     },
     /// Push a workspace's branch, as committed, with the person's own git,

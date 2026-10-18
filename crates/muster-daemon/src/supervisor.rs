@@ -24,6 +24,7 @@ mod settings;
 mod spend;
 mod status;
 mod terminals;
+mod tidy;
 mod timeline;
 mod worktrees;
 
@@ -155,6 +156,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         changes: changes::Looks::default(),
         timelines: timeline::Timelines::default(),
         clashes: clashes::Clashes::default(),
+        tidies: tidy::Tidies::default(),
         tasks: settings.tasks,
     };
     supervisor.ensure_checkouts().await;
@@ -284,6 +286,8 @@ struct Supervisor {
     timelines: timeline::Timelines,
     /// Looks at where the work in projects' workspaces meets.
     clashes: clashes::Clashes,
+    /// What each tidy of commits under way began from.
+    tidies: tidy::Tidies,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
 }
@@ -412,6 +416,10 @@ impl Supervisor {
             Request::ChangesLooked(looked) => self.changes_looked(*looked),
             Request::TimelineJobDone(done) => self.timeline_job_done(*done),
             Request::ClashesFound(found) => self.clashes_found(*found),
+            Request::TidyChecked(checked) => {
+                let (session, checked) = *checked;
+                self.tidy_checked(session, checked);
+            }
             Request::RunningProcesses(reply) => {
                 let running = self
                     .live
@@ -492,6 +500,11 @@ impl Supervisor {
             Command::ReviewWorkspace { workspace, size } => {
                 self.review_workspace(workspace, size).await
             }
+            Command::TidyCommits {
+                workspace,
+                harness,
+                size,
+            } => self.tidy_commits(workspace, &harness, size).await,
             Command::RestartSession { session, size } => self.restart_session(session, size).await,
             Command::RemoveSession { session } => self.remove_session(session).await,
             Command::CancelRun { run } => {
@@ -651,6 +664,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::StopSession { .. } => "stop session",
         Command::CheckWorkspace { .. } => "check workspace",
         Command::ReviewWorkspace { .. } => "review workspace",
+        Command::TidyCommits { .. } => "tidy commits",
         Command::OpenPullRequest { .. } => "open pull request",
         Command::RestartSession { .. } => "restart session",
         Command::RemoveSession { .. } => "remove session",
