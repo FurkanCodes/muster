@@ -268,6 +268,12 @@ impl Supervisor {
             self.timing,
             self.clock.instant(),
         );
+        // A program started again in the session keeps what came before.
+        let signals = self
+            .live
+            .get_mut(&session)
+            .map(|live| std::mem::take(&mut live.signals))
+            .unwrap_or_default();
         self.live.insert(
             session,
             Live {
@@ -282,6 +288,7 @@ impl Supervisor {
                 ended: None,
                 title: None,
                 turn: None,
+                signals,
             },
         );
         self.carry_watch(session);

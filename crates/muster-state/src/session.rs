@@ -15,6 +15,7 @@
 //! permission notice is told apart from the request itself, so a real second
 //! request is never dropped as an echo.
 
+mod describe;
 mod machine;
 mod signal;
 

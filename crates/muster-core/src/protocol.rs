@@ -57,7 +57,9 @@
 //! work (`Workspace::stacked_on`, the same; `CreateWorktree::on` and
 //! `StartFromIssue::on`, and `Command::MoveOnto`, sent only to a daemon of
 //! 28 or later; a timeline's entries of `EntryKind::Moved` reach an older
-//! client as `EntryKind::Between`, [`Reply::for_version`]).
+//! client as `EntryKind::Between`, [`Reply::for_version`]); version 30 why
+//! a session has its status (`Command::ExplainSession`, sent only to a
+//! daemon of 30 or later, answered with `Reply::Explanation`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -75,7 +77,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 28;
+pub const PROTOCOL_VERSION: u32 = 30;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -447,6 +449,10 @@ pub enum Command {
     /// How the daemon is doing inside, answered with [`Reply::Health`].
     /// Sent only to a daemon of protocol 22 or later.
     Health,
+    /// Why a session has its status: what its machine holds and the
+    /// signals it last received; answered with [`Reply::Explanation`].
+    /// Sent only to a daemon of 30 or later.
+    ExplainSession { session: SessionId },
     /// Show a session in the Muster window the person looked at last
     /// ([`ServerFrame::Reveal`]); refused when no window is open. Sent
     /// only to a daemon of 23 or later.
@@ -570,6 +576,8 @@ pub enum Reply {
     ProjectSettings(ProjectSettings),
     /// How the daemon is doing inside.
     Health(Health),
+    /// Why a session has its status.
+    Explanation(Box<crate::explain::Explanation>),
     /// What a workspace's work has changed.
     Changes(Changes),
     /// One changed file's diff.

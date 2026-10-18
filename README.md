@@ -150,6 +150,12 @@ muster status
 muster session restart <session-id>
 ```
 
+When a session's status looks wrong, ask why it has it: whom it waits on and for what, whether its turn is held for subagents, its next deadline, and the last signals it received, by kind and tool alone, never what was written.
+
+```bash
+muster session explain <session-id>
+```
+
 ### Where tickets and pull requests are
 
 Muster tells from a project's git remote where it is hosted: GitHub, GitLab (`gitlab.com`, or a host named `gitlab.…`) or Bitbucket. GitHub's and GitLab's projects get their issues as tickets, and pull requests by hand (`muster pr`, `o`) go to the same host — through your `gh` or `glab`, signed in. A project says what its remote cannot in its `muster.toml` (or your local overrides of it, `muster project config`; *Only my tickets* is also on the *Settings* screen):

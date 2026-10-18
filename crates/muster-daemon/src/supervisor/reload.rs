@@ -121,6 +121,8 @@ impl Supervisor {
                     ended: None,
                     title: None,
                     turn: session.turn,
+                    // Not carried: what this daemon has heard.
+                    signals: super::explain::Recent::default(),
                 },
             );
             self.carry_watch(id);

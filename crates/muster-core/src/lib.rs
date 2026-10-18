@@ -11,6 +11,7 @@ pub mod clashes;
 pub mod config;
 pub mod credentials;
 pub mod entities;
+pub mod explain;
 pub mod frame;
 pub mod hex;
 pub mod html;

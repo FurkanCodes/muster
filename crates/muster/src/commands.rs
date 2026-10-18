@@ -612,7 +612,7 @@ fn one<'a, T>(
     }
 }
 
-fn describe(status: SessionStatus) -> String {
+pub(crate) fn describe(status: SessionStatus) -> String {
     match status {
         SessionStatus::Fresh => "fresh".to_owned(),
         SessionStatus::Running => "running".to_owned(),

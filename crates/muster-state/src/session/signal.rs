@@ -1,17 +1,9 @@
 //! What the session machine consumes and produces.
 
 use muster_core::SessionStatus;
-
-/// Who inside an agent session raised an event.
-#[derive(
-    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-pub enum Origin {
-    /// The main agent, the one the person talks to.
-    Main,
-    /// A subagent, by the id its harness gave it.
-    Subagent(String),
-}
+/// Who inside an agent session raised an event; shared with the protocol,
+/// which names whose a wait is.
+pub use muster_core::session::Origin;
 
 /// A hook event, already translated from the harness's own format by its
 /// driver in the daemon. The machine never sees harness-specific names.

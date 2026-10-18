@@ -3,11 +3,13 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
+use muster_core::explain::DeadlineKind;
 use muster_core::{SessionStatus, WaitReason};
 
 use super::signal::{Effect, HookEvent, Origin, Signal};
 
 mod carry;
+mod explain;
 
 pub use carry::Carried;
 
@@ -169,23 +171,34 @@ impl SessionMachine {
 
     /// When the daemon should next send [`Signal::Tick`], if ever.
     pub fn next_deadline(&self) -> Option<Instant> {
-        let start = self.start_by.filter(|_| self.before_startup.is_none());
+        self.next_deadline_and_kind().map(|(at, _)| at)
+    }
+
+    /// The next deadline, and what the machine does at it.
+    fn next_deadline_and_kind(&self) -> Option<(Instant, DeadlineKind)> {
+        let start = self
+            .start_by
+            .filter(|_| self.before_startup.is_none())
+            .map(|at| (at, DeadlineKind::Start));
         match (start, self.hold_deadline()) {
-            (Some(start), Some(hold)) => Some(start.min(hold)),
+            (Some(start), Some(hold)) => Some(if hold.0 < start.0 { hold } else { start }),
             (start, hold) => start.or(hold),
         }
     }
 
-    fn hold_deadline(&self) -> Option<Instant> {
+    fn hold_deadline(&self) -> Option<(Instant, DeadlineKind)> {
         let hold = self.hold?;
         if let Some(drained_at) = hold.drained_at {
-            return Some(drained_at + self.timing.drain_grace);
+            return Some((drained_at + self.timing.drain_grace, DeadlineKind::Drain));
         }
         if self.is_waiting() {
             // A subagent waiting on the person is not quiet, however long it takes.
             return None;
         }
-        Some(self.last_subagent_activity(hold) + self.timing.subagent_quiet)
+        Some((
+            self.last_subagent_activity(hold) + self.timing.subagent_quiet,
+            DeadlineKind::Quiet,
+        ))
     }
 
     /// Applies one signal and returns what the daemon must do about it.

@@ -37,12 +37,14 @@ impl Supervisor {
             if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {
                 self.set_activity(session, change);
             }
-            self.step_session(
+            let tool = crate::harness::activity::tool_named(&delivery.body);
+            self.step_noted(
                 session,
                 Signal::Hook {
                     agent_session,
                     event,
                 },
+                tool,
             )
             .await;
         }
@@ -77,6 +79,13 @@ impl Supervisor {
 
     /// Feeds a session's machine and carries out what it decides.
     pub(super) async fn step_session(&mut self, session: SessionId, signal: Signal) {
+        self.step_noted(session, signal, None).await;
+    }
+
+    /// The same, noting the signal, with the tool its hook named, for
+    /// explaining the session's status later.
+    async fn step_noted(&mut self, session: SessionId, signal: Signal, tool: Option<String>) {
+        self.note_signal(session, &signal, tool);
         let Some(live) = self.live.get_mut(&session) else {
             return;
         };
