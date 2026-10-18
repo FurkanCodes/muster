@@ -61,7 +61,11 @@ macro_rules! frozen {
 }
 
 /// Every version's set, oldest first; one is added per protocol version.
-const FROZEN: &[Frozen] = &[frozen!(28, 16, "0.3.25"), frozen!(30, 16, "0.3.25")];
+const FROZEN: &[Frozen] = &[
+    frozen!(28, 16, "0.3.25"),
+    frozen!(30, 16, "0.3.25"),
+    frozen!(31, 16, "0.3.25"),
+];
 
 /// The process id the frozen replies name.
 const PID: u32 = 4242;

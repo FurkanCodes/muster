@@ -69,7 +69,14 @@
 //! those settings again (`Command::ReadPreferences`, sent only to a daemon
 //! of 29 or later); version 30 why a session has its status
 //! (`Command::ExplainSession`, sent only to a daemon of 30 or later,
-//! answered with `Reply::Explanation`).
+//! answered with `Reply::Explanation`); version 31 a
+//! session's terminal as in a real one: the colours of the person's
+//! terminal, which programs in sessions are told when they ask
+//! (`ClientFrame::Colours`, sent only to a daemon of 31 or later), and
+//! which session has the person's keys, for programs that asked to be
+//! told as their terminal gains and loses focus (`ClientFrame::Keys`, the
+//! same), and the size of a session's terminal in pixels
+//! (`ClientFrame::Resize::pixels`, a field older daemons pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -79,6 +86,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::changes::{ChangePart, Changes, FileDiff};
+use crate::colours::TerminalColours;
 use crate::entities::{Issue, Project, Session, Workspace};
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
@@ -87,7 +95,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 30;
+pub const PROTOCOL_VERSION: u32 = 31;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -184,12 +192,32 @@ pub enum ClientFrame {
         data: Vec<u8>,
     },
     /// The client's view of a session's terminal changed size.
-    Resize { session: SessionId, size: TermSize },
+    Resize {
+        session: SessionId,
+        size: TermSize,
+        /// Its size in pixels, where the person's terminal says its own:
+        /// for programs that size pictures or a cursor by it. From protocol
+        /// 31; older daemons pass it over.
+        #[serde(default)]
+        pixels: Option<PixelSize>,
+    },
     /// Whether the person is looking at this client's window: a UI says
     /// so as it connects and whenever its window gains or loses focus. A
     /// client that never says is not looked at. Sent only to a daemon of
     /// 23 or later.
     Looking { looking: bool },
+    /// The colours of the person's terminal, as the UI found them as it
+    /// started: a program in a session asking its terminal for its colours
+    /// (OSC 10, 11 and 4) is told these, the last a UI said. Sent only to a
+    /// daemon of 31 or later, and only with a colour in it.
+    Colours(TerminalColours),
+    /// Which session's terminal has the person's keys in this client, if
+    /// any: one they have entered, in a window they look at. A program that
+    /// asked to be told its terminal's focus (`CSI ? 1004 h`) is sent
+    /// `CSI I` as its session gains the keys in any client and `CSI O` as
+    /// it loses them in every one. Sent whenever it changes, only to a
+    /// daemon of 31 or later.
+    Keys { session: Option<SessionId> },
 }
 
 fn watching_by_default() -> bool {
@@ -323,6 +351,13 @@ impl Default for TermSize {
     fn default() -> Self {
         Self { cols: 80, rows: 24 }
     }
+}
+
+/// A terminal's size in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PixelSize {
+    pub width: u16,
+    pub height: u16,
 }
 
 /// Something a client asks the daemon to do.

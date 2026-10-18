@@ -98,7 +98,7 @@ impl Supervisor {
             };
             let events = self.pty_events.clone();
             let size = session.terminal.size;
-            let pty = match pty::adopt(master, session.terminal, move |event| {
+            let pty = match pty::adopt(master, session.terminal, self.colours(), move |event| {
                 let _ = events.send((id, event));
             }) {
                 Ok(pty) => pty,

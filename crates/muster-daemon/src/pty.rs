@@ -10,7 +10,9 @@
 //! The child is started by portable-pty, which makes it a session leader with
 //! the terminal as its controlling terminal and closes every inherited
 //! descriptor above stderr before `exec`. The actor also answers the
-//! questions programs ask their terminal (see `queries`).
+//! questions programs ask their terminal (see `queries`), those about its
+//! colours from the person's terminal's, as a UI last told them (see
+//! `colours`).
 //!
 //! An actor can hand its terminal over, for the daemon's restart in place
 //! (`handoff`): it stops its reader between reads, so no byte is taken from
@@ -18,6 +20,7 @@
 //! its ring, input modes and size; the program runs on, untouched. The next
 //! daemon adopts it into a new actor.
 
+mod colours;
 mod cursor;
 mod osc;
 mod queries;
@@ -36,12 +39,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use muster_core::protocol::{TermSize, TerminalModes};
+use muster_core::colours::TerminalColours;
+use muster_core::protocol::{PixelSize, TermSize, TerminalModes};
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::time::Instant;
 
 use self::cursor::CursorTracker;
@@ -137,7 +141,9 @@ enum Command {
         reply: oneshot::Sender<Attachment>,
     },
     Input(Vec<u8>),
-    Resize(TermSize),
+    Resize(TermSize, Option<PixelSize>),
+    /// The person's keys came into the terminal, or left it.
+    Focus(bool),
     Stop,
     ResumeIfSuspended,
     /// Give the terminal up, with what goes with it, if its program still
@@ -174,14 +180,28 @@ impl PtyHandle {
         self.commands.send(Command::Input(data)).await.is_ok()
     }
 
-    pub(crate) async fn resize(&self, size: TermSize) -> bool {
-        self.commands.send(Command::Resize(size)).await.is_ok()
+    /// Sizes the terminal, in pixels too where a client knows them, for
+    /// programs that size pictures or a cursor by them.
+    pub(crate) async fn resize(&self, size: TermSize, pixels: Option<PixelSize>) -> bool {
+        self.commands
+            .send(Command::Resize(size, pixels))
+            .await
+            .is_ok()
+    }
+
+    /// Says whether the person's keys are in the terminal: a program that
+    /// asked to be told (`CSI ? 1004 h`) is sent `CSI I` as they come and
+    /// `CSI O` as they go.
+    pub(crate) async fn focus(&self, focused: bool) {
+        let _ = self.commands.send(Command::Focus(focused)).await;
     }
 
     /// Resizes without waiting, for a terminal just started, whose queue
     /// has room; `false` if it had none or the terminal is gone.
-    pub(crate) fn resize_now(&self, size: TermSize) -> bool {
-        self.commands.try_send(Command::Resize(size)).is_ok()
+    pub(crate) fn resize_now(&self, size: TermSize, pixels: Option<PixelSize>) -> bool {
+        self.commands
+            .try_send(Command::Resize(size, pixels))
+            .is_ok()
     }
 
     /// Hangs up the terminal, then kills its process group if it is still
@@ -210,12 +230,17 @@ impl PtyHandle {
     }
 }
 
+/// The colours of the person's terminal, as a UI last told them, which a
+/// program asking its terminal for its colours is told.
+pub(crate) type Colours = watch::Receiver<TerminalColours>;
+
 /// Starts `spec` in a new terminal whose first byte of output is numbered
 /// `first_seq`. `events` receives what it reports; the terminal is released
 /// when every handle to it has been dropped.
 pub(crate) fn spawn(
     spec: &SpawnSpec,
     first_seq: u64,
+    colours: Colours,
     events: impl Fn(PtyEvent) + Send + 'static,
 ) -> std::io::Result<PtyHandle> {
     let pair = native_pty_system()
@@ -261,6 +286,7 @@ pub(crate) fn spawn(
             exited,
             ring: Ring::starting_at(RING_CAPACITY, first_seq),
             queries: QueryScanner::default(),
+            colours,
             size: spec.size,
             stopping: false,
         },
@@ -273,6 +299,7 @@ pub(crate) fn spawn(
 pub(crate) fn adopt(
     master: OwnedFd,
     carried: Carried,
+    colours: Colours,
     events: impl Fn(PtyEvent) + Send + 'static,
 ) -> std::io::Result<PtyHandle> {
     let mut ring = Ring::starting_at(RING_CAPACITY, carried.seq);
@@ -291,6 +318,7 @@ pub(crate) fn adopt(
             exited,
             ring,
             queries: QueryScanner::adopt(carried.modes),
+            colours,
             size: carried.size,
             stopping: carried.stopping,
         },
@@ -325,6 +353,7 @@ struct Starting {
     exited: oneshot::Receiver<bool>,
     ring: Ring,
     queries: QueryScanner,
+    colours: Colours,
     size: TermSize,
     /// Its program was being stopped when it was handed over.
     stopping: bool,
@@ -338,6 +367,7 @@ fn start(
         exited,
         ring,
         queries,
+        colours,
         size,
         stopping,
     }: Starting,
@@ -378,7 +408,9 @@ fn start(
         input: Some(input),
         osc: OscScanner::default(),
         queries,
+        colours,
         cursor: None,
+        focused: None,
         size,
         stopping,
         kill_at: stopping.then(|| Instant::now() + STOP_GRACE),
@@ -393,12 +425,14 @@ fn start(
     Ok(PtyHandle { commands, pid })
 }
 
-fn winsize(size: TermSize) -> rustix::termios::Winsize {
+/// The terminal's size as the system keeps it; pixels 0 where unknown, as
+/// before any client said them.
+fn winsize(size: TermSize, pixels: Option<PixelSize>) -> rustix::termios::Winsize {
     rustix::termios::Winsize {
         ws_row: size.rows.max(1),
         ws_col: size.cols.max(1),
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+        ws_xpixel: pixels.map_or(0, |pixels| pixels.width),
+        ws_ypixel: pixels.map_or(0, |pixels| pixels.height),
     }
 }
 
@@ -468,8 +502,12 @@ struct Actor {
     input: Option<std::sync::mpsc::Sender<Vec<u8>>>,
     osc: OscScanner,
     queries: QueryScanner,
+    /// The person's terminal's colours, for questions about its own.
+    colours: Colours,
     /// A screen for cursor-position answers, built at the first question.
     cursor: Option<CursorTracker>,
+    /// Whether the person's keys are in the terminal, once told.
+    focused: Option<bool>,
     size: TermSize,
     stopping: bool,
     kill_at: Option<Instant>,
@@ -649,6 +687,21 @@ impl Actor {
                     fed = at;
                     tracker.report()
                 }
+                Reply::Colour { colour, ending } => {
+                    // One no UI has said goes unanswered, as a terminal
+                    // that does not know it would.
+                    let known = colours::answer(colour, ending, &self.colours.borrow());
+                    let Some(bytes) = known else {
+                        continue;
+                    };
+                    bytes
+                }
+                Reply::PixelSize { cell } => {
+                    let Some(bytes) = self.pixel_size(cell) else {
+                        continue;
+                    };
+                    bytes
+                }
             };
             if let Some(input) = &self.input {
                 let _ = input.send(bytes);
@@ -657,6 +710,26 @@ impl Actor {
         if let Some(tracker) = &mut self.cursor {
             tracker.feed(&data[fed..]);
         }
+    }
+
+    /// The answer to a question about the terminal's size in pixels, or a
+    /// cell's (`CSI 4 ; height ; width t`, `CSI 6 ; …`), from the size the
+    /// system keeps, which a handoff carries too; none where no client
+    /// gave pixels.
+    fn pixel_size(&self, cell: bool) -> Option<Vec<u8>> {
+        let size = rustix::termios::tcgetwinsize(self.master.as_ref()?).ok()?;
+        let (width, height) = (size.ws_xpixel, size.ws_ypixel);
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let answer = if cell {
+            let (cell_width, cell_height) =
+                (width / size.ws_col.max(1), height / size.ws_row.max(1));
+            format!("\x1b[6;{cell_height};{cell_width}t")
+        } else {
+            format!("\x1b[4;{height};{width}t")
+        };
+        Some(answer.into_bytes())
     }
 
     fn on_command(&mut self, command: Command) {
@@ -673,14 +746,25 @@ impl Actor {
                     let _ = input.send(data);
                 }
             }
-            Command::Resize(size) => {
+            Command::Resize(size, pixels) => {
                 if self.live.is_some() {
                     if let Some(master) = &self.master {
-                        let _ = rustix::termios::tcsetwinsize(master, winsize(size));
+                        let _ = rustix::termios::tcsetwinsize(master, winsize(size, pixels));
                     }
                     self.size = size;
                     if let Some(tracker) = &mut self.cursor {
                         tracker.resize(size.cols, size.rows);
+                    }
+                }
+            }
+            Command::Focus(focused) => {
+                // Told only as it changes, and only to a program that
+                // asked, as a terminal does.
+                if self.focused != Some(focused) {
+                    self.focused = Some(focused);
+                    if let (true, Some(input)) = (self.queries.focus_events(), &self.input) {
+                        let report = if focused { b"\x1b[I" } else { b"\x1b[O" };
+                        let _ = input.send(report.to_vec());
                     }
                 }
             }

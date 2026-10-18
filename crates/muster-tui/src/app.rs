@@ -70,6 +70,8 @@ mod slide_tests;
 #[cfg(test)]
 mod spend_tests;
 #[cfg(test)]
+mod terminal_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tickets_from_tests;
@@ -82,7 +84,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use muster_core::config::TrackerKind;
-use muster_core::protocol::{ClientFrame, Command, TermSize};
+use muster_core::protocol::{ClientFrame, Command, PixelSize, TermSize};
 use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
 
 use crate::input::LineInput;
@@ -350,6 +352,8 @@ pub(crate) struct App {
     pub(crate) selection: Option<Selection>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
+    /// The session the daemon was last told has the person's keys.
+    keys_told: Option<SessionId>,
     /// Something a reply named that the state may not show yet: replies and
     /// deltas travel separately, so either can arrive first. Selected (and,
     /// for a new session, opened) as soon as it appears.
@@ -413,6 +417,12 @@ pub(crate) struct App {
     notch_started: bool,
     /// The notch is being turned on or off: the answer is on its way.
     pub(crate) notch_changing: bool,
+    /// The colours of the person's terminal, as it said them as the UI
+    /// started, told to each daemon the UI connects to.
+    pub(crate) colours: muster_core::colours::TerminalColours,
+    /// One cell of the person's terminal in pixels, as its size says,
+    /// read as the UI starts and as the window is resized.
+    pub(crate) cell_pixels: Option<PixelSize>,
 }
 
 impl App {
@@ -446,6 +456,7 @@ impl App {
             changes: None,
             selection: None,
             attached: None,
+            keys_told: None,
             wanted: None,
             pending: HashMap::new(),
             next_req: 1,
@@ -470,6 +481,8 @@ impl App {
             notch_here: false,
             notch_started: false,
             notch_changing: false,
+            colours: muster_core::colours::TerminalColours::default(),
+            cell_pixels: None,
         }
     }
 
@@ -553,6 +566,39 @@ impl App {
         }
     }
 
+    /// The session whose terminal has the person's keys: one they entered,
+    /// in a window they look at (or one that never says).
+    pub(crate) fn keys_session(&self) -> Option<SessionId> {
+        match self.mode {
+            Mode::Terminal(session) if self.focused != Some(false) => Some(session),
+            _ => None,
+        }
+    }
+
+    /// Tells the daemon where the person's keys are now, if that changed,
+    /// so a program that asked learns it gained or lost focus. Not to a
+    /// daemon before it knew how (`ARC-09`).
+    pub(super) fn tell_keys(&mut self) -> Option<Action> {
+        let wanted = self.keys_session();
+        let knows = matches!(self.link, Link::Connected { .. })
+            && self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL;
+        if !knows || wanted == self.keys_told {
+            return None;
+        }
+        self.keys_told = wanted;
+        Some(Action::Send(ClientFrame::Keys { session: wanted }))
+    }
+
+    /// A session's terminal of `size` in pixels, scaled from a cell of the
+    /// person's terminal; `None` where that terminal does not say its own.
+    pub(crate) fn session_pixels(&self, size: TermSize) -> Option<PixelSize> {
+        let cell = self.cell_pixels?;
+        Some(PixelSize {
+            width: size.cols.saturating_mul(cell.width),
+            height: size.rows.saturating_mul(cell.height),
+        })
+    }
+
     /// Whether the list has the keys, rather than a session's terminal.
     pub(crate) fn list_has_keys(&self) -> bool {
         !matches!(self.mode, Mode::Terminal(_))
@@ -570,7 +616,11 @@ impl App {
             .session(session)
             .is_some_and(|stored| stored.ended_at.is_none());
         if running {
-            vec![Action::Send(ClientFrame::Resize { session, size })]
+            vec![Action::Send(ClientFrame::Resize {
+                session,
+                size,
+                pixels: self.session_pixels(size),
+            })]
         } else {
             Vec::new()
         }

@@ -21,7 +21,7 @@ use tokio::sync::{mpsc, watch};
 
 use self::outbox::{LANE_BUDGET, Outbox};
 use crate::pty::PtyHandle;
-use crate::supervisor::{ClientGuard, SupervisorHandle, TerminalLink, WatchGuard};
+use crate::supervisor::{ClientGuard, KeysGuard, SupervisorHandle, TerminalLink, WatchGuard};
 use crate::tasks::{self, Owned, Tasks};
 use crate::terminal::forward_output;
 
@@ -75,6 +75,7 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tas
         watching: HashMap::new(),
         client: None,
         looker: false,
+        keys: None,
         version: MIN_PROTOCOL_VERSION,
     };
     if let Err(error) = session.run().await {
@@ -110,6 +111,8 @@ struct Connection {
     client: Option<ClientGuard>,
     /// The client has said whether the person is looking at it.
     looker: bool,
+    /// The session whose terminal has the person's keys in this client.
+    keys: Option<(SessionId, KeysGuard)>,
     /// The protocol agreed with the client.
     version: u32,
 }
@@ -169,6 +172,8 @@ impl Connection {
                 }
                 ClientFrame::Watch { session, watching } => self.watch(session, watching).await,
                 ClientFrame::Looking { looking } => self.looking(looking).await,
+                ClientFrame::Colours(colours) => self.supervisor.colours(colours).await,
+                ClientFrame::Keys { session } => self.keys(session).await,
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await {
                         self.typed(session).await;
@@ -177,12 +182,17 @@ impl Connection {
                         }
                     }
                 }
-                // The Supervisor decides whose size the terminal takes.
-                ClientFrame::Resize { session, size } => {
+                // The Supervisor decides whose size the terminal takes,
+                // and with it whose pixels.
+                ClientFrame::Resize {
+                    session,
+                    size,
+                    pixels,
+                } => {
                     if self.terminal(session).await.is_some()
                         && let Some(client) = &self.client
                     {
-                        self.supervisor.resize(session, client, size).await;
+                        self.supervisor.resize(session, client, size, pixels).await;
                     }
                 }
             }
@@ -267,6 +277,22 @@ impl Connection {
                 .await;
         }
         self.supervisor.looking(client, looking).await;
+    }
+
+    /// The person's keys are in `session`'s terminal now, or in none; the
+    /// one they were in is let go first.
+    async fn keys(&mut self, session: Option<SessionId>) {
+        if self.keys.as_ref().map(|(held, _)| *held) == session {
+            return;
+        }
+        self.keys = None;
+        if let Some(session) = session {
+            self.keys = self
+                .supervisor
+                .hold_keys(session)
+                .await
+                .map(|guard| (session, guard));
+        }
     }
 
     /// The session's current terminal, asking the Supervisor only the first

@@ -4,12 +4,13 @@
 use std::path::PathBuf;
 
 use muster_core::protocol::{
-    Command, Delta, ErrorBody, ErrorCode, Reply, ResourceReport, ServerFrame, Snapshot, TermSize,
+    Command, Delta, ErrorBody, ErrorCode, PixelSize, Reply, ResourceReport, ServerFrame, Snapshot,
+    TermSize,
 };
 use muster_core::{SessionId, WorkspaceId};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use super::{ClientGuard, TerminalLink, changes, containers, issues, pulls, runs};
+use super::{ClientGuard, KeysGuard, TerminalLink, changes, containers, issues, pulls, runs};
 
 pub(super) type Subscription = (Snapshot, broadcast::Receiver<Delta>);
 
@@ -28,11 +29,13 @@ pub(super) enum Request {
         client: u64,
         reply: oneshot::Sender<Option<TerminalLink>>,
     },
-    /// A client shows a session's terminal at `size`.
+    /// A client shows a session's terminal at `size`, and `pixels` where
+    /// the person's terminal says.
     Resize {
         session: SessionId,
         client: u64,
         size: TermSize,
+        pixels: Option<PixelSize>,
         done: oneshot::Sender<()>,
     },
     /// A client types into a session after another was active on it.
@@ -56,6 +59,14 @@ pub(super) enum Request {
     Looking {
         client: u64,
         looking: bool,
+    },
+    /// A UI says the colours of the person's terminal.
+    Colours(muster_core::colours::TerminalColours),
+    /// A client has the person's keys in a session's terminal, until it
+    /// drops the guard.
+    HoldKeys {
+        session: SessionId,
+        reply: oneshot::Sender<Option<KeysGuard>>,
     },
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
@@ -119,6 +130,8 @@ impl std::fmt::Debug for Request {
             Self::Leave { session, .. } => write!(f, "Leave({session})"),
             Self::AddLooker { client, .. } => write!(f, "AddLooker({client})"),
             Self::Looking { client, looking } => write!(f, "Looking({client}, {looking})"),
+            Self::Colours(_) => f.write_str("Colours"),
+            Self::HoldKeys { session, .. } => write!(f, "HoldKeys({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
             Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
@@ -295,6 +308,25 @@ impl SupervisorHandle {
             .is_ok()
     }
 
+    /// Tells the colours of the person's terminal, which programs in
+    /// sessions asking for their terminal's are told from now on.
+    pub(crate) async fn colours(&self, colours: muster_core::colours::TerminalColours) {
+        // Nothing to do once the Supervisor has stopped.
+        let _ = self.requests.send(Request::Colours(colours)).await;
+    }
+
+    /// Counts the client among those with the person's keys in `session`'s
+    /// terminal until the guard is dropped; `None` for a session that is
+    /// not known, or once the Supervisor has stopped.
+    pub(crate) async fn hold_keys(&self, session: SessionId) -> Option<KeysGuard> {
+        let (reply, answer) = oneshot::channel();
+        self.requests
+            .send(Request::HoldKeys { session, reply })
+            .await
+            .ok()?;
+        answer.await.ok().flatten()
+    }
+
     /// A link to a session's terminal for `client`, if it still has one.
     /// With `watch`, the session counts as watched until the link is
     /// dropped.
@@ -317,16 +349,24 @@ impl SupervisorHandle {
         answer.await.ok().flatten()
     }
 
-    /// The client shows the session at `size`; the session's terminal
-    /// takes it if the client is the one in charge of it (`sizing`).
-    /// Returns once any resize is on its way to the terminal, so keys sent
-    /// after it reach the program after it.
-    pub(crate) async fn resize(&self, session: SessionId, client: &ClientGuard, size: TermSize) {
+    /// The client shows the session at `size`, and `pixels` where it
+    /// knows them; the session's terminal takes them if the client is the
+    /// one in charge of it (`sizing`). Returns once any resize is on its
+    /// way to the terminal, so keys sent after it reach the program after
+    /// it.
+    pub(crate) async fn resize(
+        &self,
+        session: SessionId,
+        client: &ClientGuard,
+        size: TermSize,
+        pixels: Option<PixelSize>,
+    ) {
         let (done, answer) = oneshot::channel();
         let request = Request::Resize {
             session,
             client: client.id(),
             size,
+            pixels,
             done,
         };
         if self.requests.send(request).await.is_ok() {

@@ -11,8 +11,20 @@
 //! watcher holds a [`WatchGuard`]; dropping it, however the watcher ends,
 //! stops the watch. A client that links to a terminal is counted among its
 //! clients, whose sizes it takes (`sizing`).
+//!
+//! The person's keys are counted the same way: while a client has them in
+//! a session's terminal (the person entered it, in a window they look
+//! at), its program is in focus, and it is told so as that starts and
+//! ends (`CSI I`, `CSI O`) if it asked. Each such client holds a
+//! [`KeysGuard`], beside its connection's
+//! [`ClientGuard`](super::ClientGuard).
+//!
+//! Every terminal answers its program's questions about its colours from
+//! the person's terminal's, the last a UI told: a terminal reads them as
+//! it is asked, so one told later answers with them too.
 
 use muster_core::SessionId;
+use muster_core::colours::TerminalColours;
 use muster_core::protocol::TermSize;
 use muster_state::session::Signal;
 use tokio::sync::{mpsc, watch};
@@ -47,7 +59,39 @@ impl Drop for WatchGuard {
     }
 }
 
+/// Counts one client with the person's keys in a session's terminal until
+/// dropped.
+#[derive(Debug)]
+pub(crate) struct KeysGuard {
+    session: SessionId,
+    gone: mpsc::UnboundedSender<SessionId>,
+}
+
+impl Drop for KeysGuard {
+    fn drop(&mut self) {
+        // The Supervisor has stopped if this fails; nothing is left to count.
+        let _ = self.gone.send(self.session);
+    }
+}
+
 impl Supervisor {
+    /// The person's terminal's colours, as a UI found them. A UI whose
+    /// terminal said none changes nothing, and a palette is kept to the
+    /// colours that are asked for.
+    pub(super) fn set_colours(&mut self, mut colours: TerminalColours) {
+        if colours.is_empty() {
+            return;
+        }
+        colours.palette.truncate(muster_core::colours::PALETTE);
+        self.colours.send_replace(colours);
+    }
+
+    /// What a new terminal answers its program's questions about its
+    /// colours from.
+    pub(super) fn colours(&self) -> crate::pty::Colours {
+        self.colours.subscribe()
+    }
+
     /// Makes `pty`, started at `size`, the session's current terminal,
     /// moving its clients to it; it takes the size of the client in charge
     /// of the session.
@@ -157,6 +201,45 @@ impl Supervisor {
             .map(|stored| stored.status);
         if let Some(status) = unseen {
             self.set_status(session, status, false).await;
+        }
+    }
+
+    /// A client has the person's keys in `session`'s terminal: the first
+    /// tells its program it is in focus.
+    pub(super) async fn hold_keys(&mut self, session: SessionId) -> Option<KeysGuard> {
+        if !self
+            .state
+            .sessions
+            .iter()
+            .any(|stored| stored.id == session)
+        {
+            return None;
+        }
+        let typing = self.typing.entry(session).or_insert(0);
+        *typing += 1;
+        if *typing == 1
+            && let Some(live) = self.live.get(&session)
+        {
+            live.pty.focus(true).await;
+        }
+        Some(KeysGuard {
+            session,
+            gone: self.keys_gone.clone(),
+        })
+    }
+
+    /// One client let go of the person's keys in `session`'s terminal: the
+    /// last tells its program it is out of focus.
+    pub(super) async fn let_go_keys(&mut self, session: SessionId) {
+        let Some(typing) = self.typing.get_mut(&session) else {
+            return;
+        };
+        *typing = typing.saturating_sub(1);
+        if *typing == 0 {
+            self.typing.remove(&session);
+            if let Some(live) = self.live.get(&session) {
+                live.pty.focus(false).await;
+            }
         }
     }
 

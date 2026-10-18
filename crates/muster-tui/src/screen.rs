@@ -1,5 +1,7 @@
 //! A session's screen as this client draws it: a terminal emulator fed by
-//! the daemon's replay and output, and the program's input modes.
+//! the daemon's replay and output, and the program's input modes. It also
+//! keeps what the program copied (OSC 52) in its live output, for the
+//! person's clipboard (see `clipboard`).
 
 use muster_core::protocol::{DetachReason, TerminalModes};
 
@@ -10,8 +12,31 @@ const SCROLLBACK: usize = 2_000;
 const FRAME_START: &[u8] = b"\x1b[?2026h";
 const FRAME_END: &[u8] = b"\x1b[?2026l";
 
+/// What the program copied while its output was live: what it writes as
+/// the person looks on, never its history replayed on attaching.
+#[derive(Debug, Default)]
+struct Copies {
+    live: bool,
+    /// The last copy, once read as text.
+    copied: Option<String>,
+}
+
+impl vt100::Callbacks for Copies {
+    fn copy_to_clipboard(&mut self, _: &mut vt100::Screen, _selection: &[u8], data: &[u8]) {
+        // Any selection: the person has the one clipboard.
+        if self.live
+            && let Some(text) = crate::clipboard::from_program(data)
+        {
+            self.copied = Some(text);
+        }
+    }
+
+    // A program asking to read the clipboard (`52;c;?`) is never answered:
+    // the default does nothing.
+}
+
 pub(crate) struct Screen {
-    parser: vt100::Parser,
+    parser: vt100::Parser<Copies>,
     /// The position of the next byte expected, once a replay has arrived.
     next_seq: Option<u64>,
     pub(crate) modes: TerminalModes,
@@ -38,7 +63,7 @@ impl std::fmt::Debug for Screen {
 impl Screen {
     pub(crate) fn new(cols: u16, rows: u16) -> Self {
         Self {
-            parser: vt100::Parser::new(rows.max(2), cols.max(2), SCROLLBACK),
+            parser: parser(rows.max(2), cols.max(2)),
             next_seq: None,
             modes: TerminalModes::default(),
             ended: None,
@@ -92,15 +117,15 @@ impl Screen {
             Some(next) if !reset && (seq..=end).contains(&next) => {
                 let skip = usize::try_from(next - seq).unwrap_or(usize::MAX);
                 let fresh = &data[skip.min(data.len())..];
-                self.parser.process(fresh);
+                self.process(fresh, false);
                 self.track_frames(fresh);
             }
             // Wholly behind what is shown: nothing new.
             Some(next) if !reset && end < next => return,
             _ => {
                 let (rows, cols) = self.parser.screen().size();
-                self.parser = vt100::Parser::new(rows, cols, SCROLLBACK);
-                self.parser.process(data);
+                self.parser = parser(rows, cols);
+                self.process(data, false);
                 (self.in_frame, self.tail) = (false, Vec::new());
                 self.track_frames(data);
             }
@@ -114,10 +139,23 @@ impl Screen {
             usize::try_from(next.saturating_sub(seq)).unwrap_or(usize::MAX)
         });
         if let Some(fresh) = data.get(skip..) {
-            self.parser.process(fresh);
+            self.process(fresh, true);
             self.track_frames(fresh);
         }
         self.next_seq = Some(seq + data.len() as u64);
+    }
+
+    /// Feeds the emulator; copies count only from `live` output.
+    fn process(&mut self, data: &[u8], live: bool) {
+        self.parser.callbacks_mut().live = live;
+        self.parser.process(data);
+        self.parser.callbacks_mut().live = false;
+    }
+
+    /// What the program last copied in its live output since this was last
+    /// asked, if anything.
+    pub(crate) fn take_copy(&mut self) -> Option<String> {
+        self.parser.callbacks_mut().copied.take()
     }
 
     pub(crate) fn resize(&mut self, cols: u16, rows: u16) {
@@ -141,6 +179,10 @@ impl Screen {
     pub(crate) fn scroll_to_bottom(&mut self) {
         self.parser.screen_mut().set_scrollback(0);
     }
+}
+
+fn parser(rows: u16, cols: u16) -> vt100::Parser<Copies> {
+    vt100::Parser::new_with_callbacks(rows, cols, SCROLLBACK, Copies::default())
 }
 
 #[cfg(test)]

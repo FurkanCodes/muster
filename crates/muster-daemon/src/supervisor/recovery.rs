@@ -143,12 +143,10 @@ impl Supervisor {
         if stored.ended_at.is_some() || self.live.contains_key(&session) {
             return false;
         }
-        let conversation = self
-            .harness(&stored.harness)
-            .and_then(|harness| {
-                let agent_session = resumable(&harness, &stored)?;
-                Some((harness, agent_session))
-            });
+        let conversation = self.harness(&stored.harness).and_then(|harness| {
+            let agent_session = resumable(&harness, &stored)?;
+            Some((harness, agent_session))
+        });
         let Some((harness, agent_session)) = conversation else {
             tracing::info!(%session, "a session ended when the daemon stopped");
             self.end_session(session, SessionStatus::Exited { success: false }, true)

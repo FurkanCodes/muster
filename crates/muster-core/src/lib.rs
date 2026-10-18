@@ -8,6 +8,7 @@
 
 pub mod changes;
 pub mod clashes;
+pub mod colours;
 pub mod config;
 pub mod credentials;
 pub mod entities;

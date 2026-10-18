@@ -20,6 +20,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::app::{Action, App};
 use crate::clipboard;
+use crate::colours;
 use crate::folders::{self, Folder};
 use crate::motion;
 use crate::view;
@@ -98,6 +99,8 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut terminal = HostTerminal::enter()?;
     let size = terminal_size(&terminal.terminal)?;
     let mut app = App::new(options.cwd.clone(), size);
+    app.colours = std::mem::take(&mut terminal.colours);
+    app.cell_pixels = cell_pixels();
     app.notify = options.notify;
     app.motion = options.motion;
     app.welcome = true;
@@ -171,7 +174,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
                 Some(Ok(Event::FocusGained)) => app.on_focus(true),
                 Some(Ok(Event::FocusLost)) => app.on_focus(false),
-                Some(Ok(Event::Resize(cols, rows))) => app.on_resize(area_size(cols, rows)),
+                Some(Ok(Event::Resize(cols, rows))) => resized(&mut app, cols, rows),
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
                 None => break Ok(()),
             },
@@ -439,6 +442,35 @@ fn terminal_size(terminal: &DefaultTerminal) -> std::io::Result<TermSize> {
     Ok(area_size(size.width, size.height))
 }
 
+/// The person's window is now `cols` by `rows`, its cells perhaps of
+/// another size in pixels too.
+fn resized(app: &mut App, cols: u16, rows: u16) -> Vec<Action> {
+    app.cell_pixels = cell_pixels();
+    app.on_resize(area_size(cols, rows))
+}
+
+/// One cell of the person's terminal in pixels, from the size the system
+/// keeps for it; `None` where the terminal says no pixels, as some do not.
+fn cell_pixels() -> Option<muster_core::protocol::PixelSize> {
+    let size = crossterm::terminal::window_size().ok()?;
+    cell_of(size.width, size.height, size.columns, size.rows)
+}
+
+/// A cell's pixels in a window `width` by `height` pixels and `columns` by
+/// `rows` cells, if both are known.
+fn cell_of(
+    width: u16,
+    height: u16,
+    columns: u16,
+    rows: u16,
+) -> Option<muster_core::protocol::PixelSize> {
+    let cell = muster_core::protocol::PixelSize {
+        width: width.checked_div(columns)?,
+        height: height.checked_div(rows)?,
+    };
+    (cell.width > 0 && cell.height > 0).then_some(cell)
+}
+
 fn area_size(cols: u16, rows: u16) -> TermSize {
     let area = view::terminal_area(ratatui::layout::Rect::new(0, 0, cols, rows));
     TermSize {
@@ -454,6 +486,8 @@ fn area_size(cols: u16, rows: u16) -> TermSize {
 struct HostTerminal {
     terminal: DefaultTerminal,
     enhanced_keys: bool,
+    /// Its colours, as it said them.
+    colours: muster_core::colours::TerminalColours,
 }
 
 impl HostTerminal {
@@ -469,7 +503,8 @@ impl HostTerminal {
             MouseReports(true),
             EnableFocusChange
         )?;
-        let enhanced_keys = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+        let keyboard = crossterm::terminal::supports_keyboard_enhancement();
+        let enhanced_keys = matches!(keyboard, Ok(true));
         if enhanced_keys {
             execute!(
                 out,
@@ -481,9 +516,18 @@ impl HostTerminal {
             restore_modes(&mut stdout(), enhanced_keys);
             previous(info);
         }));
+        // Asked before anything else reads the terminal's input, and only
+        // of a terminal that answered the keyboard question in time: one
+        // that answers nothing would only keep the UI waiting.
+        let colours = if keyboard.is_ok() {
+            colours::ask(monotonic() + colours::WAIT, monotonic)
+        } else {
+            muster_core::colours::TerminalColours::default()
+        };
         Ok(Self {
             terminal,
             enhanced_keys,
+            colours,
         })
     }
 }
@@ -674,6 +718,16 @@ mod tests {
             ),
             Some(now + ms(16))
         );
+    }
+
+    #[test]
+    fn a_cell_s_pixels_come_from_the_window_s_where_it_says_them() {
+        let cell = |width, height| Some(muster_core::protocol::PixelSize { width, height });
+        assert_eq!(super::cell_of(960, 576, 120, 36), cell(8, 16));
+        // A window a little larger than its cells, as with margins.
+        assert_eq!(super::cell_of(965, 580, 120, 36), cell(8, 16));
+        assert_eq!(super::cell_of(0, 0, 120, 36), None, "no pixels said");
+        assert_eq!(super::cell_of(960, 576, 0, 0), None);
     }
 
     #[test]

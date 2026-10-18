@@ -15,6 +15,7 @@ use std::path::PathBuf;
 
 use muster_core::changes::{Commit, LineCounts};
 use muster_core::clashes::{Clash, ClashFile};
+use muster_core::colours::{Rgb, TerminalColours};
 use muster_core::config::TrackerKind;
 use muster_core::explain::{
     Deadline, DeadlineKind, Explanation, HoldView, MachineView, OpenWait, SignalSeen,
@@ -22,8 +23,8 @@ use muster_core::explain::{
 use muster_core::frame::{FrameDecoder, encode};
 use muster_core::protocol::{
     ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Health, Hello, Incompatible,
-    MouseEncoding, MouseTracking, Reply, ResourceReport, ServerFrame, SessionUsage, Snapshot,
-    TermSize, TerminalModes, Welcome,
+    MouseEncoding, MouseTracking, PixelSize, Reply, ResourceReport, ServerFrame, SessionUsage,
+    Snapshot, TermSize, TerminalModes, Welcome,
 };
 use muster_core::session::Origin;
 use muster_core::settings::{
@@ -629,8 +630,31 @@ fn client_frames() -> Vec<ClientFrame> {
         ClientFrame::Resize {
             session,
             size: size(),
+            pixels: Some(PixelSize {
+                width: 1200,
+                height: 720,
+            }),
         },
         ClientFrame::Looking { looking: true },
+        ClientFrame::Colours(TerminalColours {
+            foreground: Some(Rgb {
+                red: 0xffff,
+                green: 0x8080,
+                blue: 0,
+            }),
+            background: None,
+            palette: vec![
+                None,
+                Some(Rgb {
+                    red: 0x1010,
+                    green: 0x2020,
+                    blue: 0x3030,
+                }),
+            ],
+        }),
+        ClientFrame::Keys {
+            session: Some(session),
+        },
     ];
     let commands = commands().into_iter().enumerate();
     frames.extend(commands.map(|(req_id, command)| ClientFrame::Command {
@@ -713,7 +737,7 @@ trait Variant {
 }
 
 impl Variant for ClientFrame {
-    const COUNT: usize = 9;
+    const COUNT: usize = 11;
     fn variant(&self) -> usize {
         match self {
             Self::Hello(_) => 0,
@@ -725,6 +749,8 @@ impl Variant for ClientFrame {
             Self::Input { .. } => 6,
             Self::Resize { .. } => 7,
             Self::Looking { .. } => 8,
+            Self::Colours(_) => 9,
+            Self::Keys { .. } => 10,
         }
     }
 }

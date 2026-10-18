@@ -187,7 +187,8 @@ fn selecting_a_session_streams_it_and_moving_away_stops() {
         [
             Action::Send(ClientFrame::Resize {
                 session: id,
-                size: PANE
+                size: PANE,
+                pixels: None,
             }),
             Action::Send(ClientFrame::Attach {
                 session: id,
@@ -219,7 +220,11 @@ fn a_terminal_beside_the_list_takes_keys_and_ctrl_q_gives_them_back() {
             data: b"q".to_vec()
         })]
     );
-    assert!(world.app.on_key(shift_q()).is_empty(), "nothing to resize");
+    // Nothing to resize; the program is told its terminal lost focus.
+    assert_eq!(
+        world.app.on_key(shift_q()),
+        [Action::Send(ClientFrame::Keys { session: None })]
+    );
     assert_eq!(world.app.mode, Mode::Browse);
     assert_eq!(world.app.selected, Some(Row::Session(id)));
     // Pressed once more on the list, it does not quit.
@@ -260,15 +265,25 @@ fn f_fills_the_window_and_shift_q_puts_it_back_beside_the_list() {
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
     world.app.settle();
-    let resized = |size| Action::Send(ClientFrame::Resize { session: id, size });
+    let resized = |size| {
+        Action::Send(ClientFrame::Resize {
+            session: id,
+            size,
+            pixels: None,
+        })
+    };
 
-    assert_eq!(press(&mut world.app, KeyCode::Char('f')), [resized(SIZE)]);
+    let keys = |session| Action::Send(ClientFrame::Keys { session });
+    assert_eq!(
+        press(&mut world.app, KeyCode::Char('f')),
+        [resized(SIZE), keys(Some(id))]
+    );
     assert_eq!(world.app.mode, Mode::Terminal(id));
     let screen = render(&world.app);
     assert!(!screen.contains("╭ Sessions"), "no list: {screen}");
     assert!(screen.contains("Shift-Q back to the list"), "{screen}");
 
-    assert_eq!(world.app.on_key(shift_q()), [resized(PANE)]);
+    assert_eq!(world.app.on_key(shift_q()), [keys(None), resized(PANE)]);
     assert_eq!(world.app.mode, Mode::Browse);
     assert!(!world.app.full_screen);
 

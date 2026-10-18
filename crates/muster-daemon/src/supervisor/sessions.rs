@@ -246,7 +246,7 @@ impl Supervisor {
             },
         );
         let events = self.pty_events.clone();
-        let pty = pty::spawn(&spec, first_seq, move |event| {
+        let pty = pty::spawn(&spec, first_seq, self.colours(), move |event| {
             let _ = events.send((session, event));
         })?;
 

@@ -1405,6 +1405,7 @@ dependencies = [
  "futures-util",
  "muster-client",
  "muster-core",
+ "nix 0.31.3",
  "ratatui",
  "tempfile",
  "thiserror 2.0.21",

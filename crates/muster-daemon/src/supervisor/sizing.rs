@@ -12,6 +12,12 @@
 //! applied; when the client in charge lets the session go or stops
 //! watching it, the next one's size applies.
 //!
+//! A size is in cells and, where the person's terminal says, in pixels
+//! too (`Resize::pixels`). The pixels are kept per client with its cells
+//! and travel with them: the terminal takes the pixels of the client in
+//! charge, or none if that client gave none, never one client's cells
+//! with another's pixels.
+//!
 //! What is kept for a client leaves with it: when it lets the session go,
 //! when its connection ends ([`ClientGuard`](super::ClientGuard)), and with
 //! the session's terminal (`ARC-14`).
@@ -19,10 +25,13 @@
 use std::collections::HashMap;
 
 use muster_core::SessionId;
-use muster_core::protocol::TermSize;
+use muster_core::protocol::{PixelSize, TermSize};
 use tokio::sync::watch;
 
 use super::Supervisor;
+
+/// A size a session's terminal is shown at: cells, and pixels where known.
+type Shown = (TermSize, Option<PixelSize>);
 
 /// The sizes clients gave each session's terminal.
 #[derive(Debug, Default)]
@@ -41,7 +50,7 @@ struct Sizers {
     /// active since, so typing never waits on the Supervisor.
     latest: watch::Sender<u64>,
     /// The size the terminal has, as far as it was told.
-    applied: Option<TermSize>,
+    applied: Option<Shown>,
 }
 
 /// One client of a session's terminal.
@@ -49,6 +58,8 @@ struct Sizers {
 struct Sizer {
     /// The size it shows the session at, once it has said.
     size: Option<TermSize>,
+    /// That size in pixels, where its terminal says.
+    pixels: Option<PixelSize>,
     /// How many of its watches of the session are held: two for a moment
     /// while it attaches again.
     watching: usize,
@@ -69,10 +80,18 @@ impl Sizing {
         sizers.latest.subscribe()
     }
 
-    /// The client shows the session at `size`, which is being active.
-    pub(super) fn resized(&mut self, session: SessionId, client: u64, size: TermSize) {
+    /// The client shows the session at `size`, and `pixels` where it
+    /// knows them, which is being active.
+    pub(super) fn resized(
+        &mut self,
+        session: SessionId,
+        client: u64,
+        size: TermSize,
+        pixels: Option<PixelSize>,
+    ) {
         if let Some(sizer) = self.sizer(session, client) {
             sizer.size = Some(size);
+            sizer.pixels = pixels;
         }
         self.active(session, client);
     }
@@ -133,10 +152,11 @@ impl Sizing {
             .collect()
     }
 
-    /// The session has a new terminal, started at `size`.
+    /// The session has a new terminal, started at `size`, with no pixels
+    /// known.
     pub(super) fn published(&mut self, session: SessionId, size: TermSize) {
         if let Some(sizers) = self.sessions.get_mut(&session) {
-            sizers.applied = Some(size);
+            sizers.applied = Some((size, None));
         }
     }
 
@@ -145,14 +165,14 @@ impl Sizing {
         self.sessions.remove(&session);
     }
 
-    /// The size the session's terminal is to take, if it is to change;
-    /// taken as applied. `looked_at` says whether the person is looking at
-    /// a client's window.
+    /// The size the session's terminal is to take, with its pixels, if it
+    /// is to change; taken as applied. `looked_at` says whether the person
+    /// is looking at a client's window.
     pub(super) fn due(
         &mut self,
         session: SessionId,
         looked_at: impl Fn(u64) -> bool,
-    ) -> Option<TermSize> {
+    ) -> Option<Shown> {
         let sizers = self.sessions.get_mut(&session)?;
         let chosen = sizers
             .clients
@@ -164,10 +184,10 @@ impl Sizing {
                     sizer.active,
                     *client,
                 );
-                Some((sizer.size?, rank))
+                Some(((sizer.size?, sizer.pixels), rank))
             })
             .max_by_key(|(_, rank)| *rank)
-            .map(|(size, _)| size)?;
+            .map(|(shown, _)| shown)?;
         if sizers.applied == Some(chosen) {
             return None;
         }
@@ -187,9 +207,16 @@ impl Sizing {
 }
 
 impl Supervisor {
-    /// The client shows the session at `size`.
-    pub(super) async fn resize_for(&mut self, session: SessionId, client: u64, size: TermSize) {
-        self.sizing.resized(session, client, size);
+    /// The client shows the session at `size`, and `pixels` where it
+    /// knows them.
+    pub(super) async fn resize_for(
+        &mut self,
+        session: SessionId,
+        client: u64,
+        size: TermSize,
+        pixels: Option<PixelSize>,
+    ) {
+        self.sizing.resized(session, client, size, pixels);
         self.fit(session).await;
     }
 
@@ -218,17 +245,17 @@ impl Supervisor {
     }
 
     /// Gives the session's terminal the size of the client in charge of
-    /// it, if that changed.
+    /// it, pixels and all, if that changed.
     pub(super) async fn fit(&mut self, session: SessionId) {
         let lookers = &self.lookers;
-        let Some(size) = self
+        let Some((size, pixels)) = self
             .sizing
             .due(session, |client| lookers.is_looking(client))
         else {
             return;
         };
         if let Some(live) = self.live.get(&session) {
-            live.pty.resize(size).await;
+            live.pty.resize(size, pixels).await;
         }
     }
 
@@ -237,12 +264,12 @@ impl Supervisor {
     pub(super) fn fit_new_terminal(&mut self, session: SessionId, size: TermSize) {
         self.sizing.published(session, size);
         let lookers = &self.lookers;
-        if let Some(size) = self
+        if let Some((size, pixels)) = self
             .sizing
             .due(session, |client| lookers.is_looking(client))
             && let Some(live) = self.live.get(&session)
         {
-            live.pty.resize_now(size);
+            live.pty.resize_now(size, pixels);
         }
     }
 }
@@ -275,47 +302,68 @@ mod tests {
     #[test]
     fn the_terminal_takes_the_size_of_the_client_active_last_arc_02() {
         let (mut sizing, session) = watched_by_two();
-        sizing.resized(session, ONE, size(100, 30));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(100, 30)));
-        sizing.resized(session, TWO, size(80, 20));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(80, 20)));
+        sizing.resized(session, ONE, size(100, 30), None);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), None))
+        );
+        sizing.resized(session, TWO, size(80, 20), None);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(80, 20), None))
+        );
         // Typing makes a client the one in charge again; nothing changes
         // twice.
         sizing.active(session, ONE);
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(100, 30)));
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), None))
+        );
         assert_eq!(sizing.due(session, nobody_looks), None);
     }
 
     #[test]
     fn a_client_not_watching_is_remembered_not_applied_until_the_watcher_goes() {
         let (mut sizing, session) = watched_by_two();
-        sizing.resized(session, ONE, size(100, 30));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(100, 30)));
+        sizing.resized(session, ONE, size(100, 30), None);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), None))
+        );
         // The second's window went out of focus; its resize comes later.
         sizing.watching(session, TWO, false);
-        sizing.resized(session, TWO, size(80, 20));
+        sizing.resized(session, TWO, size(80, 20), None);
         assert_eq!(sizing.due(session, nobody_looks), None);
         // The first lets the session go: the second's size applies.
         sizing.leave(session, ONE);
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(80, 20)));
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(80, 20), None))
+        );
     }
 
     #[test]
     fn a_window_looked_at_comes_before_one_active_later() {
         let (mut sizing, session) = watched_by_two();
-        sizing.resized(session, ONE, size(100, 30));
-        sizing.resized(session, TWO, size(80, 20));
+        sizing.resized(session, ONE, size(100, 30), None);
+        sizing.resized(session, TWO, size(80, 20), None);
         let looked_at = |client: u64| client == ONE;
-        assert_eq!(sizing.due(session, looked_at), Some(size(100, 30)));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(80, 20)));
+        assert_eq!(sizing.due(session, looked_at), Some((size(100, 30), None)));
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(80, 20), None))
+        );
     }
 
     #[test]
     fn a_lone_client_out_of_focus_still_sizes_its_session() {
         let (mut sizing, session) = (Sizing::default(), SessionId::new());
         sizing.join(session, ONE);
-        sizing.resized(session, ONE, size(90, 25));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(90, 25)));
+        sizing.resized(session, ONE, size(90, 25), None);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(90, 25), None))
+        );
         // Its watch ended: nobody else is there, so nothing changes.
         sizing.watching(session, ONE, true);
         sizing.watching(session, ONE, false);
@@ -325,21 +373,76 @@ mod tests {
     #[test]
     fn a_client_that_never_gave_a_size_changes_nothing() {
         let (mut sizing, session) = watched_by_two();
-        sizing.resized(session, ONE, size(100, 30));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(100, 30)));
+        sizing.resized(session, ONE, size(100, 30), None);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), None))
+        );
         sizing.active(session, TWO);
         assert_eq!(sizing.due(session, nobody_looks), None);
+    }
+
+    fn pixels(width: u16, height: u16) -> PixelSize {
+        PixelSize { width, height }
+    }
+
+    #[test]
+    fn the_terminal_takes_the_pixels_of_the_client_in_charge_kept_with_its_cells() {
+        let (mut sizing, session) = watched_by_two();
+        sizing.resized(session, ONE, size(100, 30), Some(pixels(1000, 600)));
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), Some(pixels(1000, 600))))
+        );
+        // The second's terminal says no pixels: none go with its cells.
+        sizing.resized(session, TWO, size(80, 20), None);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(80, 20), None))
+        );
+        // The first is in charge again, with the pixels it gave.
+        sizing.active(session, ONE);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), Some(pixels(1000, 600))))
+        );
+        // Pixels alone changing is a change.
+        sizing.resized(session, ONE, size(100, 30), Some(pixels(2000, 1200)));
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), Some(pixels(2000, 1200))))
+        );
+        assert_eq!(sizing.due(session, nobody_looks), None);
+    }
+
+    #[test]
+    fn a_new_terminal_is_given_the_pixels_of_the_client_in_charge() {
+        let (mut sizing, session) = watched_by_two();
+        sizing.resized(session, ONE, size(100, 30), Some(pixels(1000, 600)));
+        sizing.due(session, nobody_looks);
+        // Started at the client's cells but with no pixels.
+        sizing.published(session, size(100, 30));
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), Some(pixels(1000, 600))))
+        );
     }
 
     #[test]
     fn a_new_terminal_is_given_the_size_only_if_it_started_at_another() {
         let (mut sizing, session) = watched_by_two();
-        sizing.resized(session, ONE, size(100, 30));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(100, 30)));
+        sizing.resized(session, ONE, size(100, 30), None);
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), None))
+        );
         sizing.published(session, size(100, 30));
         assert_eq!(sizing.due(session, nobody_looks), None);
         sizing.published(session, size(80, 24));
-        assert_eq!(sizing.due(session, nobody_looks), Some(size(100, 30)));
+        assert_eq!(
+            sizing.due(session, nobody_looks),
+            Some((size(100, 30), None))
+        );
     }
 
     #[test]
@@ -348,7 +451,7 @@ mod tests {
         let latest = sizing.join(session, ONE);
         sizing.active(session, ONE);
         assert_eq!(*latest.borrow(), ONE);
-        sizing.resized(session, TWO, size(80, 20));
+        sizing.resized(session, TWO, size(80, 20), None);
         assert_eq!(*latest.borrow(), TWO);
     }
 

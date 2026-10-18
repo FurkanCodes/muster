@@ -51,7 +51,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 pub(crate) use self::clients::ClientGuard;
 use self::handle::Request;
 pub(crate) use self::handle::SupervisorHandle;
-pub(crate) use self::terminals::{TerminalLink, WatchGuard};
+pub(crate) use self::terminals::{KeysGuard, TerminalLink, WatchGuard};
 use crate::clock::Clock;
 use crate::githost::choose::Hosts;
 use crate::harness::Harness;
@@ -125,6 +125,11 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
     let (unwatched, unwatched_queue) = mpsc::unbounded_channel();
     #[expect(
         clippy::disallowed_methods,
+        reason = "ARC-14: sent once as each client lets go of a session's keys, from Drop, which cannot wait"
+    )]
+    let (keys_gone, keys_gone_queue) = mpsc::unbounded_channel();
+    #[expect(
+        clippy::disallowed_methods,
         reason = "ARC-14: sent once as each connection ends, from Drop, which cannot wait"
     )]
     let (client_gone, client_gone_queue) = mpsc::unbounded_channel();
@@ -146,6 +151,9 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         terminals: HashMap::new(),
         watchers: HashMap::new(),
         unwatched,
+        typing: HashMap::new(),
+        keys_gone,
+        colours: watch::channel(muster_core::colours::TerminalColours::default()).0,
         lookers: looking::Lookers::default(),
         sizing: sizing::Sizing::default(),
         next_client: 0,
@@ -190,6 +198,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         pty: pty_queue,
         hooks: settings.hook_queue,
         unwatched: unwatched_queue,
+        keys_gone: keys_gone_queue,
         client_gone: client_gone_queue,
         run_reports: run_report_queue,
     }));
@@ -202,6 +211,7 @@ struct Queues {
     pty: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
     hooks: mpsc::Receiver<HookDelivery>,
     unwatched: mpsc::UnboundedReceiver<(SessionId, u64)>,
+    keys_gone: mpsc::UnboundedReceiver<SessionId>,
     client_gone: mpsc::UnboundedReceiver<u64>,
     run_reports: mpsc::UnboundedReceiver<(RunId, Report)>,
 }
@@ -250,6 +260,14 @@ struct Supervisor {
     watchers: HashMap<SessionId, usize>,
     /// Where dropped watch guards report.
     unwatched: mpsc::UnboundedSender<(SessionId, u64)>,
+    /// How many clients have the person's keys in each session's terminal.
+    typing: HashMap<SessionId, usize>,
+    /// Where dropped keys guards report.
+    keys_gone: mpsc::UnboundedSender<SessionId>,
+    /// The colours of the person's terminal, as a UI last told them; every
+    /// terminal answers its program's questions about its colours from
+    /// them.
+    colours: watch::Sender<muster_core::colours::TerminalColours>,
     /// The clients that say whether the person is looking at them.
     lookers: looking::Lookers,
     /// The sizes clients gave sessions' terminals.
@@ -311,6 +329,7 @@ impl Supervisor {
                 Some((session, event)) = queues.pty.recv() => self.on_pty_event(session, event).await,
                 Some(delivery) = queues.hooks.recv() => self.on_hook(delivery).await,
                 Some((session, client)) = queues.unwatched.recv() => self.unwatch(session, client).await,
+                Some(session) = queues.keys_gone.recv() => self.let_go_keys(session).await,
                 Some(client) = queues.client_gone.recv() => self.remove_client(client).await,
                 Some((run, report)) = queues.run_reports.recv() => self.on_run_report(run, report).await,
                 () = tokio::time::sleep_until(wake_at), if deadline.is_some() => self.tick().await,
@@ -484,6 +503,10 @@ impl Supervisor {
             }
             Request::AddLooker { client, outgoing } => self.add_looker(client, outgoing),
             Request::Looking { client, looking } => self.set_looking(client, looking).await,
+            Request::Colours(colours) => self.set_colours(colours),
+            Request::HoldKeys { session, reply } => {
+                let _ = reply.send(self.hold_keys(session).await);
+            }
             Request::Terminal {
                 session,
                 watch,
@@ -498,9 +521,10 @@ impl Supervisor {
                 session,
                 client,
                 size,
+                pixels,
                 done,
             } => {
-                self.resize_for(session, client, size).await;
+                self.resize_for(session, client, size, pixels).await;
                 let _ = done.send(());
             }
             Request::Active {
