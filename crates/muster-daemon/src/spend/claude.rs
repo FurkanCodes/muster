@@ -95,9 +95,7 @@ impl Claude {
         }
         Some(self.tokens)
     }
-}
 
-impl Claude {
     /// The last turn the person interrupted in what the last read found,
     /// by its prompt id; once.
     pub(super) fn take_interrupted(&mut self) -> Option<String> {
