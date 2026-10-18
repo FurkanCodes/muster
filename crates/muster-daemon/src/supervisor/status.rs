@@ -16,7 +16,7 @@ impl Supervisor {
             tracing::debug!("ignored a hook with an unknown token");
             return;
         };
-        let Some(harness) = self.live.get(&session).map(|live| live.harness) else {
+        let Some(harness) = self.live.get(&session).map(|live| live.harness.clone()) else {
             return;
         };
         if harness.hook_route() != Some(delivery.harness.as_str()) {

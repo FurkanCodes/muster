@@ -3,8 +3,9 @@
 //! the Tickets screen lists only the tickets assigned to the person, in
 //! whatever tracker the project's tickets are, where they come from
 //! (`tickets_from`), and whether the branches Muster makes start with
-//! `muster/`. Then, on a Mac, Muster's own: whether the notch shows the
-//! agents.
+//! `muster/`. Then Muster's own: on a Mac, whether the notch shows the
+//! agents; and the coding agents the person added in Muster's own settings,
+//! which are written by hand, so the row says what reads and what does not.
 //!
 //! ⏎ or space turns the selected setting on or off, or opens its dialog.
 //! The daemon writes the change into the person's own settings for the
@@ -14,7 +15,9 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::ProjectId;
 use muster_core::protocol::Command;
-use muster_core::settings::{MUSTER_PREFIX_PROTOCOL, ProjectSettings, SettingChange};
+use muster_core::settings::{
+    AGENTS_PROTOCOL, MUSTER_PREFIX_PROTOCOL, ProjectSettings, SettingChange,
+};
 
 use super::{Action, App, Mode, Then, View};
 
@@ -32,6 +35,8 @@ pub(crate) enum SettingRow {
     Muster,
     /// Whether the notch shows the agents.
     Notch,
+    /// The coding agents the person added in Muster's own settings.
+    Agents,
 }
 
 impl SettingRow {
@@ -42,7 +47,7 @@ impl SettingRow {
             | Self::OnlyMine(project)
             | Self::TicketsFrom(project)
             | Self::MusterPrefix(project) => Some(project),
-            Self::Muster | Self::Notch => None,
+            Self::Muster | Self::Notch | Self::Agents => None,
         }
     }
 }
@@ -60,7 +65,8 @@ pub(crate) enum Settings {
 impl App {
     /// The settings list: each project, then its settings; the branches'
     /// prefix only where the daemon can change it. Then Muster's own, where
-    /// it has any here: the notch, on a Mac.
+    /// it has any here: the notch, on a Mac, and the person's agents, where
+    /// the daemon knows them.
     pub(crate) fn setting_rows(&self) -> Vec<SettingRow> {
         let prefix = self.daemon_protocol >= MUSTER_PREFIX_PROTOCOL;
         let mut rows: Vec<SettingRow> = self
@@ -77,8 +83,16 @@ impl App {
             })
             .flatten()
             .collect();
-        if self.notch_known() && self.model.loaded() {
-            rows.extend([SettingRow::Muster, SettingRow::Notch]);
+        let notch = self.notch_known() && self.model.loaded();
+        let agents = self.daemon_protocol >= AGENTS_PROTOCOL && self.model.loaded();
+        if notch || agents {
+            rows.push(SettingRow::Muster);
+        }
+        if notch {
+            rows.push(SettingRow::Notch);
+        }
+        if agents {
+            rows.push(SettingRow::Agents);
         }
         rows
     }
@@ -94,9 +108,19 @@ impl App {
                 _ => return self.toggle_setting(),
             },
             KeyCode::Char('r') => {
-                // Read again as they are shown, edits by hand included.
+                // Read again as they are shown, edits by hand included:
+                // Muster's own too, where the daemon reads them on asking.
                 self.settings.clear();
                 self.say("Reading the settings again…");
+                if self.daemon_protocol >= AGENTS_PROTOCOL {
+                    let read = self.command(
+                        Command::ReadPreferences,
+                        Then::Say("Read the settings again."),
+                    );
+                    let mut actions = vec![read];
+                    actions.extend(self.settle());
+                    return actions;
+                }
             }
             _ => {}
         }

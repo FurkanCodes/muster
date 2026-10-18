@@ -121,10 +121,9 @@ impl App {
         // A coding agent suspends itself on Ctrl+Z and waits for a shell's
         // `fg`; a session has no shell above it, so the key would only
         // freeze it.
-        let suspends = self
-            .model
-            .session(session)
-            .and_then(|stored| harness_choice::suspends_itself(&stored.harness));
+        let suspends = self.model.session(session).and_then(|stored| {
+            harness_choice::suspends_itself(&stored.harness, self.added_agents())
+        });
         if let Some(agent) = suspends
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && key.code == KeyCode::Char('z')
@@ -436,7 +435,7 @@ impl App {
                     harness: if in_container {
                         HarnessChoice::Shell
                     } else {
-                        self.last_harness
+                        self.last_harness.clone()
                     },
                     prompt: LineInput::default(),
                 });
@@ -599,9 +598,9 @@ impl App {
             } => {
                 if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
                     let harness = if key.code == KeyCode::Tab {
-                        harness.next()
+                        harness.next(self.added_agents())
                     } else {
-                        harness.previous()
+                        harness.previous(self.added_agents())
                     };
                     self.mode = Mode::Dialog(Dialog::NewSession {
                         workspace,
@@ -610,10 +609,11 @@ impl App {
                     });
                     return Vec::new();
                 }
-                let edit = if harness.is_agent() {
+                let edit = if harness.takes_prompt() {
                     prompt.handle(key)
                 } else {
-                    // A shell takes no prompt: only Enter and Esc matter.
+                    // A shell, or an agent that takes none, takes no
+                    // prompt: only Enter and Esc matter.
                     match key.code {
                         KeyCode::Enter => Edit::Submit,
                         KeyCode::Esc => Edit::Cancel,
@@ -623,9 +623,8 @@ impl App {
                 match edit {
                     Edit::Submit => {
                         self.mode = Mode::Browse;
-                        self.last_harness = harness;
                         let prompt = Some(prompt.text().trim().to_owned())
-                            .filter(|p| !p.is_empty() && harness.is_agent());
+                            .filter(|p| !p.is_empty() && harness.takes_prompt());
                         let command = Command::StartSession {
                             workspace,
                             harness: harness.id().to_owned(),
@@ -633,6 +632,7 @@ impl App {
                             size: self.session_size(),
                             prompt,
                         };
+                        self.last_harness = harness;
                         vec![self.command(command, Then::OpenSession)]
                     }
                     edit => self.keep_editing(

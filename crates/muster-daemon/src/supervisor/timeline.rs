@@ -13,7 +13,6 @@ use muster_core::{SessionId, SessionStatus, Timestamp, WorkspaceId};
 use tokio::sync::oneshot;
 
 use super::{Request, Supervisor};
-use crate::harness;
 use crate::timeline::{self, Store, TimelineError};
 
 /// What an agent at work holds up, in the person's words.
@@ -46,7 +45,7 @@ pub(super) enum Job {
     /// An agent's turn ended.
     Ended {
         session: SessionId,
-        agent: &'static str,
+        agent: String,
         at: Timestamp,
     },
     /// The person asked to put the files back from entry `number`.
@@ -128,15 +127,17 @@ impl Supervisor {
 
     /// The workspace of `session` and its agent's name, where it is an
     /// agent's in a workspace whose files a timeline can keep.
-    fn agent_session(&self, session: SessionId) -> Option<(WorkspaceId, &'static str)> {
+    fn agent_session(&self, session: SessionId) -> Option<(WorkspaceId, String)> {
         let stored = self
             .state
             .sessions
             .iter()
             .find(|stored| stored.id == session)?;
-        let found = harness::find(&stored.harness).filter(|found| found.is_agent())?;
+        let found = self
+            .harness(&stored.harness)
+            .filter(crate::harness::Harness::is_agent)?;
         self.timeline_place(stored.workspace).ok()?;
-        Some((stored.workspace, found.label))
+        Some((stored.workspace, found.label().to_owned()))
     }
 
     /// The sessions at work in `workspace` now.
@@ -243,7 +244,11 @@ impl Supervisor {
             let recorded = match Store::open(&dir, &path).await {
                 Ok(store) => match (working, agent) {
                     (Some(working), _) => store.began(session, &working, at).await,
-                    (None, agent) => store.ended(session, agent.unwrap_or_default(), at).await,
+                    (None, agent) => {
+                        store
+                            .ended(session, agent.as_deref().unwrap_or_default(), at)
+                            .await
+                    }
                 },
                 Err(error) => Err(error),
             };

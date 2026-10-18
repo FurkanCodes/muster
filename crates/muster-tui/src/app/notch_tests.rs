@@ -28,6 +28,7 @@ fn mac(notch: bool) -> World {
         preferences: Preferences {
             notch,
             file: "/home/me/.config/muster/settings.toml".into(),
+            ..Preferences::default()
         },
         ..Snapshot::default()
     }));
@@ -38,6 +39,7 @@ fn preferences(notch: bool) -> ServerFrame {
     ServerFrame::Delta(Delta::Preferences(Preferences {
         notch,
         file: "/home/me/.config/muster/settings.toml".into(),
+        ..Preferences::default()
     }))
 }
 
@@ -163,6 +165,7 @@ fn the_snapshot_on_a_mac_starts_the_notch() {
         preferences: Preferences {
             notch: false,
             file: "/home/me/.config/muster/settings.toml".into(),
+            ..Preferences::default()
         },
         ..Snapshot::default()
     };
@@ -222,17 +225,23 @@ fn the_notch_is_turned_on_and_off_on_the_settings_screen() {
 }
 
 #[test]
-fn muster_s_own_settings_are_shown_only_where_the_notch_can_be() {
+fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_agents() {
     let mut world = world();
     world.app.view = View::Settings;
     assert!(!world.app.setting_rows().contains(&SettingRow::Notch));
-    world.app.notch_here = true;
     assert!(
         world
             .app
             .setting_rows()
-            .ends_with(&[SettingRow::Muster, SettingRow::Notch])
+            .ends_with(&[SettingRow::Muster, SettingRow::Agents])
     );
+    world.app.notch_here = true;
+    assert!(world.app.setting_rows().ends_with(&[
+        SettingRow::Muster,
+        SettingRow::Notch,
+        SettingRow::Agents
+    ]));
     world.app.daemon_protocol = NOTCH_PROTOCOL - 1;
     assert!(!world.app.setting_rows().contains(&SettingRow::Notch));
+    assert!(!world.app.setting_rows().contains(&SettingRow::Agents));
 }

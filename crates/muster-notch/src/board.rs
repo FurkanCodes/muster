@@ -281,6 +281,7 @@ mod tests {
         state.preferences = Preferences {
             notch: false,
             file: PathBuf::new(),
+            ..Preferences::default()
         };
         assert!(!board(&state).shown);
         state.preferences = Preferences::default();

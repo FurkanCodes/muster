@@ -1,10 +1,13 @@
 //! Muster's own settings: the person's for all of Muster rather than any
 //! project's, in `settings.toml` beside the projects' overrides in their
-//! settings folder. Read strictly, as a project's are; parsing does no IO.
+//! settings folder: whether the notch shows (`[notch] show`), and the
+//! coding agents they added (`[agents.<name>]`, [`super::agents`]). Read
+//! strictly, as a project's are; parsing does no IO.
 
 use serde::Deserialize;
 
 use super::ConfigError;
+use super::agents::{self, AgentDefinition};
 
 /// What the file is called, in the person's settings folder.
 pub const FILE_NAME: &str = "settings.toml";
@@ -15,16 +18,21 @@ pub const NEW_FILE: &str = "# Your own settings for Muster as a whole.\n# Muster
 
 /// Muster's own settings as written; what is not written is Muster's
 /// default.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MusterConfig {
     /// Show the agents in the MacBook's notch while the person looks
     /// elsewhere (`[notch] show`).
     pub notch: bool,
+    /// The coding agents the person added (`[agents.<name>]`), by name.
+    pub agents: Vec<AgentDefinition>,
 }
 
 impl Default for MusterConfig {
     fn default() -> Self {
-        Self { notch: true }
+        Self {
+            notch: true,
+            agents: Vec::new(),
+        }
     }
 }
 
@@ -33,6 +41,8 @@ impl Default for MusterConfig {
 struct File {
     #[serde(default)]
     notch: Notch,
+    /// Read by [`agents::parse`], which names the key that is wrong.
+    agents: Option<toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -56,8 +66,16 @@ impl MusterConfig {
             file: file.to_owned(),
             message: error.message().to_owned(),
         })?;
+        let agents = match &read.agents {
+            Some(written) => agents::parse(written).map_err(|error| ConfigError::Agent {
+                file: file.to_owned(),
+                error,
+            })?,
+            None => Vec::new(),
+        };
         Ok(Self {
-            notch: read.notch.show.unwrap_or(Self::default().notch),
+            notch: read.notch.show.unwrap_or(true),
+            agents,
         })
     }
 }
@@ -81,6 +99,29 @@ mod tests {
             !MusterConfig::parse(Some("[notch]\nshow = false\n"), "f")
                 .unwrap()
                 .notch
+        );
+    }
+
+    #[test]
+    fn the_person_s_agents_read_with_the_rest() {
+        let read = MusterConfig::parse(
+            Some("[notch]\nshow = false\n\n[agents.my-agent]\nprogram = \"my-agent\"\n"),
+            "settings.toml",
+        )
+        .unwrap();
+        assert!(!read.notch);
+        assert_eq!(read.agents.len(), 1);
+        assert_eq!(read.agents[0].name, "my-agent");
+        let error = MusterConfig::parse(
+            Some("[agents.my-agent]\nprogram = \"x\"\ncolor = \"red\"\n"),
+            "settings.toml",
+        )
+        .unwrap_err();
+        assert!(matches!(error, ConfigError::Agent { .. }), "{error:?}");
+        let error = error.to_string();
+        assert!(
+            error.starts_with("settings.toml: agents.my-agent.color"),
+            "{error}"
         );
     }
 

@@ -38,18 +38,13 @@ impl Supervisor {
         size: TermSize,
         prompt: Option<String>,
     ) -> Result<Reply, ErrorBody> {
-        let harness = harness::find(&harness).ok_or_else(|| {
-            ErrorBody::new(
-                ErrorCode::BadRequest,
-                format!("no harness called {harness:?}"),
-            )
-        })?;
-        let place = self.place_for(workspace, harness)?;
+        let harness = self.known_harness(&harness)?;
+        let place = self.place_for(workspace, &harness)?;
         let prompt = prompt.filter(|prompt| !prompt.trim().is_empty());
         if prompt.is_some() && !harness.takes_prompt() {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
-                format!("{} takes no prompt", harness.label),
+                format!("{} takes no prompt", harness.label()),
             ));
         }
         if harness.is_checks() {
@@ -64,10 +59,10 @@ impl Supervisor {
         } else {
             Start::Idle
         };
-        let id = self.add_session(workspace, harness, title, start).await?;
+        let id = self.add_session(workspace, &harness, title, start).await?;
         if let Err(error) = self.launch(
             id,
-            harness,
+            harness.clone(),
             place,
             size,
             Mode::Fresh { prompt },
@@ -80,7 +75,7 @@ impl Supervisor {
                 .await;
             return Err(ErrorBody::new(
                 ErrorCode::Internal,
-                format!("could not start {}: {error}", harness.label),
+                format!("could not start {}: {error}", harness.label()),
             ));
         }
         Ok(Reply::SessionStarted { id })
@@ -91,7 +86,7 @@ impl Supervisor {
     pub(super) async fn add_session(
         &mut self,
         workspace: WorkspaceId,
-        harness: Harness,
+        harness: &Harness,
         title: Option<String>,
         start: Start,
     ) -> Result<SessionId, ErrorBody> {
@@ -99,11 +94,11 @@ impl Supervisor {
         let session = Session {
             id: SessionId::new(),
             workspace,
-            harness: harness.id.to_owned(),
+            harness: harness.id().to_owned(),
             title: title
                 .map(|title| one_line(&title).trim().to_owned())
                 .filter(|title| !title.is_empty())
-                .unwrap_or_else(|| harness.label.to_owned()),
+                .unwrap_or_else(|| harness.label().to_owned()),
             status: if start == Start::WithPrompt {
                 SessionStatus::Running
             } else {
@@ -140,7 +135,7 @@ impl Supervisor {
     pub(super) fn place_for(
         &self,
         workspace: WorkspaceId,
-        harness: Harness,
+        harness: &Harness,
     ) -> Result<Place, ErrorBody> {
         let found = self
             .state
@@ -165,7 +160,7 @@ impl Supervisor {
                 format!(
                     "{} runs in a run's container only for the person taking the run over \
                      (`muster run take-over`); a shell can look around",
-                    harness.label
+                    harness.label()
                 ),
             ));
         }
@@ -230,12 +225,12 @@ impl Supervisor {
         let support = support.filter(|dir| match harness.prepare_support(dir) {
             Ok(()) => true,
             Err(error) => {
-                tracing::warn!(%error, harness = harness.id, "could not write the files its hooks need");
+                tracing::warn!(%error, harness = harness.id(), "could not write the files its hooks need");
                 false
             }
         });
         let spec = harness::spawn_spec(
-            harness,
+            &harness,
             &harness::Launch {
                 session,
                 agent_session: agent_session.clone(),
@@ -314,14 +309,9 @@ impl Supervisor {
                 format!("{} is still running", stored.title),
             ));
         }
-        let harness = harness::find(&stored.harness).ok_or_else(|| {
-            ErrorBody::new(
-                ErrorCode::BadRequest,
-                format!("no harness called {:?}", stored.harness),
-            )
-        })?;
-        let place = self.place_for(stored.workspace, harness)?;
-        let (mode, start) = match (&place, resumable(harness, &stored)) {
+        let harness = self.known_harness(&stored.harness)?;
+        let place = self.place_for(stored.workspace, &harness)?;
+        let (mode, start) = match (&place, resumable(&harness, &stored)) {
             // The checks run again, as the workspace has them now.
             (Place::Host(path), _) if harness.is_checks() => (
                 Mode::Checks(self.checks_in(stored.workspace, path).await?),
@@ -367,12 +357,13 @@ impl Supervisor {
         if let Some(reopened) = self.session_mut(session) {
             reopened.ended_at = None;
         }
+        let label = harness.label().to_owned();
         if let Err(error) = self.launch(session, harness, place, size, mode, start, false) {
             self.end_session(session, SessionStatus::Exited { success: false }, true)
                 .await;
             return Err(ErrorBody::new(
                 ErrorCode::Internal,
-                format!("could not start {}: {error}", harness.label),
+                format!("could not start {label}: {error}"),
             ));
         }
         tracing::info!(%session, "restarted");
@@ -514,7 +505,7 @@ impl Supervisor {
     /// A resumed program exited at once: start the harness fresh in the same
     /// session rather than leave a dead terminal. `false` if that failed too.
     async fn start_fresh_after_failed_resume(&mut self, session: SessionId) -> bool {
-        let Some(harness) = self.live.get(&session).map(|live| live.harness) else {
+        let Some(harness) = self.live.get(&session).map(|live| live.harness.clone()) else {
             return false;
         };
         let Some(cwd) = self.session_path(session) else {
@@ -573,11 +564,11 @@ impl Supervisor {
     /// Resumes `session` if it can be. A turn the restart cut short counts
     /// as unseen.
     async fn resume(&mut self, session: &Session) -> bool {
-        let Some(harness) = harness::find(&session.harness) else {
+        let Some(harness) = self.harness(&session.harness) else {
             return false;
         };
         let (Some(agent_session), Some(cwd)) = (
-            resumable(harness, session),
+            resumable(&harness, session),
             self.workspace_path(session.workspace),
         ) else {
             return false;
@@ -678,8 +669,13 @@ impl Supervisor {
 /// The harness session to resume `session` from: one whose harness can
 /// resume, whose id was saved after a turn ran, and whose transcript has
 /// not been deleted. An unreadable transcript folder is no verdict, so the
-/// resume is tried; if it fails the session starts fresh.
-fn resumable(harness: Harness, session: &Session) -> Option<String> {
+/// resume is tried; if it fails the session starts fresh. An agent the
+/// person added reports no id: it carries on its last conversation by its
+/// resume arguments, with none (`""`).
+fn resumable(harness: &Harness, session: &Session) -> Option<String> {
+    if harness.resumes_without_id() {
+        return Some(String::new());
+    }
     let agent_session = session.resume_id.clone().filter(|_| harness.can_resume())?;
     if harness.has_conversation(&agent_session) == Some(false) {
         tracing::info!(session = %session.id, "no transcript to resume");
