@@ -127,17 +127,17 @@ impl Hosts for FakeHosts {
     }
 }
 
-struct Setup {
-    _dir: tempfile::TempDir,
+pub(crate) struct Setup {
+    pub(crate) _dir: tempfile::TempDir,
     host: Arc<FakeHost>,
-    supervisor: SupervisorHandle,
+    pub(crate) supervisor: SupervisorHandle,
     /// The worktree on `feature`.
-    worktree: WorkspaceId,
+    pub(crate) worktree: WorkspaceId,
 }
 
 /// A supervisor whose project, a real repository on `main`, has a worktree
 /// on `feature`.
-async fn setup() -> Setup {
+pub(crate) async fn setup() -> Setup {
     let dir = tempfile::tempdir().unwrap();
     let root = repository(dir.path(), "app");
     let host = Arc::new(FakeHost::default());

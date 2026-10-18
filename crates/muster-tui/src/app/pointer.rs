@@ -30,6 +30,7 @@ impl App {
         let mut actions = match self.mode {
             Mode::Terminal(session) => return self.terminal_mouse(session, event),
             Mode::Browse => self.browse_mouse(event),
+            Mode::Changes => self.changes_mouse(event),
             Mode::Dialog(_) => Vec::new(),
         };
         actions.extend(self.settle());
@@ -159,7 +160,7 @@ impl App {
     }
 
     /// Selects the list line drawn at `row`, if there is one.
-    fn select_at(&mut self, list: Rect, row: u16) {
+    pub(super) fn select_at(&mut self, list: Rect, row: u16) {
         match self.view {
             View::Sessions => {
                 let rows = self.model.rows();

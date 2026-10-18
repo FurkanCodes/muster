@@ -2,6 +2,7 @@
 //! daemon, and returns the frames to send. It does no IO, so every behaviour
 //! can be tested by feeding it events and drawing it into a test buffer.
 
+mod changes;
 mod events;
 mod harness_choice;
 mod link;
@@ -17,6 +18,7 @@ mod tickets;
 pub(crate) mod tickets_from;
 mod welcome;
 
+pub(crate) use changes::{ChangeRow, ChangesPane, DiffPane, rows as change_rows};
 pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use settings::{SettingRow, Settings};
@@ -24,6 +26,8 @@ pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
 #[cfg(test)]
 mod by_hand_tests;
+#[cfg(test)]
+mod changes_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]
@@ -143,6 +147,9 @@ pub(crate) enum Mode {
     Browse,
     /// A session's terminal fills the screen and keys go to it.
     Terminal(SessionId),
+    /// A workspace's changes are beside the list (`App::changes`), and
+    /// keys go to them.
+    Changes,
     Dialog(Dialog),
 }
 
@@ -256,6 +263,10 @@ enum Then {
     BranchesChanged(ProjectId),
     /// Say whether the notch is on now: turned on, or off.
     NotchChanged(bool),
+    /// Show the workspace's changes in the pane.
+    Changes(WorkspaceId),
+    /// Show the file's diff in the pane.
+    Diff(WorkspaceId, muster_core::ChangePart, String),
     Say(&'static str),
 }
 
@@ -295,6 +306,8 @@ pub(crate) struct App {
     pub(crate) settings_selected: Option<SettingRow>,
     pub(crate) settings_offset: usize,
     pub(crate) screens: HashMap<SessionId, Screen>,
+    /// A workspace's changes, shown beside the list while open (`d`).
+    pub(crate) changes: Option<ChangesPane>,
     /// Text selected with the mouse in the screen of the session with the
     /// keys.
     pub(crate) selection: Option<Selection>,
@@ -385,6 +398,7 @@ impl App {
             settings_selected: None,
             settings_offset: 0,
             screens: HashMap::new(),
+            changes: None,
             selection: None,
             attached: None,
             wanted: None,

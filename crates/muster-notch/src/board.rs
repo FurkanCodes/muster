@@ -214,6 +214,7 @@ mod tests {
             },
             created_at: Timestamp::from_millis(0),
             pull_request: None,
+            changes: None,
         };
         let id = workspace.id;
         (

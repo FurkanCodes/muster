@@ -367,6 +367,7 @@ impl Supervisor {
             },
             created_at: self.clock.now(),
             pull_request: None,
+            changes: None,
         };
         let stored = workspace.clone();
         self.store

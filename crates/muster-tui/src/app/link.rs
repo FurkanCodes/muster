@@ -245,6 +245,18 @@ impl App {
             (Ok(_), Then::Say(text)) => self.say(text),
             (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
             (outcome, Then::NotchChanged(on)) => self.notch_changed(on, outcome.map(drop)),
+            (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
+                self.on_changes(workspace, Ok(changes));
+            }
+            (Err(error), Then::Changes(workspace)) => {
+                self.on_changes(workspace, Err(error.message));
+            }
+            (Ok(Reply::FileDiff(diff)), Then::Diff(workspace, part, path)) => {
+                self.on_diff(workspace, part, &path, Ok(diff));
+            }
+            (Err(error), Then::Diff(workspace, part, path)) => {
+                self.on_diff(workspace, part, &path, Err(error.message));
+            }
             (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
                 self.settings.insert(project, Settings::Loaded(settings));
             }

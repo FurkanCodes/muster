@@ -82,6 +82,21 @@ fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
             Span::raw(workspace.kind.branch().to_owned()),
         ]));
     }
+    if let Some(summary) = &workspace.changes {
+        let files = if summary.files == 1 {
+            "1 file".to_owned()
+        } else {
+            format!("{} files", summary.files)
+        };
+        let mut spans = vec![Span::from("Changed ").dim()];
+        if summary.added + summary.removed > 0 {
+            spans.extend(super::changes::summary(summary));
+            spans.push(Span::raw(format!(" in {files}")));
+        } else {
+            spans.push(Span::raw(files));
+        }
+        lines.push(Line::from(spans));
+    }
     if let Some(found) = &workspace.pull_request {
         lines.push(Line::from(vec![
             Span::from("PR      ").dim(),
@@ -114,6 +129,9 @@ fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
         })
         .dim(),
     );
+    if workspace.kind.in_git() && workspace.kind.run().is_none() {
+        lines.push(Line::from("d shows what changed: each file, and its diff.").dim());
+    }
     if workspace.pull_request.is_some() {
         lines.push(Line::from("b opens its pull request in the browser.").dim());
     }

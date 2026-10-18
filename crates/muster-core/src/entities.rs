@@ -31,6 +31,10 @@ pub struct Workspace {
     /// only while the branch is checked out there, and never stored.
     #[serde(default)]
     pub pull_request: Option<crate::pulls::PullRequestStatus>,
+    /// What its work has changed, committed on its branch or not, as git
+    /// last said; kept only while it is a repository's, and never stored.
+    #[serde(default)]
+    pub changes: Option<crate::changes::ChangeSummary>,
 }
 
 /// The kinds of workspace.
