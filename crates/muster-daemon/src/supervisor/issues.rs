@@ -24,10 +24,20 @@ pub(super) struct FetchedIssue {
     pub(super) harness: String,
     pub(super) size: TermSize,
     pub(super) another: bool,
+    pub(super) on: Option<muster_core::WorkspaceId>,
     /// Whether its branch starts with `muster/`, as the project says.
     pub(super) prefixed: bool,
     pub(super) detail: Result<IssueDetail, ServiceError>,
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+}
+
+/// How to start work on a fetched ticket.
+struct IssueStart {
+    harness: String,
+    size: TermSize,
+    another: bool,
+    on: Option<muster_core::WorkspaceId>,
+    prefixed: bool,
 }
 
 /// Work on a ticket the person asked for (`Command::StartFromIssue`).
@@ -39,6 +49,9 @@ pub(super) struct TicketStart {
     pub(super) size: TermSize,
     /// Another agent on it, in a worktree of its own.
     pub(super) another: bool,
+    /// The workspace whose branch a worktree made for it is made on top
+    /// of.
+    pub(super) on: Option<muster_core::WorkspaceId>,
 }
 
 impl Supervisor {
@@ -159,6 +172,7 @@ impl Supervisor {
             harness,
             size,
             another,
+            on,
         }: TicketStart,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
@@ -191,6 +205,7 @@ impl Supervisor {
                 harness,
                 size,
                 another,
+                on,
                 prefixed,
                 detail,
                 reply,
@@ -210,11 +225,18 @@ impl Supervisor {
                     harness,
                     size,
                     another,
+                    on,
                     prefixed,
                     ..
                 } = fetched;
-                self.start_issue(project, &detail, harness, size, another, prefixed)
-                    .await
+                let start = IssueStart {
+                    harness,
+                    size,
+                    another,
+                    on,
+                    prefixed,
+                };
+                self.start_issue(project, &detail, start).await
             }
             Err(error) => Err(error.body()),
         };
@@ -228,19 +250,22 @@ impl Supervisor {
         &mut self,
         project: ProjectId,
         detail: &IssueDetail,
-        harness: String,
-        size: TermSize,
-        another: bool,
-        prefixed: bool,
+        IssueStart {
+            harness,
+            size,
+            another,
+            on,
+            prefixed,
+        }: IssueStart,
     ) -> Result<Reply, ErrorBody> {
         let branch = ticket_branch(&detail.issue.key, &detail.issue.title, prefixed);
         let existing = self.worktree_on(project, &branch).map(|found| found.id);
         let workspace = match (existing, another) {
             (Some(existing), false) => existing,
-            (None, false) => self.new_worktree(project, branch).await?,
+            (None, false) => self.new_worktree(project, branch, on).await?,
             (_, true) => {
                 let branch = self.unused_worktree_branch(project, &branch).await?;
-                self.new_worktree(project, branch).await?
+                self.new_worktree(project, branch, on).await?
             }
         };
         let takes_prompt =
@@ -271,8 +296,9 @@ impl Supervisor {
         &mut self,
         project: ProjectId,
         branch: String,
+        on: Option<muster_core::WorkspaceId>,
     ) -> Result<muster_core::WorkspaceId, ErrorBody> {
-        match self.create_worktree(project, Some(branch)).await? {
+        match self.create_worktree(project, Some(branch), on).await? {
             Reply::WorktreeCreated { id } => Ok(id),
             other => Err(unexpected(&other)),
         }

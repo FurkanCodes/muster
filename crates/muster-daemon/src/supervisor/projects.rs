@@ -228,6 +228,7 @@ impl Supervisor {
             changes: None,
             timeline: None,
             clashes: Vec::new(),
+            stacked_on: None,
         }
     }
 

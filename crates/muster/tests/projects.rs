@@ -130,6 +130,7 @@ async fn branches_follow_switches_in_the_checkout_and_in_worktrees() {
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()
@@ -218,6 +219,7 @@ async fn removing_a_project_forgets_it_and_leaves_the_repository_alone() {
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()

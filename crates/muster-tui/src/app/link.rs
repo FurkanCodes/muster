@@ -281,6 +281,15 @@ impl App {
             (Err(error), Then::Undone(workspace, number)) => {
                 return self.on_undone(workspace, number, Err(error.message));
             }
+            (
+                Ok(Reply::Moved {
+                    onto,
+                    commits,
+                    entry,
+                }),
+                Then::Moved(workspace),
+            ) => self.on_moved(workspace, Ok((onto, commits, entry))),
+            (Err(error), Then::Moved(workspace)) => self.on_moved(workspace, Err(error.message)),
             (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
                 self.settings.insert(project, Settings::Loaded(settings));
             }

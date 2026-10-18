@@ -190,6 +190,7 @@ async fn create_worktree(
         .command(Command::CreateWorktree {
             project,
             branch: Some(branch.to_owned()),
+            on: None,
         })
         .await
         .unwrap()

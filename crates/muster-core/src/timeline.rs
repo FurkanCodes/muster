@@ -35,6 +35,8 @@ pub enum EntryKind {
     Between,
     /// The person put the files back as they were before entry `of`.
     Undo { of: u64 },
+    /// The person moved the branch onto `onto` (`crate::stacks`).
+    Moved { onto: String },
 }
 
 /// One entry of a workspace's timeline.
@@ -111,6 +113,10 @@ pub fn entry_message(entry: &Entry) -> String {
             lines.push("kind: undo".to_owned());
             lines.push(format!("of: {of}"));
         }
+        EntryKind::Moved { onto } => {
+            lines.push("kind: moved".to_owned());
+            lines.push(format!("onto: {}", crate::text::one_line(onto)));
+        }
     }
     lines.push(format!("started: {}", entry.started.as_millis()));
     lines.push(format!("ended: {}", entry.ended.as_millis()));
@@ -150,6 +156,9 @@ pub fn parse_entry(message: &str) -> Option<Entry> {
         },
         "between" => EntryKind::Between,
         "undo" => EntryKind::Undo { of: number("of")? },
+        "moved" => EntryKind::Moved {
+            onto: get("onto").unwrap_or_default().to_owned(),
+        },
         _ => return None,
     };
     let summary = match (number("files"), number("added"), number("removed")) {

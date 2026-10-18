@@ -19,6 +19,7 @@ impl Supervisor {
         &mut self,
         project: ProjectId,
         branch: Option<String>,
+        on: Option<WorkspaceId>,
     ) -> Result<Reply, ErrorBody> {
         self.repository_root(project, "worktrees")?;
         let project = self
@@ -70,7 +71,12 @@ impl Supervisor {
         let exists = git::branch_exists(&project.root, &branch)
             .await
             .map_err(git_failure)?;
-        git::add_worktree(&project.root, &path, &branch, !exists)
+        let stacked_on = match on {
+            Some(on) => Some(self.stack_on(project.id, on, &branch, exists).await?),
+            None => None,
+        };
+        let start = stacked_on.as_ref().map(|stacked| stacked.at.as_str());
+        git::add_worktree(&project.root, &path, &branch, !exists, start)
             .await
             .map_err(|error| branch_clash(&error, &branch).unwrap_or_else(|| git_failure(error)))?;
         let path = tokio::fs::canonicalize(&path).await.unwrap_or(path);
@@ -87,6 +93,7 @@ impl Supervisor {
             changes: None,
             timeline: None,
             clashes: Vec::new(),
+            stacked_on,
         };
         let stored = workspace.clone();
         let inserted = self
@@ -278,6 +285,7 @@ impl Supervisor {
             changes: None,
             timeline: None,
             clashes: Vec::new(),
+            stacked_on: None,
         };
         let stored = workspace.clone();
         match self

@@ -16,6 +16,10 @@ use super::{Request, Supervisor};
 use crate::harness;
 use crate::timeline::{self, Store, TimelineError};
 
+/// What an agent at work holds up, in the person's words.
+const PUT_BACK: &str = "put the files back";
+pub(super) const MOVE: &str = "move the branch";
+
 /// The most jobs that wait behind one under way in a workspace
 /// (`ARC-14`); past these, a turn goes unrecorded.
 const MOST_WAITING: usize = 32;
@@ -51,16 +55,21 @@ pub(super) enum Job {
         move_branch: bool,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     },
+    /// The person asked to move the branch (`supervisor::stacks`).
+    Move {
+        plan: timeline::MovePlan,
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    },
 }
 
 /// What a job did, back on the Supervisor's queue.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct JobDone {
-    workspace: WorkspaceId,
+    pub(super) workspace: WorkspaceId,
     /// The entry it recorded, if any.
-    recorded: Option<u64>,
-    /// It put files back.
-    undid: bool,
+    pub(super) recorded: Option<u64>,
+    /// It changed the files, so what changed is looked at again.
+    pub(super) undid: bool,
 }
 
 /// Whether a session in `status` is at work: on a turn, or waiting on the
@@ -142,19 +151,22 @@ impl Supervisor {
 
     /// Where a workspace's files and its timeline are: a worktree's or a
     /// checkout's on the host, in a repository.
-    fn timeline_place(&self, workspace: WorkspaceId) -> Result<(PathBuf, PathBuf), ErrorBody> {
+    pub(super) fn timeline_place(
+        &self,
+        workspace: WorkspaceId,
+    ) -> Result<(PathBuf, PathBuf), ErrorBody> {
         let path = self.repository_path(workspace)?;
         Ok((path, timeline::dir(&self.data_dir, workspace)))
     }
 
     /// Runs `job` now, or after the one under way in `workspace`.
-    fn queue_timeline(&mut self, workspace: WorkspaceId, job: Job) {
+    pub(super) fn queue_timeline(&mut self, workspace: WorkspaceId, job: Job) {
         if let Some((_, waiting)) = self.timelines.busy.get_mut(&workspace) {
             if waiting.len() < MOST_WAITING {
                 waiting.push_back(job);
             } else {
                 tracing::warn!(%workspace, "too much waits on a workspace's timeline");
-                if let Job::Undo { reply, .. } = job {
+                if let Job::Undo { reply, .. } | Job::Move { reply, .. } = job {
                     let _ = reply.send(Err(ErrorBody::new(
                         ErrorCode::Conflict,
                         "the timeline is busy: try again in a moment",
@@ -181,7 +193,7 @@ impl Supervisor {
                 reply,
             } => {
                 // Asked while nothing worked there; asked again as it starts.
-                let checked = place.and_then(|place| match self.busy_agent(workspace) {
+                let checked = place.and_then(|place| match self.busy_agent(workspace, PUT_BACK) {
                     Some(busy) => Err(busy),
                     None => Ok(place),
                 });
@@ -194,6 +206,20 @@ impl Supervisor {
                         };
                         self.run_undo(workspace, path, dir, undoing);
                     }
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                        self.next_timeline_job(workspace);
+                    }
+                }
+                return;
+            }
+            Job::Move { plan, reply } => {
+                let checked = place.and_then(|place| match self.busy_agent(workspace, MOVE) {
+                    Some(busy) => Err(busy),
+                    None => Ok(place),
+                });
+                match checked {
+                    Ok((path, dir)) => self.run_move(workspace, path, dir, plan, reply),
                     Err(error) => {
                         let _ = reply.send(Err(error));
                         self.next_timeline_job(workspace);
@@ -304,7 +330,7 @@ impl Supervisor {
     }
 
     /// Why the files cannot be put back now: an agent works there.
-    fn busy_agent(&self, workspace: WorkspaceId) -> Option<ErrorBody> {
+    pub(super) fn busy_agent(&self, workspace: WorkspaceId, what: &str) -> Option<ErrorBody> {
         let busy = self
             .state
             .sessions
@@ -313,7 +339,7 @@ impl Supervisor {
         Some(ErrorBody::new(
             ErrorCode::Conflict,
             format!(
-                "{} is at work there: put the files back once it has stopped",
+                "{} is at work there: {what} once it has stopped",
                 busy.title
             ),
         ))
@@ -377,7 +403,7 @@ impl Supervisor {
             let _ = reply.send(Err(error));
             return;
         }
-        if let Some(busy) = self.busy_agent(workspace) {
+        if let Some(busy) = self.busy_agent(workspace, PUT_BACK) {
             tracing::info!(command = "undo", error = %busy, "command refused");
             let _ = reply.send(Err(busy));
             return;
@@ -475,7 +501,8 @@ fn error_body(error: &TimelineError) -> ErrorBody {
         TimelineError::Gone(_)
         | TimelineError::Refused(_)
         | TimelineError::Branch(_)
-        | TimelineError::AlreadyThere(_) => ErrorCode::Conflict,
+        | TimelineError::AlreadyThere(_)
+        | TimelineError::NotMoved(_) => ErrorCode::Conflict,
         TimelineError::Git(_) | TimelineError::Io(..) => ErrorCode::Internal,
     };
     ErrorBody::new(code, error.to_string())

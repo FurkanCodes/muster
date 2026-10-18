@@ -48,6 +48,7 @@ async fn an_agent_tidies_the_commits_not_pushed_and_muster_checks_the_files() {
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()

@@ -9,8 +9,9 @@ mod runs;
 fn insert_workspace_row(conn: &Connection, workspace: &Workspace) -> Result<()> {
     let columns = rows::workspace_columns(workspace)?;
     conn.execute(
-        "INSERT INTO workspaces (id, project_id, kind, path, branch, created_at, run_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO workspaces
+             (id, project_id, kind, path, branch, created_at, run_id, stacked_on, stacked_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             id_text(workspace.id),
             id_text(workspace.project),
@@ -19,6 +20,8 @@ fn insert_workspace_row(conn: &Connection, workspace: &Workspace) -> Result<()> 
             columns.branch,
             workspace.created_at.as_millis(),
             columns.run,
+            workspace.stacked_on.as_ref().map(|stacked| &stacked.branch),
+            workspace.stacked_on.as_ref().map(|stacked| &stacked.at),
         ],
     )?;
     Ok(())
@@ -138,6 +141,25 @@ impl Store {
             .execute("DELETE FROM projects WHERE id = ?1", [id_text(project)])?
         {
             0 => Err(StoreError::NotFound(project.to_string())),
+            _ => Ok(()),
+        }
+    }
+
+    /// Records the branch a workspace's branch is stacked on now, if any.
+    pub fn update_stack(
+        &mut self,
+        workspace: WorkspaceId,
+        stacked: Option<&muster_core::stacks::Stacked>,
+    ) -> Result<()> {
+        match self.conn.execute(
+            "UPDATE workspaces SET stacked_on = ?2, stacked_at = ?3 WHERE id = ?1",
+            params![
+                id_text(workspace),
+                stacked.map(|stacked| &stacked.branch),
+                stacked.map(|stacked| &stacked.at),
+            ],
+        )? {
+            0 => Err(StoreError::NotFound(workspace.to_string())),
             _ => Ok(()),
         }
     }
@@ -318,8 +340,8 @@ impl Store {
             rows::project,
         )?;
         let workspaces = self.collect(
-            "SELECT id, project_id, kind, path, branch, created_at, run_id FROM workspaces
-             WHERE removed_at IS NULL ORDER BY created_at, id",
+            "SELECT id, project_id, kind, path, branch, created_at, run_id, stacked_on, stacked_at
+             FROM workspaces WHERE removed_at IS NULL ORDER BY created_at, id",
             rows::workspace,
         )?;
         let sessions = self.collect(

@@ -90,6 +90,7 @@ async fn start_agent(
             harness: "claude".to_owned(),
             size: TermSize::default(),
             another,
+            on: None,
         })
         .await
         .map(|reply| match reply {

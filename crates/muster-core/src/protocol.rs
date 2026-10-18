@@ -53,7 +53,11 @@
 //! the work in a project's workspaces meets (`Workspace::clashes`, a field
 //! older clients pass over); version 27 tidying a branch's commits
 //! (`Command::TidyCommits`, sent only to a daemon of 27 or later, and
-//! `Session::tidy`, a field older clients pass over).
+//! `Session::tidy`, a field older clients pass over); version 28 stacked
+//! work (`Workspace::stacked_on`, the same; `CreateWorktree::on` and
+//! `StartFromIssue::on`, and `Command::MoveOnto`, sent only to a daemon of
+//! 28 or later; a timeline's entries of `EntryKind::Moved` reach an older
+//! client as `EntryKind::Between`, [`Reply::for_version`]).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -71,7 +75,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 27;
+pub const PROTOCOL_VERSION: u32 = 28;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -330,6 +334,11 @@ pub enum Command {
     CreateWorktree {
         project: ProjectId,
         branch: Option<String>,
+        /// The workspace whose branch a new branch is made on top of,
+        /// rather than on what the checkout has. Sent only to a daemon of
+        /// 28 or later.
+        #[serde(default)]
+        on: Option<WorkspaceId>,
     },
     /// Remove a worktree's directory. Its branch is kept. A worktree with
     /// uncommitted changes is removed only with `force`; one with running
@@ -370,6 +379,13 @@ pub enum Command {
         harness: String,
         size: TermSize,
     },
+    /// Move a workspace's branch onto the newest commit of the branch it
+    /// is stacked on, or of its base once that has merged, or of its base
+    /// where it is not stacked, as the person asked (`PRD-14`): its own
+    /// commits replayed there, and nothing changed where one would
+    /// conflict; refused while an agent works there. Answered with
+    /// [`Reply::Moved`]. Sent only to a daemon of 28 or later.
+    MoveOnto { workspace: WorkspaceId },
     /// Push a workspace's branch, as committed, with the person's own git,
     /// and open a draft pull request from it, or find the one open;
     /// answered with [`Reply::PullRequestOpened`].
@@ -492,6 +508,11 @@ pub enum Command {
         /// than in the issue's worktree as it is.
         #[serde(default)]
         another: bool,
+        /// The workspace whose branch a worktree made for the issue is
+        /// made on top of; a worktree found as it is stays as it is. Sent
+        /// only to a daemon of 28 or later.
+        #[serde(default)]
+        on: Option<WorkspaceId>,
     },
 }
 
@@ -563,6 +584,13 @@ pub enum Reply {
         entry: u64,
         #[serde(default)]
         moved_branch: bool,
+    },
+    /// The branch moved onto `onto`, its `commits` replayed there; what
+    /// was there is entry `entry` of its timeline.
+    Moved {
+        onto: String,
+        commits: u64,
+        entry: u64,
     },
     /// The run is the person's; `session` is its agent, in its container.
     RunTakenOver {
@@ -669,6 +697,26 @@ pub enum Delta {
     },
     /// Muster's own settings changed. Sent only to a client of 23 or later.
     Preferences(Preferences),
+}
+
+impl Reply {
+    /// The reply as a client that agreed to `version` can read it: a
+    /// timeline's entries of kinds it does not know are told as edits
+    /// between turns (`ARC-09`).
+    #[must_use]
+    pub fn for_version(self, version: u32) -> Self {
+        match self {
+            Self::Timeline(mut timeline) if version < crate::stacks::STACKS_PROTOCOL => {
+                for entry in &mut timeline.entries {
+                    if matches!(entry.kind, crate::timeline::EntryKind::Moved { .. }) {
+                        entry.kind = crate::timeline::EntryKind::Between;
+                    }
+                }
+                Self::Timeline(timeline)
+            }
+            other => other,
+        }
+    }
 }
 
 impl Delta {

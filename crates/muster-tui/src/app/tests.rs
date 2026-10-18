@@ -334,6 +334,7 @@ fn a_new_worktree_is_created_and_selected() {
         Command::CreateWorktree {
             project: world.project.id,
             branch: Some("fix-login".to_owned()),
+            on: None,
         }
     );
     let created = worktree(world.project.id, "fix-login");

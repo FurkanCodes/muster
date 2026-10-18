@@ -14,6 +14,7 @@ pub(crate) mod selection;
 mod settings;
 mod settle;
 mod sharing;
+mod stacks;
 mod tickets;
 pub(crate) mod tickets_from;
 mod tidy;
@@ -183,6 +184,9 @@ pub(crate) enum Dialog {
         another: bool,
         /// Where it starts: `project`, or another sharing its tickets.
         into: ProjectId,
+        /// The worktree in `into` whose branch a new worktree for it is
+        /// made on top of; `None` for the base.
+        on: Option<WorkspaceId>,
     },
     Confirm {
         question: String,
@@ -235,6 +239,9 @@ pub(crate) enum Confirmed {
         force: bool,
     },
     RemoveProject(ProjectId),
+    /// Move the worktree's branch onto the newest of its base, or of the
+    /// branch it is stacked on.
+    MoveOnto(WorkspaceId),
 }
 
 /// A line under the screen telling the person what just happened. It
@@ -291,6 +298,8 @@ enum Then {
     UndoPlan(WorkspaceId),
     /// Say the files are back from that entry, and show what is there now.
     Undone(WorkspaceId, u64),
+    /// Say the branch moved, and onto what.
+    Moved(WorkspaceId),
     Say(&'static str),
 }
 

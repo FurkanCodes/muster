@@ -131,8 +131,13 @@ impl Connection {
                 }
                 ClientFrame::Command { req_id, command } => {
                     let (supervisor, outgoing) = (self.supervisor.clone(), self.outgoing.clone());
+                    let version = self.version;
                     self.tasks.spawn(async move {
-                        let outcome = supervisor.command(command).await;
+                        // As the client's protocol can read it (`ARC-09`).
+                        let outcome = supervisor
+                            .command(command)
+                            .await
+                            .map(|reply| reply.for_version(version));
                         let _ = outgoing.send(ServerFrame::Reply { req_id, outcome }).await;
                     });
                 }

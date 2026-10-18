@@ -13,7 +13,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::protocol::Command;
-use muster_core::{Issue, ProjectId, SessionId, TicketKey};
+use muster_core::{Issue, ProjectId, SessionId, TicketKey, WorkspaceId};
 
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
 
@@ -185,6 +185,7 @@ impl App {
             harness: self.ticket_agent,
             another,
             into: self.project_to_offer(project),
+            on: None,
         });
         Vec::new()
     }
@@ -196,39 +197,50 @@ impl App {
         another && !self.model.worktrees_for(&[into], key).is_empty()
     }
 
-    /// A key in the dialog choosing an agent for a ticket: ⇥ and ⇧⇥ (or
-    /// ← →) choose the agent, ↑ ↓ the project where several share the
-    /// ticket, ⏎ starts it, esc thinks better of it.
+    /// A key in the dialog choosing an agent for a ticket: ⇥ and ⇧⇥
+    /// choose the agent, ← → what a new worktree is made on top of where
+    /// one is offered (else the agent too), ↑ ↓ the project where several
+    /// share the ticket, ⏎ starts it, esc thinks better of it.
     pub(super) fn assign_key(
         &mut self,
         project: ProjectId,
         key: TicketKey,
         harness: HarnessChoice,
-        another: bool,
-        into: ProjectId,
+        (another, into, on): (bool, ProjectId, Option<WorkspaceId>),
         pressed: &KeyEvent,
     ) -> Vec<Action> {
-        let (harness, into) = match pressed.code {
-            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => (harness.next_agent(), into),
+        let stacking = self.offers_stack(into, &key, another);
+        let (harness, into, on) = match pressed.code {
+            KeyCode::Right | KeyCode::Char('l') if stacking => {
+                (harness, into, self.next_stack(into, on, false))
+            }
+            KeyCode::Left | KeyCode::Char('h') if stacking => {
+                (harness, into, self.next_stack(into, on, true))
+            }
+            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => (harness.next_agent(), into, on),
             KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
-                (harness.previous_agent(), into)
+                (harness.previous_agent(), into, on)
             }
+            // Another project's worktrees are its own to stack on.
             KeyCode::Down | KeyCode::Char('j') => {
-                (harness, self.next_project(project, into, false))
+                (harness, self.next_project(project, into, false), None)
             }
-            KeyCode::Up | KeyCode::Char('k') => (harness, self.next_project(project, into, true)),
+            KeyCode::Up | KeyCode::Char('k') => {
+                (harness, self.next_project(project, into, true), None)
+            }
             KeyCode::Enter => {
                 self.mode = Mode::Browse;
                 self.ticket_agent = harness;
                 self.remember_project(project, into);
                 let another = self.starts_another(into, &key, another);
-                return self.assign_agent(into, key, harness, another);
+                let on = on.filter(|_| stacking);
+                return self.assign_agent(into, key, harness, another, on);
             }
             KeyCode::Esc => {
                 self.mode = Mode::Browse;
                 return Vec::new();
             }
-            _ => (harness, into),
+            _ => (harness, into, on),
         };
         self.mode = Mode::Dialog(Dialog::AssignAgent {
             project,
@@ -236,6 +248,7 @@ impl App {
             harness,
             another,
             into,
+            on,
         });
         Vec::new()
     }
@@ -248,6 +261,7 @@ impl App {
         key: TicketKey,
         harness: HarnessChoice,
         another: bool,
+        on: Option<WorkspaceId>,
     ) -> Vec<Action> {
         self.say(format!("Starting {} on {}…", harness.label(), key.shown()));
         let command = Command::StartFromIssue {
@@ -256,6 +270,7 @@ impl App {
             harness: harness.id().to_owned(),
             size: self.session_size(),
             another,
+            on,
         };
         vec![self.command(command, Then::OpenIssueSession)]
     }

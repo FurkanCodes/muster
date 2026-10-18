@@ -45,6 +45,7 @@ async fn create(
         .command(Command::CreateWorktree {
             project,
             branch: branch.map(str::to_owned),
+            on: None,
         })
         .await
         .map(|reply| match reply {

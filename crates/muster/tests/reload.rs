@@ -46,6 +46,7 @@ async fn worktree(connection: &mut Connection, sandbox: &Sandbox) -> WorkspaceId
         .command(Command::CreateWorktree {
             project,
             branch: Some("work".to_owned()),
+            on: None,
         })
         .await
         .unwrap()

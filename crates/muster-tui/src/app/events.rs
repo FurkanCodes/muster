@@ -196,6 +196,7 @@ impl App {
             KeyCode::Char('c') if self.view == View::Sessions => return self.check(),
             KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
             KeyCode::Char('t') if self.view == View::Sessions => return self.ask_tidy(),
+            KeyCode::Char('u') if self.view == View::Sessions => return self.ask_move(),
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
             KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
             KeyCode::Char('d') => return self.open_changes(),
@@ -573,7 +574,8 @@ impl App {
                 harness,
                 another,
                 into,
-            } => self.assign_key(project, ticket, harness, another, into, key),
+                on,
+            } => self.assign_key(project, ticket, harness, (another, into, on), key),
             Dialog::NewWorktree {
                 project,
                 mut branch,
@@ -581,7 +583,11 @@ impl App {
                 Edit::Submit => {
                     self.mode = Mode::Browse;
                     let branch = Some(branch.text().trim().to_owned()).filter(|b| !b.is_empty());
-                    let command = Command::CreateWorktree { project, branch };
+                    let command = Command::CreateWorktree {
+                        project,
+                        branch,
+                        on: None,
+                    };
                     vec![self.command(command, Then::SelectWorktree)]
                 }
                 edit => self.keep_editing(edit, Dialog::NewWorktree { project, branch }),
@@ -665,6 +671,7 @@ impl App {
                 Command::RemoveWorktree { workspace, force },
                 Then::RemovedWorktree(workspace),
             ),
+            Confirmed::MoveOnto(workspace) => self.confirmed_move(workspace),
             Confirmed::RemoveProject(project) => self.command(
                 Command::RemoveProject { project },
                 Then::Say("Muster no longer tracks the project; its folder is untouched."),

@@ -17,6 +17,7 @@
 - **What changed, at a glance.** Each worktree's line says what its work comes to (`+120 −30`), looked at again as an agent's turn there ends. `d` shows it beside the list: the files not yet committed, the branch's commits since it left the branch it merges into (`origin/main`, or `base_branch` in `muster.toml`), and the files they changed, each with its lines; `⏎` shows a file's diff. Git is only asked; nothing in the worktree changes, and no code is stored or logged.
 - **Undo an agent's turn.** Every agent's turn in a worktree is kept, whatever the agent, with what it changed, and so are the edits between turns. `d` lists them under the changes; `⏎` shows what one changed, and `z` puts the files back as they were before it, once you say yes, and the branch too where its commits are not pushed. Never while an agent works there, and what was there is kept first, so an undo can be undone. The snapshots live in Muster's own store, not your repository.
 - **Tidy a branch's commits.** `t` has the agent you pick rewrite the commits not pushed yet into clear ones, never while an agent works there. When it stops, Muster checks that the files are exactly as they were and says so on its line (`tidied 5 commits into 2, files unchanged`); its turn is in the timeline, so `z` puts it all back.
+- **Stack work on work.** When you assign an agent to a ticket, `←` `→` make its worktree on top of another worktree's branch, so it builds on work not merged yet. It is measured, reviewed and opened as a pull request against that branch. `u` moves it onto that branch's newest commit, or onto your base once that branch has merged (or any branch onto the newest of its base), after you say yes; nothing changes if a commit would conflict, and `z` puts it back.
 - **See where agents' work collides.** When two worktrees of a project change the same files (or an agent's worktree and your checkout do), both lines say so: `overlap` in yellow, or `conflict` in red where git's own merge says merging both would conflict, looked at again as each turn ends. A worktree's details and its `d` pane name the other worktree and the files. Git merges them in Muster's own store; nothing in either worktree changes.
 - **Pull requests in view.** Each worktree shows the pull request from its branch, as GitHub, GitLab or Bitbucket last said (about every minute while the UI is open): `#42 approved ✓`, `#17 draft ✗`, `#9 merged`. Its details say it in words, `b` opens it in your browser, and a ticket's agents show theirs. Muster only reads it.
 - **What agents used.** Each session's pane says what its agent has used so far, read from the agent's own records: Claude Code's transcripts, Codex's rollouts, Gemini CLI's chat recordings, and OpenCode through its plugin, which also says the cost (`1.2M tokens`, `$0.42 · 40k tokens`; cached tokens count). A ticket's agents say theirs, and all together. Copilot CLI records its usage only as it exits, so its sessions say none.
@@ -67,6 +68,7 @@ muster
 | `c` | run the project's checks in the selected worktree, as a session (`r` runs them again) |
 | `v` | have Claude Code review the selected worktree's change, in plan mode (it changes nothing) |
 | `t` | have the agent you pick tidy the selected worktree's commits not pushed yet; Muster checks the files end as they began |
+| `u` | move the selected worktree's branch onto the newest of what it is stacked on, or of its base, after asking; nothing changes if a commit would conflict |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
 | `b` | open the pull request from the selected worktree's branch in your browser |
 | `d` | what the selected worktree's work has changed, or the selected session's, beside the list, with its agents' turns: `↑` `↓` choose a file or a turn, `⏎` its diff, `r` asks git again, `esc` goes back a step, `d` back to the list |
@@ -83,6 +85,7 @@ While you type in a session, beside the list or full screen, every key goes to t
 |---|---|
 | `⏎` | open the agent on the selected ticket, or start the first: choose the agent (`⇥` `⇧⇥`, the last one chosen first), and it starts in a worktree for it with the ticket as its first prompt |
 | `a` | start another agent on the ticket, chosen the same way, in a worktree of its own |
+| `←` `→` | in that choice, where a new worktree is made: on top of which worktree's branch, or the base |
 | `↑` `↓` | in that choice, where several projects take their tickets from the same Jira project (or Linear team): which of them the ticket is for, the last one chosen first |
 | `b` | open the ticket in your browser |
 | `x` | close the ticket in its tracker, after asking; then, if you want, close its agents and remove its worktrees (the branches are kept) |

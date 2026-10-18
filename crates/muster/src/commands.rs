@@ -316,6 +316,7 @@ pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<St
         .command(Command::CreateWorktree {
             project: project.id,
             branch,
+            on: None,
         })
         .await?;
     let Reply::WorktreeCreated { id } = reply else {
@@ -546,6 +547,7 @@ pub(crate) async fn start_issue(
             harness,
             size: TermSize::default(),
             another,
+            on: None,
         })
         .await?;
     let Reply::IssueStarted { workspace, session } = reply else {

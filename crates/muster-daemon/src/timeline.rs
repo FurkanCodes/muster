@@ -28,7 +28,10 @@ use muster_core::{SessionId, Timestamp};
 
 use crate::git::{self, GitError};
 
+mod moving;
 mod undo;
+
+pub(crate) use moving::MovePlan;
 
 /// How many entries past [`MAX_ENTRIES`] wait before the oldest go, so the
 /// store is tidied now and then rather than after every turn.
@@ -72,6 +75,8 @@ pub(crate) enum TimelineError {
     Branch(String),
     #[error("the files are already as they were before entry {0}")]
     AlreadyThere(u64),
+    #[error("the branch did not move: {0}")]
+    NotMoved(String),
 }
 
 /// Where the timeline of `workspace` is kept.

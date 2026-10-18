@@ -22,6 +22,7 @@ mod runs;
 mod sessions;
 mod settings;
 mod spend;
+mod stacks;
 mod status;
 mod terminals;
 mod tidy;
@@ -357,6 +358,7 @@ impl Supervisor {
                     number,
                     move_branch,
                 } => self.undo(workspace, number, move_branch, reply),
+                Command::MoveOnto { workspace } => self.move_onto(workspace, reply).await,
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }
@@ -381,6 +383,7 @@ impl Supervisor {
                     harness,
                     size,
                     another,
+                    on,
                 } => self.fetch_issue(
                     issues::TicketStart {
                         project,
@@ -388,6 +391,7 @@ impl Supervisor {
                         harness,
                         size,
                         another,
+                        on,
                     },
                     reply,
                 ),
@@ -416,6 +420,10 @@ impl Supervisor {
             Request::ChangesLooked(looked) => self.changes_looked(*looked),
             Request::TimelineJobDone(done) => self.timeline_job_done(*done),
             Request::ClashesFound(found) => self.clashes_found(*found),
+            Request::StackMoved(moved) => {
+                let (workspace, stacked) = *moved;
+                self.stack_moved(workspace, stacked).await;
+            }
             Request::TidyChecked(checked) => {
                 let (session, checked) = *checked;
                 self.tidy_checked(session, checked);
@@ -477,9 +485,11 @@ impl Supervisor {
             Command::ChangePreference(change) => self.change_preference(&change),
             Command::AddProject { root, name } => self.add_project(root, name).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
-            Command::CreateWorktree { project, branch } => {
-                self.create_worktree(project, branch).await
-            }
+            Command::CreateWorktree {
+                project,
+                branch,
+                on,
+            } => self.create_worktree(project, branch, on).await,
             Command::RemoveWorktree { workspace, force } => {
                 self.remove_worktree(workspace, force).await
             }
@@ -545,7 +555,8 @@ impl Supervisor {
             | Command::Timeline { .. }
             | Command::EntryDiff { .. }
             | Command::UndoPlan { .. }
-            | Command::Undo { .. } => Err(ErrorBody::new(
+            | Command::Undo { .. }
+            | Command::MoveOnto { .. } => Err(ErrorBody::new(
                 ErrorCode::Internal,
                 "this command is answered off the Supervisor's loop",
             )),
@@ -654,6 +665,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::EntryDiff { .. } => "entry diff",
         Command::UndoPlan { .. } => "undo plan",
         Command::Undo { .. } => "undo",
+        Command::MoveOnto { .. } => "move onto",
         Command::Reveal { .. } => "reveal",
         Command::ChangePreference(_) => "change preference",
         Command::AddProject { .. } => "add project",

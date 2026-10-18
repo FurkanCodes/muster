@@ -188,6 +188,7 @@ fn an_agent_on_a_shared_ticket_starts_in_the_project_chosen_offered_first_next_t
             harness: HarnessChoice::Claude.id().to_owned(),
             size: PANE,
             another: false,
+            on: None,
         }]
     );
 

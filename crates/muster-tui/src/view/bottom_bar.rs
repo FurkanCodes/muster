@@ -149,7 +149,14 @@ fn hints(app: &App) -> String {
                 hints.push("c check");
             } else {
                 if kind.is_some_and(|kind| kind.run().is_none()) {
-                    hints.extend(["d changes", "c check", "v review", "t tidy", "o PR"]);
+                    hints.extend([
+                        "d changes",
+                        "c check",
+                        "v review",
+                        "t tidy",
+                        "u onto base",
+                        "o PR",
+                    ]);
                 }
                 if app
                     .model

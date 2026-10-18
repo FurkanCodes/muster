@@ -119,8 +119,7 @@ impl Supervisor {
             ));
         };
         let branch = self.reviewable_branch(workspace)?;
-        let configured = self.settings_in(workspace, path).await?.base_branch;
-        let base = base_of(path, configured.as_deref()).await;
+        let base = self.base_for(workspace, path).await?;
         let prompt = crate::runs::prompts::review_by_hand(&branch, &base);
         let id = self
             .add_session(workspace, harness, None, Start::WithPrompt)
@@ -166,9 +165,9 @@ impl Supervisor {
                 .config_dir
                 .join("projects")
                 .join(format!("{}.toml", found.project));
-            Ok::<_, ErrorBody>((path, branch, overrides))
+            Ok::<_, ErrorBody>((path, branch, overrides, found.stacked_on.clone()))
         })();
-        let (path, branch, overrides) = match prepared {
+        let (path, branch, overrides, stacked) = match prepared {
             Ok(prepared) => prepared,
             Err(error) => {
                 let _ = reply.send(Err(error));
@@ -188,8 +187,16 @@ impl Supervisor {
                     .for_project(place)
                     .await
                     .map_err(|error| error.body())?;
-                let configured = load_settings(path.clone(), overrides).await?.base_branch;
-                let base = base_of(&path, configured.as_deref()).await;
+                // A stacked branch's pull request merges into the branch
+                // it is stacked on.
+                let base = if let Some(stacked) =
+                    super::stacks::stacked_base(&path, stacked.as_ref()).await
+                {
+                    stacked
+                } else {
+                    let configured = load_settings(path.clone(), overrides).await?.base_branch;
+                    base_of(&path, configured.as_deref()).await
+                };
                 let base = base.strip_prefix("origin/").unwrap_or(&base).to_owned();
                 if base == branch {
                     return Err(ErrorBody::new(
@@ -255,6 +262,26 @@ impl Supervisor {
             ));
         }
         Ok(branch)
+    }
+
+    /// What `workspace`'s branch, at `path`, is to merge into: the branch
+    /// it is stacked on while there is one, else its base.
+    pub(super) async fn base_for(
+        &self,
+        workspace: WorkspaceId,
+        path: &Path,
+    ) -> Result<String, ErrorBody> {
+        let stacked = self
+            .state
+            .workspaces
+            .iter()
+            .find(|candidate| candidate.id == workspace)
+            .and_then(|found| found.stacked_on.clone());
+        if let Some(stacked) = super::stacks::stacked_base(path, stacked.as_ref()).await {
+            return Ok(stacked);
+        }
+        let configured = self.settings_in(workspace, path).await?.base_branch;
+        Ok(base_of(path, configured.as_deref()).await)
     }
 
     /// The settings in the workspace at `path`, with the person's

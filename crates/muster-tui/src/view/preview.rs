@@ -97,6 +97,20 @@ fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
         }
         lines.push(Line::from(spans));
     }
+    if let Some(stacked) = &workspace.stacked_on {
+        let merged = if app.stack_merged(workspace.id) {
+            " · it has merged: u moves this onto its base"
+        } else {
+            ""
+        };
+        lines.push(Line::from(vec![
+            Span::from("Stacked ").dim(),
+            Span::raw(format!(
+                "on ⎇ {}{merged}",
+                muster_core::text::one_line(&stacked.branch)
+            )),
+        ]));
+    }
     lines.extend(super::clashes::detail_lines(app, &workspace.clashes));
     if let Some(found) = &workspace.pull_request {
         lines.push(Line::from(vec![

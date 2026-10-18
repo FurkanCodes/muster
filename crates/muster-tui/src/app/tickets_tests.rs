@@ -15,7 +15,7 @@ use super::tests::{PANE, World, command, press, render, world};
 use super::{Action, Dialog, HarnessChoice, Mode, TicketRow, View};
 use crate::model::tests::session;
 
-fn key(number: u64) -> TicketKey {
+pub(super) fn key(number: u64) -> TicketKey {
     TicketKey::number(number)
 }
 
@@ -29,7 +29,7 @@ fn issue(number: u64, title: &str) -> Issue {
     }
 }
 
-fn commands(actions: &[Action]) -> Vec<Command> {
+pub(super) fn commands(actions: &[Action]) -> Vec<Command> {
     actions
         .iter()
         .filter_map(|action| match action {
@@ -45,7 +45,7 @@ fn reply(world: &mut World, req_id: u64, outcome: Result<Reply, ErrorBody>) -> V
 
 /// The world on the Tickets screen with #42 and #7 fetched, #42 selected
 /// and its text in.
-fn on_tickets() -> World {
+pub(super) fn on_tickets() -> World {
     let mut world = world();
     let actions = press(&mut world.app, KeyCode::Char('i'));
     assert_eq!(world.app.view, View::Tickets);
@@ -121,6 +121,7 @@ fn agent_for_42(world: &World, branch: &str, created: i64) -> (Workspace, muster
         changes: None,
         timeline: None,
         clashes: Vec::new(),
+        stacked_on: None,
     };
     let mut agent = session(workspace.id, "#42 Fix the login redirect", created);
     agent.harness = "claude".to_owned();
@@ -166,6 +167,7 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
             harness: "claude".to_owned(),
             size: PANE,
             another: false,
+            on: None,
         }
     );
     let (workspace, agent) = agent_for_42(&world, "muster/issue-42-fix-the-login-redirect", 10);
@@ -254,6 +256,7 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
             harness: "codex".to_owned(),
             size: PANE,
             another: false,
+            on: None,
         }]
     );
     assert!(render(&world.app).contains("Starting Codex on #42…"));
