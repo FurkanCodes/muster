@@ -344,11 +344,16 @@ pub(crate) mod tests {
         assert!(status.success(), "git {args:?}");
     }
 
-    /// Creates a git repository with one commit on `main`.
+    /// Creates a git repository with one commit on `main`, and a name to
+    /// commit as in its own settings, as a person's has from theirs: git
+    /// run by the code under test (a rebase) never leans on the machine's,
+    /// which a CI runner has none of.
     pub(crate) fn repository(parent: &Path, name: &str) -> PathBuf {
         let root = parent.join(name);
         std::fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "--quiet", "--initial-branch", "main"]);
+        git(&root, &["config", "user.name", "Test"]);
+        git(&root, &["config", "user.email", "test@example.com"]);
         std::fs::write(root.join("README.md"), "test\n").unwrap();
         git(&root, &["add", "README.md"]);
         git(&root, &["commit", "--quiet", "--message", "first"]);

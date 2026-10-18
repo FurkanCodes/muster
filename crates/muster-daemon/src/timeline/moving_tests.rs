@@ -187,6 +187,31 @@ async fn a_move_that_would_conflict_changes_nothing() {
 }
 
 #[tokio::test]
+async fn a_move_git_refuses_with_nothing_in_conflict_says_why_and_changes_nothing() {
+    let setup = setup().await;
+    commit(&setup.parent, "more.txt", "more of the parent's work\n");
+    // A file not in git where the parent's newest has one.
+    std::fs::write(setup.child.join("more.txt"), "the person's own\n").unwrap();
+    let before = rev(&setup.child, "HEAD");
+
+    let refused = setup.store.move_onto(&setup.plan(false), at(10)).await;
+    let Err(TimelineError::NotMoved(why)) = &refused else {
+        panic!("{refused:?}");
+    };
+    assert!(why.contains("git could not move it onto parent"), "{why}");
+    assert!(
+        why.contains("untracked working tree files would be overwritten"),
+        "git's reason: {why}"
+    );
+    assert!(!why.contains("conflict"), "nothing conflicts: {why}");
+    assert_eq!(rev(&setup.child, "HEAD"), before);
+    assert_eq!(
+        std::fs::read_to_string(setup.child.join("more.txt")).unwrap(),
+        "the person's own\n"
+    );
+}
+
+#[tokio::test]
 async fn changes_not_committed_or_a_branch_on_the_newest_already_are_refused() {
     let setup = setup().await;
     std::fs::write(setup.child.join("child.txt"), "not committed\n").unwrap();

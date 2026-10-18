@@ -168,10 +168,12 @@ async fn destination(
 }
 
 /// Replays the commits after `to.fork` onto `to.target`; one that stops
-/// is aborted, saying where it would conflict, so nothing changes.
+/// is aborted, saying where it would conflict, or, where nothing
+/// conflicts, what git said (no name to commit as, a file in the way),
+/// so nothing changes.
 async fn rebase(worktree: &Path, to: &Destination) -> Result<(), TimelineError> {
     let editor = OsStr::new("true");
-    let rebased = git::answer_with(
+    let rebased = git::checked_with(
         worktree,
         &[
             "-c",
@@ -186,10 +188,12 @@ async fn rebase(worktree: &Path, to: &Destination) -> Result<(), TimelineError> 
         ],
         &[("GIT_EDITOR", editor), ("GIT_SEQUENCE_EDITOR", editor)],
     )
-    .await?;
-    if rebased.is_some() {
-        return Ok(());
-    }
+    .await;
+    let said = match rebased {
+        Ok(_) => return Ok(()),
+        Err(GitError::Failed { stderr, .. }) => stderr,
+        Err(error) => return Err(error.into()),
+    };
     let conflicted = text(
         git::capped(
             worktree,
@@ -206,14 +210,17 @@ async fn rebase(worktree: &Path, to: &Destination) -> Result<(), TimelineError> 
         .take(3)
         .map(|path| muster_core::text::one_line(path))
         .collect();
-    let wherein = if files.is_empty() {
-        String::new()
-    } else {
-        format!(" in {}", files.join(", "))
-    };
+    if files.is_empty() {
+        return Err(TimelineError::NotMoved(format!(
+            "git could not move it onto {}: {}; nothing changed",
+            to.onto,
+            muster_core::text::one_line(&said)
+        )));
+    }
     Err(TimelineError::NotMoved(format!(
-        "moving onto {} would conflict{wherein}; nothing changed",
-        to.onto
+        "moving onto {} would conflict in {}; nothing changed",
+        to.onto,
+        files.join(", ")
     )))
 }
 
