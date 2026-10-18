@@ -10,8 +10,9 @@
 //! domain, once. The job starts the daemon as `--detach` always has and
 //! exits; the daemon stays in the job's coalition, which belongs to no app,
 //! and the job is then removed, so no running job is left for a logout to
-//! stop. Should launchd not run the job, the daemon is started directly, as
-//! before, and why is logged.
+//! stop. Should launchd not run the job, or `launchctl` hang, the job is
+//! removed all the same, the daemon is started directly, as before, and
+//! why is logged.
 //!
 //! The job's environment is the starter's, byte for byte, written to a
 //! file readable by the person alone in Muster's private runtime directory,
@@ -41,8 +42,12 @@ pub(crate) const STARTED_WITHIN: Duration = Duration::from_secs(3);
 /// How often the starter looks whether the job has started the daemon.
 const POLL: Duration = Duration::from_millis(20);
 
-/// How long one `launchctl` may take before it is stopped.
-const LAUNCHCTL_DEADLINE: Duration = Duration::from_secs(10);
+/// How long one `launchctl` may take before it is stopped. It answers in
+/// milliseconds; one that hangs must not keep the daemon from starting.
+/// The job given, waited for and removed, the starter gives up on launchd
+/// well within the UI's [`muster_tui::START_AGAIN_AFTER`], so a UI never
+/// starts a second starter while the first may still start the daemon.
+const LAUNCHCTL_DEADLINE: Duration = Duration::from_secs(2);
 
 /// What a run of `launchctl` came to.
 #[derive(Debug)]
@@ -60,6 +65,9 @@ pub(crate) trait Launchd {
 
     /// Waits `moment` before the starter looks again.
     fn pause(&self, moment: Duration);
+
+    /// Says something in the log.
+    fn note(&self, text: &str);
 }
 
 /// The person's own `launchctl`.
@@ -109,6 +117,10 @@ impl Launchd for System {
 
     fn pause(&self, moment: Duration) {
         std::thread::sleep(moment);
+    }
+
+    fn note(&self, text: &str) {
+        note(text);
     }
 }
 
@@ -248,9 +260,18 @@ fn submit(
     ]);
     // launchd has read it, or will not.
     let _ = std::fs::remove_file(&path);
-    let given = given.map_err(LaunchError::Run)?;
+    // One that hung or failed may have loaded the job all the same: it is
+    // removed, so it never starts a second daemon late.
+    let failed = |error| {
+        remove(launchd, &domain, &label, "may stay loaded");
+        Err(error)
+    };
+    let given = match given {
+        Ok(given) => given,
+        Err(error) => return failed(LaunchError::Run(error)),
+    };
     if !given.ok {
-        return Err(LaunchError::Refused(given.said));
+        return failed(LaunchError::Refused(given.said));
     }
     let mut started = !carried.exists();
     for _ in 0..STARTED_WITHIN.as_millis() / POLL.as_millis() {
@@ -260,29 +281,40 @@ fn submit(
         launchd.pause(POLL);
         started = !carried.exists();
     }
-    // The job has done its work, or is not to do it late.
-    let removed = launchd.launchctl(&[
-        OsString::from("bootout"),
-        OsString::from(format!("{domain}/{label}")),
-    ]);
     if !started {
-        return Err(LaunchError::NotStarted(STARTED_WITHIN));
+        // Not to do its work late.
+        return failed(LaunchError::NotStarted(STARTED_WITHIN));
     }
-    match removed {
-        Ok(answer) if answer.ok => {}
-        Ok(Answer { said, .. }) => note(&format!(
-            "the launchd job {label} that started the daemon stays, ended, until you log out: {said}"
-        )),
-        Err(error) => note(&format!(
-            "the launchd job {label} that started the daemon stays, ended, until you log out: {error}"
-        )),
-    }
+    // The job has done its work.
+    remove(
+        launchd,
+        &domain,
+        &label,
+        "that started the daemon stays, ended,",
+    );
     Ok(())
 }
 
 /// Says something in the log, which is this process's standard error.
 fn note(text: &str) {
     eprintln!("muster: {}", muster_core::text::multi_line(text));
+}
+
+/// Removes the job `label` from `domain`, saying in the log if it could not
+/// and why: the job `stays` until the person logs out.
+fn remove(launchd: &dyn Launchd, domain: &str, label: &str, stays: &str) {
+    let removed = launchd.launchctl(&[
+        OsString::from("bootout"),
+        OsString::from(format!("{domain}/{label}")),
+    ]);
+    let why = match removed {
+        Ok(answer) if answer.ok => return,
+        Ok(Answer { said, .. }) => said,
+        Err(error) => error.to_string(),
+    };
+    launchd.note(&format!(
+        "the launchd job {label} {stays} until you log out, as launchctl could not remove it: {why}"
+    ));
 }
 
 /// The job's definition, as launchd reads it (`launchd.plist(5)`): run once
@@ -448,7 +480,12 @@ mod tests {
     struct Fake {
         calls: RefCell<Vec<Vec<String>>>,
         refuses: bool,
+        /// `bootstrap` hangs until it is stopped.
+        hangs: bool,
+        /// `bootout` fails.
+        keeps: bool,
         runs: bool,
+        notes: RefCell<Vec<String>>,
         pauses: Cell<u32>,
         given: RefCell<Option<(String, u32)>>,
         carried: RefCell<Option<(Vec<u8>, u32)>>,
@@ -480,7 +517,20 @@ mod tests {
                     Some((std::fs::read(&carried).unwrap(), mode(Path::new(&carried))));
                 *self.given.borrow_mut() = Some((text, mode(path)));
             }
+            let bootout = args[0] == "bootout";
             self.calls.borrow_mut().push(args);
+            if self.hangs && !bootout {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "launchctl had not answered after 2 s",
+                ));
+            }
+            if self.keeps && bootout {
+                return Ok(Answer {
+                    ok: false,
+                    said: "Boot-out failed: 5: Input/output error".to_owned(),
+                });
+            }
             if self.refuses {
                 return Ok(Answer {
                     ok: false,
@@ -509,6 +559,10 @@ mod tests {
                     .trim_end_matches("</string>");
                 let _ = std::fs::remove_file(carried);
             }
+        }
+
+        fn note(&self, text: &str) {
+            self.notes.borrow_mut().push(text.to_owned());
         }
     }
 
@@ -615,8 +669,88 @@ mod tests {
             error.to_string().contains("Domain does not support"),
             "{error}"
         );
-        assert_eq!(fake.calls.borrow().len(), 1);
+        // Removed all the same, in case launchd loaded it.
+        let calls = fake.calls.borrow();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        assert_eq!(calls[1][0], "bootout");
+        assert_eq!(calls[1][1], calls[0][1].clone() + "/" + &label(&calls[0]));
         assert_eq!(left(dir.path()), Vec::<String>::new());
+    }
+
+    /// The label of the job `bootstrap` was given.
+    fn label(bootstrap: &[String]) -> String {
+        let plist = Path::new(&bootstrap[2])
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        let random = plist
+            .strip_prefix("launch-")
+            .unwrap()
+            .strip_suffix(".plist")
+            .unwrap();
+        format!("{LABEL_PREFIX}{random}")
+    }
+
+    #[test]
+    fn a_launchctl_that_hangs_is_stopped_and_its_job_removed_before_the_daemon_is_started_directly()
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let fake = Fake {
+            hangs: true,
+            ..Fake::default()
+        };
+        let error = start(&fake, &job(dir.path()), environment()).unwrap_err();
+        assert!(
+            matches!(&error, LaunchError::Run(error) if error.kind() == io::ErrorKind::TimedOut),
+            "{error}"
+        );
+        let calls = fake.calls.borrow();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        assert_eq!(calls[0][0], "bootstrap");
+        let removed = format!("gui/501/{}", label(&calls[0]));
+        assert_eq!(calls[1], ["bootout", removed.as_str()]);
+        // Not waited for: it never said it took the job.
+        assert_eq!(fake.pauses.get(), 0);
+        assert_eq!(fake.notes.borrow().len(), 0);
+        assert_eq!(left(dir.path()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_job_that_cannot_be_removed_is_logged_with_why() {
+        for (hangs, runs) in [(true, false), (false, false), (false, true)] {
+            let dir = tempfile::tempdir().unwrap();
+            let fake = Fake {
+                hangs,
+                runs,
+                keeps: true,
+                ..Fake::default()
+            };
+            let started = start(&fake, &job(dir.path()), environment());
+            assert_eq!(started.is_ok(), runs);
+            let calls = fake.calls.borrow();
+            assert_eq!(calls.last().unwrap()[0], "bootout", "{calls:?}");
+            let notes = fake.notes.borrow();
+            assert_eq!(notes.len(), 1, "{notes:?}");
+            assert!(notes[0].contains(&label(&calls[0])), "{}", notes[0]);
+            assert!(notes[0].contains("until you log out"), "{}", notes[0]);
+            assert!(notes[0].contains("Input/output error"), "{}", notes[0]);
+        }
+    }
+
+    #[test]
+    fn the_starter_gives_up_on_launchd_before_the_ui_would_start_another() {
+        // Bootstrap and bootout each stopped at their deadline, and the
+        // wait for the job between them.
+        let gives_up_within = LAUNCHCTL_DEADLINE * 2 + STARTED_WITHIN;
+        // Then the daemon, started directly, opens its socket: well within
+        // a few seconds.
+        let direct_start = Duration::from_secs(3);
+        assert!(
+            gives_up_within + direct_start <= muster_tui::START_AGAIN_AFTER,
+            "a starter may take {gives_up_within:?}, and the UI starts another after {:?}",
+            muster_tui::START_AGAIN_AFTER
+        );
     }
 
     #[test]
