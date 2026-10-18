@@ -63,6 +63,8 @@ mod settings_tests;
 #[cfg(test)]
 mod sharing_tests;
 #[cfg(test)]
+mod slide_tests;
+#[cfg(test)]
 mod spend_tests;
 #[cfg(test)]
 mod tests;
@@ -375,6 +377,8 @@ pub(crate) struct App {
     flashes: HashMap<SessionId, u64>,
     /// The step a session last finished at, while Kep is glad of it.
     glad_at: Option<u64>,
+    /// The selected line whose name, cut short, slides along.
+    slide: Option<motion::Slide>,
     /// Whether the welcome fills the window, as the UI starts.
     pub(crate) welcome: bool,
     /// The harness last started from the new-session dialog, which it
@@ -440,6 +444,7 @@ impl App {
             now: None,
             flashes: HashMap::new(),
             glad_at: None,
+            slide: None,
             welcome: false,
             last_harness: HarnessChoice::Claude,
             ticket_agent: HarnessChoice::Claude,

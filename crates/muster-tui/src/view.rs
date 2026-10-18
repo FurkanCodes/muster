@@ -144,6 +144,36 @@ pub(super) fn shorten(text: &str, max: usize) -> String {
     format!("{kept}…")
 }
 
+/// `text` in `max` characters, slid `by` characters to the left as a
+/// name cut short slides along (`motion::slide`): an ellipsis stands for
+/// what is out of view at either end. Slid by nothing, it is `text` as
+/// [`shorten`] cuts it.
+pub(super) fn slid(text: &str, max: usize, by: usize) -> String {
+    let len = text.chars().count();
+    if by == 0 || len <= max {
+        return shorten(text, max);
+    }
+    let by = by.min(len - max);
+    let mut shown: Vec<char> = text.chars().skip(by).take(max).collect();
+    if let Some(first) = shown.first_mut() {
+        *first = '…';
+    }
+    if by + max < len
+        && let Some(last) = shown.last_mut()
+    {
+        *last = '…';
+    }
+    shown.into_iter().collect()
+}
+
+/// The name on the selected line where the list cuts it short: how many
+/// characters it has and how many it is given, for it to slide.
+pub(crate) fn cut_name(app: &App) -> Option<(usize, usize)> {
+    let window = Rect::new(0, 0, app.terminal_size.cols, app.terminal_size.rows + 1);
+    let width = usize::from(browse_areas(app, window).list.width.saturating_sub(2));
+    sessions::cut_name(app, width)
+}
+
 pub(super) fn panel<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> {
     let block = Block::default()
         .title(title)

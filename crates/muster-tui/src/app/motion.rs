@@ -1,12 +1,22 @@
 //! What moves, and when it asks for drawing: running sessions spin, what
 //! needs the person pulses, a session's line flashes as it finishes, ends
 //! or comes to wait on the person, and Kep blinks, and is glad of a finish.
+//! A name cut short on the selected line slides along, so it can be read.
 
 use muster_core::{SessionId, SessionStatus, Timestamp};
 
-use super::App;
-use crate::model::needs_attention;
+use super::{App, Mode, View};
+use crate::model::{Row, needs_attention};
 use crate::motion::{FLASH_STEPS, GLAD_STEPS, NOTE_DIMS, NOTE_GOES};
+
+/// The selected line whose name slides, from the step it was first seen
+/// selected, and how far its name has slid.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Slide {
+    line: (View, Row),
+    since: u64,
+    by: usize,
+}
 
 impl App {
     /// The step of the motion to draw, or `None` to draw everything still.
@@ -36,12 +46,14 @@ impl App {
             || self.glad_at.is_some()
             || !self.flashes.is_empty()
             || self.note_age().is_some()
+            || (self.sliding_line().is_some() && crate::view::cut_name(self).is_some())
     }
 
     /// The runtime's next step. Whether to draw for it: something moves,
     /// or a flash has just ended and its line must settle.
     pub(crate) fn on_step(&mut self, step: u64) -> bool {
         self.step = step;
+        let slid = self.slide_on(step);
         let flashing = self.flashes.len();
         let model = &self.model;
         self.flashes.retain(|session, began| {
@@ -54,9 +66,58 @@ impl App {
         }
         welcomed
             || glad_over
+            || slid
             || self.flashes.len() < flashing
             || self.fade_note()
             || self.animating()
+    }
+
+    /// The line whose name may slide: the selected one of *Sessions* or
+    /// *Needs you*, while the list has the keys and the person looks at
+    /// the window. Nothing slides with motion off.
+    fn sliding_line(&self) -> Option<(View, Row)> {
+        if !self.motion || self.welcome || self.mode != Mode::Browse || self.focused == Some(false)
+        {
+            return None;
+        }
+        let row = match self.view {
+            View::Sessions => self.selected,
+            View::NeedsYou => self.needs_selected.map(Row::Session),
+            View::Tickets | View::Settings => None,
+        }?;
+        Some((self.view, row))
+    }
+
+    /// Slides the selected line's name on at `step`, from its start for a
+    /// line newly selected: whether it moved. The runtime hands over each
+    /// new step as it wakes, before what woke it, so a line left and come
+    /// back to is seen to have gone, and starts again.
+    fn slide_on(&mut self, step: u64) -> bool {
+        let Some(line) = self.sliding_line() else {
+            self.slide = None;
+            return false;
+        };
+        let slide = match self.slide {
+            Some(slide) if slide.line == line => slide,
+            _ => Slide {
+                line,
+                since: step,
+                by: 0,
+            },
+        };
+        let by = crate::view::cut_name(self).map_or(0, |(len, room)| {
+            crate::motion::slide(len, room, step.saturating_sub(slide.since))
+        });
+        self.slide = Some(Slide { by, ..slide });
+        by != slide.by
+    }
+
+    /// How far the name on `row` of `view` has slid, as drawn now: only
+    /// the line that slides has.
+    pub(crate) fn slid_by(&self, view: View, row: Row) -> usize {
+        self.slide
+            .filter(|slide| slide.line == (view, row) && self.sliding_line() == Some(slide.line))
+            .map_or(0, |slide| slide.by)
     }
 
     /// Whether Kep is glad of a session that has just finished.
