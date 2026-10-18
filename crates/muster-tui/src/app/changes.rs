@@ -1,6 +1,7 @@
-//! A workspace's changes beside the list (`d`): what is not committed yet,
-//! the branch's commits and what they changed, the workspace's timeline of
-//! turns (`app::timeline`), and one file's or one turn's diff (⏎). The
+//! A workspace's changes beside the list (`d`): the project's other work
+//! on the same files, what is not committed yet, the branch's commits and
+//! what they changed, the workspace's timeline of turns (`app::timeline`),
+//! and one file's or one turn's diff (⏎). The
 //! pane has the keys until `d`, Shift-Q or Esc gives them back. It is
 //! asked of the daemon (`WorkspaceChanges`, `FileDiff`), asked again on `r`
 //! and whenever the workspace's summary in the state changes, as when an
@@ -11,6 +12,7 @@ use muster_core::WorkspaceId;
 use muster_core::changes::{
     CHANGES_PROTOCOL, ChangePart, ChangeSummary, Changes, Commit, FileChange, FileDiff,
 };
+use muster_core::clashes::Clash;
 use muster_core::protocol::Command;
 use muster_core::timeline::{Entry, TIMELINE_PROTOCOL, Timeline};
 use ratatui::layout::{Margin, Position, Rect};
@@ -44,6 +46,8 @@ pub(crate) struct ChangesPane {
     /// The newest entry as the state last said, to ask again when it
     /// says another.
     pub(super) timeline_seen: Option<u64>,
+    /// The project's other work on the same files, as the state says.
+    pub(crate) clashes: Vec<Clash>,
     /// The selected file or entry, so it holds across answers.
     pub(crate) selected: Option<Pick>,
     /// The first line of the listing shown.
@@ -66,6 +70,8 @@ pub(crate) struct DiffPane {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ChangeRow<'a> {
     Heading(String),
+    /// Another workspace's work on the same files.
+    Clash(&'a Clash),
     File(ChangePart, &'a FileChange),
     Commit(&'a Commit),
     Entry(&'a Entry),
@@ -147,16 +153,25 @@ fn files(count: usize) -> String {
 }
 
 impl ChangesPane {
-    /// The pane's lines: the change as git last said, then the timeline.
+    /// The pane's lines: other work on the same files, the change as git
+    /// last said, then the timeline.
     pub(crate) fn rows(&self) -> Vec<ChangeRow<'_>> {
-        let mut lines = match &self.listing {
+        let mut lines = Vec::new();
+        if !self.clashes.is_empty() {
+            lines.push(ChangeRow::Heading(format!(
+                "Other work on these files · {}",
+                self.clashes.len()
+            )));
+            lines.extend(self.clashes.iter().map(ChangeRow::Clash));
+        }
+        lines.extend(match &self.listing {
             None => vec![ChangeRow::Note("Asking git…".to_owned())],
             Some(Err(error)) => vec![
                 ChangeRow::Error(error.clone()),
                 ChangeRow::Note("r asks again.".to_owned()),
             ],
             Some(Ok(changes)) => rows(changes),
-        };
+        });
         lines.extend(super::timeline::rows(self.timeline.as_ref()));
         lines
     }
@@ -239,6 +254,7 @@ impl App {
             timeline: None,
             asking_timeline: false,
             timeline_seen: found.timeline,
+            clashes: found.clashes.clone(),
             selected: None,
             offset: 0,
             diff: None,
@@ -512,14 +528,21 @@ impl App {
         let Some(workspace) = self.changes.as_ref().map(|pane| pane.workspace) else {
             return Vec::new();
         };
-        let Some((now, newest)) = self
+        let Some((now, newest, clashes)) = self
             .model
             .workspace(workspace)
-            .map(|found| (found.changes, found.timeline))
+            .map(|found| (found.changes, found.timeline, found.clashes.clone()))
         else {
             self.close_changes();
             return Vec::new();
         };
+        let height = self.pane_rows();
+        if let Some(pane) = self.changes.as_mut()
+            && clashes != pane.clashes
+        {
+            pane.clashes = clashes;
+            keep_selected_in_view(pane, height);
+        }
         let mut actions = Vec::new();
         if let Some(pane) = self.changes.as_mut()
             && newest != pane.timeline_seen

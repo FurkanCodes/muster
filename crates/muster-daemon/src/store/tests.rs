@@ -36,6 +36,7 @@ fn worktree(project: ProjectId) -> Workspace {
         pull_request: None,
         changes: None,
         timeline: None,
+        clashes: Vec::new(),
     }
 }
 
@@ -520,6 +521,7 @@ fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
         pull_request: None,
         changes: None,
         timeline: None,
+        clashes: Vec::new(),
     };
     store.insert_workspace(&container).unwrap();
     let mut agent = session(container.id);

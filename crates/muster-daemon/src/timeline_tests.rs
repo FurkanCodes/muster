@@ -61,7 +61,7 @@ async fn setup() -> Setup {
 }
 
 /// What the person's repository holds, but for object files' times.
-fn repository_state(repo: &Path) -> Vec<String> {
+pub(crate) fn repository_state(repo: &Path) -> Vec<String> {
     let run = |args: &[&str]| {
         let out = std::process::Command::new("git")
             .args(args)

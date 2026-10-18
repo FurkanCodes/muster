@@ -10,6 +10,7 @@
 
 mod by_hand;
 mod changes;
+mod clashes;
 mod containers;
 mod handle;
 mod issues;
@@ -153,6 +154,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         pulls: pulls::Looks::default(),
         changes: changes::Looks::default(),
         timelines: timeline::Timelines::default(),
+        clashes: clashes::Clashes::default(),
         tasks: settings.tasks,
     };
     supervisor.ensure_checkouts().await;
@@ -280,6 +282,8 @@ struct Supervisor {
     changes: changes::Looks,
     /// Keeps workspaces' timelines.
     timelines: timeline::Timelines,
+    /// Looks at where the work in projects' workspaces meets.
+    clashes: clashes::Clashes,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
 }
@@ -401,11 +405,13 @@ impl Supervisor {
                 self.tick_pull_requests();
                 self.tick_changes();
                 self.tick_timelines();
+                self.tick_clashes();
             }
             Request::PullRequestsLooked(looked) => self.pull_requests_looked(*looked),
             Request::LookAtBranch(workspace) => self.look_at_pull_requests(Some(workspace)),
             Request::ChangesLooked(looked) => self.changes_looked(*looked),
             Request::TimelineJobDone(done) => self.timeline_job_done(*done),
+            Request::ClashesFound(found) => self.clashes_found(*found),
             Request::RunningProcesses(reply) => {
                 let running = self
                     .live

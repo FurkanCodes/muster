@@ -52,6 +52,8 @@ pub(super) enum Request {
     ChangesLooked(Box<changes::Looked>),
     /// A job on a workspace's timeline came back.
     TimelineJobDone(Box<super::timeline::JobDone>),
+    /// A look at where the work in a project's workspaces meets came back.
+    ClashesFound(Box<super::clashes::Found>),
     /// The sampler asks which sessions run under which process.
     RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
     /// The branch watcher asks where each workspace is and what it had
@@ -94,6 +96,7 @@ impl std::fmt::Debug for Request {
             Self::LookAtBranch(workspace) => write!(f, "LookAtBranch({workspace})"),
             Self::ChangesLooked(_) => f.write_str("ChangesLooked"),
             Self::TimelineJobDone(_) => f.write_str("TimelineJobDone"),
+            Self::ClashesFound(_) => f.write_str("ClashesFound"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
             Self::Branches(_) => f.write_str("Branches"),

@@ -86,6 +86,7 @@ impl Supervisor {
             pull_request: None,
             changes: None,
             timeline: None,
+            clashes: Vec::new(),
         };
         let stored = workspace.clone();
         let inserted = self
@@ -276,6 +277,7 @@ impl Supervisor {
             pull_request: None,
             changes: None,
             timeline: None,
+            clashes: Vec::new(),
         };
         let stored = workspace.clone();
         match self
@@ -333,6 +335,7 @@ impl Supervisor {
             .retain(|session| session.workspace != workspace);
         self.broadcast(Delta::WorkspaceRemoved { id: workspace });
         self.forget_timeline(workspace);
+        self.forget_clashes_with(workspace);
     }
 
     /// The live worktree Muster made for `project` on `branch`, if any.

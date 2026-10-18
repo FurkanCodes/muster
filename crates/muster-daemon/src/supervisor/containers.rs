@@ -369,6 +369,7 @@ impl Supervisor {
             pull_request: None,
             changes: None,
             timeline: None,
+            clashes: Vec::new(),
         };
         let stored = workspace.clone();
         self.store
