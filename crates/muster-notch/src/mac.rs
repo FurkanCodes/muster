@@ -2,7 +2,9 @@
 //! never takes focus, above the menu bar on every Space, flush with the top
 //! of the screen, black like the notch. At rest it is the notch's own height
 //! with a slim side either side, the counts in them, so they read as part
-//! of the notch; pointed at, it opens downwards into the list.
+//! of the notch; pointed at a moment, it springs open downwards into the
+//! list (`list`), in the shape and motion of `shape`, in the colours of
+//! `look`.
 //!
 //! AppKit is used from the main thread only: the link to the daemon runs on
 //! a thread of its own and hands each board over on the main queue. The
@@ -15,6 +17,10 @@
     reason = "ARC-12: AppKit's panel and a view class of the notch's own"
 )]
 
+mod list;
+mod look;
+mod shape;
+
 use std::cell::RefCell;
 use std::path::PathBuf;
 
@@ -24,20 +30,26 @@ use objc2::rc::Retained;
 use objc2::{MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEvent, NSFont,
-    NSLineBreakMode, NSPanel, NSResponder, NSScreen, NSStatusWindowLevel, NSTextAlignment,
-    NSTextField, NSView, NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSPanel, NSResponder, NSScreen, NSStatusWindowLevel, NSView, NSWindowCollectionBehavior,
+    NSWindowStyleMask,
 };
-use objc2_foundation::{MainThreadMarker, NSObject, NSPoint, NSRect, NSSize, NSString};
-use objc2_quartz_core::CACornerMask;
+use objc2_foundation::{MainThreadMarker, NSObject, NSPoint, NSRect, NSSize};
 use tokio::sync::mpsc;
 
-use crate::board::{Board, MOST_ROWS, Mark};
+use crate::board::Board;
 use crate::geometry::{self, Notch, Rect, SIDE};
+use crate::hover::Hover;
 use crate::link::{self, Ended, ToScreen};
 use crate::{MOVED_FOR, NotchError};
+use look::{Colour, Label};
 
 /// How long a note stays under the list, in steps: three seconds.
 const NOTE_STEPS: u64 = 30;
+/// How long the list takes to close, in steps, before the panel is made
+/// small again.
+const CLOSING_STEPS: u64 = 4;
+/// How many times a new question's count fades down and back.
+const PULSES: f32 = 4.0;
 
 thread_local! {
     /// The notch on screen; on the main thread only.
@@ -183,142 +195,37 @@ impl NotchView {
     }
 }
 
-/// The colours the notch draws in, as the UI's terminal colours read on
-/// black.
+/// What the panel is drawn as now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Colour {
-    White,
-    Dim,
-    Working,
-    Asking,
-    News,
-    Project(usize),
-}
-
-impl Colour {
-    fn ns(self) -> Retained<NSColor> {
-        // Blue, magenta and cyan, then their light forms, as the UI's.
-        const PROJECTS: [(f64, f64, f64); 6] = [
-            (0.38, 0.62, 1.0),
-            (0.86, 0.47, 0.95),
-            (0.35, 0.84, 0.92),
-            (0.62, 0.78, 1.0),
-            (0.95, 0.66, 1.0),
-            (0.62, 0.95, 1.0),
-        ];
-        let (red, green, blue) = match self {
-            Self::White => (1.0, 1.0, 1.0),
-            Self::Dim => (0.56, 0.56, 0.58),
-            Self::Working => (1.0, 0.8, 0.26),
-            Self::Asking => (1.0, 0.36, 0.36),
-            Self::News => (0.42, 0.88, 0.5),
-            Self::Project(at) => PROJECTS[at % PROJECTS.len()],
-        };
-        NSColor::colorWithSRGBRed_green_blue_alpha(red, green, blue, 1.0)
-    }
-}
-
-/// A line of text in the panel, changed only when what it says changes.
-struct Label {
-    field: Retained<NSTextField>,
-    text: String,
-    colour: Colour,
-}
-
-impl Label {
-    fn new(mtm: MainThreadMarker, view: &NSView, font: &NSFont, right: bool) -> Self {
-        let field = NSTextField::labelWithString(&NSString::from_str(""), mtm);
-        field.setFont(Some(font));
-        field.setTextColor(Some(&Colour::White.ns()));
-        field.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
-        if right {
-            field.setAlignment(NSTextAlignment::Right);
-        }
-        field.setHidden(true);
-        view.addSubview(&field);
-        Self {
-            field,
-            text: String::new(),
-            colour: Colour::White,
-        }
-    }
-
-    /// Shows `text` in `colour` at `frame`, in the view's coordinates.
-    fn show(&mut self, text: &str, colour: Colour, frame: Rect) {
-        if self.text != text {
-            text.clone_into(&mut self.text);
-            self.field.setStringValue(&NSString::from_str(text));
-        }
-        if self.colour != colour {
-            self.colour = colour;
-            self.field.setTextColor(Some(&colour.ns()));
-        }
-        self.field.setFrame(ns_rect(frame));
-        self.field.setHidden(false);
-    }
-
-    fn hide(&self) {
-        self.field.setHidden(true);
-    }
-
-    /// How wide its text is drawn.
-    fn width(&self) -> f64 {
-        self.field.sizeToFit();
-        self.field.frame().size.width
-    }
-
-    /// Shows `text` as wide as it is drawn, ending at `right`; returns
-    /// that width.
-    fn fit(&mut self, text: &str, colour: Colour, right: f64, y: f64, height: f64) -> f64 {
-        self.show(text, colour, Rect::new(0.0, y, 1.0, height));
-        let width = self.width();
-        self.show(text, colour, Rect::new(right - width, y, width, height));
-        width
-    }
-
-    /// Shows `text` as wide as it is drawn, centred on `middle`.
-    fn centre(&mut self, text: &str, colour: Colour, middle: f64, y: f64, height: f64) {
-        self.show(text, colour, Rect::new(0.0, y, 1.0, height));
-        let width = self.width();
-        self.show(
-            text,
-            colour,
-            Rect::new(middle - width / 2.0, y, width, height),
-        );
-    }
-
-    fn fade(&self, alpha: f64) {
-        self.field.setAlphaValue(alpha);
-    }
-}
-
-/// One listed session's labels.
-struct Line {
-    mark: Label,
-    project: Label,
-    title: Label,
-    doing: Label,
-    since: Label,
+enum Drawn {
+    /// Not on screen.
+    Hidden,
+    /// At rest: the notch and its sides.
+    Rest,
+    /// Open, with this many lines.
+    Open(usize),
+    /// Closing from open with this many lines, made small at the step.
+    Closing { lines: usize, small_at: u64 },
 }
 
 /// The notch on screen.
 struct Screen {
     mtm: MainThreadMarker,
     panel: Retained<NSPanel>,
-    view: Retained<NotchView>,
-    waiting: Label,
+    shape: shape::Shape,
+    asking: Label,
     working: Label,
-    lines: Vec<Line>,
-    more: Label,
-    note: Label,
+    /// The mark beside what works, breathing.
+    breath: Retained<NSView>,
+    list: list::List,
     board: Board,
     step: u64,
     /// A note under the list, and the step it came at.
     said: Option<(String, u64)>,
-    /// Whether the list is open, pointed at.
-    open: bool,
-    /// Whether the panel is on screen.
-    visible: bool,
+    hover: Hover,
+    drawn: Drawn,
+    /// A new question came, for the count to draw the eye to.
+    asked_anew: bool,
     /// Where the notch was when last drawn.
     notch: Option<Notch>,
     /// Where the sessions the person picks go.
@@ -358,47 +265,29 @@ impl Screen {
         view.setWantsLayer(true);
         if let Some(layer) = view.layer() {
             layer.setBackgroundColor(Some(&NSColor::blackColor().CGColor()));
-            // The bottom corners rounded; the top meets the screen's edge.
-            layer.setMaskedCorners(
-                CACornerMask::LayerMinXMinYCorner | CACornerMask::LayerMaxXMinYCorner,
-            );
         }
         panel.setContentView(Some(&view));
+        let shape = shape::Shape::new(&view);
 
         let sides = NSFont::monospacedDigitSystemFontOfSize_weight(12.0, 0.3);
-        let text = NSFont::systemFontOfSize(12.0);
-        let small = NSFont::systemFontOfSize(11.0);
-        let small_bold = NSFont::boldSystemFontOfSize(11.0);
-        let waiting = Label::new(mtm, &view, &sides, false);
+        let asking = Label::new(mtm, &view, &sides, false);
         let working = Label::new(mtm, &view, &sides, false);
-        let lines = (0..MOST_ROWS)
-            .map(|_| Line {
-                mark: Label::new(mtm, &view, &text, false),
-                title: Label::new(mtm, &view, &text, false),
-                since: Label::new(mtm, &view, &small, true),
-                project: Label::new(mtm, &view, &small_bold, false),
-                doing: Label::new(mtm, &view, &small, false),
-            })
-            .collect();
-        let more = Label::new(mtm, &view, &small, false);
-        let note = Label::new(mtm, &view, &small, false);
-        // Two lines, so a reason fits the list's width.
-        note.field.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
-        note.field.setMaximumNumberOfLines(2);
+        let breath = look::shape(mtm, &view, Colour::Working, 3.0);
+        let list = list::List::new(mtm, &view);
         Self {
             mtm,
             panel,
-            view,
-            waiting,
+            shape,
+            asking,
             working,
-            lines,
-            more,
-            note,
+            breath,
+            list,
             board: Board::hidden(),
             step: 0,
             said: None,
-            open: false,
-            visible: false,
+            hover: Hover::default(),
+            drawn: Drawn::Hidden,
+            asked_anew: false,
             notch: None,
             picks,
         }
@@ -407,6 +296,7 @@ impl Screen {
     fn update(&mut self, update: ToScreen) {
         match update {
             ToScreen::Board { board, step } => {
+                self.asked_anew |= board.asks_anew(&self.board);
                 self.board = board;
                 self.step = step;
             }
@@ -436,177 +326,182 @@ impl Screen {
         };
         let lines = self.line_count();
         let at = NSEvent::mouseLocation();
-        self.open = geometry::hovering(self.open, notch, lines, (at.x, at.y));
-        let frame = if self.open {
-            notch.expanded(lines)
+        let point = (at.x, at.y);
+        let open = self
+            .hover
+            .at(notch.over(self.hover.is_open(), lines, point), self.step);
+        let frame = self.shape_for(notch, open, lines);
+        self.draw_sides(notch, frame);
+        let listed = match self.drawn {
+            Drawn::Open(lines) | Drawn::Closing { lines, .. } => Some(lines),
+            Drawn::Hidden | Drawn::Rest => None,
+        };
+        self.list.draw(listed.map(|lines| list::Drawn {
+            board: &self.board,
+            notch,
+            frame,
+            lines,
+            pointed: notch.line_at(lines, point).filter(|_| open),
+            note: self.said.as_ref().map(|(text, _)| text.as_str()),
+        }));
+        if self.drawn == Drawn::Hidden {
+            self.drawn = Drawn::Rest;
+        }
+        if !self.panel.isVisible() {
+            self.panel.orderFrontRegardless();
+        }
+    }
+
+    /// Puts the panel where it goes and gives it its shape, open with
+    /// `lines` lines or at rest, springing from what it was; returns where
+    /// it is.
+    fn shape_for(&mut self, notch: Notch, open: bool, lines: usize) -> Rect {
+        let (frame, from, drawn) = if open {
+            let frame = notch.open(lines);
+            let from = match self.drawn {
+                Drawn::Open(before) if before == lines => return frame,
+                Drawn::Open(before) => Some(notch.outline(Some(before), frame)),
+                Drawn::Hidden => None,
+                Drawn::Rest | Drawn::Closing { .. } => Some(notch.outline(None, frame)),
+            };
+            (frame, from, Drawn::Open(lines))
         } else {
-            notch.compact()
+            match self.drawn {
+                Drawn::Open(before) => {
+                    // Shrunk in the panel as it is, made small once closed.
+                    let frame = notch.open(before);
+                    let small_at = self.step + CLOSING_STEPS;
+                    let to = notch.outline(None, frame);
+                    self.shape
+                        .set(frame, &to, Some(&notch.outline(Some(before), frame)));
+                    self.drawn = Drawn::Closing {
+                        lines: before,
+                        small_at,
+                    };
+                    return frame;
+                }
+                Drawn::Closing { lines, small_at }
+                    if self.step < small_at && !shape::reduce_motion() =>
+                {
+                    return notch.open(lines);
+                }
+                Drawn::Rest => return notch.rest(),
+                Drawn::Hidden | Drawn::Closing { .. } => (notch.rest(), None, Drawn::Rest),
+            }
         };
         self.panel.setFrame_display(ns_rect(frame), true);
-        if let Some(layer) = self.view.layer() {
-            layer.setCornerRadius(if self.open { 14.0 } else { 10.0 });
-        }
-        self.draw_sides(notch, frame);
-        self.draw_list(notch, frame);
-        if !self.visible {
-            self.panel.orderFrontRegardless();
-            self.visible = true;
-        }
+        self.shape.set(
+            frame,
+            &notch.outline(matches!(drawn, Drawn::Open(_)).then_some(lines), frame),
+            from.as_deref(),
+        );
+        self.drawn = drawn;
+        frame
     }
 
     fn hide(&mut self) {
-        if self.visible {
+        if self.drawn != Drawn::Hidden {
             self.panel.orderOut(None);
-            self.visible = false;
+            self.drawn = Drawn::Hidden;
         }
-        self.open = false;
+        self.hover.close();
+        if let Some(layer) = self.breath.layer() {
+            shape::still(&layer);
+        }
     }
 
     /// The counts in the slim sides, level with the notch, in the view's
-    /// coordinates (y up): what waits on the person on the left, pulsing,
-    /// and what works on the right, each centred in its side.
+    /// coordinates (y up), each centred in its side: the questions asked
+    /// of the person on the left, drawing the eye a moment when a new one
+    /// comes; on the right what works, its mark breathing, or once nothing
+    /// works, what finished unseen.
     fn draw_sides(&mut self, notch: Notch, frame: Rect) {
         let height = 16.0;
+        let compact = notch.compact();
+        let (left, right) = (compact.x - frame.x, compact.max_x() - frame.x);
         let y = frame.height - notch.frame.height + (notch.frame.height - height) / 2.0;
-        if self.board.waiting > 0 {
-            let text = format!("▲{}", self.board.waiting);
-            self.waiting
-                .centre(&text, Colour::Asking, SIDE / 2.0 + 1.0, y, height);
-            self.waiting.fade(pulse(self.step));
-        } else {
-            self.waiting.hide();
-        }
-        if self.board.working > 0 {
-            let text = format!("{}{}", self.board.working, spinner(self.step));
-            self.working.centre(
-                &text,
-                Colour::Working,
-                frame.width - SIDE / 2.0 - 1.0,
+        let board = &self.board;
+        if board.asking > 0 {
+            self.asking.centre(
+                &format!("▲{}", board.asking),
+                Colour::Asking,
+                left + SIDE / 2.0 + 1.0,
                 y,
                 height,
             );
+            self.asking.say(&format!("{} asking you", board.asking));
+            if self.asked_anew
+                && let Some(layer) = self.asking.field.layer()
+            {
+                shape::pulse(&layer, PULSES);
+            }
         } else {
-            self.working.hide();
+            self.asking.hide();
         }
-    }
+        self.asked_anew = false;
 
-    /// The list under the notch, while it is open: each session on two
-    /// lines, its mark, title and time, then its project and what it is
-    /// doing.
-    fn draw_list(&mut self, notch: Notch, frame: Rect) {
-        let rows = if self.open {
-            self.board.rows.as_slice()
-        } else {
-            &[]
-        };
-        let (width, height) = (frame.width, 16.0);
-        // The top of line `line`'s first and second rows of text (y up).
-        let first = |line: usize| frame.height - notch.line_top(line) - 2.0 - height;
-        let second = |line: usize| first(line) - 15.0;
-        for (at, line) in self.lines.iter_mut().enumerate() {
-            let Some(row) = rows.get(at) else {
-                for label in [
-                    &line.mark,
-                    &line.title,
-                    &line.since,
-                    &line.project,
-                    &line.doing,
-                ] {
-                    label.hide();
-                }
-                continue;
-            };
-            let (mark, colour) = match row.mark {
-                Mark::Asking => ("▲", Colour::Asking),
-                Mark::News => ("✓", Colour::News),
-                Mark::Working => (spinner(self.step), Colour::Working),
-            };
-            line.mark
-                .show(mark, colour, Rect::new(10.0, first(at), 14.0, height));
-            line.mark.fade(if row.mark == Mark::Asking {
-                pulse(self.step)
-            } else {
-                1.0
-            });
-            let since = line
-                .since
-                .fit(&row.since, Colour::Dim, width - 10.0, first(at), height);
-            line.title.show(
-                &row.title,
-                Colour::White,
-                Rect::new(26.0, first(at), width - 26.0 - since - 16.0, height),
-            );
-            // The project as wide as its name, up to half the line.
-            line.project.show(
-                &row.project,
-                Colour::Project(row.colour),
-                Rect::new(26.0, second(at), width, height),
-            );
-            let project = line.project.width().min((width - 36.0) / 2.0);
-            line.project.show(
-                &row.project,
-                Colour::Project(row.colour),
-                Rect::new(26.0, second(at), project, height),
-            );
-            line.doing.show(
-                &row.doing,
-                Colour::Dim,
-                Rect::new(30.0 + project, second(at), width - 40.0 - project, height),
-            );
-        }
-        let mut next = rows.len();
-        if self.open && self.board.more > 0 {
-            self.more.show(
-                &format!("and {} more in Muster", self.board.more),
-                Colour::Dim,
-                Rect::new(26.0, first(next), width - 36.0, height),
-            );
-            next += 1;
-        } else {
-            self.more.hide();
-        }
-        match (&self.said, self.open) {
-            (Some((text, _)), true) => self.note.show(
-                text,
+        let middle = right - SIDE / 2.0 - 1.0;
+        if board.working > 0 {
+            // The count and its mark, centred together.
+            let count = board.working.to_string();
+            self.working
+                .show(&count, Colour::Working, Rect::new(0.0, y, 1.0, height));
+            let width = self.working.width() + 3.0 + 6.0;
+            let start = middle - width / 2.0;
+            self.working.show(
+                &count,
                 Colour::Working,
-                Rect::new(10.0, second(next), width - 20.0, 2.0 * height),
-            ),
-            _ => self.note.hide(),
+                Rect::new(start, y, width - 9.0, height),
+            );
+            self.working.say(&format!("{} working", board.working));
+            self.breath
+                .setFrame(ns_rect(Rect::new(start + width - 6.0, y + 5.0, 6.0, 6.0)));
+            self.breath.setHidden(false);
+            if let Some(layer) = self.breath.layer()
+                && !shape::moving(&layer)
+            {
+                shape::breathe(&layer);
+            }
+        } else {
+            self.breath.setHidden(true);
+            if let Some(layer) = self.breath.layer() {
+                shape::still(&layer);
+            }
+            if board.news > 0 {
+                self.working
+                    .centre(&format!("✓{}", board.news), Colour::News, middle, y, height);
+                self.working.say(&format!("{} finished", board.news));
+            } else {
+                self.working.hide();
+            }
         }
     }
 
-    /// A click at `point`, in screen coordinates: a listed session is shown
-    /// in the Muster window looked at last.
+    /// A click at `point`, in screen coordinates: on the closed notch it
+    /// opens the list at once; on a listed session it shows it in the
+    /// Muster window looked at last, and the list closes.
     fn clicked(&mut self, point: (f64, f64)) {
-        let Some(notch) = self.notch.filter(|_| self.open) else {
+        let Some(notch) = self.notch else {
             return;
         };
-        let panel = notch.expanded(self.line_count());
+        if !self.hover.is_open() {
+            if notch.compact().contains(point) {
+                self.hover.open_now();
+                self.draw();
+            }
+            return;
+        }
         let Some(row) = notch
-            .line_at(panel, point)
+            .line_at(self.line_count(), point)
             .and_then(|line| self.board.rows.get(line))
         else {
             return;
         };
         if self.picks.try_send(row.session).is_err() {
             self.said = Some(("Muster is busy; try again.".to_owned(), self.step));
-            self.draw();
+        } else {
+            self.hover.close();
         }
-    }
-}
-
-/// A running session's mark, one frame a step, as in the UI.
-fn spinner(step: u64) -> &'static str {
-    const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-    SPINNER[usize::try_from(step % 10).unwrap_or(0)]
-}
-
-/// How bright what waits on the person is at `step`: bright, plain, dim,
-/// plain, four steps each, as the UI pulses it.
-fn pulse(step: u64) -> f64 {
-    match (step / 4) % 4 {
-        0 => 1.0,
-        2 => 0.45,
-        _ => 0.8,
+        self.draw();
     }
 }

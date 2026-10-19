@@ -18,6 +18,8 @@ muster-client.workspace = true
 tokio.workspace = true
 objc2.workspace = true
 objc2-app-kit = { workspace = true, features = [
+    "NSAccessibility",
+    "NSAccessibilityProtocols",
     "NSApplication",
     "NSColor",
     "NSControl",
@@ -25,6 +27,8 @@ objc2-app-kit = { workspace = true, features = [
     "NSFont",
     "NSFontDescriptor",
     "NSGraphics",
+    "NSImage",
+    "NSImageView",
     "NSPanel",
     "NSParagraphStyle",
     "NSResponder",
@@ -34,12 +38,24 @@ objc2-app-kit = { workspace = true, features = [
     "NSTextField",
     "NSView",
     "NSWindow",
+    "NSWorkspace",
     "objc2-core-foundation",
     "objc2-core-graphics",
     "objc2-quartz-core",
 ] }
-objc2-foundation = { workspace = true, features = ["NSArray", "NSEnumerator", "NSGeometry", "NSString", "NSThread"] }
-objc2-quartz-core = { workspace = true, features = ["CALayer", "objc2-core-foundation", "objc2-core-graphics"] }
+objc2-core-foundation = { workspace = true, features = ["CFCGTypes", "objc2"] }
+objc2-core-graphics = { workspace = true, features = ["CGPath"] }
+objc2-foundation = { workspace = true, features = ["NSArray", "NSData", "NSEnumerator", "NSGeometry", "NSString", "NSThread", "NSValue"] }
+objc2-quartz-core = { workspace = true, features = [
+    "CAAnimation",
+    "CALayer",
+    "CAMediaTiming",
+    "CAMediaTimingFunction",
+    "CAShapeLayer",
+    "CATransaction",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+] }
 
 [lints]
 workspace = true

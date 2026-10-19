@@ -5,8 +5,10 @@
 //!
 //! Nothing can be drawn in the notch itself, which has no pixels. At rest
 //! the panel is the notch's own height with a slim side of the menu bar's
-//! row either side, black like it, so what it says reads as part of the
-//! notch; pointed at, the list opens down from it at that width.
+//! row either side, black like it, its top corners curving out into the
+//! screen's edge as the notch's own do, so what it says reads as part of
+//! the notch; pointed at, the list opens down from it, wider than the
+//! notch only below the menu bar's row.
 //!
 //! A screen with a notch has a top safe-area inset, its height, and the
 //! menu bar's room either side of it (`auxiliaryTopLeftArea`,
@@ -21,6 +23,16 @@ pub const SIDE: f64 = 30.0;
 pub const LINE: f64 = 34.0;
 /// Space above and below the list.
 pub const PAD: f64 = 6.0;
+/// The list's width once open, below the menu bar's row.
+pub const LIST_WIDTH: f64 = 340.0;
+/// How far the curve where the panel meets the screen's top edge reaches
+/// out either side.
+pub const SHOULDER: f64 = 6.0;
+/// The bottom corners' radius at rest, and open.
+pub const RADIUS: f64 = 10.0;
+pub const RADIUS_OPEN: f64 = 14.0;
+/// The curve where the open list meets the notch's row.
+pub const STEP: f64 = 8.0;
 
 /// A rectangle in screen coordinates.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -102,8 +114,8 @@ pub fn find(screens: &[Screen]) -> Option<Notch> {
 }
 
 impl Notch {
-    /// The panel at rest: the notch with a slim side either side, its
-    /// height and no more.
+    /// The notch with a slim side either side, its height and no more:
+    /// what is drawn at rest, and what the pointer rests on to open it.
     pub fn compact(self) -> Rect {
         let notch = self.frame;
         Rect::new(
@@ -114,12 +126,41 @@ impl Notch {
         )
     }
 
-    /// The panel pointed at, as wide as at rest, with `lines` lines under
-    /// the notch.
-    pub fn expanded(self, lines: usize) -> Rect {
+    /// The panel at rest: the compact notch and its shoulders.
+    pub fn rest(self) -> Rect {
         let compact = self.compact();
-        let height = self.frame.height + PAD + count(lines) * LINE + PAD;
-        Rect::new(compact.x, compact.max_y() - height, compact.width, height)
+        Rect::new(
+            compact.x - SHOULDER,
+            compact.y,
+            compact.width + 2.0 * SHOULDER,
+            compact.height,
+        )
+    }
+
+    /// The panel open with `lines` lines under the notch.
+    pub fn open(self, lines: usize) -> Rect {
+        let rest = self.rest();
+        let list = self.list(lines);
+        let width = rest.width.max(list.width);
+        Rect::new(
+            rest.mid_x() - width / 2.0,
+            list.y,
+            width,
+            rest.max_y() - list.y,
+        )
+    }
+
+    /// The list of `lines` lines, under the notch's row.
+    pub fn list(self, lines: usize) -> Rect {
+        let compact = self.compact();
+        let width = LIST_WIDTH.max(compact.width);
+        let height = PAD + count(lines) * LINE + PAD;
+        Rect::new(
+            compact.mid_x() - width / 2.0,
+            compact.y - height,
+            width,
+            height,
+        )
     }
 
     /// The top of line `line` in the panel, from the panel's top.
@@ -127,32 +168,85 @@ impl Notch {
         self.frame.height + PAD + count(line) * LINE
     }
 
-    /// Which line of the list is at `point` in the panel at `panel`.
-    pub fn line_at(self, panel: Rect, point: (f64, f64)) -> Option<usize> {
-        if !panel.contains(point) {
+    /// Which of `lines` lines of the open list is at `point`.
+    pub fn line_at(self, lines: usize, point: (f64, f64)) -> Option<usize> {
+        let list = self.list(lines);
+        if !list.contains(point) {
             return None;
         }
-        let below = panel.max_y() - point.1 - self.line_top(0);
+        let below = list.max_y() - PAD - point.1;
         if below < 0.0 {
             return None;
         }
-        usize::try_from(round_u64((below / LINE).floor())).ok()
+        usize::try_from(round_u64((below / LINE).floor()))
+            .ok()
+            .filter(|line| *line < lines)
     }
+
+    /// Whether the pointer at `point` is over what is drawn: the compact
+    /// notch while closed; it or the list of `lines` lines while open.
+    pub fn over(self, open: bool, lines: usize, point: (f64, f64)) -> bool {
+        self.compact().contains(point) || (open && self.list(lines).contains(point))
+    }
+
+    /// The panel's outline, in the coordinates of a panel at `frame` (y
+    /// up from its bottom left): the notch's row with its shoulders, and
+    /// open (`lines`), the list under it. At rest and open it is made of
+    /// the same parts, so the one can be animated into the other.
+    pub fn outline(self, lines: Option<usize>, frame: Rect) -> Vec<Segment> {
+        let compact = self.compact();
+        let (left, right) = (compact.x - frame.x, compact.max_x() - frame.x);
+        let top = compact.max_y() - frame.y;
+        let row = compact.height;
+        let (half, height, radius) = match lines {
+            Some(lines) => {
+                let list = self.list(lines);
+                (list.width / 2.0, list.height, RADIUS_OPEN)
+            }
+            None => (compact.width / 2.0, 0.0, RADIUS),
+        };
+        let middle = f64::midpoint(left, right);
+        let (a, b) = (middle - half, middle + half);
+        let bottom = top - row - height;
+        // Where the list meets the row: at rest only the rounded bottom.
+        let meet = (top - row).max(bottom + radius);
+        let step = STEP.min(left - a).max(0.0);
+        let corner = radius.min(left - a - step).max(0.0);
+        let s = SHOULDER;
+        vec![
+            Segment::Move(left - s, top),
+            Segment::Quad((left, top), (left, top - s)),
+            Segment::Line(left, meet + step),
+            Segment::Quad((left, meet), (left - step, meet)),
+            Segment::Line(a + corner, meet),
+            Segment::Quad((a, meet), (a, meet - corner)),
+            Segment::Line(a, bottom + radius),
+            Segment::Quad((a, bottom), (a + radius, bottom)),
+            Segment::Line(b - radius, bottom),
+            Segment::Quad((b, bottom), (b, bottom + radius)),
+            Segment::Line(b, meet - corner),
+            Segment::Quad((b, meet), (b - corner, meet)),
+            Segment::Line(right + step, meet),
+            Segment::Quad((right, meet), (right, meet + step)),
+            Segment::Line(right, top - s),
+            Segment::Quad((right, top), (right + s, top)),
+            Segment::Close,
+        ]
+    }
+}
+
+/// A part of an outline: a move, a line or a curve (its control point,
+/// then where it ends) to a point, or the close.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Segment {
+    Move(f64, f64),
+    Line(f64, f64),
+    Quad((f64, f64), (f64, f64)),
+    Close,
 }
 
 fn count(lines: usize) -> f64 {
     fraction(u64::try_from(lines).unwrap_or(u64::MAX))
-}
-
-/// Whether the pointer at `point` holds the list open: it opens over the
-/// panel at rest, and stays open until the pointer leaves it whole, so
-/// it does not flicker at the edge.
-pub fn hovering(open: bool, notch: Notch, lines: usize, point: (f64, f64)) -> bool {
-    if open {
-        notch.expanded(lines).contains(point)
-    } else {
-        notch.compact().contains(point)
-    }
 }
 
 #[cfg(test)]
@@ -194,46 +288,115 @@ mod tests {
     }
 
     #[test]
-    fn at_rest_it_is_the_notch_s_height_with_slim_sides() {
+    fn at_rest_it_is_the_notch_s_height_with_slim_sides_and_shoulders() {
         let notch = find(&[macbook()]).unwrap();
         let compact = notch.compact();
         assert_eq!(compact, Rect::new(633.5, 950.0, 245.0, 32.0));
         assert!((compact.mid_x() - 756.0).abs() < f64::EPSILON, "centred");
-        for lines in [0, 3, 9] {
-            let open = notch.expanded(lines);
-            assert_eq!((open.x, open.width), (633.5, 245.0), "{lines} lines");
+        assert_eq!(notch.rest(), Rect::new(627.5, 950.0, 257.0, 32.0));
+    }
+
+    #[test]
+    fn open_the_list_is_wider_than_the_notch_only_below_its_row() {
+        let notch = find(&[macbook()]).unwrap();
+        for lines in [1, 3, 9] {
+            let list = notch.list(lines);
+            assert_eq!((list.x, list.width), (586.0, LIST_WIDTH), "{lines} lines");
+            assert!((list.max_y() - 950.0).abs() < f64::EPSILON, "under the row");
+            let open = notch.open(lines);
+            assert_eq!((open.x, open.width), (586.0, LIST_WIDTH));
             assert!(
                 (open.max_y() - 982.0).abs() < f64::EPSILON,
                 "flush with the top"
             );
+            assert!((open.y - list.y).abs() < f64::EPSILON);
         }
-        let open = notch.expanded(3);
+        let open = notch.open(3);
         assert!((open.height - (32.0 + PAD + 3.0 * LINE + PAD)).abs() < f64::EPSILON);
     }
 
     #[test]
     fn a_point_is_on_the_line_drawn_there() {
         let notch = find(&[macbook()]).unwrap();
-        let open = notch.expanded(3);
-        let first = open.max_y() - notch.line_top(0) - 1.0;
-        assert_eq!(notch.line_at(open, (756.0, first)), Some(0));
-        let second = open.max_y() - notch.line_top(1) - 1.0;
-        assert_eq!(notch.line_at(open, (756.0, second)), Some(1));
-        // The notch's row, or off the panel: no line.
-        assert_eq!(notch.line_at(open, (756.0, 970.0)), None);
-        assert_eq!(notch.line_at(open, (640.0, 960.0)), None);
-        assert_eq!(notch.line_at(open, (600.0, first)), None);
+        let top = notch.list(3).max_y() - PAD;
+        assert_eq!(notch.line_at(3, (756.0, top - 1.0)), Some(0));
+        assert_eq!(notch.line_at(3, (756.0, top - LINE - 1.0)), Some(1));
+        // Wider than the notch, the list's sides are its lines too.
+        assert_eq!(notch.line_at(3, (590.0, top - 1.0)), Some(0));
+        // The notch's row, the list's padding, past the last line, or off
+        // the list: no line.
+        assert_eq!(notch.line_at(3, (756.0, 970.0)), None);
+        assert_eq!(notch.line_at(3, (756.0, top + 1.0)), None);
+        assert_eq!(notch.line_at(3, (756.0, top - 3.0 * LINE - 1.0)), None);
+        assert_eq!(notch.line_at(3, (580.0, top - 1.0)), None);
     }
 
     #[test]
-    fn the_list_opens_over_the_notch_and_closes_once_left() {
+    fn the_pointer_is_over_the_notch_closed_and_the_list_too_open() {
         let notch = find(&[macbook()]).unwrap();
         let over_notch = (756.0, 970.0);
         let below_notch = (756.0, 930.0);
-        let far = (100.0, 100.0);
-        assert!(hovering(false, notch, 3, over_notch));
-        assert!(!hovering(false, notch, 3, below_notch), "not open yet");
-        assert!(hovering(true, notch, 3, below_notch), "over the open list");
-        assert!(!hovering(true, notch, 3, far));
+        let beside_the_row = (600.0, 970.0);
+        assert!(notch.over(false, 3, over_notch));
+        assert!(!notch.over(false, 3, below_notch), "not open yet");
+        assert!(notch.over(true, 3, below_notch), "over the open list");
+        assert!(
+            !notch.over(true, 3, beside_the_row),
+            "the menu bar stays clear"
+        );
+        assert!(!notch.over(true, 3, (100.0, 100.0)));
+    }
+
+    /// The points an outline goes through, ends and control points alike.
+    fn points(outline: &[Segment]) -> Vec<(f64, f64)> {
+        outline
+            .iter()
+            .flat_map(|segment| match *segment {
+                Segment::Move(x, y) | Segment::Line(x, y) => vec![(x, y)],
+                Segment::Quad(control, to) => vec![control, to],
+                Segment::Close => vec![],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_outline_fills_its_panel_and_rest_and_open_are_made_alike() {
+        let notch = find(&[macbook()]).unwrap();
+        let rest = notch.rest();
+        let at_rest = notch.outline(None, rest);
+        let inside = |frame: Rect, outline: &[Segment]| {
+            points(outline).iter().all(|(x, y)| {
+                (-1e-9..=frame.width + 1e-9).contains(x)
+                    && (-1e-9..=frame.height + 1e-9).contains(y)
+            })
+        };
+        assert!(inside(rest, &at_rest));
+        // At rest: from the screen's top edge at the panel's edges, down to
+        // the bottom of the notch's row.
+        assert_eq!(at_rest[0], Segment::Move(0.0, 32.0));
+        assert_eq!(at_rest[15], Segment::Quad((251.0, 32.0), (257.0, 32.0)));
+        let lowest = points(&at_rest)
+            .iter()
+            .map(|p| p.1)
+            .fold(f64::MAX, f64::min);
+        assert!(lowest.abs() < f64::EPSILON);
+
+        let open = notch.open(3);
+        let opened = notch.outline(Some(3), open);
+        assert!(inside(open, &opened));
+        assert_eq!(opened.len(), at_rest.len(), "the same parts, to animate");
+        // As wide as the list under the row, the row itself as at rest.
+        let xs: Vec<f64> = points(&opened).iter().map(|p| p.0).collect();
+        assert!(xs.iter().any(|x| x.abs() < f64::EPSILON));
+        assert!(xs.iter().any(|x| (x - LIST_WIDTH).abs() < f64::EPSILON));
+        let row_left = notch.compact().x - open.x;
+        assert_eq!(
+            opened[1],
+            Segment::Quad((row_left, open.height), (row_left, open.height - SHOULDER))
+        );
+        // At rest in the open panel's frame: the same shape, moved.
+        let moved = notch.outline(None, open);
+        assert_eq!(moved.len(), opened.len());
+        assert_eq!(moved[0], Segment::Move(row_left - SHOULDER, open.height));
     }
 }
