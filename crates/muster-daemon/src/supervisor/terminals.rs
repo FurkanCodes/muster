@@ -16,9 +16,10 @@
 //! links to a terminal is counted among its clients, whose sizes it takes
 //! (`sizing`).
 //!
-//! The person's keys are counted the same way: while a client has them in
-//! a session's terminal (the person entered it, in a window they look
-//! at), its program is in focus, and it is told so as that starts and
+//! Focus is counted the same way: while a client shows a session's
+//! terminal (beside the list or filling the window, in a window the
+//! person looks at; the guards keep their first name, the keys), its
+//! program is in focus, and it is told so as that starts and
 //! ends (`CSI I`, `CSI O`) if it asked. Each such client holds a
 //! [`KeysGuard`], beside its connection's
 //! [`ClientGuard`](super::ClientGuard).

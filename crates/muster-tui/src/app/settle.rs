@@ -34,14 +34,10 @@ impl App {
         actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
-        let keys = self.tell_keys();
-        // A narrow window's list shows no session, so none is streamed.
-        let focus = self
-            .focused_session()
-            .filter(|s| self.model.session(*s).is_some())
-            .filter(|_| self.session_drawn());
+        let told = self.tell_focus();
+        let focus = self.shown_session();
         if focus == self.attached {
-            actions.extend(keys);
+            actions.extend(told);
             return actions;
         }
         if let Some(old) = self.attached.take() {
@@ -71,7 +67,7 @@ impl App {
             }));
             self.attached = Some(session);
         }
-        actions.extend(keys);
+        actions.extend(told);
         actions
     }
 

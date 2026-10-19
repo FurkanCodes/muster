@@ -1,16 +1,16 @@
 //! A session's terminal as in a real one: the person's colours told to the
 //! daemon, a program's copy put on their clipboard, and the daemon told
-//! where the person's keys are, for programs that follow their focus, and
-//! a session's size in pixels.
+//! which session is in focus, for programs that follow their focus, and a
+//! session's size in pixels.
 
 use std::path::PathBuf;
 
 use crossterm::event::KeyCode;
 use muster_core::colours::{Rgb, TerminalColours};
-use muster_core::protocol::{ClientFrame, ServerFrame};
+use muster_core::protocol::{ClientFrame, ServerFrame, TermSize};
 
 use super::tests::{SIZE, World, press, render, shift_q, world};
-use super::{Action, App};
+use super::{Action, App, View};
 use crate::model::Row;
 
 fn dark() -> TerminalColours {
@@ -162,7 +162,7 @@ fn base64_of(text: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(text)
 }
 
-fn keys_told(actions: &[Action]) -> Vec<Option<muster_core::SessionId>> {
+fn focus_told(actions: &[Action]) -> Vec<Option<muster_core::SessionId>> {
     actions
         .iter()
         .filter_map(|action| match action {
@@ -173,32 +173,43 @@ fn keys_told(actions: &[Action]) -> Vec<Option<muster_core::SessionId>> {
 }
 
 #[test]
-fn the_daemon_is_told_as_the_person_s_keys_come_into_a_session_and_leave() {
+fn a_session_on_screen_is_in_focus_so_claude_code_suggests_the_next_prompt() {
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
-    // Only shown beside the list, it has no keys.
-    assert_eq!(keys_told(&world.app.settle()), []);
-    assert_eq!(
-        keys_told(&press(&mut world.app, KeyCode::Enter)),
-        [Some(id)]
-    );
-    // Typing changes nothing.
-    assert_eq!(keys_told(&press(&mut world.app, KeyCode::Char('l'))), []);
+    // Shown beside the list, it is in focus without the keys.
+    assert_eq!(focus_told(&world.app.settle()), [Some(id)]);
+    // Typing in it, filling the window and coming back change nothing.
+    assert_eq!(focus_told(&press(&mut world.app, KeyCode::Enter)), []);
+    assert_eq!(focus_told(&press(&mut world.app, KeyCode::Char('l'))), []);
+    assert_eq!(focus_told(&world.app.on_key(shift_q())), []);
+    assert_eq!(focus_told(&press(&mut world.app, KeyCode::Char('f'))), []);
+    assert_eq!(focus_told(&world.app.on_key(shift_q())), []);
     // The window looked away from, and back at.
-    assert_eq!(keys_told(&world.app.on_focus(false)), [None]);
-    assert_eq!(keys_told(&world.app.on_focus(true)), [Some(id)]);
-    // Back to the list.
-    assert_eq!(keys_told(&world.app.on_key(shift_q())), [None]);
-    // Full screen too, and a window out of focus entered says nothing.
+    assert_eq!(focus_told(&world.app.on_focus(false)), [None]);
+    assert_eq!(focus_told(&world.app.on_focus(true)), [Some(id)]);
+    // Nothing shown: a project selected, then another screen.
+    world.app.selected = Some(Row::Project(world.project.id));
+    assert_eq!(focus_told(&world.app.settle()), [None]);
+    world.app.selected = Some(Row::Session(id));
+    assert_eq!(focus_told(&world.app.settle()), [Some(id)]);
+    world.app.view = View::Tickets;
+    assert_eq!(focus_told(&world.app.settle()), [None]);
+}
+
+#[test]
+fn a_narrow_window_s_list_shows_no_session_in_focus_until_one_is_open() {
+    let mut world = world();
+    let id = world.session.id;
+    world.app.selected = Some(Row::Session(id));
+    world.app.on_resize(TermSize { cols: 80, rows: 30 });
+    assert!(world.app.narrow());
+    assert_eq!(focus_told(&world.app.settle()), []);
     assert_eq!(
-        keys_told(&press(&mut world.app, KeyCode::Char('f'))),
+        focus_told(&press(&mut world.app, KeyCode::Enter)),
         [Some(id)]
     );
-    world.app.on_key(shift_q());
-    world.app.on_focus(false);
-    assert_eq!(keys_told(&press(&mut world.app, KeyCode::Enter)), []);
-    assert_eq!(keys_told(&world.app.on_focus(true)), [Some(id)]);
+    assert_eq!(focus_told(&world.app.on_key(shift_q())), [None]);
 }
 
 #[test]
@@ -216,7 +227,7 @@ fn a_daemon_connected_again_is_told_the_keys_and_an_older_one_never() {
         ..Default::default()
     };
     let actions = world.app.on_frame(ServerFrame::Snapshot(snapshot.clone()));
-    assert_eq!(keys_told(&actions), [Some(id)]);
+    assert_eq!(focus_told(&actions), [Some(id)]);
 
     // A daemon before it could not read the frame (`ARC-09`).
     world.app.on_disconnected("gone".to_owned());
@@ -225,7 +236,7 @@ fn a_daemon_connected_again_is_told_the_keys_and_an_older_one_never() {
     let mut actions = world.app.on_frame(ServerFrame::Snapshot(snapshot));
     actions.extend(world.app.on_focus(false));
     actions.extend(world.app.on_key(shift_q()));
-    assert_eq!(keys_told(&actions), []);
+    assert_eq!(focus_told(&actions), []);
 }
 
 #[test]
