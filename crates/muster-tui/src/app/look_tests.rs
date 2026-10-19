@@ -71,18 +71,18 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     status(&mut world, id, SessionStatus::Running, 252_000);
     doing(&mut world, id, Some("running npm"));
     let line = line_with(&render(&world.app), "running npm");
-    // The time at the line's end, a cell from the session's pane.
+    // The time at the line's end, against the list's frame.
     assert!(line.contains("❯ Shell  running npm"), "{line}");
-    assert!(line.contains("4m12s │"), "{line}");
+    assert!(line.contains("4m12s││"), "{line}");
     // Still, it reads to the minute.
     world.app.motion = false;
-    assert!(line_with(&render(&world.app), "running npm").contains("4m │"));
+    assert!(line_with(&render(&world.app), "running npm").contains("4m││"));
     world.app.motion = true;
     // Where it does not fit, what it does gives way; the time stays.
     doing(&mut world, id, Some("editing view_settings.rs"));
     let line = line_with(&render(&world.app), "editing");
     assert!(line.contains("❯ Shell  editing vi… 4m12s"), "{line}");
-    assert!(line.contains("4m12s │"), "{line}");
+    assert!(line.contains("4m12s││"), "{line}");
 
     // Waiting on the person: what it wants, in red, and how long it has
     // waited; the same in its pane's title.
@@ -99,7 +99,7 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     // Past the flash its line gives as it comes to wait.
     world.app.on_step(world.app.step + 20);
     let screen = render(&world.app);
-    assert!(line_with(&screen, "Shell  wants to").contains("2m11s │"));
+    assert!(line_with(&screen, "Shell  wants to").contains("2m11s││"));
     assert!(
         screen.contains(" Shell · wants to run rm · 2m11s "),
         "{screen}"
@@ -125,7 +125,7 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     status(&mut world, id, SessionStatus::Finished, 720_000);
     doing(&mut world, id, None);
     let line = line_with(&render(&world.app), "Shell  finished");
-    assert!(line.contains("12m ago │"), "{line}");
+    assert!(line.contains("12m ago││"), "{line}");
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn an_activity_once_the_agent_is_done_is_not_shown() {
     let screen = render(&world.app);
     assert!(!screen.contains("running cargo"), "{screen}");
     assert!(
-        line_with(&screen, "      finished").starts_with(" ▌"),
+        line_with(&screen, "      finished").starts_with("│▌"),
         "{screen}"
     );
 }
@@ -216,7 +216,7 @@ fn each_project_has_its_colour_and_the_selection_a_tint_and_a_bar() {
     };
     let (app_row, web_row) = (row_of("app"), row_of("web"));
     // The first project is selected: its edge is the selection's bar, and
-    // its line is tinted rather than reversed.
+    // its line is lit, the list having the keys, rather than reversed.
     assert_eq!(cells[(1, app_row)].symbol(), "█");
     assert_eq!(cells[(1, web_row)].symbol(), "▌");
     let theme = crate::view::theme::of(&world.app);
@@ -227,17 +227,17 @@ fn each_project_has_its_colour_and_the_selection_a_tint_and_a_bar() {
         theme.projects[0],
         "its name in its colour, after its triangle"
     );
-    assert_eq!(cells[(5, app_row)].bg, theme.tint);
+    assert_eq!(cells[(5, app_row)].bg, theme.lit);
     assert!(!cells[(5, app_row)].modifier.contains(Modifier::REVERSED));
     assert_eq!(cells[(5, web_row)].bg, Color::Reset);
     // Its worktree and sessions carry its edge too, on both its lines.
     let screen = render(&world.app);
     assert!(
-        line_with(&screen, "Shell").starts_with(" ▌   ○ ❯ Shell"),
+        line_with(&screen, "Shell").starts_with("│▌   ○ ❯ Shell"),
         "{screen}"
     );
     assert!(
-        line_with(&screen, "idle").starts_with(" ▌       idle"),
+        line_with(&screen, "idle").starts_with("│▌       idle"),
         "{screen}"
     );
 }
