@@ -34,16 +34,15 @@ pub(crate) fn edge(app: &App, project: Option<ProjectId>, selected: bool) -> Spa
     Span::styled(mark, Style::default().fg(project_colour(app, project)))
 }
 
-/// How the selected line of a list is drawn: a soft tint, its text at
-/// full strength, and bold where the list has the keys.
+/// How the selected line of a list is drawn: its text at full strength,
+/// lit and bold where the list has the keys, a soft tint where it has not.
 pub(crate) fn selected_style(app: &App, focused: bool) -> Style {
-    let style = Style::default()
-        .bg(super::theme::of(app).tint)
-        .remove_modifier(Modifier::DIM);
+    let theme = super::theme::of(app);
+    let style = Style::default().remove_modifier(Modifier::DIM);
     if focused {
-        style.add_modifier(Modifier::BOLD)
+        style.bg(theme.lit).add_modifier(Modifier::BOLD)
     } else {
-        style
+        style.bg(theme.tint)
     }
 }
 

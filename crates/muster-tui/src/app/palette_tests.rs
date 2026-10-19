@@ -32,23 +32,27 @@ fn find(cells: &Buffer, text: &str, from: u16) -> (u16, u16) {
 }
 
 #[test]
-fn muster_s_own_colours_frame_the_pane_alone_and_light_what_has_the_keys() {
+fn muster_s_own_colours_frame_list_and_pane_and_light_what_has_the_keys() {
     let mut world = world();
     let theme = theme::of(&world.app);
     assert_eq!(theme.palette, Palette::Muster);
     world.app.selected = Some(Row::Session(world.session.id));
     let cells = buffer(&world.app);
     let screen = render(&world.app);
-    // The list has no frame: a quiet label over it, lit while it has the
-    // keys, and no border down its side.
-    assert!(screen.lines().nth(1).unwrap().starts_with(" projects"));
-    assert_eq!(cells[(1, 1)].fg, theme.accent);
-    assert_eq!(cells[(0, 3)].symbol(), " ");
+    // The list is framed square, its label in its border, frame and label
+    // lit while it has the keys, and its selected line lit too.
+    assert!(screen.lines().nth(1).unwrap().starts_with("┌ projects ─"));
+    assert_eq!(cells[(2, 1)].fg, theme.accent);
+    assert_eq!(cells[(0, 3)].symbol(), "│");
+    assert_eq!(cells[(0, 3)].fg, theme.accent);
     // Its text in Muster's own colour, not the terminal's.
     let (x, y) = find(&cells, "Shell", 0);
     assert_eq!(cells[(x, y)].fg, theme.text);
+    // The selected session's line in the list.
+    let selected = find(&cells, "❯ Shell", 0);
+    assert_eq!(cells[selected].bg, theme.lit);
     // The pane is framed, square, and quiet while the list has the keys.
-    let (corner, top) = find(&cells, "┌", 0);
+    let (corner, top) = find(&cells, "┌", 1);
     assert_eq!((corner, top), (34, 1));
     assert_eq!(cells[(corner, top)].fg, theme.line);
     // The screen shown is lit in the accent.
@@ -59,8 +63,8 @@ fn muster_s_own_colours_frame_the_pane_alone_and_light_what_has_the_keys() {
     );
     assert_eq!(cells[(tab, 0)].bg, theme.accent);
 
-    // Typing in the session: its frame and its name lit, the list's label
-    // quiet.
+    // Typing in the session: its frame and its name lit, the list's frame
+    // and label quiet, its selected line only tinted.
     press(&mut world.app, KeyCode::Enter);
     assert_eq!(world.app.mode, Mode::Terminal(world.session.id));
     let cells = buffer(&world.app);
@@ -69,7 +73,9 @@ fn muster_s_own_colours_frame_the_pane_alone_and_light_what_has_the_keys() {
     assert_eq!(row, top);
     assert_eq!(cells[(name, row)].fg, theme.accent);
     assert!(cells[(name, row)].modifier.contains(Modifier::BOLD));
-    assert_ne!(cells[(1, 1)].fg, theme.accent);
+    assert_ne!(cells[(2, 1)].fg, theme.accent);
+    assert_eq!(cells[(0, 3)].fg, theme.line);
+    assert_eq!(cells[selected].bg, theme.tint);
 }
 
 #[test]
@@ -98,8 +104,13 @@ fn a_terminal_s_own_background_shades_the_selected_line() {
         green: 0,
         blue: 0,
     });
+    // Lit while the list has the keys: 24% of the way to the accent.
     let cells = buffer(&world.app);
     let (x, y) = find(&cells, "▾ app", 0);
+    assert_eq!(cells[(x + 2, y)].bg, Color::Rgb(0x2c, 0x28, 0x3c));
+    // Tinted while a session has them: 9% of the way to the text.
+    world.app.mode = Mode::Terminal(world.session.id);
+    let cells = buffer(&world.app);
     assert_eq!(cells[(x + 2, y)].bg, Color::Rgb(0x13, 0x14, 0x15));
 }
 
@@ -294,12 +305,13 @@ fn a_logo_is_laid_on_the_colour_of_its_line_so_no_square_shows_around_it() {
     // as it is, its own transparency over the terminal's background.
     let cells = buffer(&world.app);
     assert_eq!(picture_on(&cells, 6), None);
-    // The selected line's is laid on its tint, corner to corner.
-    let tint = theme::of(&world.app).tint;
-    let Color::Rgb(red, green, blue) = tint else {
-        panic!("{tint:?}")
+    // The selected line's is laid on its colour, lit while the list has
+    // the keys, corner to corner.
+    let lit = theme::of(&world.app).lit;
+    let Color::Rgb(red, green, blue) = lit else {
+        panic!("{lit:?}")
     };
-    let (size, pixels) = picture_on(&cells, 4).expect("laid on the tint");
+    let (size, pixels) = picture_on(&cells, 4).expect("laid on the lit line");
     assert_eq!(
         size,
         (64, 64),
@@ -323,7 +335,7 @@ fn a_logo_is_laid_on_the_colour_of_its_line_so_no_square_shows_around_it() {
     let (size, pixels) = picture_on(&cells, 6).expect("laid on the background");
     assert_eq!(size, (64, 72));
     assert_eq!(&pixels[..3], [0x1e, 0x1e, 0x2e]);
-    let Color::Rgb(red, green, blue) = theme::of(&world.app).tint else {
+    let Color::Rgb(red, green, blue) = theme::of(&world.app).lit else {
         unreachable!()
     };
     let (_, pixels) = picture_on(&cells, 4).unwrap();

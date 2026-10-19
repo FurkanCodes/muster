@@ -33,8 +33,9 @@ const DAEMON: &str = concat!("daemon ", env!("CARGO_PKG_VERSION"));
 const DONE: vt100::Color = vt100::Color::Rgb(0x93, 0xd6, 0xa3);
 
 /// The selected line's shade on the test terminal's background
-/// (`ui::BACKGROUND`): 9% of the way to Muster's text.
-const TINT: vt100::Color = vt100::Color::Rgb(0x3b, 0x3b, 0x4b);
+/// (`ui::BACKGROUND`) while the list has the keys: 24% of the way to
+/// Muster's accent.
+const LIT: vt100::Color = vt100::Color::Rgb(0x4d, 0x49, 0x69);
 
 #[test]
 fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
@@ -832,9 +833,10 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     );
     ui.wait_for("✓ ✻ #42");
     assert_eq!(ui.background_of("✓ ✻ #42"), Some(DONE), "{}", ui.text());
-    // Settled, it is the selected line: tinted, as the selection is.
+    // Settled, it is the selected line: lit, as the selection is while
+    // the list has the keys.
     let deadline = Instant::now() + Duration::from_secs(5);
-    while ui.background_of("✓ ✻ #42") != Some(TINT) {
+    while ui.background_of("✓ ✻ #42") != Some(LIT) {
         assert!(Instant::now() < deadline, "it never settled: {}", ui.text());
         std::thread::sleep(Duration::from_millis(20));
     }
