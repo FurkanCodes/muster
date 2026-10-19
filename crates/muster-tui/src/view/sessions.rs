@@ -173,11 +173,15 @@ fn fold_mark(app: &App, row: Row) -> Span<'static> {
 }
 
 /// How the sessions on a project's or a worktree's line stand, after its
-/// name: the mark of the one that says most (`Model::most_urgent`), as
-/// its own line draws it, with the dot of news not seen; and, folded, how
-/// many sessions it hides.
+/// name, while it is folded: the mark of the one that says most
+/// (`Model::most_urgent`), as its own line draws it, with the dot of news
+/// not seen, and how many sessions it hides. Unfolded, each session's
+/// line says it, and only there.
 fn standing(app: &App, row: Row) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
+    if !app.is_folded(row) {
+        return spans;
+    }
     if let Some(session) = app.model.most_urgent(row) {
         let (symbol, style) = mark(app, session.status);
         spans.push(Span::raw(" "));

@@ -1,6 +1,7 @@
 //! The sessions list at a glance: each project's and worktree's line
-//! shows how the most urgent of its sessions stands, and folds away what
-//! is under it, saying how many sessions it hides (`PRD` §6 Sessions).
+//! folds away what is under it, saying how many sessions it hides and how
+//! the most urgent of them stands; unfolded, only the sessions' own lines
+//! say how they stand (`PRD` §6 Sessions).
 
 use crossterm::event::{KeyCode, MouseButton, MouseEventKind};
 use muster_core::protocol::{Delta, ServerFrame};
@@ -39,32 +40,47 @@ fn shell_as(world: &mut World, status: SessionStatus, unseen: bool) {
 }
 
 #[test]
-fn a_project_and_a_worktree_show_their_most_urgent_session_in_its_mark() {
+fn unfolded_only_a_session_s_own_line_shows_its_mark() {
     let mut world = world();
     world.app.motion = false;
-    // Nothing at work: nothing to say.
+    shell_as(&mut world, SessionStatus::Running, false);
     let screen = render(&world.app);
+    assert!(screen.contains("● ❯ Shell"), "{screen}");
     assert!(line_with(&screen, "▾ app").trim_end().ends_with("app"));
+    assert!(line_with(&screen, "⎇ work").trim_end().ends_with("work"));
+}
+
+#[test]
+fn a_folded_project_and_worktree_show_their_most_urgent_session_in_its_mark() {
+    let mut world = world();
+    world.app.motion = false;
+    world.app.fold(Row::Worktree(world.worktree.id));
+    // Nothing at work: nothing to say but what it hides.
+    let screen = render(&world.app);
+    assert!(line_with(&screen, "⎇ work").contains("work 1 session"));
 
     // At work: its mark.
     shell_as(&mut world, SessionStatus::Running, false);
     let screen = render(&world.app);
-    assert!(line_with(&screen, "▾ app").contains("app ●"), "{screen}");
     assert!(line_with(&screen, "⎇ work").contains("work ●"), "{screen}");
+    assert!(line_with(&screen, "▾ app").trim_end().ends_with("app"));
 
     // Finished while nobody looked, and another asking: the question
     // first, as Needs you goes.
     shell_as(&mut world, SessionStatus::Finished, true);
     let screen = render(&world.app);
-    assert!(line_with(&screen, "▾ app").contains("app ✓•"), "{screen}");
+    assert!(line_with(&screen, "⎇ work").contains("work ✓•"), "{screen}");
     let mut asking = session(world.worktree.id, "Claude", 4);
     asking.status = SessionStatus::NeedsYou {
         reason: WaitReason::Permission,
     };
     upsert(&mut world, asking);
     let screen = render(&world.app);
-    assert!(line_with(&screen, "▾ app").contains("app ▲"), "{screen}");
     assert!(line_with(&screen, "⎇ work").contains("work ▲"), "{screen}");
+    world.app.fold(Row::Project(world.project.id));
+    let screen = render(&world.app);
+    assert!(line_with(&screen, "▸ app").contains("app ▲"), "{screen}");
+    world.app.fold(Row::Project(world.project.id));
 
     // In the session's own colour.
     let buffer = super::look_tests::buffer(&world.app);
@@ -125,7 +141,7 @@ fn e_folds_a_worktree_which_keeps_its_mark_and_says_what_it_hides() {
     press(&mut world.app, KeyCode::Char('e'));
     let screen = render(&world.app);
     assert!(screen.contains("● ❯ Shell"), "{screen}");
-    assert!(line_with(&screen, "⎇ work").contains("▾ ⎇ work ●"));
+    assert!(!line_with(&screen, "⎇ work").contains('●'), "{screen}");
 
     // On a project's line, where the hints have room, they say so.
     world.app.selected = Some(Row::Project(world.project.id));
