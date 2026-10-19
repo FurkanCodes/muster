@@ -90,11 +90,19 @@ fn draw_logos(
             break;
         }
         if let Some(session) = session {
+            let at = (x, u16::try_from(line).unwrap_or(u16::MAX));
+            // The colour the list left under it: the selection's tint, a
+            // flash's, or none of its own.
+            let under = frame.buffer_mut().cell(at).map(|cell| cell.bg);
+            let backdrop = under
+                .and_then(|colour| super::theme::shown(colour, &app.colours))
+                .map(|colour| logos::Backdrop::new(colour, app.cell_pixels));
             logos::draw(
                 frame.buffer_mut(),
                 app.graphics,
                 &session.harness,
-                (x, u16::try_from(line).unwrap_or(u16::MAX)),
+                at,
+                backdrop,
             );
         }
         line += lines;

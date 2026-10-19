@@ -5,11 +5,15 @@
 //! sequence, the cell saying it is as wide as the picture
 //! (`CellDiffOption::ForcedWidth`) and the one it covers skipped, so the
 //! terminal is sent it only when the line changes there, never on each
-//! frame. The pictures and where they come from are in `assets/logos`.
+//! frame. Where the colour under it is known, it is laid on that colour
+//! (`super::picture`), so a tinted line shows no square of the terminal's
+//! plain background around it. The pictures and where they come from are
+//! in `assets/logos`.
 
 use std::num::NonZeroU16;
 use std::sync::LazyLock;
 
+pub(crate) use super::picture::Backdrop;
 use base64::Engine as _;
 use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::style::{Color, Style, Stylize};
@@ -83,6 +87,29 @@ impl Logo {
             Self::Gemini => ("✦", Color::Rgb(0x8E, 0x75, 0xB2)),
             Self::OpenCode => ("▣", Color::Rgb(0x9A, 0x94, 0x94)),
             Self::Copilot => ("◉", Color::Rgb(0x82, 0x50, 0xDF)),
+        }
+    }
+
+    /// Its name, as its files are called.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Gemini => "gemini",
+            Self::OpenCode => "opencode",
+            Self::Copilot => "copilot",
+        }
+    }
+
+    /// Its pixels, unpacked from its picture by `scripts/render-logos.sh`:
+    /// red, green, blue and alpha, `picture::SIDE` square.
+    fn pixels(self) -> &'static [u8] {
+        match self {
+            Self::Claude => include_bytes!("../../assets/logos/claude.rgba"),
+            Self::Codex => include_bytes!("../../assets/logos/codex.rgba"),
+            Self::Gemini => include_bytes!("../../assets/logos/gemini.rgba"),
+            Self::OpenCode => include_bytes!("../../assets/logos/opencode.rgba"),
+            Self::Copilot => include_bytes!("../../assets/logos/copilot.rgba"),
         }
     }
 
@@ -165,8 +192,15 @@ pub(crate) fn spans(graphics: Graphics, harness: &str) -> Vec<Span<'static>> {
 }
 
 /// Draws `harness`'s picture into `buf` at `x`, `y`, over the room
-/// [`spans`] left there, where the terminal draws pictures.
-pub(crate) fn draw(buf: &mut Buffer, graphics: Graphics, harness: &str, (x, y): (u16, u16)) {
+/// [`spans`] left there, where the terminal draws pictures: laid on
+/// `backdrop` where the colour under it is known, else as it is.
+pub(crate) fn draw(
+    buf: &mut Buffer,
+    graphics: Graphics,
+    harness: &str,
+    (x, y): (u16, u16),
+    backdrop: Option<Backdrop>,
+) {
     let Some(logo) = Logo::of(harness).filter(|_| graphics == Graphics::Iterm) else {
         return;
     };
@@ -174,8 +208,10 @@ pub(crate) fn draw(buf: &mut Buffer, graphics: Graphics, harness: &str, (x, y): 
     if y >= area.bottom() || x.saturating_add(1) >= area.right() || x < area.left() {
         return;
     }
+    let laid = backdrop
+        .map(|backdrop| super::picture::kept(logo.name(), logo.pixels(), backdrop, iterm_sequence));
     if let Some(cell) = buf.cell_mut((x, y)) {
-        cell.set_symbol(logo.sequence())
+        cell.set_symbol(laid.as_deref().unwrap_or_else(|| logo.sequence()))
             .set_diff_option(CellDiffOption::ForcedWidth(
                 NonZeroU16::MIN.saturating_add(1),
             ));
@@ -265,7 +301,7 @@ mod tests {
     #[test]
     fn a_picture_is_one_cell_two_wide_sent_as_iterm2_draws_it() {
         let mut buf = Buffer::empty(Rect::new(0, 0, 10, 2));
-        draw(&mut buf, Graphics::Iterm, "gemini", (3, 1));
+        draw(&mut buf, Graphics::Iterm, "gemini", (3, 1), None);
         let cell = &buf[(3, 1)];
         assert!(cell.symbol().starts_with("\x1b]1337;File=inline=1;"));
         assert!(cell.symbol().contains("width=2;height=1"));
@@ -277,11 +313,11 @@ mod tests {
         assert_eq!(buf[(4, 1)].diff_option, CellDiffOption::Skip);
         // Text alone, or a shell, draws nothing over the line.
         let mut plain = Buffer::empty(Rect::new(0, 0, 10, 2));
-        draw(&mut plain, Graphics::Text, "gemini", (3, 1));
-        draw(&mut plain, Graphics::Iterm, "shell", (3, 1));
+        draw(&mut plain, Graphics::Text, "gemini", (3, 1), None);
+        draw(&mut plain, Graphics::Iterm, "shell", (3, 1), None);
         assert_eq!(plain, Buffer::empty(Rect::new(0, 0, 10, 2)));
         // Never past the edge.
-        draw(&mut plain, Graphics::Iterm, "claude", (9, 1));
+        draw(&mut plain, Graphics::Iterm, "claude", (9, 1), None);
         assert_eq!(plain, Buffer::empty(Rect::new(0, 0, 10, 2)));
     }
 
@@ -291,7 +327,7 @@ mod tests {
         let line = |text: &str| {
             let mut buf = Buffer::empty(area);
             buf.set_string(0, 0, text, Style::default());
-            draw(&mut buf, Graphics::Iterm, "claude", (2, 0));
+            draw(&mut buf, Graphics::Iterm, "claude", (2, 0), None);
             buf
         };
         let first = line("⠋    Fix it");

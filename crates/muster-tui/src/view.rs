@@ -20,6 +20,7 @@ pub(crate) mod kep;
 pub(crate) mod logos;
 pub(crate) mod look;
 mod menu;
+pub(crate) mod picture;
 mod preview;
 mod pull_request;
 mod selection;
