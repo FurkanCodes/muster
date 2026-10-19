@@ -108,6 +108,10 @@ pub(super) enum Request {
     },
     /// The sampler's measurement.
     Resources(ResourceReport),
+    /// The sampler asks for the running shells' terminals.
+    Shells(oneshot::Sender<Vec<(SessionId, crate::pty::PtyHandle)>>),
+    /// What runs in each shell, as the sampler found it.
+    ShellPrograms(Vec<(SessionId, String)>),
     /// The spend reader asks which sessions to read.
     SpendTargets(oneshot::Sender<Vec<crate::spend::Target>>),
     /// The totals the spend reader found changed.
@@ -141,6 +145,8 @@ impl std::fmt::Debug for Request {
             Self::PullRequestsLooked(_) => f.write_str("PullRequestsLooked"),
             Self::LookAtBranch(workspace) => write!(f, "LookAtBranch({workspace})"),
             Self::ChangesLooked(_) => f.write_str("ChangesLooked"),
+            Self::Shells(_) => f.write_str("Shells"),
+            Self::ShellPrograms(_) => f.write_str("ShellPrograms"),
             Self::Named(_) => f.write_str("Named"),
             Self::TimelineJobDone(_) => f.write_str("TimelineJobDone"),
             Self::ClashesFound(_) => f.write_str("ClashesFound"),
@@ -196,6 +202,23 @@ impl SupervisorHandle {
             .await
             .ok()?;
         answer.await.ok()
+    }
+
+    /// The running shells' terminals, or `None` once the Supervisor has
+    /// stopped.
+    pub(crate) async fn shells(&self) -> Option<Vec<(SessionId, crate::pty::PtyHandle)>> {
+        let (reply, answer) = oneshot::channel();
+        self.requests.send(Request::Shells(reply)).await.ok()?;
+        answer.await.ok()
+    }
+
+    /// Tells what runs in each shell; `false` once the Supervisor has
+    /// stopped.
+    pub(crate) async fn shell_programs(&self, programs: Vec<(SessionId, String)>) -> bool {
+        self.requests
+            .send(Request::ShellPrograms(programs))
+            .await
+            .is_ok()
     }
 
     /// Every workspace's place and last known branch, or `None` once the

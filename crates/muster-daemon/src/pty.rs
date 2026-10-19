@@ -149,6 +149,9 @@ enum Command {
     /// Give the terminal up, with what goes with it, if its program still
     /// runs; the actor ends, leaving the program running.
     HandOver(oneshot::Sender<Option<Handed>>),
+    /// The process group in the terminal's foreground, which has the keys:
+    /// a shell's, or the program it runs now.
+    Foreground(oneshot::Sender<Option<u32>>),
 }
 
 /// A cheap, cloneable way to reach a terminal's actor.
@@ -219,6 +222,15 @@ impl PtyHandle {
     /// only makes it redraw.
     pub(crate) async fn resume_if_suspended(&self) {
         let _ = self.commands.send(Command::ResumeIfSuspended).await;
+    }
+
+    /// The process group in the terminal's foreground: a shell's while it
+    /// waits at its prompt, the program it runs while one runs; `None` once
+    /// it has ended, or the terminal is gone.
+    pub(crate) async fn foreground(&self) -> Option<u32> {
+        let (reply, answer) = oneshot::channel();
+        self.commands.send(Command::Foreground(reply)).await.ok()?;
+        answer.await.ok().flatten()
     }
 
     /// Hands the terminal over, for the daemon's next version: `None` if
@@ -776,6 +788,15 @@ impl Actor {
             }
             // Handled in `run`, where it can wait for the reader.
             Command::HandOver(_) => {}
+            Command::Foreground(reply) => {
+                let group = self
+                    .master
+                    .as_ref()
+                    .filter(|_| self.live.is_some())
+                    .and_then(|master| rustix::termios::tcgetpgrp(master).ok())
+                    .and_then(|group| u32::try_from(group.as_raw_nonzero().get()).ok());
+                let _ = reply.send(group);
+            }
             Command::Stop => {
                 if self.live.is_some() && !self.stopping {
                     self.stopping = true;

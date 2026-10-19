@@ -140,6 +140,7 @@ actions! {
     ShowTickets "show_tickets" SESSION_LISTS, ["i"], "the project's tickets";
     FullScreen "full_screen" SESSION_LISTS, ["f"], "the session full screen";
     ShowChanges "show_changes" SESSION_LISTS, ["d"], "what the worktree or session has changed, and its turns";
+    Shell "shell" SESSION_LISTS, ["T"], "a shell in the workspace, beside the session (again: put it away)";
     StopSession "stop_session" SESSION_LISTS, ["s"], "stop the session";
     RestartSession "restart_session" SESSION_LISTS, ["r"], "start an ended session again";
     Close "close" SESSION_LISTS, ["x"], "close the session; remove the worktree or the project, after asking";

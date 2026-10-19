@@ -153,12 +153,23 @@ impl Supervisor {
             .map(|project| project.root.clone())
             .ok_or_else(|| ErrorBody::new(ErrorCode::Internal, "the worktree's project is gone"))?;
 
-        let running = self.running_sessions_in(workspace);
-        if running > 0 {
+        // Its shells end with it (`PRODUCT.md` §6); its agents' work is
+        // the person's to stop.
+        let (shells, agents): (Vec<_>, Vec<_>) = self
+            .running_in(workspace)
+            .into_iter()
+            .partition(|(_, shell)| *shell);
+        if !agents.is_empty() {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,
-                format!("stop the worktree's {running} running session(s) first"),
+                format!(
+                    "stop the worktree's {} running session(s) first",
+                    agents.len()
+                ),
             ));
+        }
+        for (shell, _) in shells {
+            self.stop_session(shell).await?;
         }
 
         let removed = if tokio::fs::try_exists(path).await.unwrap_or(true) {

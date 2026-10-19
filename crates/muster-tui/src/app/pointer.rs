@@ -66,7 +66,8 @@ impl App {
             }
             screen
         } else {
-            let list = browse_areas(self, window).list;
+            let areas = browse_areas(self, window);
+            let list = areas.list;
             let right = event.kind == MouseEventKind::Down(MouseButton::Right);
             if (pressed || right) && list.contains(at) {
                 let mut actions = self.leave_terminal(session);
@@ -78,7 +79,28 @@ impl App {
                 actions.extend(self.settle());
                 return actions;
             }
-            crate::view::session_area(self, window)
+            // A press on the other of the session and its shell gives it
+            // the keys.
+            let in_shell = self.typing_in_shell();
+            if pressed && in_shell && areas.preview.contains(at) {
+                let mut actions = self.leave_terminal(session);
+                self.open_selected();
+                actions.extend(self.settle());
+                return actions;
+            }
+            if pressed
+                && !in_shell
+                && areas.shell.contains(at)
+                && let Some(shell) = self.shell_beside()
+            {
+                self.mode = Mode::Terminal(shell);
+                return self.settle();
+            }
+            if in_shell {
+                crate::view::shell_area(self, window)
+            } else {
+                crate::view::session_area(self, window)
+            }
         };
         let modes = self.screen(session).modes;
         let tracked = modes.mouse != MouseTracking::Off;
@@ -161,6 +183,10 @@ impl App {
             MouseEventKind::Down(MouseButton::Left) => {
                 if areas.list.contains(at) {
                     self.click_list(areas.list, at);
+                } else if areas.shell.contains(at)
+                    && let Some(shell) = self.shell_beside()
+                {
+                    self.mode = Mode::Terminal(shell);
                 } else if areas.preview.contains(at)
                     && matches!(self.view, View::Sessions | View::NeedsYou)
                     && self.focused_session().is_some()

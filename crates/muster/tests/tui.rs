@@ -565,10 +565,11 @@ fn the_mouse_reaches_what_it_points_at_around_a_copy() {
     std::thread::sleep(Duration::from_millis(300));
     assert!(!ui.text().contains("New worktree"), "{}", ui.text());
 
-    // The session's line, then its pane: the session has the keys.
-    let (column, row) = ui.position_of("Shell").unwrap();
-    ui.click(column, row);
-    ui.wait_for("┌ Shell");
+    // The session's line, then its pane: the session has the keys. A
+    // shell is named by what runs in it; its mark finds it.
+    let (column, row) = ui.position_of("❯").unwrap();
+    ui.click(column + 2, row);
+    std::thread::sleep(Duration::from_millis(300));
     ui.click(80, 10);
     ui.wait_for("keys go to the session");
     // The wheel, over the list, looks back in the session with the keys.

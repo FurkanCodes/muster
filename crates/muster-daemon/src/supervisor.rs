@@ -29,6 +29,7 @@ mod reload;
 mod runs;
 mod sessions;
 mod settings;
+mod shell_names;
 mod sizing;
 mod spend;
 mod stacks;
@@ -244,6 +245,8 @@ struct Live {
     signals: explain::Recent,
     /// Its chat being named by an agent.
     naming: Option<naming::Asking>,
+    /// The person named it: no name of Muster's replaces theirs.
+    named_by_person: bool,
 }
 
 #[derive(Debug)]
@@ -484,6 +487,10 @@ impl Supervisor {
                 let _ = reply.send(running);
             }
             Request::Resources(report) => self.record_resources(report).await,
+            Request::Shells(reply) => {
+                let _ = reply.send(self.shells());
+            }
+            Request::ShellPrograms(programs) => self.shell_programs(programs).await,
             Request::SpendTargets(reply) => {
                 let _ = reply.send(self.spend_targets());
             }

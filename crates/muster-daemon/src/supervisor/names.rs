@@ -33,8 +33,11 @@ impl Supervisor {
         let title = names::given(title).ok_or_else(|| {
             ErrorBody::new(ErrorCode::BadRequest, "a session's name cannot be empty")
         })?;
-        // Theirs, never replaced by an agent's.
+        // Theirs, never replaced by an agent's, nor by what runs in a shell.
         self.stop_naming(session);
+        if let Some(live) = self.live.get_mut(&session) {
+            live.named_by_person = true;
+        }
         self.name_session(session, title).await
     }
 

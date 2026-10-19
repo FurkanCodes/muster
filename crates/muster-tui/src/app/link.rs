@@ -241,6 +241,10 @@ impl App {
                 self.wanted = Some((Row::Session(id), true));
                 self.note = None;
             }
+            (Ok(Reply::SessionStarted { id }), Then::OpenShell) => {
+                self.wanted_shell = Some(id);
+                self.note = None;
+            }
             (Ok(Reply::SessionStarted { id }), Then::OpenRestarted) => {
                 // The stream follows the session to its new program; one the
                 // daemon had no terminal for is attached again once the

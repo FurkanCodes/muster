@@ -72,7 +72,7 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     doing(&mut world, id, Some("running npm"));
     let line = line_with(&render(&world.app), "running npm");
     // The time at the line's end, against the list's frame.
-    assert!(line.contains("❯ Shell  running npm"), "{line}");
+    assert!(line.contains("• Shell  running npm"), "{line}");
     assert!(line.contains("4m12s││"), "{line}");
     // Still, it reads to the minute.
     world.app.motion = false;
@@ -81,7 +81,7 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     // Where it does not fit, what it does gives way; the time stays.
     doing(&mut world, id, Some("editing view_settings.rs"));
     let line = line_with(&render(&world.app), "editing");
-    assert!(line.contains("❯ Shell  editing view… 4m12s"), "{line}");
+    assert!(line.contains("• Shell  editing view… 4m12s"), "{line}");
     assert!(line.contains("4m12s││"), "{line}");
 
     // Waiting on the person: what it wants, in red, and how long it has
@@ -233,7 +233,7 @@ fn each_project_has_its_colour_and_the_selection_a_tint_and_a_bar() {
     // Its worktree and sessions carry its edge too, on both its lines.
     let screen = render(&world.app);
     assert!(
-        line_with(&screen, "Shell").starts_with("│▌   ○ ❯ Shell"),
+        line_with(&screen, "Shell").starts_with("│▌   ○ • Shell"),
         "{screen}"
     );
     assert!(
@@ -265,7 +265,7 @@ fn each_line_of_needs_you_names_its_project_in_its_colour() {
     // The same agent waits in both: only the project tells them apart,
     // and it stays where what each wants is cut short.
     let screen = render(&app);
-    for name in ["▲ ❯ app  Claude Code", "▲ ❯ web  Claude Code"] {
+    for name in ["▲ • app  Claude Code", "▲ • web  Claude Code"] {
         let lines: Vec<&str> = screen.lines().collect();
         let at = lines.iter().position(|line| line.contains(name)).unwrap();
         assert!(lines[at + 1].contains("needs you: question"), "{screen}");

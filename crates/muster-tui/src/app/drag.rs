@@ -66,6 +66,7 @@ impl App {
             (Panel::List, areas.list),
             (Panel::Session, areas.preview),
             (Panel::Changes, areas.changes),
+            (Panel::Shell, areas.shell),
         ]
         .into_iter()
         .filter(|(_, area)| !area.is_empty())
@@ -323,6 +324,7 @@ impl App {
             return Vec::new();
         }
         let panel = match self.mode {
+            Mode::Terminal(_) if self.typing_in_shell() => Panel::Shell,
             Mode::Terminal(_) => Panel::Session,
             Mode::Changes => Panel::Changes,
             _ => Panel::List,

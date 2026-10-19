@@ -282,7 +282,7 @@ fn a_message_taking_lines_from_the_list_keeps_clicks_on_what_is_drawn() {
     assert!(
         screen
             .lines()
-            .any(|line| line.contains(&format!("○ ❯ {label} "))),
+            .any(|line| line.contains(&format!("○ • {label} "))),
         "the selection is still drawn:\n{screen}"
     );
     // And a click on the list's top line selects what is drawn there.
@@ -295,7 +295,7 @@ fn a_message_taking_lines_from_the_list_keeps_clicks_on_what_is_drawn() {
         other => panic!("{other:?}"),
     };
     assert!(
-        top.contains(&format!("○ ❯ {clicked} ")),
+        top.contains(&format!("○ • {clicked} ")),
         "{top} vs {clicked}"
     );
 }

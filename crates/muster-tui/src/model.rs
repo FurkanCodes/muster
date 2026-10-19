@@ -344,9 +344,11 @@ impl Model {
 }
 
 /// Whether a session is waiting on the person: asking something, or with
-/// news they have not seen.
+/// news they have not seen. A shell never is: it is the person's own, not
+/// an agent's (`PRODUCT.md` §6).
 pub(crate) fn needs_attention(session: &Session) -> bool {
-    matches!(session.status, SessionStatus::NeedsYou { .. }) || session.unseen
+    session.harness != "shell"
+        && (matches!(session.status, SessionStatus::NeedsYou { .. }) || session.unseen)
 }
 
 fn upsert<T, K: PartialEq>(items: &mut Vec<T>, item: T, key: impl Fn(&T) -> K) {
@@ -393,11 +395,13 @@ pub(crate) mod tests {
         }
     }
 
+    /// A session of an agent that is no one of Muster's own, so nothing
+    /// an agent of its own would do (a hook, a suspend) comes with it.
     pub(crate) fn session(workspace: WorkspaceId, title: &str, created: i64) -> Session {
         Session {
             id: SessionId::new(),
             workspace,
-            harness: "shell".to_owned(),
+            harness: "agent".to_owned(),
             title: title.to_owned(),
             status: SessionStatus::Fresh,
             unseen: false,
