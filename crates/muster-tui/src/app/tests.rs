@@ -143,7 +143,7 @@ fn the_list_shows_projects_worktrees_and_sessions() {
     let lines: Vec<&str> = screen.lines().collect();
     let at = lines
         .iter()
-        .position(|line| line.contains("○ ❯ Shell"))
+        .position(|line| line.contains("○ • Shell"))
         .expect("the session's first line");
     assert!(lines[at + 1].contains("      idle"), "{screen}");
     assert!(screen.contains("daemon 0.1.0"), "{screen}");
@@ -195,7 +195,7 @@ fn a_session_line_that_cannot_fit_its_usage_leaves_it_to_the_pane() {
     )));
     let screen = render(&world.app);
     // The whole title and status, and no usage cut off at the border.
-    assert!(screen.contains("✓ ❯ Claude Code  finished  "), "{screen}");
+    assert!(screen.contains("✓ • Claude Code  finished  "), "{screen}");
     assert!(!screen.contains("455 MB"), "{screen}");
     // The session's pane says it.
     world.app.selected = Some(Row::Session(claude.id));

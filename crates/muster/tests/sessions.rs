@@ -444,7 +444,20 @@ async fn a_stopped_session_is_not_marked_unseen() {
 async fn a_worktree_with_a_running_session_is_not_removed() {
     let setup = setup().await;
     let mut connection = setup.daemon.connect().await;
-    start(&mut connection, setup.workspace).await;
+    // An agent's: a shell would end with its worktree.
+    let Reply::SessionStarted { .. } = connection
+        .command(Command::StartSession {
+            workspace: setup.workspace,
+            harness: "claude".to_owned(),
+            title: None,
+            size: TermSize::default(),
+            prompt: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected SessionStarted");
+    };
     let removed = connection
         .command(Command::RemoveWorktree {
             workspace: setup.workspace,

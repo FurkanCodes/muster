@@ -47,6 +47,8 @@ impl App {
     fn panel_with_keys(&self) -> Panel {
         if self.changes_shown() {
             Panel::Changes
+        } else if self.typing_in_shell() {
+            Panel::Shell
         } else {
             Panel::Session
         }
@@ -65,7 +67,7 @@ impl App {
             Panel::List => with_list,
             Panel::Session => true,
             Panel::Changes => self.changes_shown(),
-            Panel::Shell => false,
+            Panel::Shell => self.shell_beside().is_some(),
         };
         let layout = self.panels();
         let fits = |shown: &dyn Fn(Panel) -> bool| {
@@ -73,7 +75,7 @@ impl App {
                 .shown(shown)
                 .filter(|node| needs(node, list).0 <= body.width)
         };
-        let more = self.changes_shown();
+        let more = self.changes_shown() || self.shell_beside().is_some();
         let tree = fits(&showing)
             .or_else(|| {
                 more.then(|| fits(&|panel| panel != Panel::List && showing(panel)))

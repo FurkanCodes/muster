@@ -67,12 +67,12 @@ fn a_running_session_s_mark_spins_one_frame_a_step() {
     with_status(&mut world, SessionStatus::Running);
     world.app.step = 0;
     let screen = render(&world.app);
-    assert!(screen.contains("⠋ ❯ Shell"), "{screen}");
+    assert!(screen.contains("⠋ • Shell"), "{screen}");
     assert!(!screen.contains('●'), "{screen}");
     world.app.step = 1;
-    assert!(render(&world.app).contains("⠙ ❯ Shell"));
+    assert!(render(&world.app).contains("⠙ • Shell"));
     world.app.step = 10;
-    assert!(render(&world.app).contains("⠋ ❯ Shell"));
+    assert!(render(&world.app).contains("⠋ • Shell"));
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn with_motion_off_every_mark_stands_still() {
     world.app.motion = false;
     world.app.step = 7;
     with_status(&mut world, SessionStatus::Running);
-    assert!(render(&world.app).contains("● ❯ Shell"));
+    assert!(render(&world.app).contains("● • Shell"));
     assert!(!world.app.animating());
 
     with_status(
@@ -234,7 +234,7 @@ fn a_session_that_finishes_flashes_lit_then_tinted_then_settles() {
         assert_eq!((cell.fg, cell.bg), (theme.on_accent, theme.done));
     }
     // Lit over the spans' own styles: the mark stays readable on it.
-    assert_eq!(cell_at(&lit, "✓ ❯ Shell").bg, theme.done);
+    assert_eq!(cell_at(&lit, "✓ • Shell").bg, theme.done);
 
     assert!(world.app.on_step(25), "a flashing line is drawn each step");
     let tinted = buffer(&world);

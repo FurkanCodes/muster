@@ -46,7 +46,7 @@ fn unfolded_only_a_session_s_own_line_shows_its_mark() {
     world.app.motion = false;
     shell_as(&mut world, SessionStatus::Running, false);
     let screen = render(&world.app);
-    assert!(screen.contains("● ❯ Shell"), "{screen}");
+    assert!(screen.contains("● • Shell"), "{screen}");
     assert!(line_with(&screen, "▾ app").trim_end().ends_with("app"));
     assert!(line_with(&screen, "⎇ work").trim_end().ends_with("work"));
 }
@@ -141,7 +141,7 @@ fn e_folds_a_worktree_which_keeps_its_mark_and_says_what_it_hides() {
 
     press(&mut world.app, KeyCode::Char('e'));
     let screen = render(&world.app);
-    assert!(screen.contains("● ❯ Shell"), "{screen}");
+    assert!(screen.contains("● • Shell"), "{screen}");
     assert!(!line_with(&screen, "⎇ work").contains('●'), "{screen}");
 
     // On a project's line, where the hints have room, they say so.

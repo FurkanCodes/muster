@@ -149,10 +149,11 @@ fn fleet(app: &App, daemon_version: &str, room: usize) -> Vec<Span<'static>> {
 /// count is.
 fn counts(app: &App, words: bool) -> Vec<Span<'static>> {
     let sessions = app.model.sessions();
+    // The agents: a shell is the person's own.
     let count = |wanted: fn(SessionStatus) -> bool| {
         sessions
             .iter()
-            .filter(|session| wanted(session.status))
+            .filter(|session| session.harness != "shell" && wanted(session.status))
             .count()
     };
     let groups = [

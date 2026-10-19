@@ -45,6 +45,7 @@ impl App {
                 enter("type in it"),
                 self.here(Does::FullScreen, "full screen"),
                 self.here(Does::ShowChanges, "changes"),
+                self.here(Does::Shell, "shell"),
                 self.here(Does::Rename, "rename"),
                 self.here(Does::Close, "close"),
                 self.here(Does::StopSession, "stop"),
@@ -96,6 +97,7 @@ impl App {
         if kind.is_some_and(|kind| kind.run().is_none()) {
             here.extend([
                 self.here(Does::ShowChanges, "changes"),
+                self.here(Does::Shell, "shell"),
                 self.here(Does::Checks, "check"),
                 self.here(Does::Review, "review"),
                 self.here(Does::Tidy, "tidy"),

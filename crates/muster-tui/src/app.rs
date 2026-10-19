@@ -27,6 +27,7 @@ pub(crate) mod selection;
 mod settings;
 mod settle;
 mod sharing;
+mod shell;
 mod stacks;
 mod tickets;
 pub(crate) mod tickets_from;
@@ -100,6 +101,8 @@ mod selection_tests;
 mod settings_tests;
 #[cfg(test)]
 mod sharing_tests;
+#[cfg(test)]
+mod shell_tests;
 #[cfg(test)]
 mod slide_tests;
 #[cfg(test)]
@@ -359,6 +362,8 @@ enum Then {
     PanelsKept,
     /// Offer the models the agent lists, in the dialog open for it.
     Models(String),
+    /// Show the shell started beside the session, with the keys.
+    OpenShell,
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.
@@ -517,6 +522,13 @@ pub(crate) struct App {
     pub(crate) arranging: Option<drag::Arranging>,
     /// What each key does, Muster's own with the person's over them.
     pub(crate) keymap: muster_core::keys::Keymap,
+    /// The shell beside the session, while it is shown.
+    pub(crate) shell: Option<SessionId>,
+    /// A shell started for the panel, until the state has it.
+    wanted_shell: Option<SessionId>,
+    /// The shell streamed beside the session, and the size it was given.
+    shell_attached: Option<SessionId>,
+    shell_fitted: Option<TermSize>,
 }
 
 impl App {
@@ -589,6 +601,10 @@ impl App {
             drag: None,
             arranging: None,
             keymap: muster_core::keys::Keymap::default(),
+            shell: None,
+            wanted_shell: None,
+            shell_attached: None,
+            shell_fitted: None,
         }
     }
 
@@ -637,7 +653,9 @@ impl App {
     /// The session shown: open in the terminal, or selected in a list.
     pub(crate) fn focused_session(&self) -> Option<SessionId> {
         match (&self.mode, self.view) {
-            (Mode::Terminal(session), _) => Some(*session),
+            // The shell beside the session has the keys, the session beside
+            // the list stays the one selected.
+            (Mode::Terminal(session), _) if self.shell != Some(*session) => Some(*session),
             (_, View::NeedsYou) => self.needs_selected,
             (_, View::Sessions) => match self.selected {
                 Some(Row::Session(session)) => Some(session),
@@ -690,7 +708,12 @@ impl App {
     /// next prompt only as a turn ends in focus, and the person watches a
     /// turn end from the list.
     pub(crate) fn focus_session(&self) -> Option<SessionId> {
-        self.shown_session().filter(|_| self.focused != Some(false))
+        let shown = if self.typing_in_shell() {
+            self.shell_beside()
+        } else {
+            self.shown_session()
+        };
+        shown.filter(|_| self.focused != Some(false))
     }
 
     /// Tells the daemon which session is in focus now, if that changed, so

@@ -63,6 +63,8 @@ pub(crate) struct BrowseAreas {
     /// screen shows of the line selected.
     pub(crate) preview: Rect,
     pub(crate) changes: Rect,
+    /// The shell beside the session.
+    pub(crate) shell: Rect,
     pub(crate) bottom: Rect,
     /// The lines between panels, which a drag moves.
     pub(crate) dividers: Vec<Divider>,
@@ -92,6 +94,12 @@ pub(crate) fn session_area(app: &App, area: Rect) -> Rect {
     areas(app, area, 1, true).preview.inner(Margin::new(1, 1))
 }
 
+/// Where the shell beside the session is drawn in `area`, inside its
+/// border, measured as [`session_area`] is.
+pub(crate) fn shell_area(app: &App, area: Rect) -> Rect {
+    areas(app, area, 1, true).shell.inner(Margin::new(1, 1))
+}
+
 fn areas(app: &App, area: Rect, bottom: u16, beside_session: bool) -> BrowseAreas {
     let [top, body, bottom] = Layout::vertical([
         Constraint::Length(1),
@@ -119,6 +127,7 @@ fn areas(app: &App, area: Rect, bottom: u16, beside_session: bool) -> BrowseArea
         list: solved.of(Panel::List),
         preview: solved.of(Panel::Session),
         changes: solved.of(Panel::Changes),
+        shell: solved.of(Panel::Shell),
         bottom,
         dividers: solved.dividers,
     }
@@ -149,6 +158,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         list,
         preview,
         changes,
+        shell,
         bottom,
         ..
     } = areas.clone();
@@ -162,7 +172,9 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         }
     }
     if !preview.is_empty() {
-        if let Mode::Terminal(session) = app.mode {
+        if let Mode::Terminal(session) = app.mode
+            && !app.typing_in_shell()
+        {
             draw_session(frame, app, session, preview, true);
         } else if app.view == View::Tickets {
             tickets::draw_ticket_details(frame, app, preview);
@@ -174,6 +186,11 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     }
     if !changes.is_empty() {
         changes::draw_changes(frame, app, changes);
+    }
+    if !shell.is_empty()
+        && let Some(beside) = app.shell_beside()
+    {
+        draw_session(frame, app, beside, shell, app.typing_in_shell());
     }
     drag::draw_moving(frame, app, &areas);
     draw_bottom_bar(frame, app, bottom);

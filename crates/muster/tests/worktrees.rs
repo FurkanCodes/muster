@@ -317,16 +317,27 @@ fn the_command_line_manages_worktrees_and_sessions() {
         "{status}"
     );
     assert!(status.contains("cli-work"), "{status}");
-    assert!(
-        status.contains(&format!("{session}  Shell  fresh")),
-        "{status}"
-    );
+    // A shell is named by what runs in it once the sampler looks.
+    let line = status
+        .lines()
+        .find(|line| line.contains(&session))
+        .unwrap_or_default();
+    assert!(line.contains("fresh"), "{status}");
 
+    // A shell ends with its worktree; an agent at work there keeps it.
+    let (ok, stdout, stderr) = run(&["session", "start", "cli-work", "--harness", "claude"]);
+    assert!(ok, "{stderr}");
+    let agent = stdout
+        .trim()
+        .strip_prefix("Started ")
+        .and_then(|rest| rest.strip_suffix('.'))
+        .expect("the session id")
+        .to_owned();
     let (ok, _, stderr) = run(&["worktree", "remove", "cli-work"]);
     assert!(!ok);
     assert!(stderr.contains("running session"), "{stderr}");
 
-    assert!(run(&["session", "stop", &session]).0);
+    assert!(run(&["session", "stop", &agent]).0);
     // The stop finishes asynchronously; removal succeeds once it has.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {

@@ -248,6 +248,7 @@ impl App {
             Does::PullRequestInBrowser => return self.browse_pull_request(),
             Does::ShowChanges => return self.open_changes(),
             Does::Fold => self.toggle_fold(),
+            Does::Shell => return self.toggle_shell(),
             _ => {}
         }
         Vec::new()

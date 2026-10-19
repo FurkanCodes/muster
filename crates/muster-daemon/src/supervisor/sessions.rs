@@ -272,7 +272,12 @@ impl Supervisor {
             self.timing,
             self.clock.instant(),
         );
-        // A program started again in the session keeps what came before.
+        // A program started again in the session keeps what came before,
+        // and the person's name for it.
+        let named_by_person = self
+            .live
+            .get(&session)
+            .is_some_and(|live| live.named_by_person);
         let signals = self
             .live
             .get_mut(&session)
@@ -294,6 +299,7 @@ impl Supervisor {
                 turn: None,
                 signals,
                 naming: None,
+                named_by_person,
             },
         );
         self.carry_watch(session);
@@ -618,6 +624,18 @@ impl Supervisor {
     }
 
     /// How many of a workspace's sessions are still running.
+    /// The sessions running in `workspace`, each with whether it is a
+    /// shell.
+    pub(super) fn running_in(&self, workspace: WorkspaceId) -> Vec<(SessionId, bool)> {
+        self.state
+            .sessions
+            .iter()
+            .filter(|session| session.workspace == workspace)
+            .filter(|session| self.is_running(session.id))
+            .map(|session| (session.id, session.harness == "shell"))
+            .collect()
+    }
+
     pub(super) fn running_sessions_in(&self, workspace: WorkspaceId) -> usize {
         self.state
             .sessions

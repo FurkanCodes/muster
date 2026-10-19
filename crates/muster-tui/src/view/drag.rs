@@ -28,7 +28,7 @@ pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas)
             Panel::List => areas.list,
             Panel::Session => areas.preview,
             Panel::Changes => areas.changes,
-            Panel::Shell => Rect::default(),
+            Panel::Shell => areas.shell,
         };
         if !area.is_empty() {
             outline(

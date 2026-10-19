@@ -49,7 +49,7 @@ fn muster_s_own_colours_frame_list_and_pane_and_light_what_has_the_keys() {
     let (x, y) = find(&cells, "Shell", 0);
     assert_eq!(cells[(x, y)].fg, theme.text);
     // The selected session's line in the list.
-    let selected = find(&cells, "❯ Shell", 0);
+    let selected = find(&cells, "• Shell", 0);
     assert_eq!(cells[selected].bg, theme.lit);
     // The pane is framed, square, and quiet while the list has the keys.
     let (corner, top) = find(&cells, "┌", 1);
@@ -270,7 +270,7 @@ fn on_two_lines_a_name_has_its_first_line_to_itself() {
     assert_eq!(crate::view::cut_name(&world.app), Some((37, 26)));
     let screen = render(&world.app);
     assert!(
-        screen.contains("○ ❯ Fix the login redirect lo…"),
+        screen.contains("○ • Fix the login redirect lo…"),
         "{screen}"
     );
 }

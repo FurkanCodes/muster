@@ -14,6 +14,7 @@ impl App {
     /// state, after anything changed.
     pub(super) fn settle(&mut self) -> Vec<Action> {
         self.take_wanted();
+        self.take_wanted_shell();
         self.follow_answered();
         self.keep_folds();
         self.keep_selection();
@@ -26,6 +27,18 @@ impl App {
             self.mode = Mode::Browse;
             self.full_screen = false;
         }
+        // A shell beside the session that ended goes, and the keys with it.
+        if let Some(shell) = self.shell
+            && self
+                .model
+                .session(shell)
+                .is_none_or(|stored| stored.ended_at.is_some())
+        {
+            self.shell = None;
+            if self.mode == Mode::Terminal(shell) {
+                self.mode = Mode::Browse;
+            }
+        }
         if !matches!(self.link, Link::Connected { .. }) {
             return Vec::new();
         }
@@ -34,6 +47,7 @@ impl App {
         actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
+        actions.extend(self.settle_shell());
         let told = self.tell_focus();
         let focus = self.shown_session();
         if focus == self.attached {
@@ -78,6 +92,53 @@ impl App {
             self.attached = Some(session);
         }
         actions.extend(told);
+        actions
+    }
+
+    /// Streams the shell beside the session as it is shown, at its panel's
+    /// size.
+    fn settle_shell(&mut self) -> Vec<Action> {
+        let mut actions = Vec::new();
+        let wanted = self
+            .shell_beside()
+            .filter(|_| !self.narrow() || self.typing_in_shell());
+        if wanted == self.shell_attached {
+            let size = self.shell_size();
+            if let Some(shell) = wanted
+                && self.drag.is_none()
+                && self.shell_fitted != Some(size)
+            {
+                self.screen(shell).resize(size.cols, size.rows);
+                self.shell_fitted = Some(size);
+                actions.push(Action::Send(ClientFrame::Resize {
+                    session: shell,
+                    size,
+                    pixels: self.session_pixels(size),
+                }));
+            }
+            return actions;
+        }
+        if let Some(old) = self.shell_attached.take() {
+            actions.push(Action::Send(ClientFrame::Detach { session: old }));
+        }
+        if let Some(shell) = wanted {
+            let size = self.shell_size();
+            let screen = self.screen(shell);
+            screen.resize(size.cols, size.rows);
+            let from_seq = screen.next_seq();
+            actions.push(Action::Send(ClientFrame::Resize {
+                session: shell,
+                size,
+                pixels: self.session_pixels(size),
+            }));
+            actions.push(Action::Send(ClientFrame::Attach {
+                session: shell,
+                from_seq,
+                watching: self.focused != Some(false),
+            }));
+            self.shell_attached = Some(shell);
+            self.shell_fitted = Some(size);
+        }
         actions
     }
 
