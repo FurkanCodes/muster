@@ -29,6 +29,8 @@ fn long_world() -> (World, muster_core::Session) {
         sessions: vec![long.clone(), short.clone()],
         ..Snapshot::default()
     }));
+    // Beside what each is doing, on one line, where names are cut most.
+    super::tests::one_line(&mut app);
     let world = World {
         app,
         project,

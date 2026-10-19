@@ -158,6 +158,17 @@ fn a_long_title_gives_way_so_the_status_stays_in_view() {
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(long)));
+    // On two lines, the status stays under the title cut short.
+    let screen = render(&world.app);
+    let lines: Vec<&str> = screen.lines().collect();
+    let at = lines
+        .iter()
+        .position(|line| line.contains("#11419"))
+        .expect("the session's row");
+    assert!(lines[at].contains('…'), "{screen}");
+    assert!(lines[at + 1].contains("idle"), "{screen}");
+    // On one, it stays beside it.
+    super::tests::one_line(&mut world.app);
     let screen = render(&world.app);
     let row = screen
         .lines()

@@ -8,7 +8,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{describe, look, panel, pull_request, shorten, status_symbol};
+use super::{describe, list_block, look, mark, panel, pull_request, shorten};
 use crate::app::{App, HarnessChoice, TicketRow, TicketText, Tickets};
 
 /// The most agents shown on a ticket's line; the rest are counted.
@@ -18,7 +18,7 @@ const AGENTS_SHOWN: usize = 4;
 const TITLE_KEPT: usize = 12;
 
 pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let block = panel(" Tickets ", app.list_has_keys());
+    let block = list_block(app, "tickets", app.list_has_keys());
     let rows = app.ticket_rows();
     if rows.is_empty() {
         frame.render_widget(
@@ -44,7 +44,7 @@ pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
     let list = List::new(items)
         .block(block)
-        .highlight_style(look::selected_style(app.list_has_keys()));
+        .highlight_style(look::selected_style(app, app.list_has_keys()));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
@@ -103,7 +103,7 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                 .take(AGENTS_SHOWN)
                 .flat_map(|session| {
                     // Which agent, then how it is doing.
-                    let (symbol, style) = status_symbol(session.status, app.motion_step());
+                    let (symbol, style) = mark(app, session.status);
                     [
                         look::agent_mark(app, &session.harness),
                         Span::styled(symbol, style),
@@ -150,7 +150,7 @@ pub(super) fn draw_ticket_details(frame: &mut Frame<'_>, app: &App, area: Rect) 
     frame.render_widget(
         Paragraph::new(text)
             .wrap(Wrap { trim: false })
-            .block(panel(" Ticket ", false)),
+            .block(panel(app, " Ticket ", false)),
         area,
     );
 }
@@ -293,7 +293,7 @@ fn ticket_text(
         for session in &agents {
             // Their titles all name the ticket: what tells them apart is
             // which agent each is, how it is doing and where it works.
-            let (symbol, style) = status_symbol(session.status, app.motion_step());
+            let (symbol, style) = mark(app, session.status);
             let branch = app
                 .model
                 .branch(session.workspace)

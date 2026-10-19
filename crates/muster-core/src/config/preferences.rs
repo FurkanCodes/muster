@@ -1,13 +1,15 @@
 //! Muster's own settings: the person's for all of Muster rather than any
 //! project's, in `settings.toml` beside the projects' overrides in their
-//! settings folder: whether the notch shows (`[notch] show`), and the
-//! coding agents they added (`[agents.<name>]`, [`super::agents`]). Read
-//! strictly, as a project's are; parsing does no IO.
+//! settings folder: whether the notch shows (`[notch] show`), the coding
+//! agents they added (`[agents.<name>]`, [`super::agents`]), and the UI's
+//! layout and look (`[layout]`, `[look]`). Read strictly, as a project's
+//! are; parsing does no IO.
 
 use serde::Deserialize;
 
 use super::ConfigError;
 use super::agents::{self, AgentDefinition};
+use crate::settings::{Palette, SessionLines};
 
 /// What the file is called, in the person's settings folder.
 pub const FILE_NAME: &str = "settings.toml";
@@ -28,6 +30,10 @@ pub struct MusterConfig {
     /// The fewest columns a window has for a session to sit beside the
     /// list; 0 at any width (`[layout] side_by_side_from`).
     pub side_by_side_from: u16,
+    /// Whose colours the UI draws in (`[look] colours`).
+    pub palette: Palette,
+    /// How many lines a session's line takes (`[look] session_lines`).
+    pub session_lines: SessionLines,
 }
 
 impl Default for MusterConfig {
@@ -36,6 +42,8 @@ impl Default for MusterConfig {
             notch: true,
             agents: Vec::new(),
             side_by_side_from: crate::settings::SIDE_BY_SIDE_FROM,
+            palette: Palette::default(),
+            session_lines: SessionLines::default(),
         }
     }
 }
@@ -49,6 +57,8 @@ struct File {
     agents: Option<toml::Value>,
     #[serde(default)]
     layout: Layout,
+    #[serde(default)]
+    look: Look,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -61,6 +71,13 @@ struct Notch {
 #[serde(deny_unknown_fields)]
 struct Layout {
     side_by_side_from: Option<u16>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Look {
+    colours: Option<String>,
+    session_lines: Option<u16>,
 }
 
 impl MusterConfig {
@@ -85,6 +102,20 @@ impl MusterConfig {
             })?,
             None => Vec::new(),
         };
+        let invalid = |message: &str| ConfigError::Invalid {
+            file: file.to_owned(),
+            message: message.to_owned(),
+        };
+        let palette = match read.look.colours.as_deref() {
+            None => Palette::default(),
+            Some(written) => Palette::parse(written)
+                .ok_or_else(|| invalid("look.colours must be \"muster\" or \"terminal\""))?,
+        };
+        let session_lines = match read.look.session_lines {
+            None => SessionLines::default(),
+            Some(count) => SessionLines::from_count(count)
+                .ok_or_else(|| invalid("look.session_lines must be 1 or 2"))?,
+        };
         let default = Self::default();
         Ok(Self {
             notch: read.notch.show.unwrap_or(default.notch),
@@ -93,6 +124,8 @@ impl MusterConfig {
                 .layout
                 .side_by_side_from
                 .unwrap_or(default.side_by_side_from),
+            palette,
+            session_lines,
         })
     }
 }
@@ -172,5 +205,33 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("not valid TOML"), "{error}");
+    }
+
+    #[test]
+    fn the_look_is_muster_s_own_on_two_lines_unless_written() {
+        let nothing = MusterConfig::parse(None, "f").unwrap();
+        assert_eq!(nothing.palette, Palette::Muster);
+        assert_eq!(nothing.session_lines, SessionLines::Two);
+        let written = MusterConfig::parse(
+            Some("[look]\ncolours = \"terminal\"\nsession_lines = 1\n"),
+            "f",
+        )
+        .unwrap();
+        assert_eq!(written.palette, Palette::Terminal);
+        assert_eq!(written.session_lines, SessionLines::One);
+        for (text, says) in [
+            ("[look]\ncolours = \"neon\"\n", "look.colours must be"),
+            (
+                "[look]\nsession_lines = 3\n",
+                "look.session_lines must be 1 or 2",
+            ),
+            ("[look]\ntheme = \"dark\"\n", "theme"),
+        ] {
+            let error = MusterConfig::parse(Some(text), "s.toml")
+                .unwrap_err()
+                .to_string();
+            assert!(error.starts_with("s.toml"), "{error}");
+            assert!(error.contains(says), "{error}");
+        }
     }
 }

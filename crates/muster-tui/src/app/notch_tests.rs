@@ -232,6 +232,8 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::SideBySide,
+        SettingRow::Colours,
+        SettingRow::SessionLines,
         SettingRow::Agents
     ]));
     world.app.notch_here = true;
@@ -239,6 +241,8 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Muster,
         SettingRow::Notch,
         SettingRow::SideBySide,
+        SettingRow::Colours,
+        SettingRow::SessionLines,
         SettingRow::Agents
     ]));
     world.app.daemon_protocol = NOTCH_PROTOCOL - 1;

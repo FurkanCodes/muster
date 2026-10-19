@@ -94,12 +94,12 @@ fn enter_opens_the_session_over_the_list_at_its_size_and_shift_q_goes_back() {
             .any(|action| matches!(action, Action::Send(ClientFrame::Attach { .. })))
     );
     let screen = render_in(&world.app, NARROW);
-    assert!(!screen.contains("╭ Sessions"), "{screen}");
+    assert!(!screen.contains(" projects "), "{screen}");
 
     let actions = world.app.on_key(shift_q());
     assert_eq!(world.app.mode, Mode::Browse);
     assert!(actions.contains(&Action::Send(ClientFrame::Detach { session })));
-    assert!(render_in(&world.app, NARROW).contains("╭ Sessions"));
+    assert!(render_in(&world.app, NARROW).contains(" projects "));
 }
 
 #[test]
@@ -170,6 +170,8 @@ fn the_width_is_one_of_muster_s_own_settings() {
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::SideBySide,
+        SettingRow::Colours,
+        SettingRow::SessionLines,
         SettingRow::Agents
     ]));
     world.app.settings_selected = Some(SettingRow::SideBySide);

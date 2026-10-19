@@ -1,4 +1,5 @@
-//! The top bar: Kep's face, the screens as tabs, then how the agents
+//! The top bar: Kep's face, the screens as tabs, the one shown lit in the
+//! palette's accent, then how the agents
 //! stand (working, waiting on the person, done) in their statuses'
 //! colours, the machine's memory as a bar, and the daemon's version where
 //! there is room.
@@ -8,10 +9,10 @@ use muster_core::num::fraction;
 use muster_core::protocol::ResourceReport;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 
-use super::{bytes, kep, status_symbol};
+use super::{bytes, kep, mark, theme};
 use crate::app::{App, Link, View};
 use crate::motion;
 
@@ -35,17 +36,34 @@ fn standing(app: &App, room: usize) -> Vec<Span<'static>> {
         Link::Connecting => vec![Span::from("connecting to the daemon…").dim()],
         Link::Connected { .. } if !app.model.loaded() => vec![Span::from("loading…").dim()],
         Link::Connected { daemon_version } => fleet(app, daemon_version, room),
-        Link::Lost(_) => vec![Span::from("daemon unreachable; retrying…").red()],
+        Link::Lost(_) => vec![Span::styled(
+            "daemon unreachable; retrying…",
+            Style::default().fg(theme::of(app).waiting),
+        )],
     }
 }
 
 /// What Kep's face takes at the top bar's start, with the space before it.
 const KEP_ROOM: usize = 1 + kep::FACE_WIDTH;
 
-/// The name, then the screens as tabs, the one shown lit; ⇥ goes round.
+/// Muster's name, where a bar starts: in the accent, or reversed in the
+/// terminal's own colours.
+pub(super) fn name(app: &App) -> Span<'static> {
+    let theme = theme::of(app);
+    match theme.palette {
+        muster_core::settings::Palette::Muster => {
+            Span::styled(" Muster ", Style::default().fg(theme.accent).bold())
+        }
+        muster_core::settings::Palette::Terminal => Span::from(" Muster ").bold().reversed(),
+    }
+}
+
+/// The name, then the screens as tabs, the one shown lit and the others
+/// quiet; ⇥ goes round.
 fn tabs(app: &App) -> Vec<Span<'static>> {
+    let theme = theme::of(app);
     let waiting = app.model.needs_you().len();
-    let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw(" ")];
+    let mut spans = vec![name(app), Span::raw(" ")];
     for (at, (view, name)) in [
         (View::Sessions, "Sessions"),
         (View::NeedsYou, "Needs you"),
@@ -56,18 +74,35 @@ fn tabs(app: &App) -> Vec<Span<'static>> {
     .enumerate()
     {
         if at > 0 {
-            spans.push(Span::from("│").dim());
+            spans.push(Span::raw(" "));
         }
-        let mut tab = vec![Span::raw(format!(" {name} "))];
+        let shown = app.view == view;
+        let mut tab = vec![if shown {
+            Span::raw(format!(" {name} "))
+        } else {
+            Span::styled(format!(" {name} "), theme.quiet)
+        }];
         if view == View::NeedsYou && waiting > 0 {
-            let style = Style::default().fg(Color::Red).bold();
+            let style = Style::default().fg(theme.waiting).bold();
             let style = app
                 .motion_step()
                 .map_or(style, |step| motion::pulse(style, step));
             tab.push(Span::styled(format!("{waiting} "), style));
         }
-        if app.view == view {
-            tab = tab.into_iter().map(|span| span.reversed().bold()).collect();
+        if shown {
+            let lit = theme.tab();
+            tab = tab
+                .into_iter()
+                .map(|span| {
+                    // On Muster's accent the count of what waits takes the
+                    // tab's colours: its own would not show there.
+                    let style = match theme.palette {
+                        muster_core::settings::Palette::Muster => lit,
+                        muster_core::settings::Palette::Terminal => span.style.patch(lit),
+                    };
+                    span.style(style)
+                })
+                .collect();
         }
         spans.extend(tab);
     }
@@ -78,7 +113,7 @@ fn tabs(app: &App) -> Vec<Span<'static>> {
 /// How the agents and the machine stand, as much of it as fits in
 /// `room`: counts with words, the memory, the version; then less.
 fn fleet(app: &App, daemon_version: &str, room: usize) -> Vec<Span<'static>> {
-    let memory = app.model.resources().map(memory);
+    let memory = app.model.resources().map(|report| memory(app, report));
     let version = vec![Span::from(format!("daemon {daemon_version}")).dim()];
     let candidates = [
         (true, true, true),
@@ -147,7 +182,7 @@ fn counts(app: &App, words: bool) -> Vec<Span<'static>> {
         if !spans.is_empty() {
             spans.push(Span::raw("  "));
         }
-        let (symbol, style) = status_symbol(status, app.motion_step());
+        let (symbol, style) = mark(app, status);
         let text = if words {
             format!("{symbol} {count} {word}")
         } else {
@@ -161,11 +196,13 @@ fn counts(app: &App, words: bool) -> Vec<Span<'static>> {
     spans
 }
 
-/// The machine's memory as a bar of eight cells, in green, yellow past
-/// 70% and red past 90%, with how much of how much.
-fn memory(report: &ResourceReport) -> Vec<Span<'static>> {
+/// The machine's memory as a bar of eight cells, in the colour of what
+/// went right, of work past 70% and of what waits past 90%, with how much
+/// of how much.
+fn memory(app: &App, report: &ResourceReport) -> Vec<Span<'static>> {
     const CELLS: u64 = 8;
     const PARTS: [&str; 8] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+    let theme = theme::of(app);
     let total = report.host_memory_total.max(1);
     let used = report.host_memory_used.min(total);
     let eighths = used.saturating_mul(CELLS * 8) / total;
@@ -175,9 +212,9 @@ fn memory(report: &ResourceReport) -> Vec<Span<'static>> {
     bar.push_str(part);
     let empty = usize::try_from(CELLS).unwrap_or(8) - bar.chars().count();
     let colour = match used * 100 / total {
-        0..70 => Color::Green,
-        70..90 => Color::Yellow,
-        _ => Color::Red,
+        0..70 => theme.done,
+        70..90 => theme.working,
+        _ => theme.waiting,
     };
     vec![
         Span::from("▕").dim(),

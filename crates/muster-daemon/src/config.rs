@@ -8,8 +8,8 @@ use muster_core::config::agents::AgentDefinition;
 use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::settings::{
-    MUSTER_PREFIX, NOTCH, ONLY_MINE, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange,
-    SettingSource, TICKETS_FROM_KEYS, TRACKER,
+    LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NOTCH, ONLY_MINE, PreferenceChange,
+    Preferences, SIDE_BY_SIDE, SettingChange, SettingSource, TICKETS_FROM_KEYS, TRACKER,
 };
 
 /// The repository's settings file.
@@ -139,6 +139,8 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             agents: config.agents.iter().map(AgentDefinition::added).collect(),
             problem: None,
             side_by_side_from: config.side_by_side_from,
+            palette: config.palette,
+            session_lines: config.session_lines,
         },
         agents: config.agents,
     })
@@ -164,6 +166,16 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             let (table, key) = SIDE_BY_SIDE;
             let columns = i64::from(*columns);
             edit::set_number_in(text.as_deref(), preferences::NEW_FILE, table, key, columns)
+        }
+        PreferenceChange::Palette(palette) => {
+            let (table, key) = LOOK_COLOURS;
+            let value = palette.key();
+            edit::set_text_in(text.as_deref(), preferences::NEW_FILE, table, key, value)
+        }
+        PreferenceChange::SessionLines(lines) => {
+            let (table, key) = LOOK_SESSION_LINES;
+            let count = i64::from(lines.count());
+            edit::set_number_in(text.as_deref(), preferences::NEW_FILE, table, key, count)
         }
     }
     .map_err(|error| invalid(error.to_string()))?;
@@ -275,6 +287,39 @@ mod tests {
         );
         change_preference(&config_dir, &PreferenceChange::SideBySideFrom(0)).unwrap();
         assert_eq!(preferences(&config_dir).unwrap().side_by_side_from, 0);
+    }
+
+    #[test]
+    fn the_look_is_the_person_s_own_and_written_beside_the_rest() {
+        use muster_core::settings::{Palette, SessionLines};
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(&file, "[layout]\nside_by_side_from = 120 # mine\n").unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert_eq!(
+            (read.palette, read.session_lines),
+            (Palette::Muster, SessionLines::Two)
+        );
+        change_preference(&config_dir, &PreferenceChange::Palette(Palette::Terminal)).unwrap();
+        change_preference(
+            &config_dir,
+            &PreferenceChange::SessionLines(SessionLines::One),
+        )
+        .unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert_eq!(
+            (read.palette, read.session_lines, read.side_by_side_from),
+            (Palette::Terminal, SessionLines::One, 120)
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "[layout]\nside_by_side_from = 120 # mine\n\n[look]\ncolours = \"terminal\"\n\
+             session_lines = 1\n"
+        );
+        change_preference(&config_dir, &PreferenceChange::Palette(Palette::Muster)).unwrap();
+        assert_eq!(preferences(&config_dir).unwrap().palette, Palette::Muster);
     }
 
     #[test]

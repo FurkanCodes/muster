@@ -4,13 +4,13 @@
 use muster_core::protocol::DetachReason;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
-use ratatui::style::Stylize;
+use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use std::fmt::Write as _;
 use tui_term::widget::PseudoTerminal;
 
-use super::{look, panel, selection, status_symbol, usage_text};
+use super::{look, mark, panel, selection, usage_text};
 use crate::app::App;
 
 /// A session's terminal beside the list: watched there, or `typing` into
@@ -29,7 +29,8 @@ pub(super) fn draw_session(
         .screens
         .get(&session)
         .map_or(0, crate::screen::Screen::scrolled_back);
-    let mut title = format!(" {} · {} ", stored.title, look::doing(stored));
+    // Its name stands out; what follows is quieter.
+    let mut title = format!("· {} ", look::doing(stored));
     if let Some(time) = look::session_time(app, stored) {
         let _ = write!(title, "· {time} ");
     }
@@ -44,7 +45,22 @@ pub(super) fn draw_session(
     } else if typing {
         title.push_str("· Shift-Q back to the list ");
     }
-    let block = panel(title, typing);
+    let theme = super::theme::of(app);
+    let name = if typing {
+        Style::default().fg(theme.accent)
+    } else {
+        Style::default().fg(theme.text)
+    };
+    let title = Line::from(vec![
+        Span::raw(" "),
+        Span::styled(
+            format!("{} ", stored.title),
+            name.add_modifier(Modifier::BOLD)
+                .remove_modifier(Modifier::DIM),
+        ),
+        Span::styled(title, theme.quiet),
+    ]);
+    let block = panel(app, title, typing);
     match app.screens.get(&session) {
         Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
             frame.render_widget(
@@ -90,9 +106,9 @@ pub(super) fn draw_terminal(
     area: Rect,
 ) {
     let [top, body] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
-    let mut spans = vec![Span::from(" Muster ").bold().reversed(), Span::raw(" ")];
+    let mut spans = vec![super::top_bar::name(app), Span::raw(" ")];
     if let Some(stored) = app.model.session(session) {
-        let (symbol, style) = status_symbol(stored.status, app.motion_step());
+        let (symbol, style) = mark(app, stored.status);
         spans.push(Span::styled(symbol, style));
         spans.push(Span::raw(format!(" {}  ", stored.title)));
         spans.push(Span::from(look::doing(stored).into_owned()).dim());

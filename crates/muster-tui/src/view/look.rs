@@ -1,7 +1,7 @@
 //! The look shared by every screen: each project's colour and the edge
 //! drawn in it, the selected line, how long ago something happened, the
-//! agents' letters, and Muster's wordmark. Colours are the terminal's own
-//! sixteen, so they follow the person's theme.
+//! agents' letters, and Muster's wordmark, in the person's palette
+//! ([`super::theme`]).
 
 use std::borrow::Cow;
 
@@ -11,19 +11,8 @@ use ratatui::text::Span;
 
 use crate::app::App;
 
-/// The projects' colours, in the order the projects are listed: apart
-/// from the statuses' yellow, red and green, so a project never reads as
-/// a status.
-const PROJECT_COLOURS: [Color; 6] = [
-    Color::Blue,
-    Color::Magenta,
-    Color::Cyan,
-    Color::LightBlue,
-    Color::LightMagenta,
-    Color::LightCyan,
-];
-
-/// The colour of `project`: steady while the list of projects is.
+/// The colour of `project`, of the palette's (`Theme::projects`): steady
+/// while the list of projects is.
 pub(crate) fn project_colour(app: &App, project: ProjectId) -> Color {
     let at = app
         .model
@@ -31,7 +20,8 @@ pub(crate) fn project_colour(app: &App, project: ProjectId) -> Color {
         .iter()
         .position(|found| found.id == project)
         .unwrap_or(0);
-    PROJECT_COLOURS[at % PROJECT_COLOURS.len()]
+    let colours = super::theme::of(app).projects;
+    colours[at % colours.len()]
 }
 
 /// The edge at the start of a line that belongs to `project`, in its
@@ -46,9 +36,9 @@ pub(crate) fn edge(app: &App, project: Option<ProjectId>, selected: bool) -> Spa
 
 /// How the selected line of a list is drawn: a soft tint, its text at
 /// full strength, and bold where the list has the keys.
-pub(crate) fn selected_style(focused: bool) -> Style {
+pub(crate) fn selected_style(app: &App, focused: bool) -> Style {
     let style = Style::default()
-        .bg(Color::DarkGray)
+        .bg(super::theme::of(app).tint)
         .remove_modifier(Modifier::DIM);
     if focused {
         style.add_modifier(Modifier::BOLD)

@@ -302,11 +302,12 @@ pub(crate) fn draw_welcome(frame: &mut Frame<'_>, app: &App, area: Rect) {
 /// and `under`, then `more` below.
 pub(crate) fn draw_empty_pane(
     frame: &mut Frame<'_>,
+    app: &App,
     area: Rect,
     under: &str,
     more: &[&'static str],
 ) {
-    let block = panel(" Details ", false);
+    let block = panel(app, " Details ", false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let room = Rect {
