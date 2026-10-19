@@ -2,7 +2,7 @@
 //! never takes focus, above the menu bar on every Space, flush with the top
 //! of the screen, black like the notch. At rest it is the notch's own height
 //! with a slim side either side, the counts in them, so they read as part
-//! of the notch; pointed at a moment, it springs open downwards into the
+//! of the notch; pointed at a moment, it eases open downwards into the
 //! list (`list`), in the shape and motion of `shape`, in the colours of
 //! `look`.
 //!
@@ -45,9 +45,10 @@ use look::{Colour, Label};
 
 /// How long a note stays under the list, in steps: three seconds.
 const NOTE_STEPS: u64 = 30;
-/// How long the list takes to close, in steps, before the panel is made
-/// small again.
-const CLOSING_STEPS: u64 = 4;
+/// The most lines the list has: its rows, how many more, and a note. The
+/// panel is as big as the list with these, whatever it shows, so it never
+/// changes size as the shape moves within it.
+const MOST_LINES: usize = crate::board::MOST_ROWS + 2;
 /// How many times a new question's count fades down and back.
 const PULSES: f32 = 4.0;
 
@@ -204,8 +205,6 @@ enum Drawn {
     Rest,
     /// Open, with this many lines.
     Open(usize),
-    /// Closing from open with this many lines, made small at the step.
-    Closing { lines: usize, small_at: u64 },
 }
 
 /// The notch on screen.
@@ -224,6 +223,8 @@ struct Screen {
     said: Option<(String, u64)>,
     hover: Hover,
     drawn: Drawn,
+    /// Where the panel is, once placed.
+    placed: Option<Rect>,
     /// A new question came, for the count to draw the eye to.
     asked_anew: bool,
     /// Where the notch was when last drawn.
@@ -260,6 +261,8 @@ impl Screen {
         panel.setHasShadow(false);
         panel.setMovable(false);
         panel.setHidesOnDeactivate(false);
+        // Clicks pass through to what is under it, but where it is drawn.
+        panel.setIgnoresMouseEvents(true);
 
         let view = NotchView::new(mtm);
         view.setWantsLayer(true);
@@ -287,6 +290,7 @@ impl Screen {
             said: None,
             hover: Hover::default(),
             drawn: Drawn::Hidden,
+            placed: None,
             asked_anew: false,
             notch: None,
             picks,
@@ -330,79 +334,75 @@ impl Screen {
         let open = self
             .hover
             .at(notch.over(self.hover.is_open(), lines, point), self.step);
-        let frame = self.shape_for(notch, open, lines);
+        let frame = self.place(notch);
+        self.reshape(notch, frame, open.then_some(lines));
+        // It takes clicks only where it is drawn.
+        self.panel
+            .setIgnoresMouseEvents(!notch.over(open, lines, point));
         self.draw_sides(notch, frame);
-        let listed = match self.drawn {
-            Drawn::Open(lines) | Drawn::Closing { lines, .. } => Some(lines),
-            Drawn::Hidden | Drawn::Rest => None,
+        let shown = match self.drawn {
+            Drawn::Open(lines) => lines,
+            // Closing, the list is drawn as it was until it has faded.
+            Drawn::Hidden | Drawn::Rest => lines,
         };
-        self.list.draw(listed.map(|lines| list::Drawn {
+        self.list.draw(&list::Drawn {
             board: &self.board,
             notch,
             frame,
-            lines,
-            pointed: notch.line_at(lines, point).filter(|_| open),
+            lines: shown,
+            pointed: notch.line_at(shown, point).filter(|_| open),
             note: self.said.as_ref().map(|(text, _)| text.as_str()),
-        }));
-        if self.drawn == Drawn::Hidden {
-            self.drawn = Drawn::Rest;
-        }
+        });
         if !self.panel.isVisible() {
             self.panel.orderFrontRegardless();
         }
     }
 
-    /// Puts the panel where it goes and gives it its shape, open with
-    /// `lines` lines or at rest, springing from what it was; returns where
-    /// it is.
-    fn shape_for(&mut self, notch: Notch, open: bool, lines: usize) -> Rect {
-        let (frame, from, drawn) = if open {
-            let frame = notch.open(lines);
-            let from = match self.drawn {
-                Drawn::Open(before) if before == lines => return frame,
-                Drawn::Open(before) => Some(notch.outline(Some(before), frame)),
-                Drawn::Hidden => None,
-                Drawn::Rest | Drawn::Closing { .. } => Some(notch.outline(None, frame)),
-            };
-            (frame, from, Drawn::Open(lines))
-        } else {
-            match self.drawn {
-                Drawn::Open(before) => {
-                    // Shrunk in the panel as it is, made small once closed.
-                    let frame = notch.open(before);
-                    let small_at = self.step + CLOSING_STEPS;
-                    let to = notch.outline(None, frame);
-                    self.shape
-                        .set(frame, &to, Some(&notch.outline(Some(before), frame)));
-                    self.drawn = Drawn::Closing {
-                        lines: before,
-                        small_at,
-                    };
-                    return frame;
-                }
-                Drawn::Closing { lines, small_at }
-                    if self.step < small_at && !shape::reduce_motion() =>
-                {
-                    return notch.open(lines);
-                }
-                Drawn::Rest => return notch.rest(),
-                Drawn::Hidden | Drawn::Closing { .. } => (notch.rest(), None, Drawn::Rest),
+    /// Puts the panel where it goes, as big as the list at its longest, its
+    /// top at the screen's edge; returns where it is.
+    fn place(&mut self, notch: Notch) -> Rect {
+        let frame = notch.open(MOST_LINES);
+        if self.placed != Some(frame) {
+            self.panel.setFrame_display(ns_rect(frame), true);
+            self.shape.place(frame);
+            self.placed = Some(frame);
+            // A new place: the shape is drawn afresh there.
+            if self.drawn != Drawn::Hidden {
+                self.drawn = Drawn::Rest;
+                self.shape.set(&notch.outline(None, frame), None);
             }
-        };
-        self.panel.setFrame_display(ns_rect(frame), true);
-        self.shape.set(
-            frame,
-            &notch.outline(matches!(drawn, Drawn::Open(_)).then_some(lines), frame),
-            from.as_deref(),
-        );
-        self.drawn = drawn;
+        }
         frame
+    }
+
+    /// Gives the panel its shape, open with `lines` lines or at rest,
+    /// moving from the shape it has.
+    fn reshape(&mut self, notch: Notch, frame: Rect, open: Option<usize>) {
+        let wanted = open.map_or(Drawn::Rest, Drawn::Open);
+        if wanted == self.drawn {
+            return;
+        }
+        let motion = match (self.drawn, wanted) {
+            (Drawn::Hidden, _) => None,
+            (Drawn::Open(_), Drawn::Open(_)) => Some(shape::Motion::Resize),
+            (_, Drawn::Open(_)) => Some(shape::Motion::Open),
+            _ => Some(shape::Motion::Close),
+        };
+        self.shape.set(&notch.outline(open, frame), motion);
+        match (self.drawn, wanted) {
+            (Drawn::Open(_), Drawn::Open(_)) => {}
+            (_, Drawn::Open(_)) => self.list.reveal(),
+            (Drawn::Open(_), _) => self.list.conceal(),
+            _ => {}
+        }
+        self.drawn = wanted;
     }
 
     fn hide(&mut self) {
         if self.drawn != Drawn::Hidden {
             self.panel.orderOut(None);
             self.drawn = Drawn::Hidden;
+            self.list.conceal();
         }
         self.hover.close();
         if let Some(layer) = self.breath.layer() {

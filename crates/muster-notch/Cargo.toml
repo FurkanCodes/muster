@@ -48,6 +48,7 @@ objc2-core-graphics = { workspace = true, features = ["CGPath"] }
 objc2-foundation = { workspace = true, features = ["NSArray", "NSData", "NSEnumerator", "NSGeometry", "NSString", "NSThread", "NSValue"] }
 objc2-quartz-core = { workspace = true, features = [
     "CAAnimation",
+    "CABase",
     "CALayer",
     "CAMediaTiming",
     "CAMediaTimingFunction",

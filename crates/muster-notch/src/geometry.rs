@@ -20,19 +20,19 @@ use muster_core::num::{fraction, round_u64};
 pub const SIDE: f64 = 30.0;
 /// A listed session: its title and time, then its project and what it is
 /// doing.
-pub const LINE: f64 = 34.0;
+pub const LINE: f64 = 42.0;
 /// Space above and below the list.
-pub const PAD: f64 = 6.0;
+pub const PAD: f64 = 10.0;
 /// The list's width once open, below the menu bar's row.
-pub const LIST_WIDTH: f64 = 340.0;
+pub const LIST_WIDTH: f64 = 360.0;
 /// How far the curve where the panel meets the screen's top edge reaches
 /// out either side.
 pub const SHOULDER: f64 = 6.0;
 /// The bottom corners' radius at rest, and open.
 pub const RADIUS: f64 = 10.0;
-pub const RADIUS_OPEN: f64 = 14.0;
+pub const RADIUS_OPEN: f64 = 18.0;
 /// The curve where the open list meets the notch's row.
-pub const STEP: f64 = 8.0;
+pub const STEP: f64 = 10.0;
 
 /// A rectangle in screen coordinates.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -301,10 +301,10 @@ mod tests {
         let notch = find(&[macbook()]).unwrap();
         for lines in [1, 3, 9] {
             let list = notch.list(lines);
-            assert_eq!((list.x, list.width), (586.0, LIST_WIDTH), "{lines} lines");
+            assert_eq!((list.x, list.width), (576.0, LIST_WIDTH), "{lines} lines");
             assert!((list.max_y() - 950.0).abs() < f64::EPSILON, "under the row");
             let open = notch.open(lines);
-            assert_eq!((open.x, open.width), (586.0, LIST_WIDTH));
+            assert_eq!((open.x, open.width), (576.0, LIST_WIDTH));
             assert!(
                 (open.max_y() - 982.0).abs() < f64::EPSILON,
                 "flush with the top"
@@ -322,13 +322,13 @@ mod tests {
         assert_eq!(notch.line_at(3, (756.0, top - 1.0)), Some(0));
         assert_eq!(notch.line_at(3, (756.0, top - LINE - 1.0)), Some(1));
         // Wider than the notch, the list's sides are its lines too.
-        assert_eq!(notch.line_at(3, (590.0, top - 1.0)), Some(0));
+        assert_eq!(notch.line_at(3, (580.0, top - 1.0)), Some(0));
         // The notch's row, the list's padding, past the last line, or off
         // the list: no line.
         assert_eq!(notch.line_at(3, (756.0, 970.0)), None);
         assert_eq!(notch.line_at(3, (756.0, top + 1.0)), None);
         assert_eq!(notch.line_at(3, (756.0, top - 3.0 * LINE - 1.0)), None);
-        assert_eq!(notch.line_at(3, (580.0, top - 1.0)), None);
+        assert_eq!(notch.line_at(3, (570.0, top - 1.0)), None);
     }
 
     #[test]

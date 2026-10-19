@@ -1,27 +1,53 @@
 //! The panel's shape and its motion, through Core Animation: the outline
-//! `geometry` works out, as the mask of the panel's black, sprung from
-//! rest to open and back; and the few marks that move, which Core
-//! Animation moves without waking the program. Under the person's Reduce
-//! Motion setting nothing springs, pulses or breathes.
+//! `geometry` works out, as the mask of the panel's black, eased from rest
+//! to open and back, each change starting from wherever the shape is on
+//! screen, so a change of mind halfway never jumps; and the few things
+//! that move, which Core Animation moves without waking the program. Under
+//! the person's Reduce Motion setting the shape changes at once, the list
+//! only fades, and nothing pulses or breathes.
 
-use objc2::AnyThread;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSView, NSWorkspace};
 use objc2_core_foundation::CFRetained;
 use objc2_core_graphics::{CGMutablePath, CGPath};
-use objc2_foundation::NSString;
+use objc2_foundation::{NSNumber, NSString};
 use objc2_quartz_core::{
-    CABasicAnimation, CALayer, CAMediaTiming, CAShapeLayer, CASpringAnimation, CATransaction,
+    CABasicAnimation, CACurrentMediaTime, CALayer, CAMediaTiming, CAMediaTimingFunction,
+    CAShapeLayer, CATransaction, kCAFillModeBackwards,
 };
 
 use crate::geometry::{Rect, Segment};
 
-/// How long the panel takes to open or close, as the person sees it.
-const SPRING: f64 = 0.35;
+/// How a change of shape moves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Motion {
+    /// Opening: a layout change, eased out.
+    Open,
+    /// Closing: quicker, as a way out is.
+    Close,
+    /// The list growing or shrinking while open.
+    Resize,
+}
+
+impl Motion {
+    /// How long it takes, in seconds.
+    fn seconds(self) -> f64 {
+        match self {
+            Self::Open => 0.32,
+            Self::Close => 0.24,
+            Self::Resize => 0.2,
+        }
+    }
+}
 
 /// Whether the person asks for less motion.
 pub(super) fn reduce_motion() -> bool {
     NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
+}
+
+/// An ease out that settles softly: quick to start, no overshoot.
+fn ease_out() -> Retained<CAMediaTimingFunction> {
+    CAMediaTimingFunction::functionWithControlPoints(0.22, 1.0, 0.36, 1.0)
 }
 
 /// `outline` as a path.
@@ -67,34 +93,47 @@ impl Shape {
         Self { mask }
     }
 
-    /// The shape `outline`, in a view of `size`: sprung from `from` where
-    /// given (an outline of as many parts), else at once.
-    pub(super) fn set(&self, size: Rect, outline: &[Segment], from: Option<&[Segment]>) {
-        let to = path(outline);
+    /// The mask fills a panel of `size`.
+    pub(super) fn place(&self, size: Rect) {
         quietly(|| {
             self.mask
                 .setFrame(super::ns_rect(Rect::new(0.0, 0.0, size.width, size.height)));
-            self.mask.setPath(Some(&to));
         });
-        let Some(from) = from.filter(|_| !reduce_motion()) else {
+    }
+
+    /// The shape `outline`: moved to as `motion` says, from the shape on
+    /// screen now, or at once.
+    pub(super) fn set(&self, outline: &[Segment], motion: Option<Motion>) {
+        let to = path(outline);
+        let from = motion
+            .filter(|_| !reduce_motion())
+            .and_then(|_| self.on_screen());
+        quietly(|| self.mask.setPath(Some(&to)));
+        let (Some(motion), Some(from)) = (motion, from) else {
             self.mask.removeAllAnimations();
             return;
         };
-        let from = path(from);
-        let spring = CASpringAnimation::initWithPerceptualDuration_bounce(
-            CASpringAnimation::alloc(),
-            SPRING,
-            0.0,
-        );
-        spring.setKeyPath(Some(&NSString::from_str("path")));
+        let change = CABasicAnimation::animationWithKeyPath(Some(&NSString::from_str("path")));
         let (from, to): (&CGPath, &CGPath) = (&from, &to);
         // SAFETY: a path animation's values are paths, as these are.
-        unsafe { spring.setFromValue(Some(from.as_ref())) };
+        unsafe { change.setFromValue(Some(from.as_ref())) };
         // SAFETY: as above.
-        unsafe { spring.setToValue(Some(to.as_ref())) };
-        spring.setDuration(spring.settlingDuration());
+        unsafe { change.setToValue(Some(to.as_ref())) };
+        change.setDuration(motion.seconds());
+        change.setTimingFunction(Some(&ease_out()));
         self.mask
-            .addAnimation_forKey(&spring, Some(&NSString::from_str("shape")));
+            .addAnimation_forKey(&change, Some(&NSString::from_str("shape")));
+    }
+
+    /// The shape as drawn this moment, partway through a change or not.
+    fn on_screen(&self) -> Option<Retained<CGPath>> {
+        // SAFETY: the presentation layer is only read, as Core Animation
+        // asks of it.
+        let shown = unsafe { self.mask.presentationLayer() }
+            .and_then(|layer| layer.downcast::<CAShapeLayer>().ok());
+        shown
+            .and_then(|layer| layer.path())
+            .or_else(|| self.mask.path())
     }
 }
 
@@ -107,6 +146,54 @@ fn quietly(change: impl FnOnce()) {
 }
 
 const MOTION: &str = "motion";
+
+/// Fades `view` in, `after` seconds from now, sliding down a little into
+/// place: a line of the list appearing. Under Reduce Motion, only fades.
+pub(super) fn appear(view: &NSView, after: f64) {
+    view.setAlphaValue(1.0);
+    let Some(layer) = view.layer() else {
+        return;
+    };
+    let start = CACurrentMediaTime() + after;
+    let fade = number_animation("opacity", 0.0, 1.0, 0.22, start);
+    layer.addAnimation_forKey(&fade, Some(&NSString::from_str("appear")));
+    if !reduce_motion() {
+        let slide = number_animation("transform.translation.y", 5.0, 0.0, 0.26, start);
+        layer.addAnimation_forKey(&slide, Some(&NSString::from_str("slide")));
+    }
+}
+
+/// Fades `view` out quickly: the list going.
+pub(super) fn disappear(view: &NSView) {
+    view.setAlphaValue(0.0);
+    if let Some(layer) = view.layer() {
+        let fade = number_animation("opacity", 1.0, 0.0, 0.12, CACurrentMediaTime());
+        layer.addAnimation_forKey(&fade, Some(&NSString::from_str("appear")));
+    }
+}
+
+/// `key` going from `from` to `to` in `seconds`, eased out, from `start`
+/// (in Core Animation's time), showing `from` until then.
+fn number_animation(
+    key: &str,
+    from: f64,
+    to: f64,
+    seconds: f64,
+    start: f64,
+) -> Retained<CABasicAnimation> {
+    let change = CABasicAnimation::animationWithKeyPath(Some(&NSString::from_str(key)));
+    let (from, to) = (NSNumber::new_f64(from), NSNumber::new_f64(to));
+    // SAFETY: these animations' values are numbers, as these are.
+    unsafe { change.setFromValue(Some(&from)) };
+    // SAFETY: as above.
+    unsafe { change.setToValue(Some(&to)) };
+    change.setDuration(seconds);
+    change.setBeginTime(start);
+    // SAFETY: a fill mode Core Animation itself defines.
+    change.setFillMode(unsafe { kCAFillModeBackwards });
+    change.setTimingFunction(Some(&ease_out()));
+    change
+}
 
 /// Fades `layer` down and back up `times` times, for a new question.
 pub(super) fn pulse(layer: &CALayer, times: f32) {
@@ -137,10 +224,7 @@ fn fade(layer: &CALayer, down_to: f64, each: f64, times: f32) {
         return;
     }
     let fade = CABasicAnimation::animationWithKeyPath(Some(&NSString::from_str("opacity")));
-    let (from, to) = (
-        objc2_foundation::NSNumber::new_f64(1.0),
-        objc2_foundation::NSNumber::new_f64(down_to),
-    );
+    let (from, to) = (NSNumber::new_f64(1.0), NSNumber::new_f64(down_to));
     // SAFETY: an opacity animation's values are numbers, as these are.
     unsafe { fade.setFromValue(Some(&from)) };
     // SAFETY: as above.
@@ -148,5 +232,9 @@ fn fade(layer: &CALayer, down_to: f64, each: f64, times: f32) {
     fade.setDuration(each);
     fade.setAutoreverses(true);
     fade.setRepeatCount(times);
+    // Eased both ways, so the fade has no corners.
+    fade.setTimingFunction(Some(&CAMediaTimingFunction::functionWithControlPoints(
+        0.37, 0.0, 0.63, 1.0,
+    )));
     layer.addAnimation_forKey(&fade, Some(&NSString::from_str(MOTION)));
 }
