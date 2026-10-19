@@ -4,8 +4,10 @@
 //! The notch shows only while the person looks at no Muster window and an
 //! agent works or waits on them (a question asked, or news not yet seen),
 //! and only while Muster's own settings have it on. Level with the notch,
-//! the counts: what waits on the person, and what works; pointed at, the
-//! sessions that wait on the person, oldest first, then those working.
+//! the counts: on the left the questions asked of the person, and on the
+//! right what works, or once nothing works, what finished unseen; pointed
+//! at, the sessions that wait on the person, oldest first, then those
+//! working.
 
 use muster_core::protocol::Snapshot;
 use muster_core::{Session, SessionId, SessionStatus, Timestamp, WaitReason};
@@ -20,8 +22,12 @@ pub struct Board {
     pub shown: bool,
     /// Agents working.
     pub working: usize,
-    /// Sessions waiting on the person: asking, or with news not yet seen.
-    pub waiting: usize,
+    /// Sessions asking the person something.
+    pub asking: usize,
+    /// Sessions with news the person has not seen, asking nothing.
+    pub news: usize,
+    /// Every session asking, listed or not, to tell a new question.
+    pub askers: Vec<SessionId>,
     /// Those waiting, then those working, at most [`MOST_ROWS`].
     pub rows: Vec<Row>,
     /// Sessions waiting or working beyond the rows.
@@ -33,6 +39,8 @@ pub struct Board {
 pub struct Row {
     pub session: SessionId,
     pub mark: Mark,
+    /// The harness it runs, which picks its logo.
+    pub harness: String,
     pub project: String,
     /// The project's place among the projects, which picks its colour, as
     /// in the UI.
@@ -77,7 +85,13 @@ impl Board {
         Self {
             shown: connected && busy && !state.looked_at && state.preferences.notch,
             working: working.len(),
-            waiting: waiting.len(),
+            asking: waiting.iter().filter(|session| asks(session)).count(),
+            news: waiting.iter().filter(|session| !asks(session)).count(),
+            askers: waiting
+                .iter()
+                .filter(|session| asks(session))
+                .map(|session| session.id)
+                .collect(),
             rows: listed
                 .iter()
                 .take(MOST_ROWS)
@@ -92,10 +106,29 @@ impl Board {
         Self {
             shown: false,
             working: 0,
-            waiting: 0,
+            asking: 0,
+            news: 0,
+            askers: Vec::new(),
             rows: Vec::new(),
             more: 0,
         }
+    }
+
+    /// Whether a session asks now that did not in `before`: a new question,
+    /// which the notch draws the eye to for a moment.
+    pub fn asks_anew(&self, before: &Self) -> bool {
+        self.shown
+            && self
+                .askers
+                .iter()
+                .any(|session| !before.askers.contains(session))
+    }
+
+    /// The first row working where rows waiting on the person come before
+    /// it: where the list's two groups meet.
+    pub fn first_working(&self) -> Option<usize> {
+        let at = self.rows.iter().position(|row| row.mark == Mark::Working)?;
+        (at > 0).then_some(at)
     }
 }
 
@@ -137,6 +170,7 @@ fn row(state: &Snapshot, session: &Session, now: Timestamp) -> Row {
     Row {
         session: session.id,
         mark,
+        harness: session.harness.clone(),
         project: printable(&name),
         colour,
         title: printable(&session.title),
@@ -272,7 +306,7 @@ mod tests {
             .push(session(work, "busy", SessionStatus::Running, false, 0));
         let shown = board(&state);
         assert!(shown.shown);
-        assert_eq!((shown.working, shown.waiting), (1, 0));
+        assert_eq!((shown.working, shown.asking, shown.news), (1, 0, 0));
 
         // A Muster window looked at, the setting off, or no daemon: hidden.
         state.looked_at = true;
@@ -293,7 +327,7 @@ mod tests {
         state.sessions[1].unseen = true;
         let news = board(&state);
         assert!(news.shown);
-        assert_eq!((news.working, news.waiting), (0, 1));
+        assert_eq!((news.working, news.asking, news.news), (0, 0, 1));
     }
 
     #[test]
@@ -322,7 +356,36 @@ mod tests {
         assert_eq!(board.rows[3].doing, "editing view.rs");
         assert_eq!(board.rows[3].project, "lamphaus");
         assert_eq!(board.rows[3].colour, 1);
-        assert_eq!((board.working, board.waiting), (1, 3));
+        assert_eq!((board.working, board.asking, board.news), (1, 1, 2));
+        assert_eq!(board.rows[0].harness, "claude");
+        assert_eq!(board.first_working(), Some(3));
+    }
+
+    #[test]
+    fn a_new_question_is_told_from_one_asked_before() {
+        let (mut state, work) = state();
+        let asking = SessionStatus::NeedsYou {
+            reason: WaitReason::Question,
+        };
+        state
+            .sessions
+            .push(session(work, "first", asking, false, 10));
+        let before = board(&state);
+        assert!(before.asks_anew(&Board::hidden()));
+        assert!(!before.asks_anew(&before), "the same question");
+        // Another asks: new. One stops asking: nothing new.
+        state
+            .sessions
+            .push(session(work, "second", asking, false, 20));
+        let after = board(&state);
+        assert!(after.asks_anew(&before));
+        assert!(!before.asks_anew(&after));
+        // News is no question, and a hidden notch draws no eye.
+        let mut news = state.clone();
+        news.sessions = vec![session(work, "done", SessionStatus::Finished, true, 5)];
+        assert!(!board(&news).asks_anew(&Board::hidden()));
+        state.looked_at = true;
+        assert!(!board(&state).asks_anew(&Board::hidden()));
     }
 
     #[test]

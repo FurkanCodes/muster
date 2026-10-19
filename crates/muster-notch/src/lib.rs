@@ -7,12 +7,13 @@
 //!
 //! The notch is a client of the daemon like the UI: it learns everything
 //! from the daemon's state and changes nothing but through its commands.
-//! [`board`] (what to show) and [`geometry`] (where) are pure and tested
-//! anywhere; `link` follows the daemon; `mac` draws through AppKit and
+//! [`board`] (what to show), [`geometry`] (where) and [`hover`] (when the
+//! list opens) are pure and tested anywhere; `link` follows the daemon; `mac` draws through AppKit and
 //! holds the crate's only `unsafe` code (`ARC-12`).
 
 pub mod board;
 pub mod geometry;
+pub mod hover;
 // The link to the daemon and its copy of the state serve only the screen,
 // which is a Mac's; the copy is tested anywhere.
 #[cfg(target_os = "macos")]
