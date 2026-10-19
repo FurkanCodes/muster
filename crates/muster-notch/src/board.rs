@@ -6,13 +6,19 @@
 //! and only while Muster's own settings have it on. Level with the notch,
 //! the counts: on the left the questions asked of the person, and on the
 //! right what works, or once nothing works, what finished unseen; pointed
-//! at, the sessions that wait on the person, oldest first, then those
-//! working.
+//! at, the sessions that ask the person something, oldest first, then the
+//! trouble in the work (`trouble`: conflicts, failed checks), then the
+//! sessions with news, then those working. Each line of a session ends
+//! with what its work comes to. What newly needs the person (a question,
+//! a conflict, failed checks) is told from what did before, for the notch
+//! to show it a moment unasked.
 
 use muster_core::protocol::Snapshot;
 use muster_core::{Session, SessionId, SessionStatus, Timestamp, WaitReason};
 
-/// The most sessions listed; the rest are counted.
+use crate::trouble::{self, Key};
+
+/// The most lines listed; the rest are counted.
 pub const MOST_ROWS: usize = 8;
 
 /// What the notch shows now.
@@ -26,17 +32,23 @@ pub struct Board {
     pub asking: usize,
     /// Sessions with news the person has not seen, asking nothing.
     pub news: usize,
-    /// Every session asking, listed or not, to tell a new question.
-    pub askers: Vec<SessionId>,
+    /// Trouble in the work: conflicts and failed checks.
+    pub troubles: usize,
+    /// Everything that needs the person, listed or not: the sessions
+    /// asking, and the trouble; to tell what is new.
+    pub alerts: Vec<Key>,
     /// Those waiting, then those working, at most [`MOST_ROWS`].
     pub rows: Vec<Row>,
     /// Sessions waiting or working beyond the rows.
     pub more: usize,
 }
 
-/// One session listed.
+/// One line listed: a session, or trouble in the work.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
+    /// What the line is of, to tell it again as the state changes.
+    pub key: Key,
+    /// The session a click on it shows.
     pub session: SessionId,
     pub mark: Mark,
     /// The harness it runs, which picks its logo.
@@ -49,11 +61,13 @@ pub struct Row {
     /// What it is doing: its activity while it works or asks, else what
     /// waits.
     pub doing: String,
-    /// How long it has been so: `12s`, `4m`, `2h`.
+    /// How long it has been so: `12s`, `4m`, `2h`; nothing for trouble.
     pub since: String,
+    /// What its work comes to: `+120 −30  #88 ✗`.
+    pub work: String,
 }
 
-/// What a listed session's mark says.
+/// What a listed line's mark says.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mark {
     /// It asks the person something.
@@ -62,6 +76,10 @@ pub enum Mark {
     News,
     /// It works.
     Working,
+    /// Two workspaces' work would conflict.
+    Conflict,
+    /// A pull request's checks failed.
+    ChecksFailed,
 }
 
 impl Board {
@@ -81,23 +99,34 @@ impl Board {
             .filter(|session| session.status == SessionStatus::Running && !waits(session))
             .collect();
         let busy = !waiting.is_empty() || !working.is_empty();
-        let listed: Vec<&Session> = waiting.iter().chain(&working).copied().collect();
+        let (asking, news): (Vec<&Session>, Vec<&Session>) =
+            waiting.iter().partition(|session| asks(session));
+        let troubles = trouble::troubles(state);
+        let mut rows: Vec<Row> = asking
+            .iter()
+            .map(|session| row(state, session, now))
+            .chain(troubles.iter().map(|found| trouble_row(state, found)))
+            .chain(
+                news.iter()
+                    .chain(&working)
+                    .map(|session| row(state, session, now)),
+            )
+            .collect();
+        let more = rows.len().saturating_sub(MOST_ROWS);
+        rows.truncate(MOST_ROWS);
         Self {
             shown: connected && busy && !state.looked_at && state.preferences.notch,
             working: working.len(),
-            asking: waiting.iter().filter(|session| asks(session)).count(),
-            news: waiting.iter().filter(|session| !asks(session)).count(),
-            askers: waiting
+            asking: asking.len(),
+            news: news.len(),
+            troubles: troubles.len(),
+            alerts: asking
                 .iter()
-                .filter(|session| asks(session))
-                .map(|session| session.id)
+                .map(|session| Key::Session(session.id))
+                .chain(troubles.iter().map(|found| found.key))
                 .collect(),
-            rows: listed
-                .iter()
-                .take(MOST_ROWS)
-                .map(|session| row(state, session, now))
-                .collect(),
-            more: listed.len().saturating_sub(MOST_ROWS),
+            rows,
+            more,
         }
     }
 
@@ -108,20 +137,38 @@ impl Board {
             working: 0,
             asking: 0,
             news: 0,
-            askers: Vec::new(),
+            troubles: 0,
+            alerts: Vec::new(),
             rows: Vec::new(),
             more: 0,
         }
     }
 
+    /// What needs the person now that did not in `before`, while the notch
+    /// was shown then and is now: what came while the person looked at
+    /// Muster, they have seen there.
+    fn anew<'a>(&'a self, before: &'a Self) -> impl Iterator<Item = &'a Key> {
+        let both = self.shown && before.shown;
+        self.alerts
+            .iter()
+            .filter(move |key| both && !before.alerts.contains(key))
+    }
+
     /// Whether a session asks now that did not in `before`: a new question,
     /// which the notch draws the eye to for a moment.
     pub fn asks_anew(&self, before: &Self) -> bool {
-        self.shown
-            && self
-                .askers
-                .iter()
-                .any(|session| !before.askers.contains(session))
+        self.anew(before).any(|key| matches!(key, Key::Session(_)))
+    }
+
+    /// The listed lines of what newly needs the person since `before`, for
+    /// the notch to show a moment unasked.
+    pub fn fresh(&self, before: &Self) -> Vec<Row> {
+        let new: Vec<&Key> = self.anew(before).collect();
+        self.rows
+            .iter()
+            .filter(|row| new.contains(&&row.key))
+            .cloned()
+            .collect()
     }
 
     /// The first row working where rows waiting on the person come before
@@ -142,20 +189,7 @@ fn asks(session: &Session) -> bool {
 }
 
 fn row(state: &Snapshot, session: &Session, now: Timestamp) -> Row {
-    let project = state
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.id == session.workspace)
-        .map(|workspace| workspace.project);
-    let (name, colour) = project
-        .and_then(|project| {
-            state
-                .projects
-                .iter()
-                .position(|found| found.id == project)
-                .map(|at| (state.projects[at].name.clone(), at))
-        })
-        .unwrap_or_default();
+    let (name, colour) = project_of(state, session.workspace);
     let mark = if asks(session) {
         Mark::Asking
     } else if session.unseen {
@@ -168,6 +202,7 @@ fn row(state: &Snapshot, session: &Session, now: Timestamp) -> Row {
         _ => describe(session.status).to_owned(),
     };
     Row {
+        key: Key::Session(session.id),
         session: session.id,
         mark,
         harness: session.harness.clone(),
@@ -176,7 +211,45 @@ fn row(state: &Snapshot, session: &Session, now: Timestamp) -> Row {
         title: printable(&session.title),
         doing: printable(&doing),
         since: ago(session.status_since, now),
+        work: printable(&trouble::work(state, session)),
     }
+}
+
+/// The line of trouble `found`, in its workspace's project.
+fn trouble_row(state: &Snapshot, found: &trouble::Trouble) -> Row {
+    let (name, colour) = project_of(state, found.workspace);
+    Row {
+        key: found.key,
+        session: found.session,
+        mark: match found.key {
+            Key::Checks(..) => Mark::ChecksFailed,
+            Key::Conflict(..) | Key::Session(_) => Mark::Conflict,
+        },
+        harness: String::new(),
+        project: printable(&name),
+        colour,
+        title: printable(&found.title),
+        doing: printable(&found.doing),
+        since: String::new(),
+        work: String::new(),
+    }
+}
+
+/// The name of `workspace`'s project, and its place among the projects,
+/// which picks its colour, as in the UI.
+fn project_of(state: &Snapshot, workspace: muster_core::WorkspaceId) -> (String, usize) {
+    state
+        .workspaces
+        .iter()
+        .find(|found| found.id == workspace)
+        .and_then(|found| {
+            state
+                .projects
+                .iter()
+                .position(|project| project.id == found.project)
+        })
+        .map(|at| (state.projects[at].name.clone(), at))
+        .unwrap_or_default()
 }
 
 /// What a status says, in a word or two.
@@ -371,21 +444,75 @@ mod tests {
             .sessions
             .push(session(work, "first", asking, false, 10));
         let before = board(&state);
-        assert!(before.asks_anew(&Board::hidden()));
         assert!(!before.asks_anew(&before), "the same question");
+        // While the notch was hidden, the person saw it in Muster.
+        assert!(!before.asks_anew(&Board::hidden()));
         // Another asks: new. One stops asking: nothing new.
         state
             .sessions
             .push(session(work, "second", asking, false, 20));
         let after = board(&state);
         assert!(after.asks_anew(&before));
+        let fresh = after.fresh(&before);
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0].title, "second");
         assert!(!before.asks_anew(&after));
         // News is no question, and a hidden notch draws no eye.
         let mut news = state.clone();
-        news.sessions = vec![session(work, "done", SessionStatus::Finished, true, 5)];
-        assert!(!board(&news).asks_anew(&Board::hidden()));
+        news.sessions
+            .push(session(work, "done", SessionStatus::Finished, true, 5));
+        assert!(!board(&news).asks_anew(&after));
         state.looked_at = true;
-        assert!(!board(&state).asks_anew(&Board::hidden()));
+        assert!(!board(&state).asks_anew(&before));
+    }
+
+    #[test]
+    fn trouble_comes_after_the_questions_and_before_the_news() {
+        use muster_core::clashes::{Clash, ClashFile};
+        let (mut state, work) = state();
+        let mut other = state.workspaces[0].clone();
+        other.id = WorkspaceId::new();
+        let clash = |with: WorkspaceId| Clash {
+            with,
+            files: 1,
+            conflicts: 1,
+            shown: vec![ClashFile {
+                path: "auth/session.rs".to_owned(),
+                conflict: true,
+            }],
+        };
+        state.workspaces[0].clashes = vec![clash(other.id)];
+        other.clashes = vec![clash(work)];
+        state.workspaces.push(other);
+        let asking = SessionStatus::NeedsYou {
+            reason: WaitReason::Permission,
+        };
+        state.sessions = vec![
+            session(work, "working", SessionStatus::Running, false, 10),
+            session(work, "news", SessionStatus::Finished, true, 20),
+            session(work, "asking", asking, false, 30),
+        ];
+        let calm = {
+            let mut calm = state.clone();
+            for workspace in &mut calm.workspaces {
+                workspace.clashes.clear();
+            }
+            board(&calm)
+        };
+        let board = board(&state);
+        let marks: Vec<Mark> = board.rows.iter().map(|row| row.mark).collect();
+        assert_eq!(
+            marks,
+            [Mark::Asking, Mark::Conflict, Mark::News, Mark::Working]
+        );
+        assert_eq!(board.troubles, 1);
+        assert_eq!(board.rows[1].doing, "would conflict in auth/session.rs");
+        assert_eq!(board.rows[1].project, "lamphaus");
+        // The conflict is new since a board without it: shown a moment.
+        let fresh = board.fresh(&calm);
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0].mark, Mark::Conflict);
+        assert!(!board.asks_anew(&calm), "no new question");
     }
 
     #[test]

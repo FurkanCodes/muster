@@ -39,6 +39,8 @@ struct Line {
     dot: Retained<NSView>,
     project: Label,
     doing: Label,
+    /// What its work comes to, at the second row's end.
+    work: Label,
 }
 
 /// The list's parts, made once and shown as the board says.
@@ -95,6 +97,7 @@ impl List {
                     dot: look::shape(mtm, &view, Colour::Quiet, 3.0),
                     project: Label::new(mtm, &view, &small, false),
                     doing,
+                    work: Label::new(mtm, &view, &digits, true),
                     view,
                 }
             })
@@ -211,6 +214,8 @@ impl Line {
             Mark::Asking => ("▲", Colour::Asking, "Asking you"),
             Mark::News => ("✓", Colour::News, "Finished"),
             Mark::Working => ("●", Colour::Working, "Working"),
+            Mark::Conflict => ("⇄", Colour::Asking, "Conflict"),
+            Mark::ChecksFailed => ("✗", Colour::Asking, "Checks failed"),
         };
         if let Some(png) = look::logo(&row.harness) {
             self.logo
@@ -236,8 +241,8 @@ impl Line {
             Rect::new(text, first, right - text - since - 10.0, TEXT),
         );
         self.title.say(&format!(
-            "{status}: {}, in {}, {}, {}",
-            row.title, row.project, row.doing, row.since
+            "{status}: {}, in {}, {}, {} {}",
+            row.title, row.project, row.doing, row.work, row.since
         ));
         if let Some(layer) = self.dot.layer() {
             layer.setBackgroundColor(Some(&Colour::Project(row.colour).ns().CGColor()));
@@ -250,11 +255,18 @@ impl Line {
         self.project.show(&row.project, Colour::Quiet, at(PROJECT));
         let project = self.project.width().min(PROJECT);
         self.project.show(&row.project, Colour::Quiet, at(project));
+        // What its work comes to at the end, what it is doing between.
+        let work = if row.work.is_empty() {
+            self.work.hide();
+            0.0
+        } else {
+            self.work.fit(&row.work, Colour::Quiet, right, second, TEXT) + 10.0
+        };
         let doing = text + 11.0 + project + 10.0;
         self.doing.show(
             &row.doing,
             Colour::Quiet,
-            Rect::new(doing, second, right - doing, TEXT),
+            Rect::new(doing, second, right - work - doing, TEXT),
         );
     }
 }
