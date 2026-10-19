@@ -224,11 +224,12 @@ pub enum ClientFrame {
     /// (OSC 10, 11 and 4) is told these, the last a UI said. Sent only to a
     /// daemon of 31 or later, and only with a colour in it.
     Colours(TerminalColours),
-    /// Which session's terminal has the person's keys in this client, if
-    /// any: one they have entered, in a window they look at. A program that
+    /// Which session's terminal is in focus in this client, if any: the
+    /// one shown, beside the list or filling the window, in a window the
+    /// person looks at, whether or not it has the keys. A program that
     /// asked to be told its terminal's focus (`CSI ? 1004 h`) is sent
-    /// `CSI I` as its session gains the keys in any client and `CSI O` as
-    /// it loses them in every one. Sent whenever it changes, only to a
+    /// `CSI I` as its session comes into focus in any client and `CSI O`
+    /// as it leaves it in every one. Sent whenever it changes, only to a
     /// daemon of 31 or later.
     Keys { session: Option<SessionId> },
 }

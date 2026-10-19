@@ -393,8 +393,8 @@ pub(crate) struct App {
     pub(crate) selection: Option<Selection>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
-    /// The session the daemon was last told has the person's keys.
-    keys_told: Option<SessionId>,
+    /// The session the daemon was last told is in focus.
+    focus_told: Option<SessionId>,
     /// Something a reply named that the state may not show yet: replies and
     /// deltas travel separately, so either can arrive first. Selected (and,
     /// for a new session, opened) as soon as it appears.
@@ -511,7 +511,7 @@ impl App {
             changes: None,
             selection: None,
             attached: None,
-            keys_told: None,
+            focus_told: None,
             wanted: None,
             pending: HashMap::new(),
             next_req: 1,
@@ -633,26 +633,35 @@ impl App {
         }
     }
 
-    /// The session whose terminal has the person's keys: one they entered,
-    /// in a window they look at (or one that never says).
-    pub(crate) fn keys_session(&self) -> Option<SessionId> {
-        match self.mode {
-            Mode::Terminal(session) if self.focused != Some(false) => Some(session),
-            _ => None,
-        }
+    /// The session whose terminal is drawn, and so streamed: open, or
+    /// selected beside the list. A narrow window's list draws none.
+    pub(crate) fn shown_session(&self) -> Option<SessionId> {
+        self.focused_session()
+            .filter(|session| self.model.session(*session).is_some())
+            .filter(|_| self.session_drawn())
     }
 
-    /// Tells the daemon where the person's keys are now, if that changed,
-    /// so a program that asked learns it gained or lost focus. Not to a
+    /// The session whose program is in focus: the one shown, beside the
+    /// list or filling the window, in a window the person looks at (or one
+    /// that never says). On screen is in focus, as in a terminal app,
+    /// whether or not it has the keys: Claude Code suggests the person's
+    /// next prompt only as a turn ends in focus, and the person watches a
+    /// turn end from the list.
+    pub(crate) fn focus_session(&self) -> Option<SessionId> {
+        self.shown_session().filter(|_| self.focused != Some(false))
+    }
+
+    /// Tells the daemon which session is in focus now, if that changed, so
+    /// a program that asked learns it gained or lost focus. Not to a
     /// daemon before it knew how (`ARC-09`).
-    pub(super) fn tell_keys(&mut self) -> Option<Action> {
-        let wanted = self.keys_session();
+    pub(super) fn tell_focus(&mut self) -> Option<Action> {
+        let wanted = self.focus_session();
         let knows = matches!(self.link, Link::Connected { .. })
             && self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL;
-        if !knows || wanted == self.keys_told {
+        if !knows || wanted == self.focus_told {
             return None;
         }
-        self.keys_told = wanted;
+        self.focus_told = wanted;
         Some(Action::Send(ClientFrame::Keys { session: wanted }))
     }
 

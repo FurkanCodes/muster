@@ -42,7 +42,9 @@ fn looking_away_and_back_switches_watching_the_attached_session() {
                 session: id,
                 watching: false
             }),
-            Action::Send(ClientFrame::Looking { looking: false })
+            Action::Send(ClientFrame::Looking { looking: false }),
+            // Shown, it is in focus as the window is.
+            Action::Send(ClientFrame::Keys { session: None })
         ]
     );
     assert_eq!(
@@ -52,7 +54,9 @@ fn looking_away_and_back_switches_watching_the_attached_session() {
                 session: id,
                 watching: true
             }),
-            Action::Send(ClientFrame::Looking { looking: true })
+            Action::Send(ClientFrame::Looking { looking: true }),
+            // Shown, it is in focus as the window is.
+            Action::Send(ClientFrame::Keys { session: Some(id) })
         ]
     );
 }
