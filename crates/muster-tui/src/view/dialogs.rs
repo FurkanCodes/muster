@@ -15,7 +15,7 @@ use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
 use crate::input::LineInput;
 
 /// A harness offered in a dialog, the chosen one stood out.
-fn harness_option(option: HarnessChoice, chosen: HarnessChoice) -> Span<'static> {
+fn harness_option(option: &HarnessChoice, chosen: &HarnessChoice) -> Span<'static> {
     choice(option.label(), option == chosen)
 }
 
@@ -139,7 +139,7 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             workspace,
             harness,
             prompt,
-        } => new_session(app, *workspace, *harness, prompt),
+        } => new_session(app, *workspace, harness, prompt),
         Dialog::AssignAgent {
             project,
             key,
@@ -147,7 +147,7 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             another,
             into,
             on,
-        } => assign_agent(app, *project, key, *harness, (*another, *into, *on)),
+        } => assign_agent(app, *project, key, harness, (*another, *into, *on)),
         Dialog::Confirm { question, .. } => Shape::new(
             " Confirm ",
             vec![
@@ -174,7 +174,7 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             undo_lines(plan, what, agent_remembers.as_deref()),
             None,
         ),
-        Dialog::Tidy { workspace, harness } => tidy(app, *workspace, *harness),
+        Dialog::Tidy { workspace, harness } => tidy(app, *workspace, harness),
         Dialog::Rename { name, .. } => Shape {
             hint: "⏎ rename   esc cancel",
             ..Shape::new(
@@ -187,11 +187,11 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
 }
 
 /// Which agent tidies a workspace's commits, and what it is asked to do.
-fn tidy(app: &App, workspace: WorkspaceId, harness: HarnessChoice) -> Shape<'static> {
+fn tidy(app: &App, workspace: WorkspaceId, harness: &HarnessChoice) -> Shape<'static> {
     let branch = one_line(app.model.branch(workspace).unwrap_or("?"));
     let mut run = vec![Span::raw("Tidy with ")];
-    for option in HarnessChoice::ALL.into_iter().filter(|o| o.is_agent()) {
-        run.push(harness_option(option, harness));
+    for option in HarnessChoice::agents(app.added_agents()) {
+        run.push(harness_option(&option, harness));
     }
     Shape::new(
         " Tidy the commits ",
@@ -276,7 +276,7 @@ fn undo_lines(
 fn new_session<'a>(
     app: &App,
     workspace: WorkspaceId,
-    harness: HarnessChoice,
+    harness: &HarnessChoice,
     prompt: &'a LineInput,
 ) -> Shape<'a> {
     // A branch, or, in a plain folder, which has none, the project.
@@ -288,11 +288,11 @@ fn new_session<'a>(
         _ => app.model.branch(workspace).unwrap_or("?"),
     };
     let mut run = vec![Span::raw("Run ")];
-    for option in HarnessChoice::ALL {
-        run.push(harness_option(option, harness));
+    for option in HarnessChoice::all(app.added_agents()) {
+        run.push(harness_option(&option, harness));
     }
     let mut lines = vec![Line::from(format!("In {place}")).dim(), Line::from(run)];
-    let input = harness.is_agent().then(|| {
+    let input = harness.takes_prompt().then(|| {
         lines.push(Line::from("First prompt (optional):"));
         prompt
     });
@@ -306,7 +306,7 @@ fn assign_agent(
     app: &App,
     project: ProjectId,
     key: &TicketKey,
-    harness: HarnessChoice,
+    harness: &HarnessChoice,
     (another, into, on): (bool, ProjectId, Option<WorkspaceId>),
 ) -> Shape<'static> {
     let stacking = app.offers_stack(into, key, another);
@@ -342,8 +342,8 @@ fn assign_agent(
         "⇥ ⇧⇥ choose   ⏎ start   esc cancel"
     };
     let mut run = vec![Span::raw("Start ")];
-    for option in HarnessChoice::ALL.into_iter().filter(|o| o.is_agent()) {
-        run.push(harness_option(option, harness));
+    for option in HarnessChoice::agents(app.added_agents()) {
+        run.push(harness_option(&option, harness));
     }
     let place = if app.starts_another(into, key, another) {
         "In a worktree of its own, with the ticket as its first prompt."

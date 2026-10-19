@@ -25,7 +25,7 @@ pub(crate) fn copilot_plugin(dir: &Path) -> PathBuf {
 }
 
 /// The files `kind` needs, with what each holds.
-fn files(kind: Kind, dir: &Path) -> Vec<(PathBuf, String)> {
+fn files(kind: &Kind, dir: &Path) -> Vec<(PathBuf, String)> {
     match kind {
         Kind::OpenCode => vec![(opencode_plugin(dir), opencode::PLUGIN.to_owned())],
         Kind::Gemini => vec![(gemini_defaults(dir), gemini::defaults())],
@@ -36,14 +36,16 @@ fn files(kind: Kind, dir: &Path) -> Vec<(PathBuf, String)> {
                 (plugin.join("hooks").join("hooks.json"), copilot::hooks()),
             ]
         }
-        Kind::Shell | Kind::Claude | Kind::Codex | Kind::Checks | Kind::Review => Vec::new(),
+        Kind::Shell | Kind::Claude | Kind::Codex | Kind::Checks | Kind::Review | Kind::Added(_) => {
+            Vec::new()
+        }
     }
 }
 
 /// Writes the files `kind` needs into `dir`, those not already there as
 /// they should be. Each is written beside its place and renamed into it,
 /// so a program starting meanwhile never reads half of one.
-pub(crate) fn prepare(kind: Kind, dir: &Path) -> std::io::Result<()> {
+pub(crate) fn prepare(kind: &Kind, dir: &Path) -> std::io::Result<()> {
     for (path, content) in files(kind, dir) {
         if std::fs::read_to_string(&path).is_ok_and(|current| current == content) {
             continue;
@@ -65,12 +67,12 @@ mod tests {
     #[test]
     fn each_harness_gets_its_files_and_only_those_once() {
         let dir = tempfile::tempdir().unwrap();
-        prepare(Kind::Claude, dir.path()).unwrap();
+        prepare(&Kind::Claude, dir.path()).unwrap();
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 
-        prepare(Kind::OpenCode, dir.path()).unwrap();
-        prepare(Kind::Gemini, dir.path()).unwrap();
-        prepare(Kind::Copilot, dir.path()).unwrap();
+        prepare(&Kind::OpenCode, dir.path()).unwrap();
+        prepare(&Kind::Gemini, dir.path()).unwrap();
+        prepare(&Kind::Copilot, dir.path()).unwrap();
         let read = |path: PathBuf| std::fs::read_to_string(path).unwrap();
         assert_eq!(read(opencode_plugin(dir.path())), opencode::PLUGIN);
         assert_eq!(read(gemini_defaults(dir.path())), gemini::defaults());
@@ -83,8 +85,8 @@ mod tests {
         std::fs::write(opencode_plugin(dir.path()), "changed").unwrap();
         let defaults = gemini_defaults(dir.path());
         let before = std::fs::metadata(&defaults).unwrap().modified().unwrap();
-        prepare(Kind::OpenCode, dir.path()).unwrap();
-        prepare(Kind::Gemini, dir.path()).unwrap();
+        prepare(&Kind::OpenCode, dir.path()).unwrap();
+        prepare(&Kind::Gemini, dir.path()).unwrap();
         assert_eq!(read(opencode_plugin(dir.path())), opencode::PLUGIN);
         assert_eq!(
             std::fs::metadata(&defaults).unwrap().modified().unwrap(),

@@ -46,6 +46,7 @@ impl App {
             || self.glad_at.is_some()
             || !self.flashes.is_empty()
             || self.note_age().is_some()
+            || self.news_held()
             || (self.sliding_line().is_some() && crate::view::cut_name(self).is_some())
     }
 

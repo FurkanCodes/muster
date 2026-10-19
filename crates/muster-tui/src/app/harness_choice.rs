@@ -1,8 +1,11 @@
 //! The harnesses the person can start a session with, in the order the
-//! new-session dialog offers them: the coding agents, then a shell.
+//! dialogs offer them: Muster's own coding agents, then those the person
+//! added in Muster's own settings (`[agents.<name>]`), then a shell.
 
-/// A harness the new-session dialog offers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use muster_core::settings::AddedAgent;
+
+/// A harness the dialogs offer.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HarnessChoice {
     Claude,
     Codex,
@@ -10,21 +13,32 @@ pub(crate) enum HarnessChoice {
     OpenCode,
     Copilot,
     Shell,
+    /// A coding agent the person added in Muster's own settings.
+    Added(AddedAgent),
 }
 
 impl HarnessChoice {
-    /// Every choice, in the order offered.
-    pub(crate) const ALL: [Self; 6] = [
+    /// Muster's own coding agents, in the order offered.
+    const OWN: [Self; 5] = [
         Self::Claude,
         Self::Codex,
         Self::Gemini,
         Self::OpenCode,
         Self::Copilot,
-        Self::Shell,
     ];
 
+    /// Every choice, in the order offered: Muster's own agents, the
+    /// person's (`added`), then a shell.
+    pub(crate) fn all(added: &[AddedAgent]) -> Vec<Self> {
+        Self::OWN
+            .into_iter()
+            .chain(added.iter().cloned().map(Self::Added))
+            .chain([Self::Shell])
+            .collect()
+    }
+
     /// The daemon's name for it.
-    pub(crate) fn id(self) -> &'static str {
+    pub(crate) fn id(&self) -> &str {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
@@ -32,10 +46,11 @@ impl HarnessChoice {
             Self::OpenCode => "opencode",
             Self::Copilot => "copilot",
             Self::Shell => "shell",
+            Self::Added(agent) => &agent.name,
         }
     }
 
-    pub(crate) fn label(self) -> &'static str {
+    pub(crate) fn label(&self) -> &str {
         match self {
             Self::Claude => "Claude Code",
             Self::Codex => "Codex",
@@ -43,65 +58,83 @@ impl HarnessChoice {
             Self::OpenCode => "OpenCode",
             Self::Copilot => "Copilot CLI",
             Self::Shell => "Shell",
+            Self::Added(agent) => &agent.label,
         }
     }
 
     /// The choice the daemon calls `id`, if it is one offered.
-    pub(crate) fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|choice| choice.id() == id)
+    pub(crate) fn from_id(id: &str, added: &[AddedAgent]) -> Option<Self> {
+        Self::all(added)
+            .into_iter()
+            .find(|choice| choice.id() == id)
     }
 
-    /// Whether it is a coding agent, which takes a first prompt; a shell
-    /// takes none.
-    pub(crate) fn is_agent(self) -> bool {
-        self != Self::Shell
+    /// Whether it is a coding agent; a shell is not.
+    pub(crate) fn is_agent(&self) -> bool {
+        !matches!(self, Self::Shell)
+    }
+
+    /// Whether it takes a first prompt: every agent of Muster's own, and
+    /// one of the person's whose settings say how. A shell takes none.
+    pub(crate) fn takes_prompt(&self) -> bool {
+        match self {
+            Self::Shell => false,
+            Self::Added(agent) => agent.takes_prompt,
+            _ => true,
+        }
+    }
+
+    /// The choice `by` places on from this one, going round, among those
+    /// `offered`; the first if this one is no longer there.
+    fn step(&self, offered: &[Self], by: isize) -> Self {
+        let Some(at) = offered.iter().position(|choice| choice == self) else {
+            return offered.first().cloned().unwrap_or(Self::Claude);
+        };
+        let len = offered.len().cast_signed();
+        let next = (at.cast_signed() + by).rem_euclid(len);
+        offered[next.cast_unsigned()].clone()
     }
 
     /// The next choice, round from the last to the first.
-    pub(crate) fn next(self) -> Self {
-        let at = Self::ALL
-            .iter()
-            .position(|choice| *choice == self)
-            .unwrap_or(0);
-        Self::ALL[(at + 1) % Self::ALL.len()]
+    pub(crate) fn next(&self, added: &[AddedAgent]) -> Self {
+        self.step(&Self::all(added), 1)
     }
 
     /// The previous choice, round from the first to the last.
-    pub(crate) fn previous(self) -> Self {
-        let at = Self::ALL
-            .iter()
-            .position(|choice| *choice == self)
-            .unwrap_or(0);
-        Self::ALL[(at + Self::ALL.len() - 1) % Self::ALL.len()]
+    pub(crate) fn previous(&self, added: &[AddedAgent]) -> Self {
+        self.step(&Self::all(added), -1)
     }
 
-    /// The next coding agent, passing over the shell, which a ticket is
-    /// never given.
-    pub(crate) fn next_agent(self) -> Self {
-        let next = self.next();
-        if next.is_agent() { next } else { next.next() }
+    /// The agents a ticket or a tidy is offered, in order: those that take
+    /// a first prompt, as theirs is handed to them.
+    pub(crate) fn agents(added: &[AddedAgent]) -> Vec<Self> {
+        Self::all(added)
+            .into_iter()
+            .filter(Self::takes_prompt)
+            .collect()
     }
 
-    /// The previous coding agent, passing over the shell.
-    pub(crate) fn previous_agent(self) -> Self {
-        let previous = self.previous();
-        if previous.is_agent() {
-            previous
-        } else {
-            previous.previous()
-        }
+    /// The next agent that takes a prompt, passing over the shell, which a
+    /// ticket is never given.
+    pub(crate) fn next_agent(&self, added: &[AddedAgent]) -> Self {
+        self.step(&Self::agents(added), 1)
+    }
+
+    /// The previous agent that takes a prompt, passing over the shell.
+    pub(crate) fn previous_agent(&self, added: &[AddedAgent]) -> Self {
+        self.step(&Self::agents(added), -1)
     }
 }
 
 /// Whether a session's harness suspends itself on Ctrl+Z, as every coding
 /// agent does, and so would freeze with no shell above it to continue it;
 /// with the name to say so by.
-pub(crate) fn suspends_itself(harness: &str) -> Option<&'static str> {
+pub(crate) fn suspends_itself(harness: &str, added: &[AddedAgent]) -> Option<String> {
     match harness {
-        "review" => Some("Claude Code"),
-        harness => HarnessChoice::from_id(harness)
-            .filter(|choice| choice.is_agent())
-            .map(HarnessChoice::label),
+        "review" => Some("Claude Code".to_owned()),
+        harness => HarnessChoice::from_id(harness, added)
+            .filter(HarnessChoice::is_agent)
+            .map(|choice| choice.label().to_owned()),
     }
 }
 
@@ -109,18 +142,55 @@ pub(crate) fn suspends_itself(harness: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
 
+    fn added(name: &str, takes_prompt: bool) -> AddedAgent {
+        AddedAgent {
+            name: name.to_owned(),
+            label: format!("{name} agent"),
+            mark: "A".to_owned(),
+            colour: None,
+            takes_prompt,
+        }
+    }
+
     #[test]
     fn the_choices_go_round_both_ways() {
         let mut choice = HarnessChoice::Claude;
         let mut seen = Vec::new();
-        for _ in 0..HarnessChoice::ALL.len() {
-            seen.push(choice);
-            choice = choice.next();
+        for _ in 0..HarnessChoice::all(&[]).len() {
+            seen.push(choice.clone());
+            choice = choice.next(&[]);
         }
-        assert_eq!(seen, HarnessChoice::ALL);
+        assert_eq!(seen, HarnessChoice::all(&[]));
         assert_eq!(choice, HarnessChoice::Claude);
-        assert_eq!(HarnessChoice::Claude.previous(), HarnessChoice::Shell);
-        assert_eq!(HarnessChoice::Shell.previous(), HarnessChoice::Copilot);
+        assert_eq!(HarnessChoice::Claude.previous(&[]), HarnessChoice::Shell);
+        assert_eq!(HarnessChoice::Shell.previous(&[]), HarnessChoice::Copilot);
+    }
+
+    #[test]
+    fn the_person_s_agents_come_after_muster_s_and_before_a_shell() {
+        let mine = [added("my-agent", true), added("quiet", false)];
+        let all = HarnessChoice::all(&mine);
+        let ids: Vec<&str> = all.iter().map(HarnessChoice::id).collect();
+        assert_eq!(
+            ids,
+            [
+                "claude", "codex", "gemini", "opencode", "copilot", "my-agent", "quiet", "shell"
+            ]
+        );
+        let mine_too = HarnessChoice::Added(mine[0].clone());
+        assert_eq!(HarnessChoice::Copilot.next(&mine), mine_too);
+        assert_eq!(mine_too.label(), "my-agent agent");
+        assert!(mine_too.is_agent() && mine_too.takes_prompt());
+        // One that takes no prompt is never offered a ticket.
+        assert_eq!(mine_too.next_agent(&mine), HarnessChoice::Claude);
+        assert_eq!(HarnessChoice::Claude.previous_agent(&mine), mine_too);
+        // An agent no longer in the settings gives way to the first.
+        let gone = HarnessChoice::Added(added("gone", true));
+        assert_eq!(gone.next(&mine), HarnessChoice::Claude);
+        assert_eq!(
+            HarnessChoice::from_id("quiet", &mine),
+            Some(HarnessChoice::Added(mine[1].clone()))
+        );
     }
 
     #[test]
@@ -128,35 +198,42 @@ mod tests {
         let mut choice = HarnessChoice::Claude;
         let mut seen = Vec::new();
         for _ in 0..5 {
-            seen.push(choice);
-            choice = choice.next_agent();
+            seen.push(choice.clone());
+            choice = choice.next_agent(&[]);
         }
-        let agents: Vec<_> = HarnessChoice::ALL
-            .into_iter()
-            .filter(|choice| choice.is_agent())
-            .collect();
-        assert_eq!(seen, agents);
+        assert_eq!(seen, HarnessChoice::agents(&[]));
         assert_eq!(choice, HarnessChoice::Claude);
         assert_eq!(
-            HarnessChoice::Claude.previous_agent(),
+            HarnessChoice::Claude.previous_agent(&[]),
             HarnessChoice::Copilot
         );
-        assert_eq!(HarnessChoice::Codex.previous_agent(), HarnessChoice::Claude);
+        assert_eq!(
+            HarnessChoice::Codex.previous_agent(&[]),
+            HarnessChoice::Claude
+        );
     }
 
     #[test]
     fn each_choice_is_found_by_its_id() {
-        for choice in HarnessChoice::ALL {
-            assert_eq!(HarnessChoice::from_id(choice.id()), Some(choice));
+        for choice in HarnessChoice::all(&[]) {
+            assert_eq!(HarnessChoice::from_id(choice.id(), &[]), Some(choice));
         }
-        assert_eq!(HarnessChoice::from_id("checks"), None);
+        assert_eq!(HarnessChoice::from_id("checks", &[]), None);
     }
 
     #[test]
     fn every_agent_suspends_itself_and_a_shell_does_not() {
-        assert_eq!(suspends_itself("codex"), Some("Codex"));
-        assert_eq!(suspends_itself("review"), Some("Claude Code"));
-        assert_eq!(suspends_itself("shell"), None);
-        assert_eq!(suspends_itself("checks"), None);
+        let mine = [added("my-agent", false)];
+        assert_eq!(suspends_itself("codex", &[]).as_deref(), Some("Codex"));
+        assert_eq!(
+            suspends_itself("review", &[]).as_deref(),
+            Some("Claude Code")
+        );
+        assert_eq!(
+            suspends_itself("my-agent", &mine).as_deref(),
+            Some("my-agent agent")
+        );
+        assert_eq!(suspends_itself("shell", &[]), None);
+        assert_eq!(suspends_itself("checks", &[]), None);
     }
 }

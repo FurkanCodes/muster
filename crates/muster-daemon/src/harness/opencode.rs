@@ -197,7 +197,10 @@ pub(crate) fn translate(body: &[u8]) -> Option<(Option<String>, HookEvent)> {
         },
         // Answered either way, the tool goes on or the turn does.
         "permission.replied" => HookEvent::ToolStarted { origin: origin() },
-        "question.asked" => HookEvent::QuestionAsked { origin: origin() },
+        "question.asked" => HookEvent::QuestionAsked {
+            origin: origin(),
+            deferred: false,
+        },
         "question.replied" | "question.rejected" => HookEvent::ToolFinished {
             origin: origin(),
             question: true,
@@ -355,7 +358,8 @@ mod tests {
         assert_eq!(
             root(r#"{"type":"question.asked","session":"ses_root","child":null}"#),
             HookEvent::QuestionAsked {
-                origin: Origin::Main
+                origin: Origin::Main,
+                deferred: false,
             }
         );
         assert_eq!(

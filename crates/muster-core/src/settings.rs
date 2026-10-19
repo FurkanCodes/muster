@@ -128,6 +128,20 @@ pub struct Preferences {
     pub notch: bool,
     /// Where they are written: the person's own file, never a repository.
     pub file: PathBuf,
+    /// The coding agents the person added there (`[agents.<name>]`), by
+    /// name, offered beside Muster's own. From protocol 29.
+    #[serde(default)]
+    pub agents: Vec<AddedAgent>,
+    /// Why the file does not read, naming the key, while it does not: the
+    /// rest are then Muster's defaults. From protocol 29.
+    #[serde(default)]
+    pub problem: Option<String>,
+    /// The fewest columns a window has for a session's terminal to sit
+    /// beside the list; in a narrower one, the list or the session fills
+    /// it. 0 keeps them side by side at any width (`[layout]
+    /// side_by_side_from`). From protocol 32.
+    #[serde(default = "default_side_by_side_from")]
+    pub side_by_side_from: u16,
 }
 
 impl Default for Preferences {
@@ -135,16 +149,69 @@ impl Default for Preferences {
         Self {
             notch: true,
             file: PathBuf::new(),
+            agents: Vec::new(),
+            problem: None,
+            side_by_side_from: SIDE_BY_SIDE_FROM,
         }
     }
 }
+
+/// A coding agent the person added in Muster's own settings, as clients
+/// offer it beside Muster's own (`muster_core::config::agents`). Only what
+/// a client shows: never its program's environment. From protocol 29.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AddedAgent {
+    /// What sessions name it by: a harness id, like `claude`.
+    pub name: String,
+    /// What it is called on screen.
+    pub label: String,
+    /// One character, shown where Muster's own agents show theirs.
+    pub mark: String,
+    /// The mark's colour: a name from the terminal's sixteen (`green`,
+    /// `light-blue`) or `#rrggbb`.
+    #[serde(default)]
+    pub colour: Option<String>,
+    /// Whether it takes a first prompt, as a ticket's agent is given its
+    /// ticket.
+    pub takes_prompt: bool,
+}
+
+/// The first protocol whose daemon knows the agents the person added and
+/// reads Muster's own settings again when asked
+/// ([`crate::protocol::Command::ReadPreferences`]).
+pub const AGENTS_PROTOCOL: u32 = 29;
+/// From how many columns a session sits beside the list unless the person
+/// says otherwise: the 34 the list takes at least, its border and a
+/// session 64 columns wide, which still holds an agent's prompt and a
+/// diff's lines without wrapping them; narrower, the session would wrap
+/// what it draws.
+pub const SIDE_BY_SIDE_FROM: u16 = 100;
+
+fn default_side_by_side_from() -> u16 {
+    SIDE_BY_SIDE_FROM
+}
+
+/// The widths the Settings screen offers for
+/// [`Preferences::side_by_side_from`], narrowest first: 0 for any width.
+pub const SIDE_BY_SIDE_CHOICES: [u16; 8] = [0, 80, 90, 100, 110, 120, 140, 160];
 
 /// A change the person makes to Muster's own settings. From protocol 23.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PreferenceChange {
     /// Show the agents in the notch, or leave it alone.
     Notch(bool),
+    /// From how many columns a session sits beside the list; 0 at any
+    /// width. From protocol 32.
+    SideBySideFrom(u16),
 }
+
+/// The first protocol whose daemon keeps
+/// [`Preferences::side_by_side_from`] and takes
+/// [`PreferenceChange::SideBySideFrom`] (`ARC-09`).
+pub const SIDE_BY_SIDE_PROTOCOL: u32 = 32;
+
+/// Where it is written: `[layout] side_by_side_from`.
+pub const SIDE_BY_SIDE: (&str, &str) = ("layout", "side_by_side_from");
 
 /// The first protocol whose daemon knows who looks at its clients, shows
 /// a session in one, and keeps Muster's own settings (`ARC-09`).

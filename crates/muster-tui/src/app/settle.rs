@@ -14,6 +14,7 @@ impl App {
     pub(super) fn settle(&mut self) -> Vec<Action> {
         self.take_wanted();
         self.follow_answered();
+        self.keep_folds();
         self.keep_selection();
         self.keep_ticket_selection();
         self.keep_setting_selection();
@@ -32,10 +33,14 @@ impl App {
         actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
+        let keys = self.tell_keys();
+        // A narrow window's list shows no session, so none is streamed.
         let focus = self
             .focused_session()
-            .filter(|s| self.model.session(*s).is_some());
+            .filter(|s| self.model.session(*s).is_some())
+            .filter(|_| self.session_drawn());
         if focus == self.attached {
+            actions.extend(keys);
             return actions;
         }
         if let Some(old) = self.attached.take() {
@@ -51,7 +56,11 @@ impl App {
                 .session(session)
                 .is_some_and(|stored| stored.ended_at.is_none());
             if running {
-                actions.push(Action::Send(ClientFrame::Resize { session, size }));
+                actions.push(Action::Send(ClientFrame::Resize {
+                    session,
+                    size,
+                    pixels: self.session_pixels(size),
+                }));
             }
             actions.push(Action::Send(ClientFrame::Attach {
                 session,
@@ -61,6 +70,7 @@ impl App {
             }));
             self.attached = Some(session);
         }
+        actions.extend(keys);
         actions
     }
 
@@ -131,7 +141,7 @@ impl App {
     /// Keeps the selection on something that exists: the line that took
     /// the place of one that went away, or the last line.
     fn keep_selection(&mut self) {
-        let rows = self.model.rows();
+        let rows = self.rows();
         if let Some(at) = self
             .selected
             .and_then(|row| rows.iter().position(|r| *r == row))
@@ -177,7 +187,7 @@ impl App {
                 .saturating_sub(2),
         )
         .max(1);
-        let rows = self.model.rows();
+        let rows = self.rows();
         let selected = self
             .selected
             .and_then(|row| rows.iter().position(|r| *r == row));

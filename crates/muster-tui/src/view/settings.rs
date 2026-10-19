@@ -22,6 +22,11 @@ const TICKETS_FROM: &str = "Tickets from";
 const MUSTER_PREFIX: &str = "Branches with muster/";
 /// What the setting of the notch is called.
 const NOTCH: &str = "Agents in the notch";
+/// What the agents the person added are called.
+const AGENTS: &str = "Your agents";
+/// What the setting of the width a session sits beside the list from is
+/// called.
+const SIDE_BY_SIDE: &str = "Session beside the list from";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = panel(" Settings ", app.list_has_keys());
@@ -67,6 +72,8 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
     match row {
         SettingRow::Muster => Line::from(Span::from("Muster").bold()),
         SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
+        SettingRow::Agents => labelled(AGENTS, agents_value(app), width),
+        SettingRow::SideBySide => labelled(SIDE_BY_SIDE, side_by_side_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -132,6 +139,36 @@ fn notch_value(app: &App) -> Span<'static> {
     }
 }
 
+/// The agents the person added, by name; why none can be read where
+/// Muster's own settings do not read.
+fn agents_value(app: &App) -> Span<'static> {
+    let preferences = app.model.preferences();
+    if preferences.problem.is_some() {
+        return Span::from("cannot be read").red();
+    }
+    if preferences.agents.is_empty() {
+        return Span::from("none").dim();
+    }
+    let labels: Vec<&str> = preferences
+        .agents
+        .iter()
+        .map(|agent| agent.label.as_str())
+        .collect();
+    Span::from(labels.join(", ")).bold()
+}
+
+/// From how many columns a session sits beside the list, or that it is
+/// being changed.
+fn side_by_side_value(app: &App) -> Span<'static> {
+    if app.side_by_side_changing {
+        return Span::from("…").dim();
+    }
+    match app.model.preferences().side_by_side_from {
+        0 => Span::from("any width").bold(),
+        columns => Span::from(format!("{columns} columns")).bold(),
+    }
+}
+
 /// Where the tickets come from, in a word or two: `Jira TURPAT`; `choose`
 /// where nothing can tell.
 fn tickets_value(settings: &ProjectSettings) -> Span<'static> {
@@ -160,7 +197,9 @@ fn project_name(app: &App, project: ProjectId) -> String {
 /// where a change goes; or the selected project's settings as a whole.
 pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let text = match app.settings_selected {
-        Some(SettingRow::Muster | SettingRow::Notch) => notch_text(app),
+        Some(SettingRow::Muster | SettingRow::Notch) if app.notch_known() => notch_text(app),
+        Some(SettingRow::SideBySide) => side_by_side_text(app),
+        Some(SettingRow::Muster | SettingRow::Agents | SettingRow::Notch) => agents_text(app),
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings),
@@ -168,6 +207,8 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::MusterPrefix(_) => muster_prefix_text(settings),
                 SettingRow::Project(project) => project_text(app, project, settings),
                 SettingRow::Muster | SettingRow::Notch => notch_text(app),
+                SettingRow::Agents => agents_text(app),
+                SettingRow::SideBySide => side_by_side_text(app),
             },
             Some(Settings::Failed(error)) => Text::from(vec![
                 Line::from(
@@ -263,6 +304,90 @@ fn notch_text(app: &App) -> Text<'static> {
         detail("Saved in", preferences.file.display().to_string()),
         Line::from(""),
         Line::from(key).dim(),
+        Line::from("Muster's own settings are yours, for all of it, not any project's.").dim(),
+    ])
+}
+
+/// The coding agents the person added in Muster's own settings, and how
+/// to add one.
+fn agents_text(app: &App) -> Text<'static> {
+    let preferences = app.model.preferences();
+    let mut lines = vec![
+        Line::from(vec![
+            Span::from(format!("{AGENTS}  ")).bold(),
+            agents_value(app),
+        ]),
+        Line::from(
+            "Coding agents Muster does not know, added in your own settings, are offered beside              its own: for a new session, and for a ticket where they take a first prompt.",
+        ),
+        Line::from(""),
+    ];
+    if let Some(problem) = &preferences.problem {
+        lines.extend([
+            Line::from("Muster's own settings cannot be read:").red(),
+            Line::from(problem.clone()),
+            Line::from(""),
+        ]);
+    }
+    for agent in &preferences.agents {
+        let mark = look::agent_mark(app, &agent.name);
+        let prompt = if agent.takes_prompt {
+            "takes a first prompt"
+        } else {
+            "takes no prompt"
+        };
+        lines.push(Line::from(vec![
+            mark,
+            Span::from(format!(" {}", agent.label)).bold(),
+            Span::from(format!("  {}, {prompt}", agent.name)).dim(),
+        ]));
+    }
+    if !preferences.agents.is_empty() {
+        lines.push(Line::from(""));
+    }
+    lines.extend([
+        detail("Saved in", preferences.file.display().to_string()),
+        Line::from(""),
+        Line::from("Add one there, then r reads it:").dim(),
+        Line::from("  [agents.my-agent]").dim(),
+        Line::from("  program = \"my-agent\"").dim(),
+        Line::from("  prompt = [\"--message\", \"{prompt}\"]").dim(),
+        Line::from("  resume = [\"--continue\"]").dim(),
+        Line::from(""),
+        Line::from(
+            "Muster hears them by their terminal's progress, their window title and their exit,              and never changes their own settings.",
+        )
+        .dim(),
+    ]);
+    Text::from(lines)
+}
+
+fn side_by_side_text(app: &App) -> Text<'static> {
+    let preferences = app.model.preferences();
+    let does = match preferences.side_by_side_from {
+        0 => "A session's terminal sits beside the list in a window of any width.".to_owned(),
+        columns => format!(
+            "A session's terminal sits beside the list in a window of {columns} columns or more. \
+             In a narrower one, the list takes the whole width: ⏎ opens a session over it, as \
+             full screen does, and Shift-Q goes back."
+        ),
+    };
+    let now = if app.narrow() {
+        format!("{} columns: the list or a session", app.terminal_size.cols)
+    } else {
+        format!("{} columns: both, side by side", app.terminal_size.cols)
+    };
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{SIDE_BY_SIDE}  ")).bold(),
+            side_by_side_value(app),
+        ]),
+        Line::from(does),
+        Line::from(""),
+        detail("This window", now),
+        detail("Saved in", preferences.file.display().to_string()),
+        Line::from(""),
+        Line::from("⏎ or space goes to the next width, ← → to a smaller or larger one.").dim(),
         Line::from("Muster's own settings are yours, for all of it, not any project's.").dim(),
     ])
 }
@@ -417,7 +542,17 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
                 "⏎ turn on"
             });
         }
-        Some(SettingRow::Project(_) | SettingRow::Muster | SettingRow::Notch) | None => {}
+        Some(SettingRow::SideBySide) if !app.side_by_side_changing => {
+            hints.extend(["⏎ next width", "← → smaller, larger"]);
+        }
+        Some(
+            SettingRow::Project(_)
+            | SettingRow::Muster
+            | SettingRow::Notch
+            | SettingRow::SideBySide
+            | SettingRow::Agents,
+        )
+        | None => {}
     }
     hints.push("r read again");
     hints

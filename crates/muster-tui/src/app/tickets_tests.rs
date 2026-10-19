@@ -97,7 +97,7 @@ pub(super) fn on_tickets() -> World {
 
 /// The worktree an agent on #42 works in, and the agent, as the state
 /// shows them.
-fn agent_on_42(world: &mut World, branch: &str, created: i64) -> muster_core::Session {
+pub(super) fn agent_on_42(world: &mut World, branch: &str, created: i64) -> muster_core::Session {
     let (workspace, agent) = agent_for_42(world, branch, created);
     world
         .app
@@ -231,7 +231,7 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
     else {
         panic!("{:?}", world.app.mode);
     };
-    assert_eq!((*harness, *another), (HarnessChoice::Claude, false));
+    assert_eq!((harness, *another), (&HarnessChoice::Claude, false));
     let screen = render(&world.app);
     for shown in [
         "Assign an agent",
@@ -272,7 +272,7 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
     else {
         panic!("{:?}", world.app.mode);
     };
-    assert_eq!((*harness, *another), (HarnessChoice::Codex, true));
+    assert_eq!((harness, *another), (&HarnessChoice::Codex, true));
     assert!(render(&world.app).contains("In a worktree of its own"));
     assert!(press(&mut world.app, KeyCode::Esc).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);

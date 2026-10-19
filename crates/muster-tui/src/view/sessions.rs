@@ -14,7 +14,7 @@ use crate::model::Row;
 use crate::motion;
 
 pub(super) fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let rows = app.model.rows();
+    let rows = app.rows();
     let block = panel(" Sessions ", app.list_has_keys());
     if !app.model.loaded() {
         frame.render_widget(
@@ -96,15 +96,19 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
                 .model
                 .project(id)
                 .map_or("?", |project| project.name.as_str());
-            ListItem::new(Line::from(vec![
+            let mut spans = vec![
                 edge,
+                fold_mark(app, row),
+                Span::raw(" "),
                 Span::styled(
                     name.to_owned(),
                     Style::default()
                         .fg(look::project_colour(app, id))
                         .add_modifier(Modifier::BOLD),
                 ),
-            ]))
+            ];
+            spans.extend(standing(app, row));
+            ListItem::new(Line::from(spans))
         }
         Row::Worktree(id) => ListItem::new(worktree_line(app, id, edge, width, by)),
         Row::Session(id) => match app.model.session(id) {
@@ -122,11 +126,59 @@ fn session_lead(edge: Span<'static>) -> Vec<Span<'static>> {
     vec![edge, Span::raw("   ")]
 }
 
-/// A worktree's line before its branch: its edge and its kind's mark.
+/// Where a project's or a worktree's triangle is drawn on its line, in
+/// cells from the list's inside edge: what a click folds it on.
+pub(crate) fn fold_column(row: Row) -> Option<u16> {
+    match row {
+        Row::Project(_) => Some(1),
+        Row::Worktree(_) => Some(2),
+        Row::Session(_) => None,
+    }
+}
+
+/// The triangle a project's or a worktree's line folds on: `▾` unfolded,
+/// `▸` folded, blank where there is nothing under it to fold.
+fn fold_mark(app: &App, row: Row) -> Span<'static> {
+    let mark = if app.is_folded(row) {
+        "▸"
+    } else if app.foldable(row) {
+        "▾"
+    } else {
+        " "
+    };
+    Span::from(mark).dim()
+}
+
+/// How the sessions on a project's or a worktree's line stand, after its
+/// name: the mark of the one that says most (`Model::most_urgent`), as
+/// its own line draws it, with the dot of news not seen; and, folded, how
+/// many sessions it hides.
+fn standing(app: &App, row: Row) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    if let Some(session) = app.model.most_urgent(row) {
+        let (symbol, style) = status_symbol(session.status, app.motion_step());
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(symbol, style));
+        if session.unseen && !matches!(session.status, SessionStatus::NeedsYou { .. }) {
+            spans.push(Span::from("•").cyan().bold());
+        }
+    }
+    let hidden = app.hidden_sessions(row);
+    if hidden > 0 {
+        let plural = if hidden == 1 { "" } else { "s" };
+        spans.push(Span::from(format!(" {hidden} session{plural}")).dim());
+    }
+    spans
+}
+
+/// A worktree's line before its branch: its edge, its triangle and its
+/// kind's mark, which stands over its sessions' marks.
 fn worktree_lead(app: &App, id: WorkspaceId, edge: Span<'static>) -> Vec<Span<'static>> {
     let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
     vec![
         edge,
+        Span::raw(" "),
+        fold_mark(app, Row::Worktree(id)),
         Span::raw(" "),
         Span::from(match kind {
             Some(WorkspaceKind::Checkout { .. }) => "⌂ ",
@@ -149,21 +201,27 @@ fn worktree_line(
     let branch = app.model.branch(id).unwrap_or("?").to_owned();
     let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
     let mut spans = worktree_lead(app, id, edge);
+    let standing = standing(app, Row::Worktree(id));
     if kind.is_some_and(|kind| !kind.in_git()) {
         spans.push(Span::from("not a git repository").dim());
+        spans.extend(standing);
     } else if let Some(run) = app.model.run_of(id) {
         // The stage first: the branch is long, and says less.
         spans.push(Span::raw(format!("#{} ", run.ticket.number)));
         spans.push(Span::from(run.stage.label()).dim());
         spans.push(Span::raw(format!("  {branch}")));
+        spans.extend(standing);
     } else {
-        let room = width.saturating_sub(pull_request::width(&spans));
+        // How its sessions stand stays beside the branch, whatever goes.
+        let room =
+            width.saturating_sub(pull_request::width(&spans) + pull_request::width(&standing));
         let (tail, branch_room) = branch_and_tail(app, id, &branch, room);
         let branch = slid(&branch, branch_room, by);
         let gap = room
             .saturating_sub(branch.chars().count() + pull_request::width(&tail))
             .max(1);
         spans.push(Span::raw(branch));
+        spans.extend(standing);
         if !tail.is_empty() {
             spans.push(Span::raw(" ".repeat(gap)));
             spans.extend(tail);
@@ -257,7 +315,9 @@ struct SessionParts {
 /// what it is doing). Where it is short of room the title gives way
 /// first, down to a readable length; then a finished or ended session's
 /// time goes, then what it is doing, which is cut short only while it
-/// works or waits (a status alone says no more than its mark). The mark
+/// works or waits, or where it says more than a status (a tidy's outcome,
+/// why an ended session was not resumed); a status alone says no more
+/// than its mark. The mark
 /// always stays, and a working or waiting session's time, and its
 /// project's name.
 fn session_parts(
@@ -311,7 +371,7 @@ fn session_parts(
     // A tidy's outcome is worth a shortened line, as a working agent's is.
     let doing = if doing.chars().count() <= doing_room {
         doing
-    } else if (live || session.tidy.is_some()) && doing_room >= 8 {
+    } else if (live || session.tidy.is_some() || session.activity.is_some()) && doing_room >= 8 {
         shorten(&doing, doing_room)
     } else {
         String::new()
@@ -396,7 +456,9 @@ pub(super) fn cut_name(app: &App, width: usize) -> Option<(usize, usize)> {
                 }
                 let branch = app.model.branch(id)?;
                 let lead = worktree_lead(app, id, Span::raw(" "));
-                let room = width.saturating_sub(pull_request::width(&lead));
+                let standing = standing(app, Row::Worktree(id));
+                let room = width
+                    .saturating_sub(pull_request::width(&lead) + pull_request::width(&standing));
                 (branch, branch_and_tail(app, id, branch, room).1)
             }
             Row::Session(id) => {

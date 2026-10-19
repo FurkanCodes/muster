@@ -43,6 +43,7 @@ pub(super) fn open_with_output(lines: usize, full: bool) -> (World, SessionId) {
         seq: 0,
         data: output.into_bytes(),
         reset: true,
+        live_from: None,
     });
     (world, id)
 }
@@ -247,6 +248,7 @@ fn page_keys_scroll_the_preview() {
         seq: 0,
         data: output.into_bytes(),
         reset: true,
+        live_from: None,
     });
     press(&mut world.app, KeyCode::PageUp);
     let back = world.app.screens[&id].scrolled_back();

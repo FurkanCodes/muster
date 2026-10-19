@@ -52,6 +52,15 @@ pub enum WaitReason {
     Action,
 }
 
+/// Who inside an agent session raised an event, or is waited on.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Origin {
+    /// The main agent, the one the person talks to.
+    Main,
+    /// A subagent, by the id its harness gave it.
+    Subagent(String),
+}
+
 /// What an agent is doing now, as its hooks tell: `editing view.rs`,
 /// `running cargo`, `wants to run npm`, `thinking`. Only what a glance
 /// needs: a file's name, never its path; a command's program, never its

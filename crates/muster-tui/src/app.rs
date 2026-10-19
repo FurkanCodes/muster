@@ -2,11 +2,17 @@
 //! daemon, and returns the frames to send. It does no IO, so every behaviour
 //! can be tested by feeding it events and drawing it into a test buffer.
 
+mod actions;
+mod alarm;
 mod changes;
 mod events;
+mod fold;
 mod harness_choice;
+mod help;
 mod link;
+mod menu;
 mod motion;
+mod narrow;
 mod notch;
 mod picker;
 mod pointer;
@@ -22,12 +28,19 @@ mod tidy;
 pub(crate) mod timeline;
 mod welcome;
 
+pub(crate) use actions::Here;
 pub(crate) use changes::{ChangeRow, ChangesPane, DiffPane, Pick};
 pub(crate) use harness_choice::HarnessChoice;
+pub(crate) use help::{Help, HelpLine};
+pub(crate) use menu::Menu;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
+#[cfg(test)]
+mod agents_tests;
+#[cfg(test)]
+mod alarm_tests;
 #[cfg(test)]
 mod by_hand_tests;
 #[cfg(test)]
@@ -37,15 +50,23 @@ mod clashes_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]
+mod fold_tests;
+#[cfg(test)]
 mod folder_tests;
+#[cfg(test)]
+mod help_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
 mod look_tests;
 #[cfg(test)]
+mod menu_tests;
+#[cfg(test)]
 mod motion_tests;
 #[cfg(test)]
 mod mouse_sweep_tests;
+#[cfg(test)]
+mod narrow_tests;
 #[cfg(test)]
 mod navigation_tests;
 #[cfg(test)]
@@ -69,6 +90,8 @@ mod slide_tests;
 #[cfg(test)]
 mod spend_tests;
 #[cfg(test)]
+mod terminal_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tickets_from_tests;
@@ -77,11 +100,11 @@ mod tickets_tests;
 #[cfg(test)]
 mod welcome_tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use muster_core::config::TrackerKind;
-use muster_core::protocol::{ClientFrame, Command, TermSize};
+use muster_core::protocol::{ClientFrame, Command, PixelSize, TermSize};
 use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
 
 use crate::input::LineInput;
@@ -159,6 +182,11 @@ pub(crate) enum Mode {
     /// keys go to them.
     Changes,
     Dialog(Dialog),
+    /// What can be done on the selected line, opened by a right-click on
+    /// it (`app::menu`).
+    Menu(Menu),
+    /// Every key of the screen shown, over it (`app::help`).
+    Help(Help),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -296,6 +324,8 @@ enum Then {
     BranchesChanged(ProjectId),
     /// Say whether the notch is on now: turned on, or off.
     NotchChanged(bool),
+    /// Say from how many columns a session sits beside the list now.
+    SideBySideChanged(u16),
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.
@@ -320,6 +350,9 @@ pub(crate) struct App {
     pub(crate) note: Option<Note>,
     /// The selected line of the sessions list, by identity.
     pub(crate) selected: Option<Row>,
+    /// The projects' and worktrees' lines folded in the sessions list,
+    /// hiding what is under them (`app::fold`).
+    folded: HashSet<Row>,
     /// Where the selected line was, so the selection stays nearby when
     /// that line goes away.
     selected_at: usize,
@@ -354,6 +387,8 @@ pub(crate) struct App {
     pub(crate) selection: Option<Selection>,
     /// The session whose terminal is streamed to this client.
     attached: Option<SessionId>,
+    /// The session the daemon was last told has the person's keys.
+    keys_told: Option<SessionId>,
     /// Something a reply named that the state may not show yet: replies and
     /// deltas travel separately, so either can arrive first. Selected (and,
     /// for a new session, opened) as soon as it appears.
@@ -392,6 +427,12 @@ pub(crate) struct App {
     flashes: HashMap<SessionId, u64>,
     /// The step a session last finished at, while Kep is glad of it.
     glad_at: Option<u64>,
+    /// Finishes not told yet, each with the step it came at: held a
+    /// moment, in case the session goes straight back to work
+    /// (`app::alarm`). One for each session, gone once told or dropped.
+    held_news: Vec<(SessionId, u64)>,
+    /// The session told of last, which `l` goes to.
+    last_alarm: Option<SessionId>,
     /// The selected line whose name, cut short, slides along.
     slide: Option<motion::Slide>,
     /// Whether the welcome fills the window, as the UI starts.
@@ -420,9 +461,23 @@ pub(crate) struct App {
     notch_started: bool,
     /// The notch is being turned on or off: the answer is on its way.
     pub(crate) notch_changing: bool,
+    /// The colours of the person's terminal, as it said them as the UI
+    /// started, told to each daemon the UI connects to.
+    pub(crate) colours: muster_core::colours::TerminalColours,
+    /// One cell of the person's terminal in pixels, as its size says,
+    /// read as the UI starts and as the window is resized.
+    pub(crate) cell_pixels: Option<PixelSize>,
+    /// The width a session sits beside the list from is being changed.
+    pub(crate) side_by_side_changing: bool,
 }
 
 impl App {
+    /// The coding agents the person added in Muster's own settings, as the
+    /// daemon last said.
+    pub(crate) fn added_agents(&self) -> &[muster_core::settings::AddedAgent] {
+        &self.model.preferences().agents
+    }
+
     pub(crate) fn new(cwd: PathBuf, terminal_size: TermSize) -> Self {
         Self {
             model: Model::default(),
@@ -431,6 +486,7 @@ impl App {
             link: Link::Connecting,
             note: None,
             selected: None,
+            folded: HashSet::new(),
             selected_at: 0,
             list_offset: 0,
             needs_offset: 0,
@@ -447,6 +503,7 @@ impl App {
             changes: None,
             selection: None,
             attached: None,
+            keys_told: None,
             wanted: None,
             pending: HashMap::new(),
             next_req: 1,
@@ -462,6 +519,8 @@ impl App {
             now: None,
             flashes: HashMap::new(),
             glad_at: None,
+            held_news: Vec::new(),
+            last_alarm: None,
             slide: None,
             welcome: false,
             last_harness: HarnessChoice::Claude,
@@ -472,6 +531,9 @@ impl App {
             notch_here: false,
             notch_started: false,
             notch_changing: false,
+            colours: muster_core::colours::TerminalColours::default(),
+            cell_pixels: None,
+            side_by_side_changing: false,
         }
     }
 
@@ -535,15 +597,22 @@ impl App {
         self.terminal_size = size;
         // The session's screen is drawn again at another size.
         self.selection = None;
-        self.keep_in_view();
-        self.fit_attached()
+        // Narrower or wider than a session beside the list needs, the
+        // session shown may be another, or none.
+        let attached = self.attached;
+        let mut actions = self.settle();
+        if self.attached == attached {
+            actions.extend(self.fit_attached());
+        }
+        actions
     }
 
     /// The size sessions' programs are given: the pane beside the list, or
-    /// the window below the top bar while one fills it. Programs draw for
-    /// their terminal's size, so it is always the size they are shown at.
+    /// the window below the top bar while one fills it, as it does in a
+    /// window too narrow for both. Programs draw for their terminal's size,
+    /// so it is always the size they are shown at.
     pub(crate) fn session_size(&self) -> TermSize {
-        if self.full_screen && matches!(self.mode, Mode::Terminal(_)) {
+        if self.fills_window() || self.narrow() {
             return self.terminal_size;
         }
         let window =
@@ -553,6 +622,39 @@ impl App {
             cols: pane.width.max(1),
             rows: pane.height.max(1),
         }
+    }
+
+    /// The session whose terminal has the person's keys: one they entered,
+    /// in a window they look at (or one that never says).
+    pub(crate) fn keys_session(&self) -> Option<SessionId> {
+        match self.mode {
+            Mode::Terminal(session) if self.focused != Some(false) => Some(session),
+            _ => None,
+        }
+    }
+
+    /// Tells the daemon where the person's keys are now, if that changed,
+    /// so a program that asked learns it gained or lost focus. Not to a
+    /// daemon before it knew how (`ARC-09`).
+    pub(super) fn tell_keys(&mut self) -> Option<Action> {
+        let wanted = self.keys_session();
+        let knows = matches!(self.link, Link::Connected { .. })
+            && self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL;
+        if !knows || wanted == self.keys_told {
+            return None;
+        }
+        self.keys_told = wanted;
+        Some(Action::Send(ClientFrame::Keys { session: wanted }))
+    }
+
+    /// A session's terminal of `size` in pixels, scaled from a cell of the
+    /// person's terminal; `None` where that terminal does not say its own.
+    pub(crate) fn session_pixels(&self, size: TermSize) -> Option<PixelSize> {
+        let cell = self.cell_pixels?;
+        Some(PixelSize {
+            width: size.cols.saturating_mul(cell.width),
+            height: size.rows.saturating_mul(cell.height),
+        })
     }
 
     /// Whether the list has the keys, rather than a session's terminal.
@@ -572,7 +674,11 @@ impl App {
             .session(session)
             .is_some_and(|stored| stored.ended_at.is_none());
         if running {
-            vec![Action::Send(ClientFrame::Resize { session, size })]
+            vec![Action::Send(ClientFrame::Resize {
+                session,
+                size,
+                pixels: self.session_pixels(size),
+            })]
         } else {
             Vec::new()
         }

@@ -2,7 +2,6 @@
 //! the last note, or why the daemon cannot be reached, and a warning when
 //! this UI is older than the daemon.
 
-use muster_core::WorkspaceKind;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Stylize;
@@ -11,7 +10,6 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::{settings, tickets, version};
 use crate::app::{App, Link, Mode, View};
-use crate::model::Row;
 
 /// The most lines a message gets under the list.
 const MAX_NOTE_LINES: u16 = 3;
@@ -69,7 +67,7 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
         let warning = Line::from(note_text(&warning)).yellow();
         frame.render_widget(Paragraph::new(warning).wrap(Wrap { trim: false }), above);
-        frame.render_widget(Line::from(format!(" {}", hints(app))).dim(), hints_area);
+        draw_hints(frame, app, hints_area);
         return;
     }
     if let Some((text, error)) = message(app) {
@@ -82,13 +80,59 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), area);
         return;
     }
-    frame.render_widget(Line::from(format!(" {}", hints(app))).dim(), area);
+    draw_hints(frame, app, area);
 }
 
-/// The keys that do something for what is selected.
-fn hints(app: &App) -> String {
+/// What `h` is, at the bar's end while the list has the keys, so the
+/// way to every other key is always in view.
+const HELP_HINT: &str = "h help ";
+
+/// The hints in `area`, as many as fit whole, and at its end the key of
+/// the help, where it opens.
+fn draw_hints(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let help = app.mode == Mode::Browse;
+    let help_width = if help {
+        u16::try_from(HELP_HINT.chars().count()).unwrap_or(0)
+    } else {
+        0
+    };
+    let [left, right] =
+        Layout::horizontal([Constraint::Min(0), Constraint::Length(help_width)]).areas(area);
+    // A space before them, and two before the help.
+    let room = usize::from(left.width).saturating_sub(if help { 3 } else { 1 });
+    let text = fitting(&hints(app), room);
+    frame.render_widget(Line::from(format!(" {text}")).dim(), left);
+    if help {
+        frame.render_widget(Line::from(HELP_HINT).dim(), right);
+    }
+}
+
+/// As many of `hints` as fit in `room` cells, whole, two spaces apart:
+/// the first however long, cut where the bar ends.
+fn fitting(hints: &[String], room: usize) -> String {
+    let mut text = String::new();
+    for hint in hints {
+        if !text.is_empty() {
+            if text.chars().count() + 2 + hint.chars().count() > room {
+                break;
+            }
+            text.push_str("  ");
+        }
+        text.push_str(hint);
+    }
+    text
+}
+
+/// The keys that do something for what is selected, most used first.
+fn hints(app: &App) -> Vec<String> {
+    if let Mode::Menu(_) = app.mode {
+        return vec!["↑↓ choose  ⏎ do it, or press its key  esc close".to_owned()];
+    }
+    if let Mode::Help(_) = app.mode {
+        return vec!["type to narrow  ↑↓ scroll  esc close".to_owned()];
+    }
     if matches!(app.mode, Mode::Terminal(_)) {
-        return "keys go to the session   Shift-Q back to the list (or click it)".to_owned();
+        return vec!["keys go to the session   Shift-Q back to the list (or click it)".to_owned()];
     }
     if app.mode == Mode::Changes {
         let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
@@ -101,87 +145,30 @@ fn hints(app: &App) -> String {
         } else {
             ""
         };
-        return if diff {
+        return vec![if diff {
             format!("↑↓ scroll  PgUp PgDn page  esc the changes  r again{undo}  d back")
         } else {
             format!("↑↓ move  ⏎ its diff  r again{undo}  esc back to the list")
-        };
+        }];
     }
-    let session = app.focused_session().and_then(|id| app.model.session(id));
-    let mut hints = vec!["↑↓ move"];
-    if app.view == View::Tickets {
-        hints.extend(tickets::hints(app));
-        hints.extend(["⇥ next tab", "esc back", "q quit"]);
-        return hints.join("  ");
-    }
-    if app.view == View::Settings {
-        hints.extend(settings::hints(app));
-        hints.extend(["⇥ next tab", "esc back", "q quit"]);
-        return hints.join("  ");
-    }
-    match (app.view, app.selected, session) {
-        (_, _, Some(session)) if session.ended_at.is_none() => {
-            hints.extend([
-                "⏎ type in it",
-                "f full screen",
-                "d changes",
-                "R rename",
-                "x close",
-                "s stop",
-                "n session",
-            ]);
+    let mut hints = vec!["↑↓ move".to_owned()];
+    let general: &[&str] = match app.view {
+        View::Tickets => {
+            hints.extend(tickets::hints(app).into_iter().map(str::to_owned));
+            &["⇥ next tab", "esc back", "q quit"]
         }
-        (_, _, Some(_)) => hints.extend([
-            "⏎ open",
-            "f full screen",
-            "d changes",
-            "R rename",
-            "r restart",
-            "x remove",
-            "n session",
-        ]),
-        (View::Sessions, Some(Row::Worktree(id)), None) => {
-            let kind = app.model.workspace(id).map(|workspace| &workspace.kind);
-            hints.push("⏎ session");
-            if kind.is_some_and(WorkspaceKind::is_worktree) {
-                hints.push("x remove");
-            }
-            if kind.is_some_and(|kind| !kind.in_git()) {
-                // A plain folder: its checks, and nothing that needs git.
-                hints.push("c check");
-            } else {
-                if kind.is_some_and(|kind| kind.run().is_none()) {
-                    hints.extend([
-                        "d changes",
-                        "c check",
-                        "v review",
-                        "t tidy",
-                        "u onto base",
-                        "o PR",
-                    ]);
-                }
-                if app
-                    .model
-                    .workspace(id)
-                    .is_some_and(|workspace| workspace.pull_request.is_some())
-                {
-                    hints.push("b browser");
-                }
-                hints.extend(["w worktree", "i tickets"]);
-            }
+        View::Settings => {
+            hints.extend(settings::hints(app).into_iter().map(str::to_owned));
+            &["⇥ next tab", "esc back", "q quit"]
         }
-        (View::Sessions, Some(Row::Project(id)), None) if app.model.is_plain_folder(id) => {
-            hints.extend(["⏎ session", "x remove"]);
-        }
-        (View::Sessions, Some(Row::Project(_)), None) => {
-            hints.extend(["⏎ worktree", "n session", "i tickets", "x remove"]);
-        }
-        _ => {}
-    }
-    match app.view {
-        View::Sessions => hints.extend(["a project", "⇥ next tab", "q quit"]),
-        View::NeedsYou => hints.extend(["⇥ next tab", "esc back", "q quit"]),
-        View::Tickets | View::Settings => {}
-    }
-    hints.join("  ")
+        View::Sessions => &["a project", "⇥ next tab", "q quit"],
+        View::NeedsYou => &["⇥ next tab", "esc back", "q quit"],
+    };
+    hints.extend(
+        app.actions_here()
+            .into_iter()
+            .map(|here| format!("{} {}", here.key_name(), here.what)),
+    );
+    hints.extend(general.iter().map(|hint| (*hint).to_owned()));
+    hints
 }

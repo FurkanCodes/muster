@@ -54,7 +54,7 @@ fn line_with(screen: &str, text: &str) -> String {
         .to_owned()
 }
 
-fn buffer(app: &App) -> Buffer {
+pub(super) fn buffer(app: &App) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(SIZE.cols, SIZE.rows + 1)).unwrap();
     terminal
         .draw(|frame| crate::view::draw(frame, app))
@@ -194,18 +194,12 @@ fn each_project_has_its_colour_and_the_selection_a_tint_and_a_bar() {
     let row_of = |name: &str| {
         (0..cells.area.height)
             .find(|y| {
-                (0..cells.area.width)
+                let line = (0..cells.area.width)
                     .map(|x| cells[(x, *y)].symbol())
-                    .collect::<String>()
-                    .contains(&format!("│{name}"))
-                    || (0..cells.area.width)
-                        .map(|x| cells[(x, *y)].symbol())
-                        .collect::<String>()
-                        .contains(&format!("█{name}"))
-                    || (0..cells.area.width)
-                        .map(|x| cells[(x, *y)].symbol())
-                        .collect::<String>()
-                        .contains(&format!("▌{name}"))
+                    .collect::<String>();
+                ["█", "▌"]
+                    .iter()
+                    .any(|edge| line.contains(&format!("{edge}▾ {name}")))
             })
             .unwrap()
     };
@@ -217,9 +211,9 @@ fn each_project_has_its_colour_and_the_selection_a_tint_and_a_bar() {
     assert_eq!(cells[(1, app_row)].fg, Color::Blue);
     assert_eq!(cells[(1, web_row)].fg, Color::Magenta);
     assert_eq!(
-        cells[(2, app_row)].fg,
+        cells[(4, app_row)].fg,
         Color::Blue,
-        "its name in its colour"
+        "its name in its colour, after its triangle"
     );
     assert_eq!(cells[(5, app_row)].bg, Color::DarkGray);
     assert!(!cells[(5, app_row)].modifier.contains(Modifier::REVERSED));

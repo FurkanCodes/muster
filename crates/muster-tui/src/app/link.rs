@@ -17,6 +17,8 @@ impl App {
         self.link = Link::Connected { daemon_version };
         self.keep_in_view();
         self.attached = None;
+        // A new daemon knows nothing of where the keys are.
+        self.keys_told = None;
         self.pending.clear();
         // Asked of the last daemon, never answered: asked again.
         self.forget_unanswered();
@@ -27,12 +29,20 @@ impl App {
         self.notch_started = false;
         let mut actions = vec![Action::Send(ClientFrame::Subscribe)];
         actions.extend(self.looking());
+        // Programs in sessions asking their terminal's colours are told the
+        // person's, by a daemon that knows how (`ARC-09`).
+        if self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL
+            && !self.colours.is_empty()
+        {
+            actions.push(Action::Send(ClientFrame::Colours(self.colours.clone())));
+        }
         actions
     }
 
     pub(crate) fn on_disconnected(&mut self, reason: String) {
         self.link = Link::Lost(reason);
         self.attached = None;
+        self.keys_told = None;
         self.pending.clear();
         self.forget_unanswered();
         // The reason takes lines from the list.
@@ -43,6 +53,7 @@ impl App {
 
     pub(crate) fn on_frame(&mut self, frame: ServerFrame) -> Vec<Action> {
         let mut news = None;
+        let mut copied = None;
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
             ServerFrame::Delta(delta) => {
@@ -59,7 +70,7 @@ impl App {
                     .is_some_and(|stored| stored.ended_at.is_some());
                 self.model.apply(delta);
                 if before == Some(false) {
-                    news = session.and_then(|id| self.news(id));
+                    news = session.and_then(|id| self.on_news(id));
                 }
                 if let Some(id) = session {
                     self.reattach_if_reopened(id, was_ended);
@@ -74,8 +85,24 @@ impl App {
                 seq,
                 data,
                 reset,
-            } => self.screen(session).replay(seq, &data, reset),
-            ServerFrame::Output { session, seq, data } => self.screen(session).output(seq, &data),
+                live_from,
+            } => {
+                let screen = self.screen(session);
+                screen.replay(seq, &data, reset, live_from);
+                // What the program copied as the person looked on, which
+                // reached this client late.
+                copied = screen
+                    .take_copy()
+                    .filter(|_| self.attached == Some(session));
+            }
+            ServerFrame::Output { session, seq, data } => {
+                let screen = self.screen(session);
+                screen.output(seq, &data);
+                // What the program copied as the person looked on.
+                copied = screen
+                    .take_copy()
+                    .filter(|_| self.attached == Some(session));
+            }
             ServerFrame::Modes { session, modes } => self.screen(session).modes = modes,
             ServerFrame::Detached { session, reason } => {
                 self.screen(session).ended = Some(reason);
@@ -84,6 +111,13 @@ impl App {
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
         }
         let mut actions: Vec<Action> = news.into_iter().collect();
+        if let Some(text) = copied {
+            match text.lines().count() {
+                0 | 1 => self.say("The session copied a line."),
+                lines => self.say(format!("The session copied {lines} lines.")),
+            }
+            actions.push(Action::Copy(text));
+        }
         actions.extend(self.start_notch());
         actions.extend(self.settle());
         actions
@@ -107,9 +141,9 @@ impl App {
         }
     }
 
-    /// A notification for a session that has just come to need the
-    /// person, if they are looking elsewhere and want to be told.
-    fn news(&self, session: SessionId) -> Option<Action> {
+    /// A notification for a session that has come to need the person, if
+    /// they are looking elsewhere and want to be told.
+    pub(super) fn news(&self, session: SessionId) -> Option<Action> {
         if !self.notify || self.focused != Some(false) {
             return None;
         }
@@ -167,6 +201,7 @@ impl App {
             _ => Vec::new(),
         };
         actions.extend(self.looking());
+        actions.extend(self.tell_keys());
         if focused && self.view == View::Tickets && matches!(self.link, Link::Connected { .. }) {
             self.forget_failed_tickets();
             actions.extend(self.fetch_tickets());
@@ -245,6 +280,9 @@ impl App {
             (Ok(_), Then::Say(text)) => self.say(text),
             (Ok(_), Then::TicketClosed(project, key)) => self.ticket_closed(project, key),
             (outcome, Then::NotchChanged(on)) => self.notch_changed(on, outcome.map(drop)),
+            (outcome, Then::SideBySideChanged(columns)) => {
+                self.side_by_side_changed(columns, outcome.map(drop));
+            }
             (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Ok(changes));
             }

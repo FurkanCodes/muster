@@ -15,9 +15,11 @@ mod bottom_bar;
 mod changes;
 mod clashes;
 mod dialogs;
+mod help;
 pub(crate) mod kep;
 pub(crate) mod logos;
 pub(crate) mod look;
+mod menu;
 mod preview;
 mod pull_request;
 mod selection;
@@ -29,7 +31,9 @@ mod top_bar;
 mod version;
 
 use bottom_bar::{bottom_height, draw_bottom_bar};
+pub(crate) use menu::menu_area;
 use preview::draw_preview;
+pub(crate) use sessions::fold_column;
 use sessions::{draw_needs_you, draw_sessions};
 use terminal::{draw_session, draw_terminal};
 
@@ -52,6 +56,17 @@ pub(crate) struct BrowseAreas {
     pub(crate) bottom: Rect,
 }
 
+/// How the body of the window is shared between the list and the pane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shape {
+    /// The list, and the pane beside it.
+    SideBySide,
+    /// The list alone: a window too narrow for both.
+    List,
+    /// The pane alone, which has the keys, in a window too narrow for both.
+    Pane,
+}
+
 /// The list view's layout in `area`, shared with the app so the mouse
 /// lands where things are drawn. While a session beside the list has the
 /// keys, the bottom bar keeps to one line, so the session keeps its size.
@@ -61,16 +76,25 @@ pub(crate) fn browse_areas(app: &App, area: Rect) -> BrowseAreas {
     } else {
         bottom_height(app, area.width)
     };
-    layout(area, bottom)
+    let shape = if !app.narrow() {
+        Shape::SideBySide
+    } else if app.pane_fills_width() {
+        Shape::Pane
+    } else {
+        Shape::List
+    };
+    layout(area, bottom, shape)
 }
 
 /// Where a session's terminal is drawn beside the list in `area`, inside
 /// its border: the size its program is given.
 pub(crate) fn session_area(area: Rect) -> Rect {
-    layout(area, 1).preview.inner(Margin::new(1, 1))
+    layout(area, 1, Shape::SideBySide)
+        .preview
+        .inner(Margin::new(1, 1))
 }
 
-fn layout(area: Rect, bottom: u16) -> BrowseAreas {
+fn layout(area: Rect, bottom: u16, shape: Shape) -> BrowseAreas {
     let [top, body, bottom] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
@@ -79,9 +103,13 @@ fn layout(area: Rect, bottom: u16) -> BrowseAreas {
     .areas(area);
     // The list takes what its lines need, and the session beside it, where
     // the person works with Claude Code, the rest.
-    let list_width = u16::try_from((u32::from(body.width) * 3 / 10).clamp(34, 48))
-        .unwrap_or(48)
-        .min(body.width);
+    let list_width = match shape {
+        Shape::SideBySide => u16::try_from((u32::from(body.width) * 3 / 10).clamp(34, 48))
+            .unwrap_or(48)
+            .min(body.width),
+        Shape::List => body.width,
+        Shape::Pane => 0,
+    };
     let [list, preview] =
         Layout::horizontal([Constraint::Length(list_width), Constraint::Min(0)]).areas(body);
     BrowseAreas {
@@ -99,7 +127,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         return;
     }
     if let Mode::Terminal(session) = app.mode
-        && app.full_screen
+        && app.fills_window()
     {
         draw_terminal(frame, app, session, area);
         return;
@@ -120,7 +148,14 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     if let Mode::Terminal(session) = app.mode {
         draw_session(frame, app, session, preview, true);
     } else if app.mode == Mode::Changes
-        || matches!(app.mode, Mode::Dialog(crate::app::Dialog::Undo { .. }))
+        || matches!(
+            app.mode,
+            Mode::Dialog(crate::app::Dialog::Undo { .. })
+                | Mode::Help(crate::app::Help {
+                    over_changes: true,
+                    ..
+                })
+        )
     {
         changes::draw_changes(frame, app, preview);
     } else if app.view == View::Tickets {
@@ -131,8 +166,11 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         draw_preview(frame, app, preview);
     }
     draw_bottom_bar(frame, app, bottom);
-    if let Mode::Dialog(dialog) = &app.mode {
-        dialogs::draw_dialog(frame, app, dialog, area);
+    match &app.mode {
+        Mode::Dialog(dialog) => dialogs::draw_dialog(frame, app, dialog, area),
+        Mode::Menu(open) => menu::draw_menu(frame, open, area),
+        Mode::Help(open) => help::draw_help(frame, app, open, area),
+        _ => {}
     }
 }
 

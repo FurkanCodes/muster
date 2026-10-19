@@ -33,7 +33,7 @@ impl Supervisor {
         let harness = harness::find("checks").ok_or_else(|| {
             ErrorBody::new(ErrorCode::Internal, "the checks are not a known harness")
         })?;
-        let place = self.place_for(workspace, harness)?;
+        let place = self.place_for(workspace, &harness)?;
         let Place::Host(path) = &place else {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -42,7 +42,7 @@ impl Supervisor {
         };
         let checks = self.checks_in(workspace, path).await?;
         let id = self
-            .add_session(workspace, harness, None, Start::WithPrompt)
+            .add_session(workspace, &harness, None, Start::WithPrompt)
             .await?;
         if let Err(error) = self.launch(
             id,
@@ -111,7 +111,7 @@ impl Supervisor {
         let harness = harness::find("review").ok_or_else(|| {
             ErrorBody::new(ErrorCode::Internal, "the review is not a known harness")
         })?;
-        let place = self.place_for(workspace, harness)?;
+        let place = self.place_for(workspace, &harness)?;
         let Place::Host(path) = &place else {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -122,7 +122,7 @@ impl Supervisor {
         let base = self.base_for(workspace, path).await?;
         let prompt = crate::runs::prompts::review_by_hand(&branch, &base);
         let id = self
-            .add_session(workspace, harness, None, Start::WithPrompt)
+            .add_session(workspace, &harness, None, Start::WithPrompt)
             .await?;
         let mode = Mode::Fresh {
             prompt: Some(prompt),

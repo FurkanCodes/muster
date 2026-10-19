@@ -246,6 +246,8 @@ mod tests {
             ("copilot", "◉"),
             ("shell", "❯"),
             ("checks", "✔"),
+            // An agent the person added has no logo of its own.
+            ("my-agent", "•"),
         ] {
             for graphics in [Graphics::Text, Graphics::Iterm] {
                 let spans = spans(graphics, harness);

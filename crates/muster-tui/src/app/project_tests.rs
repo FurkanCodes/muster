@@ -240,10 +240,7 @@ fn a_run_s_container_follows_the_worktrees_with_its_issue_and_stage() {
     assert!(at(Row::Worktree(container.id)) > at(Row::Worktree(world.worktree.id)));
     world.app.selected = Some(Row::Worktree(container.id));
     let screen = render(&world.app);
-    assert!(
-        screen.contains("⧉ #42 taken over  muster/issue"),
-        "{screen}"
-    );
+    assert!(screen.contains("⧉ #42 taken over  muster/iss"), "{screen}");
     assert!(
         screen.contains("The container of the run on #42"),
         "{screen}"

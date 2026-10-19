@@ -105,7 +105,7 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                     // Which agent, then how it is doing.
                     let (symbol, style) = status_symbol(session.status, app.motion_step());
                     [
-                        Span::from(format!(" {}", look::harness_letter(&session.harness))).dim(),
+                        look::agent_mark(app, &session.harness),
                         Span::styled(symbol, style),
                     ]
                 })
@@ -301,7 +301,7 @@ fn ticket_text(
                 .to_owned();
             let mut spans = vec![
                 Span::styled(format!(" {symbol} "), style),
-                Span::from(format!("{}  ", agent_name(&session.harness))).bold(),
+                Span::from(format!("{}  ", agent_name(app, &session.harness))).bold(),
                 Span::raw(describe(session.status)),
             ];
             if let Some(spend) = &session.spend {
@@ -368,9 +368,9 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
 }
 
 /// An agent's name as the person knows it: `Codex`, not `codex`.
-fn agent_name(harness: &str) -> &str {
-    match HarnessChoice::from_id(harness) {
-        Some(choice) => choice.label(),
-        None => harness,
+fn agent_name(app: &App, harness: &str) -> String {
+    match HarnessChoice::from_id(harness, app.added_agents()) {
+        Some(choice) => choice.label().to_owned(),
+        None => harness.to_owned(),
     }
 }

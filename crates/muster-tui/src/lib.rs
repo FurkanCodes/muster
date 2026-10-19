@@ -12,6 +12,7 @@
 
 mod app;
 mod clipboard;
+mod colours;
 mod folders;
 mod input;
 mod keys;
@@ -22,4 +23,4 @@ mod runtime;
 mod screen;
 mod view;
 
-pub use runtime::{Options, TuiError, run};
+pub use runtime::{Options, START_AGAIN_AFTER, START_WAIT, TuiError, run};

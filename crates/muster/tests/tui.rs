@@ -548,9 +548,10 @@ fn the_mouse_reaches_what_it_points_at_around_a_copy() {
         std::thread::sleep(Duration::from_millis(25));
     }
 
-    // A click on the project's line gives the list the keys and selects it;
-    // one on its details opens nothing, so no dialog takes the clicks.
-    ui.click(2, 2);
+    // A click on the project's line (on its name: its triangle, before
+    // it, folds it) gives the list the keys and selects it; one on its
+    // details opens nothing, so no dialog takes the clicks.
+    ui.click(6, 2);
     ui.wait_for("╭ Details");
     ui.click(80, 10);
     std::thread::sleep(Duration::from_millis(300));

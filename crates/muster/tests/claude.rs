@@ -139,6 +139,8 @@ async fn each_claude_session_gets_its_own_id_hooks_and_token() {
         "PostToolUse",
         "SubagentStart",
         "SubagentStop",
+        "Elicitation",
+        "ElicitationResult",
     ] {
         assert!(one.hook_command(event).contains("--unix-socket"), "{event}");
     }

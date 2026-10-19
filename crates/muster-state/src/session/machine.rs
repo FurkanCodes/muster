@@ -3,11 +3,13 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
+use muster_core::explain::DeadlineKind;
 use muster_core::{SessionStatus, WaitReason};
 
 use super::signal::{Effect, HookEvent, Origin, Signal};
 
 mod carry;
+mod explain;
 
 pub use carry::Carried;
 
@@ -169,23 +171,34 @@ impl SessionMachine {
 
     /// When the daemon should next send [`Signal::Tick`], if ever.
     pub fn next_deadline(&self) -> Option<Instant> {
-        let start = self.start_by.filter(|_| self.before_startup.is_none());
+        self.next_deadline_and_kind().map(|(at, _)| at)
+    }
+
+    /// The next deadline, and what the machine does at it.
+    fn next_deadline_and_kind(&self) -> Option<(Instant, DeadlineKind)> {
+        let start = self
+            .start_by
+            .filter(|_| self.before_startup.is_none())
+            .map(|at| (at, DeadlineKind::Start));
         match (start, self.hold_deadline()) {
-            (Some(start), Some(hold)) => Some(start.min(hold)),
+            (Some(start), Some(hold)) => Some(if hold.0 < start.0 { hold } else { start }),
             (start, hold) => start.or(hold),
         }
     }
 
-    fn hold_deadline(&self) -> Option<Instant> {
+    fn hold_deadline(&self) -> Option<(Instant, DeadlineKind)> {
         let hold = self.hold?;
         if let Some(drained_at) = hold.drained_at {
-            return Some(drained_at + self.timing.drain_grace);
+            return Some((drained_at + self.timing.drain_grace, DeadlineKind::Drain));
         }
         if self.is_waiting() {
             // A subagent waiting on the person is not quiet, however long it takes.
             return None;
         }
-        Some(self.last_subagent_activity(hold) + self.timing.subagent_quiet)
+        Some((
+            self.last_subagent_activity(hold) + self.timing.subagent_quiet,
+            DeadlineKind::Quiet,
+        ))
     }
 
     /// Applies one signal and returns what the daemon must do about it.
@@ -260,12 +273,15 @@ impl SessionMachine {
                 self.save_resume_id(effects);
                 self.end_turn(now);
             }
-            HookEvent::PermissionRequested { origin, deferred } => {
-                self.on_permission(origin, deferred, now);
+            HookEvent::TurnInterrupted => {
+                self.save_resume_id(effects);
+                self.interrupt(now);
             }
-            HookEvent::QuestionAsked { origin } => {
-                self.note_activity(&origin, now);
-                self.wait_for(origin, WaitReason::Question);
+            HookEvent::PermissionRequested { origin, deferred } => {
+                self.on_ask(origin, WaitReason::Permission, deferred, now);
+            }
+            HookEvent::QuestionAsked { origin, deferred } => {
+                self.on_ask(origin, WaitReason::Question, deferred, now);
             }
             HookEvent::ToolStarted { origin } => self.on_tool_started(&origin, now),
             HookEvent::ToolFinished { origin, question } => {
@@ -288,7 +304,9 @@ impl SessionMachine {
         }
     }
 
-    fn on_permission(&mut self, origin: Origin, deferred: bool, now: Instant) {
+    /// A permission or a question asked; a deferred notice of one opens a
+    /// wait only where none is shown and the person has not just answered.
+    fn on_ask(&mut self, origin: Origin, reason: WaitReason, deferred: bool, now: Instant) {
         self.note_activity(&origin, now);
         if deferred {
             let echo = self.answered.as_ref().is_some_and(|(answered, at)| {
@@ -300,7 +318,7 @@ impl SessionMachine {
                 return;
             }
         }
-        self.wait_for(origin, WaitReason::Permission);
+        self.wait_for(origin, reason);
     }
 
     fn on_tool_started(&mut self, origin: &Origin, now: Instant) {
@@ -440,6 +458,32 @@ impl SessionMachine {
                 drained_at: None,
             });
         }
+    }
+
+    /// The person cut the turn short. Whatever dialog was on screen, theirs
+    /// or a subagent's, is gone with it, so every open prompt closes; the
+    /// session holds only for subagents still at work. They ended it
+    /// themselves, so it is no news.
+    fn interrupt(&mut self, now: Instant) {
+        if !matches!(
+            self.status,
+            SessionStatus::Running | SessionStatus::NeedsYou { .. }
+        ) {
+            return;
+        }
+        self.waits.clear();
+        if self.subagents.is_empty() {
+            self.finish(now);
+        } else {
+            self.status = SessionStatus::Running;
+            if self.hold.is_none() {
+                self.hold = Some(Hold {
+                    since: now,
+                    drained_at: None,
+                });
+            }
+        }
+        self.unseen = false;
     }
 
     fn finish(&mut self, now: Instant) {

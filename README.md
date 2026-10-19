@@ -6,12 +6,12 @@
 
 ## What it does
 
-- **Sessions in worktrees, or in your checkout.** Add a repository (or any folder), create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start a coding agent (Claude Code, Codex, Gemini CLI, OpenCode or Copilot CLI) or a shell in it, or start one in the repository itself. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist. Branches shown follow what is checked out, also when you or an agent switch, and worktrees made or removed with plain git appear and go. A plain folder, not a git repository, works too: sessions and checks run in the folder, and worktrees, tickets, reviews and pull requests come once you make it one (`git init`).
-- **Live status, no screen scraping.** Each agent reports the way it allows without touching your setup: Claude Code through hooks passed on its command line (`--settings`); Gemini CLI, OpenCode and Copilot CLI through hooks or a plugin in a file of Muster's own that they are pointed at for the session; Codex through its turn notice and its window title. Nothing is written into your repository or your agents' settings. Muster shows each session as running, finished, or *needs you* (a permission prompt or a question), with a dot for news you have not seen. Each agent's line also says what it is doing, as its hooks tell (`editing view.rs`, `running cargo`, `wants to run rm`: a file's name and a command's program, never its arguments), and how long it has run, waited or sat finished; the top bar counts the agents working, waiting and done, beside the machine's memory, and each project has a colour of its own. A running session's mark spins, what needs you pulses, and a session's line flashes for a moment as it finishes or comes to need you, so what is moving stands out, and a title or branch too long for the selected line slides along so you can read it; `MUSTER_MOTION=off` keeps them still.
+- **Sessions in worktrees, or in your checkout.** Add a repository (or any folder), create a worktree per piece of work (`~/.muster/worktrees/<repo>/<branch>`), and start a coding agent (Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI, or [one of your own](#agents-of-your-own)) or a shell in it, or start one in the repository itself. Removing a worktree keeps its branch and refuses to discard uncommitted work unless you insist. Branches shown follow what is checked out, also when you or an agent switch, and worktrees made or removed with plain git appear and go. A plain folder, not a git repository, works too: sessions and checks run in the folder, and worktrees, tickets, reviews and pull requests come once you make it one (`git init`).
+- **Live status, no screen scraping.** Each agent reports the way it allows without touching your setup: Claude Code through hooks passed on its command line (`--settings`); Gemini CLI, OpenCode and Copilot CLI through hooks or a plugin in a file of Muster's own that they are pointed at for the session; Codex through its turn notice and its window title; an agent of your own (below) through its terminal's progress signal, its window title and its exit. Nothing is written into your repository or your agents' settings. Muster shows each session as running, finished, or *needs you* (a permission prompt, a question, or an MCP server's form asking for your input), with a dot for news you have not seen. Each agent's line also says what it is doing, as its hooks tell (`editing view.rs`, `running cargo`, `wants to run rm`: a file's name and a command's program, never its arguments), and how long it has run, waited or sat finished; the top bar counts the agents working, waiting and done, beside the machine's memory, and each project has a colour of its own. A running session's mark spins, what needs you pulses, and a session's line flashes for a moment as it finishes or comes to need you, so what is moving stands out, and a title or branch too long for the selected line slides along so you can read it; `MUSTER_MOTION=off` keeps them still.
 - **Needs you.** One queue of everything waiting on you: questions first, then news, oldest first. While your terminal window is in the background, Muster tells you as something comes to need you, with a desktop notification where your terminal shows them (iTerm2, WezTerm, Ghostty, kitty) and its bell elsewhere; `MUSTER_NOTIFY=off` turns that off.
 - **Your agents in the notch.** On a MacBook with a notch, while you look away from Muster and an agent works or waits on you, the notch shows them level with it, in a slim black side either side so the notch looks a little wider and no thicker: how many wait on you on the left, how many work on the right (nothing can be drawn inside the notch itself, which has no pixels). Point at it and it opens downward into the list of them, each with its project, what it is doing and for how long; click one and Muster's window comes to the front with that session open. It keeps showing after you close the UI, as long as agents run. *Agents in the notch* on the Settings screen turns it off (`MUSTER_NOTCH=off` keeps a UI from starting it).
-- **A real terminal per session, beside the list.** Work in any session to the right of the list, or full screen, as you would in your own terminal: the daemon answers the program's terminal questions, and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys).
-- **Survives restarts.** Sessions belong to the daemon. After a daemon restart, agent sessions resume their conversations (`--resume`, `codex resume`, `opencode --session`); one that cannot falls back to a fresh start.
+- **A real terminal per session, beside the list.** Work in any session to the right of the list, or full screen, as you would in your own terminal: the daemon answers the program's terminal questions, those about its colours with your terminal's own, so agents choose a light or a dark theme to match it; what a program there copies reaches your clipboard (text only, while you look at it, never again when its history is shown), and nothing there can read your clipboard; a program that follows its terminal's focus is told as you go into its session and out, or look away from the window; the terminal's size is in pixels too, where your terminal says its own, for programs that size pictures by it; and keys are encoded the way the program asked (kitty keyboard protocol, so Shift+Enter reaches Claude Code; bracketed paste; application cursor keys). Every program there is told its terminal is Muster (`TERM_PROGRAM=muster`), not the one Muster was started from, so none sends that terminal's own sequences or reaches into it.
+- **Survives restarts.** Sessions belong to the daemon, which runs on when the UI closes, and on a Mac when you quit the terminal app it ran in too (launchd starts it, unless over SSH). After a daemon restart, agent sessions resume their conversations (`--resume`, `codex resume`, `opencode --session`), one at a time a moment apart; one that cannot falls back to a fresh start. A conversation is resumed in one session only: a second session on it is left ended and says why.
 - **Tickets, wherever they are.** A screen of each project's open tickets — GitHub or GitLab issues (through your `gh` or `glab`), Jira work items (Cloud or Data Center), or Linear issues — with the agents working on each and how they are doing. Assign an agent to a ticket and Muster creates `muster/issue-<key>-<title>` (`#42`'s, or `APP-7`'s; without `muster/` if you turn *Branches with muster/* off on the Settings screen), starts the agent you choose there (Claude Code, Codex, Gemini CLI, OpenCode or Copilot CLI), and hands it the ticket — marked as a description of the work, not as instructions, since anyone can file one. A credential someone pasted into a ticket (a token in a `curl` command, an API key, a password) is shown and handed on as `[hidden by Muster]`; the ticket itself is left as it is. More agents on the same ticket get worktrees of their own. Repositories that take their tickets from one Jira project (or Linear team) share them: each ticket is listed once, and assigning an agent asks which repository it is for. When the work is done, close the ticket from Muster (`x`, after asking) and let it close the ticket's agents and remove its worktrees, keeping the branches. That is the only change Muster makes in a tracker.
 - **The stages by hand.** On any worktree: run the project's checks as a session, have Claude Code review the change in plan mode, or push the branch and open a draft pull request.
 - **What changed, at a glance.** Each worktree's line says what its work comes to (`+120 −30`), looked at again as an agent's turn there ends. `d` shows it beside the list: the files not yet committed, the branch's commits since it left the branch it merges into (`origin/main`, or `base_branch` in `muster.toml`), and the files they changed, each with its lines; `⏎` shows a file's diff. Git is only asked; nothing in the worktree changes, and no code is stored or logged.
@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/main/install.sh 
 
 It downloads the prebuilt binary for your machine from the latest release, checks it against its published checksum and, if the [GitHub CLI](https://cli.github.com) is signed in, against the attestation GitHub made as the release workflow built it, and puts it in `~/.local/bin`. `MUSTER_VERSION=v0.3.15` installs that release instead. On a machine without a prebuilt binary it builds the same release from source, which needs [Rust](https://rustup.rs). `muster upgrade` checks a new release the same way.
 
-Later, `muster upgrade` installs the newest release the same way and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
+Later, `muster upgrade` installs the newest release the same way and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. When a new version changes how Muster's database is laid out, it first keeps a copy of the database as it was, in `backups/` in Muster's data folder (the newest three), and does not start if it cannot. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
 
 ```bash
 muster
@@ -59,6 +59,7 @@ muster
 | `↑` `↓` | move (the selected session streams in beside the list) |
 | `⏎` | type in the selected session, beside the list; on a worktree or checkout (`⌂`), start a session; on a project, create a worktree (on a plain folder, start a session in it) |
 | `f` | the selected session full screen |
+| `e` | fold the selected project or worktree, hiding what is under it (its line still shows its most urgent session's mark, and how many it hides), or unfold it; on a session, fold its worktree. A click on a line's `▾` `▸` does the same |
 | `a` | add a project |
 | `w` | new worktree for the selected project |
 | `n` | new session in the selected worktree, or on a project in its own checkout: a coding agent with an optional first prompt, or a shell (`⇥` `⇧⇥` choose; it offers the one you last started first) |
@@ -79,6 +80,9 @@ muster
 | `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
 | `4` | the *Settings* tab, from the list |
 | `esc` `⌫` | back to *Sessions* from the other tabs |
+| `l` | the session that needed you last, as notified (a finish is told once it has stayed one two seconds) |
+| `h` | every key of the screen shown; type to narrow them (`?` works too) |
+| right-click | on a session, worktree or project: what can be done there, each with its key; choose one, or press its key |
 | `q` | quit the UI (sessions keep running) |
 
 While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but one: **Shift-Q** gives the keys back to the list, and so does a click on it. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
@@ -96,7 +100,8 @@ While you type in a session, beside the list or full screen, every key goes to t
 | Key | On the *Settings* screen |
 |---|---|
 | `⏎` `space` | turn the selected setting on or off, per project: *Only my tickets*, which lists only the tickets assigned to you, in whichever tracker the project's tickets are; *Branches with muster/*, whether the branches Muster makes start with `muster/`; and, on a Mac, Muster's own *Agents in the notch* |
-| `r` | read the settings again, after editing a file by hand |
+| `←` `→` | on *Session beside the list from*, a smaller or a larger width (`⏎` goes to the next): in a window narrower than it, the list takes the whole window and `⏎` opens a session over it |
+| `r` | read the settings again, after editing a file by hand: yours for the projects, and Muster's own, with the agents you added (*Your agents* says what is there, or which key does not read) |
 
 A change on the *Settings* screen goes into your own settings for the project (`~/.config/muster/projects/<project id>.toml`, over its `muster.toml`; comments and the rest of the file are kept), never into the repository. Muster's own settings, for all of it, go into `~/.config/muster/settings.toml`.
 
@@ -149,8 +154,47 @@ muster status
 ```
 
 ```bash
+muster session list
+```
+
+```bash
 muster session restart <session-id>
 ```
+
+When a session's status looks wrong, ask why it has it: whom it waits on and for what, whether its turn is held for subagents, its next deadline, and the last signals it received, by kind and tool alone, never what was written.
+
+```bash
+muster session explain <session-id>
+```
+
+For your own scripts, `muster status`, `muster session list` and `muster issue list` take `--json` and print one JSON document instead of words. Each starts with `"format": 1`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
+
+```bash
+muster session list --json | jq -r '.sessions[] | select(.status == "needs_you") | .title'
+```
+
+### Agents of your own
+
+A coding agent Muster does not know can be added in Muster's own settings, `~/.config/muster/settings.toml`, never in a repository, and no Muster release is needed. It is offered after Muster's own when you start a session (`n`, `--harness my-agent`), and, if it takes a first prompt, when you assign one to a ticket or have one tidy commits. Muster never edits the agent's own configuration: it hears it by its terminal's progress signal (OSC 9;4), the words of its window title you name, and its exit, so its status says less than a built-in agent's.
+
+```toml
+[agents.my-agent]
+label = "My Agent"                    # its name on screen; the key otherwise
+program = "my-agent"                  # on PATH, or a path
+args = ["--no-banner"]                # always given, first
+prompt = ["--message", "{prompt}"]   # how a first prompt is given; leave out for none
+resume = ["--continue"]               # given instead after a restart, to carry on
+env = { MY_AGENT_THEME = "dark" }     # more environment
+mark = "M"                            # shown where Muster's own agents have theirs
+colour = "green"                      # one of the terminal's colours, or "#rrggbb"
+
+[agents.my-agent.title]               # words its window title says, if it says any
+working = "Thinking"
+ready = "Ready"
+waiting = "Approve?"                  # shown as needing you
+```
+
+Only `program` is needed. A name Muster's own agents use (`claude`, `shell`, …) is refused, and a key that does not read is named on the *Settings* screen's *Your agents* and when you start one; `r` there reads the file again after you edit it. Without `resume`, a session of it ends when the daemon restarts rather than carrying on.
 
 ### Where tickets and pull requests are
 

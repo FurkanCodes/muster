@@ -11,7 +11,6 @@ use muster_core::names;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
 
 use super::{Supervisor, store_closed, store_error};
-use crate::harness;
 
 impl Supervisor {
     /// `RenameSession`: the session is called `title` from now on.
@@ -46,7 +45,8 @@ impl Supervisor {
             .iter()
             .find(|stored| stored.id == session)
             .is_some_and(|stored| {
-                harness::find(&stored.harness).is_some_and(|found| stored.title == found.label)
+                self.harness(&stored.harness)
+                    .is_some_and(|found| stored.title == found.label())
             });
         if !unnamed {
             return;

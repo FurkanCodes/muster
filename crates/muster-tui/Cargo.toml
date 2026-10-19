@@ -13,6 +13,7 @@ crossterm.workspace = true
 futures-util.workspace = true
 muster-client.workspace = true
 muster-core.workspace = true
+nix.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

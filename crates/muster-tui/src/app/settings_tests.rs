@@ -89,6 +89,9 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::OnlyMine(project),
             SettingRow::TicketsFrom(project),
             SettingRow::MusterPrefix(project),
+            SettingRow::Muster,
+            SettingRow::SideBySide,
+            SettingRow::Agents,
         ]
     );
     // The first setting is selected, so ⏎ does something at once.
@@ -292,6 +295,17 @@ fn settings_are_read_afresh_each_time_the_screen_is_shown_and_on_r() {
             SettingSource::Project,
         ))),
     );
+    // Muster's own too, edited by hand: the agents the person added.
+    let actions = press(&mut world.app, KeyCode::Char('r'));
+    assert_eq!(
+        commands(&actions),
+        [
+            Command::ReadPreferences,
+            Command::ProjectSettings { project }
+        ]
+    );
+    // An older daemon is never asked what it does not know (`ARC-09`).
+    world.app.daemon_protocol = muster_core::settings::AGENTS_PROTOCOL - 1;
     let actions = press(&mut world.app, KeyCode::Char('r'));
     assert_eq!(commands(&actions), [Command::ProjectSettings { project }]);
 }

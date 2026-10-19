@@ -6,22 +6,29 @@
 //! sees exactly the deltas after its snapshot, with no gap and no repeat.
 //!
 //! Terminal traffic does not pass through here: a connection asks once for a
-//! session's [`PtyHandle`] and then talks to its actor directly.
+//! session's [`PtyHandle`] and then talks to its actor directly. Only its
+//! resizes come here, as the Supervisor decides which client's size a
+//! terminal takes (`sizing`).
 
 mod by_hand;
 mod changes;
 mod clashes;
+mod clients;
 mod containers;
+mod explain;
 mod handle;
 mod issues;
 mod looking;
 mod names;
+mod own_settings;
 mod projects;
 mod pulls;
+mod recovery;
 mod reload;
 mod runs;
 mod sessions;
 mod settings;
+mod sizing;
 mod spend;
 mod stacks;
 mod status;
@@ -42,10 +49,10 @@ use muster_state::run::RunEvent;
 use muster_state::session::{SessionMachine, Signal, Timing};
 use tokio::sync::{broadcast, mpsc, watch};
 
+pub(crate) use self::clients::ClientGuard;
 use self::handle::Request;
 pub(crate) use self::handle::SupervisorHandle;
-pub(crate) use self::looking::LookGuard;
-pub(crate) use self::terminals::{TerminalLink, WatchGuard};
+pub(crate) use self::terminals::{KeysGuard, TerminalLink, WatchGuard};
 use crate::clock::Clock;
 use crate::githost::choose::Hosts;
 use crate::harness::Harness;
@@ -101,7 +108,8 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         .call(|store| Ok::<_, StoreError>((store.snapshot()?, store.runs()?)))
         .await
         .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))??;
-    state.preferences = preferences(settings.config_dir.clone()).await;
+    let (preferences, agents) = own_settings::read(settings.config_dir.clone()).await;
+    state.preferences = preferences;
     let (requests, queue) = mpsc::channel(256);
     // Unbounded on purpose (`ARC-14`): the Supervisor sends terminals and
     // runs' work requests and waits on some replies, so either waiting on
@@ -118,9 +126,14 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
     let (unwatched, unwatched_queue) = mpsc::unbounded_channel();
     #[expect(
         clippy::disallowed_methods,
-        reason = "ARC-14: sent once as each looking client ends, from Drop, which cannot wait"
+        reason = "ARC-14: sent once as each client lets go of a session's keys, from Drop, which cannot wait"
     )]
-    let (looker_gone, looker_gone_queue) = mpsc::unbounded_channel();
+    let (keys_gone, keys_gone_queue) = mpsc::unbounded_channel();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-14: sent once as each connection ends, from Drop, which cannot wait"
+    )]
+    let (client_gone, client_gone_queue) = mpsc::unbounded_channel();
     #[expect(
         clippy::disallowed_methods,
         reason = "ARC-14: a few reports per step of a run, and only runs under way take steps"
@@ -139,8 +152,13 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         terminals: HashMap::new(),
         watchers: HashMap::new(),
         unwatched,
+        typing: HashMap::new(),
+        keys_gone,
+        colours: watch::channel(muster_core::colours::TerminalColours::default()).0,
         lookers: looking::Lookers::default(),
-        looker_gone,
+        sizing: sizing::Sizing::default(),
+        next_client: 0,
+        client_gone,
         hook_tokens: HashMap::new(),
         pty_events,
         history_every: settings.history_every.max(1),
@@ -159,7 +177,9 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         timelines: timeline::Timelines::default(),
         clashes: clashes::Clashes::default(),
         tidies: tidy::Tidies::default(),
+        resumes: recovery::Resumes::default(),
         tasks: settings.tasks,
+        agents,
     };
     supervisor.ensure_checkouts().await;
     // Running sessions handed over keep running: taken over before any is
@@ -179,34 +199,11 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         pty: pty_queue,
         hooks: settings.hook_queue,
         unwatched: unwatched_queue,
-        looker_gone: looker_gone_queue,
+        keys_gone: keys_gone_queue,
+        client_gone: client_gone_queue,
         run_reports: run_report_queue,
     }));
     Ok(SupervisorHandle { requests })
-}
-
-/// Muster's own settings as written, or its defaults where they do not
-/// read, which is logged; read off the loop.
-async fn preferences(config_dir: PathBuf) -> muster_core::settings::Preferences {
-    let file = config_dir.join(muster_core::config::preferences::FILE_NAME);
-    let read = tokio::task::spawn_blocking(move || crate::config::preferences(&config_dir)).await;
-    match read {
-        Ok(Ok(preferences)) => preferences,
-        Ok(Err(error)) => {
-            tracing::warn!(%error, "Muster's own settings do not read; using its defaults");
-            muster_core::settings::Preferences {
-                file,
-                ..Default::default()
-            }
-        }
-        Err(error) => {
-            tracing::warn!(%error, "could not read Muster's own settings");
-            muster_core::settings::Preferences {
-                file,
-                ..Default::default()
-            }
-        }
-    }
 }
 
 /// What the Supervisor listens to.
@@ -214,8 +211,9 @@ struct Queues {
     requests: mpsc::Receiver<Request>,
     pty: mpsc::UnboundedReceiver<(SessionId, PtyEvent)>,
     hooks: mpsc::Receiver<HookDelivery>,
-    unwatched: mpsc::UnboundedReceiver<SessionId>,
-    looker_gone: mpsc::UnboundedReceiver<u64>,
+    unwatched: mpsc::UnboundedReceiver<(SessionId, u64)>,
+    keys_gone: mpsc::UnboundedReceiver<SessionId>,
+    client_gone: mpsc::UnboundedReceiver<u64>,
     run_reports: mpsc::UnboundedReceiver<(RunId, Report)>,
 }
 
@@ -237,6 +235,11 @@ struct Live {
     /// What its window title last said, for a harness whose title says how
     /// it is doing.
     title: Option<crate::harness::TitleState>,
+    /// The turn under way, by the id the harness's records know it by
+    /// (Claude Code's prompt id), once a prompt has named one.
+    turn: Option<String>,
+    /// The signals its machine last received, for explaining its status.
+    signals: explain::Recent,
 }
 
 #[derive(Debug)]
@@ -257,11 +260,23 @@ struct Supervisor {
     /// How many clients watch each watched session.
     watchers: HashMap<SessionId, usize>,
     /// Where dropped watch guards report.
-    unwatched: mpsc::UnboundedSender<SessionId>,
+    unwatched: mpsc::UnboundedSender<(SessionId, u64)>,
+    /// How many clients have the person's keys in each session's terminal.
+    typing: HashMap<SessionId, usize>,
+    /// Where dropped keys guards report.
+    keys_gone: mpsc::UnboundedSender<SessionId>,
+    /// The colours of the person's terminal, as a UI last told them; every
+    /// terminal answers its program's questions about its colours from
+    /// them.
+    colours: watch::Sender<muster_core::colours::TerminalColours>,
     /// The clients that say whether the person is looking at them.
     lookers: looking::Lookers,
-    /// Where dropped look guards report.
-    looker_gone: mpsc::UnboundedSender<u64>,
+    /// The sizes clients gave sessions' terminals.
+    sizing: sizing::Sizing,
+    /// The key the last connection was given.
+    next_client: u64,
+    /// Where dropped client guards report.
+    client_gone: mpsc::UnboundedSender<u64>,
     /// Which session each issued hook token names (`ARC-11`).
     hook_tokens: HashMap<crate::secrets::Token, SessionId>,
     history_every: u32,
@@ -290,8 +305,13 @@ struct Supervisor {
     clashes: clashes::Clashes,
     /// What each tidy of commits under way began from.
     tidies: tidy::Tidies,
+    /// Sessions the last daemon left running, waiting their turn to resume.
+    resumes: recovery::Resumes,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
+    /// The coding agents the person added in Muster's own settings, as
+    /// last read.
+    agents: Vec<Arc<muster_core::config::agents::AgentDefinition>>,
 }
 
 impl Supervisor {
@@ -301,16 +321,32 @@ impl Supervisor {
             let wake_at = deadline.map_or_else(tokio::time::Instant::now, Into::into);
             tokio::select! {
                 request = queues.requests.recv() => match request {
-                    Some(request) => self.on_request(request).await,
+                    Some(request) => {
+                        self.take_dropped_guards(&mut queues).await;
+                        self.on_request(request).await;
+                    }
                     None => return,
                 },
                 Some((session, event)) = queues.pty.recv() => self.on_pty_event(session, event).await,
                 Some(delivery) = queues.hooks.recv() => self.on_hook(delivery).await,
-                Some(session) = queues.unwatched.recv() => self.unwatch(session).await,
-                Some(client) = queues.looker_gone.recv() => self.remove_looker(client),
+                Some((session, client)) = queues.unwatched.recv() => self.unwatch(session, client).await,
+                Some(session) = queues.keys_gone.recv() => self.let_go_keys(session).await,
+                Some(client) = queues.client_gone.recv() => self.remove_client(client).await,
                 Some((run, report)) = queues.run_reports.recv() => self.on_run_report(run, report).await,
                 () = tokio::time::sleep_until(wake_at), if deadline.is_some() => self.tick().await,
             }
+        }
+    }
+
+    /// Takes the guards dropped before a request came: a client that stops
+    /// watching a session and then resizes it dropped its watch first, so
+    /// that is taken first, and a connection's steps keep their order.
+    async fn take_dropped_guards(&mut self, queues: &mut Queues) {
+        while let Ok((session, client)) = queues.unwatched.try_recv() {
+            self.unwatch(session, client).await;
+        }
+        while let Ok(client) = queues.client_gone.try_recv() {
+            self.remove_client(client).await;
         }
     }
 
@@ -443,6 +479,7 @@ impl Supervisor {
                 let _ = reply.send(self.spend_targets());
             }
             Request::Spends(spends) => self.record_spends(spends),
+            Request::Interrupted(turns) => self.record_interrupted(turns).await,
             Request::HandOver(reply) => {
                 let handed = self.hand_over_sessions().await;
                 let _ = reply.send(handed);
@@ -461,20 +498,45 @@ impl Supervisor {
             Request::WorktreesListed { project, listed } => {
                 self.sync_worktrees(project, listed).await;
             }
-            Request::AddLooker { outgoing, reply } => {
+            Request::AddClient(reply) => {
                 // A client that left already drops the guard, which removes it.
-                let _ = reply.send(self.add_looker(outgoing));
+                let _ = reply.send(self.add_client());
             }
-            Request::Looking { client, looking } => self.set_looking(client, looking),
+            Request::AddLooker { client, outgoing } => self.add_looker(client, outgoing),
+            Request::Looking { client, looking } => self.set_looking(client, looking).await,
+            Request::Colours(colours) => self.set_colours(colours),
+            Request::HoldKeys { session, reply } => {
+                let _ = reply.send(self.hold_keys(session).await);
+            }
             Request::Terminal {
                 session,
                 watch,
+                client,
                 reply,
             } => {
-                let link = self.link_terminal(session, watch).await;
+                let link = self.link_terminal(session, watch, client).await;
                 // A client that left already drops the link, which unwatches.
                 let _ = reply.send(link);
             }
+            Request::Resize {
+                session,
+                client,
+                size,
+                pixels,
+                done,
+            } => {
+                self.resize_for(session, client, size, pixels).await;
+                let _ = done.send(());
+            }
+            Request::Active {
+                session,
+                client,
+                done,
+            } => {
+                self.active_on(session, client).await;
+                let _ = done.send(());
+            }
+            Request::Leave { session, client } => self.leave_terminal(session, client).await,
         }
     }
 
@@ -482,8 +544,10 @@ impl Supervisor {
         match command {
             Command::Ping => Ok(Reply::Pong),
             Command::Health => Ok(Reply::Health(self.health())),
+            Command::ExplainSession { session } => self.explain_session(session),
             Command::Reveal { session } => self.reveal(session),
             Command::ChangePreference(change) => self.change_preference(&change),
+            Command::ReadPreferences => Ok(self.read_preferences()),
             Command::AddProject { root, name } => self.add_project(root, name).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
             Command::CreateWorktree {
@@ -592,17 +656,15 @@ impl Supervisor {
         self.broadcast(Delta::Resources(report));
     }
 
-    /// The earliest moment a session or run machine wants to be woken.
+    /// The earliest moment a session or run machine wants to be woken, or
+    /// the next session waiting to resume may start.
     fn next_deadline(&self) -> Option<std::time::Instant> {
-        let sessions = self
-            .live
+        self.live
             .values()
             .filter_map(|live| live.machine.next_deadline())
-            .min();
-        match (sessions, self.next_run_deadline()) {
-            (Some(one), Some(other)) => Some(one.min(other)),
-            (one, other) => one.or(other),
-        }
+            .chain(self.next_run_deadline())
+            .chain(self.resumes.next_deadline())
+            .min()
     }
 
     async fn tick(&mut self) {
@@ -617,6 +679,7 @@ impl Supervisor {
             self.step_session(session, Signal::Tick).await;
         }
         self.tick_runs(now).await;
+        self.resume_next().await;
     }
     fn session_mut(&mut self, session: SessionId) -> Option<&mut muster_core::Session> {
         self.state
@@ -661,6 +724,7 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Ping => "ping",
         Command::Health => "health",
+        Command::ExplainSession { .. } => "explain session",
         Command::WorkspaceChanges { .. } => "workspace changes",
         Command::FileDiff { .. } => "file diff",
         Command::Timeline { .. } => "timeline",
@@ -671,6 +735,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::MoveOnto { .. } => "move onto",
         Command::Reveal { .. } => "reveal",
         Command::ChangePreference(_) => "change preference",
+        Command::ReadPreferences => "read preferences",
         Command::AddProject { .. } => "add project",
         Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",

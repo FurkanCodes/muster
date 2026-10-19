@@ -1,4 +1,5 @@
-//! Starting, stopping and resuming sessions, and what their terminals report.
+//! Starting, stopping and restarting sessions, and what their terminals
+//! report. Bringing them back after a daemon restart is `recovery`'s.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -8,6 +9,7 @@ use muster_core::text::one_line;
 use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start};
 
+use super::recovery::resumable;
 use super::{Live, Supervisor, store_closed, store_error};
 use crate::harness::{self, CheckCommands, Harness, HookEndpoint, Place, TitleState, claude};
 use crate::pty::{self, PtyEvent};
@@ -38,18 +40,13 @@ impl Supervisor {
         size: TermSize,
         prompt: Option<String>,
     ) -> Result<Reply, ErrorBody> {
-        let harness = harness::find(&harness).ok_or_else(|| {
-            ErrorBody::new(
-                ErrorCode::BadRequest,
-                format!("no harness called {harness:?}"),
-            )
-        })?;
-        let place = self.place_for(workspace, harness)?;
+        let harness = self.known_harness(&harness)?;
+        let place = self.place_for(workspace, &harness)?;
         let prompt = prompt.filter(|prompt| !prompt.trim().is_empty());
         if prompt.is_some() && !harness.takes_prompt() {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
-                format!("{} takes no prompt", harness.label),
+                format!("{} takes no prompt", harness.label()),
             ));
         }
         if harness.is_checks() {
@@ -66,10 +63,10 @@ impl Supervisor {
         };
         // A chat with no name of its own is named by its first prompt.
         let title = title.or_else(|| prompt.as_deref().and_then(muster_core::names::from_prompt));
-        let id = self.add_session(workspace, harness, title, start).await?;
+        let id = self.add_session(workspace, &harness, title, start).await?;
         if let Err(error) = self.launch(
             id,
-            harness,
+            harness.clone(),
             place,
             size,
             Mode::Fresh { prompt },
@@ -82,7 +79,7 @@ impl Supervisor {
                 .await;
             return Err(ErrorBody::new(
                 ErrorCode::Internal,
-                format!("could not start {}: {error}", harness.label),
+                format!("could not start {}: {error}", harness.label()),
             ));
         }
         Ok(Reply::SessionStarted { id })
@@ -93,7 +90,7 @@ impl Supervisor {
     pub(super) async fn add_session(
         &mut self,
         workspace: WorkspaceId,
-        harness: Harness,
+        harness: &Harness,
         title: Option<String>,
         start: Start,
     ) -> Result<SessionId, ErrorBody> {
@@ -101,11 +98,11 @@ impl Supervisor {
         let session = Session {
             id: SessionId::new(),
             workspace,
-            harness: harness.id.to_owned(),
+            harness: harness.id().to_owned(),
             title: title
                 .map(|title| one_line(&title).trim().to_owned())
                 .filter(|title| !title.is_empty())
-                .unwrap_or_else(|| harness.label.to_owned()),
+                .unwrap_or_else(|| harness.label().to_owned()),
             status: if start == Start::WithPrompt {
                 SessionStatus::Running
             } else {
@@ -142,7 +139,7 @@ impl Supervisor {
     pub(super) fn place_for(
         &self,
         workspace: WorkspaceId,
-        harness: Harness,
+        harness: &Harness,
     ) -> Result<Place, ErrorBody> {
         let found = self
             .state
@@ -167,7 +164,7 @@ impl Supervisor {
                 format!(
                     "{} runs in a run's container only for the person taking the run over \
                      (`muster run take-over`); a shell can look around",
-                    harness.label
+                    harness.label()
                 ),
             ));
         }
@@ -232,12 +229,12 @@ impl Supervisor {
         let support = support.filter(|dir| match harness.prepare_support(dir) {
             Ok(()) => true,
             Err(error) => {
-                tracing::warn!(%error, harness = harness.id, "could not write the files its hooks need");
+                tracing::warn!(%error, harness = harness.id(), "could not write the files its hooks need");
                 false
             }
         });
         let spec = harness::spawn_spec(
-            harness,
+            &harness,
             &harness::Launch {
                 session,
                 agent_session: agent_session.clone(),
@@ -251,7 +248,7 @@ impl Supervisor {
             },
         );
         let events = self.pty_events.clone();
-        let pty = pty::spawn(&spec, first_seq, move |event| {
+        let pty = pty::spawn(&spec, first_seq, self.colours(), move |event| {
             let _ = events.send((session, event));
         })?;
 
@@ -270,6 +267,12 @@ impl Supervisor {
             self.timing,
             self.clock.instant(),
         );
+        // A program started again in the session keeps what came before.
+        let signals = self
+            .live
+            .get_mut(&session)
+            .map(|live| std::mem::take(&mut live.signals))
+            .unwrap_or_default();
         self.live.insert(
             session,
             Live {
@@ -283,10 +286,12 @@ impl Supervisor {
                 resumed: resume && on_host,
                 ended: None,
                 title: None,
+                turn: None,
+                signals,
             },
         );
         self.carry_watch(session);
-        self.publish_terminal(session, pty);
+        self.publish_terminal(session, pty, size);
         Ok(())
     }
 
@@ -316,20 +321,25 @@ impl Supervisor {
                 format!("{} is still running", stored.title),
             ));
         }
-        let harness = harness::find(&stored.harness).ok_or_else(|| {
-            ErrorBody::new(
-                ErrorCode::BadRequest,
-                format!("no harness called {:?}", stored.harness),
-            )
-        })?;
-        let place = self.place_for(stored.workspace, harness)?;
-        let (mode, start) = match (&place, resumable(harness, &stored)) {
+        let harness = self.known_harness(&stored.harness)?;
+        let place = self.place_for(stored.workspace, &harness)?;
+        let (mode, start) = match (&place, resumable(&harness, &stored)) {
             // The checks run again, as the workspace has them now.
             (Place::Host(path), _) if harness.is_checks() => (
                 Mode::Checks(self.checks_in(stored.workspace, path).await?),
                 Start::WithPrompt,
             ),
             (Place::Host(_), Some(agent_session)) => {
+                // A conversation is resumed in one session only.
+                if let Some(holder) = self.conversation_holder(&harness, &agent_session, session) {
+                    let holder = self.stored_session(holder)?.title;
+                    return Err(ErrorBody::new(
+                        ErrorCode::Conflict,
+                        format!(
+                            "{holder} has this conversation open; stop it there to resume it here"
+                        ),
+                    ));
+                }
                 (Mode::Resume { agent_session }, Start::Resumed)
             }
             _ => (Mode::Fresh { prompt: None }, Start::Idle),
@@ -369,12 +379,13 @@ impl Supervisor {
         if let Some(reopened) = self.session_mut(session) {
             reopened.ended_at = None;
         }
+        let label = harness.label().to_owned();
         if let Err(error) = self.launch(session, harness, place, size, mode, start, false) {
             self.end_session(session, SessionStatus::Exited { success: false }, true)
                 .await;
             return Err(ErrorBody::new(
                 ErrorCode::Internal,
-                format!("could not start {}: {error}", harness.label),
+                format!("could not start {label}: {error}"),
             ));
         }
         tracing::info!(%session, "restarted");
@@ -415,14 +426,20 @@ impl Supervisor {
         Ok(Reply::Done)
     }
 
-    /// Whether the session's program is running.
+    /// Whether the session's program is running, or waits its turn to be
+    /// started again after a restart.
     pub(super) fn is_running(&self, session: SessionId) -> bool {
-        self.live
-            .get(&session)
-            .is_some_and(|live| !live.machine.status().is_exited())
+        self.resumes.is_waiting(session)
+            || self
+                .live
+                .get(&session)
+                .is_some_and(|live| !live.machine.status().is_exited())
     }
 
     pub(super) async fn stop_session(&mut self, session: SessionId) -> Result<Reply, ErrorBody> {
+        if self.stop_waiting(session).await {
+            return Ok(Reply::Done);
+        }
         let live = self.live.get(&session).ok_or_else(|| {
             ErrorBody::new(ErrorCode::NotFound, format!("{session} is not running"))
         })?;
@@ -516,7 +533,7 @@ impl Supervisor {
     /// A resumed program exited at once: start the harness fresh in the same
     /// session rather than leave a dead terminal. `false` if that failed too.
     async fn start_fresh_after_failed_resume(&mut self, session: SessionId) -> bool {
-        let Some(harness) = self.live.get(&session).map(|live| live.harness) else {
+        let Some(harness) = self.live.get(&session).map(|live| live.harness.clone()) else {
             return false;
         };
         let Some(cwd) = self.session_path(session) else {
@@ -541,74 +558,6 @@ impl Supervisor {
             }
             Err(error) => {
                 tracing::error!(%session, %error, "could not start the session fresh");
-                false
-            }
-        }
-    }
-
-    /// Sessions the last daemon left running died with it, because it held
-    /// their terminals. A harness that can resume is resumed where its
-    /// transcript survives; the rest are recorded as exited, for the person
-    /// to see.
-    pub(super) async fn recover_sessions(&mut self) {
-        let orphaned: Vec<Session> = self
-            .state
-            .sessions
-            .iter()
-            .filter(|session| session.ended_at.is_none() && !self.live.contains_key(&session.id))
-            .cloned()
-            .collect();
-        for session in orphaned {
-            if let Some(run) = self.workspace_run(session.workspace) {
-                self.recover_in_container(&session, run).await;
-                continue;
-            }
-            if self.resume(&session).await {
-                continue;
-            }
-            tracing::info!(session = %session.id, "a session ended when the daemon stopped");
-            self.end_session(session.id, SessionStatus::Exited { success: false }, true)
-                .await;
-        }
-    }
-
-    /// Resumes `session` if it can be. A turn the restart cut short counts
-    /// as unseen.
-    async fn resume(&mut self, session: &Session) -> bool {
-        let Some(harness) = harness::find(&session.harness) else {
-            return false;
-        };
-        let (Some(agent_session), Some(cwd)) = (
-            resumable(harness, session),
-            self.workspace_path(session.workspace),
-        ) else {
-            return false;
-        };
-        let unseen = session.unseen
-            || matches!(
-                session.status,
-                SessionStatus::Running | SessionStatus::NeedsYou { .. }
-            );
-        let mode = Mode::Resume { agent_session };
-        let (size, place) = (TermSize::default(), Place::Host(cwd));
-        match self.launch(
-            session.id,
-            harness,
-            place,
-            size,
-            mode,
-            Start::Resumed,
-            unseen,
-        ) {
-            Ok(()) => {
-                tracing::info!(session = %session.id, "resumed");
-                if let Some((status, unseen)) = self.launched_status(session.id) {
-                    self.set_status(session.id, status, unseen).await;
-                }
-                true
-            }
-            Err(error) => {
-                tracing::warn!(session = %session.id, %error, "could not resume");
                 false
             }
         }
@@ -644,7 +593,7 @@ impl Supervisor {
     }
 
     /// Where a workspace is on the host; a run's container has no such place.
-    fn workspace_path(&self, workspace: WorkspaceId) -> Option<PathBuf> {
+    pub(super) fn workspace_path(&self, workspace: WorkspaceId) -> Option<PathBuf> {
         self.state
             .workspaces
             .iter()
@@ -668,24 +617,7 @@ impl Supervisor {
             .sessions
             .iter()
             .filter(|session| session.workspace == workspace)
-            .filter(|session| {
-                self.live
-                    .get(&session.id)
-                    .is_some_and(|live| !live.machine.status().is_exited())
-            })
+            .filter(|session| self.is_running(session.id))
             .count()
     }
-}
-
-/// The harness session to resume `session` from: one whose harness can
-/// resume, whose id was saved after a turn ran, and whose transcript has
-/// not been deleted. An unreadable transcript folder is no verdict, so the
-/// resume is tried; if it fails the session starts fresh.
-fn resumable(harness: Harness, session: &Session) -> Option<String> {
-    let agent_session = session.resume_id.clone().filter(|_| harness.can_resume())?;
-    if harness.has_conversation(&agent_session) == Some(false) {
-        tracing::info!(session = %session.id, "no transcript to resume");
-        return None;
-    }
-    Some(agent_session)
 }

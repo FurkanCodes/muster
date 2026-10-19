@@ -27,15 +27,23 @@ fn buffer(world: &World) -> Buffer {
     terminal.backend().buffer().clone()
 }
 
-/// The modifiers of the first cell showing `symbol`.
+/// The modifiers of the first cell showing `symbol` on the session's
+/// line: its project's and worktree's lines show its mark too.
 fn modifiers_of(buffer: &Buffer, symbol: &str) -> Modifier {
+    let width = usize::from(buffer.area.width);
     // Below the top bar, where Kep's ears are.
     buffer
         .content
-        .iter()
-        .skip(usize::from(buffer.area.width))
-        .find(|cell| cell.symbol() == symbol)
-        .unwrap_or_else(|| panic!("no {symbol} on screen"))
+        .chunks(width)
+        .skip(1)
+        .find(|line| {
+            line.iter()
+                .map(ratatui::buffer::Cell::symbol)
+                .collect::<String>()
+                .contains("Shell")
+        })
+        .and_then(|line| line.iter().find(|cell| cell.symbol() == symbol))
+        .unwrap_or_else(|| panic!("no {symbol} on the session's line"))
         .modifier
 }
 

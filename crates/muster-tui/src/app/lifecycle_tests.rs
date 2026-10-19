@@ -88,6 +88,7 @@ fn a_session_reopened_elsewhere_is_attached_again_if_its_stream_had_ended() {
         seq: 0,
         data: b"$ ".to_vec(),
         reset: true,
+        live_from: None,
     });
     let mut again = reopened.clone();
     again.ended_at = Some(Timestamp::from_millis(20));
@@ -233,11 +234,33 @@ fn a_new_connection_starts_every_screen_over() {
         seq: 0,
         data: b"old daemon".to_vec(),
         reset: true,
+        live_from: None,
     });
     assert!(world.app.screens.contains_key(&id));
     world.app.on_disconnected("gone".to_owned());
     world.app.on_connected("0.1.0".to_owned());
     assert!(world.app.screens.is_empty());
+}
+
+#[test]
+fn an_ended_session_says_why_a_restart_did_not_resume_it_prd_09() {
+    let mut world = ended();
+    let screen = render(&world.app);
+    assert!(screen.contains("exited"), "{screen}");
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionActivity {
+            session: world.session.id,
+            activity: Some(muster_core::Activity {
+                text: "not resumed: another has its conversation".to_owned(),
+                since: Timestamp::from_millis(10),
+            }),
+        }));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("not resumed: another has its conversation"),
+        "{screen}"
+    );
 }
 
 #[test]

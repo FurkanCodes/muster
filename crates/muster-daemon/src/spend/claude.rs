@@ -5,6 +5,13 @@
 //! `<session id>/subagents/agent-*.jsonl` beside it, count too. Claude Code
 //! records no cost, so none is said (`PRD-12`).
 //!
+//! The transcript also says when the person cut a turn short, which no
+//! hook does: pressing Esc as Claude works writes `[Request interrupted by
+//! user]`, and declining a permission it asked for `[Request interrupted
+//! by user for tool use]`, each a text block of a user message carrying
+//! the turn's `promptId`. Only that id is kept; nothing of the
+//! conversation is (`PRD-06`).
+//!
 //! Checked against Claude Code 2.1.296's transcripts.
 
 use std::collections::{HashMap, HashSet};
@@ -21,7 +28,13 @@ pub(super) struct Claude {
     subagents: HashMap<PathBuf, Tail>,
     seen: HashSet<String>,
     tokens: u64,
+    /// The last turn the person interrupted, by its prompt id, in what the
+    /// last read found.
+    interrupted: Option<String>,
 }
+
+/// How the transcript begins the text it writes as the person interrupts.
+const INTERRUPTED: &str = "[Request interrupted by user";
 
 impl Claude {
     /// The session's tokens so far, once its transcript is found; `projects`
@@ -46,11 +59,13 @@ impl Claude {
         }
         let mut lines = Vec::new();
         let mut restarted = false;
+        // The main agent's own first: only it can be interrupted.
+        let mut main = 0;
         let tails = self
             .transcript
             .iter_mut()
             .chain(self.subagents.values_mut());
-        for tail in tails {
+        for (index, tail) in tails.enumerate() {
             match tail.read() {
                 Ok(read) => {
                     restarted |= read.restarted;
@@ -58,12 +73,19 @@ impl Claude {
                 }
                 Err(error) => tracing::debug!(%error, "a transcript could not be read"),
             }
+            if index == 0 {
+                main = lines.len();
+            }
         }
         if restarted {
             // Written anew: counted again from the start, every file of it.
             *self = Self::default();
             return self.read(projects, session_id);
         }
+        self.interrupted = lines[..main]
+            .iter()
+            .rev()
+            .find_map(|line| interrupted(line));
         for line in &lines {
             if let Some((message, tokens)) = usage(line)
                 && self.seen.insert(message)
@@ -73,6 +95,39 @@ impl Claude {
         }
         Some(self.tokens)
     }
+
+    /// The last turn the person interrupted in what the last read found,
+    /// by its prompt id; once.
+    pub(super) fn take_interrupted(&mut self) -> Option<String> {
+        self.interrupted.take()
+    }
+}
+
+/// The prompt id of the turn a line of the main transcript says the person
+/// interrupted.
+fn interrupted(line: &str) -> Option<String> {
+    if !line.contains(INTERRUPTED) {
+        return None;
+    }
+    let value: Value = serde_json::from_str(line).ok()?;
+    if value.get("type")?.as_str()? != "user"
+        || value.get("isSidechain").and_then(Value::as_bool) == Some(true)
+    {
+        return None;
+    }
+    // A prompt the person typed is a string; the marker is a block.
+    let blocks = value.get("message")?.get("content")?.as_array()?;
+    let marked = blocks.iter().any(|block| {
+        block.get("type").and_then(Value::as_str) == Some("text")
+            && block
+                .get("text")
+                .and_then(Value::as_str)
+                .is_some_and(|text| text.starts_with(INTERRUPTED))
+    });
+    if !marked {
+        return None;
+    }
+    Some(value.get("promptId")?.as_str()?.to_owned())
 }
 
 /// The transcript of `session_id`: `<projects>/<folder slug>/<id>.jsonl`,
@@ -176,5 +231,65 @@ pub(super) mod tests {
         );
         assert_eq!(usage(user), None);
         assert_eq!(Claude::default().read(dir.path(), "../abc"), None);
+    }
+
+    /// The lines Claude Code 2.1.296 writes as the person declines a
+    /// permission: the tool's result, then the marker. Content shortened.
+    pub(crate) fn declined(prompt: &str) -> String {
+        [
+            serde_json::json!({
+                "type": "user", "isSidechain": false, "promptId": prompt,
+                "toolUseResult": "User rejected tool use", "toolDenialKind": "user-rejected",
+                "message": {"role": "user", "content": [{
+                    "type": "tool_result", "is_error": true, "tool_use_id": "toolu_1",
+                    "content": "The user doesn't want to proceed with this tool use."
+                }]}
+            })
+            .to_string(),
+            serde_json::json!({
+                "type": "user", "isSidechain": false, "promptId": prompt,
+                "message": {"role": "user", "content": [
+                    {"type": "text", "text": "[Request interrupted by user for tool use]"}
+                ]}
+            })
+            .to_string(),
+            serde_json::json!({
+                "type": "system", "subtype": "turn_duration", "durationMs": 1477
+            })
+            .to_string(),
+        ]
+        .join("\n")
+    }
+
+    #[test]
+    fn a_turn_the_person_cut_short_is_found_once_by_its_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let slug = dir.path().join("-Users-u-app");
+        std::fs::create_dir_all(slug.join("abc/subagents")).unwrap();
+        let stopped = r#"{"type":"user","promptId":"p1","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#;
+        // Typed by the person, it is a prompt, not the marker.
+        let typed = r#"{"type":"user","promptId":"p3","message":{"role":"user","content":"[Request interrupted by user]"}}"#;
+        std::fs::write(
+            slug.join("abc.jsonl"),
+            format!("{stopped}\n{}\n{typed}\n", declined("p2")),
+        )
+        .unwrap();
+        // A subagent's own transcript is no turn of the person's.
+        std::fs::write(
+            slug.join("abc/subagents/agent-a1.jsonl"),
+            declined("p9") + "\n",
+        )
+        .unwrap();
+        let mut claude = Claude::default();
+        claude.read(dir.path(), "abc");
+        assert_eq!(claude.take_interrupted().as_deref(), Some("p2"));
+        assert_eq!(claude.take_interrupted(), None, "taken once");
+        claude.read(dir.path(), "abc");
+        assert_eq!(claude.take_interrupted(), None, "nothing new");
+        assert_eq!(interrupted(typed), None);
+        let sidechain =
+            stopped.replace(r#""type":"user","#, r#""type":"user","isSidechain":true,"#);
+        assert_eq!(interrupted(&sidechain), None);
+        assert_eq!(interrupted(stopped).as_deref(), Some("p1"));
     }
 }

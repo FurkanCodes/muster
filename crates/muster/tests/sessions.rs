@@ -166,6 +166,64 @@ async fn the_terminal_size_follows_the_client() {
     read_terminal(&mut connection, session, "30 100").await;
 }
 
+/// Two clients of different sizes on one session (`ARC-02`): its terminal
+/// takes the size of the one active on it last; a client that stopped
+/// watching is remembered, not applied; once the one in charge lets the
+/// session go, the other's size applies.
+#[tokio::test]
+async fn two_clients_on_a_session_size_it_by_who_was_active_last_arc_02() {
+    let setup = setup().await;
+    let mut wide = setup.daemon.connect().await;
+    let session = start(&mut wide, setup.workspace).await;
+    wide.attach(session, None).await.unwrap();
+    let wide_size = TermSize {
+        cols: 100,
+        rows: 30,
+    };
+    wide.resize(session, wide_size).await.unwrap();
+    // A round trip, so the resize has been taken before the next client's.
+    wide.command(Command::Ping).await.unwrap();
+
+    let mut narrow = setup.daemon.connect().await;
+    narrow.attach(session, None).await.unwrap();
+    narrow
+        .resize(session, TermSize { cols: 70, rows: 20 })
+        .await
+        .unwrap();
+    narrow
+        .input(session, b"echo \"a-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut narrow, session, "a-20 70").await;
+
+    // Typing makes the wide one active again, before its keys arrive.
+    wide.input(session, b"echo \"b-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut wide, session, "b-30 100").await;
+
+    // The narrow one's window went out of focus: what it says is kept.
+    narrow.watch(session, false).await.unwrap();
+    narrow
+        .resize(session, TermSize { cols: 72, rows: 22 })
+        .await
+        .unwrap();
+    narrow
+        .input(session, b"echo \"c-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut narrow, session, "c-30 100").await;
+
+    // The wide one lets the session go: the narrow one's size applies.
+    wide.detach(session).await.unwrap();
+    wide.command(Command::Ping).await.unwrap();
+    narrow
+        .input(session, b"echo \"d-$(stty size)\"\n")
+        .await
+        .unwrap();
+    read_terminal(&mut narrow, session, "d-22 72").await;
+}
+
 #[tokio::test]
 async fn parent_agent_variables_do_not_reach_sessions() {
     // The sandbox starts the daemon with CLAUDECODE=1.
@@ -245,6 +303,71 @@ async fn the_progress_signal_moves_the_status() {
         status == SessionStatus::Finished && !unseen
     })
     .await;
+}
+
+/// A turn in the shell, told by the progress signal: it works, then
+/// finishes. Whether the finish is news.
+async fn turn(connection: &mut Connection, session: SessionId) -> bool {
+    connection
+        .input(session, b"printf '\\033]9;4;3\\007'\n")
+        .await
+        .unwrap();
+    expect_status(connection, session, |status, _| {
+        status == SessionStatus::Running
+    })
+    .await;
+    connection
+        .input(session, b"printf '\\033]9;4;0\\007'\n")
+        .await
+        .unwrap();
+    expect_status(connection, session, |status, _| {
+        status == SessionStatus::Finished
+    })
+    .await
+    .1
+}
+
+#[tokio::test]
+async fn a_session_is_watched_only_while_a_window_showing_it_is_looked_at() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start(&mut connection, setup.workspace).await;
+
+    // A window shows it, and says nothing of where its person looks.
+    let mut window = setup.daemon.connect().await;
+    window.attach(session, None).await.unwrap();
+    window.command(Command::Ping).await.unwrap();
+    assert!(
+        !turn(&mut connection, session).await,
+        "it counts as looked at"
+    );
+
+    // Its person looks at another app; the window still shows it.
+    window.looking(false).await.unwrap();
+    window.command(Command::Ping).await.unwrap();
+    assert!(
+        turn(&mut connection, session).await,
+        "finished while nobody looked"
+    );
+    // Looking back sees it.
+    window.looking(true).await.unwrap();
+    expect_status(&mut connection, session, |status, unseen| {
+        status == SessionStatus::Finished && !unseen
+    })
+    .await;
+
+    // Another window looked at that shows it is enough.
+    let mut other = setup.daemon.connect().await;
+    other.looking(true).await.unwrap();
+    other.attach(session, None).await.unwrap();
+    window.looking(false).await.unwrap();
+    window.command(Command::Ping).await.unwrap();
+    other.command(Command::Ping).await.unwrap();
+    assert!(!turn(&mut connection, session).await, "the other looks");
+    other.looking(false).await.unwrap();
+    other.command(Command::Ping).await.unwrap();
+    assert!(turn(&mut connection, session).await, "nobody looks");
 }
 
 #[tokio::test]
