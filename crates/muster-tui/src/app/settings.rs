@@ -46,6 +46,12 @@ pub(crate) enum SettingRow {
     SessionLines,
     /// Where the panels are, and whether the list is folded away.
     Panels,
+    /// Whether an agent names chats.
+    NamesByAgent,
+    /// Which agent names them.
+    NamedBy,
+    /// The model it names them with.
+    NamingModel,
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -64,6 +70,9 @@ impl SettingRow {
             | Self::Colours
             | Self::SessionLines
             | Self::Panels
+            | Self::NamesByAgent
+            | Self::NamedBy
+            | Self::NamingModel
             | Self::Agents => None,
         }
     }
@@ -107,6 +116,9 @@ impl App {
             (self.look_known(), SettingRow::Colours),
             (self.look_known(), SettingRow::SessionLines),
             (self.layout_known(), SettingRow::Panels),
+            (self.naming_known(), SettingRow::NamesByAgent),
+            (self.naming_known(), SettingRow::NamedBy),
+            (self.naming_known(), SettingRow::NamingModel),
             (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
         ];
         if self.model.loaded() && own.iter().any(|(known, _)| *known) {
@@ -128,6 +140,9 @@ impl App {
                 Some(SettingRow::Colours) => return self.toggle_palette(),
                 Some(SettingRow::SessionLines) => return self.toggle_session_lines(),
                 Some(SettingRow::Panels) => return self.put_panels_back(),
+                Some(SettingRow::NamesByAgent) => return self.toggle_names_by_agent(),
+                Some(SettingRow::NamedBy) => return self.next_namer(),
+                Some(SettingRow::NamingModel) => return self.choose_naming_model(),
                 _ => return self.toggle_setting(),
             },
             KeyCode::Left | KeyCode::Right

@@ -507,3 +507,57 @@ fn an_added_agent_runs_as_its_settings_say() {
     let resumed = spawn_spec(&mine, &launch(true));
     assert_eq!(resumed.args, ["--quiet", "--continue"]);
 }
+
+#[test]
+fn a_turn_s_answer_is_read_where_the_agent_reports_it() {
+    let answer = |harness: Harness, body: &str| harness.answer(body.as_bytes());
+    assert_eq!(
+        answer(
+            CLAUDE,
+            r#"{"hook_event_name":"Stop","last_assistant_message":"Fixed it.","session_id":"s"}"#
+        )
+        .as_deref(),
+        Some("Fixed it.")
+    );
+    assert_eq!(
+        answer(
+            GEMINI,
+            r#"{"hook_event_name":"AfterAgent","prompt_response":"Added it."}"#
+        )
+        .as_deref(),
+        Some("Added it.")
+    );
+    // Only at a turn's end, and only an answer with words.
+    assert_eq!(
+        answer(
+            CLAUDE,
+            r#"{"hook_event_name":"UserPromptSubmit","last_assistant_message":"no"}"#
+        ),
+        None
+    );
+    assert_eq!(
+        answer(
+            CLAUDE,
+            r#"{"hook_event_name":"Stop","last_assistant_message":" "}"#
+        ),
+        None
+    );
+    for harness in [CODEX, OPENCODE, COPILOT, SHELL] {
+        assert_eq!(
+            answer(
+                harness,
+                r#"{"hook_event_name":"Stop","last_assistant_message":"no"}"#
+            ),
+            None
+        );
+    }
+}
+
+#[test]
+fn only_agents_checked_to_answer_one_question_quietly_are_asked_to_name_chats() {
+    assert_eq!(CLAUDE.asking().unwrap().program, "claude");
+    assert_eq!(CODEX.asking().unwrap().program, "codex");
+    for harness in [GEMINI, OPENCODE, COPILOT, SHELL] {
+        assert_eq!(harness.asking(), None, "{}", harness.id());
+    }
+}

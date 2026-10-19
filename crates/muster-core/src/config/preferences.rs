@@ -10,7 +10,7 @@ use serde::Deserialize;
 use super::ConfigError;
 use super::agents::{self, AgentDefinition};
 use crate::layout::Layout;
-use crate::settings::{Palette, SessionLines};
+use crate::settings::{Naming, Palette, SessionLines};
 
 /// What the file is called, in the person's settings folder.
 pub const FILE_NAME: &str = "settings.toml";
@@ -39,6 +39,8 @@ pub struct MusterConfig {
     pub panels: Layout,
     /// Whether the list is folded away (`[layout] list_folded`).
     pub list_folded: bool,
+    /// How chats are named by an agent (`[names]`).
+    pub naming: Naming,
 }
 
 impl Default for MusterConfig {
@@ -51,6 +53,7 @@ impl Default for MusterConfig {
             session_lines: SessionLines::default(),
             panels: Layout::default(),
             list_folded: false,
+            naming: Naming::default(),
         }
     }
 }
@@ -66,6 +69,16 @@ struct File {
     layout: LayoutTable,
     #[serde(default)]
     look: Look,
+    #[serde(default)]
+    names: Names,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Names {
+    by_agent: Option<bool>,
+    agent: Option<String>,
+    model: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -130,7 +143,18 @@ impl MusterConfig {
             Some(written) => Layout::parse(written)
                 .map_err(|error| invalid(&format!("layout.panels: {error}")))?,
         };
+        let one_line = |key: &str, text: Option<String>| match text {
+            Some(text) if text.trim().is_empty() || text.chars().any(char::is_control) => {
+                Err(invalid(&format!("names.{key} must be one line of text")))
+            }
+            text => Ok(text.map(|text| text.trim().to_owned())),
+        };
         let default = Self::default();
+        let naming = Naming {
+            by_agent: read.names.by_agent.unwrap_or(default.naming.by_agent),
+            agent: one_line("agent", read.names.agent)?,
+            model: one_line("model", read.names.model)?,
+        };
         Ok(Self {
             notch: read.notch.show.unwrap_or(default.notch),
             agents,
@@ -142,6 +166,7 @@ impl MusterConfig {
             session_lines,
             panels,
             list_folded: read.layout.list_folded.unwrap_or(default.list_folded),
+            naming,
         })
     }
 }
@@ -231,6 +256,30 @@ mod tests {
             error.contains("layout.panels: changes is not in the layout"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn an_agent_names_chats_unless_the_person_says_not_and_by_the_agent_they_pick() {
+        let nothing = MusterConfig::parse(None, "f").unwrap();
+        assert_eq!(nothing.naming, Naming::default());
+        assert!(nothing.naming.by_agent);
+        let written = MusterConfig::parse(
+            Some("[names]\nby_agent = false\nagent = \"codex\"\nmodel = \" o4 \"\n"),
+            "f",
+        )
+        .unwrap();
+        assert_eq!(
+            written.naming,
+            Naming {
+                by_agent: false,
+                agent: Some("codex".to_owned()),
+                model: Some("o4".to_owned()),
+            }
+        );
+        let error = MusterConfig::parse(Some("[names]\nmodel = \"\"\n"), "s.toml")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("names.model must be one line"), "{error}");
     }
 
     #[test]

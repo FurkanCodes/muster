@@ -20,6 +20,7 @@ fn my_agent() -> AddedAgent {
         mark: "✦".to_owned(),
         colour: Some("green".to_owned()),
         takes_prompt: true,
+        asks: false,
     }
 }
 
@@ -30,6 +31,7 @@ fn quiet() -> AddedAgent {
         mark: "Q".to_owned(),
         colour: None,
         takes_prompt: false,
+        asks: false,
     }
 }
 

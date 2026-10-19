@@ -142,6 +142,7 @@ async fn an_agent_from_the_person_s_settings_is_heard_by_its_progress_title_and_
             mark: "M".to_owned(),
             colour: Some("green".to_owned()),
             takes_prompt: true,
+            asks: false,
         }]
     );
     assert_eq!(snapshot.preferences.problem, None);

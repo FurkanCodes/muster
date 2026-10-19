@@ -15,6 +15,7 @@ mod link;
 mod look;
 mod menu;
 mod motion;
+mod naming;
 mod narrow;
 mod notch;
 mod panels;
@@ -69,6 +70,8 @@ mod menu_tests;
 mod motion_tests;
 #[cfg(test)]
 mod mouse_sweep_tests;
+#[cfg(test)]
+mod naming_tests;
 #[cfg(test)]
 mod narrow_tests;
 #[cfg(test)]
@@ -246,6 +249,13 @@ pub(crate) enum Dialog {
         session: SessionId,
         name: LineInput,
     },
+    /// The model `agent` names chats with, as the person types or picks
+    /// it among those it lists, once the daemon says.
+    NamingModel {
+        agent: String,
+        model: LineInput,
+        listed: Option<Result<Vec<String>, String>>,
+    },
     /// Which agent tidies a workspace's commits not pushed yet.
     Tidy {
         workspace: WorkspaceId,
@@ -341,6 +351,8 @@ enum Then {
     ListFolded,
     /// The panels' layout is kept, or could not be.
     PanelsKept,
+    /// Offer the models the agent lists, in the dialog open for it.
+    Models(String),
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.

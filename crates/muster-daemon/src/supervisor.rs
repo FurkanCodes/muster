@@ -20,6 +20,7 @@ mod handle;
 mod issues;
 mod looking;
 mod names;
+mod naming;
 mod own_settings;
 mod projects;
 mod pulls;
@@ -180,6 +181,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         resumes: recovery::Resumes::default(),
         tasks: settings.tasks,
         agents,
+        asks: Arc::new(tokio::sync::Semaphore::new(naming::AT_ONCE)),
     };
     supervisor.ensure_checkouts().await;
     // Running sessions handed over keep running: taken over before any is
@@ -240,6 +242,8 @@ struct Live {
     turn: Option<String>,
     /// The signals its machine last received, for explaining its status.
     signals: explain::Recent,
+    /// Its chat being named by an agent.
+    naming: Option<naming::Asking>,
 }
 
 #[derive(Debug)]
@@ -312,6 +316,8 @@ struct Supervisor {
     /// The coding agents the person added in Muster's own settings, as
     /// last read.
     agents: Vec<Arc<muster_core::config::agents::AgentDefinition>>,
+    /// Turns to ask an agent one question, few at once (`ARC-14`).
+    asks: Arc<tokio::sync::Semaphore>,
 }
 
 impl Supervisor {
@@ -367,6 +373,8 @@ impl Supervisor {
                     self.close_issue(project, key, reply);
                 }
                 Command::ProjectSettings { project } => self.project_settings(project, reply),
+                // It asks an agent's program.
+                Command::ListModels { agent } => self.list_models(&agent, reply),
                 Command::ChangeSetting { project, change } => {
                     self.change_setting(project, &change, reply);
                 }
@@ -455,6 +463,7 @@ impl Supervisor {
             Request::PullRequestsLooked(looked) => self.pull_requests_looked(*looked),
             Request::LookAtBranch(workspace) => self.look_at_pull_requests(Some(workspace)),
             Request::ChangesLooked(looked) => self.changes_looked(*looked),
+            Request::Named(named) => self.named(*named).await,
             Request::TimelineJobDone(done) => self.timeline_job_done(*done),
             Request::ClashesFound(found) => self.clashes_found(*found),
             Request::StackMoved(moved) => {
@@ -611,6 +620,7 @@ impl Supervisor {
             | Command::ViewIssue { .. }
             | Command::CloseIssue { .. }
             | Command::ProjectSettings { .. }
+            | Command::ListModels { .. }
             | Command::ChangeSetting { .. }
             | Command::StartFromIssue { .. }
             | Command::StartRun { .. }
@@ -736,6 +746,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Reveal { .. } => "reveal",
         Command::ChangePreference(_) => "change preference",
         Command::ReadPreferences => "read preferences",
+        Command::ListModels { .. } => "list models",
         Command::AddProject { .. } => "add project",
         Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",

@@ -114,7 +114,8 @@ impl App {
             Mode::Dialog(
                 Dialog::NewWorktree { branch: input, .. }
                 | Dialog::NewSession { prompt: input, .. }
-                | Dialog::Rename { name: input, .. },
+                | Dialog::Rename { name: input, .. }
+                | Dialog::NamingModel { model: input, .. },
             ) => {
                 input.paste(text);
                 Vec::new()
@@ -607,6 +608,11 @@ impl App {
             } => self.undo_key(workspace, &plan, key),
             Dialog::Tidy { workspace, harness } => self.tidy_key(workspace, harness, key),
             Dialog::Rename { session, name } => self.rename_key(session, name, key),
+            Dialog::NamingModel {
+                agent,
+                model,
+                listed,
+            } => self.naming_model_key(agent, model, listed, key),
             Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
             dialog @ Dialog::TicketsFrom { .. } => self.tickets_from_key(dialog, key),
             Dialog::AssignAgent {
@@ -636,57 +642,67 @@ impl App {
             Dialog::NewSession {
                 workspace,
                 harness,
-                mut prompt,
-            } => {
-                if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
-                    let harness = if key.code == KeyCode::Tab {
-                        harness.next(self.added_agents())
-                    } else {
-                        harness.previous(self.added_agents())
-                    };
-                    self.mode = Mode::Dialog(Dialog::NewSession {
-                        workspace,
-                        harness,
-                        prompt,
-                    });
-                    return Vec::new();
-                }
-                let edit = if harness.takes_prompt() {
-                    prompt.handle(key)
-                } else {
-                    // A shell, or an agent that takes none, takes no
-                    // prompt: only Enter and Esc matter.
-                    match key.code {
-                        KeyCode::Enter => Edit::Submit,
-                        KeyCode::Esc => Edit::Cancel,
-                        _ => Edit::Ignored,
-                    }
-                };
-                match edit {
-                    Edit::Submit => {
-                        self.mode = Mode::Browse;
-                        let prompt = Some(prompt.text().trim().to_owned())
-                            .filter(|p| !p.is_empty() && harness.takes_prompt());
-                        let command = Command::StartSession {
-                            workspace,
-                            harness: harness.id().to_owned(),
-                            title: None,
-                            size: self.session_size(),
-                            prompt,
-                        };
-                        self.last_harness = harness;
-                        vec![self.command(command, Then::OpenSession)]
-                    }
-                    edit => self.keep_editing(
-                        edit,
-                        Dialog::NewSession {
-                            workspace,
-                            harness,
-                            prompt,
-                        },
-                    ),
-                }
+                prompt,
+            } => self.new_session_key(workspace, harness, prompt, key),
+        }
+    }
+
+    /// A key in the dialog starting a session: ⇥ and ⇧⇥ choose the
+    /// harness, and its prompt is typed where it takes one.
+    fn new_session_key(
+        &mut self,
+        workspace: WorkspaceId,
+        harness: HarnessChoice,
+        mut prompt: LineInput,
+        key: &KeyEvent,
+    ) -> Vec<Action> {
+        if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
+            let harness = if key.code == KeyCode::Tab {
+                harness.next(self.added_agents())
+            } else {
+                harness.previous(self.added_agents())
+            };
+            self.mode = Mode::Dialog(Dialog::NewSession {
+                workspace,
+                harness,
+                prompt,
+            });
+            return Vec::new();
+        }
+        let edit = if harness.takes_prompt() {
+            prompt.handle(key)
+        } else {
+            // A shell, or an agent that takes none, takes no
+            // prompt: only Enter and Esc matter.
+            match key.code {
+                KeyCode::Enter => Edit::Submit,
+                KeyCode::Esc => Edit::Cancel,
+                _ => Edit::Ignored,
             }
+        };
+        match edit {
+            Edit::Submit => {
+                self.mode = Mode::Browse;
+                let prompt = Some(prompt.text().trim().to_owned())
+                    .filter(|p| !p.is_empty() && harness.takes_prompt());
+                let command = Command::StartSession {
+                    workspace,
+                    harness: harness.id().to_owned(),
+                    title: None,
+                    size: self.session_size(),
+                    prompt,
+                };
+                self.last_harness = harness;
+                vec![self.command(command, Then::OpenSession)]
+            }
+            edit => self.keep_editing(
+                edit,
+                Dialog::NewSession {
+                    workspace,
+                    harness,
+                    prompt,
+                },
+            ),
         }
     }
 

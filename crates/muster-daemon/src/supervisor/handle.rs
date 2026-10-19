@@ -82,6 +82,8 @@ pub(super) enum Request {
     LookAtBranch(WorkspaceId),
     /// A look at workspaces' changes, back from off the loop.
     ChangesLooked(Box<changes::Looked>),
+    /// An agent's answer for a chat's name, back from off the loop.
+    Named(Box<super::naming::Named>),
     /// A job on a workspace's timeline came back.
     TimelineJobDone(Box<super::timeline::JobDone>),
     /// A look at where the work in a project's workspaces meets came back.
@@ -139,6 +141,7 @@ impl std::fmt::Debug for Request {
             Self::PullRequestsLooked(_) => f.write_str("PullRequestsLooked"),
             Self::LookAtBranch(workspace) => write!(f, "LookAtBranch({workspace})"),
             Self::ChangesLooked(_) => f.write_str("ChangesLooked"),
+            Self::Named(_) => f.write_str("Named"),
             Self::TimelineJobDone(_) => f.write_str("TimelineJobDone"),
             Self::ClashesFound(_) => f.write_str("ClashesFound"),
             Self::TidyChecked(_) => f.write_str("TidyChecked"),

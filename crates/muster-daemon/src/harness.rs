@@ -20,7 +20,7 @@ pub(crate) mod codex;
 pub(crate) mod copilot;
 pub(crate) mod gemini;
 pub(crate) mod opencode;
-mod scrub;
+pub(crate) mod scrub;
 pub(crate) mod support;
 pub(crate) mod transcript;
 
@@ -320,6 +320,33 @@ impl Harness {
             .then(|| value.get("prompt").and_then(serde_json::Value::as_str))
             .flatten()
             .map(str::to_owned)
+    }
+
+    /// The start of the answer a turn ended with, where a report posted to
+    /// its route carries it: Claude Code's `Stop` (`last_assistant_message`)
+    /// and Gemini CLI's `AfterAgent` (`prompt_response`); a chat whose
+    /// first prompt said little is named by it too.
+    pub(crate) fn answer(&self, body: &[u8]) -> Option<String> {
+        let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+        let event = value.get("hook_event_name")?.as_str()?;
+        let field = match (&self.kind, event) {
+            (Kind::Claude, "Stop") => "last_assistant_message",
+            (Kind::Gemini, "AfterAgent") => "prompt_response",
+            _ => return None,
+        };
+        let answer = value.get(field)?.as_str()?;
+        (!answer.trim().is_empty()).then(|| answer.to_owned())
+    }
+
+    /// How it is asked one question, to name chats: Muster's own as checked
+    /// (`muster_core::ask::built_in`), one the person added as its settings
+    /// say; `None` for one that cannot be.
+    pub(crate) fn asking(&self) -> Option<muster_core::ask::Ask> {
+        match &self.kind {
+            Kind::Added(agent) => agent.asking(),
+            Kind::Shell | Kind::Checks | Kind::Review => None,
+            _ => muster_core::ask::built_in(self.id()),
+        }
     }
 
     /// What a report says the session has used, for a harness that reports

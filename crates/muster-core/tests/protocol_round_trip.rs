@@ -241,6 +241,7 @@ fn preferences() -> Preferences {
             mark: "M".to_owned(),
             colour: None,
             takes_prompt: true,
+            asks: true,
         }],
         problem: Some("agents.other: `program` is missing".to_owned()),
         side_by_side_from: 120,
@@ -248,6 +249,11 @@ fn preferences() -> Preferences {
         session_lines: SessionLines::One,
         panels: Layout::parse("session | list 30 | (changes / shell)").unwrap(),
         list_folded: true,
+        naming: muster_core::settings::Naming {
+            by_agent: false,
+            agent: Some("claude".to_owned()),
+            model: Some("sonnet".to_owned()),
+        },
     }
 }
 
@@ -470,6 +476,14 @@ fn commands() -> Vec<Command> {
         Command::ChangePreference(PreferenceChange::SessionLines(SessionLines::One)),
         Command::ChangePreference(PreferenceChange::Panels(Layout::default())),
         Command::ChangePreference(PreferenceChange::ListFolded(true)),
+        Command::ChangePreference(PreferenceChange::NamesByAgent(false)),
+        Command::ChangePreference(PreferenceChange::NamedBy {
+            agent: Some("codex".to_owned()),
+            model: None,
+        }),
+        Command::ListModels {
+            agent: "opencode".to_owned(),
+        },
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),
@@ -552,6 +566,7 @@ fn replies() -> Vec<Reply> {
         }),
         Reply::Changes(changes()),
         Reply::Explanation(Box::new(explanation())),
+        Reply::Models(vec!["haiku".to_owned(), "sonnet".to_owned()]),
         Reply::FileDiff(FileDiff {
             text: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
             cut: true,
@@ -798,7 +813,7 @@ impl Variant for ServerFrame {
 }
 
 impl Variant for Command {
-    const COUNT: usize = 39;
+    const COUNT: usize = 40;
     fn variant(&self) -> usize {
         match self {
             Self::Ping => 0,
@@ -840,12 +855,13 @@ impl Variant for Command {
             Self::ExplainSession { .. } => 36,
             Self::ReadPreferences => 37,
             Self::RenameSession { .. } => 38,
+            Self::ListModels { .. } => 39,
         }
     }
 }
 
 impl Variant for Reply {
-    const COUNT: usize = 21;
+    const COUNT: usize = 22;
     fn variant(&self) -> usize {
         match self {
             Self::Pong => 0,
@@ -869,6 +885,7 @@ impl Variant for Reply {
             Self::RunTakenOver { .. } => 18,
             Self::Done => 19,
             Self::Explanation(_) => 20,
+            Self::Models(_) => 21,
         }
     }
 }

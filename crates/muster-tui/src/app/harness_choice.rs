@@ -149,6 +149,7 @@ mod tests {
             mark: "A".to_owned(),
             colour: None,
             takes_prompt,
+            asks: false,
         }
     }
 

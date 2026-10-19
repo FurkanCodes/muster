@@ -5,6 +5,7 @@ pub mod clock;
 pub mod config;
 pub mod store;
 
+mod ask;
 mod branches;
 mod changes;
 mod clashes;

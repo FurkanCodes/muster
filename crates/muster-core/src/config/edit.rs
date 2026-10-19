@@ -114,6 +114,17 @@ pub fn set_texts(
     table: &str,
     values: &[(&str, Option<&str>)],
 ) -> Result<String, EditError> {
+    set_texts_in(text, NEW_FILE, table, values)
+}
+
+/// [`set_texts`] in a file that starts with `new_file` when there is none
+/// yet, as Muster's own settings do.
+pub fn set_texts_in(
+    text: Option<&str>,
+    new_file: &str,
+    table: &str,
+    values: &[(&str, Option<&str>)],
+) -> Result<String, EditError> {
     let mut document: toml_edit::DocumentMut = text
         .unwrap_or_default()
         .parse()
@@ -148,7 +159,7 @@ pub fn set_texts(
     }
     Ok(match text {
         Some(_) => document.to_string(),
-        None => format!("{NEW_FILE}\n{document}"),
+        None => format!("{new_file}\n{document}"),
     })
 }
 

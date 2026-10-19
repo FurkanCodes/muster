@@ -33,6 +33,12 @@ const COLOURS: &str = "Colours";
 const SESSION_LINES: &str = "Lines for each session";
 /// What the setting of where the panels are is called.
 const PANELS: &str = "Panels";
+/// What the setting of naming chats by an agent is called.
+const NAMES_BY_AGENT: &str = "Chats named by an agent";
+/// What the setting of the agent that names chats is called.
+const NAMED_BY: &str = "Named by";
+/// What the setting of the model it names them with is called.
+const NAMING_MODEL: &str = "Its model";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = list_block(app, "settings", app.list_has_keys());
@@ -83,6 +89,9 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
         SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
         SettingRow::Panels => labelled(PANELS, panels_value(app), width),
+        SettingRow::NamesByAgent => labelled(NAMES_BY_AGENT, by_agent_value(app), width),
+        SettingRow::NamedBy => labelled(NAMED_BY, Span::from(app.namer_label()), width),
+        SettingRow::NamingModel => labelled(NAMING_MODEL, naming_model_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -233,6 +242,9 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::Colours) => colours_text(app),
         Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Panels) => panels_text(app),
+        Some(SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel) => {
+            naming_text(app)
+        }
         Some(SettingRow::Muster | SettingRow::Agents | SettingRow::Notch) => agents_text(app),
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
@@ -246,6 +258,9 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Colours => colours_text(app),
                 SettingRow::SessionLines => session_lines_text(app),
                 SettingRow::Panels => panels_text(app),
+                SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
+                    naming_text(app)
+                }
             },
             Some(Settings::Failed(error)) => Text::from(vec![
                 Line::from(
@@ -453,6 +468,71 @@ fn agents_text(app: &App) -> Text<'static> {
         .dim(),
     ]);
     Text::from(lines)
+}
+
+/// Whether an agent names chats.
+fn by_agent_value(app: &App) -> Span<'static> {
+    if app.model.preferences().naming.by_agent {
+        Span::from("on").green().bold()
+    } else {
+        Span::from("off").dim()
+    }
+}
+
+/// The model chats are named with: the one picked, or the agent's own.
+fn naming_model_value(app: &App) -> Span<'static> {
+    let naming = &app.model.preferences().naming;
+    match (&naming.agent, &naming.model) {
+        (_, Some(model)) => Span::from(model.clone()),
+        (Some(_), None) => Span::from("its own choice").dim(),
+        (None, None) => Span::from("each agent's own").dim(),
+    }
+}
+
+/// What naming chats by an agent does and costs, said beside it.
+fn naming_text(app: &App) -> Text<'static> {
+    let naming = &app.model.preferences().naming;
+    let asked = match &naming.agent {
+        None => "each chat's own agent".to_owned(),
+        Some(_) => app.namer_label(),
+    };
+    let can: Vec<String> = app
+        .namers()
+        .into_iter()
+        .filter_map(|(id, label)| id.map(|_| label))
+        .collect();
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{NAMES_BY_AGENT}  ")).bold(),
+            by_agent_value(app),
+        ]),
+        Line::from(
+            "A new chat is named at once by the first line of its first prompt. A few seconds \
+             later Muster asks an agent for a name of two to four words.",
+        ),
+        Line::from(""),
+        Line::from(format!(
+            "It asks {asked} with your own sign-in, so it uses a little of your plan. It sends \
+             only the chat's first prompt (and, where that is a few words, the start of its \
+             first answer), credentials hidden, with no tools, none of your project's files or \
+             instructions, and nothing kept in the agent's history."
+        )),
+        Line::from("A name you give a chat (R) is never replaced.").dim(),
+        Line::from(""),
+        detail("Named by", app.namer_label()),
+        detail("Its model", naming_model_value(app).content.into_owned()),
+        detail("Can name", can.join(", ")),
+        detail(
+            "Saved in",
+            app.model.preferences().file.display().to_string(),
+        ),
+        Line::from(""),
+        Line::from(
+            "An agent you added names chats once its settings say how to ask it one question \
+             (ask = [\"-p\", \"{prompt}\"]).",
+        )
+        .dim(),
+    ])
 }
 
 /// Where the panels are: as at first, or moved, and the list folded.
@@ -690,6 +770,15 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
             });
         }
         Some(SettingRow::Panels) => hints.push("⏎ put back as at first"),
+        Some(SettingRow::NamesByAgent) => {
+            hints.push(if app.model.preferences().naming.by_agent {
+                "⏎ turn off"
+            } else {
+                "⏎ turn on"
+            });
+        }
+        Some(SettingRow::NamedBy) => hints.push("⏎ next agent"),
+        Some(SettingRow::NamingModel) => hints.push("⏎ choose"),
         Some(
             SettingRow::Project(_)
             | SettingRow::Muster
