@@ -260,3 +260,72 @@ fn on_two_lines_a_name_has_its_first_line_to_itself() {
     let screen = render(&world.app);
     assert!(screen.contains("○ ❯ Fix the login redirect …"), "{screen}");
 }
+
+/// The picture drawn in the list on `row`: its size and its pixels, or
+/// `None` where it is drawn as it is, not laid on a colour.
+fn picture_on(cells: &Buffer, row: u16) -> Option<((u32, u32), Vec<u8>)> {
+    use base64::Engine as _;
+    let sequence = (0..34)
+        .map(|x| cells[(x, row)].symbol())
+        .find(|symbol| symbol.starts_with("\x1b]1337;File="))
+        .expect("a picture on the line");
+    let data = sequence.split_once(':').unwrap().1.trim_end_matches('\x07');
+    let file = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .unwrap();
+    // Laid pictures are Muster's own, red, green and blue; the logo as it
+    // is keeps its transparency.
+    (file[25] == 2).then(|| crate::view::picture::read_png(&file))
+}
+
+#[test]
+fn a_logo_is_laid_on_the_colour_of_its_line_so_no_square_shows_around_it() {
+    let (mut world, second) = two_sessions();
+    world.app.graphics = Graphics::Iterm;
+    for id in [world.session.id, second] {
+        let mut claude = world.app.model.session(id).unwrap().clone();
+        claude.harness = "claude".to_owned();
+        world.app.on_frame(ServerFrame::Delta(
+            muster_core::protocol::Delta::SessionUpserted(claude),
+        ));
+    }
+    world.app.selected = Some(Row::Session(world.session.id));
+    // A terminal that says no colours: an unselected line's logo is drawn
+    // as it is, its own transparency over the terminal's background.
+    let cells = buffer(&world.app);
+    assert_eq!(picture_on(&cells, 6), None);
+    // The selected line's is laid on its tint, corner to corner.
+    let tint = theme::of(&world.app).tint;
+    let Color::Rgb(red, green, blue) = tint else {
+        panic!("{tint:?}")
+    };
+    let (size, pixels) = picture_on(&cells, 4).expect("laid on the tint");
+    assert_eq!(
+        size,
+        (64, 64),
+        "square where the cells' pixels are not said"
+    );
+    assert_eq!(&pixels[..3], [red, green, blue]);
+    assert_eq!(&pixels[pixels.len() - 3..], [red, green, blue]);
+
+    // Said: every line's is laid, as wide as its two cells are, the
+    // unselected on the terminal's own background.
+    world.app.colours.background = Some(muster_core::colours::Rgb {
+        red: 0x1e1e,
+        green: 0x1e1e,
+        blue: 0x2e2e,
+    });
+    world.app.cell_pixels = Some(muster_core::protocol::PixelSize {
+        width: 8,
+        height: 18,
+    });
+    let cells = buffer(&world.app);
+    let (size, pixels) = picture_on(&cells, 6).expect("laid on the background");
+    assert_eq!(size, (64, 72));
+    assert_eq!(&pixels[..3], [0x1e, 0x1e, 0x2e]);
+    let Color::Rgb(red, green, blue) = theme::of(&world.app).tint else {
+        unreachable!()
+    };
+    let (_, pixels) = picture_on(&cells, 4).unwrap();
+    assert_eq!(&pixels[..3], [red, green, blue]);
+}

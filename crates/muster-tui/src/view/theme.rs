@@ -158,6 +158,40 @@ impl Theme {
     }
 }
 
+/// `colour` as the person's terminal shows it, where that can be told:
+/// one of Muster's own, or one of the terminal's that it said (its
+/// background for `Reset`, its palette for the sixteen).
+pub(crate) fn shown(colour: Color, colours: &TerminalColours) -> Option<[u8; 3]> {
+    let index = match colour {
+        Color::Rgb(red, green, blue) => return Some([red, green, blue]),
+        Color::Reset => return colours.background.map(eight_bits),
+        Color::Black => 0,
+        Color::Red => 1,
+        Color::Green => 2,
+        Color::Yellow => 3,
+        Color::Blue => 4,
+        Color::Magenta => 5,
+        Color::Cyan => 6,
+        Color::Gray => 7,
+        Color::DarkGray => 8,
+        Color::LightRed => 9,
+        Color::LightGreen => 10,
+        Color::LightYellow => 11,
+        Color::LightBlue => 12,
+        Color::LightMagenta => 13,
+        Color::LightCyan => 14,
+        Color::White => 15,
+        Color::Indexed(index) if index < 16 => usize::from(index),
+        Color::Indexed(_) => return None,
+    };
+    colours
+        .palette
+        .get(index)
+        .copied()
+        .flatten()
+        .map(eight_bits)
+}
+
 const fn rgb(red: u8, green: u8, blue: u8) -> Color {
     Color::Rgb(red, green, blue)
 }
@@ -220,6 +254,24 @@ mod tests {
         assert_eq!(light.text, LIGHT.text);
         assert_eq!(light.accent, LIGHT.accent);
         assert!(matches!(light.tint, Color::Rgb(red, _, _) if red < 0xfa));
+    }
+
+    #[test]
+    fn a_colour_is_shown_as_the_terminal_said_it_or_not_told() {
+        let mut colours = said(Some([0x1e, 0x1e, 0x2e]));
+        assert_eq!(shown(rgb(1, 2, 3), &colours), Some([1, 2, 3]));
+        assert_eq!(shown(Color::Reset, &colours), Some([0x1e, 0x1e, 0x2e]));
+        assert_eq!(shown(Color::DarkGray, &colours), None, "not said");
+        colours.palette = vec![None; 16];
+        colours.palette[8] = Some(Rgb {
+            red: 0x5858,
+            green: 0x5b5b,
+            blue: 0x7070,
+        });
+        assert_eq!(shown(Color::DarkGray, &colours), Some([0x58, 0x5b, 0x70]));
+        assert_eq!(shown(Color::Indexed(8), &colours), Some([0x58, 0x5b, 0x70]));
+        assert_eq!(shown(Color::Indexed(200), &colours), None);
+        assert_eq!(shown(Color::Reset, &said(None)), None);
     }
 
     #[test]

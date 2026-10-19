@@ -2,7 +2,10 @@
 
 The marks the terminal UI draws before each session's name, so the person
 sees at a glance which agent a chat is with. Each is a 64-pixel PNG
-rendered from the SVG beside it by `scripts/render-logos.sh`.
+rendered from the SVG beside it by `scripts/render-logos.sh`, which also
+unpacks its pixels into the `.rgba` file beside it (64 by 64, red, green,
+blue and alpha), which the UI lays on the colour of the line it is drawn
+on.
 
 | File | Agent | Source |
 |---|---|---|
