@@ -6,7 +6,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Padding};
+use ratatui::widgets::{Block, Borders};
 
 use crate::app::{App, Mode, View};
 use crate::motion;
@@ -238,19 +238,11 @@ pub(super) fn panel<'a>(app: &App, title: impl Into<Line<'a>>, focused: bool) ->
         .border_style(Style::default().fg(frame))
 }
 
-/// A list, unframed: a quiet label over it, in the accent while the list
-/// has the keys. Its lines sit where a frame would leave them, a cell in
-/// from each side and a line down, so the list keeps its place.
+/// A list, framed square like the pane beside it: its label in its
+/// border, the frame and label in the accent while the list has the keys,
+/// so one frame at a time is lit.
 pub(super) fn list_block(app: &App, label: &str, has_keys: bool) -> Block<'static> {
-    let theme = theme::of(app);
-    let style = if has_keys {
-        Style::default().fg(theme.accent).bold()
-    } else {
-        theme.quiet
-    };
-    Block::default()
-        .title(Line::styled(format!(" {label}"), style))
-        .padding(Padding::new(1, 1, 0, 1))
+    panel(app, format!(" {label} "), has_keys)
 }
 
 /// A session's mark as `app` draws it now, in its palette and at its

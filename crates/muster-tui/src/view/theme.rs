@@ -31,7 +31,10 @@ pub(crate) struct Theme {
     pub(crate) accent: Color,
     /// Text on the accent.
     pub(crate) on_accent: Color,
-    /// The selected line's background.
+    /// The selected line's background while its list has the keys: a
+    /// shade of the accent.
+    pub(crate) lit: Color,
+    /// The selected line's background while the keys are elsewhere.
     pub(crate) tint: Color,
     /// An agent at work.
     pub(crate) working: Color,
@@ -56,6 +59,7 @@ const DARK: Theme = Theme {
     line: rgb(0x3e, 0x41, 0x54),
     accent: rgb(0xb8, 0xa6, 0xf8),
     on_accent: rgb(0x17, 0x16, 0x1f),
+    lit: rgb(0x3f, 0x3c, 0x5b),
     tint: rgb(0x2a, 0x2b, 0x3a),
     working: rgb(0xf2, 0xcc, 0x8f),
     waiting: rgb(0xf2, 0x8b, 0x9d),
@@ -80,6 +84,7 @@ const LIGHT: Theme = Theme {
     line: rgb(0xc9, 0xcb, 0xd6),
     accent: rgb(0x6b, 0x4f, 0xd8),
     on_accent: rgb(0xff, 0xff, 0xff),
+    lit: rgb(0xd8, 0xd1, 0xf4),
     tint: rgb(0xe8, 0xe8, 0xef),
     working: rgb(0xa8, 0x6a, 0x00),
     waiting: rgb(0xc2, 0x36, 0x56),
@@ -104,6 +109,8 @@ const TERMINAL: Theme = Theme {
     line: Color::DarkGray,
     accent: Color::Cyan,
     on_accent: Color::Black,
+    // Sixteen colours hold no shade of the accent; the frame says it.
+    lit: Color::DarkGray,
     tint: Color::DarkGray,
     working: Color::Yellow,
     waiting: Color::Red,
@@ -124,6 +131,10 @@ const TERMINAL: Theme = Theme {
 /// towards Muster's text, in hundredths: a shade, never a colour.
 const TINT_PERCENT: u16 = 9;
 
+/// How far the selected line's background goes from the terminal's
+/// towards the accent while its list has the keys.
+const LIT_PERCENT: u16 = 24;
+
 impl Theme {
     /// The colours `palette` draws in, on a terminal of `colours`.
     pub(crate) fn new(palette: Palette, colours: &TerminalColours) -> Self {
@@ -141,6 +152,7 @@ impl Theme {
                     DARK
                 };
                 Self {
+                    lit: mix(background, base.accent, LIT_PERCENT),
                     tint: mix(background, base.text, TINT_PERCENT),
                     ..base
                 }
@@ -247,6 +259,8 @@ mod tests {
         assert_eq!(dark.text, DARK.text);
         // 9% of the way from the background to the text.
         assert_eq!(dark.tint, rgb(0x2f, 0x2f, 0x3e));
+        // While its list has the keys, 24% of the way to the accent.
+        assert_eq!(dark.lit, rgb(0x43, 0x3f, 0x5e));
         let black = Theme::new(Palette::Muster, &said(Some([0, 0, 0])));
         assert_eq!(black.tint, rgb(0x13, 0x14, 0x15));
 
@@ -254,6 +268,7 @@ mod tests {
         assert_eq!(light.text, LIGHT.text);
         assert_eq!(light.accent, LIGHT.accent);
         assert!(matches!(light.tint, Color::Rgb(red, _, _) if red < 0xfa));
+        assert!(matches!(light.lit, Color::Rgb(red, _, blue) if red < blue));
     }
 
     #[test]
