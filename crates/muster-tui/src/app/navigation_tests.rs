@@ -6,7 +6,6 @@ use crossterm::event::KeyCode;
 use muster_core::protocol::{ClientFrame, Command};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::style::Modifier;
 
 use super::tests::{SIZE, World, ctrl, press, render, world};
 use super::{Action, Mode, View};
@@ -198,15 +197,16 @@ fn the_top_bar_shows_the_screens_as_tabs_with_the_one_shown_marked() {
             .map(|x| buffer[(x, 0)].symbol())
             .collect();
         assert!(
-            top.contains(" Sessions │ Needs you │ Tickets │ Settings  ⇥"),
+            top.contains(" Sessions   Needs you   Tickets   Settings  ⇥"),
             "{top}"
         );
-        // Each tab's name is marked only while its screen is shown.
+        // Each tab's name is lit only while its screen is shown.
+        let accent = crate::view::theme::of(&world.app).accent;
         for other in ["Sessions", "Needs you", "Tickets", "Settings"] {
             let at = top.find(other).unwrap();
             let column = u16::try_from(top[..at].chars().count()).unwrap();
-            let marked = buffer[(column, 0)].modifier.contains(Modifier::REVERSED);
-            assert_eq!(marked, other == name, "{other} while {name} is shown");
+            let lit = buffer[(column, 0)].bg == accent;
+            assert_eq!(lit, other == name, "{other} while {name} is shown");
         }
     }
 }

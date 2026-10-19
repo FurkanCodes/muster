@@ -24,8 +24,9 @@ use std::time::{Duration, Instant};
 use support::Sandbox;
 use ui::{StopDaemon, Ui};
 
-/// The list's columns in the UI's window, its border with them.
-const LIST: usize = 34;
+/// The list's columns in the UI's window of 120, the cells either side of
+/// its lines with them.
+const LIST: usize = 36;
 
 /// What the list shows, without the pane beside it, whose title says the
 /// session's in full.

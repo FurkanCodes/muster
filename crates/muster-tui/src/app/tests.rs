@@ -57,6 +57,23 @@ pub(super) fn world() -> World {
     }
 }
 
+/// Muster's own settings as they are, with `change` made to them.
+pub(super) fn preferences(
+    app: &mut App,
+    change: impl FnOnce(&mut muster_core::settings::Preferences),
+) {
+    let mut preferences = app.model.preferences().clone();
+    change(&mut preferences);
+    app.on_frame(ServerFrame::Delta(Delta::Preferences(preferences)));
+}
+
+/// Each session on one line, as `Preferences::session_lines` can say.
+pub(super) fn one_line(app: &mut App) {
+    preferences(app, |preferences| {
+        preferences.session_lines = muster_core::settings::SessionLines::One;
+    });
+}
+
 pub(super) fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
@@ -121,7 +138,13 @@ fn the_list_shows_projects_worktrees_and_sessions() {
     let screen = render(&world.app);
     assert!(screen.contains("app"), "{screen}");
     assert!(screen.contains("⎇ work"), "{screen}");
-    assert!(screen.contains("Shell  idle"), "{screen}");
+    // A session on two lines: its name, then what it is doing under it.
+    let lines: Vec<&str> = screen.lines().collect();
+    let at = lines
+        .iter()
+        .position(|line| line.contains("○ ❯ Shell"))
+        .expect("the session's first line");
+    assert!(lines[at + 1].contains("      idle"), "{screen}");
     assert!(screen.contains("daemon 0.1.0"), "{screen}");
 }
 
@@ -151,6 +174,7 @@ fn resource_use_is_shown_for_the_host_and_each_session() {
 #[test]
 fn a_session_line_that_cannot_fit_its_usage_leaves_it_to_the_pane() {
     let mut world = world();
+    one_line(&mut world.app);
     let mut claude = world.session.clone();
     claude.title = "Claude Code".to_owned();
     claude.status = muster_core::SessionStatus::Finished;

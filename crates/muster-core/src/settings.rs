@@ -142,6 +142,13 @@ pub struct Preferences {
     /// side_by_side_from`). From protocol 32.
     #[serde(default = "default_side_by_side_from")]
     pub side_by_side_from: u16,
+    /// Whose colours the UI draws in (`[look] colours`). From protocol 35.
+    #[serde(default)]
+    pub palette: Palette,
+    /// How many lines a session's line in the lists takes (`[look]
+    /// session_lines`). From protocol 35.
+    #[serde(default)]
+    pub session_lines: SessionLines,
 }
 
 impl Default for Preferences {
@@ -152,9 +159,89 @@ impl Default for Preferences {
             agents: Vec::new(),
             problem: None,
             side_by_side_from: SIDE_BY_SIDE_FROM,
+            palette: Palette::default(),
+            session_lines: SessionLines::default(),
         }
     }
 }
+
+/// Whose colours the UI draws in. From protocol 35.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Palette {
+    /// Muster's own, in full colour: soft text, one accent, the statuses'
+    /// colours, its shades taken from the terminal's background, so it
+    /// reads the same in any terminal.
+    #[default]
+    Muster,
+    /// The terminal's own sixteen, so the UI follows the person's theme.
+    Terminal,
+}
+
+impl Palette {
+    /// As `[look] colours` writes it.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Muster => "muster",
+            Self::Terminal => "terminal",
+        }
+    }
+
+    /// `[look] colours` as written: `muster` or `terminal`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "muster" => Some(Self::Muster),
+            "terminal" => Some(Self::Terminal),
+            _ => None,
+        }
+    }
+}
+
+/// How many lines a session's line in the lists takes. From protocol 35.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionLines {
+    /// Its name on the first, whole, and what it is doing and for how long
+    /// under it.
+    #[default]
+    Two,
+    /// All of it on one, so twice as many fit.
+    One,
+}
+
+impl SessionLines {
+    /// How many lines it is: as `[look] session_lines` writes it.
+    #[must_use]
+    pub const fn count(self) -> u16 {
+        match self {
+            Self::Two => 2,
+            Self::One => 1,
+        }
+    }
+
+    /// `[look] session_lines` as written: 1 or 2.
+    #[must_use]
+    pub const fn from_count(count: u16) -> Option<Self> {
+        match count {
+            2 => Some(Self::Two),
+            1 => Some(Self::One),
+            _ => None,
+        }
+    }
+}
+
+/// The first protocol whose daemon keeps [`Preferences::palette`] and
+/// [`Preferences::session_lines`] and takes [`PreferenceChange::Palette`]
+/// and [`PreferenceChange::SessionLines`] (`ARC-09`).
+pub const LOOK_PROTOCOL: u32 = 35;
+
+/// Where the palette is written: `[look] colours`.
+pub const LOOK_COLOURS: (&str, &str) = ("look", "colours");
+
+/// Where the lines a session takes are written: `[look] session_lines`.
+pub const LOOK_SESSION_LINES: (&str, &str) = ("look", "session_lines");
 
 /// A coding agent the person added in Muster's own settings, as clients
 /// offer it beside Muster's own (`muster_core::config::agents`). Only what
@@ -203,6 +290,11 @@ pub enum PreferenceChange {
     /// From how many columns a session sits beside the list; 0 at any
     /// width. From protocol 32.
     SideBySideFrom(u16),
+    /// Whose colours the UI draws in. From protocol 35.
+    Palette(Palette),
+    /// How many lines a session's line in the lists takes. From protocol
+    /// 35.
+    SessionLines(SessionLines),
 }
 
 /// The first protocol whose daemon keeps
@@ -252,6 +344,40 @@ mod tests {
         assert_eq!(read.tickets, None);
         assert_eq!(read.tickets_set_by, SettingSource::Default);
         assert!(read.only_mine.on);
+    }
+
+    #[test]
+    fn muster_s_settings_from_an_older_daemon_read_in_muster_s_own_look() {
+        // Protocol 34 sent no word of the look.
+        #[derive(Serialize)]
+        struct Old {
+            notch: bool,
+            file: PathBuf,
+            side_by_side_from: u16,
+        }
+        let old = Old {
+            notch: false,
+            file: PathBuf::from("/c/settings.toml"),
+            side_by_side_from: 120,
+        };
+        let bytes = rmp_serde::to_vec_named(&old).unwrap();
+        let read: Preferences = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(read.palette, Palette::Muster);
+        assert_eq!(read.session_lines, SessionLines::Two);
+        assert_eq!(read.side_by_side_from, 120);
+    }
+
+    #[test]
+    fn the_look_reads_as_written_and_nothing_else() {
+        for palette in [Palette::Muster, Palette::Terminal] {
+            assert_eq!(Palette::parse(palette.key()), Some(palette));
+        }
+        assert_eq!(Palette::parse(" Terminal "), Some(Palette::Terminal));
+        assert_eq!(Palette::parse("solarized"), None);
+        for lines in [SessionLines::Two, SessionLines::One] {
+            assert_eq!(SessionLines::from_count(lines.count()), Some(lines));
+        }
+        assert_eq!(SessionLines::from_count(3), None);
     }
 
     #[test]

@@ -13,6 +13,7 @@ use muster_core::SessionId;
 use muster_core::protocol::{ClientFrame, MouseTracking};
 use ratatui::layout::{Position, Rect};
 
+use super::lines::line_at;
 use super::selection::cell;
 use super::{Action, App, Mode, View};
 use crate::keys::encode_key;
@@ -183,7 +184,8 @@ impl App {
             return;
         }
         let rows = self.rows();
-        let Some(row) = line_at(list, at.y, rows.len(), self.list_offset).map(|index| rows[index])
+        let heights = self.row_heights(&rows);
+        let Some(row) = line_at(list, at.y, &heights, self.list_offset).map(|index| rows[index])
         else {
             return;
         };
@@ -199,25 +201,28 @@ impl App {
         match self.view {
             View::Sessions => {
                 let rows = self.rows();
-                if let Some(index) = line_at(list, row, rows.len(), self.list_offset) {
+                let heights = self.row_heights(&rows);
+                if let Some(index) = line_at(list, row, &heights, self.list_offset) {
                     self.selected = Some(rows[index]);
                 }
             }
             View::NeedsYou => {
-                let len = self.needs_list.len();
-                if let Some(index) = line_at(list, row, len, self.needs_offset) {
+                let heights = self.needs_heights();
+                if let Some(index) = line_at(list, row, &heights, self.needs_offset) {
                     self.needs_selected = Some(self.needs_list[index]);
                 }
             }
             View::Tickets => {
                 let rows = self.ticket_rows();
-                if let Some(index) = line_at(list, row, rows.len(), self.tickets_offset) {
+                let heights = vec![1; rows.len()];
+                if let Some(index) = line_at(list, row, &heights, self.tickets_offset) {
                     self.tickets_selected = Some(rows[index].clone());
                 }
             }
             View::Settings => {
                 let rows = self.setting_rows();
-                if let Some(index) = line_at(list, row, rows.len(), self.settings_offset) {
+                let heights = vec![1; rows.len()];
+                if let Some(index) = line_at(list, row, &heights, self.settings_offset) {
                     self.settings_selected = Some(rows[index]);
                 }
             }
@@ -245,16 +250,4 @@ impl App {
             self.screen(session).scroll_to_bottom();
         }
     }
-}
-
-/// Which of `len` list lines is drawn at `row` in the bordered `list`,
-/// whose first line shown is `offset`.
-fn line_at(list: Rect, row: u16, len: usize, offset: usize) -> Option<usize> {
-    let top = list.y + 1;
-    let height = usize::from(list.height.saturating_sub(2));
-    if row < top || usize::from(row - top) >= height {
-        return None;
-    }
-    let index = offset + usize::from(row - top);
-    (index < len).then_some(index)
 }

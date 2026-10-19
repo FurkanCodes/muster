@@ -3,14 +3,14 @@
 //! where it is kept.
 
 use muster_core::ProjectId;
-use muster_core::settings::{ProjectSettings, SettingSource};
+use muster_core::settings::{Palette, ProjectSettings, SessionLines, SettingSource};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{look, panel, shorten};
+use super::{list_block, look, panel, shorten};
 use crate::app::tickets_from::tracker_label;
 use crate::app::{App, SettingRow, Settings};
 
@@ -27,9 +27,13 @@ const AGENTS: &str = "Your agents";
 /// What the setting of the width a session sits beside the list from is
 /// called.
 const SIDE_BY_SIDE: &str = "Session beside the list from";
+/// What the setting of whose colours the UI draws in is called.
+const COLOURS: &str = "Colours";
+/// What the setting of how many lines a session takes is called.
+const SESSION_LINES: &str = "Lines for each session";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let block = panel(" Settings ", app.list_has_keys());
+    let block = list_block(app, "settings", app.list_has_keys());
     let rows = app.setting_rows();
     if rows.is_empty() {
         frame.render_widget(
@@ -54,7 +58,7 @@ pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
     let list = List::new(items)
         .block(block)
-        .highlight_style(look::selected_style(app.list_has_keys()));
+        .highlight_style(look::selected_style(app, app.list_has_keys()));
     frame.render_stateful_widget(list, area, &mut state);
 }
 
@@ -74,6 +78,8 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
         SettingRow::Agents => labelled(AGENTS, agents_value(app), width),
         SettingRow::SideBySide => labelled(SIDE_BY_SIDE, side_by_side_value(app), width),
+        SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
+        SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -139,6 +145,28 @@ fn notch_value(app: &App) -> Span<'static> {
     }
 }
 
+/// Whose colours the UI draws in, or that it is being changed.
+fn colours_value(app: &App) -> Span<'static> {
+    if app.look_changing {
+        return Span::from("…").dim();
+    }
+    match app.model.preferences().palette {
+        Palette::Muster => Span::from("Muster's").bold(),
+        Palette::Terminal => Span::from("the terminal's").bold(),
+    }
+}
+
+/// How many lines a session takes, or that it is being changed.
+fn session_lines_value(app: &App) -> Span<'static> {
+    if app.look_changing {
+        return Span::from("…").dim();
+    }
+    match app.model.preferences().session_lines {
+        SessionLines::Two => Span::from("two").bold(),
+        SessionLines::One => Span::from("one").bold(),
+    }
+}
+
 /// The agents the person added, by name; why none can be read where
 /// Muster's own settings do not read.
 fn agents_value(app: &App) -> Span<'static> {
@@ -199,6 +227,8 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
     let text = match app.settings_selected {
         Some(SettingRow::Muster | SettingRow::Notch) if app.notch_known() => notch_text(app),
         Some(SettingRow::SideBySide) => side_by_side_text(app),
+        Some(SettingRow::Colours) => colours_text(app),
+        Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Muster | SettingRow::Agents | SettingRow::Notch) => agents_text(app),
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
@@ -209,6 +239,8 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Muster | SettingRow::Notch => notch_text(app),
                 SettingRow::Agents => agents_text(app),
                 SettingRow::SideBySide => side_by_side_text(app),
+                SettingRow::Colours => colours_text(app),
+                SettingRow::SessionLines => session_lines_text(app),
             },
             Some(Settings::Failed(error)) => Text::from(vec![
                 Line::from(
@@ -230,7 +262,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
     frame.render_widget(
         Paragraph::new(text)
             .wrap(Wrap { trim: false })
-            .block(panel(" Setting ", false)),
+            .block(panel(app, " Setting ", false)),
         area,
     );
 }
@@ -273,6 +305,62 @@ fn only_mine_text(settings: &ProjectSettings) -> Text<'static> {
              are fetched again.",
         )
         .dim(),
+    ])
+}
+
+fn colours_text(app: &App) -> Text<'static> {
+    let preferences = app.model.preferences();
+    let (does, key) = match preferences.palette {
+        Palette::Muster => (
+            "Muster draws in its own colours: soft text, one accent for what has your keys, and \
+             the statuses' colours, the same in any terminal. The selected line is a shade of \
+             your terminal's own background, light or dark.",
+            "⏎ or space draws in your terminal's own sixteen colours instead.",
+        ),
+        Palette::Terminal => (
+            "Muster draws in your terminal's own sixteen colours, so it follows your terminal's \
+             theme.",
+            "⏎ or space draws in Muster's own colours instead.",
+        ),
+    };
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{COLOURS}  ")).bold(),
+            colours_value(app),
+        ]),
+        Line::from(does),
+        Line::from(""),
+        detail("Saved in", preferences.file.display().to_string()),
+        Line::from(""),
+        Line::from(key).dim(),
+        Line::from("A session's own program keeps the colours it draws in.").dim(),
+    ])
+}
+
+fn session_lines_text(app: &App) -> Text<'static> {
+    let preferences = app.model.preferences();
+    let (does, key) = match preferences.session_lines {
+        SessionLines::Two => (
+            "Each session takes two lines in the lists: its name, whole where it fits, and under \
+             it what it is doing and for how long.",
+            "⏎ or space puts each on one line, so twice as many fit.",
+        ),
+        SessionLines::One => (
+            "Each session takes one line in the lists: its name, what it is doing and for how \
+             long, side by side, so twice as many fit.",
+            "⏎ or space gives each two lines, so its name fits.",
+        ),
+    };
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{SESSION_LINES}  ")).bold(),
+            session_lines_value(app),
+        ]),
+        Line::from(does),
+        Line::from(""),
+        detail("Saved in", preferences.file.display().to_string()),
+        Line::from(""),
+        Line::from(key).dim(),
     ])
 }
 
@@ -545,11 +633,25 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
         Some(SettingRow::SideBySide) if !app.side_by_side_changing => {
             hints.extend(["⏎ next width", "← → smaller, larger"]);
         }
+        Some(SettingRow::Colours) if !app.look_changing => {
+            hints.push(match app.model.preferences().palette {
+                Palette::Muster => "⏎ the terminal's",
+                Palette::Terminal => "⏎ Muster's",
+            });
+        }
+        Some(SettingRow::SessionLines) if !app.look_changing => {
+            hints.push(match app.model.preferences().session_lines {
+                SessionLines::Two => "⏎ one line",
+                SessionLines::One => "⏎ two lines",
+            });
+        }
         Some(
             SettingRow::Project(_)
             | SettingRow::Muster
             | SettingRow::Notch
             | SettingRow::SideBySide
+            | SettingRow::Colours
+            | SettingRow::SessionLines
             | SettingRow::Agents,
         )
         | None => {}

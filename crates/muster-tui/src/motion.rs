@@ -69,11 +69,11 @@ pub(crate) fn blinking(step: u64) -> bool {
 /// How a flashing line is drawn `age` steps into its flash, in `colour`:
 /// lit (dark on the colour) for the first half, then in the colour, bold.
 /// `None` once it has settled.
-pub(crate) fn flash(colour: Color, age: u64) -> Option<Flash> {
+pub(crate) fn flash(colour: Color, on: Color, age: u64) -> Option<Flash> {
     match age {
         age if age < FLASH_STEPS / 2 => Some(Flash::Lit(
             Style::default()
-                .fg(Color::Black)
+                .fg(on)
                 .bg(colour)
                 .add_modifier(Modifier::BOLD),
         )),
@@ -185,11 +185,17 @@ mod tests {
         let tinted = Style::default()
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD);
-        assert_eq!(flash(Color::Green, 0), Some(Flash::Lit(lit)));
-        assert_eq!(flash(Color::Green, 4), Some(Flash::Lit(lit)));
-        assert_eq!(flash(Color::Green, 5), Some(Flash::Tinted(tinted)));
-        assert_eq!(flash(Color::Green, 9), Some(Flash::Tinted(tinted)));
-        assert_eq!(flash(Color::Green, 10), None);
+        assert_eq!(flash(Color::Green, Color::Black, 0), Some(Flash::Lit(lit)));
+        assert_eq!(flash(Color::Green, Color::Black, 4), Some(Flash::Lit(lit)));
+        assert_eq!(
+            flash(Color::Green, Color::Black, 5),
+            Some(Flash::Tinted(tinted))
+        );
+        assert_eq!(
+            flash(Color::Green, Color::Black, 9),
+            Some(Flash::Tinted(tinted))
+        );
+        assert_eq!(flash(Color::Green, Color::Black, 10), None);
     }
 
     #[test]

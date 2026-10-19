@@ -84,7 +84,12 @@
 //! was attached (`ServerFrame::Replay::live_from`, a field older clients
 //! pass over), so a program's copy there reaches the clipboard; version 34
 //! chats named by their first prompt and renamed by the person
-//! (`Command::RenameSession`, sent only to a daemon of 34 or later).
+//! (`Command::RenameSession`, sent only to a daemon of 34 or later);
+//! version 35 the UI's look, whose colours it draws in and how many lines a
+//! session's line takes (`Preferences::palette` and
+//! `Preferences::session_lines`, fields older clients pass over;
+//! `PreferenceChange::Palette` and `PreferenceChange::SessionLines`, sent
+//! only to a daemon of 35 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -103,7 +108,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 34;
+pub const PROTOCOL_VERSION: u32 = 35;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 

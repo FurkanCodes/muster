@@ -57,6 +57,17 @@ pub fn set_number_in(
     set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
 }
 
+/// [`set_flag_in`] for a text.
+pub fn set_text_in(
+    text: Option<&str>,
+    new_file: &str,
+    table: &str,
+    key: &str,
+    value: &str,
+) -> Result<String, EditError> {
+    set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
+}
+
 /// `[table] key` set to `value` in `text`, as [`set_flag_in`] says.
 fn set_value_in(
     text: Option<&str>,

@@ -283,6 +283,7 @@ impl App {
             (outcome, Then::SideBySideChanged(columns)) => {
                 self.side_by_side_changed(columns, outcome.map(drop));
             }
+            (outcome, Then::LookChanged(change)) => self.look_changed(change, outcome.map(drop)),
             (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Ok(changes));
             }

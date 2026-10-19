@@ -4,7 +4,8 @@
 //! whatever tracker the project's tickets are, where they come from
 //! (`tickets_from`), and whether the branches Muster makes start with
 //! `muster/`. Then Muster's own: on a Mac, whether the notch shows the
-//! agents; from how many columns a session sits beside the list; and the
+//! agents; from how many columns a session sits beside the list; whose
+//! colours the UI draws in and how many lines a session takes; and the
 //! coding agents the person added in Muster's own settings, which are
 //! written by hand, so the row says what reads and what does not.
 //!
@@ -39,6 +40,10 @@ pub(crate) enum SettingRow {
     Notch,
     /// From how many columns a session sits beside the list.
     SideBySide,
+    /// Whose colours the UI draws in.
+    Colours,
+    /// How many lines a session's line takes.
+    SessionLines,
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -51,7 +56,12 @@ impl SettingRow {
             | Self::OnlyMine(project)
             | Self::TicketsFrom(project)
             | Self::MusterPrefix(project) => Some(project),
-            Self::Muster | Self::Notch | Self::SideBySide | Self::Agents => None,
+            Self::Muster
+            | Self::Notch
+            | Self::SideBySide
+            | Self::Colours
+            | Self::SessionLines
+            | Self::Agents => None,
         }
     }
 }
@@ -70,8 +80,8 @@ impl App {
     /// The settings list: each project, then its settings; the branches'
     /// prefix only where the daemon can change it. Then Muster's own, those
     /// the daemon keeps: the notch, on a Mac, the width a session sits
-    /// beside the list from, and the person's agents, where the daemon
-    /// knows them.
+    /// beside the list from, the look, and the person's agents, where the
+    /// daemon knows them.
     pub(crate) fn setting_rows(&self) -> Vec<SettingRow> {
         let prefix = self.daemon_protocol >= MUSTER_PREFIX_PROTOCOL;
         let mut rows: Vec<SettingRow> = self
@@ -91,6 +101,8 @@ impl App {
         let own = [
             (self.notch_known(), SettingRow::Notch),
             (self.side_by_side_known(), SettingRow::SideBySide),
+            (self.look_known(), SettingRow::Colours),
+            (self.look_known(), SettingRow::SessionLines),
             (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
         ];
         if self.model.loaded() && own.iter().any(|(known, _)| *known) {
@@ -109,6 +121,8 @@ impl App {
                 Some(SettingRow::TicketsFrom(project)) => return self.choose_tickets_from(project),
                 Some(SettingRow::Notch) => return self.toggle_notch(),
                 Some(SettingRow::SideBySide) => return self.step_side_by_side(1, true),
+                Some(SettingRow::Colours) => return self.toggle_palette(),
+                Some(SettingRow::SessionLines) => return self.toggle_session_lines(),
                 _ => return self.toggle_setting(),
             },
             KeyCode::Left | KeyCode::Right

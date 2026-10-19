@@ -67,12 +67,12 @@ fn a_running_session_s_mark_spins_one_frame_a_step() {
     with_status(&mut world, SessionStatus::Running);
     world.app.step = 0;
     let screen = render(&world.app);
-    assert!(screen.contains("⠋ ❯ Shell  running"), "{screen}");
+    assert!(screen.contains("⠋ ❯ Shell"), "{screen}");
     assert!(!screen.contains('●'), "{screen}");
     world.app.step = 1;
-    assert!(render(&world.app).contains("⠙ ❯ Shell  running"));
+    assert!(render(&world.app).contains("⠙ ❯ Shell"));
     world.app.step = 10;
-    assert!(render(&world.app).contains("⠋ ❯ Shell  running"));
+    assert!(render(&world.app).contains("⠋ ❯ Shell"));
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn with_motion_off_every_mark_stands_still() {
     world.app.motion = false;
     world.app.step = 7;
     with_status(&mut world, SessionStatus::Running);
-    assert!(render(&world.app).contains("● ❯ Shell  running"));
+    assert!(render(&world.app).contains("● ❯ Shell"));
     assert!(!world.app.animating());
 
     with_status(
@@ -186,6 +186,18 @@ fn an_idle_screen_wants_no_steps_and_its_times_change_by_the_minute() {
     assert_eq!(world.app.clock_every(), Some(1_000));
 }
 
+/// The cell where `text` first starts in the list, left of the pane.
+fn list_cell<'a>(buffer: &'a Buffer, text: &str) -> &'a ratatui::buffer::Cell {
+    for y in 0..buffer.area.height {
+        let line: String = (0..34).map(|x| buffer[(x, y)].symbol()).collect();
+        if let Some(at) = line.find(text) {
+            let x = line[..at].chars().count();
+            return &buffer[(u16::try_from(x).unwrap(), y)];
+        }
+    }
+    panic!("no {text:?} in the list");
+}
+
 /// The cell where `text` first starts on screen.
 fn cell_at<'a>(buffer: &'a Buffer, text: &str) -> &'a ratatui::buffer::Cell {
     for y in 0..buffer.area.height {
@@ -214,24 +226,29 @@ fn a_session_that_finishes_flashes_lit_then_tinted_then_settles() {
 
     with_status(&mut world, SessionStatus::Finished);
     assert_eq!(world.app.flash_age(world.session.id), Some(0));
+    let theme = crate::view::theme::of(&world.app);
     let lit = buffer(&world);
-    let title = cell_at(&lit, "Shell  finished");
-    assert_eq!((title.fg, title.bg), (Color::Black, Color::Green));
+    // Both its lines, its name and what it is doing.
+    for text in ["Shell", "finished"] {
+        let cell = list_cell(&lit, text);
+        assert_eq!((cell.fg, cell.bg), (theme.on_accent, theme.done));
+    }
     // Lit over the spans' own styles: the mark stays readable on it.
-    assert_eq!(cell_at(&lit, "✓ ❯ Shell").bg, Color::Green);
+    assert_eq!(cell_at(&lit, "✓ ❯ Shell").bg, theme.done);
 
     assert!(world.app.on_step(25), "a flashing line is drawn each step");
     let tinted = buffer(&world);
-    let title = cell_at(&tinted, "Shell  finished");
-    assert_eq!((title.fg, title.bg), (Color::Green, Color::Reset));
+    // Under the spans' own: the name takes it, what it does keeps its own.
+    let title = list_cell(&tinted, "Shell");
+    assert_eq!((title.fg, title.bg), (theme.done, Color::Reset));
     assert!(title.modifier.contains(Modifier::BOLD));
 
     // Once over, one more frame settles the line, then nothing asks.
     assert!(world.app.on_step(30));
     assert_eq!(world.app.flash_age(world.session.id), None);
     let settled = buffer(&world);
-    let title = cell_at(&settled, "Shell  finished");
-    assert_ne!(title.fg, Color::Green);
+    let title = list_cell(&settled, "Shell");
+    assert_ne!(title.fg, theme.done);
     assert_eq!(title.bg, Color::Reset);
     // Kep is glad of it three seconds from the finish; once that is over,
     // one more frame, then nothing asks.
@@ -299,6 +316,6 @@ fn with_motion_off_nothing_flashes() {
     with_status(&mut world, SessionStatus::Running);
     with_status(&mut world, SessionStatus::Finished);
     assert_eq!(world.app.flash_age(world.session.id), None);
-    assert_eq!(cell_at(&buffer(&world), "Shell  finished").bg, Color::Reset);
+    assert_eq!(list_cell(&buffer(&world), "finished").bg, Color::Reset);
     assert!(!world.app.on_step(2));
 }

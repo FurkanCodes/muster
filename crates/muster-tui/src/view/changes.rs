@@ -20,14 +20,14 @@ pub(super) fn draw_changes(frame: &mut Frame<'_>, app: &App, area: Rect) {
         return;
     };
     match &pane.diff {
-        Some(diff) => draw_diff(frame, pane, diff, area),
+        Some(diff) => draw_diff(frame, app, pane, diff, area),
         None => draw_listing(frame, app, pane, area),
     }
 }
 
 fn draw_listing(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, area: Rect) {
     let branch = app.model.branch(pane.workspace).unwrap_or("?");
-    let block = panel(format!(" Changes · {} ", one_line(branch)), true);
+    let block = panel(app, format!(" Changes · {} ", one_line(branch)), true);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let width = usize::from(inner.width);
@@ -75,7 +75,7 @@ fn row_line(
         ChangeRow::Entry(entry) => entry_line(app, timeline, entry, width),
     };
     if selected {
-        line.style(look::selected_style(true))
+        line.style(look::selected_style(app, true))
     } else {
         line
     }
@@ -202,7 +202,7 @@ fn shorten_start(text: &str, max: usize) -> String {
     format!("…{kept}")
 }
 
-fn draw_diff(frame: &mut Frame<'_>, pane: &ChangesPane, diff: &DiffPane, area: Rect) {
+fn draw_diff(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, diff: &DiffPane, area: Rect) {
     let title = match &diff.of {
         Pick::File(part, path) => {
             let part = match part {
@@ -228,7 +228,7 @@ fn draw_diff(frame: &mut Frame<'_>, pane: &ChangesPane, diff: &DiffPane, area: R
             format!(" #{number} · {} ", one_line(&what))
         }
     };
-    let block = panel(title, true);
+    let block = panel(app, title, true);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let lines: Vec<Line<'static>> = match &diff.text {

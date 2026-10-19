@@ -5,7 +5,6 @@
 use crossterm::event::{KeyCode, MouseButton, MouseEventKind};
 use muster_core::protocol::{Delta, ServerFrame};
 use muster_core::{Session, SessionStatus, WaitReason};
-use ratatui::style::Color;
 
 use super::pointer_tests::mouse;
 use super::tests::{World, press, render, world};
@@ -80,7 +79,10 @@ fn a_project_and_a_worktree_show_their_most_urgent_session_in_its_mark() {
     let mark = (0..buffer.area.width)
         .find(|x| buffer[(*x, row)].symbol() == "▲")
         .unwrap();
-    assert_eq!(buffer[(mark, row)].fg, Color::Red);
+    assert_eq!(
+        buffer[(mark, row)].fg,
+        crate::view::theme::of(&world.app).waiting
+    );
 }
 
 #[test]

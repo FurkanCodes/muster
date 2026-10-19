@@ -8,14 +8,16 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{changes, clashes, logos, look, panel, pull_request, shorten, slid, status_symbol};
+use super::{
+    changes, clashes, list_block, logos, look, mark, pull_request, shorten, slid, status_symbol,
+};
 use crate::app::{App, View};
 use crate::model::Row;
 use crate::motion;
 
 pub(super) fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let rows = app.rows();
-    let block = panel(" Sessions ", app.list_has_keys());
+    let block = list_block(app, "projects", app.list_has_keys());
     if !app.model.loaded() {
         frame.render_widget(
             Paragraph::new("Waiting for the daemon…").block(block).dim(),
@@ -53,17 +55,24 @@ pub(super) fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
         })
         .collect();
     let lead = pull_request::width(&session_lead(Span::raw(" ")));
-    draw_logos(frame, app, area, (&sessions, state.offset()), lead);
+    let heights = app.row_heights(&rows);
+    draw_logos(
+        frame,
+        app,
+        area,
+        (&sessions, &heights, state.offset()),
+        lead,
+    );
 }
 
-/// The agents' pictures on the lines of `sessions` shown in `area` from
-/// `offset`, each after its line's lead of `lead` cells and its mark,
-/// where the terminal draws pictures.
+/// The agents' pictures on the first lines of `sessions`, whose rows take
+/// `heights` lines, shown in `area` from `offset`, each after its line's
+/// lead of `lead` cells and its mark, where the terminal draws pictures.
 fn draw_logos(
     frame: &mut Frame<'_>,
     app: &App,
     area: Rect,
-    (sessions, offset): (&[Option<&Session>], usize),
+    (sessions, heights, offset): (&[Option<&Session>], &[usize], usize),
     lead: usize,
 ) {
     if app.graphics == logos::Graphics::Text {
@@ -73,16 +82,22 @@ fn draw_logos(
     let x = inner
         .x
         .saturating_add(u16::try_from(lead + 2).unwrap_or(u16::MAX));
-    let shown = sessions.iter().skip(offset).take(usize::from(inner.height));
-    for (line, session) in (inner.y..).zip(shown) {
+    let bottom = usize::from(inner.y) + usize::from(inner.height);
+    let mut line = usize::from(inner.y);
+    for (session, lines) in sessions.iter().zip(heights).skip(offset) {
+        // A row with no room for all its lines is left out.
+        if line + lines > bottom {
+            break;
+        }
         if let Some(session) = session {
             logos::draw(
                 frame.buffer_mut(),
                 app.graphics,
                 &session.harness,
-                (x, line),
+                (x, u16::try_from(line).unwrap_or(u16::MAX)),
             );
         }
+        line += lines;
     }
 }
 
@@ -113,8 +128,8 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
         Row::Worktree(id) => ListItem::new(worktree_line(app, id, edge, width, by)),
         Row::Session(id) => match app.model.session(id) {
             Some(session) => {
-                let line = session_line(app, session, session_lead(edge), width, false, by);
-                ListItem::new(flashed(app, session, line))
+                let lines = session_lines(app, session, session_lead(edge), width, false, by);
+                ListItem::new(flashed(app, session, lines))
             }
             None => ListItem::new(""),
         },
@@ -156,11 +171,11 @@ fn fold_mark(app: &App, row: Row) -> Span<'static> {
 fn standing(app: &App, row: Row) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     if let Some(session) = app.model.most_urgent(row) {
-        let (symbol, style) = status_symbol(session.status, app.motion_step());
+        let (symbol, style) = mark(app, session.status);
         spans.push(Span::raw(" "));
         spans.push(Span::styled(symbol, style));
         if session.unseen && !matches!(session.status, SessionStatus::NeedsYou { .. }) {
-            spans.push(Span::from("•").cyan().bold());
+            spans.push(news_dot(app, ""));
         }
     }
     let hidden = app.hidden_sessions(row);
@@ -389,6 +404,143 @@ fn session_parts(
     }
 }
 
+/// The dot of news not seen, after `before`.
+fn news_dot(app: &App, before: &str) -> Span<'static> {
+    Span::styled(
+        format!("{before}•"),
+        Style::default()
+            .fg(super::theme::of(app).news)
+            .add_modifier(Modifier::BOLD),
+    )
+}
+
+/// A session's lines after `lead`, as many as the person's settings say
+/// (`Preferences::session_lines`): [`session_line`] alone, or
+/// [`session_pair`].
+fn session_lines(
+    app: &App,
+    session: &Session,
+    lead: Vec<Span<'static>>,
+    width: usize,
+    place: bool,
+    by: usize,
+) -> Text<'static> {
+    if app.session_height() == 1 {
+        Text::from(session_line(app, session, lead, width, place, by))
+    } else {
+        Text::from(session_pair(app, session, lead, width, place, by).to_vec())
+    }
+}
+
+/// How a session's line says what it is doing: as a wait, as what went
+/// wrong, as work in hand, or quietly.
+fn doing_style(app: &App, session: &Session) -> Style {
+    let theme = super::theme::of(app);
+    match (&session.activity, session.status) {
+        (_, SessionStatus::NeedsYou { .. }) => Style::default().fg(theme.waiting),
+        _ if session
+            .tidy
+            .as_ref()
+            .is_some_and(muster_core::tidy::Tidy::went_wrong) =>
+        {
+            Style::default().fg(theme.waiting)
+        }
+        (Some(_), SessionStatus::Running) => Style::default(),
+        _ => theme.quiet,
+    }
+}
+
+/// The cells a session's name is given on the first of its two lines
+/// after `lead_width` cells, out of `width`: all but its mark, its logo,
+/// its project's name (with `place`) and the dot of news not seen.
+fn pair_title_room(
+    app: &App,
+    session: &Session,
+    lead_width: usize,
+    width: usize,
+    place: bool,
+) -> usize {
+    let project = if place {
+        app.model
+            .project_of(Row::Session(session.id))
+            .and_then(|id| app.model.project(id))
+            .map_or(0, |found| {
+                shorten(&found.name, PROJECT_NAME_ROOM).chars().count() + 2
+            })
+    } else {
+        0
+    };
+    let unseen = if session.unseen { 2 } else { 0 };
+    width
+        .saturating_sub(lead_width + 2 + logos::width(app.graphics) + project + unseen)
+        .max(4)
+}
+
+/// A session's two lines after `lead`: its mark and its name, whole where
+/// it fits (slid `by` characters where it does not), with its project's
+/// name first with `place`; then, under the name, what it is doing and
+/// how long it has been so, with its branch with `place`, quietly.
+fn session_pair(
+    app: &App,
+    session: &Session,
+    lead: Vec<Span<'static>>,
+    width: usize,
+    place: bool,
+    by: usize,
+) -> [Line<'static>; 2] {
+    let theme = super::theme::of(app);
+    let (symbol, style) = mark(app, session.status);
+    let lead_width: usize = lead.iter().map(Span::width).sum();
+    let mut first = lead.clone();
+    first.extend([Span::styled(symbol, style), Span::raw(" ")]);
+    first.extend(logos::spans(app.graphics, &session.harness));
+    if place
+        && let Some(id) = app.model.project_of(Row::Session(session.id))
+        && let Some(found) = app.model.project(id)
+    {
+        first.extend([
+            Span::styled(
+                shorten(&found.name, PROJECT_NAME_ROOM),
+                Style::default()
+                    .fg(look::project_colour(app, id))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  "),
+        ]);
+    }
+    let room = pair_title_room(app, session, lead_width, width, place);
+    first.push(Span::styled(
+        slid(&session.title, room, by),
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
+    if session.unseen {
+        first.push(news_dot(app, " "));
+    }
+
+    // Under the name, past the mark and the logo.
+    let indent = 2 + logos::width(app.graphics);
+    let mut second = lead;
+    second.push(Span::raw(" ".repeat(indent)));
+    let mut doing = look::doing(session).into_owned();
+    if place {
+        let branch = app.model.branch(session.workspace).unwrap_or("?");
+        doing = format!("{doing} · {branch}");
+    }
+    let time = look::session_time(app, session).unwrap_or_default();
+    let room = width.saturating_sub(lead_width + indent);
+    let time_room = if time.is_empty() {
+        0
+    } else {
+        time.chars().count() + 3
+    };
+    let doing = shorten(&doing, room.saturating_sub(time_room).max(4));
+    second.push(Span::styled(doing, doing_style(app, session)));
+    if !time.is_empty() {
+        second.push(Span::styled(format!(" · {time}"), theme.quiet));
+    }
+    [Line::from(first), Line::from(second)]
+}
+
 /// A session's line after `lead`: its mark, its title (slid `by`
 /// characters where it is cut short) and what it is doing, and at the end
 /// how long it has been so, as [`session_parts`] shares out the room.
@@ -400,7 +552,7 @@ fn session_line(
     place: bool,
     by: usize,
 ) -> Line<'static> {
-    let (symbol, style) = status_symbol(session.status, app.motion_step());
+    let (symbol, style) = mark(app, session.status);
     let lead_width = lead.iter().map(Span::width).sum();
     let SessionParts {
         project,
@@ -409,18 +561,7 @@ fn session_line(
         time,
     } = session_parts(app, session, lead_width, width, place);
     let title = slid(&session.title, title_room, by);
-    let doing_style = match (&session.activity, session.status) {
-        (_, SessionStatus::NeedsYou { .. }) => Style::default().fg(Color::Red),
-        _ if session
-            .tidy
-            .as_ref()
-            .is_some_and(muster_core::tidy::Tidy::went_wrong) =>
-        {
-            Style::default().fg(Color::Red)
-        }
-        (Some(_), SessionStatus::Running) => Style::default(),
-        _ => Style::default().add_modifier(Modifier::DIM),
-    };
+    let doing_style = doing_style(app, session);
     let mut spans = lead;
     spans.extend([Span::styled(symbol, style), Span::raw(" ")]);
     spans.extend(logos::spans(app.graphics, &session.harness));
@@ -431,13 +572,13 @@ fn session_line(
         spans.push(Span::styled(doing, doing_style));
     }
     if session.unseen {
-        spans.push(Span::from(" •").cyan().bold());
+        spans.push(news_dot(app, " "));
     }
     if !time.is_empty() {
         let used: usize = spans.iter().map(Span::width).sum();
         let gap = width.saturating_sub(used + time.chars().count()).max(1);
         spans.push(Span::raw(" ".repeat(gap)));
-        spans.push(Span::from(time).dim());
+        spans.push(Span::styled(time, super::theme::of(app).quiet));
     }
     Line::from(spans)
 }
@@ -464,20 +605,34 @@ pub(super) fn cut_name(app: &App, width: usize) -> Option<(usize, usize)> {
             Row::Session(id) => {
                 let session = app.model.session(id)?;
                 let lead = pull_request::width(&session_lead(Span::raw(" ")));
-                let parts = session_parts(app, session, lead, width, false);
-                (session.title.as_str(), parts.title_room)
+                (
+                    session.title.as_str(),
+                    title_room(app, session, lead, width, false),
+                )
             }
         },
         View::NeedsYou => {
             let session = app.model.session(app.needs_selected?)?;
             // Led by its edge alone, a cell.
-            let parts = session_parts(app, session, 1, width, true);
-            (session.title.as_str(), parts.title_room)
+            (
+                session.title.as_str(),
+                title_room(app, session, 1, width, true),
+            )
         }
         View::Tickets | View::Settings => return None,
     };
     let len = name.chars().count();
     (len > room).then_some((len, room))
+}
+
+/// The cells a session's name is given on its line, as many lines as it
+/// takes.
+fn title_room(app: &App, session: &Session, lead_width: usize, width: usize, place: bool) -> usize {
+    if app.session_height() == 1 {
+        session_parts(app, session, lead_width, width, place).title_room
+    } else {
+        pair_title_room(app, session, lead_width, width, place)
+    }
 }
 
 /// The selected line's look in a list of sessions: none while that line
@@ -489,35 +644,39 @@ fn session_highlight(app: &App, selected: Option<muster_core::SessionId>) -> Sty
     if lit {
         Style::default()
     } else {
-        look::selected_style(app.list_has_keys())
+        look::selected_style(app, app.list_has_keys())
     }
 }
 
-/// `line`, flashing if `session`'s status has just changed: lit in the
-/// status's colour, then tinted with it, then as it was.
-fn flashed<'a>(app: &App, session: &Session, mut line: Line<'a>) -> Line<'a> {
+/// `text`, a session's lines, flashing if its status has just changed:
+/// lit in the status's colour, then tinted with it, then as it was.
+fn flashed(app: &App, session: &Session, mut text: Text<'static>) -> Text<'static> {
     let Some(age) = app.flash_age(session.id) else {
-        return line;
+        return text;
     };
-    let colour = status_symbol(session.status, None)
+    let theme = super::theme::of(app);
+    let colour = status_symbol(&theme, session.status, None)
         .1
         .fg
         .unwrap_or(Color::White);
-    match motion::flash(colour, age) {
-        Some(motion::Flash::Lit(style)) => {
-            for span in &mut line.spans {
-                span.style = Style::default();
+    let flash = motion::flash(colour, theme.on_accent, age);
+    for line in &mut text.lines {
+        match flash {
+            Some(motion::Flash::Lit(style)) => {
+                for span in &mut line.spans {
+                    span.style = Style::default();
+                }
+                line.style = style;
             }
-            line.style = style;
+            Some(motion::Flash::Tinted(style)) => line.style = style,
+            None => {}
         }
-        Some(motion::Flash::Tinted(style)) => line.style = style,
-        None => {}
     }
-    line
+    text
 }
 
 pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let block = panel(" Needs you ", app.list_has_keys());
+    let block = list_block(app, "waiting on you", app.list_has_keys());
     if app.needs_list.is_empty() {
         let text = Text::from(vec![
             Line::from(""),
@@ -544,8 +703,8 @@ pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
             let lead = vec![look::edge(app, project, selected)];
             let by = app.slid_by(View::NeedsYou, Row::Session(session.id));
             // Mixed from every project, so each line says whose it is.
-            let line = session_line(app, session, lead, width, true, by);
-            ListItem::new(flashed(app, session, line))
+            let lines = session_lines(app, session, lead, width, true, by);
+            ListItem::new(flashed(app, session, lines))
         })
         .collect();
     let mut state = ListState::default()
@@ -565,5 +724,6 @@ pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .map(Some)
         .collect();
     // Led by its edge alone, a cell.
-    draw_logos(frame, app, area, (&sessions, state.offset()), 1);
+    let heights = app.needs_heights();
+    draw_logos(frame, app, area, (&sessions, &heights, state.offset()), 1);
 }

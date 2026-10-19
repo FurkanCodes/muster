@@ -6,7 +6,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, BorderType, Borders};
+use ratatui::widgets::{Block, Borders, Padding};
 
 use crate::app::{App, Mode, View};
 use crate::motion;
@@ -26,6 +26,7 @@ mod selection;
 mod sessions;
 mod settings;
 mod terminal;
+pub(crate) mod theme;
 mod tickets;
 mod top_bar;
 mod version;
@@ -132,6 +133,13 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         draw_terminal(frame, app, session, area);
         return;
     }
+    let theme = theme::of(app);
+    if theme.text != Color::Reset {
+        // Muster's own text, under everything drawn over it.
+        frame
+            .buffer_mut()
+            .set_style(area, Style::default().fg(theme.text));
+    }
     let BrowseAreas {
         top,
         list,
@@ -213,34 +221,63 @@ pub(crate) fn cut_name(app: &App) -> Option<(usize, usize)> {
     sessions::cut_name(app, width)
 }
 
-pub(super) fn panel<'a>(title: impl Into<Line<'a>>, focused: bool) -> Block<'a> {
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded);
-    if focused {
-        block.border_style(Style::default().fg(Color::Cyan))
+/// A pane beside the list, framed: its title in its border, the frame in
+/// the accent while it has the keys and quiet otherwise.
+pub(super) fn panel<'a>(app: &App, title: impl Into<Line<'a>>, focused: bool) -> Block<'a> {
+    let theme = theme::of(app);
+    let (frame, title_style) = if focused {
+        (theme.accent, Style::default().fg(theme.accent).bold())
     } else {
-        block.border_style(Style::default().fg(Color::DarkGray))
-    }
+        (theme.line, theme.quiet)
+    };
+    Block::default()
+        .title(title)
+        .title_style(title_style)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(frame))
 }
 
-/// A session's mark: at a motion `step`, a running one's spins and one
-/// that needs the person pulses; without one, they stand still.
-pub(super) fn status_symbol(status: SessionStatus, step: Option<u64>) -> (&'static str, Style) {
+/// A list, unframed: a quiet label over it, in the accent while the list
+/// has the keys. Its lines sit where a frame would leave them, a cell in
+/// from each side and a line down, so the list keeps its place.
+pub(super) fn list_block(app: &App, label: &str, has_keys: bool) -> Block<'static> {
+    let theme = theme::of(app);
+    let style = if has_keys {
+        Style::default().fg(theme.accent).bold()
+    } else {
+        theme.quiet
+    };
+    Block::default()
+        .title(Line::styled(format!(" {label}"), style))
+        .padding(Padding::new(1, 1, 0, 1))
+}
+
+/// A session's mark as `app` draws it now, in its palette and at its
+/// motion's step.
+pub(super) fn mark(app: &App, status: SessionStatus) -> (&'static str, Style) {
+    status_symbol(&theme::of(app), status, app.motion_step())
+}
+
+/// A session's mark in `theme`: at a motion `step`, a running one's spins
+/// and one that needs the person pulses; without one, they stand still.
+pub(super) fn status_symbol(
+    theme: &theme::Theme,
+    status: SessionStatus,
+    step: Option<u64>,
+) -> (&'static str, Style) {
     match status {
-        SessionStatus::Fresh => ("○", Style::default().fg(Color::Gray)),
+        SessionStatus::Fresh => ("○", Style::default().fg(theme.still)),
         SessionStatus::Running => (
             step.map_or("●", motion::spinner),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme.working),
         ),
         SessionStatus::NeedsYou { .. } => {
-            let style = Style::default().fg(Color::Red).bold();
+            let style = Style::default().fg(theme.waiting).bold();
             ("▲", step.map_or(style, |step| motion::pulse(style, step)))
         }
-        SessionStatus::Finished => ("✓", Style::default().fg(Color::Green)),
-        SessionStatus::Exited { success: true } => ("■", Style::default().fg(Color::Gray)),
-        SessionStatus::Exited { success: false } => ("✕", Style::default().fg(Color::Red)),
+        SessionStatus::Finished => ("✓", Style::default().fg(theme.done)),
+        SessionStatus::Exited { success: true } => ("■", Style::default().fg(theme.still)),
+        SessionStatus::Exited { success: false } => ("✕", Style::default().fg(theme.waiting)),
     }
 }
 

@@ -29,6 +29,13 @@ use ui::{StopDaemon, Ui};
 /// What the top bar says of the daemon, whatever the version.
 const DAEMON: &str = concat!("daemon ", env!("CARGO_PKG_VERSION"));
 
+/// What went right in Muster's own colours: a finish's flash.
+const DONE: vt100::Color = vt100::Color::Rgb(0x93, 0xd6, 0xa3);
+
+/// The selected line's shade on the test terminal's background
+/// (`ui::BACKGROUND`): 9% of the way to Muster's text.
+const TINT: vt100::Color = vt100::Color::Rgb(0x3b, 0x3b, 0x4b);
+
 #[test]
 fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     let sandbox = Sandbox::new();
@@ -80,9 +87,9 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     // f fills the window with it, and Shift-Q puts it back.
     ui.keys(b"f");
     ui.wait_for("Shift-Q back to the list");
-    assert!(!ui.text().contains("╭ Sessions"), "{}", ui.text());
+    assert!(!ui.text().contains(" projects "), "{}", ui.text());
     ui.keys(b"Q");
-    ui.wait_for("╭ Sessions");
+    ui.wait_for(" projects ");
 
     // q quits the UI; the daemon and the session keep running.
     ui.keys(b"q");
@@ -552,7 +559,7 @@ fn the_mouse_reaches_what_it_points_at_around_a_copy() {
     // it, folds it) gives the list the keys and selects it; one on its
     // details opens nothing, so no dialog takes the clicks.
     ui.click(6, 2);
-    ui.wait_for("╭ Details");
+    ui.wait_for("┌ Details");
     ui.click(80, 10);
     std::thread::sleep(Duration::from_millis(300));
     assert!(!ui.text().contains("New worktree"), "{}", ui.text());
@@ -560,7 +567,7 @@ fn the_mouse_reaches_what_it_points_at_around_a_copy() {
     // The session's line, then its pane: the session has the keys.
     let (column, row) = ui.position_of("Shell").unwrap();
     ui.click(column, row);
-    ui.wait_for("╭ Shell");
+    ui.wait_for("┌ Shell");
     ui.click(80, 10);
     ui.wait_for("keys go to the session");
     // The wheel, over the list, looks back in the session with the keys.
@@ -604,7 +611,7 @@ fn a_program_takes_the_mouse_and_lets_it_go_and_full_screen_is_left_by_a_click()
     ui.keys(b"f");
     ui.wait_for("(or click here)");
     ui.click(2, 0);
-    ui.wait_for("╭ Sessions");
+    ui.wait_for(" projects ");
 }
 
 #[test]
@@ -824,15 +831,10 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
         &serde_json::json!({"session_id": agent, "hook_event_name": "Stop", "cwd": "/work"}),
     );
     ui.wait_for("✓ ✻ #42");
-    assert_eq!(
-        ui.background_of("✓ ✻ #42"),
-        Some(vt100::Color::Idx(2)),
-        "{}",
-        ui.text()
-    );
+    assert_eq!(ui.background_of("✓ ✻ #42"), Some(DONE), "{}", ui.text());
     // Settled, it is the selected line: tinted, as the selection is.
     let deadline = Instant::now() + Duration::from_secs(5);
-    while ui.background_of("✓ ✻ #42") != Some(vt100::Color::Idx(8)) {
+    while ui.background_of("✓ ✻ #42") != Some(TINT) {
         assert!(Instant::now() < deadline, "it never settled: {}", ui.text());
         std::thread::sleep(Duration::from_millis(20));
     }

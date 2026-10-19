@@ -33,11 +33,12 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
             .project(id)
             .map_or_else(Text::default, |project| project_details(app, project)),
         _ if !app.model.loaded() => {
-            return kep::draw_empty_pane(frame, area, "Connecting to the daemon…", &[]);
+            return kep::draw_empty_pane(frame, app, area, "Connecting to the daemon…", &[]);
         }
         _ if app.model.projects().is_empty() => {
             return kep::draw_empty_pane(
                 frame,
+                app,
                 area,
                 "Agents on your tickets, side by side.",
                 &["Press a to add a project: a git repository, or any folder."],
@@ -48,7 +49,7 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
     frame.render_widget(
         Paragraph::new(text)
             .wrap(Wrap { trim: false })
-            .block(panel(" Details ", false)),
+            .block(panel(app, " Details ", false)),
         area,
     );
 }

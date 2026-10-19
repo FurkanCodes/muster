@@ -5,6 +5,7 @@
 use muster_core::SessionId;
 use muster_core::protocol::{ClientFrame, Command};
 
+use super::lines::in_view;
 use super::{Action, App, Link, Mode, Then, View};
 use crate::model::Row;
 
@@ -191,36 +192,28 @@ impl App {
         let selected = self
             .selected
             .and_then(|row| rows.iter().position(|r| *r == row));
-        self.list_offset = in_view(self.list_offset, selected, rows.len(), height);
+        let heights = self.row_heights(&rows);
+        self.list_offset = in_view(self.list_offset, selected, &heights, height);
         let needs = self
             .needs_selected
             .and_then(|session| self.needs_list.iter().position(|s| *s == session));
-        self.needs_offset = in_view(self.needs_offset, needs, self.needs_list.len(), height);
+        let heights = self.needs_heights();
+        self.needs_offset = in_view(self.needs_offset, needs, &heights, height);
         let tickets = self.ticket_rows();
         let ticket = self
             .tickets_selected
             .as_ref()
             .and_then(|row| tickets.iter().position(|r| r == row));
-        self.tickets_offset = in_view(self.tickets_offset, ticket, tickets.len(), height);
+        self.tickets_offset = in_view(self.tickets_offset, ticket, &vec![1; tickets.len()], height);
         let settings = self.setting_rows();
         let setting = self
             .settings_selected
             .and_then(|row| settings.iter().position(|r| *r == row));
-        self.settings_offset = in_view(self.settings_offset, setting, settings.len(), height);
+        self.settings_offset = in_view(
+            self.settings_offset,
+            setting,
+            &vec![1; settings.len()],
+            height,
+        );
     }
-}
-
-/// The first line to show of a list of `len` lines, `height` at a time,
-/// moved from `offset` only as far as needed to show `selected`, and never
-/// leaving empty space below the last line.
-fn in_view(offset: usize, selected: Option<usize>, len: usize, height: usize) -> usize {
-    let mut offset = offset.min(len.saturating_sub(height));
-    if let Some(selected) = selected {
-        if selected < offset {
-            offset = selected;
-        } else if selected >= offset + height {
-            offset = selected + 1 - height;
-        }
-    }
-    offset
 }

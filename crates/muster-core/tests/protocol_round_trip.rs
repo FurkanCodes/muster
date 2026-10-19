@@ -28,8 +28,8 @@ use muster_core::protocol::{
 };
 use muster_core::session::Origin;
 use muster_core::settings::{
-    AddedAgent, PreferenceChange, Preferences, ProjectSettings, SettingChange, SettingSource,
-    TicketsFrom, Toggle,
+    AddedAgent, Palette, PreferenceChange, Preferences, ProjectSettings, SessionLines,
+    SettingChange, SettingSource, TicketsFrom, Toggle,
 };
 use muster_core::stacks::Stacked;
 use muster_core::tidy::{Tidy, TidyCheck};
@@ -243,6 +243,8 @@ fn preferences() -> Preferences {
         }],
         problem: Some("agents.other: `program` is missing".to_owned()),
         side_by_side_from: 120,
+        palette: Palette::Terminal,
+        session_lines: SessionLines::One,
     }
 }
 
@@ -461,6 +463,8 @@ fn commands() -> Vec<Command> {
         Command::Reveal { session },
         Command::ChangePreference(PreferenceChange::Notch(false)),
         Command::ChangePreference(PreferenceChange::SideBySideFrom(0)),
+        Command::ChangePreference(PreferenceChange::Palette(Palette::Terminal)),
+        Command::ChangePreference(PreferenceChange::SessionLines(SessionLines::One)),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),

@@ -190,6 +190,7 @@ fn in_the_list_the_wheel_moves_and_a_click_selects_or_opens() {
 #[test]
 fn clicks_follow_a_long_list_scrolled_to_its_selection() {
     let mut world = world();
+    super::tests::one_line(&mut world.app);
     for n in 0..40 {
         let session = crate::model::tests::session(world.worktree.id, &format!("S{n}"), 10 + n);
         world

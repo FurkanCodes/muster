@@ -9,7 +9,9 @@ mod events;
 mod fold;
 mod harness_choice;
 mod help;
+mod lines;
 mod link;
+mod look;
 mod menu;
 mod motion;
 mod narrow;
@@ -71,6 +73,8 @@ mod narrow_tests;
 mod navigation_tests;
 #[cfg(test)]
 mod notch_tests;
+#[cfg(test)]
+mod palette_tests;
 #[cfg(test)]
 mod picker_tests;
 #[cfg(test)]
@@ -326,6 +330,8 @@ enum Then {
     NotchChanged(bool),
     /// Say from how many columns a session sits beside the list now.
     SideBySideChanged(u16),
+    /// Say how the UI looks now.
+    LookChanged(look::LookChange),
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.
@@ -469,6 +475,8 @@ pub(crate) struct App {
     pub(crate) cell_pixels: Option<PixelSize>,
     /// The width a session sits beside the list from is being changed.
     pub(crate) side_by_side_changing: bool,
+    /// The look is being changed: whose colours, or how many lines.
+    pub(crate) look_changing: bool,
 }
 
 impl App {
@@ -534,6 +542,7 @@ impl App {
             colours: muster_core::colours::TerminalColours::default(),
             cell_pixels: None,
             side_by_side_changing: false,
+            look_changing: false,
         }
     }
 
