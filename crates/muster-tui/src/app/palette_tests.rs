@@ -53,7 +53,7 @@ fn muster_s_own_colours_frame_list_and_pane_and_light_what_has_the_keys() {
     assert_eq!(cells[selected].bg, theme.lit);
     // The pane is framed, square, and quiet while the list has the keys.
     let (corner, top) = find(&cells, "┌", 1);
-    assert_eq!((corner, top), (34, 1));
+    assert_eq!((corner, top), (30, 1));
     assert_eq!(cells[(corner, top)].fg, theme.line);
     // The screen shown is lit in the accent.
     let (tab, _) = find(&cells, "Sessions", 0);
@@ -69,7 +69,7 @@ fn muster_s_own_colours_frame_list_and_pane_and_light_what_has_the_keys() {
     assert_eq!(world.app.mode, Mode::Terminal(world.session.id));
     let cells = buffer(&world.app);
     assert_eq!(cells[(corner, top)].fg, theme.accent);
-    let (name, row) = find(&cells, "Shell", 35);
+    let (name, row) = find(&cells, "Shell", corner + 1);
     assert_eq!(row, top);
     assert_eq!(cells[(name, row)].fg, theme.accent);
     assert!(cells[(name, row)].modifier.contains(Modifier::BOLD));
@@ -265,11 +265,14 @@ fn on_two_lines_a_name_has_its_first_line_to_itself() {
         muster_core::protocol::Delta::SessionUpserted(long),
     ));
     world.app.selected = Some(Row::Session(world.session.id));
-    // The 32 cells inside the list, less the line's edge and indent, the
-    // mark and the agent's: six more than beside what it is doing.
-    assert_eq!(crate::view::cut_name(&world.app), Some((37, 24)));
+    // The 34 cells inside the list, as wide as it goes for a long name,
+    // less the line's edge and indent, the mark and the agent's.
+    assert_eq!(crate::view::cut_name(&world.app), Some((37, 26)));
     let screen = render(&world.app);
-    assert!(screen.contains("○ ❯ Fix the login redirect …"), "{screen}");
+    assert!(
+        screen.contains("○ ❯ Fix the login redirect lo…"),
+        "{screen}"
+    );
 }
 
 /// The picture drawn in the list on `row`: its size and its pixels, or

@@ -418,3 +418,42 @@ async fn the_width_a_session_sits_beside_the_list_from_is_the_person_s_own() {
     let snapshot = daemon.connect().await.subscribe().await.unwrap();
     assert_eq!(snapshot.preferences.side_by_side_from, 120);
 }
+
+#[tokio::test]
+async fn where_the_panels_are_and_the_folded_list_are_the_person_s_own() {
+    use muster_core::layout::Layout;
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let snapshot = connection.subscribe().await.unwrap();
+    assert_eq!(snapshot.preferences.panels, Layout::default());
+    assert!(!snapshot.preferences.list_folded);
+    let moved = Layout::parse("session | list 40 | (changes / shell)").unwrap();
+    for change in [
+        PreferenceChange::Panels(moved.clone()),
+        PreferenceChange::ListFolded(true),
+    ] {
+        assert_eq!(
+            connection
+                .command(Command::ChangePreference(change))
+                .await
+                .unwrap(),
+            Reply::Done
+        );
+    }
+    let file = sandbox.paths().config_dir.join("settings.toml");
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        written.contains(
+            "[layout]\npanels = \"session | list 40 | (changes / shell)\"\nlist_folded = true"
+        ),
+        "{written}"
+    );
+    // Kept across a restart.
+    drop(connection);
+    drop(daemon);
+    let daemon = sandbox.start();
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    assert_eq!(snapshot.preferences.panels, moved);
+    assert!(snapshot.preferences.list_folded);
+}

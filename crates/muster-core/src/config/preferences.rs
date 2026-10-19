@@ -9,6 +9,7 @@ use serde::Deserialize;
 
 use super::ConfigError;
 use super::agents::{self, AgentDefinition};
+use crate::layout::Layout;
 use crate::settings::{Palette, SessionLines};
 
 /// What the file is called, in the person's settings folder.
@@ -34,6 +35,10 @@ pub struct MusterConfig {
     pub palette: Palette,
     /// How many lines a session's line takes (`[look] session_lines`).
     pub session_lines: SessionLines,
+    /// Where the panels are (`[layout] panels`).
+    pub panels: Layout,
+    /// Whether the list is folded away (`[layout] list_folded`).
+    pub list_folded: bool,
 }
 
 impl Default for MusterConfig {
@@ -44,6 +49,8 @@ impl Default for MusterConfig {
             side_by_side_from: crate::settings::SIDE_BY_SIDE_FROM,
             palette: Palette::default(),
             session_lines: SessionLines::default(),
+            panels: Layout::default(),
+            list_folded: false,
         }
     }
 }
@@ -56,7 +63,7 @@ struct File {
     /// Read by [`agents::parse`], which names the key that is wrong.
     agents: Option<toml::Value>,
     #[serde(default)]
-    layout: Layout,
+    layout: LayoutTable,
     #[serde(default)]
     look: Look,
 }
@@ -69,8 +76,10 @@ struct Notch {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Layout {
+struct LayoutTable {
     side_by_side_from: Option<u16>,
+    panels: Option<String>,
+    list_folded: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -116,6 +125,11 @@ impl MusterConfig {
             Some(count) => SessionLines::from_count(count)
                 .ok_or_else(|| invalid("look.session_lines must be 1 or 2"))?,
         };
+        let panels = match read.layout.panels.as_deref() {
+            None => Layout::default(),
+            Some(written) => Layout::parse(written)
+                .map_err(|error| invalid(&format!("layout.panels: {error}")))?,
+        };
         let default = Self::default();
         Ok(Self {
             notch: read.notch.show.unwrap_or(default.notch),
@@ -126,6 +140,8 @@ impl MusterConfig {
                 .unwrap_or(default.side_by_side_from),
             palette,
             session_lines,
+            panels,
+            list_folded: read.layout.list_folded.unwrap_or(default.list_folded),
         })
     }
 }
@@ -190,6 +206,31 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("s.toml"), "{error}");
+    }
+
+    #[test]
+    fn the_panels_are_as_written_or_muster_s_own() {
+        let nothing = MusterConfig::parse(None, "f").unwrap();
+        assert_eq!(nothing.panels, Layout::default());
+        assert!(!nothing.list_folded);
+        let written = MusterConfig::parse(
+            Some("[layout]\npanels = \"session | list 30 | (changes / shell)\"\nlist_folded = true\n"),
+            "f",
+        )
+        .unwrap();
+        assert_eq!(
+            written.panels.to_string(),
+            "session | list 30 | (changes / shell)"
+        );
+        assert!(written.list_folded);
+        let error = MusterConfig::parse(Some("[layout]\npanels = \"list | session\"\n"), "s.toml")
+            .unwrap_err()
+            .to_string();
+        assert!(error.starts_with("s.toml"), "{error}");
+        assert!(
+            error.contains("layout.panels: changes is not in the layout"),
+            "{error}"
+        );
     }
 
     #[test]

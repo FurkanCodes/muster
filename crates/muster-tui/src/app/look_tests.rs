@@ -81,7 +81,7 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     // Where it does not fit, what it does gives way; the time stays.
     doing(&mut world, id, Some("editing view_settings.rs"));
     let line = line_with(&render(&world.app), "editing");
-    assert!(line.contains("❯ Shell  editing vi… 4m12s"), "{line}");
+    assert!(line.contains("❯ Shell  editing view… 4m12s"), "{line}");
     assert!(line.contains("4m12s││"), "{line}");
 
     // Waiting on the person: what it wants, in red, and how long it has

@@ -39,12 +39,18 @@ const BACK: Key = ("esc ⌫", "back to Sessions");
 const HELP: Key = ("h ?", "these keys");
 const QUIT: Key = ("q", "quit the UI (sessions keep running)");
 const LAST_ALARM: Key = ("l", "the session that needed you last, as notified");
+const FOLD_LIST: Key = ("Ctrl-\\", "fold the list away, or bring it back");
+const MOVE_PANELS: Key = (
+    "m",
+    "move the panels with the keys (or drag one by its title)",
+);
 
 /// What goes to a session's program, and what does not.
 const IN_A_SESSION: Section = (
     "In a session",
     &[
         ("Shift-Q", "back to the list (or a click on it)"),
+        FOLD_LIST,
         ("Ctrl-1 Ctrl-2 Ctrl-3", "straight to a tab"),
         ("any other key", "goes to its program, esc and ⇥ too"),
     ],
@@ -97,7 +103,16 @@ const SESSIONS: &[Section] = &[
     IN_A_SESSION,
     (
         "Anywhere",
-        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+        &[
+            TABS,
+            TAB_NUMBERS,
+            BACK,
+            LAST_ALARM,
+            FOLD_LIST,
+            MOVE_PANELS,
+            HELP,
+            QUIT,
+        ],
     ),
 ];
 
@@ -120,7 +135,16 @@ const NEEDS_YOU: &[Section] = &[
     IN_A_SESSION,
     (
         "Anywhere",
-        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+        &[
+            TABS,
+            TAB_NUMBERS,
+            BACK,
+            LAST_ALARM,
+            FOLD_LIST,
+            MOVE_PANELS,
+            HELP,
+            QUIT,
+        ],
     ),
 ];
 
@@ -149,7 +173,16 @@ const TICKETS: &[Section] = &[
     ),
     (
         "Anywhere",
-        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+        &[
+            TABS,
+            TAB_NUMBERS,
+            BACK,
+            LAST_ALARM,
+            FOLD_LIST,
+            MOVE_PANELS,
+            HELP,
+            QUIT,
+        ],
     ),
 ];
 
@@ -168,7 +201,16 @@ const SETTINGS: &[Section] = &[
     ),
     (
         "Anywhere",
-        &[TABS, TAB_NUMBERS, BACK, LAST_ALARM, HELP, QUIT],
+        &[
+            TABS,
+            TAB_NUMBERS,
+            BACK,
+            LAST_ALARM,
+            FOLD_LIST,
+            MOVE_PANELS,
+            HELP,
+            QUIT,
+        ],
     ),
 ];
 

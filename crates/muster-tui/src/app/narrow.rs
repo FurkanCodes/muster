@@ -40,9 +40,15 @@ impl App {
     }
 
     /// Whether the session selected is drawn: beside the list, or filling
-    /// the window; a narrow window's list draws none.
+    /// the window; a narrow window's list draws none, nor does a window
+    /// whose panels leave the session no room.
     pub(crate) fn session_drawn(&self) -> bool {
-        !self.narrow() || matches!(self.mode, Mode::Terminal(_))
+        if matches!(self.mode, Mode::Terminal(_)) {
+            return true;
+        }
+        let window =
+            ratatui::layout::Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        !crate::view::browse_areas(self, window).preview.is_empty()
     }
 
     /// Whether the daemon keeps the width a session sits beside the list

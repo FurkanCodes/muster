@@ -75,18 +75,22 @@ muster
 | `u` | move the selected worktree's branch onto the newest of what it is stacked on, or of its base, after asking; nothing changes if a commit would conflict |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
 | `b` | open the pull request from the selected worktree's branch in your browser |
-| `d` | what the selected worktree's work has changed, or the selected session's, beside the list, with its agents' turns: `↑` `↓` choose a file or a turn, `⏎` its diff, `r` asks git again, `esc` goes back a step, `d` back to the list |
+| `d` | what the selected worktree's work has changed, or the selected session's, in a panel beside the session (beside the list where the window is narrower), with its agents' turns: `↑` `↓` choose a file or a turn, `⏎` its diff, `r` asks git again, `esc` goes back a step, `d` back to the list |
 | `z` | (in `d`, on a turn) put the files back as they were before it, after asking; `b` there moves the branch back too |
 | `⇥` `⇧⇥` | the next or previous tab: *Sessions*, *Needs you*, *Tickets*, *Settings* |
 | `Ctrl-1` `Ctrl-2` `Ctrl-3` | straight to a tab, from anywhere, while typing in a session too (on the list, `1` `2` `3` as well, for terminals without the kitty keyboard protocol, which cannot tell Ctrl and a number from the number) |
 | `4` | the *Settings* tab, from the list |
+| `Ctrl-\` | fold the list away, so the session takes its place, or bring it back; while typing in a session too |
+| `m` | move the panels with the keys: `⇥` picks one, the arrows move it, `+` `-` make it wider or narrower, `⏎` keeps it, `esc` puts it back |
 | `esc` `⌫` | back to *Sessions* from the other tabs |
 | `l` | the session that needed you last, as notified (a finish is told once it has stayed one two seconds) |
 | `h` | every key of the screen shown; type to narrow them (`?` works too) |
 | right-click | on a session, worktree or project: what can be done there, each with its key; choose one, or press its key |
 | `q` | quit the UI (sessions keep running) |
 
-While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but one: **Shift-Q** gives the keys back to the list, and so does a click on it. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
+While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but two: **Shift-Q** gives the keys back to the list, and so does a click on it; **Ctrl-\** folds the list away and back. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
+
+The panels are yours to arrange: drag one by its title to another edge of the window or of another panel, where the place lights up, and drag the line between two to make one wider. The list starts as wide as its names need (30 to 36 columns). Where the panels are is kept in `~/.config/muster/settings.toml` (`[layout] panels`); *Panels* on the *Settings* screen puts them back as at first.
 
 | Key | On the *Tickets* screen |
 |---|---|
@@ -102,6 +106,7 @@ While you type in a session, beside the list or full screen, every key goes to t
 |---|---|
 | `⏎` `space` | turn the selected setting on or off, per project: *Only my tickets*, which lists only the tickets assigned to you, in whichever tracker the project's tickets are; *Branches with muster/*, whether the branches Muster makes start with `muster/`; and, on a Mac, Muster's own *Agents in the notch* |
 | `←` `→` | on *Session beside the list from*, a smaller or a larger width (`⏎` goes to the next): in a window narrower than it, the list takes the whole window and `⏎` opens a session over it |
+| `⏎` | on *Panels*, every panel back where it was at first |
 | `r` | read the settings again, after editing a file by hand: yours for the projects, and Muster's own, with the agents you added (*Your agents* says what is there, or which key does not read) |
 
 A change on the *Settings* screen goes into your own settings for the project (`~/.config/muster/projects/<project id>.toml`, over its `muster.toml`; comments and the rest of the file are kept), never into the repository. Muster's own settings, for all of it, go into `~/.config/muster/settings.toml`.

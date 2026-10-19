@@ -25,6 +25,18 @@ pub(crate) fn leaves_terminal(key: &KeyEvent) -> bool {
     (shift_q && !control && !alt) || (control && matches!(key.code, KeyCode::Char(']' | '5')))
 }
 
+/// Whether `key` folds the list away or brings it back: Ctrl+\\, from
+/// anywhere, a session's terminal included, so the session can take the
+/// list's place as the person types. A terminal without the kitty keyboard
+/// protocol sends it as byte 0x1c, which crossterm reports as Ctrl+4, so
+/// both are accepted. A shell would take it as its quit key; few need that
+/// in a session.
+pub(crate) fn folds_list(key: &KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL)
+        && !key.modifiers.contains(KeyModifiers::ALT)
+        && matches!(key.code, KeyCode::Char('\\' | '4'))
+}
+
 /// The screen Ctrl+1, Ctrl+2 or Ctrl+3 goes to, from anywhere, a session's
 /// terminal included: no program there uses them. Terminals tell them from
 /// plain digits only with the kitty keyboard protocol (without it, Ctrl+3
@@ -54,6 +66,16 @@ impl App {
         // An error stays until the person has seen it and pressed on.
         if self.note.as_ref().is_some_and(|note| note.error) {
             self.note = None;
+        }
+        if self.drag.is_some() {
+            // A key lets go of a drag, the layout as it was.
+            self.cancel_drag();
+            return self.settle();
+        }
+        if self.arranging.is_some() {
+            let mut actions = self.arrange_key(&key);
+            actions.extend(self.settle());
+            return actions;
         }
         let mut actions = match self.mode.clone() {
             Mode::Terminal(session) => return self.terminal_key(session, &key),
@@ -121,6 +143,9 @@ impl App {
         if leaves_terminal(key) {
             return self.leave_terminal(session);
         }
+        if folds_list(key) {
+            return self.toggle_list();
+        }
         if let Some(view) = screen_key(key) {
             let mut actions = self.leave_terminal(session);
             actions.extend(self.show(view));
@@ -163,6 +188,7 @@ impl App {
             // Shift+Q leaves a session's terminal; pressed once too often
             // on the list, it must not quit.
             _ if leaves_terminal(key) => return Vec::new(),
+            _ if folds_list(key) => return self.toggle_list(),
             KeyCode::Char('q') if control => return Vec::new(),
             KeyCode::Char('q') => return vec![Action::Quit],
             // The tabs, round and back.
@@ -174,6 +200,7 @@ impl App {
             KeyCode::Char('3') => return self.show(View::Tickets),
             KeyCode::Char('4') => return self.show(View::Settings),
             KeyCode::Char('l') => return self.go_to_last_alarm(),
+            KeyCode::Char('m') => return self.start_arranging(),
             // The keys of the screen shown, on a letter; `?` from habit.
             KeyCode::Char('h' | '?') => {
                 self.open_help();
@@ -325,12 +352,10 @@ impl App {
         {
             self.needs_selected = None;
         }
-        let was_full = std::mem::take(&mut self.full_screen);
-        let mut actions = self.settle();
-        if was_full {
-            actions.extend(self.fit_attached());
-        }
-        actions
+        // Settled, a session that filled the window is given its size
+        // beside the list again.
+        self.full_screen = false;
+        self.settle()
     }
 
     /// `c`: the project's checks in the selected workspace, opened as they

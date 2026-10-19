@@ -222,7 +222,7 @@ fn still_works(world: &mut World, story: &str) {
     assert_eq!(world.app.screens[&id].scrolled_back(), 0, "{story}");
 
     // A drag over its first line copies what is there.
-    let pane = crate::view::session_area(window(world));
+    let pane = crate::view::session_area(&world.app, window(world));
     let wanted = world.app.screens[&id]
         .screen()
         .contents_between(0, 0, 0, 6)

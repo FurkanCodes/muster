@@ -5,6 +5,7 @@
 mod actions;
 mod alarm;
 mod changes;
+pub(crate) mod drag;
 mod events;
 mod fold;
 mod harness_choice;
@@ -16,6 +17,7 @@ mod menu;
 mod motion;
 mod narrow;
 mod notch;
+mod panels;
 mod picker;
 mod pointer;
 mod rename;
@@ -76,6 +78,8 @@ mod notch_tests;
 #[cfg(test)]
 mod palette_tests;
 #[cfg(test)]
+mod panels_tests;
+#[cfg(test)]
 mod picker_tests;
 #[cfg(test)]
 mod pointer_tests;
@@ -108,6 +112,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use muster_core::config::TrackerKind;
+use muster_core::layout::Layout;
 use muster_core::protocol::{ClientFrame, Command, PixelSize, TermSize};
 use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
 
@@ -332,6 +337,10 @@ enum Then {
     SideBySideChanged(u16),
     /// Say how the UI looks now.
     LookChanged(look::LookChange),
+    /// The list's fold is kept, or could not be.
+    ListFolded,
+    /// The panels' layout is kept, or could not be.
+    PanelsKept,
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.
@@ -477,6 +486,17 @@ pub(crate) struct App {
     pub(crate) side_by_side_changing: bool,
     /// The look is being changed: whose colours, or how many lines.
     pub(crate) look_changing: bool,
+    /// The panels as the person moved them, until the daemon keeps them,
+    /// or for as long as the window lasts where it cannot.
+    panels_kept: Option<Layout>,
+    /// The list folded away or brought back, the same way.
+    folded_kept: Option<bool>,
+    /// The size the streamed session's program was last given.
+    fitted: Option<TermSize>,
+    /// A panel or the line between two being dragged.
+    pub(crate) drag: Option<drag::Drag>,
+    /// The panels being moved with the keys.
+    pub(crate) arranging: Option<drag::Arranging>,
 }
 
 impl App {
@@ -543,6 +563,11 @@ impl App {
             cell_pixels: None,
             side_by_side_changing: false,
             look_changing: false,
+            panels_kept: None,
+            folded_kept: None,
+            fitted: None,
+            drag: None,
+            arranging: None,
         }
     }
 
@@ -607,13 +632,9 @@ impl App {
         // The session's screen is drawn again at another size.
         self.selection = None;
         // Narrower or wider than a session beside the list needs, the
-        // session shown may be another, or none.
-        let attached = self.attached;
-        let mut actions = self.settle();
-        if self.attached == attached {
-            actions.extend(self.fit_attached());
-        }
-        actions
+        // session shown may be another, or none; the one still shown is
+        // given its new size.
+        self.settle()
     }
 
     /// The size sessions' programs are given: the pane beside the list, or
@@ -626,7 +647,7 @@ impl App {
         }
         let window =
             ratatui::layout::Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
-        let pane = crate::view::session_area(window);
+        let pane = crate::view::session_area(self, window);
         TermSize {
             cols: pane.width.max(1),
             rows: pane.height.max(1),
@@ -687,6 +708,7 @@ impl App {
         };
         let size = self.session_size();
         self.screen(session).resize(size.cols, size.rows);
+        self.fitted = Some(size);
         let running = self
             .model
             .session(session)

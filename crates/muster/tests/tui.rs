@@ -521,9 +521,9 @@ fn shell_with_output(sandbox: &Sandbox, env: &[(&str, &str)]) -> Ui {
     ui
 }
 
-/// The pane beside the list starts here: after the 36-column list of a
-/// 120-column window and the pane's border, below the top bar and it.
-const PANE: (u16, u16) = (37, 2);
+/// The pane beside the list starts here: after the list, 30 columns for
+/// these short names, and the pane's border, below the top bar and it.
+const PANE: (u16, u16) = (31, 2);
 
 #[test]
 fn the_mouse_reaches_what_it_points_at_around_a_copy() {

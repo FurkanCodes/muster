@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::config::TrackerKind;
+use crate::layout::Layout;
 
 /// A project's settings that the person can change, as they stand.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,6 +150,13 @@ pub struct Preferences {
     /// session_lines`). From protocol 35.
     #[serde(default)]
     pub session_lines: SessionLines,
+    /// Where the UI's panels are (`[layout] panels`). From protocol 36.
+    #[serde(default)]
+    pub panels: Layout,
+    /// Whether the list is folded away, the session taking its place
+    /// (`[layout] list_folded`). From protocol 36.
+    #[serde(default)]
+    pub list_folded: bool,
 }
 
 impl Default for Preferences {
@@ -161,6 +169,8 @@ impl Default for Preferences {
             side_by_side_from: SIDE_BY_SIDE_FROM,
             palette: Palette::default(),
             session_lines: SessionLines::default(),
+            panels: Layout::default(),
+            list_folded: false,
         }
     }
 }
@@ -295,7 +305,22 @@ pub enum PreferenceChange {
     /// How many lines a session's line in the lists takes. From protocol
     /// 35.
     SessionLines(SessionLines),
+    /// Where the panels are. From protocol 36.
+    Panels(Layout),
+    /// Fold the list away, or bring it back. From protocol 36.
+    ListFolded(bool),
 }
+
+/// The first protocol whose daemon keeps [`Preferences::panels`] and
+/// [`Preferences::list_folded`] and takes [`PreferenceChange::Panels`] and
+/// [`PreferenceChange::ListFolded`] (`ARC-09`).
+pub const LAYOUT_PROTOCOL: u32 = 36;
+
+/// Where the panels are written: `[layout] panels`.
+pub const PANELS: (&str, &str) = ("layout", "panels");
+
+/// Where the list's folding is written: `[layout] list_folded`.
+pub const LIST_FOLDED: (&str, &str) = ("layout", "list_folded");
 
 /// The first protocol whose daemon keeps
 /// [`Preferences::side_by_side_from`] and takes

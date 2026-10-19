@@ -62,23 +62,32 @@ fn ctrl_and_a_number_jumps_to_each_screen_from_any_of_them() {
     assert_eq!(world.app.view, View::NeedsYou);
     press(&mut world.app, KeyCode::Char('1'));
     assert_eq!(world.app.view, View::Sessions);
-    // Settings is 4 on the list, with Ctrl or without.
+    // Settings is 4 on the list. Ctrl+4 is Ctrl+\\, which folds the list:
+    // without the kitty protocol the two are one byte.
     press(&mut world.app, KeyCode::Char('4'));
     assert_eq!(world.app.view, View::Settings);
     world.app.on_key(ctrl('1'));
     world.app.on_key(ctrl('4'));
-    assert_eq!(world.app.view, View::Settings);
+    assert_eq!(world.app.view, View::Sessions);
+    assert!(world.app.list_folded());
 }
 
 #[test]
-fn in_a_session_s_terminal_ctrl_4_leaves_the_keys_with_it() {
-    // Without the kitty protocol Ctrl+4 and Ctrl+\ are one byte, which a
-    // session's program may want: Settings is not taken from there.
+fn in_a_session_s_terminal_ctrl_4_folds_the_list_and_leaves_the_keys_with_it() {
+    // Without the kitty protocol Ctrl+4 and Ctrl+\\ are one byte: the key
+    // that folds the list, from a session's terminal too.
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
     press(&mut world.app, KeyCode::Enter);
-    world.app.on_key(ctrl('4'));
+    let actions = world.app.on_key(ctrl('4'));
+    assert!(
+        !actions
+            .iter()
+            .any(|action| matches!(action, Action::Send(ClientFrame::Input { .. }))),
+        "not the program's: {actions:?}"
+    );
+    assert!(world.app.list_folded());
     assert_eq!(world.app.mode, Mode::Terminal(id));
     assert_eq!(world.app.view, View::Sessions);
 }

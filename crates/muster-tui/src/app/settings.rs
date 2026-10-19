@@ -44,6 +44,8 @@ pub(crate) enum SettingRow {
     Colours,
     /// How many lines a session's line takes.
     SessionLines,
+    /// Where the panels are, and whether the list is folded away.
+    Panels,
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -61,6 +63,7 @@ impl SettingRow {
             | Self::SideBySide
             | Self::Colours
             | Self::SessionLines
+            | Self::Panels
             | Self::Agents => None,
         }
     }
@@ -103,6 +106,7 @@ impl App {
             (self.side_by_side_known(), SettingRow::SideBySide),
             (self.look_known(), SettingRow::Colours),
             (self.look_known(), SettingRow::SessionLines),
+            (self.layout_known(), SettingRow::Panels),
             (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
         ];
         if self.model.loaded() && own.iter().any(|(known, _)| *known) {
@@ -123,6 +127,7 @@ impl App {
                 Some(SettingRow::SideBySide) => return self.step_side_by_side(1, true),
                 Some(SettingRow::Colours) => return self.toggle_palette(),
                 Some(SettingRow::SessionLines) => return self.toggle_session_lines(),
+                Some(SettingRow::Panels) => return self.put_panels_back(),
                 _ => return self.toggle_setting(),
             },
             KeyCode::Left | KeyCode::Right
