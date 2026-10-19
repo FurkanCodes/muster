@@ -48,7 +48,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
         Span::from(typed.to_owned()).bold(),
     ]);
     let mut lines = vec![find, Line::from("")];
-    let shown = help.lines(app.view);
+    let shown = help.lines(app.view, &app.keymap);
     if shown.is_empty() {
         lines.push(Line::from(format!("No key says “{typed}”.")).dim());
     }
@@ -80,7 +80,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
 fn help_rows(line: &HelpLine, width: usize) -> Vec<Line<'static>> {
     match line {
         HelpLine::Heading(heading) => vec![Line::from(Span::from(*heading).cyan().bold())],
-        HelpLine::Key((keys, what)) => {
+        HelpLine::Key(keys, what) => {
             let keys = format!("  {keys}");
             let gap = KEYS_WIDTH.saturating_sub(keys.chars().count()).max(1);
             let indent = keys.chars().count() + gap;

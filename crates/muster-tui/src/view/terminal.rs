@@ -1,6 +1,7 @@
 //! A session's terminal: beside the list, watched or typed into, and full
 //! screen under a bar of its own.
 
+use muster_core::keys::Action as Does;
 use muster_core::protocol::DetachReason;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
@@ -42,8 +43,8 @@ pub(super) fn draw_session(
     }
     if back > 0 {
         let _ = write!(title, "· ↑ {back} lines back ");
-    } else if typing {
-        title.push_str("· Shift-Q back to the list ");
+    } else if typing && !app.keymap.chords(Does::LeaveSession).is_empty() {
+        let _ = write!(title, "· {} back to the list ", app.key(Does::LeaveSession));
     }
     let theme = super::theme::of(app);
     let name = if typing {
@@ -64,7 +65,7 @@ pub(super) fn draw_session(
     match app.screens.get(&session) {
         Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
             frame.render_widget(
-                Paragraph::new(ENDED_WITHOUT_OUTPUT)
+                Paragraph::new(ended_without_output(app))
                     .wrap(Wrap { trim: false })
                     .block(block)
                     .dim(),
@@ -96,8 +97,14 @@ fn show_cursor(frame: &mut Frame<'_>, screen: &crate::screen::Screen, area: Rect
     });
 }
 /// What is shown for a session whose output the daemon no longer holds.
-const ENDED_WITHOUT_OUTPUT: &str = "This session ended and its output is no longer kept \
-     (the daemon was restarted). Press r to start it again, or x to remove it.";
+fn ended_without_output(app: &App) -> String {
+    format!(
+        "This session ended and its output is no longer kept (the daemon was restarted). Press \
+         {} to start it again, or {} to remove it.",
+        app.key(Does::RestartSession),
+        app.key(Does::Close)
+    )
+}
 
 pub(super) fn draw_terminal(
     frame: &mut Frame<'_>,
@@ -140,13 +147,19 @@ pub(super) fn draw_terminal(
             ))
             .yellow(),
         ),
-        None => spans.push(Span::from("   Shift-Q back to the list (or click here)").dim()),
+        None => spans.push(
+            Span::from(format!(
+                "   {} back to the list (or click here)",
+                app.key(Does::LeaveSession)
+            ))
+            .dim(),
+        ),
     }
     frame.render_widget(Line::from(spans), top);
     match app.screens.get(&session) {
         Some(screen) if screen.ended == Some(DetachReason::NotRunning) => {
             frame.render_widget(
-                Paragraph::new(ENDED_WITHOUT_OUTPUT)
+                Paragraph::new(ended_without_output(app))
                     .wrap(Wrap { trim: false })
                     .dim(),
                 body,

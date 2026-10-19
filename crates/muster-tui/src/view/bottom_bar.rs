@@ -2,6 +2,7 @@
 //! the last note, or why the daemon cannot be reached, and a warning when
 //! this UI is older than the daemon.
 
+use muster_core::keys::Action as Does;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Stylize;
@@ -83,27 +84,25 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     draw_hints(frame, app, area);
 }
 
-/// What `h` is, at the bar's end while the list has the keys, so the
-/// way to every other key is always in view.
-const HELP_HINT: &str = "h help ";
-
 /// The hints in `area`, as many as fit whole, and at its end the key of
-/// the help, where it opens.
+/// the help, where it opens, so the way to every other key is always in
+/// view while the list has the keys.
 fn draw_hints(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let help = app.mode == Mode::Browse;
-    let help_width = if help {
-        u16::try_from(HELP_HINT.chars().count()).unwrap_or(0)
-    } else {
-        0
-    };
+    let help_hint = (app.mode == Mode::Browse)
+        .then(|| hint(app, Does::Help, "help "))
+        .flatten();
+    let help = help_hint.is_some();
+    let help_width = help_hint
+        .as_ref()
+        .map_or(0, |hint| u16::try_from(hint.chars().count()).unwrap_or(0));
     let [left, right] =
         Layout::horizontal([Constraint::Min(0), Constraint::Length(help_width)]).areas(area);
     // A space before them, and two before the help.
     let room = usize::from(left.width).saturating_sub(if help { 3 } else { 1 });
     let text = fitting(&hints(app), room);
     frame.render_widget(Line::from(format!(" {text}")).dim(), left);
-    if help {
-        frame.render_widget(Line::from(HELP_HINT).dim(), right);
+    if let Some(help_hint) = help_hint {
+        frame.render_widget(Line::from(help_hint).dim(), right);
     }
 }
 
@@ -123,6 +122,14 @@ fn fitting(hints: &[String], room: usize) -> String {
     text
 }
 
+/// `does`'s key and `what`, as a hint; none where it has no key.
+pub(super) fn hint(app: &App, does: Does, what: &str) -> Option<String> {
+    app.keymap
+        .chords(does)
+        .first()
+        .map(|chord| format!("{} {what}", chord.label()))
+}
+
 /// The keys that do something for what is selected, most used first.
 fn hints(app: &App) -> Vec<String> {
     if app.arranging.is_some() {
@@ -137,7 +144,9 @@ fn hints(app: &App) -> Vec<String> {
         return vec!["type to narrow  ↑↓ scroll  esc close".to_owned()];
     }
     if matches!(app.mode, Mode::Terminal(_)) {
-        return vec!["keys go to the session   Shift-Q back to the list (or click it)".to_owned()];
+        let back = hint(app, Does::LeaveSession, "back to the list (or click it)")
+            .unwrap_or_else(|| "a click on the list goes back to it".to_owned());
+        return vec![format!("keys go to the session   {back}")];
     }
     if app.mode == Mode::Changes {
         let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
@@ -145,35 +154,66 @@ fn hints(app: &App) -> Vec<String> {
             .changes
             .as_ref()
             .is_some_and(|pane| pane.selected_entry().is_some());
-        let undo = if entry {
-            "  z put back as before it"
+        let again = hint(app, Does::ChangesAgain, "again");
+        let undo = entry
+            .then(|| hint(app, Does::PutBack, "put back as before it"))
+            .flatten();
+        let mut hints: Vec<String> = if diff {
+            vec![
+                "↑↓ scroll".to_owned(),
+                "PgUp PgDn page".to_owned(),
+                "esc the changes".to_owned(),
+            ]
         } else {
-            ""
+            vec!["↑↓ move".to_owned(), "⏎ its diff".to_owned()]
         };
-        return vec![if diff {
-            format!("↑↓ scroll  PgUp PgDn page  esc the changes  r again{undo}  d back")
+        hints.extend(again);
+        hints.extend(undo);
+        hints.extend(if diff {
+            hint(app, Does::CloseChanges, "back")
         } else {
-            format!("↑↓ move  ⏎ its diff  r again{undo}  esc back to the list")
-        }];
+            Some("esc back to the list".to_owned())
+        });
+        return vec![hints.join("  ")];
     }
     let mut hints = vec!["↑↓ move".to_owned()];
-    let general: &[&str] = match app.view {
+    let general = match app.view {
         View::Tickets => {
-            hints.extend(tickets::hints(app).into_iter().map(str::to_owned));
-            &["⇥ next tab", "esc back", "q quit"]
+            hints.extend(tickets::hints(app));
+            [
+                hint(app, Does::NextTab, "next tab"),
+                hint(app, Does::Back, "back"),
+                hint(app, Does::Quit, "quit"),
+            ]
         }
         View::Settings => {
-            hints.extend(settings::hints(app).into_iter().map(str::to_owned));
-            &["⇥ next tab", "esc back", "q quit"]
+            hints.extend(settings::hints(app));
+            [
+                hint(app, Does::NextTab, "next tab"),
+                hint(app, Does::Back, "back"),
+                hint(app, Does::Quit, "quit"),
+            ]
         }
-        View::Sessions => &["a project", "⇥ next tab", "q quit"],
-        View::NeedsYou => &["⇥ next tab", "esc back", "q quit"],
+        View::Sessions => [
+            hint(app, Does::AddProject, "project"),
+            hint(app, Does::NextTab, "next tab"),
+            hint(app, Does::Quit, "quit"),
+        ],
+        View::NeedsYou => [
+            hint(app, Does::NextTab, "next tab"),
+            hint(app, Does::Back, "back"),
+            hint(app, Does::Quit, "quit"),
+        ],
     };
     hints.extend(
         app.actions_here()
             .into_iter()
+            .filter(|here| {
+                here.does
+                    .is_none_or(|does| !app.keymap.chords(does).is_empty())
+            })
             .map(|here| format!("{} {}", here.key_name(), here.what)),
     );
-    hints.extend(general.iter().map(|hint| (*hint).to_owned()));
+    hints.extend(general.into_iter().flatten());
     hints
 }

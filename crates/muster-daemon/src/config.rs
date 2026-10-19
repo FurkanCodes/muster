@@ -8,9 +8,9 @@ use muster_core::config::agents::AgentDefinition;
 use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::settings::{
-    LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH, ONLY_MINE, PANELS,
-    PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange, SettingSource, TICKETS_FROM_KEYS,
-    TRACKER,
+    KEYS, LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH, ONLY_MINE,
+    PANELS, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange, SettingSource,
+    TICKETS_FROM_KEYS, TRACKER,
 };
 
 /// The repository's settings file.
@@ -145,6 +145,7 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             panels: config.panels,
             list_folded: config.list_folded,
             naming: config.naming,
+            keys: config.keys,
         },
         agents: config.agents,
     })
@@ -197,6 +198,14 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             "by_agent",
             *on,
         ),
+        PreferenceChange::Keys {
+            action,
+            keys: Some(keys),
+        } => edit::set_list_in(text.as_deref(), preferences::NEW_FILE, KEYS, action, keys),
+        PreferenceChange::Keys { action, keys: None } => {
+            edit::remove_in(text.as_deref(), KEYS, action)
+        }
+        PreferenceChange::AllKeysBack => edit::remove_table_in(text.as_deref(), KEYS),
         PreferenceChange::NamedBy { agent, model } => edit::set_texts_in(
             text.as_deref(),
             preferences::NEW_FILE,
@@ -336,6 +345,42 @@ mod tests {
             "[layout]\nside_by_side_from = 120 # mine\npanels = \"session | list 28 | (changes / shell)\"\n\
              list_folded = true\n"
         );
+    }
+
+    #[test]
+    fn the_person_s_keys_are_written_taken_back_and_put_back_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let keys = |action: &str, keys: Option<&[&str]>| PreferenceChange::Keys {
+            action: action.to_owned(),
+            keys: keys.map(|keys| keys.iter().map(|key| (*key).to_owned()).collect()),
+        };
+        change_preference(&config_dir, &keys("new_session", Some(&["N"]))).unwrap();
+        change_preference(&config_dir, &keys("leave_session", Some(&["Q", "alt-q"]))).unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert_eq!(read.keys["leave_session"], ["Q", "alt-q"]);
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("[keys]\nnew_session = [\"N\"]\n"),
+        );
+        // A key another action has is refused, and nothing is written.
+        let before = std::fs::read_to_string(&file).unwrap();
+        let error = change_preference(&config_dir, &keys("rename", Some(&["d"]))).unwrap_err();
+        assert!(error.to_string().contains("show_changes"), "{error}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+        change_preference(&config_dir, &keys("new_session", None)).unwrap();
+        assert!(
+            !preferences(&config_dir)
+                .unwrap()
+                .keys
+                .contains_key("new_session")
+        );
+        change_preference(&config_dir, &PreferenceChange::AllKeysBack).unwrap();
+        assert!(preferences(&config_dir).unwrap().keys.is_empty());
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("[keys]"));
     }
 
     #[test]

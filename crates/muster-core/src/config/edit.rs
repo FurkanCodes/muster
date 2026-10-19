@@ -68,6 +68,55 @@ pub fn set_text_in(
     set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
 }
 
+/// [`set_flag_in`] for a list of texts, written on one line.
+pub fn set_list_in(
+    text: Option<&str>,
+    new_file: &str,
+    table: &str,
+    key: &str,
+    values: &[String],
+) -> Result<String, EditError> {
+    let list: toml_edit::Array = values.iter().map(String::as_str).collect();
+    set_value_in(text, new_file, table, key, toml_edit::Value::Array(list))
+}
+
+/// `text` without `[table] key`, and without the table if nothing is left
+/// in it; as it was where neither is there.
+pub fn remove_in(text: Option<&str>, table: &str, key: &str) -> Result<String, EditError> {
+    let Some(text) = text else {
+        return Ok(String::new());
+    };
+    let mut document: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
+    let emptied = match document
+        .get_mut(table)
+        .and_then(|item| item.as_table_like_mut())
+    {
+        Some(entries) => {
+            entries.remove(key);
+            entries.is_empty()
+        }
+        None => false,
+    };
+    if emptied {
+        document.remove(table);
+    }
+    Ok(document.to_string())
+}
+
+/// `text` without `[table]` and all in it.
+pub fn remove_table_in(text: Option<&str>, table: &str) -> Result<String, EditError> {
+    let Some(text) = text else {
+        return Ok(String::new());
+    };
+    let mut document: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
+    document.remove(table);
+    Ok(document.to_string())
+}
+
 /// `[table] key` set to `value` in `text`, as [`set_flag_in`] says.
 fn set_value_in(
     text: Option<&str>,

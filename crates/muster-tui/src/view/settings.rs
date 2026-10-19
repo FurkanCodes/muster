@@ -39,6 +39,8 @@ const NAMES_BY_AGENT: &str = "Chats named by an agent";
 const NAMED_BY: &str = "Named by";
 /// What the setting of the model it names them with is called.
 const NAMING_MODEL: &str = "Its model";
+/// What the setting of the keys is called.
+const KEYS: &str = "Keys";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = list_block(app, "settings", app.list_has_keys());
@@ -92,6 +94,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::NamesByAgent => labelled(NAMES_BY_AGENT, by_agent_value(app), width),
         SettingRow::NamedBy => labelled(NAMED_BY, Span::from(app.namer_label()), width),
         SettingRow::NamingModel => labelled(NAMING_MODEL, naming_model_value(app), width),
+        SettingRow::Keys => labelled(KEYS, keys_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -242,6 +245,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::Colours) => colours_text(app),
         Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Panels) => panels_text(app),
+        Some(SettingRow::Keys) => keys_text(app),
         Some(SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel) => {
             naming_text(app)
         }
@@ -258,6 +262,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Colours => colours_text(app),
                 SettingRow::SessionLines => session_lines_text(app),
                 SettingRow::Panels => panels_text(app),
+                SettingRow::Keys => keys_text(app),
                 SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
                     naming_text(app)
                 }
@@ -273,7 +278,11 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 Line::from("Its settings cannot be read:").red(),
                 Line::from(error.clone()),
                 Line::from(""),
-                Line::from("Fix the file it names, then r reads them again.").dim(),
+                Line::from(format!(
+                    "Fix the file it names, then {} reads them again.",
+                    app.key(muster_core::keys::Action::ReadSettings)
+                ))
+                .dim(),
             ]),
             None | Some(Settings::Loading) => Text::from("Reading its settings…").dim(),
         },
@@ -456,7 +465,11 @@ fn agents_text(app: &App) -> Text<'static> {
     lines.extend([
         detail("Saved in", preferences.file.display().to_string()),
         Line::from(""),
-        Line::from("Add one there, then r reads it:").dim(),
+        Line::from(format!(
+            "Add one there, then {} reads it:",
+            app.key(muster_core::keys::Action::ReadSettings)
+        ))
+        .dim(),
         Line::from("  [agents.my-agent]").dim(),
         Line::from("  program = \"my-agent\"").dim(),
         Line::from("  prompt = [\"--message\", \"{prompt}\"]").dim(),
@@ -468,6 +481,38 @@ fn agents_text(app: &App) -> Text<'static> {
         .dim(),
     ]);
     Text::from(lines)
+}
+
+/// Whose keys they are: Muster's, or how many the person set.
+fn keys_value(app: &App) -> Span<'static> {
+    match app.model.preferences().keys.len() {
+        0 => Span::from("Muster's").dim(),
+        1 => Span::from("1 of yours"),
+        set => Span::from(format!("{set} of yours")),
+    }
+}
+
+/// What setting the keys does, and where they are kept.
+fn keys_text(app: &App) -> Text<'static> {
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{KEYS}  ")).bold(),
+            keys_value(app),
+        ]),
+        Line::from(
+            "Every key of every screen can be another: ⏎ lists them, by what they do. A key \
+             another action has on the same screen is refused, and in a session a key needs \
+             Ctrl or Alt, or is a capital, as the rest go to its program. The hints, the help \
+             and the menus show your keys.",
+        ),
+        Line::from(""),
+        detail(
+            "Saved in",
+            app.model.preferences().file.display().to_string(),
+        ),
+        Line::from(""),
+        Line::from("Moving about (the arrows, the page keys) and ⏎ stay as they are.").dim(),
+    ])
 }
 
 /// Whether an agent names chats.
@@ -581,7 +626,8 @@ fn side_by_side_text(app: &App) -> Text<'static> {
         columns => format!(
             "A session's terminal sits beside the list in a window of {columns} columns or more. \
              In a narrower one, the list takes the whole width: ⏎ opens a session over it, as \
-             full screen does, and Shift-Q goes back."
+             full screen does, and {} goes back.",
+            app.key(muster_core::keys::Action::LeaveSession)
         ),
     };
     let now = if app.narrow() {
@@ -719,7 +765,7 @@ fn detail(label: &str, value: String) -> Line<'static> {
 }
 
 /// The keys that apply on the Settings screen, for what is selected.
-pub(super) fn hints(app: &App) -> Vec<&'static str> {
+pub(super) fn hints(app: &App) -> Vec<String> {
     let mut hints = Vec::new();
     match app.settings_selected {
         Some(SettingRow::OnlyMine(project)) => {
@@ -779,6 +825,7 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
         }
         Some(SettingRow::NamedBy) => hints.push("⏎ next agent"),
         Some(SettingRow::NamingModel) => hints.push("⏎ choose"),
+        Some(SettingRow::Keys) => hints.push("⏎ set them"),
         Some(
             SettingRow::Project(_)
             | SettingRow::Muster
@@ -790,6 +837,11 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
         )
         | None => {}
     }
-    hints.push("r read again");
+    let mut hints: Vec<String> = hints.into_iter().map(str::to_owned).collect();
+    hints.extend(super::bottom_bar::hint(
+        app,
+        muster_core::keys::Action::ReadSettings,
+        "read again",
+    ));
     hints
 }

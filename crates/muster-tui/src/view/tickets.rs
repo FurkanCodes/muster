@@ -329,10 +329,11 @@ fn ticket_text(
             }
             lines.push(Line::from(spans));
         }
+        let another = app.key(muster_core::keys::Action::AnotherAgent);
         let another = if sharing.len() > 1 {
-            "⏎ opens the latest; a starts another, in the project you choose."
+            format!("⏎ opens the latest; {another} starts another, in the project you choose.")
         } else {
-            "⏎ opens the latest; a starts another, in a worktree of its own."
+            format!("⏎ opens the latest; {another} starts another, in a worktree of its own.")
         };
         lines.push(Line::from(another).dim());
     }
@@ -353,17 +354,21 @@ fn ticket_text(
 }
 
 /// The keys that apply on the Tickets screen, for what is selected.
-pub(super) fn hints(app: &App) -> Vec<&'static str> {
+pub(super) fn hints(app: &App) -> Vec<String> {
+    use super::bottom_bar::hint;
+    use muster_core::keys::Action as Does;
     let mut hints = Vec::new();
     if let Some(TicketRow::Ticket(project, key)) = &app.tickets_selected {
         if app.ticket_agents(*project, key).is_empty() {
-            hints.push("⏎ start an agent");
+            hints.push("⏎ start an agent".to_owned());
         } else {
-            hints.extend(["⏎ open agent", "a another agent"]);
+            hints.push("⏎ open agent".to_owned());
+            hints.extend(hint(app, Does::AnotherAgent, "another agent"));
         }
-        hints.extend(["b browser", "x close"]);
+        hints.extend(hint(app, Does::TicketInBrowser, "browser"));
+        hints.extend(hint(app, Does::CloseTicket, "close"));
     }
-    hints.push("r refresh");
+    hints.extend(hint(app, Does::RefreshTickets, "refresh"));
     hints
 }
 

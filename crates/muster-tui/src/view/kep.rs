@@ -305,7 +305,7 @@ pub(crate) fn draw_empty_pane(
     app: &App,
     area: Rect,
     under: &str,
-    more: &[&'static str],
+    more: &[&str],
 ) {
     let block = panel(app, " Details ", false);
     let inner = block.inner(area);
@@ -322,7 +322,10 @@ pub(crate) fn draw_empty_pane(
         height: room.height.saturating_sub(rows + 1),
         ..room
     };
-    let lines: Vec<Line<'static>> = more.iter().map(|line| Line::from(*line)).collect();
+    let lines: Vec<Line<'static>> = more
+        .iter()
+        .map(|line| Line::from((*line).to_owned()))
+        .collect();
     frame.render_widget(
         Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false }),
         below,

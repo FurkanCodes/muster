@@ -1,6 +1,7 @@
 //! The pane beside the list when the list has the keys: the selected
 //! session's terminal, or a worktree's or a project's details.
 
+use muster_core::keys::Action as Does;
 use muster_core::{Project, Workspace, WorkspaceKind};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -36,12 +37,16 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
             return kep::draw_empty_pane(frame, app, area, "Connecting to the daemon…", &[]);
         }
         _ if app.model.projects().is_empty() => {
+            let add = format!(
+                "Press {} to add a project: a git repository, or any folder.",
+                app.key(Does::AddProject)
+            );
             return kep::draw_empty_pane(
                 frame,
                 app,
                 area,
                 "Agents on your tickets, side by side.",
-                &["Press a to add a project: a git repository, or any folder."],
+                &[&add],
             );
         }
         _ => Text::from("Select a session to watch it here.").dim(),
@@ -133,25 +138,47 @@ fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
         ]),
         Line::from(""),
     ]);
+    lines.extend(workspace_keys(app, workspace));
+    Text::from(lines)
+}
+
+/// What the keys do on a worktree's or a checkout's line, said under its
+/// details.
+fn workspace_keys(app: &App, workspace: &Workspace) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let new = app.key(Does::NewSession);
     lines.push(
         Line::from(match &workspace.kind {
-            WorkspaceKind::Checkout { .. } => "Press n or ⏎ to start a session here.",
-            WorkspaceKind::Worktree { .. } => {
-                "Press n or ⏎ to start a session here, x to remove the worktree."
-            }
+            WorkspaceKind::Checkout { .. } => format!("Press {new} or ⏎ to start a session here."),
+            WorkspaceKind::Worktree { .. } => format!(
+                "Press {new} or ⏎ to start a session here, {} to remove the worktree.",
+                app.key(Does::Close)
+            ),
             WorkspaceKind::Container { .. } => {
-                "Press n or ⏎ for a shell in it; it goes when the run ends."
+                format!("Press {new} or ⏎ for a shell in it; it goes when the run ends.")
             }
         })
         .dim(),
     );
     if workspace.kind.in_git() && workspace.kind.run().is_none() {
-        lines.push(Line::from("d shows what changed: each file, and its diff.").dim());
+        lines.push(
+            Line::from(format!(
+                "{} shows what changed: each file, and its diff.",
+                app.key(Does::ShowChanges)
+            ))
+            .dim(),
+        );
     }
     if workspace.pull_request.is_some() {
-        lines.push(Line::from("b opens its pull request in the browser.").dim());
+        lines.push(
+            Line::from(format!(
+                "{} opens its pull request in the browser.",
+                app.key(Does::PullRequestInBrowser)
+            ))
+            .dim(),
+        );
     }
-    Text::from(lines)
+    lines
 }
 
 /// A project's details, and what can be done with it.
@@ -163,7 +190,11 @@ fn project_details(app: &App, project: &Project) -> Text<'static> {
                 Span::raw(project.root.display().to_string()),
             ]),
             Line::from(""),
-            Line::from("Press n or ⏎ to start a session in the folder.").dim(),
+            Line::from(format!(
+                "Press {} or ⏎ to start a session in the folder.",
+                app.key(Does::NewSession)
+            ))
+            .dim(),
             Line::from(
                 "It is not a git repository, so it has no worktrees or tickets; git init there makes it one.",
             )
@@ -185,7 +216,15 @@ fn project_details(app: &App, project: &Project) -> Text<'static> {
             Span::raw(worktrees.to_string()),
         ]),
         Line::from(""),
-        Line::from("Press w or ⏎ to create a worktree for a new piece of work,").dim(),
-        Line::from("n to start a session in the project's own checkout.").dim(),
+        Line::from(format!(
+            "Press {} or ⏎ to create a worktree for a new piece of work,",
+            app.key(Does::NewWorktree)
+        ))
+        .dim(),
+        Line::from(format!(
+            "{} to start a session in the project's own checkout.",
+            app.key(Does::NewSession)
+        ))
+        .dim(),
     ])
 }

@@ -116,9 +116,14 @@ impl App {
             Some(stacked) => format!("the newest of ⎇ {}", one_line(&stacked.branch)),
             None => "the newest of its base".to_owned(),
         };
+        let (put_back, changes) = (
+            self.key(muster_core::keys::Action::PutBack),
+            self.key(muster_core::keys::Action::ShowChanges),
+        );
         let question = format!(
             "Move {branch} onto {onto}? Its own commits are replayed there; if one would \
-             conflict, nothing changes. What is there now is kept first, so z in d puts it back."
+             conflict, nothing changes. What is there now is kept first, so {put_back} in \
+             {changes} puts it back."
         );
         self.mode = Mode::Dialog(Dialog::Confirm {
             question,
@@ -162,8 +167,10 @@ impl App {
             ""
         };
         self.say(format!(
-            "{branch} is on {} now, {commits} replayed there; z on #{entry} in d puts it back.{push}",
-            one_line(&onto)
+            "{branch} is on {} now, {commits} replayed there; {} on #{entry} in {} puts it back.{push}",
+            one_line(&onto),
+            self.key(muster_core::keys::Action::PutBack),
+            self.key(muster_core::keys::Action::ShowChanges),
         ));
     }
 }

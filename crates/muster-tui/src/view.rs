@@ -26,6 +26,7 @@ mod menu;
 pub(crate) mod picture;
 mod preview;
 mod pull_request;
+mod rebind;
 mod selection;
 mod sessions;
 mod settings;

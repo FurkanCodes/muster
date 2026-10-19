@@ -50,7 +50,7 @@ fn a_right_click_on_a_session_opens_what_can_be_done_there_with_the_keys() {
             "⏎ type in it",
             "f full screen",
             "d changes",
-            "R rename",
+            "Shift-R rename",
             "x close",
             "s stop",
             "n session"

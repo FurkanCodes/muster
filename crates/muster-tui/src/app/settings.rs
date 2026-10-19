@@ -17,6 +17,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::ProjectId;
+use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
 use muster_core::settings::{
     AGENTS_PROTOCOL, MUSTER_PREFIX_PROTOCOL, ProjectSettings, SettingChange,
@@ -52,6 +53,8 @@ pub(crate) enum SettingRow {
     NamedBy,
     /// The model it names them with.
     NamingModel,
+    /// The keys, Muster's and the person's.
+    Keys,
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -73,6 +76,7 @@ impl SettingRow {
             | Self::NamesByAgent
             | Self::NamedBy
             | Self::NamingModel
+            | Self::Keys
             | Self::Agents => None,
         }
     }
@@ -119,6 +123,7 @@ impl App {
             (self.naming_known(), SettingRow::NamesByAgent),
             (self.naming_known(), SettingRow::NamedBy),
             (self.naming_known(), SettingRow::NamingModel),
+            (self.keys_known(), SettingRow::Keys),
             (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
         ];
         if self.model.loaded() && own.iter().any(|(known, _)| *known) {
@@ -129,11 +134,11 @@ impl App {
     }
 
     /// A key on the Settings screen; the rest are inert here.
-    pub(super) fn settings_key(&mut self, key: &KeyEvent) -> Vec<Action> {
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-            KeyCode::Enter | KeyCode::Char(' ') => match self.settings_selected {
+    pub(super) fn settings_key(&mut self, key: &KeyEvent, does: Option<Does>) -> Vec<Action> {
+        match (key.code, does) {
+            (KeyCode::Up, _) | (_, Some(Does::MoveUp)) => self.move_selection(-1),
+            (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),
+            (KeyCode::Enter | KeyCode::Char(' '), _) => match self.settings_selected {
                 Some(SettingRow::TicketsFrom(project)) => return self.choose_tickets_from(project),
                 Some(SettingRow::Notch) => return self.toggle_notch(),
                 Some(SettingRow::SideBySide) => return self.step_side_by_side(1, true),
@@ -143,15 +148,16 @@ impl App {
                 Some(SettingRow::NamesByAgent) => return self.toggle_names_by_agent(),
                 Some(SettingRow::NamedBy) => return self.next_namer(),
                 Some(SettingRow::NamingModel) => return self.choose_naming_model(),
+                Some(SettingRow::Keys) => return self.open_rebinding(),
                 _ => return self.toggle_setting(),
             },
-            KeyCode::Left | KeyCode::Right
+            (KeyCode::Left | KeyCode::Right, _)
                 if self.settings_selected == Some(SettingRow::SideBySide) =>
             {
                 let by = if key.code == KeyCode::Left { -1 } else { 1 };
                 return self.step_side_by_side(by, false);
             }
-            KeyCode::Char('r') => {
+            (_, Some(Does::ReadSettings)) => {
                 // Read again as they are shown, edits by hand included:
                 // Muster's own too, where the daemon reads them on asking.
                 self.settings.clear();

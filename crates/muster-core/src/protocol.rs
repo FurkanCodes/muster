@@ -97,7 +97,10 @@
 //! (`Preferences::naming` and `AddedAgent::asks`, fields older clients pass
 //! over; `PreferenceChange::NamesByAgent` and `PreferenceChange::NamedBy`,
 //! and `Command::ListModels`, answered with `Reply::Models`, sent only to a
-//! daemon of 37 or later).
+//! daemon of 37 or later); version 38 the person's own keys
+//! (`Preferences::keys`, a field older clients pass over;
+//! `PreferenceChange::Keys` and `PreferenceChange::AllKeysBack`, sent only
+//! to a daemon of 38 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -116,7 +119,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 37;
+pub const PROTOCOL_VERSION: u32 = 38;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
