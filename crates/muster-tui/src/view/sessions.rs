@@ -65,6 +65,69 @@ pub(super) fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     );
 }
 
+/// The columns the list takes, its frame included. Beside a session (on
+/// Sessions and Needs you, or one open from another screen), as many as
+/// the longest name on the sessions
+/// list needs (a project's, a worktree's branch, a session's), from
+/// `LIST_LEAST` to `LIST_MOST`: every line counts, folded or not, and
+/// only names, not what changes as agents work (what one is doing, for
+/// how long, a pull request's checks), so the list keeps its width, and
+/// the session beside it its size, as the person goes about and agents
+/// work.
+pub(crate) fn list_width(app: &App, beside_session: bool, window: u16) -> u16 {
+    use crate::layout::{LIST_LEAST, LIST_MOST};
+    if !beside_session {
+        // No session beside it: tickets' titles are long, and take what
+        // the `window` spares.
+        let wide = u32::from(window) * 3 / 10;
+        return u16::try_from(wide.clamp(34, 48)).unwrap_or(48);
+    }
+    // On one line, a session's name, what it is doing and for how long
+    // share it.
+    if app.session_height() == 1 {
+        return LIST_MOST;
+    }
+    let wanted = app
+        .model
+        .rows()
+        .into_iter()
+        .map(|row| line_wants(app, row))
+        .max()
+        .unwrap_or(0);
+    u16::try_from(wanted + 2)
+        .unwrap_or(u16::MAX)
+        .clamp(LIST_LEAST, LIST_MOST)
+}
+
+/// The cells `row`'s line needs for its name or branch whole.
+fn line_wants(app: &App, row: Row) -> usize {
+    let edge = Span::raw(" ");
+    match row {
+        Row::Project(id) => {
+            3 + app
+                .model
+                .project(id)
+                .map_or(1, |project| project.name.chars().count())
+        }
+        Row::Worktree(id) => {
+            let branch = app.model.branch(id).unwrap_or("?");
+            // A run's container says its ticket and stage first.
+            let run = app.model.run_of(id).map_or(0, |run| {
+                format!("#{} {}  ", run.ticket.number, run.stage.label())
+                    .chars()
+                    .count()
+            });
+            pull_request::width(&worktree_lead(app, id, edge)) + run + branch.chars().count()
+        }
+        Row::Session(id) => app.model.session(id).map_or(0, |session| {
+            pull_request::width(&session_lead(edge))
+                + 2
+                + logos::width(app.graphics)
+                + session.title.chars().count()
+        }),
+    }
+}
+
 /// The agents' pictures on the first lines of `sessions`, whose rows take
 /// `heights` lines, shown in `area` from `offset`, each after its line's
 /// lead of `lead` cells and its mark, where the terminal draws pictures.

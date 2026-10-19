@@ -44,28 +44,28 @@ fn long_world() -> (World, muster_core::Session) {
 fn a_long_title_on_the_selected_line_rests_slides_to_its_end_and_starts_again() {
     let (mut world, _) = long_world();
     world.app.selected = Some(Row::Session(world.session.id));
-    // Eighteen cells for the title beside its status and its agent's
-    // mark in the 34-column list.
-    assert_eq!(crate::view::cut_name(&world.app), Some((37, 18)));
+    // Twenty cells for the title beside its status and its agent's mark
+    // in the 36-column list.
+    assert_eq!(crate::view::cut_name(&world.app), Some((37, 20)));
     assert!(world.app.wants_steps(), "a cut name asks for steps");
 
     assert!(!world.app.on_step(100), "first seen selected: it rests");
-    assert!(render(&world.app).contains("Fix the login red…  idle"));
+    assert!(render(&world.app).contains("Fix the login redir…  idle"));
     assert!(!world.app.on_step(116), "still resting");
     assert!(world.app.on_step(117), "it moves, and asks for a frame");
-    assert!(render(&world.app).contains("…x the login redi…  idle"));
+    assert!(render(&world.app).contains("…x the login redire…  idle"));
     assert!(!world.app.on_step(118), "a character each two steps");
     assert!(world.app.on_step(119));
     assert!(world.app.on_step(121));
-    assert!(render(&world.app).contains("…the login redire…  idle"));
+    assert!(render(&world.app).contains("…the login redirect…  idle"));
 
     // Its end in view, it rests there, then starts again.
-    world.app.on_step(115 + 38);
+    world.app.on_step(115 + 34);
     let screen = render(&world.app);
-    assert!(screen.contains("…ct loop on Safari  idle"), "{screen}");
-    assert!(!world.app.on_step(115 + 38 + 14), "resting at its end");
-    assert!(world.app.on_step(100 + 15 + 38 + 15));
-    assert!(render(&world.app).contains("Fix the login red…  idle"));
+    assert!(screen.contains("…rect loop on Safari  idle"), "{screen}");
+    assert!(!world.app.on_step(115 + 34 + 14), "resting at its end");
+    assert!(world.app.on_step(100 + 15 + 34 + 15));
+    assert!(render(&world.app).contains("Fix the login redir…  idle"));
 }
 
 #[test]
@@ -73,13 +73,19 @@ fn a_long_branch_on_the_selected_worktree_line_slides() {
     let (mut world, _) = long_world();
     let screen = render(&world.app);
     // Cut short with an ellipsis, as a title is, rather than at the border.
-    assert!(screen.contains("⎇ muster/issue-2640-fix-the…"), "{screen}");
+    assert!(
+        screen.contains("⎇ muster/issue-2640-fix-the-l…"),
+        "{screen}"
+    );
 
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     world.app.on_step(0);
-    world.app.on_step(15 + 2 * 19);
+    world.app.on_step(15 + 2 * 17);
     let screen = render(&world.app);
-    assert!(screen.contains("⎇ …x-the-login-redirect-loop"), "{screen}");
+    assert!(
+        screen.contains("⎇ …fix-the-login-redirect-loop"),
+        "{screen}"
+    );
 }
 
 #[test]
@@ -97,13 +103,16 @@ fn a_branch_slides_beside_its_pull_request() {
         .app
         .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(opened)));
     world.app.selected = Some(Row::Worktree(world.worktree.id));
-    // Fifteen cells for the branch, beside the pull request.
-    assert_eq!(crate::view::cut_name(&world.app), Some((45, 15)));
+    // Seventeen cells for the branch, beside the pull request.
+    assert_eq!(crate::view::cut_name(&world.app), Some((45, 17)));
     world.app.on_step(0);
-    assert!(render(&world.app).contains("⎇ muster/issue-2… #42 merged"));
-    world.app.on_step(15 + 2 * 30);
+    assert!(render(&world.app).contains("⎇ muster/issue-264… #42 merged"));
+    world.app.on_step(15 + 2 * 28);
     let screen = render(&world.app);
-    assert!(screen.contains("⎇ …-redirect-loop #42 merged"), "{screen}");
+    assert!(
+        screen.contains("⎇ …in-redirect-loop #42 merged"),
+        "{screen}"
+    );
 }
 
 #[test]
@@ -118,8 +127,11 @@ fn only_the_selected_line_slides() {
     world.app.on_step(0);
     world.app.on_step(40);
     let screen = render(&world.app);
-    assert!(screen.contains("Fix the login red…  idle"), "{screen}");
-    assert!(screen.contains("⎇ muster/issue-2640-fix-the…"), "{screen}");
+    assert!(screen.contains("Fix the login redir…  idle"), "{screen}");
+    assert!(
+        screen.contains("⎇ muster/issue-2640-fix-the-l…"),
+        "{screen}"
+    );
 }
 
 #[test]
@@ -180,7 +192,7 @@ fn with_motion_off_a_cut_name_stays_cut() {
     assert!(!world.app.wants_steps());
     world.app.on_step(0);
     assert!(!world.app.on_step(40));
-    assert!(render(&world.app).contains("Fix the login red…  idle"));
+    assert!(render(&world.app).contains("Fix the login redir…  idle"));
 }
 
 #[test]

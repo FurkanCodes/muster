@@ -112,7 +112,7 @@ fn a_window_widened_or_narrowed_resizes_the_session_to_where_it_is_drawn() {
         rows: 29,
     };
     let actions = world.app.on_resize(wide);
-    let pane = crate::view::session_area(window(wide));
+    let pane = crate::view::session_area(&world.app, window(wide));
     let beside = TermSize {
         cols: pane.width,
         rows: pane.height,
@@ -145,7 +145,7 @@ fn the_changes_take_the_whole_width_while_they_have_the_keys() {
     assert_eq!(world.app.mode, Mode::Changes);
     let areas = crate::view::browse_areas(&world.app, window(NARROW));
     assert_eq!(areas.list.width, 0);
-    assert_eq!(areas.preview.width, NARROW.cols);
+    assert_eq!(areas.changes.width, NARROW.cols);
     press(&mut world.app, KeyCode::Char('d'));
     let areas = crate::view::browse_areas(&world.app, window(NARROW));
     assert_eq!(areas.list.width, NARROW.cols);
@@ -172,6 +172,7 @@ fn the_width_is_one_of_muster_s_own_settings() {
         SettingRow::SideBySide,
         SettingRow::Colours,
         SettingRow::SessionLines,
+        SettingRow::Panels,
         SettingRow::Agents
     ]));
     world.app.settings_selected = Some(SettingRow::SideBySide);

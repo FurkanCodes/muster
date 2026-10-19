@@ -16,6 +16,7 @@ mod colours;
 mod folders;
 mod input;
 mod keys;
+mod layout;
 mod model;
 mod motion;
 mod mouse;

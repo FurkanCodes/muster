@@ -95,13 +95,13 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns() {
 fn beside_the_list_the_mouse_reaches_the_program_inside_its_pane() {
     let (mut world, id) = open_with_output(5, false);
     set_modes(&mut world, id, mouse_mode());
-    // The pane starts after the 34-column list and its own border, below
-    // the top bar: column 40, row 8 is the program's 5, 6; 1-based 6, 7.
-    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 40, 8));
+    // The pane starts after the 30-column list and its own border, below
+    // the top bar: column 36, row 8 is the program's 5, 6; 1-based 6, 7.
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 36, 8));
     assert_eq!(input(&actions), b"\x1b[<64;6;7M");
     let border = world
         .app
-        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 34, 8));
+        .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 30, 8));
     assert!(input(&border).is_empty(), "the border is Muster's");
     assert_eq!(world.app.mode, Mode::Terminal(id));
 }
@@ -344,7 +344,7 @@ fn over_the_preview_a_program_that_takes_the_mouse_scrolls_its_own_view() {
     press(&mut world.app, KeyCode::Char('Q'));
     world.app.selected = Some(Row::Session(id));
     set_modes(&mut world, id, mouse_mode());
-    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 40, 8));
+    let actions = world.app.on_mouse(mouse(MouseEventKind::ScrollUp, 36, 8));
     assert_eq!(input(&actions), b"\x1b[<64;6;7M");
     assert_eq!(world.app.screens[&id].scrolled_back(), 0);
     assert_eq!(world.app.mode, Mode::Browse, "the list keeps the keys");

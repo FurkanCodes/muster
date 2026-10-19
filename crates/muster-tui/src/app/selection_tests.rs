@@ -13,9 +13,9 @@ use super::tests::{SIZE, World, press, render};
 use super::{Action, Mode};
 use crate::model::Row;
 
-/// Beside the list, the session's screen starts after the 34-column list
+/// Beside the list, the session's screen starts after the 30-column list
 /// and the pane's border, below the top bar and the border.
-const PANE_X: u16 = 35;
+const PANE_X: u16 = 31;
 const PANE_Y: u16 = 2;
 
 fn left(kind: fn(MouseButton) -> MouseEventKind, column: u16, row: u16) -> MouseEvent {

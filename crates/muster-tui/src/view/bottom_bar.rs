@@ -125,6 +125,11 @@ fn fitting(hints: &[String], room: usize) -> String {
 
 /// The keys that do something for what is selected, most used first.
 fn hints(app: &App) -> Vec<String> {
+    if app.arranging.is_some() {
+        return vec![
+            "←→↑↓ move it  + − wider or narrower  ⇥ another  ⏎ keep  esc put back".to_owned(),
+        ];
+    }
     if let Mode::Menu(_) = app.mode {
         return vec!["↑↓ choose  ⏎ do it, or press its key  esc close".to_owned()];
     }

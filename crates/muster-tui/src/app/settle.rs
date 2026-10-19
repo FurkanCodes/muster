@@ -38,6 +38,15 @@ impl App {
         let focus = self.shown_session();
         if focus == self.attached {
             actions.extend(told);
+            // The panels moved, or the window changed size: the session
+            // shown is given the size it is shown at now.
+            // Not while a line between panels is dragged: as it is let go.
+            if self.attached.is_some()
+                && self.drag.is_none()
+                && self.fitted != Some(self.session_size())
+            {
+                actions.extend(self.fit_attached());
+            }
             return actions;
         }
         if let Some(old) = self.attached.take() {
@@ -59,6 +68,7 @@ impl App {
                     pixels: self.session_pixels(size),
                 }));
             }
+            self.fitted = Some(size);
             actions.push(Action::Send(ClientFrame::Attach {
                 session,
                 from_seq,

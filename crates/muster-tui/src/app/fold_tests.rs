@@ -13,14 +13,15 @@ use super::{Mode, View};
 use crate::model::Row;
 use crate::model::tests::{project, session, worktree};
 
-/// The list's line that holds `text`, without the pane beside it.
+/// The list's line that holds `text`, without the pane beside it: the
+/// world's list is 30 columns, as narrow as it goes.
 fn line_with(screen: &str, text: &str) -> String {
     let line: String = screen
         .lines()
         .find(|line| line.contains(text))
         .unwrap_or_else(|| panic!("no line with {text}:\n{screen}"))
         .chars()
-        .take(34)
+        .take(30)
         .collect();
     line.trim_end_matches('│').to_owned()
 }

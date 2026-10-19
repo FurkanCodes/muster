@@ -21,6 +21,7 @@ use muster_core::explain::{
     Deadline, DeadlineKind, Explanation, HoldView, MachineView, OpenWait, SignalSeen,
 };
 use muster_core::frame::{FrameDecoder, encode};
+use muster_core::layout::Layout;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Health, Hello, Incompatible,
     MouseEncoding, MouseTracking, PixelSize, Reply, ResourceReport, ServerFrame, SessionUsage,
@@ -245,6 +246,8 @@ fn preferences() -> Preferences {
         side_by_side_from: 120,
         palette: Palette::Terminal,
         session_lines: SessionLines::One,
+        panels: Layout::parse("session | list 30 | (changes / shell)").unwrap(),
+        list_folded: true,
     }
 }
 
@@ -465,6 +468,8 @@ fn commands() -> Vec<Command> {
         Command::ChangePreference(PreferenceChange::SideBySideFrom(0)),
         Command::ChangePreference(PreferenceChange::Palette(Palette::Terminal)),
         Command::ChangePreference(PreferenceChange::SessionLines(SessionLines::One)),
+        Command::ChangePreference(PreferenceChange::Panels(Layout::default())),
+        Command::ChangePreference(PreferenceChange::ListFolded(true)),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),

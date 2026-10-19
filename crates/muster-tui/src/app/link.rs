@@ -284,6 +284,8 @@ impl App {
                 self.side_by_side_changed(columns, outcome.map(drop));
             }
             (outcome, Then::LookChanged(change)) => self.look_changed(change, outcome.map(drop)),
+            (outcome, Then::ListFolded) => self.list_folded_kept(outcome.map(drop)),
+            (outcome, Then::PanelsKept) => self.panels_kept(outcome.map(drop)),
             (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Ok(changes));
             }

@@ -8,8 +8,9 @@ use muster_core::config::agents::AgentDefinition;
 use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::settings::{
-    LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NOTCH, ONLY_MINE, PreferenceChange,
-    Preferences, SIDE_BY_SIDE, SettingChange, SettingSource, TICKETS_FROM_KEYS, TRACKER,
+    LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NOTCH, ONLY_MINE, PANELS,
+    PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange, SettingSource, TICKETS_FROM_KEYS,
+    TRACKER,
 };
 
 /// The repository's settings file.
@@ -141,6 +142,8 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             side_by_side_from: config.side_by_side_from,
             palette: config.palette,
             session_lines: config.session_lines,
+            panels: config.panels,
+            list_folded: config.list_folded,
         },
         agents: config.agents,
     })
@@ -176,6 +179,15 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             let (table, key) = LOOK_SESSION_LINES;
             let count = i64::from(lines.count());
             edit::set_number_in(text.as_deref(), preferences::NEW_FILE, table, key, count)
+        }
+        PreferenceChange::Panels(layout) => {
+            let (table, key) = PANELS;
+            let value = layout.to_string();
+            edit::set_text_in(text.as_deref(), preferences::NEW_FILE, table, key, &value)
+        }
+        PreferenceChange::ListFolded(folded) => {
+            let (table, key) = LIST_FOLDED;
+            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *folded)
         }
     }
     .map_err(|error| invalid(error.to_string()))?;
@@ -287,6 +299,29 @@ mod tests {
         );
         change_preference(&config_dir, &PreferenceChange::SideBySideFrom(0)).unwrap();
         assert_eq!(preferences(&config_dir).unwrap().side_by_side_from, 0);
+    }
+
+    #[test]
+    fn the_panels_and_the_folded_list_are_the_person_s_own() {
+        use muster_core::layout::Layout;
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(&file, "[layout]\nside_by_side_from = 120 # mine\n").unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert_eq!((read.panels, read.list_folded), (Layout::default(), false));
+        let moved = Layout::parse("session | list 28 | (changes / shell)").unwrap();
+        change_preference(&config_dir, &PreferenceChange::Panels(moved.clone())).unwrap();
+        change_preference(&config_dir, &PreferenceChange::ListFolded(true)).unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert_eq!((read.panels, read.list_folded), (moved, true));
+        assert_eq!(read.side_by_side_from, 120, "the rest stays as written");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "[layout]\nside_by_side_from = 120 # mine\npanels = \"session | list 28 | (changes / shell)\"\n\
+             list_folded = true\n"
+        );
     }
 
     #[test]

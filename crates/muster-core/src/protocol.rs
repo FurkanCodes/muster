@@ -89,7 +89,11 @@
 //! session's line takes (`Preferences::palette` and
 //! `Preferences::session_lines`, fields older clients pass over;
 //! `PreferenceChange::Palette` and `PreferenceChange::SessionLines`, sent
-//! only to a daemon of 35 or later).
+//! only to a daemon of 35 or later); version 36 where the UI's panels are
+//! and whether its list is folded away (`Preferences::panels` and
+//! `Preferences::list_folded`, fields older clients pass over;
+//! `PreferenceChange::Panels` and `PreferenceChange::ListFolded`, sent only
+//! to a daemon of 36 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -108,7 +112,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 35;
+pub const PROTOCOL_VERSION: u32 = 36;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 

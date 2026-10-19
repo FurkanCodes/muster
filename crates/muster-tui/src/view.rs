@@ -1,5 +1,6 @@
 //! Drawing the app. Pure: reads the app, writes the frame.
 
+use muster_core::layout::Panel;
 use muster_core::num::fraction;
 use muster_core::{SessionStatus, WaitReason};
 use ratatui::Frame;
@@ -9,12 +10,14 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders};
 
 use crate::app::{App, Mode, View};
+use crate::layout::{Divider, Solved};
 use crate::motion;
 
 mod bottom_bar;
 mod changes;
 mod clashes;
 mod dialogs;
+mod drag;
 mod help;
 pub(crate) mod kep;
 pub(crate) mod logos;
@@ -35,8 +38,8 @@ mod version;
 use bottom_bar::{bottom_height, draw_bottom_bar};
 pub(crate) use menu::menu_area;
 use preview::draw_preview;
-pub(crate) use sessions::fold_column;
 use sessions::{draw_needs_you, draw_sessions};
+pub(crate) use sessions::{fold_column, list_width};
 use terminal::{draw_session, draw_terminal};
 
 /// The terminal area a session gets when it fills the screen: everything
@@ -49,76 +52,74 @@ pub(crate) fn terminal_area(area: Rect) -> Rect {
     }
 }
 
-/// Where the list view's parts are drawn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Where the list view's parts are drawn: the top and bottom bars, and
+/// each panel shown (an empty area for one that is not).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct BrowseAreas {
     pub(crate) top: Rect,
     pub(crate) list: Rect,
+    /// The session panel: the selected session's terminal, or what the
+    /// screen shows of the line selected.
     pub(crate) preview: Rect,
+    pub(crate) changes: Rect,
     pub(crate) bottom: Rect,
-}
-
-/// How the body of the window is shared between the list and the pane.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Shape {
-    /// The list, and the pane beside it.
-    SideBySide,
-    /// The list alone: a window too narrow for both.
-    List,
-    /// The pane alone, which has the keys, in a window too narrow for both.
-    Pane,
+    /// The lines between panels, which a drag moves.
+    pub(crate) dividers: Vec<Divider>,
 }
 
 /// The list view's layout in `area`, shared with the app so the mouse
 /// lands where things are drawn. While a session beside the list has the
 /// keys, the bottom bar keeps to one line, so the session keeps its size.
 pub(crate) fn browse_areas(app: &App, area: Rect) -> BrowseAreas {
-    let bottom = if matches!(app.mode, Mode::Terminal(_)) {
+    let typing = matches!(app.mode, Mode::Terminal(_));
+    let bottom = if typing {
         1
     } else {
         bottom_height(app, area.width)
     };
-    let shape = if !app.narrow() {
-        Shape::SideBySide
-    } else if app.pane_fills_width() {
-        Shape::Pane
-    } else {
-        Shape::List
-    };
-    layout(area, bottom, shape)
+    // The tickets' and the settings' lists have no session beside them,
+    // but one opened from there.
+    let beside_session = typing || matches!(app.view, View::Sessions | View::NeedsYou);
+    areas(app, area, bottom, beside_session)
 }
 
-/// Where a session's terminal is drawn beside the list in `area`, inside
-/// its border: the size its program is given.
-pub(crate) fn session_area(area: Rect) -> Rect {
-    layout(area, 1, Shape::SideBySide)
-        .preview
-        .inner(Margin::new(1, 1))
+/// Where a session's terminal is drawn in `area`, inside its border: the
+/// size its program is given. Measured as while it has the keys, with a
+/// bottom bar of one line, so the program keeps its size as the person
+/// goes into it and out.
+pub(crate) fn session_area(app: &App, area: Rect) -> Rect {
+    areas(app, area, 1, true).preview.inner(Margin::new(1, 1))
 }
 
-fn layout(area: Rect, bottom: u16, shape: Shape) -> BrowseAreas {
+fn areas(app: &App, area: Rect, bottom: u16, beside_session: bool) -> BrowseAreas {
     let [top, body, bottom] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),
         Constraint::Length(bottom),
     ])
     .areas(area);
-    // The list takes what its lines need, and the session beside it, where
-    // the person works with Claude Code, the rest.
-    let list_width = match shape {
-        Shape::SideBySide => u16::try_from((u32::from(body.width) * 3 / 10).clamp(34, 48))
-            .unwrap_or(48)
-            .min(body.width),
-        Shape::List => body.width,
-        Shape::Pane => 0,
+    let solved = if !app.narrow() {
+        app.solve_panels(body, list_width(app, beside_session, body.width))
+    } else if app.pane_fills_width() {
+        // Too narrow for both: the changes, which have the keys, or the
+        // list.
+        Solved {
+            panels: vec![(Panel::Changes, body)],
+            dividers: Vec::new(),
+        }
+    } else {
+        Solved {
+            panels: vec![(Panel::List, body)],
+            dividers: Vec::new(),
+        }
     };
-    let [list, preview] =
-        Layout::horizontal([Constraint::Length(list_width), Constraint::Min(0)]).areas(body);
     BrowseAreas {
         top,
-        list,
-        preview,
+        list: solved.of(Panel::List),
+        preview: solved.of(Panel::Session),
+        changes: solved.of(Panel::Changes),
         bottom,
+        dividers: solved.dividers,
     }
 }
 
@@ -141,39 +142,39 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
             .buffer_mut()
             .set_style(area, Style::default().fg(theme.text));
     }
+    let areas = browse_areas(app, area);
     let BrowseAreas {
         top,
         list,
         preview,
+        changes,
         bottom,
-    } = browse_areas(app, area);
+        ..
+    } = areas.clone();
     top_bar::draw_top_bar(frame, app, top);
-    match app.view {
-        View::Sessions => draw_sessions(frame, app, list),
-        View::NeedsYou => draw_needs_you(frame, app, list),
-        View::Tickets => tickets::draw_tickets(frame, app, list),
-        View::Settings => settings::draw_settings(frame, app, list),
+    if !list.is_empty() {
+        match app.view {
+            View::Sessions => draw_sessions(frame, app, list),
+            View::NeedsYou => draw_needs_you(frame, app, list),
+            View::Tickets => tickets::draw_tickets(frame, app, list),
+            View::Settings => settings::draw_settings(frame, app, list),
+        }
     }
-    if let Mode::Terminal(session) = app.mode {
-        draw_session(frame, app, session, preview, true);
-    } else if app.mode == Mode::Changes
-        || matches!(
-            app.mode,
-            Mode::Dialog(crate::app::Dialog::Undo { .. })
-                | Mode::Help(crate::app::Help {
-                    over_changes: true,
-                    ..
-                })
-        )
-    {
-        changes::draw_changes(frame, app, preview);
-    } else if app.view == View::Tickets {
-        tickets::draw_ticket_details(frame, app, preview);
-    } else if app.view == View::Settings {
-        settings::draw_setting_details(frame, app, preview);
-    } else {
-        draw_preview(frame, app, preview);
+    if !preview.is_empty() {
+        if let Mode::Terminal(session) = app.mode {
+            draw_session(frame, app, session, preview, true);
+        } else if app.view == View::Tickets {
+            tickets::draw_ticket_details(frame, app, preview);
+        } else if app.view == View::Settings {
+            settings::draw_setting_details(frame, app, preview);
+        } else {
+            draw_preview(frame, app, preview);
+        }
     }
+    if !changes.is_empty() {
+        changes::draw_changes(frame, app, changes);
+    }
+    drag::draw_moving(frame, app, &areas);
     draw_bottom_bar(frame, app, bottom);
     match &app.mode {
         Mode::Dialog(dialog) => dialogs::draw_dialog(frame, app, dialog, area),
@@ -218,7 +219,11 @@ pub(super) fn slid(text: &str, max: usize, by: usize) -> String {
 /// characters it has and how many it is given, for it to slide.
 pub(crate) fn cut_name(app: &App) -> Option<(usize, usize)> {
     let window = Rect::new(0, 0, app.terminal_size.cols, app.terminal_size.rows + 1);
-    let width = usize::from(browse_areas(app, window).list.width.saturating_sub(2));
+    let list = browse_areas(app, window).list;
+    if list.is_empty() {
+        return None;
+    }
+    let width = usize::from(list.width.saturating_sub(2));
     sessions::cut_name(app, width)
 }
 

@@ -409,7 +409,7 @@ impl App {
                     self.select_at(areas.list, event.row);
                     return Vec::new();
                 }
-                let inner = areas.preview.inner(Margin::new(1, 1));
+                let inner = areas.changes.inner(Margin::new(1, 1));
                 if showing_diff || !inner.contains(at) {
                     return Vec::new();
                 }
@@ -465,7 +465,9 @@ impl App {
 
     /// How many lines the pane shows inside its border.
     pub(super) fn pane_rows(&self) -> usize {
-        usize::from(self.session_size().rows).max(1)
+        let window = Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        let changes = crate::view::browse_areas(self, window).changes;
+        usize::from(changes.height.saturating_sub(2)).max(1)
     }
 
     /// The daemon's answer with the pane's listing.

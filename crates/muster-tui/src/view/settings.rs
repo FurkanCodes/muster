@@ -31,6 +31,8 @@ const SIDE_BY_SIDE: &str = "Session beside the list from";
 const COLOURS: &str = "Colours";
 /// What the setting of how many lines a session takes is called.
 const SESSION_LINES: &str = "Lines for each session";
+/// What the setting of where the panels are is called.
+const PANELS: &str = "Panels";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = list_block(app, "settings", app.list_has_keys());
@@ -80,6 +82,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::SideBySide => labelled(SIDE_BY_SIDE, side_by_side_value(app), width),
         SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
         SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
+        SettingRow::Panels => labelled(PANELS, panels_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -229,6 +232,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::SideBySide) => side_by_side_text(app),
         Some(SettingRow::Colours) => colours_text(app),
         Some(SettingRow::SessionLines) => session_lines_text(app),
+        Some(SettingRow::Panels) => panels_text(app),
         Some(SettingRow::Muster | SettingRow::Agents | SettingRow::Notch) => agents_text(app),
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
@@ -241,6 +245,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::SideBySide => side_by_side_text(app),
                 SettingRow::Colours => colours_text(app),
                 SettingRow::SessionLines => session_lines_text(app),
+                SettingRow::Panels => panels_text(app),
             },
             Some(Settings::Failed(error)) => Text::from(vec![
                 Line::from(
@@ -450,6 +455,45 @@ fn agents_text(app: &App) -> Text<'static> {
     Text::from(lines)
 }
 
+/// Where the panels are: as at first, or moved, and the list folded.
+fn panels_value(app: &App) -> Span<'static> {
+    let moved = *app.panels() != muster_core::layout::Layout::default();
+    match (moved, app.list_folded()) {
+        (false, false) => Span::from("as at first").dim(),
+        (true, false) => Span::from("moved"),
+        (false, true) => Span::from("list folded"),
+        (true, true) => Span::from("moved, list folded"),
+    }
+}
+
+fn panels_text(app: &App) -> Text<'static> {
+    let folded = if app.list_folded() {
+        "folded away"
+    } else {
+        "beside them"
+    };
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{PANELS}  ")).bold(),
+            panels_value(app),
+        ]),
+        Line::from(
+            "Drag a panel by its title to another edge of the window or of another panel, and \
+             the line between two to share out their place. m moves them with the keys. \
+             Ctrl+\\ folds the list away and brings it back, as you type in a session too.",
+        ),
+        Line::from(""),
+        detail("Now", app.panels().to_string()),
+        detail("The list", folded.to_owned()),
+        detail(
+            "Saved in",
+            app.model.preferences().file.display().to_string(),
+        ),
+        Line::from(""),
+        Line::from("⏎ puts every panel back where it was at first.").dim(),
+    ])
+}
+
 fn side_by_side_text(app: &App) -> Text<'static> {
     let preferences = app.model.preferences();
     let does = match preferences.side_by_side_from {
@@ -645,6 +689,7 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
                 SessionLines::One => "⏎ two lines",
             });
         }
+        Some(SettingRow::Panels) => hints.push("⏎ put back as at first"),
         Some(
             SettingRow::Project(_)
             | SettingRow::Muster

@@ -19,9 +19,10 @@ pub(super) const SIZE: TermSize = TermSize {
 };
 
 /// The size of a session beside the list in a window of `SIZE`: what is
-/// left of 100 columns by the 34-column list, and of 29 rows by the bottom
-/// bar, inside the pane's border.
-pub(super) const PANE: TermSize = TermSize { cols: 64, rows: 26 };
+/// left of 100 columns by the list, as narrow as it goes for the world's
+/// short names (30 columns), and of 29 rows by the bottom bar, inside the
+/// pane's border.
+pub(super) const PANE: TermSize = TermSize { cols: 68, rows: 26 };
 
 pub(super) struct World {
     pub(super) app: App,
