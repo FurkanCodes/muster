@@ -36,7 +36,7 @@ use objc2_app_kit::{
 use objc2_foundation::{MainThreadMarker, NSObject, NSPoint, NSRect, NSSize};
 use tokio::sync::mpsc;
 
-use crate::board::Board;
+use crate::board::{Board, Row};
 use crate::geometry::{self, Notch, Rect, SIDE};
 use crate::hover::Hover;
 use crate::link::{self, Ended, ToScreen};
@@ -51,6 +51,9 @@ const NOTE_STEPS: u64 = 30;
 const MOST_LINES: usize = crate::board::MOST_ROWS + 2;
 /// How many times a new question's count fades down and back.
 const PULSES: f32 = 4.0;
+/// How long the notch shows what newly needs the person, unasked, in
+/// steps: three seconds.
+const PEEK_STEPS: u64 = 30;
 
 thread_local! {
     /// The notch on screen; on the main thread only.
@@ -225,8 +228,14 @@ struct Screen {
     drawn: Drawn,
     /// Where the panel is, once placed.
     placed: Option<Rect>,
-    /// A new question came, for the count to draw the eye to.
-    asked_anew: bool,
+    /// Something new needs the person, for the count to draw the eye to.
+    alerted: bool,
+    /// What newly needs the person, shown a moment unasked, and the step
+    /// it is shown until.
+    peek: Vec<Row>,
+    peek_until: u64,
+    /// The board the open list shows, and its lines, for a click to find.
+    listed: Option<(Board, usize)>,
     /// Where the notch was when last drawn.
     notch: Option<Notch>,
     /// Where the sessions the person picks go.
@@ -291,7 +300,10 @@ impl Screen {
             hover: Hover::default(),
             drawn: Drawn::Hidden,
             placed: None,
-            asked_anew: false,
+            alerted: false,
+            peek: Vec::new(),
+            peek_until: 0,
+            listed: None,
             notch: None,
             picks,
         }
@@ -300,7 +312,20 @@ impl Screen {
     fn update(&mut self, update: ToScreen) {
         match update {
             ToScreen::Board { board, step } => {
-                self.asked_anew |= board.asks_anew(&self.board);
+                let fresh = board.fresh(&self.board);
+                self.alerted |= board.asks_anew(&self.board) || !fresh.is_empty();
+                if !fresh.is_empty() {
+                    self.peek_until = step + PEEK_STEPS;
+                }
+                // What is peeked at as it is now, and only while it is.
+                let mut peek: Vec<Row> = std::mem::take(&mut self.peek)
+                    .iter()
+                    .chain(&fresh)
+                    .filter_map(|row| board.rows.iter().find(|now| now.key == row.key))
+                    .cloned()
+                    .collect();
+                peek.dedup_by_key(|row| row.key);
+                self.peek = peek;
                 self.board = board;
                 self.step = step;
             }
@@ -309,9 +334,21 @@ impl Screen {
         self.draw();
     }
 
-    /// The lines of the list: its sessions, how many more, and a note.
-    fn line_count(&self) -> usize {
-        self.board.rows.len() + usize::from(self.board.more > 0) + usize::from(self.said.is_some())
+    /// The lines of `board`'s list: its rows, how many more, and a note.
+    fn line_count(&self, board: &Board) -> usize {
+        board.rows.len() + usize::from(board.more > 0) + usize::from(self.said.is_some())
+    }
+
+    /// What newly needs the person, as a board of its own, while it is
+    /// shown unasked.
+    fn peeking(&self) -> Option<Board> {
+        (!self.hover.is_open() && !self.peek.is_empty() && self.step < self.peek_until).then(|| {
+            Board {
+                rows: self.peek.clone(),
+                more: 0,
+                ..self.board.clone()
+            }
+        })
     }
 
     fn draw(&mut self) {
@@ -328,31 +365,48 @@ impl Screen {
             self.hide();
             return;
         };
-        let lines = self.line_count();
         let at = NSEvent::mouseLocation();
         let point = (at.x, at.y);
-        let open = self
-            .hover
-            .at(notch.over(self.hover.is_open(), lines, point), self.step);
-        let frame = self.place(notch);
-        self.reshape(notch, frame, open.then_some(lines));
-        // It takes clicks only where it is drawn.
-        self.panel
-            .setIgnoresMouseEvents(!notch.over(open, lines, point));
-        self.draw_sides(notch, frame);
-        let shown = match self.drawn {
-            Drawn::Open(lines) => lines,
-            // Closing, the list is drawn as it was until it has faded.
-            Drawn::Hidden | Drawn::Rest => lines,
+        // Pointed at, the whole list; else, a moment, what newly needs the
+        // person; else at rest.
+        let peeking = self.peeking();
+        let peek_lines = peeking.as_ref().map(|peek| self.line_count(peek));
+        let lines = self.line_count(&self.board);
+        let over = match peek_lines {
+            Some(peek) if !self.hover.is_open() => notch.over(true, peek, point),
+            _ => notch.over(self.hover.is_open(), lines, point),
         };
-        self.list.draw(&list::Drawn {
-            board: &self.board,
-            notch,
-            frame,
-            lines: shown,
-            pointed: notch.line_at(shown, point).filter(|_| open),
-            note: self.said.as_ref().map(|(text, _)| text.as_str()),
-        });
+        let open = self.hover.at(over, self.step);
+        if open || peeking.is_none() {
+            self.peek.clear();
+        }
+        let listed = if open {
+            Some((self.board.clone(), lines))
+        } else {
+            peeking.zip(peek_lines)
+        };
+        let frame = self.place(notch);
+        self.reshape(notch, frame, listed.as_ref().map(|(_, lines)| *lines));
+        // It takes clicks only where it is drawn.
+        let drawn_lines = listed.as_ref().map(|(_, lines)| *lines);
+        self.panel.setIgnoresMouseEvents(!notch.over(
+            drawn_lines.is_some(),
+            drawn_lines.unwrap_or(0),
+            point,
+        ));
+        self.draw_sides(notch, frame);
+        // Closing, the list is drawn as it was until it has faded.
+        if let Some((board, lines)) = &listed {
+            self.list.draw(&list::Drawn {
+                board,
+                notch,
+                frame,
+                lines: *lines,
+                pointed: notch.line_at(*lines, point),
+                note: self.said.as_ref().map(|(text, _)| text.as_str()),
+            });
+        }
+        self.listed = listed;
         if !self.panel.isVisible() {
             self.panel.orderFrontRegardless();
         }
@@ -430,15 +484,27 @@ impl Screen {
                 height,
             );
             self.asking.say(&format!("{} asking you", board.asking));
-            if self.asked_anew
-                && let Some(layer) = self.asking.field.layer()
-            {
-                shape::pulse(&layer, PULSES);
-            }
+        } else if board.troubles > 0 {
+            // No question, but trouble in the work.
+            self.asking.centre(
+                &format!("!{}", board.troubles),
+                Colour::Asking,
+                left + SIDE / 2.0 + 1.0,
+                y,
+                height,
+            );
+            self.asking
+                .say(&format!("{} conflicts or failed checks", board.troubles));
         } else {
             self.asking.hide();
         }
-        self.asked_anew = false;
+        if self.alerted
+            && (board.asking > 0 || board.troubles > 0)
+            && let Some(layer) = self.asking.field.layer()
+        {
+            shape::pulse(&layer, PULSES);
+        }
+        self.alerted = false;
 
         let middle = right - SIDE / 2.0 - 1.0;
         if board.working > 0 {
@@ -477,30 +543,31 @@ impl Screen {
         }
     }
 
-    /// A click at `point`, in screen coordinates: on the closed notch it
-    /// opens the list at once; on a listed session it shows it in the
-    /// Muster window looked at last, and the list closes.
+    /// A click at `point`, in screen coordinates: on a listed line it
+    /// shows its session in the Muster window looked at last, and the list
+    /// closes; elsewhere on the closed notch it opens the list at once.
     fn clicked(&mut self, point: (f64, f64)) {
         let Some(notch) = self.notch else {
             return;
         };
-        if !self.hover.is_open() {
-            if notch.compact().contains(point) {
+        let row = self.listed.as_ref().and_then(|(board, lines)| {
+            notch
+                .line_at(*lines, point)
+                .and_then(|line| board.rows.get(line))
+        });
+        let Some(row) = row else {
+            if !self.hover.is_open() && notch.compact().contains(point) {
                 self.hover.open_now();
+                self.peek.clear();
                 self.draw();
             }
-            return;
-        }
-        let Some(row) = notch
-            .line_at(self.line_count(), point)
-            .and_then(|line| self.board.rows.get(line))
-        else {
             return;
         };
         if self.picks.try_send(row.session).is_err() {
             self.said = Some(("Muster is busy; try again.".to_owned(), self.step));
         } else {
             self.hover.close();
+            self.peek.clear();
         }
         self.draw();
     }
