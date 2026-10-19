@@ -1,6 +1,6 @@
 # Muster — architecture
 
-Draft for milestones 1–2. What Muster does and why lives in [PRODUCT.md](PRODUCT.md) (`PRD-*`). This file says how it is built (`ARC-*`). The study of Nebula that informed it is in [docs/research/nebula-study.md](docs/research/nebula-study.md); Nebula is MIT-licensed, and if any of its code is ever copied, its notice goes into `NOTICE`.
+Draft for milestones 1–2. What Muster does and why lives in [PRODUCT.md](PRODUCT.md) (`PRD-*`). This file says how it is built (`ARC-*`). Nebula, which informed it, is MIT-licensed; if any of its code is ever copied, its notice goes into `NOTICE`.
 
 ## 1. Shape
 

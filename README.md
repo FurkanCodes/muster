@@ -261,7 +261,7 @@ The suite (over 700 tests) includes end-to-end tests that run the real binary in
 
 ## Credits
 
-Muster learned from [Nebula](https://github.com/AgentSystemLabs/nebula) and adapts some of its code — terminal query answering, key encoding, Claude Code's hook events and transcript lookup — under the MIT license; see [NOTICE](NOTICE). The study that informed the design is in [docs/research/nebula-study.md](docs/research/nebula-study.md).
+Muster learned from [Nebula](https://github.com/AgentSystemLabs/nebula) and adapts some of its code — terminal query answering, key encoding, Claude Code's hook events and transcript lookup — under the MIT license; see [NOTICE](NOTICE).
 
 ## License
 

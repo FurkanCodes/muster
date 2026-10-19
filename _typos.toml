@@ -3,7 +3,6 @@
 [files]
 extend-exclude = [
     # Reference material and research notes, quoted as written.
-    "docs/research/",
     "research_notes/",
     "reports/",
     ".codegraph/",
