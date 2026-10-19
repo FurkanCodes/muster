@@ -623,6 +623,7 @@ impl App {
             } => self.undo_key(workspace, &plan, key),
             Dialog::Tidy { workspace, harness } => self.tidy_key(workspace, harness, key),
             Dialog::Rename { session, name } => self.rename_key(session, name, key),
+            Dialog::Keys(rebinding) => self.rebind_key(rebinding, key),
             Dialog::NamingModel {
                 agent,
                 model,

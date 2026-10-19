@@ -54,6 +54,10 @@ impl App {
     pub(crate) fn on_frame(&mut self, frame: ServerFrame) -> Vec<Action> {
         let mut news = None;
         let mut copied = None;
+        let settings = matches!(
+            frame,
+            ServerFrame::Snapshot(_) | ServerFrame::Delta(Delta::Preferences(_))
+        );
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
             ServerFrame::Delta(delta) => {
@@ -109,6 +113,12 @@ impl App {
             }
             ServerFrame::Reveal { session } => return self.reveal(session),
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
+        }
+        if settings {
+            // The person's keys, as the daemon keeps them; ones that do not
+            // read leave Muster's, the Settings screen saying why.
+            self.keymap =
+                muster_core::keys::Keymap::with(&self.model.preferences().keys).unwrap_or_default();
         }
         let mut actions: Vec<Action> = news.into_iter().collect();
         if let Some(text) = copied {

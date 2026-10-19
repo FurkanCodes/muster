@@ -21,6 +21,7 @@ mod notch;
 mod panels;
 mod picker;
 mod pointer;
+mod rebind;
 mod rename;
 pub(crate) mod selection;
 mod settings;
@@ -39,6 +40,7 @@ pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use help::{Help, HelpLine};
 pub(crate) use menu::Menu;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
+pub(crate) use rebind::{RebindRow, Rebinding, rebind_rows};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
@@ -90,6 +92,8 @@ mod pointer_tests;
 mod project_tests;
 #[cfg(test)]
 mod pull_request_tests;
+#[cfg(test)]
+mod rebind_tests;
 #[cfg(test)]
 mod selection_tests;
 #[cfg(test)]
@@ -249,6 +253,8 @@ pub(crate) enum Dialog {
         session: SessionId,
         name: LineInput,
     },
+    /// Every action and its keys, for the person to set them.
+    Keys(Rebinding),
     /// The model `agent` names chats with, as the person types or picks
     /// it among those it lists, once the daemon says.
     NamingModel {

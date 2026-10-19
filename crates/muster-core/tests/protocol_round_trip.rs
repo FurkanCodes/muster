@@ -254,6 +254,7 @@ fn preferences() -> Preferences {
             agent: Some("claude".to_owned()),
             model: Some("sonnet".to_owned()),
         },
+        keys: [("new_session".to_owned(), vec!["N".to_owned()])].into(),
     }
 }
 
@@ -484,6 +485,15 @@ fn commands() -> Vec<Command> {
         Command::ListModels {
             agent: "opencode".to_owned(),
         },
+        Command::ChangePreference(PreferenceChange::Keys {
+            action: "leave_session".to_owned(),
+            keys: Some(vec!["Q".to_owned(), "ctrl-]".to_owned()]),
+        }),
+        Command::ChangePreference(PreferenceChange::Keys {
+            action: "rename".to_owned(),
+            keys: None,
+        }),
+        Command::ChangePreference(PreferenceChange::AllKeysBack),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),

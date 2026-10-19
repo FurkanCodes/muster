@@ -176,6 +176,7 @@ fn the_width_is_one_of_muster_s_own_settings() {
         SettingRow::NamesByAgent,
         SettingRow::NamedBy,
         SettingRow::NamingModel,
+        SettingRow::Keys,
         SettingRow::Agents
     ]));
     world.app.settings_selected = Some(SettingRow::SideBySide);

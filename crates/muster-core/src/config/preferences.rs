@@ -5,6 +5,8 @@
 //! layout and look (`[layout]`, `[look]`). Read strictly, as a project's
 //! are; parsing does no IO.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 use super::ConfigError;
@@ -41,6 +43,8 @@ pub struct MusterConfig {
     pub list_folded: bool,
     /// How chats are named by an agent (`[names]`).
     pub naming: Naming,
+    /// The keys the person set, by action, as written (`[keys]`).
+    pub keys: BTreeMap<String, Vec<String>>,
 }
 
 impl Default for MusterConfig {
@@ -54,6 +58,7 @@ impl Default for MusterConfig {
             panels: Layout::default(),
             list_folded: false,
             naming: Naming::default(),
+            keys: BTreeMap::new(),
         }
     }
 }
@@ -71,6 +76,17 @@ struct File {
     look: Look,
     #[serde(default)]
     names: Names,
+    /// Each action's key, or its keys: `new_session = "N"`,
+    /// `leave_session = ["Q", "ctrl-]"]`.
+    #[serde(default)]
+    keys: BTreeMap<String, OneOrMore>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum OneOrMore {
+    One(String),
+    More(Vec<String>),
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -149,6 +165,18 @@ impl MusterConfig {
             }
             text => Ok(text.map(|text| text.trim().to_owned())),
         };
+        let keys: BTreeMap<String, Vec<String>> = read
+            .keys
+            .into_iter()
+            .map(|(action, keys)| {
+                let keys = match keys {
+                    OneOrMore::One(key) => vec![key],
+                    OneOrMore::More(keys) => keys,
+                };
+                (action, keys)
+            })
+            .collect();
+        crate::keys::Keymap::with(&keys).map_err(|error| invalid(&error.to_string()))?;
         let default = Self::default();
         let naming = Naming {
             by_agent: read.names.by_agent.unwrap_or(default.naming.by_agent),
@@ -167,6 +195,7 @@ impl MusterConfig {
             panels,
             list_folded: read.layout.list_folded.unwrap_or(default.list_folded),
             naming,
+            keys,
         })
     }
 }
@@ -280,6 +309,32 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("names.model must be one line"), "{error}");
+    }
+
+    #[test]
+    fn the_person_s_keys_read_one_or_more_and_a_clash_is_named() {
+        let read = MusterConfig::parse(
+            Some("[keys]\nnew_session = \"N\"\nleave_session = [\"Q\", \"alt-q\"]\n"),
+            "f",
+        )
+        .unwrap();
+        assert_eq!(read.keys["new_session"], ["N"]);
+        assert_eq!(read.keys["leave_session"], ["Q", "alt-q"]);
+        let error = MusterConfig::parse(Some("[keys]\nnew_session = \"d\"\n"), "s.toml")
+            .unwrap_err()
+            .to_string();
+        assert!(error.starts_with("s.toml"), "{error}");
+        assert!(
+            error.contains("keys.new_session: d is show_changes's"),
+            "{error}"
+        );
+        let error = MusterConfig::parse(Some("[keys]\nfly = \"f\"\n"), "s.toml")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("keys.fly is not something a key does"),
+            "{error}"
+        );
     }
 
     #[test]

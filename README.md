@@ -55,6 +55,8 @@ muster
 
 `muster` opens the UI and starts the daemon if none is running. Press `a` to add a project: the dialog lists the folders where you started it, git repositories marked. Type to narrow them, `↑` `↓` to choose one, `⇥` to open it and `⇧⇥` to go up a folder; `⏎` adds the chosen folder, or the folder typed when none is chosen (at first, the one you started in). Any folder can be a project, a git repository or not.
 
+Every key below is Muster's until you set another: *Keys* on the *Settings* screen, or `[keys]` in `~/.config/muster/settings.toml` (`new_session = "N"`, `leave_session = ["Q", "alt-q"]`). The hints, the help and the menus always show your keys.
+
 | Key | In the list |
 |---|---|
 | `↑` `↓` | move (the selected session streams in beside the list) |
@@ -107,6 +109,7 @@ The panels are yours to arrange: drag one by its title to another edge of the wi
 | `⏎` `space` | turn the selected setting on or off, per project: *Only my tickets*, which lists only the tickets assigned to you, in whichever tracker the project's tickets are; *Branches with muster/*, whether the branches Muster makes start with `muster/`; and, on a Mac, Muster's own *Agents in the notch* |
 | `←` `→` | on *Session beside the list from*, a smaller or a larger width (`⏎` goes to the next): in a window narrower than it, the list takes the whole window and `⏎` opens a session over it |
 | `⏎` | on *Panels*, every panel back where it was at first |
+| `⏎` | on *Keys*, every key by what it does: `⏎` on one and then the key you want sets it (refused where another action has it on the same screen), `⌫` puts it back, `Shift-R` puts every key back |
 | `⏎` | on *Chats named by an agent*, turn it on or off; on *Named by*, the next agent that can name chats (each session's own first); on *Its model*, type the model or pick one it offers (`⇥`) |
 | `r` | read the settings again, after editing a file by hand: yours for the projects, and Muster's own, with the agents you added (*Your agents* says what is there, or which key does not read) |
 

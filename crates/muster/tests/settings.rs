@@ -457,3 +457,41 @@ async fn where_the_panels_are_and_the_folded_list_are_the_person_s_own() {
     assert_eq!(snapshot.preferences.panels, moved);
     assert!(snapshot.preferences.list_folded);
 }
+
+#[tokio::test]
+async fn the_person_s_keys_are_kept_and_a_clash_is_refused() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let snapshot = connection.subscribe().await.unwrap();
+    assert!(snapshot.preferences.keys.is_empty());
+    let set = |action: &str, key: &str| {
+        Command::ChangePreference(PreferenceChange::Keys {
+            action: action.to_owned(),
+            keys: Some(vec![key.to_owned()]),
+        })
+    };
+    assert_eq!(
+        connection.command(set("new_session", "N")).await.unwrap(),
+        Reply::Done
+    );
+    let refused = refused(&mut connection, set("rename", "d")).await;
+    assert!(
+        refused.message.contains("show_changes"),
+        "{}",
+        refused.message
+    );
+    let file = sandbox.paths().config_dir.join("settings.toml");
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        written.contains("[keys]\nnew_session = [\"N\"]"),
+        "{written}"
+    );
+    assert!(!written.contains("rename"), "{written}");
+    // Kept across a restart.
+    drop(connection);
+    drop(daemon);
+    let daemon = sandbox.start();
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    assert_eq!(snapshot.preferences.keys["new_session"], ["N"]);
+}

@@ -39,6 +39,8 @@ const NAMES_BY_AGENT: &str = "Chats named by an agent";
 const NAMED_BY: &str = "Named by";
 /// What the setting of the model it names them with is called.
 const NAMING_MODEL: &str = "Its model";
+/// What the setting of the keys is called.
+const KEYS: &str = "Keys";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = list_block(app, "settings", app.list_has_keys());
@@ -92,6 +94,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::NamesByAgent => labelled(NAMES_BY_AGENT, by_agent_value(app), width),
         SettingRow::NamedBy => labelled(NAMED_BY, Span::from(app.namer_label()), width),
         SettingRow::NamingModel => labelled(NAMING_MODEL, naming_model_value(app), width),
+        SettingRow::Keys => labelled(KEYS, keys_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -242,6 +245,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::Colours) => colours_text(app),
         Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Panels) => panels_text(app),
+        Some(SettingRow::Keys) => keys_text(app),
         Some(SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel) => {
             naming_text(app)
         }
@@ -258,6 +262,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Colours => colours_text(app),
                 SettingRow::SessionLines => session_lines_text(app),
                 SettingRow::Panels => panels_text(app),
+                SettingRow::Keys => keys_text(app),
                 SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
                     naming_text(app)
                 }
@@ -476,6 +481,38 @@ fn agents_text(app: &App) -> Text<'static> {
         .dim(),
     ]);
     Text::from(lines)
+}
+
+/// Whose keys they are: Muster's, or how many the person set.
+fn keys_value(app: &App) -> Span<'static> {
+    match app.model.preferences().keys.len() {
+        0 => Span::from("Muster's").dim(),
+        1 => Span::from("1 of yours"),
+        set => Span::from(format!("{set} of yours")),
+    }
+}
+
+/// What setting the keys does, and where they are kept.
+fn keys_text(app: &App) -> Text<'static> {
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{KEYS}  ")).bold(),
+            keys_value(app),
+        ]),
+        Line::from(
+            "Every key of every screen can be another: ⏎ lists them, by what they do. A key \
+             another action has on the same screen is refused, and in a session a key needs \
+             Ctrl or Alt, or is a capital, as the rest go to its program. The hints, the help \
+             and the menus show your keys.",
+        ),
+        Line::from(""),
+        detail(
+            "Saved in",
+            app.model.preferences().file.display().to_string(),
+        ),
+        Line::from(""),
+        Line::from("Moving about (the arrows, the page keys) and ⏎ stay as they are.").dim(),
+    ])
 }
 
 /// Whether an agent names chats.
@@ -788,6 +825,7 @@ pub(super) fn hints(app: &App) -> Vec<String> {
         }
         Some(SettingRow::NamedBy) => hints.push("⏎ next agent"),
         Some(SettingRow::NamingModel) => hints.push("⏎ choose"),
+        Some(SettingRow::Keys) => hints.push("⏎ set them"),
         Some(
             SettingRow::Project(_)
             | SettingRow::Muster

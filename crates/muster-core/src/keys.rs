@@ -165,6 +165,18 @@ actions! {
 }
 
 impl Action {
+    /// Where it is listed among the keys: on every list, on the lists of
+    /// sessions, or on one screen.
+    pub fn group(self) -> &'static str {
+        match self.screens() {
+            [Screen::InSession, ..] => "In a session",
+            screens if screens.len() >= 3 => "Anywhere",
+            [Screen::Sessions, Screen::NeedsYou] => "Sessions and Needs you",
+            [only, ..] => only.title(),
+            [] => "",
+        }
+    }
+
     /// The action named `name` in `[keys]`.
     pub fn named(name: &str) -> Option<Self> {
         Self::ALL
@@ -556,6 +568,26 @@ mod tests {
                 matches!(Chord::parse(not), Err(KeysError::NotAKey(_))),
                 "{not:?}"
             );
+        }
+    }
+
+    #[test]
+    fn each_action_is_listed_once_under_where_it_works() {
+        assert_eq!(Action::Quit.group(), "Anywhere");
+        assert_eq!(Action::Back.group(), "Anywhere");
+        assert_eq!(Action::FoldList.group(), "Anywhere");
+        assert_eq!(Action::NewSession.group(), "Sessions and Needs you");
+        assert_eq!(Action::Tidy.group(), "Sessions");
+        assert_eq!(Action::CloseTicket.group(), "Tickets");
+        assert_eq!(Action::PutBack.group(), "In the changes");
+        assert_eq!(Action::LeaveSession.group(), "In a session");
+        // Each group's actions come together.
+        let mut seen: Vec<&str> = Vec::new();
+        for action in Action::ALL {
+            if seen.last() != Some(&action.group()) {
+                assert!(!seen.contains(&action.group()), "{} again", action.group());
+                seen.push(action.group());
+            }
         }
     }
 

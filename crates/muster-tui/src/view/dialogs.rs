@@ -60,6 +60,10 @@ impl<'a> Shape<'a> {
 }
 
 pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, area: Rect) {
+    if let Dialog::Keys(rebinding) = dialog {
+        super::rebind::draw_rebinding(frame, app, rebinding, area);
+        return;
+    }
     let width = area.width.saturating_sub(4).min(72);
     let inner_width = width.saturating_sub(2).max(1);
     let Shape {
@@ -180,6 +184,8 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             model,
             listed,
         } => naming_model(app, agent, model, listed.as_ref()),
+        // Drawn over the whole screen instead (`draw_dialog`).
+        Dialog::Keys(_) => Shape::new(" Keys ", Vec::new(), None),
         Dialog::Rename { name, .. } => Shape {
             hint: "⏎ rename   esc cancel",
             ..Shape::new(

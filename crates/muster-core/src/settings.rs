@@ -160,6 +160,11 @@ pub struct Preferences {
     /// How chats are named by an agent (`[names]`). From protocol 37.
     #[serde(default)]
     pub naming: Naming,
+    /// The keys the person set, by action, as written (`[keys]`,
+    /// `muster_core::keys`): the actions not named keep Muster's. From
+    /// protocol 38.
+    #[serde(default)]
+    pub keys: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 /// How chats are named by an agent (`PRODUCT.md` §6): the first line of
@@ -212,6 +217,7 @@ impl Default for Preferences {
             panels: Layout::default(),
             list_folded: false,
             naming: Naming::default(),
+            keys: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -362,7 +368,23 @@ pub enum PreferenceChange {
         agent: Option<String>,
         model: Option<String>,
     },
+    /// An action's keys, as written (`ctrl-]`), or `None` for Muster's own.
+    /// From protocol 38.
+    Keys {
+        action: String,
+        keys: Option<Vec<String>>,
+    },
+    /// Every key as Muster has it. From protocol 38.
+    AllKeysBack,
 }
+
+/// The first protocol whose daemon keeps [`Preferences::keys`] and takes
+/// [`PreferenceChange::Keys`] and [`PreferenceChange::AllKeysBack`]
+/// (`ARC-09`).
+pub const KEYS_PROTOCOL: u32 = 38;
+
+/// Where the person's keys are written: `[keys]`.
+pub const KEYS: &str = "keys";
 
 /// The first protocol whose daemon keeps [`Preferences::panels`] and
 /// [`Preferences::list_folded`] and takes [`PreferenceChange::Panels`] and

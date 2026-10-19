@@ -53,6 +53,8 @@ pub(crate) enum SettingRow {
     NamedBy,
     /// The model it names them with.
     NamingModel,
+    /// The keys, Muster's and the person's.
+    Keys,
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -74,6 +76,7 @@ impl SettingRow {
             | Self::NamesByAgent
             | Self::NamedBy
             | Self::NamingModel
+            | Self::Keys
             | Self::Agents => None,
         }
     }
@@ -120,6 +123,7 @@ impl App {
             (self.naming_known(), SettingRow::NamesByAgent),
             (self.naming_known(), SettingRow::NamedBy),
             (self.naming_known(), SettingRow::NamingModel),
+            (self.keys_known(), SettingRow::Keys),
             (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
         ];
         if self.model.loaded() && own.iter().any(|(known, _)| *known) {
@@ -144,6 +148,7 @@ impl App {
                 Some(SettingRow::NamesByAgent) => return self.toggle_names_by_agent(),
                 Some(SettingRow::NamedBy) => return self.next_namer(),
                 Some(SettingRow::NamingModel) => return self.choose_naming_model(),
+                Some(SettingRow::Keys) => return self.open_rebinding(),
                 _ => return self.toggle_setting(),
             },
             (KeyCode::Left | KeyCode::Right, _)
