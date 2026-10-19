@@ -33,11 +33,14 @@ impl Supervisor {
         let title = names::given(title).ok_or_else(|| {
             ErrorBody::new(ErrorCode::BadRequest, "a session's name cannot be empty")
         })?;
+        // Theirs, never replaced by an agent's.
+        self.stop_naming(session);
         self.name_session(session, title).await
     }
 
     /// The person gave `session` the prompt `prompt`: where it is still
-    /// called by its agent's name alone, it is named by the prompt.
+    /// called by its agent's name alone, it is named by the prompt, and
+    /// then by an agent.
     pub(super) async fn name_from_prompt(&mut self, session: SessionId, prompt: &str) {
         let unnamed = self
             .state
@@ -51,15 +54,17 @@ impl Supervisor {
         if !unnamed {
             return;
         }
-        if let Some(title) = names::from_prompt(prompt)
-            && let Err(error) = self.name_session(session, title).await
-        {
-            tracing::warn!(%error, "could not name a session by its first prompt");
+        let Some(title) = names::from_prompt(prompt) else {
+            return;
+        };
+        match self.name_session(session, title).await {
+            Ok(_) => self.ask_name(session, prompt),
+            Err(error) => tracing::warn!(%error, "could not name a session by its first prompt"),
         }
     }
 
     /// Stores `session`'s name `title` and tells clients.
-    async fn name_session(
+    pub(super) async fn name_session(
         &mut self,
         session: SessionId,
         title: String,

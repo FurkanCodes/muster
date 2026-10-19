@@ -107,6 +107,7 @@ The panels are yours to arrange: drag one by its title to another edge of the wi
 | `⏎` `space` | turn the selected setting on or off, per project: *Only my tickets*, which lists only the tickets assigned to you, in whichever tracker the project's tickets are; *Branches with muster/*, whether the branches Muster makes start with `muster/`; and, on a Mac, Muster's own *Agents in the notch* |
 | `←` `→` | on *Session beside the list from*, a smaller or a larger width (`⏎` goes to the next): in a window narrower than it, the list takes the whole window and `⏎` opens a session over it |
 | `⏎` | on *Panels*, every panel back where it was at first |
+| `⏎` | on *Chats named by an agent*, turn it on or off; on *Named by*, the next agent that can name chats (each session's own first); on *Its model*, type the model or pick one it offers (`⇥`) |
 | `r` | read the settings again, after editing a file by hand: yours for the projects, and Muster's own, with the agents you added (*Your agents* says what is there, or which key does not read) |
 
 A change on the *Settings* screen goes into your own settings for the project (`~/.config/muster/projects/<project id>.toml`, over its `muster.toml`; comments and the rest of the file are kept), never into the repository. Muster's own settings, for all of it, go into `~/.config/muster/settings.toml`.
@@ -193,6 +194,9 @@ resume = ["--continue"]               # given instead after a restart, to carry 
 env = { MY_AGENT_THEME = "dark" }     # more environment
 mark = "M"                            # shown where Muster's own agents have theirs
 colour = "green"                      # one of the terminal's colours, or "#rrggbb"
+ask = ["--print", "{prompt}"]         # how it answers one question and ends, to name chats
+model = ["--model", "{model}"]        # how a model is chosen for that question
+models = ["models"]                   # how it lists its models, one to a line
 
 [agents.my-agent.title]               # words its window title says, if it says any
 working = "Thinking"
@@ -200,7 +204,7 @@ ready = "Ready"
 waiting = "Approve?"                  # shown as needing you
 ```
 
-Only `program` is needed. A name Muster's own agents use (`claude`, `shell`, …) is refused, and a key that does not read is named on the *Settings* screen's *Your agents* and when you start one; `r` there reads the file again after you edit it. Without `resume`, a session of it ends when the daemon restarts rather than carrying on.
+Only `program` is needed. With `ask`, it can name chats (*Named by* on the *Settings* screen); give it the arguments that answer one question without tools, your hooks or saved history, as Muster does for Claude Code (`-p --safe-mode`) and Codex (`exec --ephemeral`). A name Muster's own agents use (`claude`, `shell`, …) is refused, and a key that does not read is named on the *Settings* screen's *Your agents* and when you start one; `r` there reads the file again after you edit it. Without `resume`, a session of it ends when the daemon restarts rather than carrying on.
 
 ### Where tickets and pull requests are
 

@@ -235,6 +235,9 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Colours,
         SettingRow::SessionLines,
         SettingRow::Panels,
+        SettingRow::NamesByAgent,
+        SettingRow::NamedBy,
+        SettingRow::NamingModel,
         SettingRow::Agents
     ]));
     world.app.notch_here = true;
@@ -245,6 +248,9 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Colours,
         SettingRow::SessionLines,
         SettingRow::Panels,
+        SettingRow::NamesByAgent,
+        SettingRow::NamedBy,
+        SettingRow::NamingModel,
         SettingRow::Agents
     ]));
     world.app.daemon_protocol = NOTCH_PROTOCOL - 1;

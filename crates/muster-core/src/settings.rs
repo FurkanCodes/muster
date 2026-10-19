@@ -157,7 +157,47 @@ pub struct Preferences {
     /// (`[layout] list_folded`). From protocol 36.
     #[serde(default)]
     pub list_folded: bool,
+    /// How chats are named by an agent (`[names]`). From protocol 37.
+    #[serde(default)]
+    pub naming: Naming,
 }
+
+/// How chats are named by an agent (`PRODUCT.md` §6): the first line of
+/// the first prompt at once, then a few words an agent writes. From
+/// protocol 37.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Naming {
+    /// Whether an agent names chats (`[names] by_agent`); on unless the
+    /// person turns it off.
+    pub by_agent: bool,
+    /// The agent that names them, by its id; `None` for each session's
+    /// own (`[names] agent`).
+    #[serde(default)]
+    pub agent: Option<String>,
+    /// The model it names them with; `None` for its own choice
+    /// (`[names] model`).
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+impl Default for Naming {
+    fn default() -> Self {
+        Self {
+            by_agent: true,
+            agent: None,
+            model: None,
+        }
+    }
+}
+
+/// The first protocol whose daemon names chats by an agent, keeps
+/// [`Preferences::naming`] and takes [`PreferenceChange::NamesByAgent`]
+/// and [`PreferenceChange::NamedBy`] (`ARC-09`).
+pub const NAMING_PROTOCOL: u32 = 37;
+
+/// Where naming by an agent is written: `[names] by_agent`, `agent` and
+/// `model`.
+pub const NAMES: &str = "names";
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -171,6 +211,7 @@ impl Default for Preferences {
             session_lines: SessionLines::default(),
             panels: Layout::default(),
             list_folded: false,
+            naming: Naming::default(),
         }
     }
 }
@@ -271,6 +312,10 @@ pub struct AddedAgent {
     /// Whether it takes a first prompt, as a ticket's agent is given its
     /// ticket.
     pub takes_prompt: bool,
+    /// Whether it can be asked one question, and so name chats. From
+    /// protocol 37.
+    #[serde(default)]
+    pub asks: bool,
 }
 
 /// The first protocol whose daemon knows the agents the person added and
@@ -309,6 +354,14 @@ pub enum PreferenceChange {
     Panels(Layout),
     /// Fold the list away, or bring it back. From protocol 36.
     ListFolded(bool),
+    /// Have an agent name chats, or not. From protocol 37.
+    NamesByAgent(bool),
+    /// The agent that names chats (`None`: each session's own) and its
+    /// model (`None`: its own choice). From protocol 37.
+    NamedBy {
+        agent: Option<String>,
+        model: Option<String>,
+    },
 }
 
 /// The first protocol whose daemon keeps [`Preferences::panels`] and

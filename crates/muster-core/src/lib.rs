@@ -6,6 +6,7 @@
 // No unsafe code here, ever: it lives in one audited daemon module (`ARC-12`).
 #![forbid(unsafe_code)]
 
+pub mod ask;
 pub mod changes;
 pub mod clashes;
 pub mod colours;

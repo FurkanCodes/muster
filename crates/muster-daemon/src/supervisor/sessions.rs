@@ -61,7 +61,9 @@ impl Supervisor {
         } else {
             Start::Idle
         };
-        // A chat with no name of its own is named by its first prompt.
+        // A chat with no name of its own is named by its first prompt, and
+        // then by an agent.
+        let named_by_prompt = title.is_none().then(|| prompt.clone()).flatten();
         let title = title.or_else(|| prompt.as_deref().and_then(muster_core::names::from_prompt));
         let id = self.add_session(workspace, &harness, title, start).await?;
         if let Err(error) = self.launch(
@@ -81,6 +83,9 @@ impl Supervisor {
                 ErrorCode::Internal,
                 format!("could not start {}: {error}", harness.label()),
             ));
+        }
+        if let Some(prompt) = named_by_prompt {
+            self.ask_name(id, &prompt);
         }
         Ok(Reply::SessionStarted { id })
     }
@@ -288,6 +293,7 @@ impl Supervisor {
                 title: None,
                 turn: None,
                 signals,
+                naming: None,
             },
         );
         self.carry_watch(session);

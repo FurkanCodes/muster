@@ -43,7 +43,22 @@ pub(crate) struct Sandbox {
 /// is gone; with `FAKE_CLAUDE_RESUME_FAILS_LATE`, it says so and exits after
 /// a second, long enough for a client to be watching. It announces its
 /// start through the `SessionStart` hook, unless `FAKE_CLAUDE_SILENT` exists.
+/// Asked one question (`-p`, to name a chat), it records its arguments and
+/// the folder it was asked in (`asked.*`), and answers with the
+/// `FAKE_CLAUDE_NAME` file, if there is one, after two seconds with
+/// `FAKE_CLAUDE_ASK_SLOW`, or fails with `FAKE_CLAUDE_ASK_FAILS`.
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "-p" ]; then
+    asked=$(mktemp "$FAKE_CLAUDE_DIR/asked.XXXXXX")
+    { pwd; for a in "$@"; do printf '%s\0' "$a"; done; } > "$asked.part"
+    mv "$asked.part" "$asked"
+    [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_ASK_SLOW" ] && sleep 2
+    [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_ASK_FAILS" ] && exit 1
+    [ -f "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_NAME" ] && cat "$FAKE_CLAUDE_DIR/FAKE_CLAUDE_NAME"
+    exit 0
+  fi
+done
 dir="$FAKE_CLAUDE_DIR/$MUSTER_SESSION"
 mkdir -p "$dir"
 n=$(( $(ls "$dir" | grep -c '\.args$') + 1 ))
@@ -192,6 +207,39 @@ impl Sandbox {
     /// The calls the stand-in `docker` was given, one per line.
     pub(crate) fn docker_calls(&self) -> String {
         std::fs::read_to_string(self.dir.path().join("fake-docker/calls")).unwrap_or_default()
+    }
+
+    /// The questions the stand-in `claude` was asked (`-p`), oldest first:
+    /// the folder it was asked in, and its arguments.
+    pub(crate) fn claude_asked(&self) -> Vec<(String, Vec<String>)> {
+        let Ok(entries) = std::fs::read_dir(self.dir.path().join("fake-claude")) else {
+            return Vec::new();
+        };
+        let mut asked: Vec<(std::time::SystemTime, String, Vec<String>)> = entries
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                // `asked.XXXXXX`, not one still written (`asked.XXXXXX.part`).
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.starts_with("asked.") && name.matches('.').count() == 1
+            })
+            .filter_map(|entry| {
+                let when = entry.metadata().ok()?.modified().ok()?;
+                let text = std::fs::read(entry.path()).ok()?;
+                let at = text.iter().position(|&byte| byte == b'\n')?;
+                let cwd = String::from_utf8_lossy(&text[..at]).into_owned();
+                let args = text[at + 1..]
+                    .split(|&byte| byte == 0)
+                    .filter(|arg| !arg.is_empty())
+                    .map(|arg| String::from_utf8_lossy(arg).into_owned())
+                    .collect();
+                Some((when, cwd, args))
+            })
+            .collect();
+        asked.sort_by_key(|(when, ..)| *when);
+        asked
+            .into_iter()
+            .map(|(_, cwd, args)| (cwd, args))
+            .collect()
     }
 
     /// Where Claude Code would keep its transcripts in this sandbox.

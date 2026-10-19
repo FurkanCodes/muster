@@ -15,6 +15,9 @@
 //! env = { MY_AGENT_THEME = "dark" }
 //! mark = "M"                      # shown where Muster's own agents have theirs
 //! colour = "green"                # the mark's: one of the terminal's colours, or "#rrggbb"
+//! ask = ["--print", "{prompt}"]   # how it answers one question and ends, to name chats
+//! model = ["--model", "{model}"]  # how a model is chosen for that question
+//! models = ["models"]             # how it lists its models, one to a line
 //!
 //! [agents.my-agent.title]         # words its window title says, if it says any
 //! working = "Thinking"
@@ -45,8 +48,9 @@ pub const BUILT_IN: [&str; 8] = [
 pub const PROMPT: &str = "{prompt}";
 
 /// The keys an agent's table has.
-const KEYS: [&str; 9] = [
-    "label", "program", "args", "prompt", "resume", "env", "mark", "colour", "title",
+const KEYS: [&str; 12] = [
+    "label", "program", "args", "prompt", "resume", "env", "mark", "colour", "title", "ask",
+    "model", "models",
 ];
 
 /// The keys of an agent's `title` table.
@@ -103,6 +107,15 @@ pub struct AgentDefinition {
     pub colour: Option<String>,
     /// What its window title says about it.
     pub title: TitleWords,
+    /// How it is asked one question, [`crate::ask::QUESTION`] in one of
+    /// these arguments, given instead of [`Self::args`]; `None` for an
+    /// agent that cannot be, which then names no chats.
+    pub ask: Option<Vec<String>>,
+    /// How a model is chosen for that question, [`crate::ask::MODEL`] in
+    /// one of these arguments.
+    pub model: Option<Vec<String>>,
+    /// The arguments that print its models, one to a line.
+    pub models: Option<Vec<String>>,
 }
 
 /// Words in an agent's window title that say how it is doing, each looked
@@ -156,6 +169,9 @@ impl fmt::Debug for AgentDefinition {
             .field("mark", &self.mark)
             .field("colour", &self.colour)
             .field("title", &self.title)
+            .field("ask", &self.ask)
+            .field("model", &self.model)
+            .field("models", &self.models)
             .finish()
     }
 }
@@ -176,7 +192,22 @@ impl AgentDefinition {
             mark: first_mark(name),
             colour: None,
             title: TitleWords::default(),
+            ask: None,
+            model: None,
+            models: None,
         }
+    }
+
+    /// How it is asked one question, where its settings say.
+    pub fn asking(&self) -> Option<crate::ask::Ask> {
+        Some(crate::ask::Ask {
+            program: self.program.clone(),
+            args: self.ask.clone()?,
+            model: self.model.clone(),
+            models: self.models.clone(),
+            default_model: None,
+            suggestions: Vec::new(),
+        })
     }
 
     /// Whether it takes a first prompt on its command line.
@@ -211,6 +242,7 @@ impl AgentDefinition {
             mark: self.mark.to_string(),
             colour: self.colour.clone(),
             takes_prompt: self.takes_prompt(),
+            asks: self.ask.is_some(),
         }
     }
 }
@@ -245,6 +277,10 @@ pub enum AgentError {
     NoProgram { name: String },
     #[error("agents.{name}.prompt must hold {{prompt}} where the first prompt goes")]
     NoPromptPlace { name: String },
+    #[error("agents.{name}.ask must hold {{prompt}} where the question goes")]
+    NoQuestionPlace { name: String },
+    #[error("agents.{name}.model must hold {{model}} where the model goes")]
+    NoModelPlace { name: String },
 }
 
 /// Reads the `agents` table of Muster's own settings, ordered by name.
@@ -294,6 +330,22 @@ fn definition(name: &str, value: &toml::Value) -> Result<AgentDefinition, AgentE
             name: name.to_owned(),
         });
     }
+    let holds = |args: &Option<Vec<String>>, place: &str| {
+        args.as_ref()
+            .is_none_or(|args| args.iter().any(|arg| arg.contains(place)))
+    };
+    let ask = read.texts("ask", false)?;
+    if !holds(&ask, crate::ask::QUESTION) {
+        return Err(AgentError::NoQuestionPlace {
+            name: name.to_owned(),
+        });
+    }
+    let model = read.texts("model", false)?;
+    if !holds(&model, crate::ask::MODEL) {
+        return Err(AgentError::NoModelPlace {
+            name: name.to_owned(),
+        });
+    }
     let label = match read.text("label")? {
         Some(label) if label.chars().count() > LABEL_MAX => {
             return Err(read.invalid("label", "at most 40 characters"));
@@ -322,6 +374,9 @@ fn definition(name: &str, value: &toml::Value) -> Result<AgentDefinition, AgentE
         mark,
         colour: read.colour()?,
         title: read.title()?,
+        ask,
+        model,
+        models: read.texts("models", false)?,
     })
 }
 
@@ -496,6 +551,40 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_that_says_how_to_ask_it_one_question_can_name_chats() {
+        let read = parse_text(
+            "[agents.pi]\nprogram = \"pi\"\nargs = [\"--tui\"]\nask = [\"-p\", \"{prompt}\"]\n\
+             model = [\"--model\", \"{model}\"]\nmodels = [\"--list-models\"]\n",
+        )
+        .unwrap();
+        let asking = read[0].asking().unwrap();
+        assert_eq!(asking.program, "pi");
+        // Asked without its fixed arguments, which start it in its window.
+        assert_eq!(
+            asking.arguments("Name it?", Some("fast")),
+            ["--model", "fast", "-p", "Name it?"]
+        );
+        assert_eq!(asking.models, Some(vec!["--list-models".to_owned()]));
+        assert!(read[0].added().asks);
+        let quiet = parse_text("[agents.quiet]\nprogram = \"q\"\n").unwrap();
+        assert_eq!(quiet[0].asking(), None);
+        assert!(!quiet[0].added().asks);
+    }
+
+    #[test]
+    fn asking_says_where_the_question_and_the_model_go() {
+        assert_eq!(
+            error("[agents.pi]\nprogram = \"pi\"\nask = [\"-p\"]\n"),
+            "agents.pi.ask must hold {prompt} where the question goes"
+        );
+        assert_eq!(
+            error("[agents.pi]\nprogram = \"pi\"\nask = [\"{prompt}\"]\nmodel = [\"-m\"]\n"),
+            "agents.pi.model must hold {model} where the model goes"
+        );
+        assert!(error("[agents.pi]\nprogram = \"pi\"\nmodels = []\n").contains("agents.pi.models"));
+    }
+
+    #[test]
     fn a_whole_definition_reads() {
         let agents = parse_text(
             r#"
@@ -588,6 +677,7 @@ mod tests {
                 mark: "A".to_owned(),
                 colour: None,
                 takes_prompt: true,
+                asks: false,
             }
         );
         let debug = format!("{:?}", agents[0]);

@@ -175,6 +175,11 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             None,
         ),
         Dialog::Tidy { workspace, harness } => tidy(app, *workspace, harness),
+        Dialog::NamingModel {
+            agent,
+            model,
+            listed,
+        } => naming_model(app, agent, model, listed.as_ref()),
         Dialog::Rename { name, .. } => Shape {
             hint: "⏎ rename   esc cancel",
             ..Shape::new(
@@ -183,6 +188,39 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
                 Some(name),
             )
         },
+    }
+}
+
+/// The model an agent names chats with: typed, or one it lists.
+fn naming_model<'a>(
+    app: &App,
+    agent: &str,
+    model: &'a LineInput,
+    listed: Option<&Result<Vec<String>, String>>,
+) -> Shape<'a> {
+    let label = app
+        .namers()
+        .into_iter()
+        .find(|(id, _)| id.as_deref() == Some(agent))
+        .map_or_else(|| agent.to_owned(), |(_, label)| label);
+    let offered = match listed {
+        None => Line::from(format!("Asking {label} for its models…")).dim(),
+        Some(Ok(models)) if models.is_empty() => {
+            Line::from(format!("{label} lists none: type one it knows.")).dim()
+        }
+        Some(Ok(models)) => Line::from(format!("It offers: {}", models.join(", "))).dim(),
+        Some(Err(error)) => Line::from(one_line(error)).red(),
+    };
+    Shape {
+        below: vec![offered],
+        hint: "⇥ ⇧⇥ the models offered   ⏎ keep   esc cancel",
+        ..Shape::new(
+            " Model for naming chats ",
+            vec![Line::from(format!(
+                "The model {label} names chats with (empty for its own choice):"
+            ))],
+            Some(model),
+        )
     }
 }
 

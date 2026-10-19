@@ -93,7 +93,11 @@
 //! and whether its list is folded away (`Preferences::panels` and
 //! `Preferences::list_folded`, fields older clients pass over;
 //! `PreferenceChange::Panels` and `PreferenceChange::ListFolded`, sent only
-//! to a daemon of 36 or later).
+//! to a daemon of 36 or later); version 37 chats named by an agent
+//! (`Preferences::naming` and `AddedAgent::asks`, fields older clients pass
+//! over; `PreferenceChange::NamesByAgent` and `PreferenceChange::NamedBy`,
+//! and `Command::ListModels`, answered with `Reply::Models`, sent only to a
+//! daemon of 37 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -112,7 +116,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 36;
+pub const PROTOCOL_VERSION: u32 = 37;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -543,6 +547,11 @@ pub enum Command {
     /// [`Reply::Done`], every client told by [`Delta::Preferences`]. Sent
     /// only to a daemon of 29 or later.
     ReadPreferences,
+    /// The models the coding agent `agent` (a harness's id) offers for
+    /// naming chats: those it lists, where it can, else those Muster
+    /// suggests for it. Answered with [`Reply::Models`]. Sent only to a
+    /// daemon of 37 or later.
+    ListModels { agent: String },
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with
@@ -660,6 +669,9 @@ pub enum Reply {
     Health(Health),
     /// Why a session has its status.
     Explanation(Box<crate::explain::Explanation>),
+    /// The models an agent offers, as it listed them or as Muster
+    /// suggests. From protocol 37.
+    Models(Vec<String>),
     /// What a workspace's work has changed.
     Changes(Changes),
     /// One changed file's diff.

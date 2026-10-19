@@ -8,7 +8,7 @@ use muster_core::config::agents::AgentDefinition;
 use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::settings::{
-    LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NOTCH, ONLY_MINE, PANELS,
+    LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH, ONLY_MINE, PANELS,
     PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange, SettingSource, TICKETS_FROM_KEYS,
     TRACKER,
 };
@@ -144,6 +144,7 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             session_lines: config.session_lines,
             panels: config.panels,
             list_folded: config.list_folded,
+            naming: config.naming,
         },
         agents: config.agents,
     })
@@ -189,6 +190,19 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             let (table, key) = LIST_FOLDED;
             edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *folded)
         }
+        PreferenceChange::NamesByAgent(on) => edit::set_flag_in(
+            text.as_deref(),
+            preferences::NEW_FILE,
+            NAMES,
+            "by_agent",
+            *on,
+        ),
+        PreferenceChange::NamedBy { agent, model } => edit::set_texts_in(
+            text.as_deref(),
+            preferences::NEW_FILE,
+            NAMES,
+            &[("agent", agent.as_deref()), ("model", model.as_deref())],
+        ),
     }
     .map_err(|error| invalid(error.to_string()))?;
     MusterConfig::parse(Some(&changed), &shown)?;
@@ -321,6 +335,51 @@ mod tests {
             std::fs::read_to_string(&file).unwrap(),
             "[layout]\nside_by_side_from = 120 # mine\npanels = \"session | list 28 | (changes / shell)\"\n\
              list_folded = true\n"
+        );
+    }
+
+    #[test]
+    fn naming_by_an_agent_is_the_person_s_own() {
+        use muster_core::settings::Naming;
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        assert_eq!(preferences(&config_dir).unwrap().naming, Naming::default());
+        change_preference(&config_dir, &PreferenceChange::NamesByAgent(false)).unwrap();
+        change_preference(
+            &config_dir,
+            &PreferenceChange::NamedBy {
+                agent: Some("codex".to_owned()),
+                model: Some("o4".to_owned()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            preferences(&config_dir).unwrap().naming,
+            Naming {
+                by_agent: false,
+                agent: Some("codex".to_owned()),
+                model: Some("o4".to_owned()),
+            }
+        );
+        // Each session's own again, with its own model: the keys go.
+        change_preference(
+            &config_dir,
+            &PreferenceChange::NamedBy {
+                agent: None,
+                model: None,
+            },
+        )
+        .unwrap();
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(
+            written.ends_with("[names]\nby_agent = false\n"),
+            "{written}"
+        );
+        assert!(
+            written.starts_with("# Your own settings for Muster"),
+            "{written}"
         );
     }
 

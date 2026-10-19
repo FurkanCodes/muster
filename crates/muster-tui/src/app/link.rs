@@ -286,6 +286,8 @@ impl App {
             (outcome, Then::LookChanged(change)) => self.look_changed(change, outcome.map(drop)),
             (outcome, Then::ListFolded) => self.list_folded_kept(outcome.map(drop)),
             (outcome, Then::PanelsKept) => self.panels_kept(outcome.map(drop)),
+            (Ok(Reply::Models(models)), Then::Models(agent)) => self.on_models(&agent, Ok(models)),
+            (Err(error), Then::Models(agent)) => self.on_models(&agent, Err(error.message)),
             (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Ok(changes));
             }
