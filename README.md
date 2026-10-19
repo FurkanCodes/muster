@@ -259,10 +259,6 @@ The toolchain is pinned in `rust-toolchain.toml`; rustup installs it on first us
 
 The suite (over 700 tests) includes end-to-end tests that run the real binary in throwaway directories: real shells on real pseudo-terminals in real git worktrees, a stand-in `claude` and `gh` on `PATH` (so hooks, resume and issue handling are exercised exactly as in use, without an account or network), and the UI itself driven by keystrokes on a pseudo-terminal. CI runs formatting, spelling, clippy and the docs with warnings as errors, a check for unused dependencies, a 1,000-line file limit, `cargo deny`, a build on the oldest Rust it supports, and the tests (through `cargo nextest`) on macOS and Linux.
 
-## Credits
-
-Muster learned from [Nebula](https://github.com/AgentSystemLabs/nebula) and adapts some of its code — terminal query answering, key encoding, Claude Code's hook events and transcript lookup — under the MIT license; see [NOTICE](NOTICE).
-
 ## License
 
 [MIT](LICENSE).
