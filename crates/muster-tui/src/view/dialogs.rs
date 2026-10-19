@@ -175,6 +175,14 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             None,
         ),
         Dialog::Tidy { workspace, harness } => tidy(app, *workspace, *harness),
+        Dialog::Rename { name, .. } => Shape {
+            hint: "⏎ rename   esc cancel",
+            ..Shape::new(
+                " Rename ",
+                vec![Line::from("What to call this chat:")],
+                Some(name),
+            )
+        },
     }
 }
 

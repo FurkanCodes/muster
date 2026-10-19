@@ -16,6 +16,7 @@ mod changes;
 mod clashes;
 mod dialogs;
 pub(crate) mod kep;
+pub(crate) mod logos;
 pub(crate) mod look;
 mod preview;
 mod pull_request;

@@ -84,7 +84,8 @@ impl App {
             }
             Mode::Dialog(
                 Dialog::NewWorktree { branch: input, .. }
-                | Dialog::NewSession { prompt: input, .. },
+                | Dialog::NewSession { prompt: input, .. }
+                | Dialog::Rename { name: input, .. },
             ) => {
                 input.paste(text);
                 Vec::new()
@@ -197,6 +198,7 @@ impl App {
             KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
             KeyCode::Char('t') if self.view == View::Sessions => return self.ask_tidy(),
             KeyCode::Char('u') if self.view == View::Sessions => return self.ask_move(),
+            KeyCode::Char('R') => return self.ask_rename(),
             KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
             KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
             KeyCode::Char('d') => return self.open_changes(),
@@ -566,6 +568,7 @@ impl App {
                 workspace, plan, ..
             } => self.undo_key(workspace, &plan, key),
             Dialog::Tidy { workspace, harness } => self.tidy_key(workspace, harness, key),
+            Dialog::Rename { session, name } => self.rename_key(session, name, key),
             Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
             dialog @ Dialog::TicketsFrom { .. } => self.tickets_from_key(dialog, key),
             Dialog::AssignAgent {

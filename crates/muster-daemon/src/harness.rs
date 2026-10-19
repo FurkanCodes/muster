@@ -244,6 +244,30 @@ impl Harness {
         }
     }
 
+    /// The prompt the person just gave, where a report posted to its route
+    /// (and `event`) carries it: Claude Code's `UserPromptSubmit`, Gemini
+    /// CLI's `BeforeAgent`, Copilot CLI's `userPromptSubmitted`. Codex and
+    /// `OpenCode` report none.
+    pub(crate) fn prompt(self, event: Option<&str>, body: &[u8]) -> Option<String> {
+        let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+        let named = |name: &str| {
+            value
+                .get("hook_event_name")
+                .and_then(serde_json::Value::as_str)
+                == Some(name)
+        };
+        let carries = match self.kind {
+            Kind::Claude | Kind::Review => named("UserPromptSubmit"),
+            Kind::Gemini => named("BeforeAgent"),
+            Kind::Copilot => event == Some("userPromptSubmitted"),
+            Kind::Codex | Kind::OpenCode | Kind::Shell | Kind::Checks => false,
+        };
+        carries
+            .then(|| value.get("prompt").and_then(serde_json::Value::as_str))
+            .flatten()
+            .map(str::to_owned)
+    }
+
     /// What a report says the session has used, for a harness that reports
     /// it: `OpenCode`'s plugin, at each turn's end.
     pub(crate) fn spend(self, body: &[u8]) -> Option<muster_core::Spend> {

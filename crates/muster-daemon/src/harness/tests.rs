@@ -261,3 +261,50 @@ fn without_muster_s_files_an_agent_still_runs() {
     let copilot = spawn_spec(COPILOT, &agent_launch(Some("c1"), None));
     assert!(!copilot.args.iter().any(|arg| arg == "--plugin-dir"));
 }
+
+#[test]
+fn the_prompt_a_report_carries_is_read_where_the_agent_sends_one() {
+    let prompt =
+        |harness: Harness, event: Option<&str>, body: &str| harness.prompt(event, body.as_bytes());
+    assert_eq!(
+        prompt(
+            CLAUDE,
+            None,
+            r#"{"hook_event_name":"UserPromptSubmit","prompt":"Fix the login","session_id":"s"}"#
+        )
+        .as_deref(),
+        Some("Fix the login")
+    );
+    // Not every report of Claude Code's is a prompt.
+    assert_eq!(
+        prompt(CLAUDE, None, r#"{"hook_event_name":"Stop","prompt":"no"}"#),
+        None
+    );
+    assert_eq!(
+        prompt(
+            GEMINI,
+            None,
+            r#"{"hook_event_name":"BeforeAgent","prompt":"Add dark mode"}"#
+        )
+        .as_deref(),
+        Some("Add dark mode")
+    );
+    assert_eq!(
+        prompt(
+            COPILOT,
+            Some("userPromptSubmitted"),
+            r#"{"prompt":"Why is CI slow?"}"#
+        )
+        .as_deref(),
+        Some("Why is CI slow?")
+    );
+    assert_eq!(
+        prompt(COPILOT, Some("sessionStart"), r#"{"prompt":"no"}"#),
+        None
+    );
+    // Codex and OpenCode report no prompt; a shell reports nothing.
+    for harness in [CODEX, OPENCODE, SHELL] {
+        assert_eq!(prompt(harness, None, r#"{"prompt":"no"}"#), None);
+    }
+    assert_eq!(prompt(CLAUDE, None, "not json"), None);
+}

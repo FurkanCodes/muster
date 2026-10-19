@@ -68,19 +68,19 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     let id = world.session.id;
     world.app.on_clock(Timestamp::from_millis(NOW));
     status(&mut world, id, SessionStatus::Running, 252_000);
-    doing(&mut world, id, Some("running cargo"));
-    let line = line_with(&render(&world.app), "running cargo");
+    doing(&mut world, id, Some("running npm"));
+    let line = line_with(&render(&world.app), "running npm");
     // The time at the line's end, against the list's border.
-    assert!(line.contains("Shell  running cargo"), "{line}");
+    assert!(line.contains("❯ Shell  running npm"), "{line}");
     assert!(line.contains("4m12s│"), "{line}");
     // Still, it reads to the minute.
     world.app.motion = false;
-    assert!(line_with(&render(&world.app), "running cargo").contains("4m│"));
+    assert!(line_with(&render(&world.app), "running npm").contains("4m│"));
     world.app.motion = true;
     // Where it does not fit, what it does gives way; the time stays.
     doing(&mut world, id, Some("editing view_settings.rs"));
     let line = line_with(&render(&world.app), "editing");
-    assert!(line.contains("Shell  editing view… 4m12s"), "{line}");
+    assert!(line.contains("❯ Shell  editing vi… 4m12s"), "{line}");
     assert!(line.contains("4m12s│"), "{line}");
 
     // Waiting on the person: what it wants, in red, and how long it has
@@ -226,7 +226,7 @@ fn each_project_has_its_colour_and_the_selection_a_tint_and_a_bar() {
     assert_eq!(cells[(5, web_row)].bg, Color::Reset);
     // Its worktree and sessions carry its edge too.
     let line = line_with(&render(&world.app), "Shell");
-    assert!(line.starts_with("│▌   ○ Shell"), "{line}");
+    assert!(line.starts_with("│▌   ○ ❯ Shell"), "{line}");
 }
 
 #[test]
@@ -252,8 +252,8 @@ fn each_line_of_needs_you_names_its_project_in_its_colour() {
     // The same agent waits in both: only the project tells them apart,
     // and it stays where what each wants is cut short.
     let screen = render(&app);
-    assert!(line_with(&screen, "▲ app  Claude Code").contains("needs you"));
-    assert!(line_with(&screen, "▲ web  Claude Code").contains("needs you"));
+    assert!(line_with(&screen, "▲ ❯ app  Claude Code").contains("needs yo"));
+    assert!(line_with(&screen, "▲ ❯ web  Claude Code").contains("needs yo"));
 
     let cells = buffer(&app);
     let (row, column) = (0..cells.area.height)

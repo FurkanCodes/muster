@@ -8,7 +8,7 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{changes, clashes, look, panel, pull_request, shorten, slid, status_symbol};
+use super::{changes, clashes, logos, look, panel, pull_request, shorten, slid, status_symbol};
 use crate::app::{App, View};
 use crate::model::Row;
 use crate::motion;
@@ -45,6 +45,45 @@ pub(super) fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .block(block)
         .highlight_style(session_highlight(app, selected));
     frame.render_stateful_widget(list, area, &mut state);
+    let sessions: Vec<Option<&Session>> = rows
+        .iter()
+        .map(|row| match row {
+            Row::Session(id) => app.model.session(*id),
+            _ => None,
+        })
+        .collect();
+    let lead = pull_request::width(&session_lead(Span::raw(" ")));
+    draw_logos(frame, app, area, (&sessions, state.offset()), lead);
+}
+
+/// The agents' pictures on the lines of `sessions` shown in `area` from
+/// `offset`, each after its line's lead of `lead` cells and its mark,
+/// where the terminal draws pictures.
+fn draw_logos(
+    frame: &mut Frame<'_>,
+    app: &App,
+    area: Rect,
+    (sessions, offset): (&[Option<&Session>], usize),
+    lead: usize,
+) {
+    if app.graphics == logos::Graphics::Text {
+        return;
+    }
+    let inner = area.inner(ratatui::layout::Margin::new(1, 1));
+    let x = inner
+        .x
+        .saturating_add(u16::try_from(lead + 2).unwrap_or(u16::MAX));
+    let shown = sessions.iter().skip(offset).take(usize::from(inner.height));
+    for (line, session) in (inner.y..).zip(shown) {
+        if let Some(session) = session {
+            logos::draw(
+                frame.buffer_mut(),
+                app.graphics,
+                &session.harness,
+                (x, line),
+            );
+        }
+    }
 }
 
 fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
@@ -253,7 +292,7 @@ fn session_parts(
         }
     }
     let lead_width = lead_width + project.iter().map(Span::width).sum::<usize>();
-    let fixed = lead_width + 2 + unseen;
+    let fixed = lead_width + 2 + logos::width(app.graphics) + unseen;
     let title_least = session.title.chars().count().min(READABLE_TITLE);
     let wanted = title_least + 2 + doing.chars().count();
     let mut time = look::session_time(app, session).unwrap_or_default();
@@ -324,6 +363,7 @@ fn session_line(
     };
     let mut spans = lead;
     spans.extend([Span::styled(symbol, style), Span::raw(" ")]);
+    spans.extend(logos::spans(app.graphics, &session.harness));
     spans.extend(project);
     spans.push(Span::raw(title));
     if !doing.is_empty() {
@@ -456,4 +496,12 @@ pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .block(block)
         .highlight_style(session_highlight(app, app.needs_selected));
     frame.render_stateful_widget(list, area, &mut state);
+    let sessions: Vec<Option<&Session>> = app
+        .needs_list
+        .iter()
+        .filter_map(|id| app.model.session(*id))
+        .map(Some)
+        .collect();
+    // Led by its edge alone, a cell.
+    draw_logos(frame, app, area, (&sessions, state.offset()), 1);
 }

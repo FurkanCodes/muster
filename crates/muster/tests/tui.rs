@@ -822,16 +822,16 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
         "Stop",
         &serde_json::json!({"session_id": agent, "hook_event_name": "Stop", "cwd": "/work"}),
     );
-    ui.wait_for("✓ #42");
+    ui.wait_for("✓ ✻ #42");
     assert_eq!(
-        ui.background_of("✓ #42"),
+        ui.background_of("✓ ✻ #42"),
         Some(vt100::Color::Idx(2)),
         "{}",
         ui.text()
     );
     // Settled, it is the selected line: tinted, as the selection is.
     let deadline = Instant::now() + Duration::from_secs(5);
-    while ui.background_of("✓ #42") != Some(vt100::Color::Idx(8)) {
+    while ui.background_of("✓ ✻ #42") != Some(vt100::Color::Idx(8)) {
         assert!(Instant::now() < deadline, "it never settled: {}", ui.text());
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -856,9 +856,9 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
         "Stop",
         &serde_json::json!({"session_id": agent, "hook_event_name": "Stop", "cwd": "/work"}),
     );
-    ui.wait_for("✓ #42");
+    ui.wait_for("✓ ✻ #42");
     assert_eq!(
-        ui.background_of("✓ #42"),
+        ui.background_of("✓ ✻ #42"),
         Some(vt100::Color::Default),
         "never lit (and not the selected line): {}",
         ui.text()

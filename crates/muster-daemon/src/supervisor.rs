@@ -15,6 +15,7 @@ mod containers;
 mod handle;
 mod issues;
 mod looking;
+mod names;
 mod projects;
 mod pulls;
 mod reload;
@@ -517,6 +518,7 @@ impl Supervisor {
             } => self.tidy_commits(workspace, &harness, size).await,
             Command::RestartSession { session, size } => self.restart_session(session, size).await,
             Command::RemoveSession { session } => self.remove_session(session).await,
+            Command::RenameSession { session, title } => self.rename_session(session, &title).await,
             Command::CancelRun { run } => {
                 self.command_run(run, RunEvent::Cancel, "be cancelled")
                     .await
@@ -665,6 +667,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::EntryDiff { .. } => "entry diff",
         Command::UndoPlan { .. } => "undo plan",
         Command::Undo { .. } => "undo",
+        Command::RenameSession { .. } => "rename session",
         Command::MoveOnto { .. } => "move onto",
         Command::Reveal { .. } => "reveal",
         Command::ChangePreference(_) => "change preference",

@@ -15,6 +15,7 @@ pub mod frame;
 pub mod hex;
 pub mod html;
 pub mod ids;
+pub mod names;
 pub mod num;
 pub mod paths;
 pub mod protocol;
