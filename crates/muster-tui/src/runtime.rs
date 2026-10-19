@@ -96,6 +96,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     app.cell_pixels = cell_pixels();
     app.notify = options.notify;
     app.motion = options.motion;
+    app.graphics = crate::view::logos::Graphics::detect(|name| std::env::var(name).ok());
     app.welcome = true;
     let outside = Outside::take(&mut options);
     app.notch_here = outside.start_notch.is_some();

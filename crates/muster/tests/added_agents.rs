@@ -163,7 +163,8 @@ async fn an_agent_from_the_person_s_settings_is_heard_by_its_progress_title_and_
         .iter()
         .find(|stored| stored.id == session)
         .unwrap();
-    assert_eq!(stored.title, "My Agent");
+    // Named by its prompt, as any chat is.
+    assert_eq!(stored.title, "fix it");
     assert_eq!(stored.harness, "my-agent");
     assert_eq!(stored.status, SessionStatus::Running);
 

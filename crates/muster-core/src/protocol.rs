@@ -82,7 +82,9 @@
 //! `PreferenceChange::SideBySideFrom`, sent only to a daemon of 32 or
 //! later); version 33 where a replay's output was written while the client
 //! was attached (`ServerFrame::Replay::live_from`, a field older clients
-//! pass over), so a program's copy there reaches the clipboard.
+//! pass over), so a program's copy there reaches the clipboard; version 34
+//! chats named by their first prompt and renamed by the person
+//! (`Command::RenameSession`, sent only to a daemon of 34 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -101,7 +103,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 33;
+pub const PROTOCOL_VERSION: u32 = 34;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -461,6 +463,9 @@ pub enum Command {
     RestartSession { session: SessionId, size: TermSize },
     /// Take an ended session off the list. Its history is kept.
     RemoveSession { session: SessionId },
+    /// Give a session the name `title` (`muster_core::names::given`).
+    /// Sent only to a daemon of 34 or later.
+    RenameSession { session: SessionId, title: String },
     /// List a project's open tickets, newest first, from its tracker.
     ListIssues { project: ProjectId },
     /// One of a project's tickets with its text, answered with

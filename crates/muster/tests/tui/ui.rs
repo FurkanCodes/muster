@@ -62,6 +62,8 @@ impl Ui {
             }
         }
         command.env("TERM", "xterm-256color");
+        // Agents' marks as text, whatever terminal runs the tests.
+        command.env("MUSTER_LOGOS", "text");
         for (key, value) in env {
             command.env(key, value);
         }

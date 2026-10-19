@@ -54,7 +54,7 @@ fn below_a_hundred_columns_the_list_takes_the_window_and_streams_no_session() {
     assert_eq!(areas.preview.width, 0);
     let screen = render_in(&world.app, NARROW);
     assert!(!screen.contains("╭ Shell"), "no pane beside it: {screen}");
-    assert!(screen.contains("○ Shell"), "{screen}");
+    assert!(screen.contains("○ ❯ Shell"), "{screen}");
     // Selecting a session streams nothing: nobody would see it.
     press(&mut world.app, KeyCode::Up);
     let actions = press(&mut world.app, KeyCode::Down);

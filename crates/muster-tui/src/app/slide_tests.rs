@@ -42,27 +42,28 @@ fn long_world() -> (World, muster_core::Session) {
 fn a_long_title_on_the_selected_line_rests_slides_to_its_end_and_starts_again() {
     let (mut world, _) = long_world();
     world.app.selected = Some(Row::Session(world.session.id));
-    // Twenty cells for the title beside its status in the 34-column list.
-    assert_eq!(crate::view::cut_name(&world.app), Some((37, 20)));
+    // Eighteen cells for the title beside its status and its agent's
+    // mark in the 34-column list.
+    assert_eq!(crate::view::cut_name(&world.app), Some((37, 18)));
     assert!(world.app.wants_steps(), "a cut name asks for steps");
 
     assert!(!world.app.on_step(100), "first seen selected: it rests");
-    assert!(render(&world.app).contains("Fix the login redir…  idle"));
+    assert!(render(&world.app).contains("Fix the login red…  idle"));
     assert!(!world.app.on_step(116), "still resting");
     assert!(world.app.on_step(117), "it moves, and asks for a frame");
-    assert!(render(&world.app).contains("…x the login redire…  idle"));
+    assert!(render(&world.app).contains("…x the login redi…  idle"));
     assert!(!world.app.on_step(118), "a character each two steps");
     assert!(world.app.on_step(119));
     assert!(world.app.on_step(121));
-    assert!(render(&world.app).contains("…the login redirect…  idle"));
+    assert!(render(&world.app).contains("…the login redire…  idle"));
 
     // Its end in view, it rests there, then starts again.
-    world.app.on_step(115 + 34);
+    world.app.on_step(115 + 38);
     let screen = render(&world.app);
-    assert!(screen.contains("…rect loop on Safari  idle"), "{screen}");
-    assert!(!world.app.on_step(115 + 34 + 14), "resting at its end");
-    assert!(world.app.on_step(100 + 15 + 34 + 15));
-    assert!(render(&world.app).contains("Fix the login redir…  idle"));
+    assert!(screen.contains("…ct loop on Safari  idle"), "{screen}");
+    assert!(!world.app.on_step(115 + 38 + 14), "resting at its end");
+    assert!(world.app.on_step(100 + 15 + 38 + 15));
+    assert!(render(&world.app).contains("Fix the login red…  idle"));
 }
 
 #[test]
@@ -115,7 +116,7 @@ fn only_the_selected_line_slides() {
     world.app.on_step(0);
     world.app.on_step(40);
     let screen = render(&world.app);
-    assert!(screen.contains("Fix the login redir…  idle"), "{screen}");
+    assert!(screen.contains("Fix the login red…  idle"), "{screen}");
     assert!(screen.contains("⎇ muster/issue-2640-fix-the…"), "{screen}");
 }
 
@@ -177,7 +178,7 @@ fn with_motion_off_a_cut_name_stays_cut() {
     assert!(!world.app.wants_steps());
     world.app.on_step(0);
     assert!(!world.app.on_step(40));
-    assert!(render(&world.app).contains("Fix the login redir…  idle"));
+    assert!(render(&world.app).contains("Fix the login red…  idle"));
 }
 
 #[test]

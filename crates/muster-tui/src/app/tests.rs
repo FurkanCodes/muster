@@ -170,7 +170,7 @@ fn a_session_line_that_cannot_fit_its_usage_leaves_it_to_the_pane() {
     )));
     let screen = render(&world.app);
     // The whole title and status, and no usage cut off at the border.
-    assert!(screen.contains("✓ Claude Code  finished  "), "{screen}");
+    assert!(screen.contains("✓ ❯ Claude Code  finished  "), "{screen}");
     assert!(!screen.contains("455 MB"), "{screen}");
     // The session's pane says it.
     world.app.selected = Some(Row::Session(claude.id));

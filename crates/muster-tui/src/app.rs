@@ -16,6 +16,7 @@ mod narrow;
 mod notch;
 mod picker;
 mod pointer;
+mod rename;
 pub(crate) mod selection;
 mod settings;
 mod settle;
@@ -231,6 +232,11 @@ pub(crate) enum Dialog {
         what: String,
         agent_remembers: Option<String>,
     },
+    /// A session's new name, as the person types it.
+    Rename {
+        session: SessionId,
+        name: LineInput,
+    },
     /// Which agent tidies a workspace's commits not pushed yet.
     Tidy {
         workspace: WorkspaceId,
@@ -444,6 +450,9 @@ pub(crate) struct App {
     /// The protocol the daemon agreed to speak: a change it does not know
     /// is never sent to it (`ARC-09`).
     pub(crate) daemon_protocol: u32,
+    /// What the person's terminal draws: the agents' logos as pictures,
+    /// or their marks in text.
+    pub(crate) graphics: crate::view::logos::Graphics,
     /// Whether Muster's notch can show here: a Mac, with a program to
     /// start it.
     pub(crate) notch_here: bool,
@@ -518,6 +527,7 @@ impl App {
             ticket_agent: HarnessChoice::Claude,
             ticket_projects: HashMap::new(),
             daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
+            graphics: crate::view::logos::Graphics::Text,
             notch_here: false,
             notch_started: false,
             notch_changing: false,

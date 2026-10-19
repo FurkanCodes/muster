@@ -289,6 +289,15 @@ impl Store {
         )
     }
 
+    /// Gives a session the name `title`.
+    pub fn rename_session(&mut self, session: SessionId, title: &str) -> Result<()> {
+        self.update_session(
+            session,
+            "UPDATE sessions SET title = ?2 WHERE id = ?1",
+            title,
+        )
+    }
+
     /// Clears a session's end: its program was started again.
     pub fn reopen_session(&mut self, session: SessionId) -> Result<()> {
         match self.conn.execute(

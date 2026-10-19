@@ -33,6 +33,9 @@ impl Supervisor {
             live.turn = Some(turn);
         }
         let event = delivery.event.as_deref();
+        if let Some(prompt) = harness.prompt(event, &delivery.body) {
+            self.name_from_prompt(session, &prompt).await;
+        }
         if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
             if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {
                 self.set_activity(session, change);

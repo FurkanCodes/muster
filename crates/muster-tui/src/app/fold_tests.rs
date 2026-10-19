@@ -122,7 +122,7 @@ fn e_folds_a_worktree_which_keeps_its_mark_and_says_what_it_hides() {
 
     press(&mut world.app, KeyCode::Char('e'));
     let screen = render(&world.app);
-    assert!(screen.contains("● Shell"), "{screen}");
+    assert!(screen.contains("● ❯ Shell"), "{screen}");
     assert!(line_with(&screen, "⎇ work").contains("▾ ⎇ work ●"));
 
     // On a project's line, where the hints have room, they say so.

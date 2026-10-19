@@ -61,6 +61,8 @@ impl Supervisor {
         } else {
             Start::Idle
         };
+        // A chat with no name of its own is named by its first prompt.
+        let title = title.or_else(|| prompt.as_deref().and_then(muster_core::names::from_prompt));
         let id = self.add_session(workspace, &harness, title, start).await?;
         if let Err(error) = self.launch(
             id,

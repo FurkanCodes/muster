@@ -421,6 +421,10 @@ fn commands() -> Vec<Command> {
             size: size(),
         },
         Command::RemoveSession { session },
+        Command::RenameSession {
+            session,
+            title: "Fix the login".to_owned(),
+        },
         Command::ListIssues { project },
         Command::ViewIssue {
             project,
@@ -785,7 +789,7 @@ impl Variant for ServerFrame {
 }
 
 impl Variant for Command {
-    const COUNT: usize = 38;
+    const COUNT: usize = 39;
     fn variant(&self) -> usize {
         match self {
             Self::Ping => 0,
@@ -826,6 +830,7 @@ impl Variant for Command {
             Self::StartFromIssue { .. } => 35,
             Self::ExplainSession { .. } => 36,
             Self::ReadPreferences => 37,
+            Self::RenameSession { .. } => 38,
         }
     }
 }
