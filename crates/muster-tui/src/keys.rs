@@ -11,6 +11,7 @@
 //! receive the keys they asked for; and pastes are encoded here too.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use muster_core::keys::{Chord, Key};
 use muster_core::protocol::TerminalModes;
 
 /// Kitty flag: keys that would be ambiguous get `CSI u` encodings.
@@ -234,6 +235,39 @@ fn function_key(n: u8) -> Option<Vec<u8>> {
         1..=4 => Some(vec![0x1b, b'O', b'P' + (n - 1)]),
         _ => Some(format!("\x1b[{}~", function_key_number(n)?).into_bytes()),
     }
+}
+
+/// The key `key` is, as Muster's keys name it (`muster_core::keys`): a
+/// capital for a letter with Shift (the kitty keyboard protocol sends `q`
+/// with Shift), and Ctrl+] and Ctrl+\ for the bytes 0x1d and 0x1c, which
+/// crossterm reports as Ctrl+5 and Ctrl+4 from a terminal without that
+/// protocol. `None` for a key no action can have.
+pub(crate) fn chord(key: &KeyEvent) -> Option<Chord> {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    let key = match key.code {
+        KeyCode::Char('5') if ctrl => Key::Char(']'),
+        KeyCode::Char('4') if ctrl => Key::Char('\\'),
+        KeyCode::Char(c) if shift && c.is_ascii_lowercase() => Key::Char(c.to_ascii_uppercase()),
+        KeyCode::Char(c) => Key::Char(c),
+        KeyCode::Tab => Key::Tab,
+        KeyCode::BackTab => Key::BackTab,
+        KeyCode::Esc => Key::Esc,
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
+        KeyCode::PageUp => Key::PageUp,
+        KeyCode::PageDown => Key::PageDown,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::F(n) => Key::F(n),
+        _ => return None,
+    };
+    Some(Chord { key, ctrl, alt })
 }
 
 #[cfg(test)]

@@ -13,11 +13,12 @@ use muster_core::changes::{
     CHANGES_PROTOCOL, ChangePart, ChangeSummary, Changes, Commit, FileChange, FileDiff,
 };
 use muster_core::clashes::Clash;
+use muster_core::keys::{Action as Does, Screen};
 use muster_core::protocol::Command;
 use muster_core::timeline::{Entry, TIMELINE_PROTOCOL, Timeline};
 use ratatui::layout::{Margin, Position, Rect};
 
-use super::events::{leaves_terminal, screen_key};
+use super::events::screen_key;
 use super::{Action, App, Mode, Then, View};
 
 /// What the pane's selection is on: a file of the change, or an entry of
@@ -325,10 +326,7 @@ impl App {
             self.close_changes();
             return self.show(view);
         }
-        if leaves_terminal(key) {
-            self.close_changes();
-            return Vec::new();
-        }
+        let does = self.does(Screen::Changes, key);
         let showing_diff = self
             .changes
             .as_ref()
@@ -336,12 +334,32 @@ impl App {
         let page = isize::try_from(self.pane_rows().saturating_sub(1))
             .unwrap_or(1)
             .max(1);
-        match key.code {
-            KeyCode::Tab | KeyCode::BackTab => {
+        match does {
+            Some(Does::NextTab | Does::PreviousTab) => {
                 self.close_changes();
-                return self.show(self.view.next(key.code == KeyCode::BackTab));
+                return self.show(self.view.next(does == Some(Does::PreviousTab)));
             }
-            KeyCode::Char('d' | 'q') => self.close_changes(),
+            Some(Does::CloseChanges | Does::LeaveSession) => {
+                self.close_changes();
+                return Vec::new();
+            }
+            Some(Does::FoldList) => return self.toggle_list(),
+            Some(Does::ChangesAgain) => {
+                let mut actions: Vec<Action> = self.ask_changes().into_iter().collect();
+                actions.extend(self.ask_timeline());
+                if showing_diff {
+                    actions.extend(self.ask_diff());
+                }
+                return actions;
+            }
+            Some(Does::PutBack) => return self.ask_undo_plan().into_iter().collect(),
+            Some(Does::ChangesHelp) => {
+                self.open_help();
+                return Vec::new();
+            }
+            _ => {}
+        }
+        match key.code {
             KeyCode::Esc | KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h')
                 if showing_diff =>
             {
@@ -350,17 +368,6 @@ impl App {
                 }
             }
             KeyCode::Esc | KeyCode::Backspace => self.close_changes(),
-            KeyCode::Char('r') => {
-                let mut actions: Vec<Action> = self.ask_changes().into_iter().collect();
-                actions.extend(self.ask_timeline());
-                if showing_diff {
-                    actions.extend(self.ask_diff());
-                }
-                return actions;
-            }
-            KeyCode::Char('z') => return self.ask_undo_plan().into_iter().collect(),
-            // `h` goes back from a diff here: the keys on `?` alone.
-            KeyCode::Char('?') => self.open_help(),
             KeyCode::Up | KeyCode::Char('k') if showing_diff => self.scroll_diff(-1),
             KeyCode::Down | KeyCode::Char('j') if showing_diff => self.scroll_diff(1),
             KeyCode::PageUp if showing_diff => self.scroll_diff(-page),

@@ -5,6 +5,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 
+use muster_core::keys::{Action as Does, Keymap};
+
 use super::{Action, App, Mode, View};
 use crate::input::{Edit, LineInput};
 
@@ -19,40 +21,53 @@ pub(crate) struct Help {
     pub(crate) over_changes: bool,
 }
 
-/// One key, or a few that do the same, and what it does.
-pub(crate) type Key = (&'static str, &'static str);
-
-/// Keys under a heading.
-pub(crate) type Section = (&'static str, &'static [Key]);
-
-/// One line of the help as shown: a heading, or a key.
+/// One line of a section: an action, its keys as the person set them, or
+/// keys that are the same everywhere.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HelpLine {
-    Heading(&'static str),
-    Key(Key),
+enum Entry {
+    /// An action, said as it says itself.
+    Act(Does),
+    /// An action, said otherwise here.
+    DoesAs(Does, &'static str),
+    /// Keys no setting changes, and what they do.
+    Fixed(&'static str, &'static str),
 }
 
-const MOVING: Key = ("↑ ↓  j k", "move");
-const TABS: Key = ("⇥ ⇧⇥", "the next or previous tab");
-const TAB_NUMBERS: Key = ("1 2 3 4", "Sessions, Needs you, Tickets, Settings");
-const BACK: Key = ("esc ⌫", "back to Sessions");
-const HELP: Key = ("h ?", "these keys");
-const QUIT: Key = ("q", "quit the UI (sessions keep running)");
-const LAST_ALARM: Key = ("l", "the session that needed you last, as notified");
-const FOLD_LIST: Key = ("Ctrl-\\", "fold the list away, or bring it back");
-const MOVE_PANELS: Key = (
-    "m",
-    "move the panels with the keys (or drag one by its title)",
-);
+/// Lines under a heading.
+type Section = (&'static str, &'static [Entry]);
+
+/// One line of the help as shown: a heading, or keys and what they do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum HelpLine {
+    Heading(&'static str),
+    Key(String, String),
+}
+
+use Entry::{Act as D, DoesAs, Fixed};
+
+const ANYWHERE: &[Entry] = &[
+    DoesAs(Does::NextTab, "the next tab"),
+    DoesAs(Does::PreviousTab, "the previous tab"),
+    D(Does::SessionsTab),
+    D(Does::NeedsYouTab),
+    D(Does::TicketsTab),
+    D(Does::SettingsTab),
+    D(Does::Back),
+    D(Does::LastAlarm),
+    D(Does::FoldList),
+    D(Does::MovePanels),
+    D(Does::Help),
+    D(Does::Quit),
+];
 
 /// What goes to a session's program, and what does not.
 const IN_A_SESSION: Section = (
     "In a session",
     &[
-        ("Shift-Q", "back to the list (or a click on it)"),
-        FOLD_LIST,
-        ("Ctrl-1 Ctrl-2 Ctrl-3", "straight to a tab"),
-        ("any other key", "goes to its program, esc and ⇥ too"),
+        D(Does::LeaveSession),
+        D(Does::FoldList),
+        Fixed("Ctrl-1 Ctrl-2 Ctrl-3", "straight to a tab"),
+        Fixed("any other key", "goes to its program, esc and ⇥ too"),
     ],
 );
 
@@ -60,179 +75,128 @@ const SESSIONS: &[Section] = &[
     (
         "On the list",
         &[
-            MOVING,
-            (
+            Fixed("↑ ↓", "move"),
+            D(Does::MoveUp),
+            D(Does::MoveDown),
+            Fixed(
                 "⏎",
                 "type in the session beside the list; on a worktree a new session, on a project a new worktree",
             ),
-            ("f", "the session full screen"),
-            (
-                "e",
-                "fold or unfold a project or a worktree (on a session, its worktree)",
-            ),
-            ("a", "add a project"),
-            ("w", "a new worktree for the project"),
-            (
-                "n",
-                "a new session in the worktree, or a project's checkout",
-            ),
-            ("i", "the project's tickets"),
-            (
-                "d",
-                "what the worktree or session has changed, and its turns",
-            ),
-            ("s", "stop the session"),
-            ("r", "start an ended session again"),
-            (
-                "x",
-                "close the session; remove the worktree or the project, after asking",
-            ),
-            ("c", "run the project's checks in the worktree"),
-            ("v", "have Claude Code review the worktree's change"),
-            ("t", "have an agent tidy the worktree's commits"),
-            (
-                "u",
-                "move the worktree's branch onto its base, after asking",
-            ),
-            ("o", "push the branch and open a draft pull request"),
-            ("b", "the branch's pull request in the browser"),
-            ("PgUp PgDn End", "scroll the session beside the list"),
-            ("right-click", "what can be done on a line, with its keys"),
+            D(Does::FullScreen),
+            D(Does::Fold),
+            D(Does::AddProject),
+            D(Does::NewWorktree),
+            D(Does::NewSession),
+            D(Does::ShowTickets),
+            D(Does::ShowChanges),
+            D(Does::StopSession),
+            D(Does::RestartSession),
+            D(Does::Rename),
+            D(Does::Close),
+            D(Does::Checks),
+            D(Does::Review),
+            D(Does::Tidy),
+            D(Does::MoveBranch),
+            D(Does::OpenPullRequest),
+            D(Does::PullRequestInBrowser),
+            Fixed("PgUp PgDn End", "scroll the session beside the list"),
+            Fixed("right-click", "what can be done on a line, with its keys"),
         ],
     ),
     IN_A_SESSION,
-    (
-        "Anywhere",
-        &[
-            TABS,
-            TAB_NUMBERS,
-            BACK,
-            LAST_ALARM,
-            FOLD_LIST,
-            MOVE_PANELS,
-            HELP,
-            QUIT,
-        ],
-    ),
+    ("Anywhere", ANYWHERE),
 ];
 
 const NEEDS_YOU: &[Section] = &[
     (
         "On the queue",
         &[
-            MOVING,
-            ("⏎", "type in the session"),
-            ("f", "the session full screen"),
-            ("d", "what its workspace has changed"),
-            ("n", "a new session in its worktree"),
-            ("s", "stop the session"),
-            ("r", "start an ended session again"),
-            ("x", "close the session"),
-            ("PgUp PgDn End", "scroll the session beside the list"),
-            ("right-click", "what can be done on a line, with its keys"),
+            Fixed("↑ ↓", "move"),
+            D(Does::MoveUp),
+            D(Does::MoveDown),
+            Fixed("⏎", "type in the session"),
+            D(Does::FullScreen),
+            DoesAs(Does::ShowChanges, "what its workspace has changed"),
+            DoesAs(Does::NewSession, "a new session in its worktree"),
+            D(Does::StopSession),
+            D(Does::RestartSession),
+            D(Does::Rename),
+            DoesAs(Does::Close, "close the session"),
+            Fixed("PgUp PgDn End", "scroll the session beside the list"),
+            Fixed("right-click", "what can be done on a line, with its keys"),
         ],
     ),
     IN_A_SESSION,
-    (
-        "Anywhere",
-        &[
-            TABS,
-            TAB_NUMBERS,
-            BACK,
-            LAST_ALARM,
-            FOLD_LIST,
-            MOVE_PANELS,
-            HELP,
-            QUIT,
-        ],
-    ),
+    ("Anywhere", ANYWHERE),
 ];
 
 const TICKETS: &[Section] = &[
     (
         "On the tickets",
         &[
-            MOVING,
-            ("⏎", "open the agent on the ticket, or start the first"),
-            ("a", "start another agent on it, in a worktree of its own"),
-            ("b", "the ticket in the browser"),
-            (
-                "x",
-                "close the ticket in its tracker, after asking; then clean up",
-            ),
-            ("r", "fetch the tickets again"),
+            Fixed("↑ ↓", "move"),
+            D(Does::MoveUp),
+            D(Does::MoveDown),
+            Fixed("⏎", "open the agent on the ticket, or start the first"),
+            D(Does::AnotherAgent),
+            D(Does::TicketInBrowser),
+            D(Does::CloseTicket),
+            D(Does::RefreshTickets),
         ],
     ),
     (
         "Choosing an agent",
         &[
-            ("⇥ ⇧⇥", "the agent"),
-            ("← →", "what its worktree is made on top of"),
-            ("↑ ↓", "which project, where several share the tickets"),
+            Fixed("⇥ ⇧⇥", "the agent"),
+            Fixed("← →", "what its worktree is made on top of"),
+            Fixed("↑ ↓", "which project, where several share the tickets"),
         ],
     ),
-    (
-        "Anywhere",
-        &[
-            TABS,
-            TAB_NUMBERS,
-            BACK,
-            LAST_ALARM,
-            FOLD_LIST,
-            MOVE_PANELS,
-            HELP,
-            QUIT,
-        ],
-    ),
+    ("Anywhere", ANYWHERE),
 ];
 
 const SETTINGS: &[Section] = &[
     (
         "On the settings",
         &[
-            MOVING,
-            (
+            Fixed("↑ ↓", "move"),
+            D(Does::MoveUp),
+            D(Does::MoveDown),
+            Fixed(
                 "⏎ space",
                 "turn the setting on or off, go to its next choice, or open its dialog",
             ),
-            ("← →", "a smaller or a larger choice"),
-            ("r", "read the settings again, after editing a file by hand"),
+            Fixed("← →", "a smaller or a larger choice"),
+            D(Does::ReadSettings),
         ],
     ),
-    (
-        "Anywhere",
-        &[
-            TABS,
-            TAB_NUMBERS,
-            BACK,
-            LAST_ALARM,
-            FOLD_LIST,
-            MOVE_PANELS,
-            HELP,
-            QUIT,
-        ],
-    ),
+    ("Anywhere", ANYWHERE),
 ];
 
 const CHANGES: &[Section] = &[
     (
         "In the changes",
         &[
-            ("↑ ↓  j k", "choose a file or a turn; in a diff, scroll"),
-            ("⏎ → l", "its diff"),
-            ("PgUp PgDn space", "a page"),
-            ("Home End  g G", "a diff's top or bottom"),
-            ("esc ⌫ ← h", "back from a diff"),
-            ("r", "ask git again"),
-            (
-                "z",
-                "on a turn, put the files back as before it, after asking",
-            ),
-            ("d q Shift-Q", "back to the list"),
-            ("?", "these keys"),
+            Fixed("↑ ↓  j k", "choose a file or a turn; in a diff, scroll"),
+            Fixed("⏎ → l", "its diff"),
+            Fixed("PgUp PgDn space", "a page"),
+            Fixed("Home End  g G", "a diff's top or bottom"),
+            Fixed("esc ⌫ ← h", "back from a diff"),
+            D(Does::ChangesAgain),
+            D(Does::PutBack),
+            D(Does::CloseChanges),
+            DoesAs(Does::LeaveSession, "back to the list"),
+            D(Does::FoldList),
+            D(Does::ChangesHelp),
         ],
     ),
-    ("Anywhere", &[TABS, ("Ctrl-C", "quit the UI")]),
+    (
+        "Anywhere",
+        &[
+            DoesAs(Does::NextTab, "the next tab"),
+            Fixed("Ctrl-C", "quit the UI"),
+        ],
+    ),
 ];
 
 impl Help {
@@ -249,21 +213,29 @@ impl Help {
         }
     }
 
-    /// The lines shown for `view`: each heading with its keys that hold
-    /// what is typed, ignoring case; a heading with none goes.
-    pub(crate) fn lines(&self, view: View) -> Vec<HelpLine> {
+    /// The lines shown for `view`, the keys as the person set them: each
+    /// heading with its keys that hold what is typed, ignoring case; a
+    /// heading with none goes, and an action without a key.
+    pub(crate) fn lines(&self, view: View, keymap: &Keymap) -> Vec<HelpLine> {
         let wanted = self.filter.text().trim().to_lowercase();
-        let holds = |(keys, what): &Key| {
+        let holds = |(keys, what): &(String, String)| {
             wanted.is_empty()
                 || keys.to_lowercase().contains(&wanted)
                 || what.to_lowercase().contains(&wanted)
         };
+        let said = |entry: &Entry| match *entry {
+            Entry::Act(does) => (keymap.labels(does), does.what().to_owned()),
+            Entry::DoesAs(does, what) => (keymap.labels(does), what.to_owned()),
+            Entry::Fixed(keys, what) => (keys.to_owned(), what.to_owned()),
+        };
         let mut lines = Vec::new();
-        for (heading, keys) in Self::sections(view, self.over_changes) {
-            let shown: Vec<HelpLine> = keys
+        for (heading, entries) in Self::sections(view, self.over_changes) {
+            let shown: Vec<HelpLine> = entries
                 .iter()
-                .filter(|key| holds(key))
-                .map(|key| HelpLine::Key(*key))
+                .map(said)
+                .filter(|(keys, _)| keys != "none")
+                .filter(holds)
+                .map(|(keys, what)| HelpLine::Key(keys, what))
                 .collect();
             if !shown.is_empty() {
                 lines.push(HelpLine::Heading(heading));
@@ -338,7 +310,7 @@ impl App {
 
     /// Keeps the help open, scrolled no further than its last line.
     fn keep_help(&mut self, mut help: Help) {
-        let lines = help.lines(self.view).len();
+        let lines = help.lines(self.view, &self.keymap).len();
         help.offset = help.offset.min(lines.saturating_sub(1));
         self.mode = Mode::Help(help);
     }

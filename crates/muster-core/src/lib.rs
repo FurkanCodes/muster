@@ -18,6 +18,7 @@ pub mod frame;
 pub mod hex;
 pub mod html;
 pub mod ids;
+pub mod keys;
 pub mod layout;
 pub mod names;
 pub mod num;

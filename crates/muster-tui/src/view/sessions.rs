@@ -29,7 +29,10 @@ pub(super) fn draw_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
         let text = Text::from(vec![
             Line::from("No projects yet."),
             Line::from(""),
-            Line::from("Press a to add a project: a git repository, or any folder."),
+            Line::from(format!(
+                "Press {} to add a project: a git repository, or any folder.",
+                app.key(muster_core::keys::Action::AddProject)
+            )),
         ]);
         frame.render_widget(Paragraph::new(text).block(block).dim(), area);
         return;

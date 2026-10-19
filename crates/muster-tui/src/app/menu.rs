@@ -1,6 +1,6 @@
 //! The menu a right-click on a line of *Sessions* or *Needs you* opens:
 //! what can be done there (`app::actions`), each with its key, so the
-//! keys can be found without knowing them. Choosing one presses its key;
+//! keys can be found without knowing them. Choosing one does what its key does;
 //! Esc or a click outside closes it.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -55,7 +55,7 @@ impl App {
                 Vec::new()
             }
             KeyCode::Enter => match menu.items.get(menu.chosen) {
-                Some(item) => self.choose(*item),
+                Some(item) => self.choose(item),
                 None => self.close_menu(),
             },
             KeyCode::Esc => self.close_menu(),
@@ -80,7 +80,7 @@ impl App {
         if area.contains(at) {
             let item = usize::from(at.y.saturating_sub(area.y + 1));
             return match menu.items.get(item) {
-                Some(item) if pressed == MouseButton::Left && at.y > area.y => self.choose(*item),
+                Some(item) if pressed == MouseButton::Left && at.y > area.y => self.choose(item),
                 _ => Vec::new(),
             };
         }
@@ -92,9 +92,12 @@ impl App {
     }
 
     /// Does what `item` says, as its key would.
-    fn choose(&mut self, item: Here) -> Vec<Action> {
+    fn choose(&mut self, item: &Here) -> Vec<Action> {
         self.mode = Mode::Browse;
-        self.on_key(KeyEvent::new(item.key, KeyModifiers::NONE))
+        match item.does {
+            Some(does) => self.list_action(does),
+            None => self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+        }
     }
 
     fn close_menu(&mut self) -> Vec<Action> {

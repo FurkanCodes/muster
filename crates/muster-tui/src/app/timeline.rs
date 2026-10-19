@@ -196,7 +196,8 @@ impl App {
             ""
         };
         self.say(format!(
-            "The files are as they were before #{number}{branch}. z on #{entry} brings them back."
+            "The files are as they were before #{number}{branch}. {} on #{entry} brings them back.",
+            self.key(muster_core::keys::Action::PutBack)
         ));
         let Some(pane) = self
             .changes

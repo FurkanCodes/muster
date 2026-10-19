@@ -12,6 +12,7 @@
 //! offers to close its agents and remove its worktrees.
 
 use crossterm::event::{KeyCode, KeyEvent};
+use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
 use muster_core::{Issue, ProjectId, SessionId, TicketKey, WorkspaceId};
 
@@ -104,23 +105,23 @@ impl App {
     }
 
     /// A key on the Tickets screen; the rest are inert here.
-    pub(super) fn tickets_key(&mut self, key: &KeyEvent) -> Vec<Action> {
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-            KeyCode::Char('r') => {
+    pub(super) fn tickets_key(&mut self, key: &KeyEvent, does: Option<Does>) -> Vec<Action> {
+        match (key.code, does) {
+            (KeyCode::Up, _) | (_, Some(Does::MoveUp)) => self.move_selection(-1),
+            (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),
+            (_, Some(Does::RefreshTickets)) => {
                 // Everything is fetched again as it is shown.
                 self.tickets.clear();
                 self.ticket_texts.clear();
                 self.say("Fetching the tickets again…");
             }
-            KeyCode::Enter => return self.open_ticket(),
-            KeyCode::Char('a') => {
+            (KeyCode::Enter, _) => return self.open_ticket(),
+            (_, Some(Does::AnotherAgent)) => {
                 if let Some((project, key)) = self.selected_ticket() {
                     return self.choose_agent(project, key, true);
                 }
             }
-            KeyCode::Char('x') => {
+            (_, Some(Does::CloseTicket)) => {
                 if let Some((project, key)) = self.selected_ticket()
                     && let Some(ticket) = self.ticket(project, &key)
                 {
@@ -136,7 +137,7 @@ impl App {
                     return Vec::new();
                 }
             }
-            KeyCode::Char('b') => {
+            (_, Some(Does::TicketInBrowser)) => {
                 if let Some((project, key)) = self.selected_ticket()
                     && let Some(ticket) = self.ticket(project, &key)
                 {

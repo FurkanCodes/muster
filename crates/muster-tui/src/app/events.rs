@@ -2,40 +2,13 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use muster_core::WorkspaceId;
+use muster_core::keys::{Action as Does, Screen};
 use muster_core::protocol::{ClientFrame, Command};
 
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View, harness_choice};
 use crate::input::{Edit, LineInput};
 use crate::keys::{encode_key, encode_paste};
 use crate::model::{Row, needs_attention};
-
-/// Whether `key` gives the keys back from a session's terminal to the
-/// list: Shift+Q, the person's choice, so a capital Q never reaches a
-/// session's program. A terminal sends it as `Q`, or, with the kitty
-/// keyboard protocol, as `q` with Shift. Ctrl+], the key before it, still
-/// works; a terminal without the kitty protocol sends it as byte 0x1d,
-/// which crossterm reports as Ctrl+5, so both are accepted.
-pub(crate) fn leaves_terminal(key: &KeyEvent) -> bool {
-    let (control, alt) = (
-        key.modifiers.contains(KeyModifiers::CONTROL),
-        key.modifiers.contains(KeyModifiers::ALT),
-    );
-    let shift_q = key.code == KeyCode::Char('Q')
-        || (key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::SHIFT));
-    (shift_q && !control && !alt) || (control && matches!(key.code, KeyCode::Char(']' | '5')))
-}
-
-/// Whether `key` folds the list away or brings it back: Ctrl+\\, from
-/// anywhere, a session's terminal included, so the session can take the
-/// list's place as the person types. A terminal without the kitty keyboard
-/// protocol sends it as byte 0x1c, which crossterm reports as Ctrl+4, so
-/// both are accepted. A shell would take it as its quit key; few need that
-/// in a session.
-pub(crate) fn folds_list(key: &KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL)
-        && !key.modifiers.contains(KeyModifiers::ALT)
-        && matches!(key.code, KeyCode::Char('\\' | '4'))
-}
 
 /// The screen Ctrl+1, Ctrl+2 or Ctrl+3 goes to, from anywhere, a session's
 /// terminal included: no program there uses them. Terminals tell them from
@@ -56,6 +29,22 @@ pub(crate) fn screen_key(key: &KeyEvent) -> Option<View> {
 }
 
 impl App {
+    /// The screen of the list shown, whose keys a key press is.
+    pub(super) fn key_screen(&self) -> Screen {
+        match self.view {
+            View::Sessions => Screen::Sessions,
+            View::NeedsYou => Screen::NeedsYou,
+            View::Tickets => Screen::Tickets,
+            View::Settings => Screen::Settings,
+        }
+    }
+
+    /// What `key` does on `screen`, as the person's keys say
+    /// (`muster_core::keys`).
+    pub(super) fn does(&self, screen: Screen, key: &KeyEvent) -> Option<Does> {
+        crate::keys::chord(key).and_then(|chord| self.keymap.action(screen, chord))
+    }
+
     pub(crate) fn on_key(&mut self, key: KeyEvent) -> Vec<Action> {
         // Repeats count as presses; releases (sent by some terminals) do not.
         if key.kind == KeyEventKind::Release {
@@ -141,11 +130,12 @@ impl App {
     fn terminal_key(&mut self, session: muster_core::SessionId, key: &KeyEvent) -> Vec<Action> {
         self.note = None;
         self.selection = None;
-        if leaves_terminal(key) {
-            return self.leave_terminal(session);
-        }
-        if folds_list(key) {
-            return self.toggle_list();
+        // Every key is the program's but the few the person's keys keep for
+        // Muster here.
+        match self.does(Screen::InSession, key) {
+            Some(Does::LeaveSession) => return self.leave_terminal(session),
+            Some(Does::FoldList) => return self.toggle_list(),
+            _ => {}
         }
         if let Some(view) = screen_key(key) {
             let mut actions = self.leave_terminal(session);
@@ -163,7 +153,8 @@ impl App {
             && key.code == KeyCode::Char('z')
         {
             self.complain(format!(
-                "Ctrl+Z would freeze {agent} here, so it was not sent. Shift-Q goes back to the list."
+                "Ctrl+Z would freeze {agent} here, so it was not sent. {} goes back to the list.",
+                self.key(Does::LeaveSession)
             ));
             return Vec::new();
         }
@@ -184,65 +175,79 @@ impl App {
         if let Some(view) = screen_key(key) {
             return self.show(view);
         }
-        match key.code {
-            KeyCode::Char('c') if control => return vec![Action::Quit],
-            // Shift+Q leaves a session's terminal; pressed once too often
-            // on the list, it must not quit.
-            _ if leaves_terminal(key) => return Vec::new(),
-            _ if folds_list(key) => return self.toggle_list(),
-            KeyCode::Char('q') if control => return Vec::new(),
-            KeyCode::Char('q') => return vec![Action::Quit],
-            // The tabs, round and back.
-            KeyCode::Tab | KeyCode::BackTab => {
-                return self.show(self.view.next(key.code == KeyCode::BackTab));
-            }
-            KeyCode::Char('1') => return self.show(View::Sessions),
-            KeyCode::Char('2') => return self.show(View::NeedsYou),
-            KeyCode::Char('3') => return self.show(View::Tickets),
-            KeyCode::Char('4') => return self.show(View::Settings),
-            KeyCode::Char('l') => return self.go_to_last_alarm(),
-            KeyCode::Char('m') => return self.start_arranging(),
-            // The keys of the screen shown, on a letter; `?` from habit.
-            KeyCode::Char('h' | '?') => {
+        if control && key.code == KeyCode::Char('c') {
+            return vec![Action::Quit];
+        }
+        // The key that leaves a session's terminal, pressed once too often
+        // on the list, must not quit; nor Ctrl+Q, which reaches programs.
+        let leaves = crate::keys::chord(key)
+            .is_some_and(|chord| self.keymap.chords(Does::LeaveSession).contains(&chord));
+        if leaves || (control && key.code == KeyCode::Char('q')) {
+            return Vec::new();
+        }
+        let does = self.does(self.key_screen(), key);
+        match does {
+            Some(Does::Quit) => return vec![Action::Quit],
+            Some(Does::NextTab) => return self.show(self.view.next(false)),
+            Some(Does::PreviousTab) => return self.show(self.view.next(true)),
+            Some(Does::SessionsTab) => return self.show(View::Sessions),
+            Some(Does::NeedsYouTab) => return self.show(View::NeedsYou),
+            Some(Does::TicketsTab) => return self.show(View::Tickets),
+            Some(Does::SettingsTab) => return self.show(View::Settings),
+            Some(Does::LastAlarm) => return self.go_to_last_alarm(),
+            Some(Does::MovePanels) => return self.start_arranging(),
+            Some(Does::FoldList) => return self.toggle_list(),
+            Some(Does::Help) => {
                 self.open_help();
                 return Vec::new();
             }
             // Back to the main screen; there, nothing to go back to.
-            KeyCode::Esc | KeyCode::Backspace if self.view != View::Sessions => {
-                return self.show(View::Sessions);
-            }
-            _ if self.view == View::Tickets => return self.tickets_key(key),
-            _ if self.view == View::Settings => return self.settings_key(key),
+            Some(Does::Back) => return self.show(View::Sessions),
             _ => {}
         }
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-            KeyCode::PageUp => self.page_preview(true),
-            KeyCode::PageDown => self.page_preview(false),
-            KeyCode::End => self.preview_to_bottom(),
-            KeyCode::Enter => self.open_selected(),
-            KeyCode::Char('a') => return self.open_add_project(),
-            KeyCode::Char('w') => self.new_worktree(),
-            KeyCode::Char('i') => {
+        match self.view {
+            View::Tickets => return self.tickets_key(key, does),
+            View::Settings => return self.settings_key(key, does),
+            View::Sessions | View::NeedsYou => {}
+        }
+        match (key.code, does) {
+            (KeyCode::Up, _) | (_, Some(Does::MoveUp)) => self.move_selection(-1),
+            (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),
+            (KeyCode::PageUp, _) => self.page_preview(true),
+            (KeyCode::PageDown, _) => self.page_preview(false),
+            (KeyCode::End, _) => self.preview_to_bottom(),
+            (KeyCode::Enter, _) => self.open_selected(),
+            (_, Some(does)) => return self.list_action(does),
+            _ => {}
+        }
+        Vec::new()
+    }
+
+    /// Does `does` on the selected line of *Sessions* or *Needs you*, as
+    /// its key, or its item in the menu, says.
+    pub(super) fn list_action(&mut self, does: Does) -> Vec<Action> {
+        match does {
+            Does::AddProject => return self.open_add_project(),
+            Does::NewWorktree => self.new_worktree(),
+            Does::ShowTickets => {
                 let project = self.selected.and_then(|row| self.model.project_of(row));
                 self.show_tickets(project);
                 return self.settle();
             }
-            KeyCode::Char('n') => self.new_session(),
-            KeyCode::Char('f') => return self.open_full_screen(),
-            KeyCode::Char('s') => self.confirm_stop(),
-            KeyCode::Char('r') => return self.restart(),
-            KeyCode::Char('x') => return self.remove(),
-            KeyCode::Char('c') if self.view == View::Sessions => return self.check(),
-            KeyCode::Char('v') if self.view == View::Sessions => return self.review(),
-            KeyCode::Char('t') if self.view == View::Sessions => return self.ask_tidy(),
-            KeyCode::Char('u') if self.view == View::Sessions => return self.ask_move(),
-            KeyCode::Char('R') => return self.ask_rename(),
-            KeyCode::Char('o') if self.view == View::Sessions => return self.open_pull_request(),
-            KeyCode::Char('b') if self.view == View::Sessions => return self.browse_pull_request(),
-            KeyCode::Char('d') => return self.open_changes(),
-            KeyCode::Char('e') if self.view == View::Sessions => self.toggle_fold(),
+            Does::NewSession => self.new_session(),
+            Does::FullScreen => return self.open_full_screen(),
+            Does::StopSession => self.confirm_stop(),
+            Does::RestartSession => return self.restart(),
+            Does::Close => return self.remove(),
+            Does::Checks => return self.check(),
+            Does::Review => return self.review(),
+            Does::Tidy => return self.ask_tidy(),
+            Does::MoveBranch => return self.ask_move(),
+            Does::Rename => return self.ask_rename(),
+            Does::OpenPullRequest => return self.open_pull_request(),
+            Does::PullRequestInBrowser => return self.browse_pull_request(),
+            Does::ShowChanges => return self.open_changes(),
+            Does::Fold => self.toggle_fold(),
             _ => {}
         }
         Vec::new()
@@ -426,7 +431,10 @@ impl App {
         if let Some(found) = found {
             vec![Action::Open(found.url.clone())]
         } else {
-            self.complain("No pull request from this branch is known; o opens one.");
+            let open = self.key(Does::OpenPullRequest);
+            self.complain(format!(
+                "No pull request from this branch is known; {open} opens one."
+            ));
             Vec::new()
         }
     }
@@ -439,7 +447,8 @@ impl App {
                     .project(project)
                     .map_or("That project", |found| found.name.as_str());
                 self.complain(format!(
-                    "{name} is a plain folder, not a git repository, so it has no worktrees: press n for a session in it."
+                    "{name} is a plain folder, not a git repository, so it has no worktrees: press {} for a session in it.",
+                    self.key(Does::NewSession)
                 ));
             }
             Some(project) => {
@@ -448,7 +457,10 @@ impl App {
                     branch: LineInput::default(),
                 });
             }
-            None => self.complain("Add a project first: press a."),
+            None => self.complain(format!(
+                "Add a project first: press {}.",
+                self.key(Does::AddProject)
+            )),
         }
     }
 
@@ -482,7 +494,10 @@ impl App {
                     prompt: LineInput::default(),
                 });
             }
-            None => self.complain("Select a worktree first, or create one: press w."),
+            None => self.complain(format!(
+                "Select a worktree first, or create one: press {}.",
+                self.key(Does::NewWorktree)
+            )),
         }
     }
 

@@ -273,7 +273,11 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 Line::from("Its settings cannot be read:").red(),
                 Line::from(error.clone()),
                 Line::from(""),
-                Line::from("Fix the file it names, then r reads them again.").dim(),
+                Line::from(format!(
+                    "Fix the file it names, then {} reads them again.",
+                    app.key(muster_core::keys::Action::ReadSettings)
+                ))
+                .dim(),
             ]),
             None | Some(Settings::Loading) => Text::from("Reading its settings…").dim(),
         },
@@ -456,7 +460,11 @@ fn agents_text(app: &App) -> Text<'static> {
     lines.extend([
         detail("Saved in", preferences.file.display().to_string()),
         Line::from(""),
-        Line::from("Add one there, then r reads it:").dim(),
+        Line::from(format!(
+            "Add one there, then {} reads it:",
+            app.key(muster_core::keys::Action::ReadSettings)
+        ))
+        .dim(),
         Line::from("  [agents.my-agent]").dim(),
         Line::from("  program = \"my-agent\"").dim(),
         Line::from("  prompt = [\"--message\", \"{prompt}\"]").dim(),
@@ -581,7 +589,8 @@ fn side_by_side_text(app: &App) -> Text<'static> {
         columns => format!(
             "A session's terminal sits beside the list in a window of {columns} columns or more. \
              In a narrower one, the list takes the whole width: ⏎ opens a session over it, as \
-             full screen does, and Shift-Q goes back."
+             full screen does, and {} goes back.",
+            app.key(muster_core::keys::Action::LeaveSession)
         ),
     };
     let now = if app.narrow() {
@@ -719,7 +728,7 @@ fn detail(label: &str, value: String) -> Line<'static> {
 }
 
 /// The keys that apply on the Settings screen, for what is selected.
-pub(super) fn hints(app: &App) -> Vec<&'static str> {
+pub(super) fn hints(app: &App) -> Vec<String> {
     let mut hints = Vec::new();
     match app.settings_selected {
         Some(SettingRow::OnlyMine(project)) => {
@@ -790,6 +799,11 @@ pub(super) fn hints(app: &App) -> Vec<&'static str> {
         )
         | None => {}
     }
-    hints.push("r read again");
+    let mut hints: Vec<String> = hints.into_iter().map(str::to_owned).collect();
+    hints.extend(super::bottom_bar::hint(
+        app,
+        muster_core::keys::Action::ReadSettings,
+        "read again",
+    ));
     hints
 }

@@ -509,6 +509,8 @@ pub(crate) struct App {
     pub(crate) drag: Option<drag::Drag>,
     /// The panels being moved with the keys.
     pub(crate) arranging: Option<drag::Arranging>,
+    /// What each key does, Muster's own with the person's over them.
+    pub(crate) keymap: muster_core::keys::Keymap,
 }
 
 impl App {
@@ -580,6 +582,7 @@ impl App {
             fitted: None,
             drag: None,
             arranging: None,
+            keymap: muster_core::keys::Keymap::default(),
         }
     }
 

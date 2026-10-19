@@ -238,9 +238,11 @@ fn tidy(app: &App, workspace: WorkspaceId, harness: &HarnessChoice) -> Shape<'st
                 "An agent rewrites the commits on {branch} not pushed yet into clear ones, the \
                  files left as they are."
             )),
-            Line::from(
-                "Muster checks the files once it stops; d lists its turn, and z puts it back.",
-            )
+            Line::from(format!(
+                "Muster checks the files once it stops; {} lists its turn, and {} puts it back.",
+                app.key(muster_core::keys::Action::ShowChanges),
+                app.key(muster_core::keys::Action::PutBack)
+            ))
             .dim(),
             Line::from(""),
             Line::from(run),
