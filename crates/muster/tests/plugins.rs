@@ -4,7 +4,7 @@
 //! and asking; links a folder; turns one off and on; updates it to a new
 //! commit; removes it with its files. A manifest edited after its approval
 //! turns its plugin off with why, until it is approved again. Nothing of a
-//! plugin is run.
+//! plugin is run. The examples in `examples/plugins` read as manifests.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -644,4 +644,30 @@ fn a_plugin_installed_twice_is_refused_the_second_time() {
     );
     assert!(error.contains("muster plugin update zoe"), "{error}");
     assert_eq!(listed(&sandbox).len(), 1);
+}
+
+#[test]
+fn every_example_plugin_s_manifest_reads_prd_15() {
+    // docs/plugins.md points its readers at these: each must link as it is.
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/plugins");
+    let mut read = Vec::new();
+    for entry in std::fs::read_dir(&examples).unwrap() {
+        let folder = entry.unwrap().path();
+        let text = std::fs::read_to_string(folder.join("muster-plugin.toml")).unwrap();
+        let manifest = muster_core::plugins::Manifest::parse(&text)
+            .unwrap_or_else(|error| panic!("{}: {error}", folder.display()));
+        assert_eq!(
+            folder.file_name().unwrap().to_str().unwrap(),
+            manifest.id,
+            "an example's folder is named for its plugin"
+        );
+        assert!(
+            folder.join("README.md").is_file(),
+            "{} has no README",
+            folder.display()
+        );
+        read.push(manifest.id);
+    }
+    read.sort();
+    assert_eq!(read, ["session-graph", "tickets-from-file"]);
 }
