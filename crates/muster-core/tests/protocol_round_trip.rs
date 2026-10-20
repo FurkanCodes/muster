@@ -19,7 +19,6 @@ use std::path::PathBuf;
 use muster_core::changes::{Commit, LineCounts};
 use muster_core::clashes::{Clash, ClashFile};
 use muster_core::colours::{Rgb, TerminalColours};
-use muster_core::config::TrackerKind;
 use muster_core::explain::{
     Deadline, DeadlineKind, Explanation, HoldView, MachineView, OpenWait, SignalSeen,
 };
@@ -306,11 +305,15 @@ fn explanation() -> Explanation {
 
 fn tickets_from() -> TicketsFrom {
     TicketsFrom {
-        tracker: TrackerKind::Jira,
-        site: Some("acme.atlassian.net".to_owned()),
-        project: Some("ENG".to_owned()),
-        jql: Some("assignee = currentUser()".to_owned()),
-        team: None,
+        tracker: "jira".to_owned(),
+        fields: [
+            ("site", "acme.atlassian.net"),
+            ("project", "ENG"),
+            ("jql", "assignee = currentUser()"),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect(),
     }
 }
 

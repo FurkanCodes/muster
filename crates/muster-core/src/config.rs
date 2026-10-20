@@ -17,7 +17,7 @@ pub mod edit;
 pub mod preferences;
 mod services;
 
-pub use services::{HostKind, PullRequests, Tickets, TrackerKind};
+pub use services::{HostKind, PullRequests, Tickets, TrackerId, check_fields, tracker_name};
 
 /// The smallest memory reservation accepted: below it no agent runs.
 const MIN_MEMORY: u64 = 512 * 1024 * 1024;
@@ -172,6 +172,7 @@ impl ProjectConfig {
                 file: name.to_owned(),
                 message: error.message().to_owned(),
             })?;
+            another_tracker(&mut merged, &table);
             merge(&mut merged, table);
         }
         let file = match (repository, local) {
@@ -196,6 +197,25 @@ impl ProjectConfig {
             return Err(NoChecks);
         }
         Ok(())
+    }
+}
+
+/// Where `over` names another tracker than `base`, `base`'s settings for
+/// its own give way, as they are that plugin's: only `mine` is kept.
+fn another_tracker(base: &mut toml::Table, over: &toml::Table) {
+    let tracker = |table: &toml::Table| {
+        table
+            .get("tickets")
+            .and_then(|tickets| tickets.get("tracker"))
+            .and_then(toml::Value::as_str)
+            .map(|tracker| tracker.trim().to_ascii_lowercase())
+    };
+    let Some(named) = tracker(over) else { return };
+    if tracker(base).is_some_and(|was| was == named) {
+        return;
+    }
+    if let Some(toml::Value::Table(tickets)) = base.get_mut("tickets") {
+        tickets.retain(|key, _| key == "mine");
     }
 }
 

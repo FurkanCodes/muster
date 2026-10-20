@@ -83,8 +83,17 @@ fn reread(registry: &mut Registry) {
     registry.take(reading);
 }
 
+/// The plugins the person added, without Muster's own.
+fn theirs(registry: &Registry) -> Vec<PluginInfo> {
+    registry
+        .infos()
+        .into_iter()
+        .filter(|info| info.source != PluginSource::Builtin)
+        .collect()
+}
+
 fn only(registry: &Registry) -> PluginInfo {
-    let infos = registry.infos();
+    let infos = theirs(registry);
     assert_eq!(infos.len(), 1, "{infos:?}");
     infos.into_iter().next().unwrap()
 }
@@ -208,7 +217,7 @@ async fn removal_leaves_nothing_keyed_by_the_plugin_arc_14() {
         files::remove_later(folder).await;
     }
     reread(&mut registry);
-    assert_eq!(registry.infos(), []);
+    assert_eq!(theirs(&registry), []);
     assert_eq!(registry.previews(), 0);
     assert!(registry.changes.is_empty());
     assert!(!folders.data().join("plugins/zoe").exists());
@@ -518,7 +527,14 @@ fn settings_that_do_not_read_leave_the_plugins_folder_alone() {
     let mut registry = Registry::new(&folders.data(), folders.config());
     registry.take(reading);
     let list = registry.list(at());
-    assert_eq!(list.plugins, []);
+    // Muster's own read on, whatever its settings say.
+    assert!(
+        list.plugins
+            .iter()
+            .all(|info| info.source == PluginSource::Builtin && info.runs()),
+        "{:?}",
+        list.plugins
+    );
     assert!(list.problem.unwrap().contains("shwo"));
     // Read, they sweep what no entry names.
     std::fs::write(folders.config().join("settings.toml"), "").unwrap();
@@ -549,4 +565,41 @@ fn a_manifest_that_is_a_link_or_too_large_is_refused() {
         read_manifest(Path::new("/no/such")),
         Err(PluginError::NotAFolder { .. })
     ));
+}
+
+#[test]
+fn muster_s_own_ticket_plugins_are_listed_on_and_turned_off_not_removed() {
+    let folders = Folders::new();
+    let mut registry = folders.registry();
+    let ids: Vec<String> = registry.infos().into_iter().map(|info| info.id).collect();
+    assert_eq!(ids, ["github", "gitlab", "jira", "linear"]);
+    let plugins = registry.ticket_plugins();
+    let github = plugins.iter().find(|plugin| plugin.id == "github").unwrap();
+    assert_eq!(
+        (github.off.as_deref(), github.folder.as_deref()),
+        (None, None)
+    );
+    assert_eq!(
+        github.tickets.as_ref().unwrap().command,
+        ["muster", "plugin-run", "github"]
+    );
+
+    registry
+        .set_enabled("jira", false, ChangedBy::CommandLine, at())
+        .unwrap();
+    reread(&mut registry);
+    let settings = std::fs::read_to_string(folders.config().join("settings.toml")).unwrap();
+    assert!(
+        settings.contains("[plugins.jira]\nenabled = false"),
+        "{settings}"
+    );
+    let jira = registry
+        .ticket_plugins()
+        .into_iter()
+        .find(|plugin| plugin.id == "jira")
+        .unwrap();
+    assert!(jira.off.unwrap().starts_with("is turned off"));
+    let (removed, gone) = registry.remove("github");
+    assert!(matches!(removed, Err(PluginError::Own { .. })));
+    assert_eq!(gone, Vec::<PathBuf>::new());
 }

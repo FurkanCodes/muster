@@ -12,7 +12,7 @@ use std::io::{BufRead as _, IsTerminal as _, Write as _};
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
-use muster_core::plugins::{PLUGINS_PROTOCOL, PluginSource};
+use muster_core::plugins::{PLUGINS_PROTOCOL, PluginSource, TICKET_PLUGINS_PROTOCOL};
 use muster_core::protocol::plugins::{
     ChangedBy, PluginCommand as Asked, PluginInfo, PluginList, PluginOrigin, PreviewKind,
 };
@@ -76,6 +76,9 @@ pub(crate) enum PluginCommand {
         #[arg(long)]
         yes: bool,
     },
+    /// Show the end of plugin ID's log: what its program wrote on stderr
+    /// while the daemon ran, its secrets hidden.
+    Log { id: String },
 }
 
 pub(crate) async fn run(socket: &Path, command: PluginCommand) -> Outcome {
@@ -120,7 +123,35 @@ pub(crate) async fn run(socket: &Path, command: PluginCommand) -> Outcome {
             Ok(())
         }
         PluginCommand::Remove { id, yes } => remove(socket, &id, yes).await,
+        PluginCommand::Log { id } => log(socket, &id).await,
     }
+}
+
+/// `muster plugin log`.
+async fn log(socket: &Path, id: &str) -> Outcome {
+    let mut connection = open(socket).await?;
+    let version = connection.welcome().version;
+    if version < TICKET_PLUGINS_PROTOCOL {
+        return Err(format!(
+            "the daemon speaks protocol {version} and keeps no plugin's log, which needs \
+             {TICKET_PLUGINS_PROTOCOL}; `muster reload` moves it onto the version installed now"
+        )
+        .into());
+    }
+    let asked = Asked::Log { id: id.to_owned() };
+    match connection.command(Command::Plugin(asked)).await? {
+        Reply::PluginLog { log, .. } if log.trim().is_empty() => {
+            println!(
+                "{} has written nothing since the daemon started.",
+                shown(id)
+            );
+        }
+        // What a plugin wrote is cleaned of control characters before a
+        // terminal sees it.
+        Reply::PluginLog { log, .. } => print!("{}", muster_core::text::multi_line(&log)),
+        reply => return Err(unexpected(&reply)),
+    }
+    Ok(())
 }
 
 /// Refuses to install, approve or turn on a plugin inside a Muster

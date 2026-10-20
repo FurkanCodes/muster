@@ -113,7 +113,7 @@ enum Commands {
     #[command(subcommand)]
     Plugin(plugins::PluginCommand),
     /// Sign-ins and tokens Muster keeps in the macOS Keychain: for Jira, Linear,
-    /// Bitbucket, and the autopilot's runs.
+    /// Bitbucket, plugins' secrets, and the autopilot's runs.
     #[command(subcommand)]
     Auth(AuthCommand),
     /// Show the agents in the MacBook's notch while you look away from
@@ -166,6 +166,10 @@ enum AuthCommand {
         #[arg(long)]
         token: bool,
     },
+    /// Store secret NAME for plugin ID, as its manifest names it: pasted
+    /// when asked, not shown, or piped in. Muster gives it to that plugin
+    /// alone.
+    Plugin { id: String, name: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -460,6 +464,9 @@ fn main() -> ExitCode {
             }
             Some(Commands::Auth(AuthCommand::Linear { token })) => {
                 return auth::linear(token).await;
+            }
+            Some(Commands::Auth(AuthCommand::Plugin { id, name })) => {
+                return auth::plugin(&id, &name).await;
             }
             // Run before the runtime was made.
             Some(Commands::Notch { .. } | Commands::PluginRun { .. }) => Ok(()),

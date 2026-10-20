@@ -63,7 +63,7 @@ fn mine_narrows_any_query_to_the_person_s_and_keeps_its_order() {
         "assignee = currentUser() order by rank"
     );
     let project = Tickets {
-        project: Some("APP".to_owned()),
+        fields: [("project".to_owned(), "APP".to_owned())].into(),
         mine: true,
         ..Tickets::default()
     };
@@ -205,7 +205,7 @@ async fn jira_cloud_s_rest_api_lists_views_and_closes_with_a_token() {
         detail.body, "Users land on /404.[2J",
         "control characters go"
     );
-    assert_eq!(detail.tracker, TrackerKind::Jira);
+    assert_eq!(detail.noun.word, "ticket");
     let missing = jira
         .view(&TicketKey::parse("APP-9").unwrap())
         .await

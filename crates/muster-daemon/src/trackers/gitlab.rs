@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use muster_core::config::TrackerKind;
+use muster_core::plugins::own;
 use muster_core::text::{multi_line, one_line};
 use muster_core::{Issue, TicketKey};
 use serde::Deserialize;
@@ -54,7 +54,7 @@ impl GlabIssue {
                 author: self.author.map(|author| one_line(&author.username)),
             },
             body: multi_line(&self.description.unwrap_or_default()),
-            tracker: TrackerKind::GitLab,
+            noun: super::Noun::own(own::GITLAB),
         }
     }
 }
@@ -68,7 +68,7 @@ fn iid(key: &TicketKey) -> Result<String, ServiceError> {
 
 impl TicketSource for GitLabIssues {
     fn describe(&self) -> String {
-        TrackerKind::GitLab.name().to_owned()
+        muster_core::config::tracker_name(own::GITLAB)
     }
 
     fn only_mine(&self) -> bool {
@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(detail.issue.labels, ["bug", "p1"]);
         assert_eq!(detail.issue.author.as_deref(), Some("someone"));
         assert_eq!(detail.body, "After signing in, users land on /404.");
-        assert_eq!(detail.tracker, TrackerKind::GitLab);
+        assert_eq!(detail.noun.tracker, "GitLab");
     }
 
     #[test]

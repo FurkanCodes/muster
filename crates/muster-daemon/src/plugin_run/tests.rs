@@ -1,7 +1,6 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use muster_core::config::TrackerKind;
 use muster_core::ticket_protocol::{Project, Reply, read_reply, request_line};
 use muster_core::{Issue, TicketKey};
 use serde_json::{Value, json};
@@ -65,7 +64,7 @@ impl TicketSource for Repository {
             Ok(IssueDetail {
                 issue: issue(key.as_number().unwrap_or_default()),
                 body: "After signing in, users land on /404.".to_owned(),
-                tracker: TrackerKind::GitHub,
+                noun: crate::trackers::Noun::own("github"),
             })
         })
     }

@@ -290,8 +290,13 @@ pub(crate) async fn show_config(
             .map_or("no cost limit".to_owned(), |usd| format!("${usd:.2}"))
     );
     let tickets = &config.tickets;
+    let name = tickets
+        .tracker
+        .as_deref()
+        .map(muster_core::config::tracker_name)
+        .unwrap_or_default();
     let source = tickets
-        .written()
+        .written(&name)
         .map_or("as the git remote says".to_owned(), |written| {
             shown(&written)
         });

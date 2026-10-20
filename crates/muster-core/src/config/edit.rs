@@ -405,6 +405,19 @@ fn parse(text: &str) -> Result<toml_edit::DocumentMut, EditError> {
         .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))
 }
 
+/// The keys `[table]` has in `text`; none where it has no such table, or
+/// does not read.
+pub fn keys_of(text: Option<&str>, table: &str) -> Vec<String> {
+    text.and_then(|text| text.parse::<toml::Table>().ok())
+        .and_then(|written| {
+            written
+                .get(table)
+                .and_then(toml::Value::as_table)
+                .map(|entries| entries.keys().cloned().collect())
+        })
+        .unwrap_or_default()
+}
+
 /// Where `[table] key` gets its value: the person's overrides (`local`)
 /// over the repository's `muster.toml`, over Muster's default.
 pub fn source_of(

@@ -6,6 +6,7 @@
 //! hold it ([`registry`]). The daemon fetches, hashes and moves the files.
 
 pub mod manifest;
+pub mod own;
 pub mod placeholders;
 pub mod registry;
 
@@ -16,6 +17,12 @@ pub use registry::{PluginEntry, PluginSource, RegistryError};
 /// The first protocol whose daemon keeps a registry of plugins and takes
 /// [`crate::protocol::Command::Plugin`] (`ARC-09`).
 pub const PLUGINS_PROTOCOL: u32 = 41;
+
+/// The first protocol whose daemon finds tickets through plugins: a
+/// project's tracker is a ticket plugin's id, with what its `[tickets]`
+/// says for it ([`crate::settings::TicketsFrom`]), and a plugin's log is
+/// read with [`crate::protocol::plugins::PluginCommand::Log`] (`ARC-09`).
+pub const TICKET_PLUGINS_PROTOCOL: u32 = 42;
 
 /// The Muster reading manifests, which a manifest's `muster` must not be
 /// newer than.

@@ -14,8 +14,9 @@
 
 use std::sync::Arc;
 
-use muster_core::config::{Tickets, TrackerKind};
+use muster_core::config::Tickets;
 use muster_core::html;
+use muster_core::plugins::own;
 use muster_core::text::{multi_line, one_line};
 use muster_core::{Issue, TicketKey};
 use serde::{Deserialize, Serialize};
@@ -141,8 +142,8 @@ fn assigned_to_me(jql: &str) -> String {
 /// The query `tickets` asks for: their JQL, or their project's open
 /// tickets; with `mine`, those assigned to the person signed in.
 fn query(tickets: &Tickets) -> Option<String> {
-    let jql = match (&tickets.jql, &tickets.project) {
-        (Some(jql), _) => jql.clone(),
+    let jql = match (tickets.field("jql"), tickets.field("project")) {
+        (Some(jql), _) => jql.to_owned(),
         (None, Some(project)) => project_query(project),
         (None, None) => return None,
     };
@@ -179,7 +180,7 @@ impl Jira {
         secrets: &dyn Secrets,
         http: reqwest::Client,
     ) -> Result<Arc<Self>, ServiceError> {
-        let written = tickets.site.as_deref().unwrap_or_default();
+        let written = tickets.field("site").unwrap_or_default();
         let site = Site::parse(written).ok_or_else(|| {
             ServiceError::NotConfigured(format!(
                 "tickets.site {written:?} is not a Jira site's address"
@@ -543,7 +544,7 @@ fn read_issue(item: &Value, browse: impl Fn(&str) -> String) -> Option<IssueDeta
         body: multi_line(&description_text(
             fields.get("description").unwrap_or(&Value::Null),
         )),
-        tracker: TrackerKind::Jira,
+        noun: super::Noun::own(own::JIRA),
     })
 }
 

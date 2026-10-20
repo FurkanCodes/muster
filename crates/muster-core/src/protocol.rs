@@ -110,7 +110,15 @@
 //! version 41 plugins (`Command::Plugin`, sent only to a daemon of 41 or
 //! later, answered with `Reply::Plugins` and `Reply::PluginPreview`;
 //! `Snapshot::plugins`, a field older clients pass over; and
-//! `Delta::PluginsChanged`, sent only to a client of 41 or later).
+//! `Delta::PluginsChanged`, sent only to a client of 41 or later); version
+//! 42 tickets through plugins: a project's tracker is a ticket plugin's id
+//! with what its `[tickets]` says for it (`TicketsFrom::tracker` and
+//! `TicketsFrom::fields`, with Jira's and Linear's keys written beside
+//! them as older peers read them, sent only to a daemon of 42 or later; a
+//! project's settings naming anyone else's plugin reach an older client
+//! without it, [`Reply::for_version`]), and a plugin's log
+//! (`PluginCommand::Log`, sent only to a daemon of 42 or later, answered
+//! with `Reply::PluginLog`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -131,7 +139,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 41;
+pub const PROTOCOL_VERSION: u32 = 42;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -727,6 +735,11 @@ pub enum Reply {
     /// What installing, linking or updating a plugin would do. From
     /// protocol 41.
     PluginPreview(Box<plugins::PluginPreview>),
+    /// The end of a plugin's log. From protocol 42.
+    PluginLog {
+        id: String,
+        log: String,
+    },
     /// The command was carried out and has nothing to report.
     Done,
 }
@@ -848,10 +861,24 @@ pub enum Delta {
 impl Reply {
     /// The reply as a client that agreed to `version` can read it: a
     /// timeline's entries of kinds it does not know are told as edits
-    /// between turns (`ARC-09`).
+    /// between turns, and a project's tickets from a plugin not Muster's
+    /// own are left out of its settings, as in words they are still said
+    /// (`ARC-09`).
     #[must_use]
     pub fn for_version(self, version: u32) -> Self {
         match self {
+            Self::ProjectSettings(mut settings)
+                if version < crate::plugins::TICKET_PLUGINS_PROTOCOL =>
+            {
+                if settings
+                    .tickets
+                    .as_ref()
+                    .is_some_and(|from| crate::plugins::own::manifest(&from.tracker).is_none())
+                {
+                    settings.tickets = None;
+                }
+                Self::ProjectSettings(settings)
+            }
             Self::Timeline(mut timeline) if version < crate::stacks::STACKS_PROTOCOL => {
                 for entry in &mut timeline.entries {
                     if matches!(entry.kind, crate::timeline::EntryKind::Moved { .. }) {

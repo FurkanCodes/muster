@@ -163,6 +163,7 @@ pub(crate) async fn setup() -> Setup {
         hosts: Arc::new(FakeHosts(host.clone())),
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
+        ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
     })
     .await
     .unwrap();

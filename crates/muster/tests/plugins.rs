@@ -108,11 +108,23 @@ fn refused(sandbox: &Sandbox, args: &[&str], env: &[(&str, &str)]) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
-/// `muster plugin list --json`'s plugins.
+/// `muster plugin list --json`'s plugins, but Muster's own, which are
+/// always there.
 fn listed(sandbox: &Sandbox) -> Vec<Value> {
     let document: Value = serde_json::from_str(&ok(sandbox, &["list", "--json"])).unwrap();
     assert_eq!(document["format"], 1);
-    document["plugins"].as_array().unwrap().clone()
+    let plugins = document["plugins"].as_array().unwrap();
+    let own: Vec<&str> = plugins
+        .iter()
+        .filter(|plugin| plugin["source"] == "builtin")
+        .map(|plugin| plugin["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(own, ["github", "gitlab", "jira", "linear"]);
+    plugins
+        .iter()
+        .filter(|plugin| plugin["source"] != "builtin")
+        .cloned()
+        .collect()
 }
 
 fn the_one(sandbox: &Sandbox) -> Value {
@@ -239,7 +251,9 @@ fn installing_shows_everything_it_would_run_and_asks_first_prd_15() {
     assert!(!sandbox.root().join("ran").exists());
 
     let list = ok(&sandbox, &["list"]);
-    assert!(list.starts_with("zoe 0.1.0: on, from file://"), "{list}");
+    // After Muster's own.
+    assert!(list.starts_with("github "), "{list}");
+    assert!(list.contains("\nzoe 0.1.0: on, from file://"), "{list}");
     assert!(list.contains(&format!("at {}", &commit[..7])), "{list}");
     assert!(
         list.contains("installed 0 s ago from the command line"),
@@ -254,15 +268,24 @@ async fn every_client_is_told_of_a_change_to_the_plugins_arc_09() {
     let repository = plugin_repository(&sandbox, MANIFEST);
     let mut connection = daemon.connect().await;
     let snapshot = connection.subscribe().await.unwrap();
-    assert_eq!(snapshot.plugins, []);
+    let theirs = |plugins: &[muster_core::protocol::plugins::PluginInfo]| {
+        plugins
+            .iter()
+            .filter(|plugin| plugin.source != muster_core::plugins::PluginSource::Builtin)
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(theirs(&snapshot.plugins), []);
+    assert_eq!(snapshot.plugins.len(), 4, "Muster's own");
     ok(&sandbox, &["install", &address(&repository), "--yes"]);
     let plugins = expect_event(&mut connection, |frame| match frame {
         ServerFrame::Delta(Delta::PluginsChanged(plugins)) => Some(plugins.clone()),
         _ => None,
     })
     .await;
-    assert_eq!(plugins.len(), 1);
-    assert!(plugins[0].runs());
+    let added = theirs(&plugins);
+    assert_eq!(added.len(), 1);
+    assert!(added[0].runs());
     let mut again = daemon.connect().await;
     assert_eq!(again.subscribe().await.unwrap().plugins, plugins);
 }
@@ -277,7 +300,14 @@ async fn the_person_s_settings_read_again_read_the_plugins_again_prd_15() {
     let path = folder.canonicalize().unwrap().display().to_string();
     ok(&sandbox, &["link", &path, "--yes"]);
     let mut connection = daemon.connect().await;
-    assert!(connection.subscribe().await.unwrap().plugins[0].runs());
+    let zoe = |plugins: &[muster_core::protocol::plugins::PluginInfo]| {
+        plugins
+            .iter()
+            .find(|plugin| plugin.id == "zoe")
+            .cloned()
+            .unwrap()
+    };
+    assert!(zoe(&connection.subscribe().await.unwrap().plugins).runs());
 
     std::fs::write(
         folder.join("muster-plugin.toml"),
@@ -294,7 +324,7 @@ async fn the_person_s_settings_read_again_read_the_plugins_again_prd_15() {
         _ => None,
     })
     .await;
-    assert_eq!(plugins[0].problem, Some(PluginProblem::Changed));
+    assert_eq!(zoe(&plugins).problem, Some(PluginProblem::Changed));
 }
 
 #[test]
@@ -339,7 +369,9 @@ fn a_plugin_is_turned_off_and_on_and_removed_with_its_files() {
     assert!(error.contains("no terminal to ask you on"), "{error}");
     let error = refused(&sandbox, &["remove", "nope", "--yes"], &[]);
     assert!(
-        error.contains("there is no plugin called nope; there are zoe"),
+        error.contains(
+            "there is no plugin called nope; there are github, gitlab, jira, linear, zoe"
+        ),
         "{error}"
     );
     let shown = ok(&sandbox, &["remove", "zoe", "--yes"]);
@@ -359,10 +391,10 @@ fn a_plugin_is_turned_off_and_on_and_removed_with_its_files() {
     wait_until("its folder to go", || {
         !plugins_dir(&sandbox).join("zoe").exists()
     });
-    assert_eq!(
-        ok(&sandbox, &["list"]),
-        "No plugins. `muster plugin install <address>` adds one.\n"
-    );
+    // Muster's own stay.
+    let list = ok(&sandbox, &["list"]);
+    assert!(!list.contains("zoe"), "{list}");
+    assert!(list.starts_with("github "), "{list}");
 }
 
 #[test]

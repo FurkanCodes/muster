@@ -5,6 +5,8 @@ use std::collections::VecDeque;
 
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
+use crate::secrets::Token;
+
 /// The most of a plugin's stderr kept, as its log.
 pub(crate) const MOST_LOG: usize = 64 * 1024;
 
@@ -56,22 +58,47 @@ impl<R: AsyncRead + Unpin> Lines<R> {
     }
 }
 
-/// The end of what a plugin said on stderr, across its restarts.
+/// The end of what a plugin said on stderr, across its restarts, never
+/// showing its secrets' values (`PRD-06`).
 #[derive(Debug, Default)]
-pub(crate) struct Log(VecDeque<u8>);
+pub(crate) struct Log {
+    bytes: VecDeque<u8>,
+    secrets: Vec<Token>,
+}
+
+/// The most secrets' values a log hides: a plugin's, as they were each
+/// time it started.
+const MOST_SECRETS: usize = 32;
 
 impl Log {
     pub(crate) fn push(&mut self, bytes: &[u8]) {
-        self.0.extend(bytes);
-        let over = self.0.len().saturating_sub(MOST_LOG);
-        self.0.drain(..over);
+        self.bytes.extend(bytes);
+        let over = self.bytes.len().saturating_sub(MOST_LOG);
+        self.bytes.drain(..over);
     }
 
+    /// Hides `secrets`' values from now on, wherever they are in it.
+    pub(crate) fn hide(&mut self, secrets: impl IntoIterator<Item = Token>) {
+        for secret in secrets {
+            if !secret.value().is_empty() && !self.secrets.contains(&secret) {
+                self.secrets.push(secret);
+            }
+        }
+        let over = self.secrets.len().saturating_sub(MOST_SECRETS);
+        self.secrets.drain(..over);
+    }
+
+    /// What it holds, its secrets' values and anything shaped like a
+    /// credential hidden.
     pub(crate) fn text(&self) -> String {
-        let (front, back) = self.0.as_slices();
+        let (front, back) = self.bytes.as_slices();
         let mut bytes = front.to_vec();
         bytes.extend_from_slice(back);
-        String::from_utf8_lossy(&bytes).into_owned()
+        let mut text = String::from_utf8_lossy(&bytes).into_owned();
+        for secret in &self.secrets {
+            text = text.replace(secret.value(), muster_core::credentials::HIDDEN);
+        }
+        muster_core::credentials::hide(&text).0
     }
 
     /// Its last line with something on it, on one line, its credentials
@@ -80,8 +107,7 @@ impl Log {
         const MOST: usize = 300;
         let text = self.text();
         let line = text.lines().rev().find(|line| !line.trim().is_empty())?;
-        let line = muster_core::text::one_line(line.trim());
-        let mut line = muster_core::credentials::hide(&line).0;
+        let mut line = muster_core::text::one_line(line.trim());
         if line.len() > MOST {
             let end = (0..=MOST)
                 .rev()
@@ -119,12 +145,24 @@ mod tests {
         let mut log = Log::default();
         log.push(&vec![b'a'; MOST_LOG]);
         log.push(b"\nstarting\nfailed: token ghp_abcdefghijklmnopqrstuvwxyz0123 refused\n\n");
-        assert_eq!(log.text().len(), MOST_LOG);
+        assert_eq!(log.bytes.len(), MOST_LOG);
         assert!(log.text().ends_with("refused\n\n"));
         assert_eq!(
             log.last_line().as_deref(),
             Some("failed: token [hidden by Muster] refused")
         );
         assert_eq!(Log::default().last_line(), None);
+    }
+
+    #[test]
+    fn the_log_never_shows_its_plugin_s_secrets() {
+        let mut log = Log::default();
+        log.hide([Token::new("hunter2-xyz")]);
+        log.push(b"signed in with hunter2-xyz\nusing hunter2-xyz again\n");
+        assert!(!log.text().contains("hunter2"), "{}", log.text());
+        assert_eq!(
+            log.last_line().as_deref(),
+            Some("using [hidden by Muster] again")
+        );
     }
 }

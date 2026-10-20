@@ -12,7 +12,7 @@ use muster_core::plugins::PluginEntry;
 use muster_core::settings::{
     KEYS, LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH,
     NOTIFICATIONS, ONLY_MINE, PANELS, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange,
-    SettingSource, TICKETS_FROM_KEYS, TRACKER,
+    SettingSource, TRACKER, TicketsFrom,
 };
 
 /// The repository's settings file.
@@ -102,12 +102,19 @@ pub fn change(root: &Path, overrides: &Path, change: &SettingChange) -> Result<(
             let (table, key) = MUSTER_PREFIX;
             edit::set_flag(local.as_deref(), table, key, *on)
         }
-        // Written whole: what the last tracker needed goes with it.
+        // Written whole: what the last tracker needed goes with it, every
+        // key of the person's `[tickets]` but `mine`.
         SettingChange::TicketsFrom(from) => {
-            let values: Vec<(&str, Option<&str>)> = match &from {
-                Some(from) => from.written().to_vec(),
-                None => TICKETS_FROM_KEYS.iter().map(|key| (*key, None)).collect(),
-            };
+            let before = edit::keys_of(local.as_deref(), TRACKER.0);
+            let mut values: Vec<(&str, Option<&str>)> = before
+                .iter()
+                .filter(|key| *key != ONLY_MINE.1)
+                .map(|key| (key.as_str(), None))
+                .collect();
+            for (key, value) in from.iter().flat_map(TicketsFrom::written) {
+                values.retain(|(written, _)| *written != key);
+                values.push((key, Some(value)));
+            }
             edit::set_texts(local.as_deref(), TRACKER.0, &values)
         }
     }
@@ -630,9 +637,15 @@ mod tests {
 
     #[test]
     fn where_the_tickets_are_is_written_whole_and_can_follow_the_remote_again() {
-        use muster_core::config::TrackerKind;
         use muster_core::settings::TicketsFrom;
 
+        let from = |tracker: &str, fields: &[(&str, &str)]| TicketsFrom {
+            tracker: tracker.to_owned(),
+            fields: fields
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+                .collect(),
+        };
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("repo");
         let overrides = dir.path().join("config/projects/p.toml");
@@ -640,13 +653,10 @@ mod tests {
         std::fs::create_dir_all(overrides.parent().unwrap()).unwrap();
         // A project on a company's own git server, its address an IP.
         std::fs::write(&overrides, "# mine\n[tickets]\nmine = true\n").unwrap();
-        let jira = TicketsFrom {
-            tracker: TrackerKind::Jira,
-            site: Some("acme.atlassian.net".to_owned()),
-            project: Some("app".to_owned()),
-            jql: None,
-            team: None,
-        };
+        let jira = from(
+            "jira",
+            &[("site", "acme.atlassian.net"), ("project", "app")],
+        );
         change(
             &root,
             &overrides,
@@ -655,32 +665,35 @@ mod tests {
         .unwrap();
         assert_eq!(
             std::fs::read_to_string(&overrides).unwrap(),
-            "# mine\n[tickets]\nmine = true\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\n\
-             project = \"app\"\n"
+            "# mine\n[tickets]\nmine = true\ntracker = \"jira\"\nproject = \"app\"\n\
+             site = \"acme.atlassian.net\"\n"
         );
-        let (config, from) = load_with_sources(&root, &overrides).unwrap();
-        assert_eq!(config.tickets.tracker, Some(TrackerKind::Jira));
-        assert_eq!(config.tickets.project.as_deref(), Some("APP"));
+        let (config, sources) = load_with_sources(&root, &overrides).unwrap();
+        assert_eq!(config.tickets.tracker.as_deref(), Some("jira"));
+        assert_eq!(config.tickets.field("project"), Some("APP"));
         assert!(config.tickets.mine);
-        assert_eq!(from.tracker, SettingSource::Yours);
+        assert_eq!(sources.tracker, SettingSource::Yours);
 
         // Linear instead: Jira's keys go with Jira.
-        let linear = TicketsFrom {
-            tracker: TrackerKind::Linear,
-            site: None,
-            project: None,
-            jql: None,
-            team: Some("ENG".to_owned()),
-        };
+        let linear = from("linear", &[("team", "ENG")]);
         change(&root, &overrides, &SettingChange::TicketsFrom(Some(linear))).unwrap();
         assert_eq!(
             std::fs::read_to_string(&overrides).unwrap(),
             "# mine\n[tickets]\nmine = true\ntracker = \"linear\"\nteam = \"ENG\"\n"
         );
 
+        // Anyone's plugin, with keys of its own, which go with it too.
+        let theirs = from("youtrack", &[("board", "WEB")]);
+        change(&root, &overrides, &SettingChange::TicketsFrom(Some(theirs))).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&overrides).unwrap(),
+            "# mine\n[tickets]\nmine = true\ntracker = \"youtrack\"\nboard = \"WEB\"\n"
+        );
+
         // Jira without its site does not read: refused, nothing written.
         let before = std::fs::read_to_string(&overrides).unwrap();
-        let siteless = TicketsFrom { site: None, ..jira };
+        let mut siteless = jira;
+        siteless.fields.remove("site");
         let error = change(
             &root,
             &overrides,
@@ -697,9 +710,9 @@ mod tests {
             std::fs::read_to_string(&overrides).unwrap(),
             "# mine\n[tickets]\nmine = true\n"
         );
-        let (config, from) = load_with_sources(&root, &overrides).unwrap();
+        let (config, sources) = load_with_sources(&root, &overrides).unwrap();
         assert_eq!(config.tickets.tracker, None);
-        assert_eq!(from.tracker, SettingSource::Default);
+        assert_eq!(sources.tracker, SettingSource::Default);
     }
 
     #[test]

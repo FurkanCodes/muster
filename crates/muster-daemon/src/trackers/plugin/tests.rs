@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use super::process::{Limits, MOST_IN_FLIGHT};
 use super::*;
-use crate::trackers::Hidden;
+use crate::secrets::Token;
+use crate::trackers::{Hidden, Noun};
 
 /// The loop every stand-in runs: it counts its starts and ends, records
 /// each request, and answers with the functions before it, `hello`, `list`
@@ -84,12 +85,17 @@ impl Fake {
         PluginSpec {
             id: "fake".to_owned(),
             name: "Fake".to_owned(),
+            noun: Noun {
+                tracker: "Fake".to_owned(),
+                word: "task".to_owned(),
+            },
             program: "/bin/sh".into(),
             args: vec![
                 self.dir.path().join("plugin.sh").display().to_string(),
                 self.dir.path().display().to_string(),
             ],
-            tracker: TrackerKind::Jira,
+            folder: None,
+            environment: Environment::Sessions,
         }
     }
 
@@ -156,7 +162,7 @@ async fn tickets_are_listed_viewed_and_closed_through_a_plugin() {
     assert!(tickets.only_mine());
     let detail = tickets.view(&key("APP-7")).await.unwrap();
     assert_eq!(detail.body, "The text.");
-    assert_eq!(detail.tracker, TrackerKind::Jira);
+    assert_eq!(detail.noun.word, "task");
     tickets.close(&key("APP-7")).await.unwrap();
 
     // One process, said hello to once, each request with an id of its own.
@@ -432,4 +438,147 @@ async fn its_log_keeps_the_end_of_its_stderr_and_its_environment_is_a_session_s(
             "{key} reached the plugin"
         );
     }
+}
+
+/// The fake as anyone's plugin would be: its program `./plugin.sh` in its
+/// folder, run there.
+fn theirs(fake: &Fake, off: Option<&str>) -> TicketPlugin {
+    use std::os::unix::fs::PermissionsExt as _;
+    let script = fake.dir.path().join("plugin.sh");
+    let text = std::fs::read_to_string(&script).unwrap();
+    if !text.starts_with("#!") {
+        std::fs::write(&script, format!("#!/bin/sh\n{text}")).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    TicketPlugin {
+        id: "fake".to_owned(),
+        name: "Fake tickets".to_owned(),
+        folder: Some(fake.dir.path().to_owned()),
+        off: off.map(str::to_owned),
+        tickets: Some(muster_core::plugins::TicketSource {
+            name: "Fake".to_owned(),
+            noun: "task".to_owned(),
+            command: vec!["./plugin.sh".to_owned(), ".".to_owned()],
+            settings: Vec::new(),
+        }),
+        env: vec!["FAKE_THEME".to_owned()],
+        secrets: vec!["FAKE_TOKEN".to_owned()],
+    }
+}
+
+#[tokio::test]
+async fn anyone_s_plugin_runs_in_its_folder_given_only_what_it_names() {
+    let loud = r#"hello() { echo "signed in with $FAKE_TOKEN" >&2; printf '{"jsonrpc":"2.0","id":%s,"result":{"protocol":1}}\n' "$id"; }"#;
+    let fake = Fake::new(loud, "", "");
+    let plugin = theirs(&fake, None);
+    let spec = PluginSpec::of(
+        &plugin,
+        plugin.tickets.as_ref().unwrap(),
+        Path::new("/usr/local/bin/muster"),
+        Environment::Only {
+            variables: vec![("FAKE_THEME".to_owned(), Token::new("dark"))],
+            secrets: vec![("FAKE_TOKEN".to_owned(), Token::new("s3cret-of-fake"))],
+        },
+    );
+    assert_eq!(spec.program, fake.dir.path().join("plugin.sh"));
+    assert_eq!(spec.name, "Fake tickets");
+    let project = Project::new(Path::new("/work/app"), None, BTreeMap::new()).unwrap();
+    let tickets = PluginTickets::new(fake.plugins.process(spec), project, false);
+    tickets.list().await.unwrap();
+
+    // Its folder is where it runs: what it writes to `.` lands there.
+    assert_eq!(fake.count("starts"), 1);
+    let env = fake.read("env");
+    assert!(env.lines().any(|line| line == "FAKE_THEME=dark"), "{env}");
+    assert!(env.lines().any(|line| line == "FAKE_TOKEN=s3cret-of-fake"));
+    let path = std::env::var("PATH").unwrap();
+    assert!(env.lines().any(|line| line == format!("PATH={path}")));
+    // Nothing else of the daemon's: only the basics, and what sh sets.
+    for line in env.lines() {
+        let name = line.split('=').next().unwrap();
+        assert!(
+            super::is_basic(name)
+                || ["FAKE_THEME", "FAKE_TOKEN", "PWD", "OLDPWD", "SHLVL", "_"].contains(&name),
+            "{name} reached the plugin"
+        );
+    }
+    // Its log never shows its secret.
+    fake.until(|fake| !fake.plugins.log("fake").is_empty())
+        .await;
+    let log = fake.plugins.log("fake");
+    assert_eq!(log, "signed in with [hidden by Muster]\n");
+}
+
+#[tokio::test]
+async fn a_plugin_turned_off_or_gone_is_stopped_and_one_gone_takes_its_log() {
+    let loud = r#"hello() { echo "hello there" >&2; printf '{"jsonrpc":"2.0","id":%s,"result":{"protocol":1}}\n' "$id"; }"#;
+    let fake = Fake::new(loud, "", "");
+    let plugin = theirs(&fake, None);
+    let declared = plugin.tickets.clone().unwrap();
+    let only = || Environment::Only {
+        variables: Vec::new(),
+        secrets: Vec::new(),
+    };
+    let spec = PluginSpec::of(&plugin, &declared, Path::new("muster"), only());
+    let project = Project::new(Path::new("/work/app"), None, BTreeMap::new()).unwrap();
+    PluginTickets::new(fake.plugins.process(spec), project, false)
+        .list()
+        .await
+        .unwrap();
+    assert!(
+        fake.plugins.publish(vec![plugin.clone()]).is_empty(),
+        "as it was"
+    );
+    assert_eq!(fake.plugins.find("fake").unwrap(), plugin);
+
+    // Turned off: its process is handed back to be stopped, its log kept.
+    let stopping = fake
+        .plugins
+        .publish(vec![theirs(&fake, Some("is turned off"))]);
+    assert_eq!(stopping.len(), 1);
+    for process in stopping {
+        process.stop().await;
+    }
+    assert_eq!(fake.count("ends"), 1);
+    fake.until(|fake| fake.plugins.log("fake").contains("hello there"))
+        .await;
+    let off = fake.plugins.find("fake").unwrap().runnable().unwrap_err();
+    assert_eq!(
+        off.to_string(),
+        "its tickets come from the Fake tickets plugin, which is turned off"
+    );
+
+    // Gone: its log goes with it.
+    fake.plugins.publish(Vec::new());
+    assert_eq!(fake.plugins.log("fake"), "");
+    let gone = fake.plugins.find("fake").unwrap_err().to_string();
+    assert!(gone.contains("none called fake is installed"), "{gone}");
+}
+
+#[test]
+fn muster_s_own_are_known_before_the_registry_is_read() {
+    let plugins = Plugins::new("/usr/local/bin/muster".into());
+    let github = plugins.find("github").unwrap();
+    let declared = github.runnable().unwrap();
+    let spec = PluginSpec::of(
+        &github,
+        declared,
+        plugins.program(),
+        Environment::Only {
+            variables: Vec::new(),
+            secrets: Vec::new(),
+        },
+    );
+    assert_eq!(spec.program, Path::new("/usr/local/bin/muster"));
+    assert_eq!(spec.args, ["plugin-run", "github"]);
+    assert_eq!(spec.folder, None);
+    assert_eq!(spec.environment, Environment::Sessions, "the person's gh");
+    assert_eq!(spec.name, "GitHub issues");
+    assert_eq!(
+        spec.noun,
+        Noun {
+            tracker: "GitHub".to_owned(),
+            word: "issue".to_owned()
+        }
+    );
 }

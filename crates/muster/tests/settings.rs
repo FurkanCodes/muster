@@ -194,9 +194,15 @@ async fn settings_that_do_not_read_are_said_and_a_change_writes_nothing() {
 
 #[tokio::test]
 async fn a_project_on_a_company_s_own_server_gets_its_tickets_from_jira_here() {
-    use muster_core::config::TrackerKind;
     use muster_core::settings::TicketsFrom;
 
+    let from = |fields: &[(&str, &str)]| TicketsFrom {
+        tracker: "jira".to_owned(),
+        fields: fields
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect(),
+    };
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
     // Its git server is on the company's network, by its address.
@@ -224,13 +230,7 @@ async fn a_project_on_a_company_s_own_server_gets_its_tickets_from_jira_here() {
         "{listing:?}"
     );
 
-    let jira = TicketsFrom {
-        tracker: TrackerKind::Jira,
-        site: Some("acme.atlassian.net".to_owned()),
-        project: Some("app".to_owned()),
-        jql: None,
-        team: None,
-    };
+    let jira = from(&[("site", "acme.atlassian.net"), ("project", "app")]);
     let chosen = settings(
         &mut connection,
         Command::ChangeSetting {
@@ -249,13 +249,14 @@ async fn a_project_on_a_company_s_own_server_gets_its_tickets_from_jira_here() {
         chosen
             .tickets
             .as_ref()
-            .and_then(|from| from.project.as_deref()),
+            .and_then(|from| from.fields.get("project"))
+            .map(String::as_str),
         Some("APP")
     );
     let written = std::fs::read_to_string(&file).unwrap();
     assert!(
         written.ends_with(
-            "[tickets]\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\nproject = \"app\"\n"
+            "[tickets]\ntracker = \"jira\"\nproject = \"app\"\nsite = \"acme.atlassian.net\"\n"
         ),
         "{written}"
     );
@@ -270,13 +271,7 @@ async fn a_project_on_a_company_s_own_server_gets_its_tickets_from_jira_here() {
         &mut connection,
         Command::ChangeSetting {
             project,
-            change: SettingChange::TicketsFrom(Some(TicketsFrom {
-                tracker: TrackerKind::Jira,
-                site: None,
-                project: Some("APP".to_owned()),
-                jql: None,
-                team: None,
-            })),
+            change: SettingChange::TicketsFrom(Some(from(&[("project", "APP")]))),
         },
     )
     .await;

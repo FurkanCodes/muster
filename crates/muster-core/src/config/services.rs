@@ -5,59 +5,27 @@
 //!
 //! ```toml
 //! [tickets]
-//! tracker = "jira"                 # github, gitlab, jira or linear
+//! tracker = "jira"                 # a ticket plugin: github, gitlab, jira, linear, or yours
 //! site = "acme.atlassian.net"      # Jira: the site, or a Data Center's address
 //! project = "APP"                  # Jira: the project, or `jql = "…"`
 //! mine = true                      # only those assigned to you, any tracker
+//!
+//! The keys besides `tracker` and `mine` are the plugin's, as its manifest
+//! declares them (`[[tickets.settings]]`).
 //!
 //! [pull_requests]
 //! host = "gitlab"                  # github, gitlab or bitbucket
 //! ```
 
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-/// A ticket tracker Muster can read. On the wire, as in `muster.toml`, by
-/// its key: `"github"`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TrackerKind {
-    GitHub,
-    GitLab,
-    Jira,
-    Linear,
-}
+use serde::Deserialize;
 
-impl TrackerKind {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::GitHub => "GitHub issues",
-            Self::GitLab => "GitLab issues",
-            Self::Jira => "Jira",
-            Self::Linear => "Linear",
-        }
-    }
+use crate::plugins::{TicketSetting, own};
 
-    /// What `[tickets] tracker` says for it: `"github"`.
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::GitHub => "github",
-            Self::GitLab => "gitlab",
-            Self::Jira => "jira",
-            Self::Linear => "linear",
-        }
-    }
-
-    fn parse(text: &str) -> Option<Self> {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "github" => Some(Self::GitHub),
-            "gitlab" => Some(Self::GitLab),
-            "jira" => Some(Self::Jira),
-            "linear" => Some(Self::Linear),
-            _ => None,
-        }
-    }
-}
+/// The tracker the git host comes with, by its ticket plugin's id.
+pub type TrackerId = String;
 
 /// A git host Muster can open pull requests on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -85,12 +53,13 @@ impl HostKind {
         }
     }
 
-    /// The tracker that comes with the host, if it has one: Bitbucket's
-    /// was retired in 2026, its teams' tickets being in Jira.
-    pub fn own_tracker(self) -> Option<TrackerKind> {
+    /// The tracker that comes with the host, if it has one, by its ticket
+    /// plugin's id: Bitbucket's was retired in 2026, its teams' tickets
+    /// being in Jira.
+    pub fn own_tracker(self) -> Option<&'static str> {
         match self {
-            Self::GitHub => Some(TrackerKind::GitHub),
-            Self::GitLab => Some(TrackerKind::GitLab),
+            Self::GitHub => Some(own::GITHUB),
+            Self::GitLab => Some(own::GITLAB),
             Self::Bitbucket => None,
         }
     }
@@ -100,38 +69,108 @@ impl HostKind {
 /// follows the git remote.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Tickets {
-    pub tracker: Option<TrackerKind>,
-    /// Jira: the site, `acme.atlassian.net`, or a Data Center's address,
-    /// `https://jira.example.com`.
-    pub site: Option<String>,
-    /// Jira: the project whose open tickets are listed.
-    pub project: Option<String>,
-    /// Jira: the query that lists them, instead of `project`.
-    pub jql: Option<String>,
-    /// Linear: the team whose open issues are listed.
-    pub team: Option<String>,
+    /// The ticket plugin they come from, by its id: `github`, `gitlab`,
+    /// `jira`, `linear`, or one the person installed.
+    pub tracker: Option<TrackerId>,
+    /// What `[tickets]` says for that plugin, by key: the settings its
+    /// manifest declares (`[[tickets.settings]]`), Jira's `site` and
+    /// `project` among Muster's own.
+    pub fields: BTreeMap<String, String>,
     /// Only the tickets assigned to the person signed in, in any tracker.
     pub mine: bool,
 }
 
 impl Tickets {
-    /// Where the tickets written down are, for the person: `Jira at
-    /// acme.atlassian.net, project APP`; `None` where no tracker is
-    /// written, and the git remote tells.
-    pub fn written(&self) -> Option<String> {
-        let mut source = self.tracker?.name().to_owned();
-        if let Some(site) = &self.site {
+    /// What `[tickets]` says for `key`, if it says.
+    pub fn field(&self, key: &str) -> Option<&str> {
+        self.fields.get(key).map(String::as_str)
+    }
+
+    /// Where the tickets written down are, for the person, the tracker
+    /// called `name`: `Jira at acme.atlassian.net, project APP`; `None`
+    /// where no tracker is written, and the git remote tells.
+    pub fn written(&self, name: &str) -> Option<String> {
+        self.tracker.as_ref()?;
+        let mut source = name.to_owned();
+        // Writing to a String cannot fail.
+        if let Some(site) = self.field("site") {
             let _ = write!(source, " at {site}");
         }
-        // Writing to a String cannot fail.
-        let _ = match (&self.jql, &self.project, &self.team) {
+        let _ = match (self.field("jql"), self.field("project"), self.field("team")) {
             (Some(jql), _, _) => write!(source, ", {jql}"),
             (None, Some(project), _) => write!(source, ", project {project}"),
             (None, None, Some(team)) => write!(source, ", team {team}"),
             (None, None, None) => Ok(()),
         };
+        for (key, value) in &self.fields {
+            if !matches!(key.as_str(), "site" | "jql" | "project" | "team") {
+                let _ = write!(source, ", {key} {value}");
+            }
+        }
         Some(source)
     }
+}
+
+/// The name of the tracker `id`, as the person reads it, where Muster
+/// knows it without the daemon's plugins: its own plugin's name, else the
+/// id.
+pub fn tracker_name(id: &str) -> String {
+    own::manifest(id).map_or_else(|| id.to_owned(), |manifest| manifest.name.clone())
+}
+
+/// Checks `fields`, what a project's `[tickets]` says for the ticket
+/// plugin `id` whose manifest declares `settings`: each key one it
+/// declares, and each it requires said.
+pub fn check_fields(
+    id: &str,
+    settings: &[TicketSetting],
+    fields: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    for key in fields.keys() {
+        if settings.iter().any(|setting| setting.key == *key) {
+            continue;
+        }
+        if let Some(owner) = own_owner(key).filter(|owner| *owner != id) {
+            return Err(format!(
+                "tickets.{key} is for tracker = \"{owner}\", which this project does not set"
+            ));
+        }
+        let known: Vec<&str> = settings
+            .iter()
+            .map(|setting| setting.key.as_str())
+            .collect();
+        return Err(if known.is_empty() {
+            format!("tickets.{key} is not a setting of the {id} tracker, which takes none")
+        } else {
+            format!(
+                "tickets.{key} is not a setting of the {id} tracker, which takes {}",
+                known.join(", ")
+            )
+        });
+    }
+    match settings
+        .iter()
+        .find(|setting| setting.required && !fields.contains_key(&setting.key))
+    {
+        Some(missing) => Err(format!(
+            "tickets.tracker is {id}, which needs tickets.{} ({})",
+            missing.key, missing.label
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Which of Muster's own plugins declares `key`, if one does.
+fn own_owner(key: &str) -> Option<&'static str> {
+    own::manifests().iter().find_map(|manifest| {
+        manifest
+            .tickets
+            .as_ref()?
+            .settings
+            .iter()
+            .any(|setting| setting.key == key)
+            .then_some(manifest.id.as_str())
+    })
 }
 
 /// Where the project's pull requests are opened; unwritten, the git
@@ -141,15 +180,15 @@ pub struct PullRequests {
     pub host: Option<HostKind>,
 }
 
+/// `[tickets]` as written: Muster's own keys, and the rest for the ticket
+/// plugin named, checked once it is known.
 #[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub(super) struct RawTickets {
     tracker: Option<String>,
-    site: Option<String>,
-    project: Option<String>,
-    jql: Option<String>,
-    team: Option<String>,
     mine: Option<bool>,
+    #[serde(flatten)]
+    fields: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -180,70 +219,88 @@ fn text(key: &str, value: Option<String>) -> Result<Option<String>, String> {
 }
 
 impl RawTickets {
+    /// Its tracker and fields, checked: against the settings of Muster's
+    /// own plugin where it names one; anyone else's are checked as the
+    /// daemon finds the plugin.
     pub(super) fn validate(self) -> Result<Tickets, String> {
         let tracker = match self.tracker {
             None => None,
-            Some(name) => Some(TrackerKind::parse(&name).ok_or_else(|| {
-                format!("tickets.tracker {name:?} must be github, gitlab, jira or linear")
-            })?),
+            Some(name) => {
+                let id = name.trim().to_ascii_lowercase();
+                if !crate::plugins::is_id(&id) {
+                    return Err(format!(
+                        "tickets.tracker {name:?} must name a ticket plugin by its id: github, \
+                         gitlab, jira, linear, or one you installed"
+                    ));
+                }
+                Some(id)
+            }
         };
-        let site = text("tickets.site", self.site)?;
-        let project = text("tickets.project", self.project)?;
-        let jql = text("tickets.jql", self.jql)?;
-        let team = text("tickets.team", self.team)?;
-        let jira = tracker == Some(TrackerKind::Jira);
-        let linear = tracker == Some(TrackerKind::Linear);
-        for (key, set, belongs) in [
-            ("site", site.is_some(), jira),
-            ("project", project.is_some(), jira),
-            ("jql", jql.is_some(), jira),
-            ("team", team.is_some(), linear),
-        ] {
-            if set && !belongs {
-                let owner = if key == "team" { "linear" } else { "jira" };
-                return Err(format!(
-                    "tickets.{key} is for tracker = \"{owner}\", which this project does not set"
-                ));
+        let mut fields = BTreeMap::new();
+        for (key, value) in self.fields {
+            let named = format!("tickets.{key}");
+            let toml::Value::String(value) = value else {
+                return Err(format!("{named} must be text"));
+            };
+            if let Some(value) = text(&named, Some(value))? {
+                fields.insert(key, value);
             }
         }
-        if jira {
-            if site.is_none() {
-                return Err(
-                    "tickets.tracker is jira: say which site with tickets.site = \"acme.atlassian.net\""
-                        .to_owned(),
-                );
+        match tracker.as_deref() {
+            None => {
+                if let Some(key) = fields.keys().next() {
+                    return Err(match own_owner(key) {
+                        Some(owner) => format!(
+                            "tickets.{key} is for tracker = \"{owner}\", which this project \
+                             does not set"
+                        ),
+                        None => format!(
+                            "tickets.{key} is for a ticket plugin: say which with \
+                             tickets.tracker"
+                        ),
+                    });
+                }
             }
-            if project.is_none() && jql.is_none() {
-                return Err(
-                    "tickets.tracker is jira: say which tickets with tickets.project = \"KEY\" or tickets.jql"
-                        .to_owned(),
-                );
+            Some(id) => {
+                if let Some(tickets) = own::manifest(id).and_then(|own| own.tickets.as_ref()) {
+                    check_fields(id, &tickets.settings, &fields)?;
+                    own_checks(id, &mut fields)?;
+                }
             }
-        }
-        if let Some(project) = project.as_deref().filter(|project| !is_key(project)) {
-            return Err(format!(
-                "tickets.project {project:?} must be a Jira project's key, such as \"APP\""
-            ));
-        }
-        if linear && team.is_none() {
-            return Err(
-                "tickets.tracker is linear: say which team with tickets.team = \"KEY\"".to_owned(),
-            );
-        }
-        if let Some(team) = team.as_deref().filter(|team| !is_key(team)) {
-            return Err(format!(
-                "tickets.team {team:?} must be a Linear team's key, such as \"ENG\""
-            ));
         }
         Ok(Tickets {
             tracker,
-            site,
-            project: project.map(|project| project.to_ascii_uppercase()),
-            jql,
-            team: team.map(|team| team.to_ascii_uppercase()),
+            fields,
             mine: self.mine.unwrap_or(false),
         })
     }
+}
+
+/// What Muster's own plugins need beyond their settings' keys: Jira which
+/// tickets, and keys of Jira's projects and Linear's teams, which are
+/// written in capitals.
+fn own_checks(id: &str, fields: &mut BTreeMap<String, String>) -> Result<(), String> {
+    if id == own::JIRA && !fields.contains_key("project") && !fields.contains_key("jql") {
+        return Err(
+            "tickets.tracker is jira: say which tickets with tickets.project = \"KEY\" or \
+             tickets.jql"
+                .to_owned(),
+        );
+    }
+    for (key, whose, example) in [
+        ("project", "a Jira project's", "APP"),
+        ("team", "a Linear team's", "ENG"),
+    ] {
+        if let Some(value) = fields.get_mut(key) {
+            if !is_key(value) {
+                return Err(format!(
+                    "tickets.{key} {value:?} must be {whose} key, such as \"{example}\""
+                ));
+            }
+            value.make_ascii_uppercase();
+        }
+    }
+    Ok(())
 }
 
 impl RawPullRequests {
@@ -270,10 +327,10 @@ mod tests {
     fn jira_needs_its_site_and_which_tickets() {
         let jira = tickets("tracker = \"Jira\"\nsite = \"acme.atlassian.net\"\nproject = \"app\"")
             .unwrap();
-        assert_eq!(jira.tracker, Some(TrackerKind::Jira));
-        assert_eq!(jira.project.as_deref(), Some("APP"));
+        assert_eq!(jira.tracker.as_deref(), Some("jira"));
+        assert_eq!(jira.field("project"), Some("APP"));
         let by_query = tickets("tracker = \"jira\"\nsite = \"https://jira.example.com\"\njql = \"assignee = currentUser()\"").unwrap();
-        assert_eq!(by_query.jql.as_deref(), Some("assignee = currentUser()"));
+        assert_eq!(by_query.field("jql"), Some("assignee = currentUser()"));
         for (written, says) in [
             ("tracker = \"jira\"\nproject = \"APP\"", "tickets.site"),
             (
@@ -300,7 +357,15 @@ mod tests {
 
     #[test]
     fn where_the_written_tickets_are_reads_as_words() {
-        let written = |toml: &str| tickets(toml).unwrap().written();
+        let written = |toml: &str| {
+            let tickets = tickets(toml).unwrap();
+            let name = tickets
+                .tracker
+                .as_deref()
+                .map(tracker_name)
+                .unwrap_or_default();
+            tickets.written(&name)
+        };
         assert_eq!(written("mine = true"), None);
         assert_eq!(
             written("tracker = \"github\"").as_deref(),
@@ -325,7 +390,7 @@ mod tests {
     #[test]
     fn linear_needs_its_team_and_settings_belong_to_their_tracker() {
         let linear = tickets("tracker = \"linear\"\nteam = \"eng\"").unwrap();
-        assert_eq!(linear.team.as_deref(), Some("ENG"));
+        assert_eq!(linear.field("team"), Some("ENG"));
         assert!(
             tickets("tracker = \"linear\"")
                 .unwrap_err()
@@ -342,9 +407,9 @@ mod tests {
                 .contains("jira")
         );
         assert!(
-            tickets("tracker = \"trello\"")
+            tickets("tracker = \"Trello Board\"")
                 .unwrap_err()
-                .contains("github, gitlab, jira or linear")
+                .contains("github, gitlab, jira, linear, or one you installed")
         );
         assert_eq!(tickets("").unwrap(), Tickets::default());
         // Any tracker's, or the remote's own, can be narrowed to yours.
@@ -355,6 +420,50 @@ mod tests {
                 .mine
         );
         assert!(!tickets("mine = false").unwrap().mine);
+    }
+
+    #[test]
+    fn anyone_s_ticket_plugin_is_named_by_its_id_with_its_own_settings() {
+        let youtrack = tickets("tracker = \"youtrack\"\nboard = \"APP\"\nmine = true").unwrap();
+        assert_eq!(youtrack.tracker.as_deref(), Some("youtrack"));
+        assert_eq!(youtrack.field("board"), Some("APP"));
+        assert_eq!(
+            youtrack.written("YouTrack").as_deref(),
+            Some("YouTrack, board APP")
+        );
+        // Checked against its manifest once the daemon finds it.
+        let settings = [TicketSetting {
+            key: "board".to_owned(),
+            label: "Board".to_owned(),
+            required: true,
+        }];
+        assert_eq!(
+            check_fields("youtrack", &settings, &youtrack.fields),
+            Ok(())
+        );
+        let error = check_fields("youtrack", &settings, &BTreeMap::new()).unwrap_err();
+        assert!(error.contains("needs tickets.board (Board)"), "{error}");
+        let stray = BTreeMap::from([("colour".to_owned(), "red".to_owned())]);
+        let error = check_fields("youtrack", &settings, &stray).unwrap_err();
+        assert!(
+            error.contains("tickets.colour is not a setting of the youtrack tracker"),
+            "{error}"
+        );
+        // What one of Muster's own takes is named as theirs.
+        let site = BTreeMap::from([("site".to_owned(), "a".to_owned())]);
+        let error = check_fields("youtrack", &settings, &site).unwrap_err();
+        assert!(error.contains("for tracker = \"jira\""), "{error}");
+        for (written, says) in [
+            (
+                "tracker = \"youtrack\"\nboard = 7",
+                "tickets.board must be text",
+            ),
+            ("colour = \"red\"", "say which with tickets.tracker"),
+            ("tracker = \"github\"\ncolour = \"red\"", "which takes none"),
+        ] {
+            let error = tickets(written).unwrap_err();
+            assert!(error.contains(says), "{written:?}: {error}");
+        }
     }
 
     #[test]
@@ -369,8 +478,8 @@ mod tests {
                 .unwrap_err()
                 .contains("github, gitlab or bitbucket")
         );
-        assert_eq!(HostKind::GitHub.own_tracker(), Some(TrackerKind::GitHub));
-        assert_eq!(HostKind::GitLab.own_tracker(), Some(TrackerKind::GitLab));
+        assert_eq!(HostKind::GitHub.own_tracker(), Some("github"));
+        assert_eq!(HostKind::GitLab.own_tracker(), Some("gitlab"));
         assert_eq!(HostKind::Bitbucket.own_tracker(), None);
     }
 }

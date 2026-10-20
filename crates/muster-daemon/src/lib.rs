@@ -148,6 +148,11 @@ pub async fn keep_jira_token(
 /// The Keychain account of a Linear API key.
 pub const LINEAR_KEY_ACCOUNT: &str = trackers::linear::KEY_ACCOUNT;
 
+/// The Keychain account of the plugin `id`'s secret `name`.
+pub fn plugin_account(id: &str, name: &str) -> String {
+    secrets::plugin_account(id, name)
+}
+
 use crate::clock::{Clock, SystemClock};
 use crate::store::{Store, StoreError, StoreHandle};
 use crate::tasks::Tasks;
@@ -428,7 +433,7 @@ async fn start_supervisor(
         trackers: Arc::new(trackers::choose::ServiceTrackers {
             secrets: Arc::new(secrets::Keychain::default()),
             http: service::http_client(),
-            plugins: started.plugins,
+            plugins: started.plugins.clone(),
         }),
         config_dir: paths.config_dir.clone(),
         credentials,
@@ -439,6 +444,7 @@ async fn start_supervisor(
         }),
         adopted: started.adopted,
         tasks: started.tasks,
+        ticket_plugins: started.plugins,
     })
     .await?)
 }

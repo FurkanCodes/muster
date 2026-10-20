@@ -19,8 +19,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, ChildStdin};
 use tokio::sync::{Semaphore, mpsc, oneshot};
 
-use super::PluginSpec;
 use super::streams::{Lines, Log};
+use super::{Environment, PluginSpec};
 use crate::service::ServiceError;
 use crate::tasks::{self, Owned};
 
@@ -105,13 +105,16 @@ enum Asked {
 }
 
 impl Process {
-    pub(crate) fn new(spec: PluginSpec, limits: Limits) -> Self {
+    /// The process of the plugin `spec` describes, keeping what it says on
+    /// stderr in `log`, which hides its secrets.
+    pub(crate) fn new(spec: PluginSpec, limits: Limits, log: Arc<Mutex<Log>>) -> Self {
+        lock(&log).hide(spec.secrets());
         Self {
             spec,
             limits,
             running: tokio::sync::Mutex::new(None),
             in_flight: Semaphore::new(MOST_IN_FLIGHT),
-            log: Arc::default(),
+            log,
         }
     }
 
@@ -205,8 +208,10 @@ impl Process {
         Ok(requests)
     }
 
-    /// Starts the plugin's program, with the environment sessions get
-    /// (`harness::scrub`): the person's `PATH`, so their `gh` is found.
+    /// Starts the plugin's program, in its folder if it has one, with what
+    /// of the environment it is given: Muster's own what sessions get
+    /// (`harness::scrub`), the person's `PATH` among it, so their `gh` is
+    /// found; anyone else's the basics of that and what it names.
     fn start(&self) -> Result<Running, ServiceError> {
         let mut command = tokio::process::Command::new(&self.spec.program);
         command
@@ -215,9 +220,27 @@ impl Process {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let keys = std::env::vars_os().filter_map(|(key, _)| key.into_string().ok());
-        for key in crate::harness::scrub::scrubbed(keys) {
-            command.env_remove(key);
+        if let Some(folder) = &self.spec.folder {
+            command.current_dir(folder);
+        }
+        match &self.spec.environment {
+            Environment::Sessions => {
+                let keys = std::env::vars_os().filter_map(|(key, _)| key.into_string().ok());
+                for key in crate::harness::scrub::scrubbed(keys) {
+                    command.env_remove(key);
+                }
+            }
+            Environment::Only { variables, secrets } => {
+                command.env_clear();
+                let basics = std::env::vars_os().filter_map(|(key, value)| {
+                    let key = key.into_string().ok()?;
+                    super::is_basic(&key).then_some((key, value))
+                });
+                command.envs(basics);
+                for (name, value) in variables.iter().chain(secrets) {
+                    command.env(name, value.value());
+                }
+            }
         }
         let child = command.spawn().map_err(|error| {
             ServiceError::Unavailable(format!(
