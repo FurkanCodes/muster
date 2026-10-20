@@ -315,6 +315,15 @@ mod tests {
     }
 
     #[test]
+    fn only_a_client_of_41_or_later_is_told_of_the_plugins_arc_09() {
+        assert_eq!(
+            super::super::Delta::PluginsChanged(Vec::new()).since(),
+            crate::plugins::PLUGINS_PROTOCOL
+        );
+        assert_eq!(crate::plugins::PLUGINS_PROTOCOL, 41);
+    }
+
+    #[test]
     fn a_plugin_runs_only_while_on_and_without_a_problem() {
         let mut info = PluginInfo {
             id: "p".to_owned(),

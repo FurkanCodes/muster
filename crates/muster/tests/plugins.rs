@@ -267,6 +267,36 @@ async fn every_client_is_told_of_a_change_to_the_plugins_arc_09() {
     assert_eq!(again.subscribe().await.unwrap().plugins, plugins);
 }
 
+#[tokio::test]
+async fn the_person_s_settings_read_again_read_the_plugins_again_prd_15() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    let folder = sandbox.root().join("my-zoe");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("muster-plugin.toml"), MANIFEST).unwrap();
+    let path = folder.canonicalize().unwrap().display().to_string();
+    ok(&sandbox, &["link", &path, "--yes"]);
+    let mut connection = daemon.connect().await;
+    assert!(connection.subscribe().await.unwrap().plugins[0].runs());
+
+    std::fs::write(
+        folder.join("muster-plugin.toml"),
+        format!("{MANIFEST}# more\n"),
+    )
+    .unwrap();
+    let reply = connection
+        .command(muster_core::protocol::Command::ReadPreferences)
+        .await
+        .unwrap();
+    assert_eq!(reply, muster_core::protocol::Reply::Done);
+    let plugins = expect_event(&mut connection, |frame| match frame {
+        ServerFrame::Delta(Delta::PluginsChanged(plugins)) => Some(plugins.clone()),
+        _ => None,
+    })
+    .await;
+    assert_eq!(plugins[0].problem, Some(PluginProblem::Changed));
+}
+
 #[test]
 fn a_plugin_is_turned_off_and_on_and_removed_with_its_files() {
     let sandbox = Sandbox::new();
