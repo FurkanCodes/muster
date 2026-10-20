@@ -25,7 +25,10 @@ use crate::motion;
 use crate::pointer_shape::{Shape, Shapes};
 use crate::view;
 
+mod drawing;
 mod link;
+
+use drawing::Draws;
 
 use self::link::{LINK_EVENTS, LinkEvent, Outgoing, keep_linked};
 pub use self::link::{START_AGAIN_AFTER, START_WAIT};
@@ -91,7 +94,7 @@ const FRAME_WAIT: Duration = Duration::from_millis(150);
 /// running.
 pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut terminal = HostTerminal::enter()?;
-    let size = terminal_size(&terminal.terminal)?;
+    let size = area_size(terminal.area.width, terminal.area.height);
     let mut app = App::new(options.cwd.clone(), size);
     app.colours = std::mem::take(&mut terminal.colours);
     app.cell_pixels = cell_pixels();
@@ -124,9 +127,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
 
     let mut input = EventStream::new();
     let mut sender: Option<Outgoing> = None;
-    let mut dirty = true;
-    let mut next_draw = monotonic();
-    let mut hold = FrameHold::default();
+    let mut draws = Draws::new(monotonic());
     let mut steps = motion::Steps::new(monotonic());
     let mut pointer = Pointer::detect();
     let outcome = loop {
@@ -139,7 +140,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
             wall_clock().as_millis(),
             app.clock_every(),
             app.wants_steps().then(|| steps.next(now)),
-            dirty.then_some(next_draw),
+            draws.wake(),
         );
         let woke = tokio::select! {
             event = input.next() => Woke::Input(event),
@@ -149,7 +150,8 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
         };
         // The step and the clock first, so what an event starts is timed
         // from now.
-        let due = tick(&mut app, &mut steps, &mut dirty);
+        let due = tick(&mut app, &mut steps, &mut draws.dirty);
+        draws.woke(&woke, monotonic());
         let actions = match woke {
             Woke::Input(event) => match event {
                 Some(Ok(Event::Key(key))) => app.on_key(key),
@@ -160,7 +162,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                     let was = app.hover.clone();
                     let actions = app.on_mouse(mouse);
                     if actions.is_empty() && app.hover == was && due.is_empty() {
-                        draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
+                        draw_if_due(&mut terminal, &app, &mut draws)?;
                         continue;
                     }
                     actions
@@ -168,26 +170,30 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
                 Some(Ok(Event::FocusGained)) => app.on_focus(true),
                 Some(Ok(Event::FocusLost)) => app.on_focus(false),
-                Some(Ok(Event::Resize(cols, rows))) => resized(&mut app, cols, rows),
+                Some(Ok(Event::Resize(cols, rows))) => {
+                    terminal.resize(cols, rows)?;
+                    resized(&mut app, cols, rows)
+                }
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
                 None => break Ok(()),
             },
             Woke::Link(event) => linked(&mut app, &mut sender, event),
             Woke::Folders((dir, folders)) => app.on_folders(&dir, folders),
             Woke::Time if due.is_empty() => {
-                draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
+                draw_if_due(&mut terminal, &app, &mut draws)?;
                 continue;
             }
             Woke::Time => Vec::new(),
         };
         let actions: Vec<_> = due.into_iter().chain(actions).collect();
-        dirty = true;
+        draws.dirty = true;
+        draws.actions(&actions);
         let quit = perform(actions, &mut sender, &listed_folders, &outside);
         if quit {
             break Ok(());
         }
         pointer.follow(&app);
-        draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
+        draw_if_due(&mut terminal, &app, &mut draws)?;
     };
     drop(pointer);
     drop(terminal);
@@ -336,22 +342,12 @@ fn perform(
 
 /// Draws what changed, at most once a `FRAME`, and not while the session
 /// shown is midway through a frame of its own.
-fn draw_if_due(
-    terminal: &mut HostTerminal,
-    app: &App,
-    dirty: &mut bool,
-    next_draw: &mut Instant,
-    hold: &mut FrameHold,
-) -> Result<(), TuiError> {
+fn draw_if_due(terminal: &mut HostTerminal, app: &App, draws: &mut Draws) -> Result<(), TuiError> {
     let now = monotonic();
-    if !*dirty || now < *next_draw {
-        return Ok(());
-    }
-    if hold.may_draw(app.frame_pending(), now) {
+    if draws.due(app.frame_pending(), now) {
         terminal.terminal.draw(|frame| view::draw(frame, app))?;
-        *dirty = false;
+        draws.drawn(now);
     }
-    *next_draw = now + FRAME;
     Ok(())
 }
 
@@ -425,11 +421,6 @@ impl FrameHold {
     }
 }
 
-fn terminal_size(terminal: &DefaultTerminal) -> std::io::Result<TermSize> {
-    let size = terminal.size()?;
-    Ok(area_size(size.width, size.height))
-}
-
 /// The person's window is now `cols` by `rows`, its cells perhaps of
 /// another size in pixels too.
 fn resized(app: &mut App, cols: u16, rows: u16) -> Vec<Action> {
@@ -473,14 +464,24 @@ fn area_size(cols: u16, rows: u16) -> TermSize {
 /// on drop and on panic.
 struct HostTerminal {
     terminal: DefaultTerminal,
+    area: ratatui::layout::Rect,
     enhanced_keys: bool,
     /// Its colours, as it said them.
     colours: muster_core::colours::TerminalColours,
 }
 
 impl HostTerminal {
+    fn resize(&mut self, cols: u16, rows: u16) -> std::io::Result<()> {
+        self.area = ratatui::layout::Rect::new(0, 0, cols, rows);
+        self.terminal.resize(self.area)
+    }
+
     fn enter() -> std::io::Result<Self> {
-        let terminal = ratatui::init();
+        let (cols, rows) = crossterm::terminal::size()?;
+        let area = ratatui::layout::Rect::new(0, 0, cols, rows);
+        let terminal = ratatui::init_with_options(ratatui::TerminalOptions {
+            viewport: ratatui::Viewport::Fixed(area),
+        });
         let mut out = stdout();
         // The mouse scrolls sessions back, picks lines and selects a
         // session's text; the person's terminal's own selection, of whole
@@ -514,6 +515,7 @@ impl HostTerminal {
         };
         Ok(Self {
             terminal,
+            area,
             enhanced_keys,
             colours,
         })

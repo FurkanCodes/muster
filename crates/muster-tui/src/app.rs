@@ -391,6 +391,7 @@ enum Then {
 
 #[derive(Debug)]
 pub(crate) struct App {
+    pub(crate) areas_cache: std::cell::RefCell<crate::view::areas::Cache>,
     pub(crate) model: Model,
     pub(crate) view: View,
     pub(crate) mode: Mode,
@@ -610,6 +611,7 @@ impl App {
             side_by_side_changing: false,
             look_changing: false,
             telling_changing: false,
+            areas_cache: std::cell::RefCell::default(),
             panels_kept: None,
             folded_kept: None,
             fitted: None,

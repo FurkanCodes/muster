@@ -44,7 +44,7 @@ impl App {
 
     /// The panel with the keys, which a window too narrow for the rest
     /// shows alone.
-    fn panel_with_keys(&self) -> Panel {
+    pub(crate) fn panel_with_keys(&self) -> Panel {
         if self.changes_shown() {
             Panel::Changes
         } else if self.typing_in_shell() {
