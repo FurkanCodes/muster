@@ -77,6 +77,11 @@ impl Supervisor {
             PluginCommand::Install { preview, by } => {
                 let (outcome, gone) = self.plugins.install(&preview, by, now, at);
                 self.remove_later(gone);
+                // Linked, updated or approved again: what is open of it
+                // opens afresh, as the person approved it now.
+                if let Ok(id) = &outcome {
+                    self.reopen_panels_of(id).await;
+                }
                 outcome
             }
             PluginCommand::SetEnabled { id, on, by } => {
@@ -84,7 +89,7 @@ impl Supervisor {
                 if outcome.is_ok() && !on {
                     self.stop_panels_of(&id).await;
                 }
-                outcome
+                outcome.map(|()| id)
             }
             PluginCommand::Remove { id } => {
                 let (outcome, gone) = self.plugins.remove(&id);
@@ -92,7 +97,7 @@ impl Supervisor {
                 if outcome.is_ok() {
                     self.stop_panels_of(&id).await;
                 }
-                outcome
+                outcome.map(|()| id)
             }
             PluginCommand::Log { id } => {
                 let outcome = self.plugins.infos().iter().any(|info| info.id == id);
@@ -107,10 +112,11 @@ impl Supervisor {
                 );
             }
         };
-        if outcome.is_ok() {
+        if let Ok(id) = &outcome {
             self.read_plugins_and_tell();
+            self.stop_ticket_plugin(id);
         }
-        answer(reply, outcome.map(|()| Reply::Done));
+        answer(reply, outcome.map(|_| Reply::Done));
     }
 
     /// Fetches what `job` names off the loop, back as
@@ -179,6 +185,16 @@ impl Supervisor {
     /// (`ARC-14`).
     fn publish_ticket_plugins(&self) {
         for process in self.ticket_plugins.publish(self.plugins.ticket_plugins()) {
+            self.tasks.spawn(async move { process.stop().await });
+        }
+    }
+
+    /// The plugin `id` was changed on the person's word: its ticket
+    /// process, if it runs, is stopped off the loop, so the next request
+    /// starts the program as it is now, its manifest as approved now
+    /// (`ARC-14`).
+    fn stop_ticket_plugin(&self, id: &str) {
+        if let Some(process) = self.ticket_plugins.changed(id) {
             self.tasks.spawn(async move { process.stop().await });
         }
     }

@@ -9,7 +9,9 @@
 //! an agent fenced as data (`PRD-07`), given its secret and nothing else
 //! of the daemon's (`PRD-15`), its log read, and, turned off, saying why.
 //! And the guide's example, `examples/plugins/tickets-from-file`,
-//! installed from git as its readers would, serving its file's tickets.
+//! installed from git as its readers would, serving its file's tickets;
+//! linked from a folder, edited, and run as it is now once linked again,
+//! updated, or turned off and on.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -544,5 +546,67 @@ async fn the_example_ticket_plugin_installs_from_git_and_serves_its_file_s_ticke
     assert_eq!(issues[0].title, "The \"login\" page");
     let log = ok(&sandbox, &["plugin", "log", "tickets-from-file"]);
     assert!(log.contains("skipped \"no key here\""), "{log}");
+    daemon.stop();
+}
+
+#[tokio::test]
+async fn a_ticket_plugin_linked_again_updated_or_turned_on_again_runs_as_it_is_now_prd_15() {
+    // A plugin's author edits its program while it runs.
+    let sandbox = Sandbox::new();
+    let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/plugins/tickets-from-file");
+    let folder = sandbox.root().join("tickets-from-file");
+    std::fs::create_dir_all(&folder).unwrap();
+    for file in ["muster-plugin.toml", "tickets", "tickets.txt"] {
+        std::fs::copy(example.join(file), folder.join(file)).unwrap();
+    }
+    let edit = |said: &str| {
+        let program = std::fs::read_to_string(folder.join("tickets")).unwrap();
+        let edited = program.replacen('\n', &format!("\necho '{said}' >&2\n"), 1);
+        std::fs::write(folder.join("tickets"), edited).unwrap();
+    };
+    let daemon = sandbox.start();
+    let linked = folder.display().to_string();
+    ok(&sandbox, &["plugin", "link", &linked, "--yes"]);
+    let root = sandbox.repository("app");
+    let mut connection = daemon.connect().await;
+    let Reply::ProjectAdded { id: project } = connection
+        .command(Command::AddProject { root, name: None })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    choose(&mut connection, project, from("tickets-from-file", &[]))
+        .await
+        .unwrap();
+    listed(&mut connection, project).await;
+    let log = || ok(&sandbox, &["plugin", "log", "tickets-from-file"]);
+
+    // Edited, it runs as it was until Muster is told.
+    edit("edited once");
+    listed(&mut connection, project).await;
+    assert!(!log().contains("edited once"), "{}", log());
+    // Linked again, updated, or turned off and on: the next request starts
+    // it as it is now.
+    ok(&sandbox, &["plugin", "link", &linked, "--yes"]);
+    listed(&mut connection, project).await;
+    assert!(log().contains("edited once"), "{}", log());
+    edit("edited twice");
+    ok(
+        &sandbox,
+        &["plugin", "update", "tickets-from-file", "--yes"],
+    );
+    listed(&mut connection, project).await;
+    assert!(log().contains("edited twice"), "{}", log());
+    edit("edited thrice");
+    ok(&sandbox, &["plugin", "disable", "tickets-from-file"]);
+    ok(
+        &sandbox,
+        &["plugin", "enable", "tickets-from-file", "--yes"],
+    );
+    let (_, issues) = listed(&mut connection, project).await;
+    assert!(log().contains("edited thrice"), "{}", log());
+    assert_eq!(keys(&issues), ["WEB-3", "WEB-2", "WEB-1"]);
     daemon.stop();
 }

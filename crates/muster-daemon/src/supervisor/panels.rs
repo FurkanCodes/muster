@@ -186,8 +186,53 @@ impl Supervisor {
     /// turned off or removed: its programs leave with it (`ARC-23`,
     /// `ARC-14`). The panels stay listed, ended.
     pub(super) async fn stop_panels_of(&mut self, plugin: &str) {
-        let running: Vec<SessionId> = self
-            .state
+        for session in self.running_panels_of(plugin) {
+            self.reopening.remove(&session);
+            if let Err(error) = self.stop_session(session).await {
+                tracing::warn!(%session, %error, "could not stop a plugin's panel");
+            }
+        }
+    }
+
+    /// Opens every panel of `plugin` still running afresh, as the plugin
+    /// is linked, updated or approved again: each is stopped, and started
+    /// again in the same session as it ends (`reopen_panel`), so none goes
+    /// on running what the person no longer approved, or from a copy of
+    /// the plugin Muster lets go of.
+    pub(super) async fn reopen_panels_of(&mut self, plugin: &str) {
+        for session in self.running_panels_of(plugin) {
+            // One waiting its turn to resume ends at once, with no
+            // terminal's end to wait for: opened again by the person.
+            let waiting = self.resumes.is_waiting(session);
+            match self.stop_session(session).await {
+                Ok(_) if !waiting => {
+                    self.reopening.insert(session);
+                }
+                Ok(_) => {}
+                Err(error) => tracing::warn!(%session, %error, "could not stop a plugin's panel"),
+            }
+        }
+    }
+
+    /// The panel `session` ended: one stopped to be opened afresh is
+    /// started again in the same session, in the size its terminal had,
+    /// from its plugin as it reads now. One that cannot open now stays
+    /// ended, and opening it again says why.
+    pub(super) async fn reopen_panel(&mut self, session: SessionId, size: TermSize) {
+        if !self.reopening.remove(&session) {
+            return;
+        }
+        match self.restart_panel(session, size).await {
+            Ok(_) => tracing::info!(%session, "a plugin's panel opened afresh"),
+            Err(error) => {
+                tracing::info!(%session, %error, "a plugin's panel stays ended");
+            }
+        }
+    }
+
+    /// The sessions of `plugin`'s panels still running.
+    fn running_panels_of(&self, plugin: &str) -> Vec<SessionId> {
+        self.state
             .sessions
             .iter()
             .filter(|session| {
@@ -195,12 +240,7 @@ impl Supervisor {
             })
             .map(|session| session.id)
             .filter(|session| self.is_running(*session))
-            .collect();
-        for session in running {
-            if let Err(error) = self.stop_session(session).await {
-                tracing::warn!(%session, %error, "could not stop a plugin's panel");
-            }
-        }
+            .collect()
     }
 
     /// The panel running as `harness` in `workspace`, beside `beside`, if

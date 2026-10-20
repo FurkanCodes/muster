@@ -557,6 +557,7 @@ impl Supervisor {
                     let stored = stored.clone();
                     self.broadcast(Delta::SessionUpserted(stored));
                 }
+                self.reopen_panel(session, size).await;
             }
         }
     }

@@ -157,7 +157,7 @@ Said yes to, the plugin is copied to Muster's data folder, approved and turned o
 |---|---|
 | `muster plugin list [--json]` | Every plugin, where it is from, whether it is on and why one cannot run. |
 | `muster plugin install <address> [--ref <ref>] [--yes]` | Installs from git, after the preview. Updates follow `--ref`. |
-| `muster plugin link <folder> [--yes]` | Links a folder. Link it again to approve its manifest after you change it. |
+| `muster plugin link <folder> [--yes]` | Links a folder. Link it again to approve its manifest after you change it, or to run its program afresh after you edit it. |
 | `muster plugin update <id> [--yes]` | Fetches it again (a linked folder is read again), shows what it would run now, and asks. |
 | `muster plugin disable <id>` | Turns it off. Its process stops. |
 | `muster plugin enable <id> [--yes]` | Turns it on, after the preview. |
@@ -206,7 +206,7 @@ Muster speaks to the program over its stdin and stdout, in JSON-RPC 2.0, one mes
 
 The rules:
 
-- **One process serves everything.** Muster starts the program at the first request for its tickets, says `hello`, and then sends it every project's requests, each naming its project. It stops the program after five minutes unused, and when the daemon stops: it closes the program's stdin, waits a second, then kills it. The program ends when its stdin does, once what is under way is answered.
+- **One process serves everything.** Muster starts the program at the first request for its tickets, says `hello`, and then sends it every project's requests, each naming its project. It stops the program after five minutes unused; when the plugin is linked, updated or approved again, turned off or on, or removed, so the next request starts it as it is then; and when the daemon stops: it closes the program's stdin, waits a second, then kills it. The program ends when its stdin does, once what is under way is answered.
 - **Stdout is for replies only.** Every line the program writes on stdout must be a reply. Anything else, or a line over 4 MiB, is taken as the program breaking. Write anything else on stderr, which is its log.
 - **Flush each reply.** Many languages hold back what a program writes to a pipe until a buffer fills, and a reply held back misses its deadline. Flush stdout after each line: in Python `print(…, flush=True)`, in C `fflush(stdout)`. A shell's `printf` and `echo` need nothing.
 - **Replies by id.** Answer each request with its `id`. Replies may come in any order; a program may answer one request while working on another. At most eight requests wait on it at once.
@@ -321,7 +321,7 @@ command = ["zoe", "{transcript}", "--follow"]
 key = "G"
 ```
 
-Its key opens it beside the selected session (one with `on = "workspace"` on the selected worktree or checkout), and pressed again puts it away, its program ended; a line's right-click menu and the help list it too. A session shows only the panels opened beside it, or on its workspace. The person sets its key on *Settings › Keys*, under the plugin's name, kept in their settings as `"plugin.<id>.<panel>" = "G"`; a key Muster already uses on the lists of sessions, or another panel has, is not given to it, and Muster says so. It runs in the session's workspace, and ends with its workspace, as a shell does, and when its plugin is turned off or removed. It is no agent: it is never news, and never needs the person. [examples/plugins/session-graph](../examples/plugins/session-graph) wraps a program someone else wrote, [zoetrope](https://github.com/furkankly/zoetrope)'s `zoe`, with nothing but a manifest.
+Its key opens it beside the selected session (one with `on = "workspace"` on the selected worktree or checkout), and pressed again puts it away, its program ended; a line's right-click menu and the help list it too. A session shows only the panels opened beside it, or on its workspace. The person sets its key on *Settings › Keys*, under the plugin's name, kept in their settings as `"plugin.<id>.<panel>" = "G"`; a key Muster already uses on the lists of sessions, or another panel has, is not given to it, and Muster says so. It runs in the session's workspace, and ends with its workspace, as a shell does, and when its plugin is turned off or removed. When its plugin is linked, updated or approved again, an open panel is opened afresh where it is, running what was approved now; one that cannot open any more stays ended, and its key says why. It is no agent: it is never news, and never needs the person. [examples/plugins/session-graph](../examples/plugins/session-graph) wraps a program someone else wrote, [zoetrope](https://github.com/furkankly/zoetrope)'s `zoe`, with nothing but a manifest.
 
 ### Placeholders
 
@@ -381,7 +381,7 @@ A program flushes what it holds back as it ends, so that test passes even where 
 
 While you work on it:
 
-- **You changed its program:** the running process still has the old one. Turn the plugin off and on again (`muster plugin disable <id>`, then `muster plugin enable <id>`, or Space twice on *Settings › Plugins*), and the next request starts it afresh.
+- **You changed its program:** the running process still has the old one. Link it again (`muster plugin link .`, or `u` on *Settings › Plugins*), and the next request starts it afresh; its open panels open afresh at once.
 - **You changed its manifest:** it is off until you approve it again. Link it again.
 
 ## Publishing

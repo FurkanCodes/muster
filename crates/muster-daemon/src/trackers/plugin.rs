@@ -281,6 +281,14 @@ impl Plugins {
             .collect()
     }
 
+    /// The process of the plugin `id`, if it has one, handed back to be
+    /// stopped as the person changed the plugin: linked, updated or
+    /// approved again, turned on or off, removed. The next request starts
+    /// it afresh, as the registry says now; its log stays.
+    pub(crate) fn changed(&self, id: &str) -> Option<Arc<Process>> {
+        self.held().processes.remove(id)
+    }
+
     /// The end of the plugin `id`'s log, its secrets hidden: empty where
     /// it has not run.
     pub(crate) fn log(&self, id: &str) -> String {

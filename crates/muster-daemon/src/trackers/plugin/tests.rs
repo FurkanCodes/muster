@@ -412,6 +412,25 @@ async fn it_stops_with_the_daemon() {
 }
 
 #[tokio::test]
+async fn a_plugin_changed_is_let_go_and_the_next_request_starts_it_afresh() {
+    let loud = r#"hello() { echo "hello from $starts" >&2; printf '{"jsonrpc":"2.0","id":%s,"result":{"protocol":1}}\n' "$id"; }"#;
+    let fake = Fake::new(loud, "", "");
+    fake.tickets(false).list().await.unwrap();
+    assert!(fake.plugins.changed("other").is_none(), "only its own");
+    // Linked, updated or approved again: the same plugin, as it is now.
+    let process = fake.plugins.changed("fake").expect("it ran");
+    process.stop().await;
+    assert_eq!(fake.count("ends"), 1);
+    assert!(fake.plugins.changed("fake").is_none(), "let go once");
+    fake.tickets(false).list().await.unwrap();
+    assert_eq!(fake.count("starts"), 2);
+    // Its log goes on across them.
+    fake.until(|fake| fake.plugins.log("fake").contains("hello from 2"))
+        .await;
+    assert!(fake.plugins.log("fake").contains("hello from 1"));
+}
+
+#[tokio::test]
 async fn its_log_keeps_the_end_of_its_stderr_and_its_environment_is_a_session_s() {
     let loud = r#"hello() { head -c 70000 /dev/zero | tr '\0' x >&2; echo " last words" >&2; printf '{"jsonrpc":"2.0","id":%s,"result":{"protocol":1}}\n' "$id"; }"#;
     let fake = Fake::new(loud, "", "");

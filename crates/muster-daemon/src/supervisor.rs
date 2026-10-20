@@ -41,7 +41,7 @@ mod tidy;
 mod timeline;
 mod worktrees;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -201,6 +201,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         asks: Arc::new(tokio::sync::Semaphore::new(naming::AT_ONCE)),
         plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
         ticket_plugins: settings.ticket_plugins,
+        reopening: HashSet::new(),
     };
     supervisor.start_plugins().await;
     supervisor.ensure_checkouts().await;
@@ -348,6 +349,8 @@ struct Supervisor {
     plugins: crate::plugins::Registry,
     /// The ticket plugins' processes and logs, shared with `trackers`.
     ticket_plugins: crate::trackers::plugin::Plugins,
+    /// Plugins' panels stopped to be opened afresh as they end.
+    reopening: HashSet<SessionId>,
 }
 
 impl Supervisor {

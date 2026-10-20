@@ -3,8 +3,9 @@
 //! what Muster knows of the session it opens beside, its program found in
 //! the plugin's folder, and only the basics of the environment and what
 //! its manifest names given; refused, saying why, where it cannot open;
-//! opened once beside a session, opened afresh when started again, and
-//! ended with its plugin turned off or removed.
+//! opened once beside a session, opened afresh when started again or its
+//! plugin is linked again, and ended with its plugin turned off or
+//! removed.
 
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt as _;
@@ -353,6 +354,63 @@ async fn a_plugin_turned_off_or_removed_takes_its_panels_with_it_arc_23() {
         .await
         .unwrap();
     until(&supervisor, ended(files)).await;
+}
+
+#[tokio::test]
+async fn a_plugin_linked_again_opens_its_panels_afresh_as_approved_now() {
+    use muster_core::protocol::plugins::{ChangedBy, PluginOrigin};
+    let dir = tempfile::tempdir().unwrap();
+    let (supervisor, folder, chat) = with_a_chat(dir.path(), MANIFEST).await;
+    let panel = started(
+        open(&supervisor, "context", Beside::Session(chat.id))
+            .await
+            .unwrap(),
+    );
+    given(&folder).await;
+    std::fs::remove_file(folder.join("env")).unwrap();
+    // Its author changes what the panel runs, and links it again.
+    std::fs::write(
+        folder.join("muster-plugin.toml"),
+        MANIFEST.replace("\"{branch}\", \"{session}\"", "\"again\""),
+    )
+    .unwrap();
+    let preview = supervisor
+        .command(Command::Plugin(PluginCommand::Preview {
+            origin: PluginOrigin::Folder {
+                path: folder.clone(),
+            },
+        }))
+        .await
+        .unwrap();
+    let Reply::PluginPreview(preview) = preview else {
+        panic!("expected a preview, got {preview:?}");
+    };
+    supervisor
+        .command(Command::Plugin(PluginCommand::Install {
+            preview: preview.preview,
+            by: ChangedBy::Ui,
+        }))
+        .await
+        .unwrap();
+
+    // The same panel beside the same chat, running what was approved now.
+    let (args, _) = given(&folder).await;
+    assert_eq!(args, ["again"]);
+    until(&supervisor, |snapshot| {
+        session(snapshot, panel).ended_at.is_none()
+    })
+    .await;
+    let snapshot = state(&supervisor).await;
+    let panels = snapshot
+        .sessions
+        .iter()
+        .filter(|session| session.harness == "plugin:demo/context");
+    assert_eq!(panels.count(), 1, "opened afresh, not opened twice");
+    assert_eq!(session(&snapshot, panel).beside, Some(chat.id));
+    supervisor
+        .command(Command::StopSession { session: panel })
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

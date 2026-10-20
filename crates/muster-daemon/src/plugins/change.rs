@@ -95,14 +95,14 @@ impl Registry {
     }
 
     /// Installs, links or updates what the preview `preview` showed, as
-    /// the person approved it at `at`, by `by`.
+    /// the person approved it at `at`, by `by`: the plugin's id.
     pub(crate) fn install(
         &mut self,
         preview: &str,
         by: ChangedBy,
         now: Instant,
         at: Timestamp,
-    ) -> (Result<(), PluginError>, Gone) {
+    ) -> (Result<String, PluginError>, Gone) {
         let (found, mut gone) = self.previews.take(preview, now);
         let Some(found) = found else {
             return (Err(PluginError::NoPreview), gone);
@@ -110,8 +110,9 @@ impl Registry {
         let id = found.manifest.id.clone();
         match self.apply(found, &mut gone) {
             Ok(what) => {
-                self.changes.insert(id, PluginChange { what, by, at });
-                (Ok(()), gone)
+                self.changes
+                    .insert(id.clone(), PluginChange { what, by, at });
+                (Ok(id), gone)
             }
             Err(error) => (Err(error), gone),
         }
