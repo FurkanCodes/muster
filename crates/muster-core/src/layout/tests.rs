@@ -137,6 +137,20 @@ fn a_layout_written_before_a_panel_was_muster_s_gets_it_where_the_default_puts_i
 }
 
 #[test]
+fn a_client_older_than_a_panel_is_given_the_layout_without_it() {
+    let layout = Layout::default();
+    let older = layout.without(Panel::Plugin);
+    assert_eq!(older.to_string(), "list | session 60% | (changes / shell)");
+    // What it reads, a client that knows the panel reads as it was.
+    assert_eq!(read(&older.to_string()), layout);
+    let moved = read("plugin | list 30 | session | (changes / shell)");
+    assert_eq!(
+        moved.without(Panel::Plugin).to_string(),
+        "list 30 | session | (changes / shell)"
+    );
+}
+
+#[test]
 fn a_panel_moved_to_an_edge_of_the_window_runs_along_it() {
     let layout = read("list | session 60% | (changes / shell / plugin)");
     assert_eq!(

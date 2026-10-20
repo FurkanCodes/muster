@@ -202,6 +202,20 @@ impl Layout {
         Ok(Self { root })
     }
 
+    /// The layout with `panel` taken out, for a client older than that
+    /// panel, which would refuse a layout naming it: its place goes to the
+    /// other of its two, as for a panel not shown. Read back, it is put
+    /// where the default puts it.
+    #[must_use]
+    pub fn without(&self, panel: Panel) -> Self {
+        match without(&self.root, panel) {
+            Some((rest, _)) => Self {
+                root: Node { size: None, ..rest },
+            },
+            None => self.clone(),
+        }
+    }
+
     /// The tree, from the whole window down.
     #[must_use]
     pub const fn root(&self) -> &Node {
