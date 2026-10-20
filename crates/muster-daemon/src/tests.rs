@@ -46,7 +46,6 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
         trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
             secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
-            http: crate::service::http_client(),
             plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         }),
         config_dir,
@@ -361,7 +360,6 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
         trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
             secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
-            http: crate::service::http_client(),
             plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         }),
         config_dir: std::env::temp_dir(),

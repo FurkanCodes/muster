@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use muster_core::ticket_protocol::{Project, Reply, read_reply, request_line};
@@ -7,7 +7,6 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use super::*;
-use crate::service::BoxFuture;
 use crate::trackers::IssueDetail;
 
 /// A repository's tickets as a test keeps them: issue 42, and what was
@@ -100,10 +99,17 @@ fn served() -> Served {
     let kept = Arc::new(Kept::default());
     let sources: Arc<Sources> = {
         let kept = kept.clone();
-        Arc::new(move |root, mine| -> Arc<dyn TicketSource> {
-            Arc::new(Repository {
+        Arc::new(move |project: Project, mine| -> Made {
+            // A tracker that cannot be signed in to says so as it is made.
+            if project.settings.contains_key("signed_out") {
+                return Box::pin(std::future::ready(Err(ServiceError::NotSignedIn(
+                    "Muster is not signed in to Jira at acme.atlassian.net: run `muster auth jira`"
+                        .to_owned(),
+                ))));
+            }
+            made(Repository {
                 kept: kept.clone(),
-                root,
+                root: project.root,
                 mine,
             })
         })
@@ -267,5 +273,41 @@ async fn a_slow_request_holds_up_no_other() {
 async fn only_its_own_plugins_are_served() {
     let error = plugin_run("youtrack").await.unwrap_err();
     assert!(matches!(error, PluginRunError::Unknown(_)));
-    assert!(error.to_string().contains("github and gitlab"));
+    assert!(
+        error
+            .to_string()
+            .contains("github, gitlab, jira and linear")
+    );
+}
+
+#[tokio::test]
+async fn a_tracker_not_signed_in_to_answers_signed_out_to_each_method() {
+    let mut plugin = served();
+    let out = Project::new(
+        Path::new("/work/app"),
+        None,
+        [("signed_out".to_owned(), "yes".to_owned())].into(),
+    )
+    .unwrap();
+    let key = TicketKey::parse("APP-7").unwrap();
+    let calls = [
+        Call::List {
+            project: out.clone(),
+            mine: false,
+        },
+        Call::View {
+            project: out.clone(),
+            key: key.clone(),
+        },
+        Call::Close { project: out, key },
+    ];
+    for (id, call) in (1..).zip(calls) {
+        plugin.ask(id, call).await;
+        let reply = plugin.reply().await;
+        assert_eq!(reply.id, Some(id));
+        let refused = reply.outcome.unwrap_err();
+        assert_eq!(refused.code, PluginErrorCode::SignedOut);
+        assert!(refused.message.contains("muster auth jira"), "{refused:?}");
+    }
+    assert!(plugin.kept.asked.lock().unwrap().is_empty());
 }

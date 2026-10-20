@@ -2,19 +2,17 @@
 //! `muster.toml`, or the person's overrides), or else the one its git
 //! remote's host comes with, GitHub's or GitLab's. A tracker is a ticket
 //! plugin, found by its id among those the registry has: Muster's own
-//! GitHub and GitLab, and anyone's, run out of process (`plugin`); Jira
-//! and Linear are listed with them, and reached in the daemon still.
+//! GitHub, GitLab, Jira and Linear, and anyone's, each run out of process
+//! (`plugin`).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use muster_core::config::{HostKind, Tickets, TrackerId};
-use muster_core::plugins::{TicketSource as Declared, own};
+use muster_core::plugins::TicketSource as Declared;
 use muster_core::remote::Remote;
 use muster_core::ticket_protocol::Project;
 
-use super::jira::Jira;
-use super::linear::Linear;
 use super::plugin::{Environment, PluginSpec, PluginTickets, Plugins, TicketPlugin};
 use super::{BoxFuture, Hidden, ProjectPlace, ServiceError, TicketSource, Trackers};
 use crate::secrets::{Secrets, Token};
@@ -23,10 +21,8 @@ use crate::service::Origin;
 /// The trackers in use.
 #[derive(Debug)]
 pub(crate) struct ServiceTrackers {
-    /// The sign-ins and tokens for trackers reached by MCP or their APIs,
-    /// and plugins' secrets.
+    /// Plugins' secrets.
     pub(crate) secrets: Arc<dyn Secrets>,
-    pub(crate) http: reqwest::Client,
     /// The ticket plugins, as the registry last said, and their processes.
     pub(crate) plugins: Plugins,
 }
@@ -42,31 +38,16 @@ impl Trackers for ServiceTrackers {
             let tracker = choose(&config.tickets, config.pull_requests.host, &origin)?;
             let plugin = self.plugins.find(&tracker)?;
             let declared = plugin.runnable()?;
-            let source: Arc<dyn TicketSource> = match tracker.as_str() {
-                own::JIRA => {
-                    Jira::for_settings(&config.tickets, self.secrets.as_ref(), self.http.clone())
-                        .await?
-                }
-                own::LINEAR => {
-                    Linear::for_settings(&config.tickets, self.secrets.as_ref(), self.http.clone())
-                        .await?
-                }
-                _ => {
-                    // Muster's own were checked as the settings were read.
-                    muster_core::config::check_fields(
-                        &tracker,
-                        &declared.settings,
-                        &config.tickets.fields,
-                    )
-                    .map_err(ServiceError::NotConfigured)?;
-                    let spec = self.spec(&plugin, declared).await;
-                    Arc::new(PluginTickets::new(
-                        self.plugins.process(spec),
-                        plugin_project(&place, &origin, config.tickets.fields.clone())?,
-                        config.tickets.mine,
-                    ))
-                }
-            };
+            // Anyone's fields are checked here, Muster's own as the settings
+            // were read.
+            muster_core::config::check_fields(&tracker, &declared.settings, &config.tickets.fields)
+                .map_err(ServiceError::NotConfigured)?;
+            let spec = self.spec(&plugin, declared).await;
+            let source: Arc<dyn TicketSource> = Arc::new(PluginTickets::new(
+                self.plugins.process(spec),
+                plugin_project(&place, &origin, config.tickets.fields.clone())?,
+                config.tickets.mine,
+            ));
             // Nothing reads a ticket but through this: its credentials go.
             let hidden: Arc<dyn TicketSource> = Arc::new(Hidden(source));
             Ok(hidden)

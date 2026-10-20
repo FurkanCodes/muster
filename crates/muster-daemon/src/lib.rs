@@ -432,7 +432,6 @@ async fn start_supervisor(
         )),
         trackers: Arc::new(trackers::choose::ServiceTrackers {
             secrets: Arc::new(secrets::Keychain::default()),
-            http: service::http_client(),
             plugins: started.plugins.clone(),
         }),
         config_dir: paths.config_dir.clone(),
