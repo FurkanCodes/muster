@@ -2,8 +2,10 @@
 //! Sessions): arrows both ways over the line between two panels, a hand
 //! over a panel's title, a closed hand while one is carried. The
 //! terminal is asked with OSC 22, in the names it knows: CSS's in kitty
-//! and Ghostty, the X11 cursor font's in iTerm2 (checked 2026-10-20 in
-//! iTerm2 3.6.6); a terminal not known to take it is never sent it.
+//! and Ghostty, the X11 cursor font's in iTerm2, which shows them while a
+//! program has the mouse from 3.7 on (checked 2026-10-20 in its source:
+//! `fleur` is its open hand, and it has no closed one); a terminal not
+//! known to take it is never sent it.
 
 /// A pointer shape the UI asks for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -67,8 +69,7 @@ impl Shapes {
             (Self::X11, Shape::Default) => "\x1b]22;\x1b\\",
             (Self::X11, Shape::Columns) => "\x1b]22;sb_h_double_arrow\x1b\\",
             (Self::X11, Shape::Rows) => "\x1b]22;sb_v_double_arrow\x1b\\",
-            (Self::X11, Shape::Grab) => "\x1b]22;hand2\x1b\\",
-            (Self::X11, Shape::Grabbing) => "\x1b]22;hand1\x1b\\",
+            (Self::X11, Shape::Grab | Shape::Grabbing) => "\x1b]22;fleur\x1b\\",
         }
     }
 }
@@ -113,7 +114,8 @@ mod tests {
             Shapes::X11.sequence(Shape::Columns),
             "\x1b]22;sb_h_double_arrow\x1b\\"
         );
-        assert_eq!(Shapes::X11.sequence(Shape::Grab), "\x1b]22;hand2\x1b\\");
+        assert_eq!(Shapes::X11.sequence(Shape::Grab), "\x1b]22;fleur\x1b\\");
+        assert_eq!(Shapes::X11.sequence(Shape::Grabbing), "\x1b]22;fleur\x1b\\");
         assert_eq!(Shapes::X11.sequence(Shape::Default), "\x1b]22;\x1b\\");
         assert_eq!(
             Shapes::Css.sequence(Shape::Default),
