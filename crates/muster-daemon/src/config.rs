@@ -139,6 +139,8 @@ pub fn preferences(config_dir: &Path) -> Result<Preferences, ConfigError> {
 pub struct OwnSettings {
     pub preferences: Preferences,
     pub agents: Vec<AgentDefinition>,
+    /// What reads in them but does nothing (`MusterConfig::warnings`).
+    pub warnings: Vec<String>,
 }
 
 /// Muster's own settings in `config_dir`, with the agents the person added.
@@ -162,6 +164,7 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             telling: config.telling,
         },
         agents: config.agents,
+        warnings: config.warnings,
     })
 }
 
@@ -212,6 +215,16 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             "by_agent",
             *on,
         ),
+        // Kept aside as it reads, a name no action of Muster's has is
+        // never set from a client: only taken away.
+        PreferenceChange::Keys {
+            action,
+            keys: Some(_),
+        } if muster_core::keys::Action::named(action).is_none() => {
+            return Err(invalid(format!(
+                "keys.{action} is not something a key does"
+            )));
+        }
         PreferenceChange::Keys {
             action,
             keys: Some(keys),
@@ -489,6 +502,43 @@ mod tests {
         change_preference(&config_dir, &PreferenceChange::AllKeysBack).unwrap();
         assert!(preferences(&config_dir).unwrap().keys.is_empty());
         assert!(!std::fs::read_to_string(&file).unwrap().contains("[keys]"));
+    }
+
+    #[test]
+    fn a_removed_plugin_s_key_leaves_muster_s_own_settings_readable() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(
+            &file,
+            "[notch]\nshow = false\n\n[keys]\nzoetrope_graph = \"Z\"\nrename = \"F2\"\n",
+        )
+        .unwrap();
+        let own = own_settings(&config_dir).unwrap();
+        assert!(!own.preferences.notch, "the rest as written");
+        assert_eq!(own.preferences.keys["zoetrope_graph"], ["Z"]);
+        assert_eq!(own.warnings.len(), 1, "{:?}", own.warnings);
+        // The file still takes changes, the key kept as it is.
+        change_preference(&config_dir, &PreferenceChange::Notch(true)).unwrap();
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(written.contains("zoetrope_graph = \"Z\""), "{written}");
+        // No client sets a key for an action Muster lacks, but one can take
+        // it away.
+        let keys = |keys: Option<Vec<String>>| PreferenceChange::Keys {
+            action: "zoetrope_graph".to_owned(),
+            keys,
+        };
+        let error = change_preference(&config_dir, &keys(Some(vec!["Y".to_owned()]))).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("keys.zoetrope_graph is not something a key does"),
+            "{error}"
+        );
+        change_preference(&config_dir, &keys(None)).unwrap();
+        let own = own_settings(&config_dir).unwrap();
+        assert!(own.warnings.is_empty() && !own.preferences.keys.contains_key("zoetrope_graph"));
     }
 
     #[test]

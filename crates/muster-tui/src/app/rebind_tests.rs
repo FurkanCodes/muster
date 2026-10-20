@@ -177,3 +177,31 @@ fn a_daemon_that_keeps_no_keys_shows_no_keys_to_set() {
     world.app.daemon_protocol = KEYS_PROTOCOL - 1;
     assert!(!world.app.setting_rows().contains(&SettingRow::Keys));
 }
+
+#[test]
+fn a_key_for_an_action_no_longer_there_leaves_the_rest_and_says_so() {
+    let mut world = world();
+    // A plugin's panel's key, its plugin removed, beside one of Muster's.
+    kept(
+        &mut world,
+        &[("zoetrope_graph", &["Z"]), ("new_session", &["N"])],
+    );
+    assert_eq!(
+        world.app.keymap.label(Does::NewSession),
+        "Shift-N",
+        "the rest read"
+    );
+    assert_eq!(world.app.keymap.aside().len(), 1);
+    press(&mut world.app, KeyCode::Char('4'));
+    world.app.settings_selected = Some(SettingRow::Keys);
+    world.app.on_resize(muster_core::protocol::TermSize {
+        cols: 180,
+        rows: 40,
+    });
+    let screen = render(&world.app);
+    assert!(screen.contains("1 of yours"), "{screen}");
+    assert!(
+        screen.contains("keys.zoetrope_graph is not something a key does"),
+        "{screen}"
+    );
+}
