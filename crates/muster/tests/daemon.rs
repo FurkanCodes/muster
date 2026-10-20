@@ -297,11 +297,19 @@ fn the_daemons_log_moves_on_to_a_fresh_file_and_keeps_seven() {
     for _ in 0..20 {
         assert!(sandbox.run(&["status"]).status.success());
     }
-    std::thread::sleep(Duration::from_millis(100));
+    // A client is logged as it connects, so all that is left is the daemon
+    // setting the log aside a tick after it outgrew its size, one file short
+    // until the fresh one is open. Wait for the last: a fresh file under the
+    // size, where what the daemon logged after went.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let fresh = std::fs::read_to_string(runtime.join("daemon.log")).unwrap_or_default();
+        if fresh.contains("a fresh log") && fresh.len() <= 1000 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{} bytes: {fresh}", fresh.len());
+        std::thread::sleep(Duration::from_millis(20));
+    }
     assert_eq!(logs(), 7);
-    let fresh = std::fs::read_to_string(runtime.join("daemon.log")).unwrap();
-    assert!(fresh.len() < 20_000, "{} bytes", fresh.len());
-    // What the daemon logged after went to the fresh file.
-    assert!(fresh.contains("a fresh log"), "{fresh}");
     drop(daemon);
 }
