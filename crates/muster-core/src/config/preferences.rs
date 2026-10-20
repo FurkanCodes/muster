@@ -145,6 +145,9 @@ struct Notifications {
 enum OneOrMore {
     One(String),
     More(Vec<String>),
+    /// The keys of names written with dots and no quotes, which TOML reads
+    /// as tables: `plugin.zoetrope.graph = "G"`.
+    Dotted(BTreeMap<String, OneOrMore>),
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -267,6 +270,23 @@ impl MusterConfig {
 /// Each action's keys as written, by its name (`[keys]`).
 type Keys = BTreeMap<String, Vec<String>>;
 
+/// `written`'s keys into `keys`, each under its whole name, a name written
+/// with dots as it reads with quotes (`"plugin.zoetrope.graph"`).
+fn flatten(written: BTreeMap<String, OneOrMore>, above: &str, keys: &mut Keys) {
+    for (name, written) in written {
+        let name = format!("{above}{name}");
+        match written {
+            OneOrMore::One(key) => {
+                keys.insert(name, vec![key]);
+            }
+            OneOrMore::More(more) => {
+                keys.insert(name, more);
+            }
+            OneOrMore::Dotted(below) => flatten(below, &format!("{name}."), keys),
+        }
+    }
+}
+
 /// The person's keys as `written`, each action's in a list, and what of
 /// them does nothing; refused, naming the key, where Muster's own keys
 /// would not read with them (`Keymap::with`).
@@ -274,16 +294,8 @@ fn keys(
     written: BTreeMap<String, OneOrMore>,
     file: &str,
 ) -> Result<(Keys, Vec<String>), ConfigError> {
-    let keys: Keys = written
-        .into_iter()
-        .map(|(action, keys)| {
-            let keys = match keys {
-                OneOrMore::One(key) => vec![key],
-                OneOrMore::More(keys) => keys,
-            };
-            (action, keys)
-        })
-        .collect();
+    let mut keys = Keys::new();
+    flatten(written, "", &mut keys);
     let keymap = crate::keys::Keymap::with(&keys).map_err(|error| ConfigError::Invalid {
         file: file.to_owned(),
         message: error.to_string(),
@@ -368,6 +380,19 @@ mod tests {
                 .starts_with("settings.toml: plugins.zoetrope.enable is not a setting"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_panel_s_key_reads_with_its_name_quoted_or_not() {
+        for written in [
+            "[keys]\n\"plugin.zoetrope.graph\" = \"G\"\n",
+            "[keys]\nplugin.zoetrope.graph = \"G\"\n",
+            "[keys.plugin.zoetrope]\ngraph = [\"G\"]\n",
+        ] {
+            let read = MusterConfig::parse(Some(written), "settings.toml").unwrap();
+            assert_eq!(read.keys["plugin.zoetrope.graph"], ["G"], "{written}");
+            assert_eq!(read.keys.len(), 1);
+        }
     }
 
     #[test]

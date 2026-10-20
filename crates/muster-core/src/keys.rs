@@ -12,6 +12,10 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+mod panels;
+
+pub use panels::{PanelAction, is_panel_action, panel_action};
+
 /// Where a key is pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Screen {
@@ -414,6 +418,24 @@ pub enum KeysWarning {
          name, and doing nothing meanwhile"
     )]
     NotAnAction(String),
+    /// A key the person set for a plugin's panel that cannot be its.
+    #[error("keys.{name}: {key} {why}, so it does nothing for the panel: set it another")]
+    PanelKey {
+        name: String,
+        key: String,
+        why: String,
+    },
+    /// A key a plugin suggests for its panel that cannot be its.
+    #[error(
+        "the {plugin} plugin's {panel} panel suggests {key}, which {why}: set it a key of its \
+         own here"
+    )]
+    Suggested {
+        plugin: String,
+        panel: String,
+        key: String,
+        why: String,
+    },
 }
 
 /// The keys of every action: Muster's own, with the person's over them.
@@ -424,6 +446,11 @@ pub struct Keymap {
     /// written: a plugin's actions, bound by name once its plugin is
     /// known.
     aside: BTreeMap<String, Vec<String>>,
+    /// The panels of the plugins that run, with their keys
+    /// ([`Keymap::with_panels`]).
+    panels: Vec<panels::Bound>,
+    /// The keys of panels that cannot be theirs, each said why.
+    dropped: Vec<KeysWarning>,
 }
 
 impl Default for Keymap {
@@ -442,6 +469,8 @@ impl Default for Keymap {
         Self {
             keys,
             aside: BTreeMap::new(),
+            panels: Vec::new(),
+            dropped: Vec::new(),
         }
     }
 }
@@ -486,13 +515,13 @@ impl Keymap {
             let (action, key) = named();
             return Err(KeysError::Typed { action, key });
         }
-        if let Some(other) = self.taken(action, chord) {
+        let other = self
+            .taken(action, chord)
+            .map(|other| other.name().to_owned())
+            .or_else(|| self.taken_by_panel(action, chord));
+        if let Some(other) = other {
             let (action, key) = named();
-            return Err(KeysError::Taken {
-                action,
-                key,
-                other: other.name().to_owned(),
-            });
+            return Err(KeysError::Taken { action, key, other });
         }
         Ok(())
     }
@@ -557,12 +586,15 @@ impl Keymap {
         &self.aside
     }
 
-    /// What the person is told of the keys set that do nothing: each name
-    /// kept aside.
+    /// What the person is told of the keys that do nothing: each name kept
+    /// aside that no panel of a plugin that runs has, and each panel's key
+    /// that cannot be its.
     pub fn warnings(&self) -> Vec<KeysWarning> {
         self.aside
             .keys()
+            .filter(|name| self.panel_named(name).is_none())
             .map(|name| KeysWarning::NotAnAction(name.clone()))
+            .chain(self.dropped.iter().cloned())
             .collect()
     }
 }

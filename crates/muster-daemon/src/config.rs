@@ -215,12 +215,15 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             "by_agent",
             *on,
         ),
-        // Kept aside as it reads, a name no action of Muster's has is
-        // never set from a client: only taken away.
+        // Kept aside as it reads, a name that is neither an action of
+        // Muster's nor a plugin's panel's is never set from a client: only
+        // taken away.
         PreferenceChange::Keys {
             action,
             keys: Some(_),
-        } if muster_core::keys::Action::named(action).is_none() => {
+        } if muster_core::keys::Action::named(action).is_none()
+            && !muster_core::keys::is_panel_action(action) =>
+        {
             return Err(invalid(format!(
                 "keys.{action} is not something a key does"
             )));
@@ -539,6 +542,28 @@ mod tests {
         change_preference(&config_dir, &keys(None)).unwrap();
         let own = own_settings(&config_dir).unwrap();
         assert!(own.warnings.is_empty() && !own.preferences.keys.contains_key("zoetrope_graph"));
+    }
+
+    #[test]
+    fn a_key_for_a_plugin_s_panel_is_set_and_taken_away_by_its_name_prd_15() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let keys = |keys: Option<Vec<String>>| PreferenceChange::Keys {
+            action: "plugin.zoetrope.graph".to_owned(),
+            keys,
+        };
+        change_preference(&config_dir, &keys(Some(vec!["G".to_owned()]))).unwrap();
+        let written = std::fs::read_to_string(config_dir.join("settings.toml")).unwrap();
+        assert!(
+            written.contains("\"plugin.zoetrope.graph\" = [\"G\"]"),
+            "{written}"
+        );
+        let own = own_settings(&config_dir).unwrap();
+        assert_eq!(own.preferences.keys["plugin.zoetrope.graph"], ["G"]);
+        change_preference(&config_dir, &keys(None)).unwrap();
+        let own = own_settings(&config_dir).unwrap();
+        assert!(own.preferences.keys.is_empty());
     }
 
     #[test]
