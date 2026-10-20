@@ -282,23 +282,24 @@ impl Model {
     }
 
     /// A workspace's sessions as the list shows them: its chats, then its
-    /// shells, which stand by them rather than among them.
+    /// shells and plugins' panels, which stand by them rather than among
+    /// them.
     pub(crate) fn listed_of(&self, workspace: WorkspaceId) -> impl Iterator<Item = &Session> {
         let (chats, shells): (Vec<&Session>, Vec<&Session>) = self
             .sessions_of(workspace)
-            .partition(|session| !is_shell(session));
+            .partition(|session| !stands_beside(session));
         chats.into_iter().chain(shells)
     }
 
-    /// Whether `shell` is shown as its workspace's one chat's: a worktree
-    /// with one agent at work in it, as most are, has its shell under that
-    /// agent's chat; where several chats share the workspace, its shells
-    /// serve them all, and stand after them.
+    /// Whether `shell` (or a plugin's panel) is shown as its workspace's
+    /// one chat's: a worktree with one agent at work in it, as most are,
+    /// has its shell under that agent's chat; where several chats share the
+    /// workspace, its shells serve them all, and stand after them.
     pub(crate) fn under_its_chat(&self, shell: &Session) -> bool {
-        is_shell(shell)
+        stands_beside(shell)
             && self
                 .sessions_of(shell.workspace)
-                .filter(|session| !is_shell(session))
+                .filter(|session| !stands_beside(session))
                 .count()
                 == 1
     }
@@ -387,9 +388,10 @@ impl Model {
 
 pub(crate) use muster_core::news::needs_attention;
 
-/// Whether `session` is a shell, the person's own, not an agent's chat.
-pub(crate) fn is_shell(session: &Session) -> bool {
-    session.harness == "shell"
+/// Whether `session` stands beside the chats rather than among them: a
+/// shell, the person's own, or a plugin's panel, not an agent's chat.
+pub(crate) fn stands_beside(session: &Session) -> bool {
+    muster_core::harness::stands_beside(&session.harness)
 }
 
 fn upsert<T, K: PartialEq>(items: &mut Vec<T>, item: T, key: impl Fn(&T) -> K) {

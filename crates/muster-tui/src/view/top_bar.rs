@@ -149,11 +149,11 @@ fn fleet(app: &App, daemon_version: &str, room: usize) -> Vec<Span<'static>> {
 /// count is.
 fn counts(app: &App, words: bool) -> Vec<Span<'static>> {
     let sessions = app.model.sessions();
-    // The agents: a shell is the person's own.
+    // The agents: a shell is the person's own, a panel a plugin's.
     let count = |wanted: fn(SessionStatus) -> bool| {
         sessions
             .iter()
-            .filter(|session| session.harness != "shell" && wanted(session.status))
+            .filter(|session| !crate::model::stands_beside(session) && wanted(session.status))
             .count()
     };
     let groups = [

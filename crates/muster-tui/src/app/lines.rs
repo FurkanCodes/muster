@@ -23,7 +23,12 @@ impl App {
         rows.iter()
             .map(|row| match row {
                 // A shell takes one line, whatever a chat takes.
-                Row::Session(id) if self.model.session(*id).is_some_and(crate::model::is_shell) => {
+                Row::Session(id)
+                    if self
+                        .model
+                        .session(*id)
+                        .is_some_and(crate::model::stands_beside) =>
+                {
                     1
                 }
                 Row::Session(_) => self.session_height(),

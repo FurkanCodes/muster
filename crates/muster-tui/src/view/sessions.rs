@@ -207,7 +207,7 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
         }
         Row::Worktree(id) => ListItem::new(worktree_line(app, id, edge, width, by)),
         Row::Session(id) => match app.model.session(id) {
-            Some(session) if crate::model::is_shell(session) => {
+            Some(session) if crate::model::stands_beside(session) => {
                 ListItem::new(shell_line(app, session, session_lead(edge), width, by))
             }
             Some(session) => {

@@ -623,19 +623,22 @@ impl Supervisor {
         self.workspace_path(workspace)
     }
 
-    /// How many of a workspace's sessions are still running.
-    /// The sessions running in `workspace`, each with whether it is a
-    /// shell.
+    /// The sessions running in `workspace`, each with whether it ends
+    /// with the workspace, as a shell or a plugin's panel does.
     pub(super) fn running_in(&self, workspace: WorkspaceId) -> Vec<(SessionId, bool)> {
         self.state
             .sessions
             .iter()
             .filter(|session| session.workspace == workspace)
             .filter(|session| self.is_running(session.id))
-            .map(|session| (session.id, session.harness == "shell"))
+            .map(|session| {
+                let ends = muster_core::harness::ends_with_workspace(&session.harness);
+                (session.id, ends)
+            })
             .collect()
     }
 
+    /// How many of a workspace's sessions are still running.
     pub(super) fn running_sessions_in(&self, workspace: WorkspaceId) -> usize {
         self.state
             .sessions

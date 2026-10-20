@@ -15,6 +15,7 @@ pub mod credentials;
 pub mod entities;
 pub mod explain;
 pub mod frame;
+pub mod harness;
 pub mod hex;
 pub mod html;
 pub mod ids;

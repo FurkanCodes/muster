@@ -6,7 +6,7 @@
 //! session. A click, or Shift-Q and `T`, moves the keys between them.
 
 use muster_core::protocol::{Command, TermSize};
-use muster_core::{SessionId, WorkspaceId};
+use muster_core::{SessionId, WorkspaceId, harness};
 
 use super::{Action, App, Mode, Then, View};
 use crate::model::Row;
@@ -63,7 +63,7 @@ impl App {
         let running = self
             .model
             .sessions_of(workspace)
-            .find(|session| session.harness == "shell" && session.ended_at.is_none())
+            .find(|session| harness::is_shell(&session.harness) && session.ended_at.is_none())
             .map(|session| session.id);
         if let Some(shell) = running {
             self.shell = Some(shell);
@@ -73,7 +73,7 @@ impl App {
         vec![self.command(
             Command::StartSession {
                 workspace,
-                harness: "shell".to_owned(),
+                harness: harness::SHELL.to_owned(),
                 title: None,
                 size: self.session_size(),
                 prompt: None,
