@@ -8,6 +8,8 @@
 //! setting it declares, its tickets listed, viewed, closed and handed to
 //! an agent fenced as data (`PRD-07`), given its secret and nothing else
 //! of the daemon's (`PRD-15`), its log read, and, turned off, saying why.
+//! And the guide's example, `examples/plugins/tickets-from-file`,
+//! installed from git as its readers would, serving its file's tickets.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -28,7 +30,7 @@ use std::process::Stdio;
 
 use muster_core::protocol::{Command, ErrorCode, Reply, TermSize};
 use muster_core::settings::{ProjectSettings, SettingChange, TicketsFrom};
-use muster_core::{ProjectId, TicketKey};
+use muster_core::{Issue, ProjectId, TicketKey};
 use serde_json::{Value, json};
 use support::Sandbox;
 
@@ -437,4 +439,110 @@ async fn its_log_hides_its_secret_and_off_it_says_why(
     let unknown = sandbox.run(&["plugin", "log", "nope"]);
     assert!(!unknown.status.success());
     assert!(String::from_utf8_lossy(&unknown.stderr).contains("no plugin called nope"));
+}
+
+/// What the project's tickets are listed as: where they are, and their
+/// tickets.
+async fn listed(
+    connection: &mut muster_client::Connection,
+    project: ProjectId,
+) -> (String, Vec<Issue>) {
+    let Reply::Issues {
+        issues, tracker, ..
+    } = connection
+        .command(Command::ListIssues { project })
+        .await
+        .unwrap()
+    else {
+        panic!("expected Issues");
+    };
+    (tracker, issues)
+}
+
+fn keys(issues: &[Issue]) -> Vec<String> {
+    issues.iter().map(|issue| issue.key.to_string()).collect()
+}
+
+#[tokio::test]
+async fn the_example_ticket_plugin_installs_from_git_and_serves_its_file_s_tickets_prd_15() {
+    // The guide's example (docs/plugins.md), published as its readers
+    // would publish theirs, so it cannot rot.
+    let sandbox = Sandbox::new();
+    let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/plugins/tickets-from-file");
+    let plugin = sandbox.plugin_repository("tickets-from-file", &example);
+    let daemon = sandbox.start();
+    let address = format!("file://{}", plugin.display());
+    let installed = ok(&sandbox, &["plugin", "install", &address, "--yes"]);
+    assert!(installed.contains("./tickets"), "{installed}");
+    let root = sandbox.repository("app");
+    let mut connection = daemon.connect().await;
+    let Reply::ProjectAdded { id: project } = connection
+        .command(Command::AddProject {
+            root: root.clone(),
+            name: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+
+    // Its own tickets.txt, with no setting.
+    choose(&mut connection, project, from("tickets-from-file", &[]))
+        .await
+        .unwrap();
+    let (tracker, issues) = listed(&mut connection, project).await;
+    assert_eq!(tracker, "tickets.txt");
+    assert_eq!(keys(&issues), ["WEB-3", "WEB-2", "WEB-1"]);
+    assert_eq!(issues[1].title, "Make the button blue");
+    assert_eq!(issues[1].labels, ["ui", "good first issue"]);
+    let Reply::IssueViewed { body, .. } = connection
+        .command(Command::ViewIssue {
+            project,
+            key: TicketKey::parse("web-2").unwrap(),
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected IssueViewed");
+    };
+    assert_eq!(
+        body,
+        "The button on the first page is grey.\nMake it the blue of the logo."
+    );
+    let done = connection
+        .command(Command::CloseIssue {
+            project,
+            key: TicketKey::parse("WEB-3").unwrap(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(done, Reply::Done);
+    let (_, issues) = listed(&mut connection, project).await;
+    assert_eq!(keys(&issues), ["WEB-2", "WEB-1"]);
+    let published = std::fs::read_to_string(plugin.join("tickets.txt")).unwrap();
+    assert!(published.contains("WEB-3"), "closed in its repository");
+
+    // The project's own file, as its setting names it: a paragraph that
+    // starts with no key is left out, and its log says so.
+    std::fs::write(
+        root.join("TICKETS.txt"),
+        "APP-7 The \"login\" page\nlabels: bug\nIt says 404.\n\nno key here\n",
+    )
+    .unwrap();
+    choose(
+        &mut connection,
+        project,
+        from("tickets-from-file", &[("file", "TICKETS.txt")]),
+    )
+    .await
+    .unwrap();
+    let (tracker, issues) = listed(&mut connection, project).await;
+    assert_eq!(tracker, "TICKETS.txt");
+    assert_eq!(keys(&issues), ["APP-7"]);
+    assert_eq!(issues[0].title, "The \"login\" page");
+    let log = ok(&sandbox, &["plugin", "log", "tickets-from-file"]);
+    assert!(log.contains("skipped \"no key here\""), "{log}");
+    daemon.stop();
 }

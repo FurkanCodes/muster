@@ -322,18 +322,22 @@ impl Sandbox {
     /// Anyone's ticket plugin, `fixtures/ticket-plugin`, as a git
     /// repository of its own to install from.
     pub(crate) fn ticket_plugin_repository(&self) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt as _;
-        let root = self.repository("fixture-plugin");
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ticket-plugin");
-        for file in ["muster-plugin.toml", "tickets", "tickets.jsonl"] {
-            std::fs::copy(fixture.join(file), root.join(file)).unwrap();
+        self.plugin_repository("fixture-plugin", &fixture)
+    }
+
+    /// The plugin in `folder`, its files, as a git repository of its own
+    /// to install from, as its author would publish it.
+    pub(crate) fn plugin_repository(&self, name: &str, folder: &Path) -> PathBuf {
+        let root = self.repository(name);
+        for entry in std::fs::read_dir(folder).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                // Its mode too, so a program stays one.
+                std::fs::copy(entry.path(), root.join(entry.file_name())).unwrap();
+            }
         }
-        std::fs::set_permissions(root.join("tickets"), std::fs::Permissions::from_mode(0o755))
-            .unwrap();
-        git(
-            &root,
-            &["add", "muster-plugin.toml", "tickets", "tickets.jsonl"],
-        );
+        git(&root, &["add", "--all"]);
         git(&root, &["commit", "--quiet", "--message", "the plugin"]);
         root
     }

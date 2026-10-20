@@ -1,0 +1,17 @@
+# Tickets for the tickets-from-file plugin. A line starting with # is a
+# comment. Each ticket is a paragraph: its key and its title on the first
+# line, then "labels:" and its labels, if it has any, then its text. A
+# blank line ends it. A key is a number (42) or a word and a number
+# (WEB-7). Put the newest first.
+
+WEB-3 Say hello on the first page
+labels: copy
+A greeting, please, above the button: "Hello, and welcome."
+
+WEB-2 Make the button blue
+labels: ui, good first issue
+The button on the first page is grey.
+Make it the blue of the logo.
+
+WEB-1 Write the first page
+The page people see first: a title, a line on what this is, and a button.
