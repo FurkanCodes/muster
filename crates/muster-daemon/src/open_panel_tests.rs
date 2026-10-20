@@ -3,7 +3,8 @@
 //! what Muster knows of the session it opens beside, its program found in
 //! the plugin's folder, and only the basics of the environment and what
 //! its manifest names given; refused, saying why, where it cannot open;
-//! opened once beside a session, and opened afresh when started again.
+//! opened once beside a session, opened afresh when started again, and
+//! ended with its plugin turned off or removed.
 
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt as _;
@@ -305,4 +306,51 @@ async fn an_ended_panel_starts_again_opened_afresh_beside_its_chat() {
         .command(Command::StopSession { session: panel })
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn a_plugin_turned_off_or_removed_takes_its_panels_with_it_arc_23() {
+    use muster_core::protocol::plugins::ChangedBy;
+    let dir = tempfile::tempdir().unwrap();
+    let (supervisor, _, chat) = with_a_chat(dir.path(), MANIFEST).await;
+    let ended = |panel: SessionId| {
+        move |snapshot: &muster_core::protocol::Snapshot| {
+            session(snapshot, panel).ended_at.is_some()
+        }
+    };
+    let panel = started(
+        open(&supervisor, "context", Beside::Session(chat.id))
+            .await
+            .unwrap(),
+    );
+    supervisor
+        .command(Command::Plugin(PluginCommand::SetEnabled {
+            id: "demo".to_owned(),
+            on: false,
+            by: ChangedBy::Ui,
+        }))
+        .await
+        .unwrap();
+    until(&supervisor, ended(panel)).await;
+
+    supervisor
+        .command(Command::Plugin(PluginCommand::SetEnabled {
+            id: "demo".to_owned(),
+            on: true,
+            by: ChangedBy::Ui,
+        }))
+        .await
+        .unwrap();
+    let files = started(
+        open(&supervisor, "files", Beside::Session(chat.id))
+            .await
+            .unwrap(),
+    );
+    supervisor
+        .command(Command::Plugin(PluginCommand::Remove {
+            id: "demo".to_owned(),
+        }))
+        .await
+        .unwrap();
+    until(&supervisor, ended(files)).await;
 }

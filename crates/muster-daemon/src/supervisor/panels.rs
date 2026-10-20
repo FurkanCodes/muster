@@ -174,6 +174,27 @@ impl Supervisor {
         Ok((launch, beside, context))
     }
 
+    /// Stops every panel of `plugin` still running, as the plugin is
+    /// turned off or removed: its programs leave with it (`ARC-23`,
+    /// `ARC-14`). The panels stay listed, ended.
+    pub(super) async fn stop_panels_of(&mut self, plugin: &str) {
+        let running: Vec<SessionId> = self
+            .state
+            .sessions
+            .iter()
+            .filter(|session| {
+                muster_core::harness::panel_of(&session.harness).is_some_and(|(of, _)| of == plugin)
+            })
+            .map(|session| session.id)
+            .filter(|session| self.is_running(*session))
+            .collect();
+        for session in running {
+            if let Err(error) = self.stop_session(session).await {
+                tracing::warn!(%session, %error, "could not stop a plugin's panel");
+            }
+        }
+    }
+
     /// The panel running as `harness` in `workspace`, beside `beside`, if
     /// one is open there.
     fn open_already(

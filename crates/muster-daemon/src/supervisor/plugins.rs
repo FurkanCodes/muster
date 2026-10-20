@@ -79,10 +79,19 @@ impl Supervisor {
                 self.remove_later(gone);
                 outcome
             }
-            PluginCommand::SetEnabled { id, on, by } => self.plugins.set_enabled(&id, on, by, at),
+            PluginCommand::SetEnabled { id, on, by } => {
+                let outcome = self.plugins.set_enabled(&id, on, by, at);
+                if outcome.is_ok() && !on {
+                    self.stop_panels_of(&id).await;
+                }
+                outcome
+            }
             PluginCommand::Remove { id } => {
                 let (outcome, gone) = self.plugins.remove(&id);
                 self.remove_later(gone);
+                if outcome.is_ok() {
+                    self.stop_panels_of(&id).await;
+                }
                 outcome
             }
             PluginCommand::Log { id } => {
