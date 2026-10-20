@@ -31,6 +31,15 @@ impl Clock for FixedClock {
 
 /// A Supervisor on `dir`'s store, taking `adopted` over as it starts.
 pub(crate) async fn spawn(dir: &Path, adopted: Vec<HandedSession>) -> SupervisorHandle {
+    spawn_with(dir, adopted, Arc::new(crate::secrets::Kept::default())).await
+}
+
+/// [`spawn`], with plugins' secrets kept in `secrets`.
+pub(crate) async fn spawn_with(
+    dir: &Path,
+    adopted: Vec<HandedSession>,
+    secrets: Arc<dyn crate::secrets::Secrets>,
+) -> SupervisorHandle {
     let store =
         StoreHandle::spawn(Store::open(&dir.join("muster.db"), FixedClock.now()).unwrap()).unwrap();
     supervisor::spawn(supervisor::Settings {
@@ -62,6 +71,7 @@ pub(crate) async fn spawn(dir: &Path, adopted: Vec<HandedSession>) -> Supervisor
             codex_sessions: Some(dir.join("codex/sessions")),
             gemini_tmp: None,
         },
+        secrets,
     })
     .await
     .unwrap()

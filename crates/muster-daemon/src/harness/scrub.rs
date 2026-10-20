@@ -178,22 +178,16 @@ fn is_scrubbed(key: &str) -> bool {
         || PREFIXES.iter().any(|prefix| key.starts_with(prefix))
 }
 
-/// The variables of the daemon's environment every plugin's program gets,
-/// as sessions do: where programs are, whose they are, how text reads, and
-/// the person's own description of terminals.
-fn is_basic(key: &str) -> bool {
-    matches!(
-        key,
-        "PATH" | "HOME" | "USER" | "LOGNAME" | "SHELL" | "TMPDIR" | "TZ" | "LANG" | "TERMINFO"
-    ) || key.starts_with("LC_")
-}
-
-/// Which of `keys` a plugin's program must not inherit (`ARC-23`): all
-/// but the basics and those its manifest names (`seen`), and never one a
-/// session must not inherit either.
+/// Which of `keys` a plugin's panel must not inherit (`ARC-23`): all but
+/// the basics every plugin gets (`trackers::plugin::is_basic`), the
+/// person's own description of terminals (`TERMINFO`), as a panel runs in
+/// one, and those its manifest names (`seen`); never one a session must
+/// not inherit either.
 pub(crate) fn kept_from_plugin(keys: impl Iterator<Item = String>, seen: &[String]) -> Vec<String> {
-    keys.filter(|key| is_scrubbed(key) || !(is_basic(key) || seen.contains(key)))
-        .collect()
+    let given = |key: &str| {
+        crate::trackers::plugin::is_basic(key) || key == "TERMINFO" || seen.iter().any(|s| s == key)
+    };
+    keys.filter(|key| is_scrubbed(key) || !given(key)).collect()
 }
 
 #[cfg(test)]

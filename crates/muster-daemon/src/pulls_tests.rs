@@ -164,6 +164,7 @@ pub(crate) async fn setup() -> Setup {
         tasks: crate::tasks::Tasks::default(),
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         places: crate::spend::Places::default(),
+        secrets: Arc::new(crate::secrets::Kept::default()),
     })
     .await
     .unwrap();

@@ -90,7 +90,8 @@ pub(crate) enum PluginError {
     #[error("{id} cannot be turned on: {problem}")]
     CannotRun { id: String, problem: PluginProblem },
     #[error(
-        "{id} is turned off: turn it on on the Settings screen, or with `muster plugin enable {id}`"
+        "{id} is turned off: turn it on on the Settings screen's Plugins section, or with \
+         `muster plugin enable {id}`"
     )]
     Off { id: String },
     #[error("{id} cannot run: {problem}")]

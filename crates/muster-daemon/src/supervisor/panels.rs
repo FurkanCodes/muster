@@ -3,7 +3,8 @@
 //! now, its command filled in from what Muster knows of where it opens,
 //! and its session started there, in the workspace's folder, from the
 //! basics of the environment sessions get, with what it is told
-//! (`MUSTER_PLUGIN_*`) and the variables its manifest names over them.
+//! (`MUSTER_PLUGIN_*`) and the variables and secrets its manifest names
+//! over them.
 
 use muster_core::plugins::{Context, Missing, PanelOn};
 use muster_core::protocol::plugins::Beside;
@@ -171,6 +172,13 @@ impl Supervisor {
         }
         let mut launch = PanelLaunch::new(plugin, panel, &found.title, command);
         launch.seen.clone_from(&details.env);
+        for name in &details.secrets {
+            if let Some(secret) =
+                crate::secrets::plugin_secret(self.secrets.as_ref(), plugin, name).await
+            {
+                launch.secrets.push((name.clone(), secret));
+            }
+        }
         Ok((launch, beside, context))
     }
 

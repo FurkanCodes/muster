@@ -17,7 +17,7 @@ use muster_core::{Session, SessionId, SessionStatus, Timestamp, WorkspaceId};
 use tokio::time::timeout;
 
 use crate::clock::Clock;
-use crate::panel_tests::{FixedClock, project, session, spawn, started, state, until};
+use crate::panel_tests::{FixedClock, project, session, spawn, spawn_with, started, state, until};
 use crate::store::Store;
 use crate::supervisor::SupervisorHandle;
 
@@ -353,4 +353,36 @@ async fn a_plugin_turned_off_or_removed_takes_its_panels_with_it_arc_23() {
         .await
         .unwrap();
     until(&supervisor, ended(files)).await;
+}
+
+#[tokio::test]
+async fn a_panel_is_given_the_secrets_its_plugin_names_as_kept() {
+    use crate::secrets::Secrets as _;
+    let dir = tempfile::tempdir().unwrap();
+    let first = spawn(dir.path(), Vec::new()).await;
+    let (_, checkout) = project(dir.path(), &first).await;
+    let manifest = MANIFEST.replace("env = [", "secrets = [\"DEMO_KEY\"]\nenv = [");
+    let folder = link(dir.path(), &manifest, true);
+    let kept = std::sync::Arc::new(crate::secrets::Kept::default());
+    kept.set(
+        &crate::secrets::plugin_account("demo", "DEMO_KEY"),
+        &crate::secrets::Token::new("kept-for-demo"),
+    )
+    .await
+    .unwrap();
+    let supervisor = spawn_with(dir.path(), Vec::new(), kept).await;
+    let panel = started(
+        open(&supervisor, "files", Beside::Workspace(checkout))
+            .await
+            .unwrap(),
+    );
+    let (_, env) = given(&folder).await;
+    assert_eq!(
+        env.get("DEMO_KEY").map(String::as_str),
+        Some("kept-for-demo")
+    );
+    supervisor
+        .command(Command::StopSession { session: panel })
+        .await
+        .unwrap();
 }

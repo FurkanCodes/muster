@@ -673,9 +673,9 @@ fn on_host(
                 agent.arguments(launch.prompt.as_deref(), launch.resume),
             )
         }
-        // As its plugin says, told where it is.
+        // As its plugin says, told where it is, with its secrets.
         Kind::Panel(panel) => {
-            env.extend(panel.env.iter().cloned());
+            env.extend(panel.variables());
             panel.program()
         }
     };

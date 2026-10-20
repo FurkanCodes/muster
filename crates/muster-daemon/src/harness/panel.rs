@@ -24,6 +24,9 @@ pub(crate) struct PanelLaunch {
     /// the daemon's environment beside the basics every plugin gets
     /// (`scrub::kept_from_plugin`).
     pub(crate) seen: Vec<String>,
+    /// The secrets its plugin names, each by its variable's name, as kept
+    /// (`muster auth plugin`); never shown (`ARC-20`).
+    pub(crate) secrets: Vec<(String, crate::secrets::Token)>,
 }
 
 impl PanelLaunch {
@@ -35,6 +38,7 @@ impl PanelLaunch {
             command,
             env: Vec::new(),
             seen: Vec::new(),
+            secrets: Vec::new(),
         }
     }
 
@@ -49,6 +53,16 @@ impl PanelLaunch {
     /// Its harness: `plugin:<plugin>/<panel>`.
     pub(crate) fn harness(&self) -> &str {
         &self.harness
+    }
+
+    /// The variables it is given over the sessions' own: what Muster
+    /// tells it, then its secrets.
+    pub(crate) fn variables(&self) -> impl Iterator<Item = (String, String)> + '_ {
+        let secrets = self
+            .secrets
+            .iter()
+            .map(|(name, secret)| (name.clone(), secret.value().to_owned()));
+        self.env.iter().cloned().chain(secrets)
     }
 
     /// Its program and that program's arguments.

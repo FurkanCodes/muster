@@ -449,6 +449,7 @@ async fn start_supervisor(
         tasks: started.tasks,
         ticket_plugins: started.plugins,
         places: spend::Places::from_env(),
+        secrets: Arc::new(secrets::Keychain::default()),
     })
     .await?)
 }
