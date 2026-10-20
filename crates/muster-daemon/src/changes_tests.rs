@@ -107,6 +107,7 @@ async fn the_timer_looks_again_and_shows_what_changed_since() {
     } = setup().await;
     let path = path_of(&supervisor, worktree).await;
     let (_, mut deltas) = supervisor.subscribe().await.unwrap();
+    let _looking = supervisor.looked_at_client().await;
     std::fs::write(path.join("README.md"), "test\nmore\n").unwrap();
     assert!(supervisor.check_pull_requests().await);
     assert_eq!(

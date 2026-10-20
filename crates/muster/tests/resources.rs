@@ -14,18 +14,22 @@
 
 mod support;
 
+use std::time::{Duration, Instant};
+
 use muster_client::Connection;
 use muster_core::SessionId;
 use muster_core::protocol::{Command, Delta, Reply, ResourceReport, ServerFrame, TermSize};
 
 use support::{Daemon, Sandbox, expect_event};
 
-/// A daemon that measures every 100 ms, with one shell session.
+/// A daemon that measures every 100 ms, as the person looks at its
+/// client, with one shell session.
 async fn shell_session() -> (Sandbox, Daemon, Connection, SessionId) {
     let sandbox = Sandbox::new().with_env("MUSTER_SAMPLE_MS", "100");
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
+    connection.looking(true).await.unwrap();
     let Reply::ProjectAdded { id: project } = connection
         .command(Command::AddProject { root, name: None })
         .await
@@ -129,4 +133,43 @@ async fn an_ended_session_is_no_longer_measured() {
         memory_of(report, session).is_none()
     })
     .await;
+}
+
+#[tokio::test]
+async fn while_nobody_looks_the_machine_is_measured_seldom() {
+    let sandbox = Sandbox::new().with_env("MUSTER_SAMPLE_MS", "100");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    connection.looking(false).await.unwrap();
+    // Ten ticks: looked at, each would measure; not looked at, one may.
+    let mut reports = 0;
+    let quiet = Instant::now() + Duration::from_secs(1);
+    while let Ok(frame) = tokio::time::timeout_at(quiet.into(), connection.next_event()).await {
+        if matches!(
+            frame.unwrap(),
+            Some(ServerFrame::Delta(Delta::Resources(_)))
+        ) {
+            reports += 1;
+        }
+    }
+    assert!(reports <= 1, "{reports} measurements while nobody looked");
+}
+
+#[tokio::test]
+async fn looking_again_measures_at_once_not_at_the_next_tick() {
+    let sandbox = Sandbox::new().with_env("MUSTER_SAMPLE_MS", "3000");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    connection.looking(false).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    connection.looking(true).await.unwrap();
+    let looked = Instant::now();
+    expect_report(&mut connection, |_| true).await;
+    assert!(
+        looked.elapsed() < Duration::from_millis(1500),
+        "{:?}",
+        looked.elapsed()
+    );
 }

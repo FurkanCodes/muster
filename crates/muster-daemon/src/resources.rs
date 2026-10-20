@@ -5,6 +5,10 @@
 //! (an agent's tools and builds run as its children) and the host's memory,
 //! and hands the report back. Measuring blocks for a few milliseconds, so it
 //! runs on a blocking thread; the Supervisor only stores and broadcasts.
+//!
+//! Measuring reads every process on the machine, so while the person looks
+//! at no client it is done only every [`UNWATCHED_EVERY`]th tick, and at
+//! once when they look again: an idle daemon costs the battery little.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -14,6 +18,9 @@ use muster_core::protocol::{ResourceReport, SessionUsage};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 use crate::supervisor::SupervisorHandle;
+
+/// While nobody looks at a client, one tick in this many measures.
+const UNWATCHED_EVERY: u32 = 15;
 
 /// One process as measured: its id, its parent's, its memory and its CPU
 /// in percent of one core.
@@ -122,13 +129,40 @@ impl Sampler {
     }
 }
 
-/// Measures every `interval` until the Supervisor stops.
+/// Measures every `interval` while the person looks at a client, and
+/// every [`UNWATCHED_EVERY`]th otherwise, until the Supervisor stops.
 pub(crate) async fn run(supervisor: SupervisorHandle, interval: Duration) {
+    let Some(mut looked_at) = supervisor.looked_at().await else {
+        return;
+    };
     let mut sampler = Some(Sampler::new());
     let mut ticks = tokio::time::interval(interval);
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut unwatched = 0_u32;
     loop {
-        ticks.tick().await;
+        tokio::select! {
+            _ = ticks.tick() => {
+                // Seen here, so a change already seen does not measure twice.
+                if !*looked_at.borrow_and_update() {
+                    unwatched += 1;
+                    if unwatched < UNWATCHED_EVERY {
+                        continue;
+                    }
+                }
+            }
+            changed = looked_at.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+                // Looked at again: measured at once, the ticks counted
+                // from now.
+                if !*looked_at.borrow_and_update() {
+                    continue;
+                }
+                ticks.reset();
+            }
+        }
+        unwatched = 0;
         let Some(roots) = supervisor.running_processes().await else {
             return;
         };

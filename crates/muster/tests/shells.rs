@@ -75,6 +75,8 @@ async fn a_shell_is_named_by_what_runs_in_it_until_the_person_names_it() {
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
+    // Shells are named as measured, which is often only while looked at.
+    connection.looking(true).await.unwrap();
     connection
         .command(Command::AddProject { root, name: None })
         .await

@@ -108,7 +108,12 @@ impl Supervisor {
         let looked_at = self.lookers.clients.values().any(|looker| looker.looking);
         if looked_at != self.state.looked_at {
             self.state.looked_at = looked_at;
+            self.looked_at.send_replace(looked_at);
             self.broadcast(Delta::LookedAt { looked_at });
+            if looked_at {
+                self.catch_up_changes();
+                self.catch_up_pull_requests();
+            }
         }
     }
 

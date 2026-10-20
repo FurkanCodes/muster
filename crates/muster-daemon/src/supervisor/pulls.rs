@@ -4,9 +4,10 @@
 //! never stored. Only read: nothing is changed on the host (`PRD-01`).
 //!
 //! A look that fails keeps what the last one found, as a network that
-//! comes and goes should not blank what the person sees. While no client
-//! is subscribed, only every tenth tick looks, so a closed UI costs the
-//! git host little and an opened one starts from something recent.
+//! comes and goes should not blank what the person sees. While the person
+//! looks at no client, only every tenth tick looks, so a UI in the
+//! background or closed costs the git host little; one looked at again
+//! after a tick went by looks at once, so it starts from something recent.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,7 +20,7 @@ use super::{Request, Supervisor, by_hand};
 use crate::githost::choose::Hosts;
 use crate::service::ProjectPlace;
 
-/// While nobody watches, one tick in this many looks.
+/// While nobody looks at a client, one tick in this many looks.
 const UNWATCHED_EVERY: u32 = 10;
 
 /// A look still not back after this many ticks is taken as lost, so one
@@ -33,6 +34,8 @@ pub(super) struct Looks {
     /// The tick a look at every branch started on, until it is back.
     under_way: Option<u32>,
     ticks: u32,
+    /// A tick went by without a look, as nobody looked at a client.
+    missed: bool,
     /// Each project's last failure, logged once until it changes.
     failures: HashMap<ProjectId, String>,
 }
@@ -66,18 +69,33 @@ pub(super) struct Looked {
 
 impl Supervisor {
     /// The pull request timer's tick: a look at every branch's, unless one
-    /// is under way, or nobody watches and it is not that tick's turn.
+    /// is under way, or nobody looks at a client and it is not that tick's
+    /// turn.
     pub(super) fn tick_pull_requests(&mut self) {
         self.pulls.ticks = self.pulls.ticks.wrapping_add(1);
-        let watched = self.deltas.receiver_count() > 0;
-        let waiting = self
-            .pulls
-            .under_way
-            .is_some_and(|started| self.pulls.ticks.wrapping_sub(started) < LOST_AFTER);
-        if waiting || !(watched || self.pulls.ticks.is_multiple_of(UNWATCHED_EVERY)) {
+        if self.pulls_under_way() {
+            return;
+        }
+        if !self.state.looked_at && !self.pulls.ticks.is_multiple_of(UNWATCHED_EVERY) {
+            self.pulls.missed = true;
             return;
         }
         self.look_at_pull_requests(None);
+    }
+
+    /// The person looks at a client again: the look a tick let go by while
+    /// nobody did is taken now, so what they see is recent.
+    pub(super) fn catch_up_pull_requests(&mut self) {
+        if self.pulls.missed && !self.pulls_under_way() {
+            self.look_at_pull_requests(None);
+        }
+    }
+
+    /// Whether a look at every branch is under way, and not lost.
+    fn pulls_under_way(&self) -> bool {
+        self.pulls
+            .under_way
+            .is_some_and(|started| self.pulls.ticks.wrapping_sub(started) < LOST_AFTER)
     }
 
     /// Looks at the pull request of `only` that workspace's branch, or of
@@ -90,6 +108,7 @@ impl Supervisor {
         let whole = only.is_none();
         if whole {
             self.pulls.under_way = Some(self.pulls.ticks);
+            self.pulls.missed = false;
         }
         let (requests, hosts) = (self.requests.clone(), self.hosts.clone());
         self.tasks.spawn(async move {

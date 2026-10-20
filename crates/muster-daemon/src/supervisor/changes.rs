@@ -4,10 +4,11 @@
 //! a deadline (`ARC-13`), and comes back with what it found.
 //!
 //! The summary is looked at again when an agent's turn ends there, when
-//! its branch changes, on the pull request timer while a client is
-//! subscribed (every tenth tick otherwise), and whenever a client asks for
-//! the whole, so the line agrees with what the person reads. It is kept on
-//! the workspace, never stored.
+//! its branch changes, on the pull request timer while the person looks at
+//! a client (every tenth tick otherwise, and at once when they look again
+//! after a tick went by), and whenever a client asks for the whole, so the
+//! line agrees with what the person reads. It is kept on the workspace,
+//! never stored.
 
 use std::path::PathBuf;
 
@@ -19,7 +20,7 @@ use tokio::sync::oneshot;
 use super::{Request, Supervisor, by_hand};
 use crate::changes::{self, DiffError};
 
-/// While nobody watches, one tick in this many looks.
+/// While nobody looks at a client, one tick in this many looks.
 const UNWATCHED_EVERY: u32 = 10;
 
 /// A look still not back after this many ticks is taken as lost.
@@ -30,6 +31,8 @@ const LOST_AFTER: u32 = 10;
 pub(super) struct Looks {
     under_way: Option<u32>,
     ticks: u32,
+    /// A tick went by without a look, as nobody looked at a client.
+    missed: bool,
 }
 
 /// A workspace whose changes git can tell.
@@ -126,19 +129,33 @@ impl Supervisor {
     }
 
     /// The pull request timer's tick: a look at every workspace's changes,
-    /// unless one is under way, or nobody watches and it is not that
-    /// tick's turn.
+    /// unless one is under way, or nobody looks at a client and it is not
+    /// that tick's turn.
     pub(super) fn tick_changes(&mut self) {
         self.changes.ticks = self.changes.ticks.wrapping_add(1);
-        let watched = self.deltas.receiver_count() > 0;
-        let waiting = self
-            .changes
-            .under_way
-            .is_some_and(|started| self.changes.ticks.wrapping_sub(started) < LOST_AFTER);
-        if waiting || !(watched || self.changes.ticks.is_multiple_of(UNWATCHED_EVERY)) {
+        if self.changes_under_way() {
+            return;
+        }
+        if !self.state.looked_at && !self.changes.ticks.is_multiple_of(UNWATCHED_EVERY) {
+            self.changes.missed = true;
             return;
         }
         self.look_at_changes(None);
+    }
+
+    /// The person looks at a client again: the look a tick let go by while
+    /// nobody did is taken now, so what they see is recent.
+    pub(super) fn catch_up_changes(&mut self) {
+        if self.changes.missed && !self.changes_under_way() {
+            self.look_at_changes(None);
+        }
+    }
+
+    /// Whether a look at every workspace is under way, and not lost.
+    fn changes_under_way(&self) -> bool {
+        self.changes
+            .under_way
+            .is_some_and(|started| self.changes.ticks.wrapping_sub(started) < LOST_AFTER)
     }
 
     /// A session's status changed from `before` to `after`: once its
@@ -185,6 +202,7 @@ impl Supervisor {
         let whole = only.is_none();
         if whole {
             self.changes.under_way = Some(self.changes.ticks);
+            self.changes.missed = false;
         }
         let requests = self.requests.clone();
         self.tasks.spawn(async move {

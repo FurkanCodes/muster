@@ -40,6 +40,7 @@ async fn a_worktree_and_the_checkout_changing_one_line_are_shown_to_conflict_unt
         ..
     } = setup().await;
     let (snapshot, mut deltas) = supervisor.subscribe().await.unwrap();
+    let _looking = supervisor.looked_at_client().await;
     let path = |id| {
         snapshot
             .workspaces
