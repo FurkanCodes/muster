@@ -103,10 +103,6 @@ pub(crate) struct Settings {
 
 /// Loads the state from the store, resumes or settles sessions the last
 /// daemon left running, and starts the Supervisor.
-#[expect(
-    clippy::too_many_lines,
-    reason = "the Supervisor built whole, a field to a line, then each step of its start"
-)]
 pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreError> {
     let (mut state, stored_runs) = settings
         .store
