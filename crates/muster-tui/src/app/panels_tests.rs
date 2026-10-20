@@ -195,7 +195,7 @@ fn a_panel_dragged_by_its_title_goes_where_it_is_dropped_and_is_kept() {
     };
     assert_eq!(
         layout.to_string(),
-        "(session 60% | (changes / shell)) | list"
+        "(session 60% | (changes / shell / plugin)) | list"
     );
     let moved = areas(&world);
     assert_eq!((moved.list.x, moved.preview.x), (70, 0));

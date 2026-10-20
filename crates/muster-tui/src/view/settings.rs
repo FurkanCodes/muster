@@ -554,18 +554,30 @@ fn notifications_text(app: &App) -> Text<'static> {
     ])
 }
 
-/// Whose keys they are: Muster's, or how many the person set.
+/// Whose keys they are: Muster's, or how many the person set, a panel's
+/// among them while its plugin runs.
 fn keys_value(app: &App) -> Span<'static> {
-    match app.model.preferences().keys.len() {
+    let set = app
+        .model
+        .preferences()
+        .keys
+        .keys()
+        .filter(|name| {
+            muster_core::keys::Action::named(name).is_some()
+                || app.keymap.panel_named(name).is_some()
+        })
+        .count();
+    match set {
         0 => Span::from("Muster's").dim(),
         1 => Span::from("1 of yours"),
         set => Span::from(format!("{set} of yours")),
     }
 }
 
-/// What setting the keys does, and where they are kept.
+/// What setting the keys does, where they are kept, and which of them do
+/// nothing.
 fn keys_text(app: &App) -> Text<'static> {
-    Text::from(vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::from(format!("{KEYS}  ")).bold(),
             keys_value(app),
@@ -583,7 +595,11 @@ fn keys_text(app: &App) -> Text<'static> {
         ),
         Line::from(""),
         Line::from("Moving about (the arrows, the page keys) and ⏎ stay as they are.").dim(),
-    ])
+    ];
+    for warning in app.keymap.warnings() {
+        lines.extend([Line::from(""), Line::from(warning.to_string()).yellow()]);
+    }
+    Text::from(lines)
 }
 
 /// Whether an agent names chats.

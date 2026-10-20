@@ -70,6 +70,8 @@ pub(crate) struct BrowseAreas {
     pub(crate) changes: Rect,
     /// The shell beside the session.
     pub(crate) shell: Rect,
+    /// A plugin's panel beside the session.
+    pub(crate) plugin: Rect,
     pub(crate) bottom: Rect,
     /// The lines between panels, which a drag moves.
     pub(crate) dividers: Vec<Divider>,
@@ -103,6 +105,12 @@ pub(crate) fn session_area(app: &App, area: Rect) -> Rect {
 /// border, measured as [`session_area`] is.
 pub(crate) fn shell_area(app: &App, area: Rect) -> Rect {
     areas(app, area, 1, true).shell.inner(Margin::new(1, 1))
+}
+
+/// Where a plugin's panel beside the session is drawn in `area`, inside
+/// its border, measured as [`session_area`] is.
+pub(crate) fn plugin_area(app: &App, area: Rect) -> Rect {
+    areas(app, area, 1, true).plugin.inner(Margin::new(1, 1))
 }
 
 fn areas(app: &App, area: Rect, bottom: u16, beside_session: bool) -> BrowseAreas {
@@ -140,6 +148,7 @@ fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> B
         preview: solved.of(Panel::Session),
         changes: solved.of(Panel::Changes),
         shell: solved.of(Panel::Shell),
+        plugin: solved.of(Panel::Plugin),
         bottom,
         dividers: solved.dividers,
     }
@@ -171,6 +180,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         preview,
         changes,
         shell,
+        plugin,
         bottom,
         ..
     } = areas.clone();
@@ -186,6 +196,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     if !preview.is_empty() {
         if let Mode::Terminal(session) = app.mode
             && !app.typing_in_shell()
+            && !app.typing_in_plugin()
         {
             draw_session(frame, app, session, preview, true);
         } else if app.view == View::Tickets {
@@ -203,6 +214,11 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         && let Some(beside) = app.shell_beside()
     {
         draw_session(frame, app, beside, shell, app.typing_in_shell());
+    }
+    if !plugin.is_empty()
+        && let Some(beside) = app.plugin_beside()
+    {
+        draw_session(frame, app, beside, plugin, app.typing_in_plugin());
     }
     drag::draw_moving(frame, app, &areas);
     draw_bottom_bar(frame, app, bottom);

@@ -36,9 +36,13 @@ fn files(kind: &Kind, dir: &Path) -> Vec<(PathBuf, String)> {
                 (plugin.join("hooks").join("hooks.json"), copilot::hooks()),
             ]
         }
-        Kind::Shell | Kind::Claude | Kind::Codex | Kind::Checks | Kind::Review | Kind::Added(_) => {
-            Vec::new()
-        }
+        Kind::Shell
+        | Kind::Claude
+        | Kind::Codex
+        | Kind::Checks
+        | Kind::Review
+        | Kind::Added(_)
+        | Kind::Panel(_) => Vec::new(),
     }
 }
 

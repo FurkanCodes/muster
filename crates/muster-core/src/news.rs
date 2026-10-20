@@ -5,10 +5,10 @@
 use crate::{Session, SessionStatus, WaitReason};
 
 /// Whether `session` waits on the person: asking something, or with news
-/// they have not seen. A shell never does: it is the person's own, not an
-/// agent's.
+/// they have not seen. A shell or a plugin's panel never does: it is the
+/// person's own or a plugin's, not an agent's.
 pub fn needs_attention(session: &Session) -> bool {
-    session.harness != "shell"
+    !crate::harness::stands_beside(&session.harness)
         && (matches!(session.status, SessionStatus::NeedsYou { .. }) || session.unseen)
 }
 
@@ -104,6 +104,7 @@ mod tests {
             activity: None,
             spend: None,
             tidy: None,
+            beside: None,
         }
     }
 

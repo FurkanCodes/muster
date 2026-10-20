@@ -18,6 +18,7 @@ pub(super) struct Key {
     fills: bool,
     changes: bool,
     shell: bool,
+    plugin: bool,
     keys: Panel,
 }
 
@@ -33,6 +34,7 @@ impl Key {
             fills: app.pane_fills_width(),
             changes: app.changes_shown(),
             shell: app.shell_beside().is_some(),
+            plugin: app.plugin_beside().is_some(),
             keys: app.panel_with_keys(),
         }
     }
@@ -104,6 +106,7 @@ mod tests {
         changed!(fills, !key.fills);
         changed!(changes, !key.changes);
         changed!(shell, !key.shell);
+        changed!(plugin, !key.plugin);
         changed!(keys, Panel::Shell);
         for changed in changes {
             let mut cache = Cache::default();

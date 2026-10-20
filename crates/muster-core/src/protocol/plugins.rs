@@ -1,11 +1,14 @@
 //! Plugins on the wire (`ARCHITECTURE.md` §7a): what a client asks of the
 //! daemon's registry, and what it is told of each plugin. From protocol 41
-//! ([`crate::plugins::PLUGINS_PROTOCOL`]).
+//! ([`crate::plugins::PLUGINS_PROTOCOL`]); a plugin's panel opened from 43
+//! ([`crate::plugins::PANELS_PROTOCOL`]).
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use super::TermSize;
+use crate::ids::{SessionId, WorkspaceId};
 use crate::plugins::{Manifest, Panel, PluginSource, TicketSource};
 use crate::time::Timestamp;
 
@@ -43,6 +46,20 @@ pub enum PluginCommand {
     /// hidden. Answered with [`super::Reply::PluginLog`]. From protocol 42
     /// ([`crate::plugins::TICKET_PLUGINS_PROTOCOL`]).
     Log { id: String },
+    /// Opens the panel `panel` of the plugin `plugin` beside a session or
+    /// on a workspace, as its manifest's `on` says, in a terminal of
+    /// `size`: a session of its own, its command's placeholders filled in
+    /// from what Muster knows there. Refused, saying why, where the plugin
+    /// is off or cannot run, a program it needs is not found, or a
+    /// placeholder has no value. Answered with
+    /// [`super::Reply::SessionStarted`], naming the one already open there
+    /// if it is. From protocol 43 ([`crate::plugins::PANELS_PROTOCOL`]).
+    OpenPanel {
+        plugin: String,
+        panel: String,
+        beside: Beside,
+        size: TermSize,
+    },
 }
 
 impl PluginCommand {
@@ -50,9 +67,22 @@ impl PluginCommand {
     pub fn since(&self) -> u32 {
         match self {
             Self::Log { .. } => crate::plugins::TICKET_PLUGINS_PROTOCOL,
+            Self::OpenPanel { .. } => crate::plugins::PANELS_PROTOCOL,
             _ => crate::plugins::PLUGINS_PROTOCOL,
         }
     }
+}
+
+/// Where a plugin's panel opens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Beside {
+    /// Beside the session, in its workspace: a session's panel, told of
+    /// it (`on = "session"`); a workspace's panel is opened on the
+    /// session's workspace.
+    Session(SessionId),
+    /// On the workspace, beside none of its sessions (`on = "workspace"`).
+    Workspace(WorkspaceId),
 }
 
 /// Where a plugin to install or link is.

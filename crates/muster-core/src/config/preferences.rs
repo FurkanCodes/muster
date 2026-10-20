@@ -58,6 +58,9 @@ pub struct MusterConfig {
     /// The plugins the person installed, linked or turned off
     /// (`[plugins.<id>]`), by id.
     pub plugins: Vec<PluginEntry>,
+    /// What reads but does nothing, for the person: a key set for an
+    /// action Muster does not know, as a removed plugin's (`[keys]`).
+    pub warnings: Vec<String>,
 }
 
 impl Default for MusterConfig {
@@ -75,6 +78,7 @@ impl Default for MusterConfig {
             notifications: true,
             telling: Telling::default(),
             plugins: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 }
@@ -141,6 +145,9 @@ struct Notifications {
 enum OneOrMore {
     One(String),
     More(Vec<String>),
+    /// The keys of names written with dots and no quotes, which TOML reads
+    /// as tables: `plugin.zoetrope.graph = "G"`.
+    Dotted(BTreeMap<String, OneOrMore>),
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -213,18 +220,7 @@ impl MusterConfig {
             }
             text => Ok(text.map(|text| text.trim().to_owned())),
         };
-        let keys: BTreeMap<String, Vec<String>> = read
-            .keys
-            .into_iter()
-            .map(|(action, keys)| {
-                let keys = match keys {
-                    OneOrMore::One(key) => vec![key],
-                    OneOrMore::More(keys) => keys,
-                };
-                (action, keys)
-            })
-            .collect();
-        crate::keys::Keymap::with(&keys).map_err(|error| invalid(&error.to_string()))?;
+        let (keys, warnings) = keys(read.keys, file)?;
         let default = Self::default();
         let naming = Naming {
             by_agent: read.names.by_agent.unwrap_or(default.naming.by_agent),
@@ -266,8 +262,50 @@ impl MusterConfig {
             notifications: read.notifications.show.unwrap_or(default.notifications),
             telling,
             plugins,
+            warnings,
         })
     }
+}
+
+/// Each action's keys as written, by its name (`[keys]`).
+type Keys = BTreeMap<String, Vec<String>>;
+
+/// `written`'s keys into `keys`, each under its whole name, a name written
+/// with dots as it reads with quotes (`"plugin.zoetrope.graph"`).
+fn flatten(written: BTreeMap<String, OneOrMore>, above: &str, keys: &mut Keys) {
+    for (name, written) in written {
+        let name = format!("{above}{name}");
+        match written {
+            OneOrMore::One(key) => {
+                keys.insert(name, vec![key]);
+            }
+            OneOrMore::More(more) => {
+                keys.insert(name, more);
+            }
+            OneOrMore::Dotted(below) => flatten(below, &format!("{name}."), keys),
+        }
+    }
+}
+
+/// The person's keys as `written`, each action's in a list, and what of
+/// them does nothing; refused, naming the key, where Muster's own keys
+/// would not read with them (`Keymap::with`).
+fn keys(
+    written: BTreeMap<String, OneOrMore>,
+    file: &str,
+) -> Result<(Keys, Vec<String>), ConfigError> {
+    let mut keys = Keys::new();
+    flatten(written, "", &mut keys);
+    let keymap = crate::keys::Keymap::with(&keys).map_err(|error| ConfigError::Invalid {
+        file: file.to_owned(),
+        message: error.to_string(),
+    })?;
+    let warnings = keymap
+        .warnings()
+        .iter()
+        .map(|warning| format!("{file}: {warning}"))
+        .collect();
+    Ok((keys, warnings))
 }
 
 #[cfg(test)]
@@ -345,6 +383,42 @@ mod tests {
     }
 
     #[test]
+    fn a_panel_s_key_reads_with_its_name_quoted_or_not() {
+        for written in [
+            "[keys]\n\"plugin.zoetrope.graph\" = \"G\"\n",
+            "[keys]\nplugin.zoetrope.graph = \"G\"\n",
+            "[keys.plugin.zoetrope]\ngraph = [\"G\"]\n",
+        ] {
+            let read = MusterConfig::parse(Some(written), "settings.toml").unwrap();
+            assert_eq!(read.keys["plugin.zoetrope.graph"], ["G"], "{written}");
+            assert_eq!(read.keys.len(), 1);
+        }
+    }
+
+    #[test]
+    fn a_key_for_an_action_no_longer_there_leaves_the_file_readable() {
+        // A key the person set for a plugin's panel, then removed the
+        // plugin: the file reads, the rest of it as written, and says why
+        // the key does nothing.
+        let read = MusterConfig::parse(
+            Some("[notch]\nshow = false\n\n[keys]\nrename = \"F2\"\nzoetrope_graph = \"Z\"\n"),
+            "settings.toml",
+        )
+        .unwrap();
+        assert!(!read.notch);
+        assert_eq!(read.keys["zoetrope_graph"], ["Z"], "kept as written");
+        assert_eq!(read.keys["rename"], ["F2"]);
+        assert_eq!(read.warnings.len(), 1);
+        assert!(
+            read.warnings[0].starts_with("settings.toml: keys.zoetrope_graph is not something"),
+            "{:?}",
+            read.warnings
+        );
+        // A key of Muster's own that is wrong still is.
+        assert!(MusterConfig::parse(Some("[keys]\nrename = \"not a key\"\n"), "f").is_err());
+    }
+
+    #[test]
     fn a_session_sits_beside_the_list_from_a_hundred_columns_unless_written() {
         let nothing = MusterConfig::parse(None, "f").unwrap();
         assert_eq!(nothing.side_by_side_from, 100);
@@ -371,17 +445,28 @@ mod tests {
             "f",
         )
         .unwrap();
+        // Written before the plugin's panel: it goes where the default
+        // puts it, under the shell.
         assert_eq!(
             written.panels.to_string(),
-            "session | list 30 | (changes / shell)"
+            "session | list 30 | (changes / shell / plugin)"
         );
         assert!(written.list_folded);
-        let error = MusterConfig::parse(Some("[layout]\npanels = \"list | session\"\n"), "s.toml")
-            .unwrap_err()
-            .to_string();
+        let old_default = MusterConfig::parse(
+            Some("[layout]\npanels = \"list | session 60% | (changes / shell)\"\n"),
+            "f",
+        )
+        .unwrap();
+        assert_eq!(old_default.panels, Layout::default());
+        let error = MusterConfig::parse(
+            Some("[layout]\npanels = \"list | list | session\"\n"),
+            "s.toml",
+        )
+        .unwrap_err()
+        .to_string();
         assert!(error.starts_with("s.toml"), "{error}");
         assert!(
-            error.contains("layout.panels: changes is not in the layout"),
+            error.contains("layout.panels: list is in the layout twice"),
             "{error}"
         );
     }
@@ -427,12 +512,12 @@ mod tests {
             error.contains("keys.new_session: d is show_changes's"),
             "{error}"
         );
-        let error = MusterConfig::parse(Some("[keys]\nfly = \"f\"\n"), "s.toml")
-            .unwrap_err()
-            .to_string();
+        // A name that is no action reads, and is warned of.
+        let read = MusterConfig::parse(Some("[keys]\nfly = \"f\"\n"), "s.toml").unwrap();
         assert!(
-            error.contains("keys.fly is not something a key does"),
-            "{error}"
+            read.warnings[0].contains("keys.fly is not something a key does"),
+            "{:?}",
+            read.warnings
         );
     }
 

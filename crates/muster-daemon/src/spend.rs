@@ -64,6 +64,18 @@ pub(crate) fn readable(harness: &str) -> bool {
     matches!(harness, "claude" | "review" | "codex" | "gemini")
 }
 
+/// The record `harness`'s agent keeps of its conversation `agent_session`,
+/// found as its reader finds it: Claude Code's transcript or Codex's
+/// rollout, for a plugin's panel (`{transcript}`). `None` for another
+/// harness, or before the agent has written one.
+pub(crate) fn transcript(places: &Places, harness: &str, agent_session: &str) -> Option<PathBuf> {
+    match harness {
+        "claude" | "review" => claude::find(places.claude_projects.as_deref()?, agent_session),
+        "codex" => codex::find(places.codex_sessions.as_deref()?, agent_session),
+        _ => None,
+    }
+}
+
 /// Where the agents keep their records.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Places {
@@ -378,6 +390,37 @@ mod tests {
         );
         readers.read(&targets, crate::clock::monotonic());
         assert!(readers.take_stopped().is_empty(), "told once");
+    }
+
+    #[test]
+    fn a_panel_s_transcript_is_the_record_the_readers_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = dir.path().join("claude/projects/-w-app");
+        std::fs::create_dir_all(&projects).unwrap();
+        std::fs::write(projects.join("c1.jsonl"), "{}\n").unwrap();
+        let day = dir.path().join("codex/sessions/2026/10/15");
+        std::fs::create_dir_all(&day).unwrap();
+        let rollout = day.join("rollout-2026-10-15T09-00-00-t1.jsonl");
+        std::fs::write(&rollout, "{}\n").unwrap();
+        let places = Places {
+            claude_projects: Some(dir.path().join("claude/projects")),
+            codex_sessions: Some(dir.path().join("codex/sessions")),
+            gemini_tmp: Some(dir.path().join("gemini/tmp")),
+        };
+        assert_eq!(
+            transcript(&places, "claude", "c1"),
+            Some(projects.join("c1.jsonl"))
+        );
+        assert_eq!(
+            transcript(&places, "review", "c1"),
+            Some(projects.join("c1.jsonl"))
+        );
+        assert_eq!(transcript(&places, "codex", "t1"), Some(rollout));
+        // Not written yet, or a harness whose record no panel is told of.
+        assert_eq!(transcript(&places, "claude", "c2"), None);
+        assert_eq!(transcript(&places, "gemini", "c1"), None);
+        assert_eq!(transcript(&places, "shell", "c1"), None);
+        assert_eq!(transcript(&Places::default(), "claude", "c1"), None);
     }
 
     /// `MUSTER_LIVE_SPEND=claude:<session id>` (or `codex:<thread id>`,

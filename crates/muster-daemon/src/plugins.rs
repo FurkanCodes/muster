@@ -89,6 +89,13 @@ pub(crate) enum PluginError {
     NoPreview,
     #[error("{id} cannot be turned on: {problem}")]
     CannotRun { id: String, problem: PluginProblem },
+    #[error(
+        "{id} is turned off: turn it on on the Settings screen's Plugins section, or with \
+         `muster plugin enable {id}`"
+    )]
+    Off { id: String },
+    #[error("{id} cannot run: {problem}")]
+    Broken { id: String, problem: PluginProblem },
     #[error("its manifest calls it {found} now, not {id}; remove {id} and install it afresh")]
     Renamed { id: String, found: String },
     #[error("Muster's own settings: {0}")]
@@ -105,6 +112,8 @@ impl PluginError {
             Self::Installed { .. }
             | Self::Own { .. }
             | Self::CannotRun { .. }
+            | Self::Off { .. }
+            | Self::Broken { .. }
             | Self::Renamed { .. } => ErrorCode::Conflict,
             Self::Io { .. } => ErrorCode::Internal,
             _ => ErrorCode::BadRequest,
@@ -249,6 +258,36 @@ impl Registry {
                 }
             })
             .collect()
+    }
+
+    /// The plugin `id` as it runs: what its manifest says, and its folder
+    /// (none for one of Muster's own); refused where there is no such
+    /// plugin, it is off, or it cannot run.
+    pub(crate) fn runnable(
+        &self,
+        id: &str,
+    ) -> Result<(PluginDetails, Option<PathBuf>), PluginError> {
+        let known = self.find(id)?;
+        let id = id.to_owned();
+        if !known.info.enabled {
+            return Err(PluginError::Off { id });
+        }
+        let details = match (&known.info.problem, &known.info.details) {
+            (Some(problem), _) => {
+                let problem = problem.clone();
+                return Err(PluginError::Broken { id, problem });
+            }
+            (None, None) => {
+                let problem = PluginProblem::Unknown;
+                return Err(PluginError::Broken { id, problem });
+            }
+            (None, Some(details)) => details.clone(),
+        };
+        let folder = known
+            .entry
+            .as_ref()
+            .and_then(|entry| folder_of(&self.dir, entry));
+        Ok((details, folder))
     }
 
     fn find(&self, id: &str) -> Result<&Known, PluginError> {

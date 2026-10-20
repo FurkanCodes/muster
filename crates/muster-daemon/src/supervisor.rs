@@ -22,6 +22,7 @@ mod looking;
 mod names;
 mod naming;
 mod own_settings;
+mod panels;
 mod plugins;
 mod projects;
 mod pulls;
@@ -102,16 +103,28 @@ pub(crate) struct Settings {
     /// The ticket plugins' processes and logs, which `trackers` shares:
     /// told what the registry says each time it is read.
     pub(crate) ticket_plugins: crate::trackers::plugin::Plugins,
+    /// Where the agents keep their records, for a plugin's panel told of
+    /// one (`{transcript}`).
+    pub(crate) places: crate::spend::Places,
+    /// Where plugins' secrets are kept, for a plugin's panel given those
+    /// its manifest names (`muster auth plugin`).
+    pub(crate) secrets: Arc<dyn crate::secrets::Secrets>,
+}
+
+/// The state and the runs as the store keeps them.
+async fn stored(
+    store: &StoreHandle,
+) -> Result<(Snapshot, Vec<crate::store::StoredRun>), StoreError> {
+    store
+        .call(|store| Ok::<_, StoreError>((store.snapshot()?, store.runs()?)))
+        .await
+        .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))?
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
 /// daemon left running, and starts the Supervisor.
 pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreError> {
-    let (mut state, stored_runs) = settings
-        .store
-        .call(|store| Ok::<_, StoreError>((store.snapshot()?, store.runs()?)))
-        .await
-        .map_err(|StoreClosed| StoreError::Invalid("the store stopped".to_owned()))??;
+    let (mut state, stored_runs) = stored(&settings.store).await?;
     let (preferences, agents) = own_settings::read(settings.config_dir.clone()).await;
     state.preferences = preferences;
     let (requests, queue) = mpsc::channel(256);
@@ -182,6 +195,8 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         tidies: tidy::Tidies::default(),
         resumes: recovery::Resumes::default(),
         tasks: settings.tasks,
+        places: settings.places,
+        secrets: settings.secrets,
         agents,
         asks: Arc::new(tokio::sync::Semaphore::new(naming::AT_ONCE)),
         plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
@@ -320,6 +335,10 @@ struct Supervisor {
     resumes: recovery::Resumes,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
+    /// Where the agents keep their records.
+    places: crate::spend::Places,
+    /// Where plugins' secrets are kept.
+    secrets: Arc<dyn crate::secrets::Secrets>,
     /// The coding agents the person added in Muster's own settings, as
     /// last read.
     agents: Vec<Arc<muster_core::config::agents::AgentDefinition>>,
@@ -415,7 +434,7 @@ impl Supervisor {
                     move_branch,
                 } => self.undo(workspace, number, move_branch, reply),
                 Command::MoveOnto { workspace } => self.move_onto(workspace, reply).await,
-                Command::Plugin(command) => self.plugin_command(command, reply),
+                Command::Plugin(command) => self.plugin_command(command, reply).await,
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }
@@ -518,6 +537,17 @@ impl Supervisor {
             Request::Adopt(sessions, reply) => {
                 self.adopt_sessions(sessions);
                 let _ = reply.send(());
+            }
+            #[cfg(test)]
+            Request::StartPanel {
+                workspace,
+                beside,
+                panel,
+                size,
+                reply,
+            } => {
+                let started = self.start_panel(workspace, beside, panel, size).await;
+                let _ = reply.send(started);
             }
             Request::Workspaces(reply) => {
                 let _ = reply.send(self.workspace_heads());

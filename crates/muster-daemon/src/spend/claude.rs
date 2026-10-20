@@ -189,7 +189,7 @@ fn between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
 
 /// The transcript of `session_id`: `<projects>/<folder slug>/<id>.jsonl`,
 /// under whichever slug it is.
-fn find(projects: &Path, session_id: &str) -> Option<PathBuf> {
+pub(super) fn find(projects: &Path, session_id: &str) -> Option<PathBuf> {
     let file = format!("{session_id}.jsonl");
     if Path::new(&file).file_name() != Some(std::ffi::OsStr::new(&file)) {
         return None;

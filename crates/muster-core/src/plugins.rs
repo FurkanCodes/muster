@@ -24,6 +24,12 @@ pub const PLUGINS_PROTOCOL: u32 = 41;
 /// read with [`crate::protocol::plugins::PluginCommand::Log`] (`ARC-09`).
 pub const TICKET_PLUGINS_PROTOCOL: u32 = 42;
 
+/// The first protocol whose daemon opens a plugin's panel
+/// ([`crate::protocol::plugins::PluginCommand::OpenPanel`]) and says which
+/// chat each is beside (`Session::beside`), and whose clients read a
+/// layout and keys with a panel's in them (`ARC-09`).
+pub const PANELS_PROTOCOL: u32 = 43;
+
 /// The Muster reading manifests, which a manifest's `muster` must not be
 /// newer than.
 pub const MUSTER_VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -36,10 +36,15 @@ pub(super) async fn read(config_dir: PathBuf) -> (Preferences, Vec<Arc<AgentDefi
 /// told to clients so the person can see which key is wrong (`ARC-05`).
 fn settled(config_dir: &Path) -> (Preferences, Vec<Arc<AgentDefinition>>) {
     match crate::config::own_settings(config_dir) {
-        Ok(own) => (
-            own.preferences,
-            own.agents.into_iter().map(Arc::new).collect(),
-        ),
+        Ok(own) => {
+            for warning in &own.warnings {
+                tracing::warn!(%warning, "Muster's own settings read, with a key that does nothing");
+            }
+            (
+                own.preferences,
+                own.agents.into_iter().map(Arc::new).collect(),
+            )
+        }
         Err(error) => {
             tracing::warn!(%error, "Muster's own settings do not read; using its defaults");
             let preferences = Preferences {
@@ -83,12 +88,11 @@ impl Supervisor {
         )
     }
 
-    /// The harness of a session that ran as `id`, to keep it running: one
-    /// whose agent the settings no longer define is known by its name
-    /// alone, and cannot be started again.
+    /// The harness of a session that ran as `id`, to keep it running
+    /// (`harness::carried`): a plugin's panel stays a panel, and an agent
+    /// the settings no longer define is known by its name alone.
     pub(super) fn running_harness(&self, id: &str) -> Harness {
-        self.harness(id)
-            .unwrap_or_else(|| Harness::added(Arc::new(AgentDefinition::bare(id))))
+        harness::carried(id, &self.agents)
     }
 
     /// Takes Muster's own settings as read, and tells every client.

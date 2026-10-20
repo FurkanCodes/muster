@@ -118,7 +118,11 @@
 //! project's settings naming anyone else's plugin reach an older client
 //! without it, [`Reply::for_version`]), and a plugin's log
 //! (`PluginCommand::Log`, sent only to a daemon of 42 or later, answered
-//! with `Reply::PluginLog`).
+//! with `Reply::PluginLog`); version
+//! 43 plugins' panels (`PluginCommand::OpenPanel`, sent only to a daemon
+//! of 43 or later; `Session::beside`, a field older clients pass over; an
+//! older client is sent no panel's session, and a layout and keys without
+//! a panel's, [`Snapshot::for_version`] and [`Delta::for_version`]).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -127,6 +131,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+mod older;
 pub mod plugins;
 
 use crate::changes::{ChangePart, Changes, FileDiff};
@@ -139,7 +144,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 42;
+pub const PROTOCOL_VERSION: u32 = 43;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -639,8 +644,9 @@ pub enum Command {
         on: Option<WorkspaceId>,
     },
     /// Ask of the daemon's plugins: list them, preview, install, update,
-    /// turn on or off, or remove one (`ARCHITECTURE.md` §7a). Sent only to
-    /// a daemon of 41 or later.
+    /// turn on or off, or remove one (`ARCHITECTURE.md` §7a), or open one's
+    /// panel. Sent only to a daemon of 41 or later; `OpenPanel` only to one
+    /// of 43 or later.
     Plugin(plugins::PluginCommand),
 }
 

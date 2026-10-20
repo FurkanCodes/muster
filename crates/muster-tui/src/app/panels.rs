@@ -49,6 +49,8 @@ impl App {
             Panel::Changes
         } else if self.typing_in_shell() {
             Panel::Shell
+        } else if self.typing_in_plugin() {
+            Panel::Plugin
         } else {
             Panel::Session
         }
@@ -68,6 +70,7 @@ impl App {
             Panel::Session => true,
             Panel::Changes => self.changes_shown(),
             Panel::Shell => self.shell_beside().is_some(),
+            Panel::Plugin => self.plugin_beside().is_some(),
         };
         let layout = self.panels();
         let fits = |shown: &dyn Fn(Panel) -> bool| {
@@ -75,7 +78,8 @@ impl App {
                 .shown(shown)
                 .filter(|node| needs(node, list).0 <= body.width)
         };
-        let more = self.changes_shown() || self.shell_beside().is_some();
+        let more =
+            self.changes_shown() || self.shell_beside().is_some() || self.plugin_beside().is_some();
         let tree = fits(&showing)
             .or_else(|| {
                 more.then(|| fits(&|panel| panel != Panel::List && showing(panel)))

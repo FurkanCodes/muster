@@ -21,6 +21,7 @@ mod narrow;
 mod notch;
 mod panels;
 mod picker;
+mod plugin_panel;
 pub(crate) mod plugins;
 mod pointer;
 mod rebind;
@@ -45,7 +46,7 @@ pub(crate) use help::{Help, HelpLine};
 pub(crate) use menu::Menu;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use plugins::{PluginDialog, PluginKey};
-pub(crate) use rebind::{RebindRow, Rebinding, rebind_rows};
+pub(crate) use rebind::{RebindRow, Rebinding, Rebound};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
@@ -90,9 +91,13 @@ mod notch_tests;
 #[cfg(test)]
 mod palette_tests;
 #[cfg(test)]
+mod panel_keys_tests;
+#[cfg(test)]
 mod panels_tests;
 #[cfg(test)]
 mod picker_tests;
+#[cfg(test)]
+mod plugin_panel_tests;
 #[cfg(test)]
 mod plugins_tests;
 #[cfg(test)]
@@ -564,8 +569,9 @@ pub(crate) struct App {
     /// A shell started for the panel, until the state has it.
     wanted_shell: Option<SessionId>,
     /// The shell streamed beside the session, and the size it was given.
-    pub(super) shell_attached: Option<SessionId>,
-    shell_fitted: Option<TermSize>,
+    pub(super) shell_stream: settle::Streamed,
+    /// The plugin's panel streamed beside the session, the same way.
+    pub(super) plugin_stream: settle::Streamed,
 }
 
 impl App {
@@ -645,8 +651,8 @@ impl App {
             keymap: muster_core::keys::Keymap::default(),
             shell: None,
             wanted_shell: None,
-            shell_attached: None,
-            shell_fitted: None,
+            shell_stream: settle::Streamed::default(),
+            plugin_stream: settle::Streamed::default(),
         }
     }
 
@@ -695,9 +701,13 @@ impl App {
     /// The session shown: open in the terminal, or selected in a list.
     pub(crate) fn focused_session(&self) -> Option<SessionId> {
         match (&self.mode, self.view) {
-            // The shell beside the session has the keys, the session beside
-            // the list stays the one selected.
-            (Mode::Terminal(session), _) if self.shell != Some(*session) => Some(*session),
+            // The shell or a plugin's panel beside the session has the
+            // keys, the session beside the list stays the one selected.
+            (Mode::Terminal(session), _)
+                if self.shell != Some(*session) && !self.is_plugin_panel(*session) =>
+            {
+                Some(*session)
+            }
             (_, View::NeedsYou) => self.needs_selected,
             (_, View::Sessions) => match self.selected {
                 Some(Row::Session(session)) => Some(session),
@@ -752,6 +762,8 @@ impl App {
     pub(crate) fn focus_session(&self) -> Option<SessionId> {
         let shown = if self.typing_in_shell() {
             self.shell_beside()
+        } else if self.typing_in_plugin() {
+            self.plugin_beside()
         } else {
             self.shown_session()
         };

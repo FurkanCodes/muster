@@ -5,6 +5,14 @@
 use muster_core::SessionId;
 use muster_core::protocol::{ClientFrame, Command, TermSize};
 
+/// A session streamed beside the one the list shows, a shell or a plugin's
+/// panel, and the size its program was last given.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Streamed {
+    pub(crate) session: Option<SessionId>,
+    fitted: Option<TermSize>,
+}
+
 use super::lines::in_view;
 use super::{Action, App, Link, Mode, Then, View};
 use crate::model::Row;
@@ -39,6 +47,7 @@ impl App {
                 self.mode = Mode::Browse;
             }
         }
+        self.keep_plugin_keys();
         if !matches!(self.link, Link::Connected { .. }) {
             return Vec::new();
         }
@@ -54,18 +63,25 @@ impl App {
     }
 
     /// Streams what is shown: the session the list shows or types in
-    /// (`attached`), and the shell beside it (`shell_attached`), each at
-    /// its panel's size. A session that moves from one to the other keeps
-    /// its stream: it is detached only where neither shows it, and
-    /// attached only where neither streamed it, so a Detach never follows
-    /// its own Attach.
+    /// (`attached`), and beside it the shell (`shell_stream`) and a
+    /// plugin's panel (`plugin_stream`), each at its panel's size. A
+    /// session that moves from one to another keeps its stream: it is
+    /// detached only where none shows it, and attached only where none
+    /// streamed it, so a Detach never follows its own Attach.
     fn settle_streams(&mut self) -> Vec<Action> {
         let main = self.shown_session();
         let shell = self
             .shell_beside()
             .filter(|_| !self.narrow() || self.typing_in_shell());
-        let had = [self.attached, self.shell_attached];
-        let wanted = [main, shell];
+        let plugin = self
+            .plugin_beside()
+            .filter(|_| !self.narrow() || self.typing_in_plugin());
+        let had = [
+            self.attached,
+            self.shell_stream.session,
+            self.plugin_stream.session,
+        ];
+        let wanted = [main, shell, plugin];
         let mut actions: Vec<Action> = had
             .into_iter()
             .flatten()
@@ -90,29 +106,49 @@ impl App {
         {
             actions.extend(self.fit_attached());
         }
-        if shell != self.shell_attached {
-            self.shell_attached = shell;
-            self.shell_fitted = None;
-            if let Some(session) = shell.filter(|session| !had.contains(&Some(*session))) {
-                let size = self.shell_size();
+        let (stream, more) = self.settle_beside(self.shell_stream, shell, &had, self.shell_size());
+        self.shell_stream = stream;
+        actions.extend(more);
+        let (stream, more) =
+            self.settle_beside(self.plugin_stream, plugin, &had, self.plugin_size());
+        self.plugin_stream = stream;
+        actions.extend(more);
+        actions
+    }
+
+    /// Streams `wanted` beside the session in place of what `stream` had,
+    /// attached unless it `had` a stream already, and given `size`.
+    fn settle_beside(
+        &mut self,
+        mut stream: Streamed,
+        wanted: Option<SessionId>,
+        had: &[Option<SessionId>],
+        size: TermSize,
+    ) -> (Streamed, Vec<Action>) {
+        let mut actions = Vec::new();
+        if wanted != stream.session {
+            stream = Streamed {
+                session: wanted,
+                fitted: None,
+            };
+            if let Some(session) = wanted.filter(|session| !had.contains(&Some(*session))) {
                 actions.extend(self.stream(session, size));
-                self.shell_fitted = Some(size);
+                stream.fitted = Some(size);
             }
         }
-        let size = self.shell_size();
-        if let Some(shell) = self.shell_attached
+        if let Some(session) = stream.session
             && self.drag.is_none()
-            && self.shell_fitted != Some(size)
+            && stream.fitted != Some(size)
         {
-            self.screen(shell).resize(size.cols, size.rows);
-            self.shell_fitted = Some(size);
+            self.screen(session).resize(size.cols, size.rows);
+            stream.fitted = Some(size);
             actions.push(Action::Send(ClientFrame::Resize {
-                session: shell,
+                session,
                 size,
                 pixels: self.session_pixels(size),
             }));
         }
-        actions
+        (stream, actions)
     }
 
     /// Starts streaming `session`, shown at `size`, from what its screen

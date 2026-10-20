@@ -58,6 +58,8 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
+        places: crate::spend::Places::default(),
+        secrets: Arc::new(crate::secrets::Kept::default()),
     })
     .await
     .unwrap()
@@ -336,6 +338,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         activity: None,
         spend: None,
         tidy: None,
+        beside: None,
     };
     let id = session.id;
     store
@@ -372,6 +375,8 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
+        places: crate::spend::Places::default(),
+        secrets: Arc::new(crate::secrets::Kept::default()),
     })
     .await
     .unwrap();

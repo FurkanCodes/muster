@@ -109,7 +109,7 @@ fn tail(app: &App, plugin: &PluginInfo, room: usize) -> Span<'static> {
         .unwrap_or_else(|| change.by.words().to_owned());
         return Span::from(shorten(&text, room)).yellow();
     }
-    Span::from(shorten(&brings(plugin), room)).dim()
+    Span::from(shorten(&brings(app, plugin), room)).dim()
 }
 
 /// A plugin's name as its manifest says, or its id where that does not
@@ -148,8 +148,10 @@ fn problem_word(problem: &PluginProblem) -> &'static str {
     }
 }
 
-/// What a plugin brings: `panel: graph (Z) · tickets: YouTrack`.
-fn brings(plugin: &PluginInfo) -> String {
+/// What a plugin brings: `panel: graph (Z) · tickets: YouTrack`, each
+/// panel with its key as `[keys]` writes it: as bound while its plugin
+/// runs (`none` where it has none), else as it suggests.
+fn brings(app: &App, plugin: &PluginInfo) -> String {
     let Some(details) = &plugin.details else {
         return String::new();
     };
@@ -158,9 +160,24 @@ fn brings(plugin: &PluginInfo) -> String {
         let panels: Vec<String> = details
             .panels
             .iter()
-            .map(|panel| match &panel.key {
-                Some(key) => format!("{} ({})", one_line(&panel.title), one_line(key)),
-                None => one_line(&panel.title),
+            .map(|panel| {
+                let name = muster_core::keys::panel_action(&plugin.id, &panel.id);
+                let bound = app
+                    .keymap
+                    .panels()
+                    .find(|(action, _)| action.name() == name);
+                let key = match bound {
+                    Some((_, chords)) => Some(
+                        chords
+                            .first()
+                            .map_or_else(|| "none".to_owned(), ToString::to_string),
+                    ),
+                    None => panel.key.as_deref().map(one_line),
+                };
+                match key {
+                    Some(key) => format!("{} ({key})", one_line(&panel.title)),
+                    None => one_line(&panel.title),
+                }
             })
             .collect();
         let noun = if panels.len() == 1 { "panel" } else { "panels" };

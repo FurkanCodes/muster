@@ -78,6 +78,7 @@ impl App {
             (Panel::Session, areas.preview),
             (Panel::Changes, areas.changes),
             (Panel::Shell, areas.shell),
+            (Panel::Plugin, areas.plugin),
         ]
         .into_iter()
         .filter(|(_, area)| !area.is_empty())
@@ -335,12 +336,19 @@ impl App {
         layout.sized(&path, branch, size)
     }
 
-    /// Shows `layout` and has the daemon keep it.
+    /// Shows `layout` and has the daemon keep it: a daemon older than
+    /// plugins' panels, which reads no layout with one in it, without it
+    /// (`ARC-09`), its next reading putting it back where the default does.
     pub(super) fn keep_panels(&mut self, layout: Layout) -> Vec<Action> {
         self.panels_kept = Some(layout.clone());
         if !self.layout_known() {
             return Vec::new();
         }
+        let layout = if self.daemon_protocol < muster_core::plugins::PANELS_PROTOCOL {
+            layout.without(Panel::Plugin)
+        } else {
+            layout
+        };
         vec![self.command(
             Command::ChangePreference(PreferenceChange::Panels(layout)),
             Then::PanelsKept,
@@ -367,6 +375,7 @@ impl App {
         }
         let panel = match self.mode {
             Mode::Terminal(_) if self.typing_in_shell() => Panel::Shell,
+            Mode::Terminal(_) if self.typing_in_plugin() => Panel::Plugin,
             Mode::Terminal(_) => Panel::Session,
             Mode::Changes => Panel::Changes,
             _ => Panel::List,

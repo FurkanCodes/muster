@@ -14,7 +14,7 @@ impl Supervisor {
     pub(super) fn shells(&self) -> Vec<(SessionId, PtyHandle)> {
         self.live
             .iter()
-            .filter(|(_, live)| live.harness.id() == "shell")
+            .filter(|(_, live)| muster_core::harness::named_by_foreground(live.harness.id()))
             .filter(|(_, live)| !live.machine.status().is_exited())
             .map(|(id, live)| (*id, live.pty.clone()))
             .collect()

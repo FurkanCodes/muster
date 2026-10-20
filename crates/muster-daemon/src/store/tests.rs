@@ -56,6 +56,7 @@ fn session(workspace: WorkspaceId) -> Session {
         activity: None,
         spend: None,
         tidy: None,
+        beside: None,
     }
 }
 
@@ -156,8 +157,9 @@ fn data_survives_reopening() {
     assert_eq!(reopened.snapshot().unwrap().projects, [project]);
 }
 
-/// The shipped schema, still with measurements, including committed WAL data.
-fn legacy_samples(path: &std::path::Path) -> Store {
+/// The shipped schema, still with measurements, including committed WAL
+/// data; and the state it holds.
+fn legacy_samples(path: &std::path::Path) -> (Store, muster_core::protocol::Snapshot) {
     let conn = Connection::open(path).unwrap();
     conn.pragma_update(None, "journal_mode", "WAL").unwrap();
     conn.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
@@ -171,27 +173,48 @@ fn legacy_samples(path: &std::path::Path) -> Store {
     let session = session(workspace.id);
     store.insert_project(&project).unwrap();
     store.insert_workspace(&workspace).unwrap();
-    store.insert_session(&session).unwrap();
+    // As that schema's sessions were written, before `beside`.
+    store
+        .conn
+        .execute(
+            "INSERT INTO sessions
+                (id, workspace_id, harness, title, status, unseen, resume_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0, NULL, ?6)",
+            rusqlite::params![
+                session.id.to_string(),
+                workspace.id.to_string(),
+                session.harness,
+                session.title,
+                super::rows::status_json(session.status).unwrap(),
+                session.created_at.as_millis(),
+            ],
+        )
+        .unwrap();
+    let held = muster_core::protocol::Snapshot {
+        projects: vec![project],
+        workspaces: vec![workspace],
+        sessions: vec![session.clone()],
+        ..muster_core::protocol::Snapshot::default()
+    };
     store.conn.execute(
         "WITH RECURSIVE times(at) AS (VALUES(1) UNION ALL SELECT at+1 FROM times WHERE at < 49000)
          INSERT INTO resource_samples SELECT ?1, at, 250, 100000000 FROM times",
         [session.id.to_string()],
     ).unwrap();
-    store
+    (store, held)
 }
 
 #[test]
 fn unused_samples_are_dropped_only_after_a_complete_backup_arc_14_prd_09() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("muster.db");
-    let legacy = legacy_samples(&path);
-    let before = legacy.snapshot().unwrap();
+    let (legacy, before) = legacy_samples(&path);
     let old_free: u32 = legacy
         .conn
         .pragma_query_value(None, "freelist_count", |row| row.get(0))
         .unwrap();
     let store = Store::open(&path, at(10)).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 7);
+    assert_eq!(store.schema_version().unwrap(), latest_version());
     assert_eq!(store.snapshot().unwrap(), before);
     let tables: u32 = store
         .conn
@@ -231,7 +254,7 @@ fn unused_samples_are_dropped_only_after_a_complete_backup_arc_14_prd_09() {
             .unwrap()
             .schema_version()
             .unwrap(),
-        7
+        latest_version()
     );
     assert_eq!(
         names_in(&backups).len(),
@@ -244,7 +267,7 @@ fn unused_samples_are_dropped_only_after_a_complete_backup_arc_14_prd_09() {
 fn a_failed_backup_keeps_every_sample_and_the_old_schema_arc_14_prd_09() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("muster.db");
-    let legacy = legacy_samples(&path);
+    let (legacy, _) = legacy_samples(&path);
     std::fs::write(dir.path().join("backups"), "blocked").unwrap();
     assert!(matches!(
         Store::open(&path, at(10)),

@@ -4,11 +4,17 @@
 //! person can set any of them on the Settings screen (`[keys]` in
 //! Muster's own settings) and the hints, the help and the menus show the
 //! keys as set. Moving about (the arrows, the page keys, ⏎) and typing in
-//! a field are not actions: they are the same everywhere. Parsing does no
-//! IO (`ARC-01`).
+//! a field are not actions: they are the same everywhere. A name in
+//! `[keys]` that is no action of Muster's, as a plugin's action is once
+//! its plugin is removed, is kept aside and warned of, never refused: the
+//! file still reads. Parsing does no IO (`ARC-01`).
 
 use std::collections::BTreeMap;
 use std::fmt;
+
+mod panels;
+
+pub use panels::{PanelAction, is_panel_action, panel_action};
 
 /// Where a key is pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -228,8 +234,6 @@ pub enum KeysError {
          backspace, f5), after ctrl- or alt- if it has them"
     )]
     NotAKey(String),
-    #[error("keys.{0} is not something a key does")]
-    NotAnAction(String),
     #[error("keys.{action}: {key} is {used}, which is the same on every screen")]
     Kept {
         action: String,
@@ -405,10 +409,48 @@ fn kept(chord: Chord) -> Option<&'static str> {
     }
 }
 
+/// What reads in the person's keys but does nothing: said for the
+/// person, naming the key.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum KeysWarning {
+    #[error(
+        "keys.{0} is not something a key does in Muster: kept, for a plugin's action of that \
+         name, and doing nothing meanwhile"
+    )]
+    NotAnAction(String),
+    /// A key the person set for a plugin's panel that cannot be its.
+    #[error("keys.{name}: {key} {why}, so it does nothing for the panel: set it another")]
+    PanelKey {
+        name: String,
+        key: String,
+        why: String,
+    },
+    /// A key a plugin suggests for its panel that cannot be its.
+    #[error(
+        "the {plugin} plugin's {panel} panel suggests {key}, which {why}: set it a key of its \
+         own here"
+    )]
+    Suggested {
+        plugin: String,
+        panel: String,
+        key: String,
+        why: String,
+    },
+}
+
 /// The keys of every action: Muster's own, with the person's over them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Keymap {
     keys: BTreeMap<Action, Vec<Chord>>,
+    /// The names set that are no action of Muster's, with their keys as
+    /// written: a plugin's actions, bound by name once its plugin is
+    /// known.
+    aside: BTreeMap<String, Vec<String>>,
+    /// The panels of the plugins that run, with their keys
+    /// ([`Keymap::with_panels`]).
+    panels: Vec<panels::Bound>,
+    /// The keys of panels that cannot be theirs, each said why.
+    dropped: Vec<KeysWarning>,
 }
 
 impl Default for Keymap {
@@ -424,7 +466,12 @@ impl Default for Keymap {
                 (*action, chords)
             })
             .collect();
-        Self { keys }
+        Self {
+            keys,
+            aside: BTreeMap::new(),
+            panels: Vec::new(),
+            dropped: Vec::new(),
+        }
     }
 }
 
@@ -433,11 +480,16 @@ impl Keymap {
     /// action's name and its keys as written; no keys leaves an action
     /// without one). Refused, naming the key, where a key is not one, is
     /// one every screen keeps, is another action's on a screen they share,
-    /// or could never reach a session's program.
+    /// or could never reach a session's program. A name that is no action
+    /// of Muster's is kept aside with its keys as written, unread, and
+    /// warned of ([`Keymap::warnings`]).
     pub fn with(set: &BTreeMap<String, Vec<String>>) -> Result<Self, KeysError> {
         let mut map = Self::default();
         for (name, keys) in set {
-            let action = Action::named(name).ok_or_else(|| KeysError::NotAnAction(name.clone()))?;
+            let Some(action) = Action::named(name) else {
+                map.aside.insert(name.clone(), keys.clone());
+                continue;
+            };
             let chords = keys
                 .iter()
                 .map(|key| Chord::parse(key))
@@ -463,13 +515,13 @@ impl Keymap {
             let (action, key) = named();
             return Err(KeysError::Typed { action, key });
         }
-        if let Some(other) = self.taken(action, chord) {
+        let other = self
+            .taken(action, chord)
+            .map(|other| other.name().to_owned())
+            .or_else(|| self.taken_by_panel(action, chord));
+        if let Some(other) = other {
             let (action, key) = named();
-            return Err(KeysError::Taken {
-                action,
-                key,
-                other: other.name().to_owned(),
-            });
+            return Err(KeysError::Taken { action, key, other });
         }
         Ok(())
     }
@@ -526,6 +578,24 @@ impl Keymap {
     /// Whether `action` has the keys it has by default.
     pub fn is_default(&self, action: Action) -> bool {
         Self::default().chords(action) == self.chords(action)
+    }
+
+    /// The names set that are no action of Muster's, with their keys as
+    /// written, kept for a plugin's actions of those names.
+    pub fn aside(&self) -> &BTreeMap<String, Vec<String>> {
+        &self.aside
+    }
+
+    /// What the person is told of the keys that do nothing: each name kept
+    /// aside that no panel of a plugin that runs has, and each panel's key
+    /// that cannot be its.
+    pub fn warnings(&self) -> Vec<KeysWarning> {
+        self.aside
+            .keys()
+            .filter(|name| self.panel_named(name).is_none())
+            .map(|name| KeysWarning::NotAnAction(name.clone()))
+            .chain(self.dropped.iter().cloned())
+            .collect()
     }
 }
 
@@ -674,9 +744,41 @@ mod tests {
         assert!(matches!(error, KeysError::Typed { .. }), "{error:?}");
         assert!(error.to_string().contains("needs ctrl or alt"), "{error}");
         assert!(Keymap::with(&set(&[("leave_session", &["alt-q"])])).is_ok());
+    }
+
+    #[test]
+    fn a_name_that_is_no_action_is_kept_aside_and_warned_of_never_refused() {
+        // A plugin's action, its plugin removed: its key, whatever it is,
+        // takes no other's place and makes nothing unreadable.
+        let keys = Keymap::with(&set(&[
+            ("zoetrope_graph", &["Z"]),
+            ("open_sesame", &["not a key"]),
+            ("rename", &["F2"]),
+        ]))
+        .unwrap();
+        assert_eq!(keys.label(Action::Rename), "F2", "the rest as set");
         assert_eq!(
-            Keymap::with(&set(&[("open_sesame", &["o"])])),
-            Err(KeysError::NotAnAction("open_sesame".to_owned()))
+            keys.action(Screen::Sessions, Chord::parse("Z").unwrap()),
+            None
         );
+        assert_eq!(
+            keys.aside().get("zoetrope_graph"),
+            Some(&vec!["Z".to_owned()])
+        );
+        assert_eq!(
+            keys.warnings(),
+            [
+                KeysWarning::NotAnAction("open_sesame".to_owned()),
+                KeysWarning::NotAnAction("zoetrope_graph".to_owned()),
+            ]
+        );
+        assert!(
+            keys.warnings()[1]
+                .to_string()
+                .starts_with("keys.zoetrope_graph is not something a key does"),
+            "{}",
+            keys.warnings()[1]
+        );
+        assert!(Keymap::default().warnings().is_empty());
     }
 }

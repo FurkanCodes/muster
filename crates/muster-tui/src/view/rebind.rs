@@ -2,7 +2,6 @@
 //! (`app::rebind`): the one chosen lit, the person's own marked, and what
 //! the keys do here at the foot.
 
-use muster_core::keys::Action as Does;
 use ratatui::Frame;
 use ratatui::layout::{Margin, Rect};
 use ratatui::style::{Style, Stylize};
@@ -10,7 +9,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph};
 
 use super::{panel, theme};
-use crate::app::{App, RebindRow, Rebinding, rebind_rows};
+use crate::app::{App, RebindRow, Rebinding, Rebound};
 
 /// The cells the keys' column takes.
 const KEYS_WIDTH: usize = 18;
@@ -21,11 +20,11 @@ pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebin
     let block = panel(app, " Keys ", true);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let rows = rebind_rows();
-    let chosen = rebinding.does();
+    let rows = app.rebind_rows();
+    let chosen = app.rebinding_chosen(rebinding);
     let at = rows
         .iter()
-        .position(|row| *row == RebindRow::Does(chosen))
+        .position(|row| *row == RebindRow::Key(chosen.clone()))
         .unwrap_or(0);
     let height = usize::from(inner.height.saturating_sub(2)).max(1);
     // Scrolled so the chosen line shows, its heading too where it can.
@@ -36,8 +35,10 @@ pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebin
         .skip(offset)
         .take(height)
         .map(|row| match row {
-            RebindRow::Heading(heading) => Line::from(Span::from(*heading).fg(theme.accent).bold()),
-            RebindRow::Does(does) => action_line(app, *does, *does == chosen),
+            RebindRow::Heading(heading) => {
+                Line::from(Span::from(heading.clone()).fg(theme.accent).bold())
+            }
+            RebindRow::Key(rebound) => action_line(app, rebound, *rebound == chosen),
         })
         .collect();
     while lines.len() < height {
@@ -47,7 +48,7 @@ pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebin
     lines.push(if rebinding.waiting {
         Line::from(format!(
             "Press the key for: {}   (esc keeps it as it is)",
-            chosen.what()
+            app.rebound_what(&chosen)
         ))
         .fg(theme.accent)
         .bold()
@@ -62,15 +63,15 @@ pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebin
 
 /// An action's line: its keys, what it does, and whether the keys are the
 /// person's own.
-fn action_line(app: &App, does: Does, chosen: bool) -> Line<'static> {
-    let keys = format!("  {}", app.keymap.labels(does));
+fn action_line(app: &App, rebound: &Rebound, chosen: bool) -> Line<'static> {
+    let keys = format!("  {}", app.rebound_labels(rebound));
     let gap = KEYS_WIDTH.saturating_sub(keys.chars().count()).max(1);
     let mut spans = vec![
         Span::from(keys).bold(),
         Span::raw(" ".repeat(gap)),
-        Span::raw(does.what().to_owned()),
+        Span::raw(app.rebound_what(rebound)),
     ];
-    if !app.keymap.is_default(does) {
+    if app.rebound_is_set(rebound) {
         spans.push(Span::from("  · yours").dim());
     }
     let line = Line::from(spans);

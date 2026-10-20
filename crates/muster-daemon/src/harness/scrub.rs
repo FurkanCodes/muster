@@ -98,7 +98,8 @@ const COPILOT: &[&str] = &[
 /// a session has hooks. A daemon started from inside a Muster session would
 /// otherwise hand that session's hook token to every session it starts
 /// without hooks, a shell or an agent the person added, which could then
-/// report as it (`ARC-11`).
+/// report as it (`ARC-11`). A plugin's panel is told where it is
+/// (`MUSTER_PLUGIN_*`), and only it.
 const MUSTER: &[&str] = &["MUSTER_SESSION", "MUSTER_HOOK_SOCKET", "MUSTER_HOOK_TOKEN"];
 
 /// Prefixes of the same, for families of them.
@@ -106,6 +107,7 @@ const PREFIXES: &[&str] = &[
     "CLAUDE_AGENT_SDK_",
     "CLAUDE_CODE_SDK_",
     "CODEX_NETWORK_PROXY_",
+    "MUSTER_PLUGIN_",
 ];
 
 /// Set by the terminal the daemon was started in, or a multiplexer in it:
@@ -166,18 +168,59 @@ const TERMINAL: &[&str] = &[
 
 /// Which of `keys` a session must not inherit.
 pub(crate) fn scrubbed(keys: impl Iterator<Item = String>) -> Vec<String> {
-    keys.filter(|key| {
-        [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL, MUSTER]
-            .iter()
-            .any(|names| names.contains(&key.as_str()))
-            || PREFIXES.iter().any(|prefix| key.starts_with(prefix))
-    })
-    .collect()
+    keys.filter(|key| is_scrubbed(key)).collect()
+}
+
+fn is_scrubbed(key: &str) -> bool {
+    [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL, MUSTER]
+        .iter()
+        .any(|names| names.contains(&key))
+        || PREFIXES.iter().any(|prefix| key.starts_with(prefix))
+}
+
+/// Which of `keys` a plugin's panel must not inherit (`ARC-23`): all but
+/// the basics every plugin gets (`trackers::plugin::is_basic`), the
+/// person's own description of terminals (`TERMINFO`), as a panel runs in
+/// one, and those its manifest names (`seen`); never one a session must
+/// not inherit either.
+pub(crate) fn kept_from_plugin(keys: impl Iterator<Item = String>, seen: &[String]) -> Vec<String> {
+    let given = |key: &str| {
+        crate::trackers::plugin::is_basic(key) || key == "TERMINFO" || seen.iter().any(|s| s == key)
+    };
+    keys.filter(|key| is_scrubbed(key) || !given(key)).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_plugin_s_program_gets_the_basics_and_what_it_names_arc_23() {
+        let keys = [
+            "PATH",
+            "HOME",
+            "LANG",
+            "LC_ALL",
+            "LC_TERMINAL",
+            "GITHUB_TOKEN",
+            "ZOE_THEME",
+            "CLAUDE_CODE_ENTRYPOINT",
+            "MUSTER_HOOK_TOKEN",
+        ]
+        .map(str::to_owned);
+        let seen = ["ZOE_THEME".to_owned(), "CLAUDE_CODE_ENTRYPOINT".to_owned()];
+        assert_eq!(
+            kept_from_plugin(keys.into_iter(), &seen),
+            [
+                // An iTerm2 marker, though it starts as the basics do.
+                "LC_TERMINAL",
+                "GITHUB_TOKEN",
+                // Named, but no session inherits it.
+                "CLAUDE_CODE_ENTRYPOINT",
+                "MUSTER_HOOK_TOKEN",
+            ]
+        );
+    }
 
     #[test]
     fn agents_and_terminal_markers_are_scrubbed_and_settings_kept() {
@@ -202,6 +245,7 @@ mod tests {
             "MUSTER_HOOK_TOKEN",
             "MUSTER_HOOK_SOCKET",
             "MUSTER_SESSION",
+            "MUSTER_PLUGIN_BRANCH",
             // The person's own settings.
             "PATH",
             "HOME",
@@ -242,6 +286,7 @@ mod tests {
                 "MUSTER_HOOK_TOKEN",
                 "MUSTER_HOOK_SOCKET",
                 "MUSTER_SESSION",
+                "MUSTER_PLUGIN_BRANCH",
             ]
         );
     }

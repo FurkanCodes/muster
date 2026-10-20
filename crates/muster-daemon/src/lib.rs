@@ -42,6 +42,10 @@ mod changes_tests;
 #[cfg(test)]
 mod clashes_supervisor_tests;
 #[cfg(test)]
+mod open_panel_tests;
+#[cfg(test)]
+mod panel_tests;
+#[cfg(test)]
 mod pulls_tests;
 #[cfg(test)]
 mod run_tests;
@@ -444,6 +448,8 @@ async fn start_supervisor(
         adopted: started.adopted,
         tasks: started.tasks,
         ticket_plugins: started.plugins,
+        places: spend::Places::from_env(),
+        secrets: Arc::new(secrets::Keychain::default()),
     })
     .await?)
 }
