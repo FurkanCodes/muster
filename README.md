@@ -219,7 +219,7 @@ Muster tells from a project's git remote where it is hosted: GitHub, GitLab (`gi
 
 ```toml
 [tickets]
-tracker = "jira"               # github, gitlab, jira or linear
+tracker = "jira"               # github, gitlab, jira, linear, or a ticket plugin you installed
 site = "acme.atlassian.net"    # Jira: the site, or a Data Center's address
 project = "APP"                # Jira: the project (or jql = "…")
 # team = "ENG"                 # Linear: the team
