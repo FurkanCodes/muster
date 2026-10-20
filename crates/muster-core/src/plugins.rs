@@ -2,14 +2,20 @@
 //! `muster-plugin.toml` and programs the daemon runs out of process
 //! (`ARC-23`). Here is what is pure about them: reading a manifest
 //! ([`manifest`]), filling in a panel's placeholders ([`placeholders`]),
-//! and the registry of what the person installed, as Muster's own settings
-//! hold it ([`registry`]). The daemon fetches, hashes and moves the files.
+//! the events hooks are told of ([`events`]) and which a hook takes
+//! ([`hooks`]), and the registry of what the person installed, as Muster's
+//! own settings hold it ([`registry`]). The daemon fetches, hashes and
+//! moves the files, and runs the programs.
 
+pub mod events;
+pub mod hooks;
 pub mod manifest;
 pub mod own;
 pub mod placeholders;
 pub mod registry;
 
+pub use events::{Event, EventKind};
+pub use hooks::{Hook, When};
 pub use manifest::{Manifest, ManifestError, Panel, PanelOn, TicketSetting, TicketSource};
 pub use placeholders::{Context, Missing, Placeholder};
 pub use registry::{PluginEntry, PluginSource, RegistryError};
@@ -29,6 +35,12 @@ pub const TICKET_PLUGINS_PROTOCOL: u32 = 42;
 /// chat each is beside (`Session::beside`), and whose clients read a
 /// layout and keys with a panel's in them (`ARC-09`).
 pub const PANELS_PROTOCOL: u32 = 43;
+
+/// The first protocol whose daemon runs plugins' hooks, says what each
+/// plugin's are (`PluginDetails::hooks`) and tries them
+/// ([`crate::protocol::plugins::PluginCommand::TryHooks`]), and whose
+/// clients show them before a plugin is approved (`ARC-09`).
+pub const HOOKS_PROTOCOL: u32 = 44;
 
 /// The Muster reading manifests, which a manifest's `muster` must not be
 /// newer than.

@@ -16,7 +16,7 @@ use muster_core::telling::{Kind, Sound};
 use tokio::time::Instant;
 
 /// How long a finish is held before it is told: as in the UI.
-pub(crate) const HOLD: Duration = Duration::from_secs(2);
+pub(crate) const HOLD: Duration = muster_core::news::FINISH_HOLD;
 
 /// What needed the person when last looked, and the finishes held.
 #[derive(Debug, Default)]

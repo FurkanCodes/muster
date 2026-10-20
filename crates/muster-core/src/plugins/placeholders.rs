@@ -80,6 +80,12 @@ impl Placeholder {
         )
     }
 
+    /// Whether a hook is told it: not an agent's conversation, as a hook
+    /// is given names and ids only (`PRD-06`, `PRD-07`).
+    pub const fn is_told_to_hooks(self) -> bool {
+        !matches!(self, Self::Resume | Self::Transcript)
+    }
+
     /// The variable a panel's process finds it in: `MUSTER_PLUGIN_BRANCH`.
     pub fn variable(self) -> String {
         format!("MUSTER_PLUGIN_{}", self.name().to_ascii_uppercase())

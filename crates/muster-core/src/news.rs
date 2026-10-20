@@ -2,7 +2,14 @@
 //! the UI's terminal, or on a Mac by a notification of the Mac's own from
 //! Muster's helper; the two say the same. Pure (`ARC-01`).
 
+use std::time::Duration;
+
 use crate::{Session, SessionStatus, WaitReason};
+
+/// How long a finish is held before it is told, by the UI, Muster's helper
+/// and plugins' hooks alike: an agent that ends a turn often starts
+/// another at once.
+pub const FINISH_HOLD: Duration = Duration::from_secs(2);
 
 /// Whether `session` waits on the person: asking something, or with news
 /// they have not seen. A shell or a plugin's panel never does: it is the
