@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use muster_core::protocol::plugins::PluginInfo;
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
 use muster_core::settings::Preferences;
 use muster_core::{
@@ -33,6 +34,8 @@ pub(crate) struct Model {
     preferences: Preferences,
     /// Whether Muster's helper shows notifications of the Mac's own.
     notifier: bool,
+    /// The plugins, as the daemon has them (protocol 41).
+    plugins: Vec<PluginInfo>,
     /// Whether a snapshot has arrived; until then the model is empty, not
     /// "no sessions".
     loaded: bool,
@@ -55,6 +58,7 @@ impl Model {
         self.resources = snapshot.resources;
         self.preferences = snapshot.preferences;
         self.notifier = snapshot.notifier;
+        self.plugins = snapshot.plugins;
         self.loaded = true;
     }
 
@@ -115,6 +119,7 @@ impl Model {
             Delta::RunUpserted(run) => upsert(&mut self.runs, run, |r| r.id),
             Delta::Preferences(preferences) => self.preferences = preferences,
             Delta::Notifier { ready } => self.notifier = ready,
+            Delta::PluginsChanged(plugins) => self.plugins = plugins,
             // For the notch: this window says itself whether it is looked at.
             Delta::LookedAt { .. } => {}
         }
@@ -123,6 +128,15 @@ impl Model {
     /// Muster's own settings.
     pub(crate) fn preferences(&self) -> &Preferences {
         &self.preferences
+    }
+
+    /// The plugins, as the daemon last said.
+    #[expect(
+        dead_code,
+        reason = "the Settings screen's Plugins section reads it next"
+    )]
+    pub(crate) fn plugins(&self) -> &[PluginInfo] {
+        &self.plugins
     }
 
     /// Whether Muster's helper shows notifications of the Mac's own, so

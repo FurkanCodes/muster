@@ -13,6 +13,7 @@ mod launchd;
 #[cfg(target_os = "macos")]
 mod mac_app;
 mod output;
+mod plugins;
 mod reload;
 mod runs;
 mod upgrade;
@@ -106,6 +107,11 @@ enum Commands {
     /// request in a container. Hidden; its code is kept.
     #[command(subcommand, hide = true)]
     Run(RunCommand),
+    /// Plugins: install one from a git repository or link a folder, turn
+    /// one on or off, update or remove it. Each is shown before it is
+    /// added, and asked about.
+    #[command(subcommand)]
+    Plugin(plugins::PluginCommand),
     /// Sign-ins and tokens Muster keeps in the macOS Keychain: for Jira, Linear,
     /// Bitbucket, and the autopilot's runs.
     #[command(subcommand)]
@@ -449,6 +455,7 @@ fn main() -> ExitCode {
             // Shown before the runtime was made.
             Some(Commands::Notch { .. }) => Ok(()),
             Some(Commands::Run(command)) => run_command(&socket, command).await,
+            Some(Commands::Plugin(command)) => plugins::run(&socket, command).await,
             Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
             Some(Commands::Review { worktree }) => commands::review(&socket, &worktree).await,
             Some(Commands::Pr { worktree }) => {

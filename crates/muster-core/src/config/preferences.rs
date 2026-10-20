@@ -1,10 +1,11 @@
 //! Muster's own settings: the person's for all of Muster rather than any
 //! project's, in `settings.toml` beside the projects' overrides in their
 //! settings folder: whether the notch shows (`[notch] show`), the coding
-//! agents they added (`[agents.<name>]`, [`super::agents`]), and the UI's
-//! layout and look (`[layout]`, `[look]`), and what they are told of
-//! (`[notifications]`). Read strictly, as a project's are; parsing does no
-//! IO.
+//! agents they added (`[agents.<name>]`, [`super::agents`]), the UI's
+//! layout and look (`[layout]`, `[look]`), what they are told of
+//! (`[notifications]`), and the plugins they installed (`[plugins.<id>]`,
+//! [`crate::plugins::registry`]). Read strictly, as a project's are;
+//! parsing does no IO.
 
 use std::collections::BTreeMap;
 
@@ -13,6 +14,7 @@ use serde::Deserialize;
 use super::ConfigError;
 use super::agents::{self, AgentDefinition};
 use crate::layout::Layout;
+use crate::plugins::registry::{self, PluginEntry};
 use crate::settings::{Naming, Palette, SessionLines};
 use crate::telling::{Kind, Sound, Tell, Telling};
 
@@ -53,6 +55,9 @@ pub struct MusterConfig {
     /// Which kinds the person is told of, and how each sounds (the rest of
     /// `[notifications]`).
     pub telling: Telling,
+    /// The plugins the person installed, linked or turned off
+    /// (`[plugins.<id>]`), by id.
+    pub plugins: Vec<PluginEntry>,
 }
 
 impl Default for MusterConfig {
@@ -69,6 +74,7 @@ impl Default for MusterConfig {
             keys: BTreeMap::new(),
             notifications: true,
             telling: Telling::default(),
+            plugins: Vec::new(),
         }
     }
 }
@@ -92,6 +98,30 @@ struct File {
     keys: BTreeMap<String, OneOrMore>,
     #[serde(default)]
     notifications: Notifications,
+    /// Read by [`registry::parse`], which names the key that is wrong.
+    plugins: Option<toml::Value>,
+}
+
+impl File {
+    /// The agents and the plugins the person added, each read by its own
+    /// module, which names the key that is wrong.
+    fn tables(&self, file: &str) -> Result<(Vec<AgentDefinition>, Vec<PluginEntry>), ConfigError> {
+        let agents = match &self.agents {
+            Some(written) => agents::parse(written).map_err(|error| ConfigError::Agent {
+                file: file.to_owned(),
+                error,
+            })?,
+            None => Vec::new(),
+        };
+        let plugins = match &self.plugins {
+            Some(written) => registry::parse(written).map_err(|error| ConfigError::Plugin {
+                file: file.to_owned(),
+                error,
+            })?,
+            None => Vec::new(),
+        };
+        Ok((agents, plugins))
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -157,13 +187,7 @@ impl MusterConfig {
             file: file.to_owned(),
             message: error.message().to_owned(),
         })?;
-        let agents = match &read.agents {
-            Some(written) => agents::parse(written).map_err(|error| ConfigError::Agent {
-                file: file.to_owned(),
-                error,
-            })?,
-            None => Vec::new(),
-        };
+        let (agents, plugins) = read.tables(file)?;
         let invalid = |message: &str| ConfigError::Invalid {
             file: file.to_owned(),
             message: message.to_owned(),
@@ -241,6 +265,7 @@ impl MusterConfig {
             keys,
             notifications: read.notifications.show.unwrap_or(default.notifications),
             telling,
+            plugins,
         })
     }
 }
@@ -286,6 +311,35 @@ mod tests {
         let error = error.to_string();
         assert!(
             error.starts_with("settings.toml: agents.my-agent.color"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_person_s_plugins_read_with_the_rest_and_a_wrong_key_is_named() {
+        let read = MusterConfig::parse(
+            Some(
+                "[notch]\nshow = false\n\n[plugins.zoetrope]\nfolder = \"/p/zoetrope\"\n\
+                 enabled = false\n",
+            ),
+            "settings.toml",
+        )
+        .unwrap();
+        assert!(!read.notch);
+        assert_eq!(read.plugins.len(), 1);
+        assert_eq!(read.plugins[0].id, "zoetrope");
+        assert!(!read.plugins[0].enabled);
+        assert_eq!(MusterConfig::parse(None, "f").unwrap().plugins, []);
+        let error = MusterConfig::parse(
+            Some("[plugins.zoetrope]\nfolder = \"/p\"\nenable = true\n"),
+            "settings.toml",
+        )
+        .unwrap_err();
+        assert!(matches!(error, ConfigError::Plugin { .. }), "{error:?}");
+        assert!(
+            error
+                .to_string()
+                .starts_with("settings.toml: plugins.zoetrope.enable is not a setting"),
             "{error}"
         );
     }

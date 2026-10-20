@@ -148,6 +148,12 @@ pub enum ConfigError {
         file: String,
         error: agents::AgentError,
     },
+    /// The person's plugins do not read: the error names the key.
+    #[error("{file}: {error}")]
+    Plugin {
+        file: String,
+        error: crate::plugins::RegistryError,
+    },
 }
 
 impl ProjectConfig {

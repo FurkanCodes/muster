@@ -20,6 +20,7 @@ mod hooks;
 mod log_files;
 mod mcp;
 mod oauth;
+mod plugins;
 mod pty;
 mod resources;
 mod runs;
