@@ -5,7 +5,8 @@
 //! CLI), `opencode` (`OpenCode`) and `copilot` (GitHub Copilot CLI); and two
 //! Muster runs by hand, `checks` and `review`; and any coding agent the
 //! person added in Muster's own settings (`[agents.<name>]`,
-//! `muster_core::config::agents`). A harness says how to start, resume and
+//! `muster_core::config::agents`); and a plugin's panels
+//! (`plugin:<plugin>/<panel>`, [`panel`]). A harness says how to start, resume and
 //! hear from its program; the daemon does the rest. Each agent is heard the
 //! way it allows without editing the person's config (`PRD-13`): hooks
 //! passed at launch, a plugin or settings file of Muster's own that it is
@@ -20,6 +21,7 @@ pub(crate) mod codex;
 pub(crate) mod copilot;
 pub(crate) mod gemini;
 pub(crate) mod opencode;
+pub(crate) mod panel;
 pub(crate) mod scrub;
 pub(crate) mod support;
 pub(crate) mod transcript;
@@ -32,6 +34,7 @@ use muster_core::config::agents::{AgentDefinition, TitleSays};
 use muster_core::protocol::TermSize;
 use muster_state::session::HookEvent;
 
+pub(crate) use self::panel::PanelLaunch;
 use crate::pty::SpawnSpec;
 use crate::runs::credentials::Secret;
 
@@ -56,6 +59,8 @@ pub(crate) enum Kind {
     Review,
     /// A coding agent the person added in Muster's own settings.
     Added(Arc<AgentDefinition>),
+    /// A plugin's panel: no agent, but a program shown beside one.
+    Panel(Arc<PanelLaunch>),
 }
 
 /// Muster's own harnesses.
@@ -87,6 +92,16 @@ pub(crate) fn find_with(id: &str, added: &[Arc<AgentDefinition>]) -> Option<Harn
             .find(|agent| agent.name == id)
             .map(|agent| Harness::added(agent.clone()))
     })
+}
+
+/// The harness of a session that ran as `id`, to keep it running: as
+/// [`find_with`] finds it, a plugin's panel by its harness alone, and an
+/// agent the settings no longer define by its name alone, which cannot be
+/// started again.
+pub(crate) fn carried(id: &str, added: &[Arc<AgentDefinition>]) -> Harness {
+    find_with(id, added)
+        .or_else(|| PanelLaunch::carried(id).map(Harness::panel))
+        .unwrap_or_else(|| Harness::added(Arc::new(AgentDefinition::bare(id))))
 }
 
 /// What the project's checks are, for a session that runs them.
@@ -139,6 +154,13 @@ impl Harness {
         }
     }
 
+    /// A plugin's panel, run as `launch` says.
+    pub(crate) fn panel(launch: PanelLaunch) -> Self {
+        Self {
+            kind: Kind::Panel(Arc::new(launch)),
+        }
+    }
+
     /// What sessions name it by.
     pub(crate) fn id(&self) -> &str {
         match &self.kind {
@@ -151,6 +173,7 @@ impl Harness {
             Kind::Checks => "checks",
             Kind::Review => "review",
             Kind::Added(agent) => &agent.name,
+            Kind::Panel(launch) => launch.harness(),
         }
     }
 
@@ -166,6 +189,7 @@ impl Harness {
             Kind::Checks => "Checks",
             Kind::Review => "Review",
             Kind::Added(agent) => &agent.label,
+            Kind::Panel(launch) => &launch.title,
         }
     }
 
@@ -264,7 +288,7 @@ impl Harness {
             Kind::Gemini => Some("gemini"),
             Kind::OpenCode => Some("opencode"),
             Kind::Copilot => Some("copilot"),
-            Kind::Shell | Kind::Checks | Kind::Added(_) => None,
+            Kind::Shell | Kind::Checks | Kind::Added(_) | Kind::Panel(_) => None,
         }
     }
 
@@ -282,7 +306,7 @@ impl Harness {
             Kind::Gemini => gemini::translate(body),
             Kind::OpenCode => opencode::translate(body),
             Kind::Copilot => copilot::translate(event?, body),
-            Kind::Shell | Kind::Checks | Kind::Added(_) => None,
+            Kind::Shell | Kind::Checks | Kind::Added(_) | Kind::Panel(_) => None,
         }
     }
 
@@ -314,7 +338,12 @@ impl Harness {
             Kind::Gemini => named("BeforeAgent"),
             Kind::Copilot => event == Some("userPromptSubmitted"),
             // An agent the person added has no hooks to report one.
-            Kind::Codex | Kind::OpenCode | Kind::Shell | Kind::Checks | Kind::Added(_) => false,
+            Kind::Codex
+            | Kind::OpenCode
+            | Kind::Shell
+            | Kind::Checks
+            | Kind::Added(_)
+            | Kind::Panel(_) => false,
         };
         carries
             .then(|| value.get("prompt").and_then(serde_json::Value::as_str))
@@ -344,7 +373,7 @@ impl Harness {
     pub(crate) fn asking(&self) -> Option<muster_core::ask::Ask> {
         match &self.kind {
             Kind::Added(agent) => agent.asking(),
-            Kind::Shell | Kind::Checks | Kind::Review => None,
+            Kind::Shell | Kind::Checks | Kind::Review | Kind::Panel(_) => None,
             _ => muster_core::ask::built_in(self.id()),
         }
     }
@@ -644,6 +673,11 @@ fn on_host(
                 agent.arguments(launch.prompt.as_deref(), launch.resume),
             )
         }
+        // As its plugin says, told where it is.
+        Kind::Panel(panel) => {
+            env.extend(panel.env.iter().cloned());
+            panel.program()
+        }
     };
     SpawnSpec {
         program,
@@ -676,15 +710,17 @@ fn in_container(
     let kind = match harness.kind {
         // A review never runs in a container (`place_for` refuses agents).
         Kind::Claude | Kind::Review => "claude",
-        // Other agents never run in a container either (`place_for`), and
-        // checks never by hand: a run checks its own work.
+        // Other agents never run in a container either (`place_for`), nor
+        // a plugin's panel (`start_panel`), and checks never by hand: a run
+        // checks its own work.
         Kind::Shell
         | Kind::Checks
         | Kind::Codex
         | Kind::Gemini
         | Kind::OpenCode
         | Kind::Copilot
-        | Kind::Added(_) => "shell",
+        | Kind::Added(_)
+        | Kind::Panel(_) => "shell",
     };
     args.extend([
         container.to_owned(),

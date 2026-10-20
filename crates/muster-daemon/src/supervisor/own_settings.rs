@@ -83,12 +83,11 @@ impl Supervisor {
         )
     }
 
-    /// The harness of a session that ran as `id`, to keep it running: one
-    /// whose agent the settings no longer define is known by its name
-    /// alone, and cannot be started again.
+    /// The harness of a session that ran as `id`, to keep it running
+    /// (`harness::carried`): a plugin's panel stays a panel, and an agent
+    /// the settings no longer define is known by its name alone.
     pub(super) fn running_harness(&self, id: &str) -> Harness {
-        self.harness(id)
-            .unwrap_or_else(|| Harness::added(Arc::new(AgentDefinition::bare(id))))
+        harness::carried(id, &self.agents)
     }
 
     /// Takes Muster's own settings as read, and tells every client.

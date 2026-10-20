@@ -98,7 +98,8 @@ const COPILOT: &[&str] = &[
 /// a session has hooks. A daemon started from inside a Muster session would
 /// otherwise hand that session's hook token to every session it starts
 /// without hooks, a shell or an agent the person added, which could then
-/// report as it (`ARC-11`).
+/// report as it (`ARC-11`). A plugin's panel is told where it is
+/// (`MUSTER_PLUGIN_*`), and only it.
 const MUSTER: &[&str] = &["MUSTER_SESSION", "MUSTER_HOOK_SOCKET", "MUSTER_HOOK_TOKEN"];
 
 /// Prefixes of the same, for families of them.
@@ -106,6 +107,7 @@ const PREFIXES: &[&str] = &[
     "CLAUDE_AGENT_SDK_",
     "CLAUDE_CODE_SDK_",
     "CODEX_NETWORK_PROXY_",
+    "MUSTER_PLUGIN_",
 ];
 
 /// Set by the terminal the daemon was started in, or a multiplexer in it:
@@ -202,6 +204,7 @@ mod tests {
             "MUSTER_HOOK_TOKEN",
             "MUSTER_HOOK_SOCKET",
             "MUSTER_SESSION",
+            "MUSTER_PLUGIN_BRANCH",
             // The person's own settings.
             "PATH",
             "HOME",
@@ -242,6 +245,7 @@ mod tests {
                 "MUSTER_HOOK_TOKEN",
                 "MUSTER_HOOK_SOCKET",
                 "MUSTER_SESSION",
+                "MUSTER_PLUGIN_BRANCH",
             ]
         );
     }
