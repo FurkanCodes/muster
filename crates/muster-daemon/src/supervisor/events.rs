@@ -29,6 +29,9 @@ pub(super) struct Events {
     pulls: HashSet<WorkspaceId>,
     /// Projects whose clashes were looked at since the daemon started.
     clashes: HashSet<ProjectId>,
+    /// The session whose program is ending as the person asked, which is
+    /// no error however it ends.
+    stopped: Option<SessionId>,
 }
 
 impl Events {
@@ -38,7 +41,14 @@ impl Events {
             held: Vec::new(),
             pulls: HashSet::new(),
             clashes: HashSet::new(),
+            stopped: None,
         }
+    }
+
+    /// `session`'s program ended, as the person asked or not: its status
+    /// comes next.
+    pub(super) fn ending(&mut self, session: SessionId, requested: bool) {
+        self.stopped = requested.then_some(session);
     }
 
     /// The hooks' runner.
@@ -106,6 +116,7 @@ impl Supervisor {
             return;
         }
         self.events.held.retain(|(held, _)| *held != session);
+        let stopped = self.events.stopped.take() == Some(session);
         let kinds: &[EventKind] = match status {
             SessionStatus::NeedsYou { .. } => &[EventKind::SessionNeedsYou],
             SessionStatus::Finished => {
@@ -113,8 +124,9 @@ impl Supervisor {
                 self.events.held.push((session, due));
                 &[]
             }
+            // Stopped by the person, it ended as they asked: no error.
             SessionStatus::Exited { success } if !before.is_exited() => {
-                if success {
+                if success || stopped {
                     &[EventKind::SessionEnded]
                 } else {
                     &[EventKind::SessionError, EventKind::SessionEnded]

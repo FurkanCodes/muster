@@ -548,6 +548,7 @@ impl Supervisor {
                 if failed_resume && self.start_fresh_after_failed_resume(session).await {
                     return;
                 }
+                self.events.ending(session, requested);
                 self.step_session(session, Signal::Exited { success, requested })
                     .await;
                 let at = self.clock.now();

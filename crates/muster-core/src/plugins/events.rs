@@ -31,7 +31,8 @@ pub enum EventKind {
     /// as the person is told of a finish.
     #[serde(rename = "session.finished")]
     SessionFinished,
-    /// Its program ended with an error; `session.ended` follows.
+    /// Its program ended with an error, not stopped by the person;
+    /// `session.ended` follows.
     #[serde(rename = "session.error")]
     SessionError,
     /// Its program ended, well or not.

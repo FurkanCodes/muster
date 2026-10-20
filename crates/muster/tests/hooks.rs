@@ -322,18 +322,23 @@ async fn a_hook_hears_each_event_of_an_agent_s_session_and_its_worktree_once_as_
     assert!(finished_at.elapsed() >= Duration::from_secs(2));
     assert_eq!(finished["session"]["status"], "finished");
 
-    // Stopped by the person, its program ends.
+    // Its program ends with an error of its own: an error, then its end.
+    connection.attach(session, None).await.unwrap();
+    connection.input(session, b"exit 3\n").await.unwrap();
+    let failed = wait_heard(&folder, "all", "session.error", 1);
+    assert_eq!(failed["session"]["success"], false);
+    let ended = wait_heard(&folder, "all", "session.ended", 1);
+    assert_eq!(ended["session"]["status"], "exited");
+    // Another, stopped by the person, ends with no error.
+    let stopped = start(&mut connection, workspace, "claude").await;
+    wait_heard(&folder, "all", "session.started", 2);
     connection
-        .command(Command::StopSession { session })
+        .command(Command::StopSession { session: stopped })
         .await
         .unwrap();
-    let ended = wait_heard(&folder, "all", "session.ended", 1);
-    let success = ended["session"]["success"].as_bool().unwrap();
+    wait_heard(&folder, "all", "session.ended", 2);
     std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(
-        count(&folder, "all", "session.error"),
-        usize::from(!success)
-    );
+    assert_eq!(count(&folder, "all", "session.error"), 1);
 
     connection
         .command(Command::RemoveWorktree {
@@ -348,7 +353,7 @@ async fn a_hook_hears_each_event_of_an_agent_s_session_and_its_worktree_once_as_
     // Each once; none for a project the filter does not name, and the
     // shell's start never.
     std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(count(&folder, "all", "session.started"), 1);
+    assert_eq!(count(&folder, "all", "session.started"), 2);
     assert_eq!(count(&folder, "all", "session.needs_you"), 2);
     assert_eq!(count(&folder, "away", "session.needs_you"), 1);
     assert_eq!(count(&folder, "looking", "session.needs_you"), 1);

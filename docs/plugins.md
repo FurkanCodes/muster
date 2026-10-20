@@ -402,7 +402,7 @@ Each is raised once, as it happens, and never for the person's shell or a plugin
 | `session.started` | An agent's session is started, or started again after it ended. | `session` |
 | `session.needs_you` | It comes to need the person, or waits for something else. | `session`, with `reason` |
 | `session.finished` | Its turn ends, and is still ended two seconds later, as the person is told of a finish; one that goes straight back to work is not told. | `session` |
-| `session.error` | Its program ends with an error; `session.ended` follows. | `session`, `success: false` |
+| `session.error` | Its program ends with an error, not stopped by the person; `session.ended` follows. | `session`, `success: false` |
 | `session.ended` | Its program ends, well or not. | `session`, with `success` |
 | `worktree.created` | Muster makes a worktree, or finds one made outside it. | |
 | `worktree.removed` | A worktree is removed, by Muster or outside it. | |
