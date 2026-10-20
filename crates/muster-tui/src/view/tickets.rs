@@ -248,15 +248,14 @@ fn ticket_text(
         .filter_map(|id| app.model.project(*id))
         .map(|found| found.name.as_str())
         .collect();
+    // A plugin's ticket may have no web address.
+    let mut said = vec![key.shown(), project_names.join(", ")];
+    if !ticket.url.is_empty() {
+        said.push(ticket.url.clone());
+    }
     let mut lines = vec![
         Line::from(ticket.title.clone()).bold(),
-        Line::from(format!(
-            "{} · {} · {}",
-            key.shown(),
-            project_names.join(", "),
-            ticket.url
-        ))
-        .dim(),
+        Line::from(said.join(" · ")).dim(),
     ];
     let mut about = Vec::new();
     if let Some(author) = &ticket.author {
@@ -365,7 +364,12 @@ pub(super) fn hints(app: &App) -> Vec<String> {
             hints.push("⏎ open agent".to_owned());
             hints.extend(hint(app, Does::AnotherAgent, "another agent"));
         }
-        hints.extend(hint(app, Does::TicketInBrowser, "browser"));
+        if app
+            .ticket(*project, key)
+            .is_some_and(|ticket| !ticket.url.is_empty())
+        {
+            hints.extend(hint(app, Does::TicketInBrowser, "browser"));
+        }
         hints.extend(hint(app, Does::CloseTicket, "close"));
     }
     hints.extend(hint(app, Does::RefreshTickets, "refresh"));

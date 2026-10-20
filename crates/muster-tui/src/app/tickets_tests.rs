@@ -153,6 +153,32 @@ fn a_project_s_tickets_are_listed_and_the_selected_one_shown_with_its_text() {
 }
 
 #[test]
+fn a_ticket_with_no_web_address_is_shown_without_one_and_offers_no_browser() {
+    // As a plugin may list its tickets: in a file, say, with no page.
+    let mut world = world();
+    let actions = press(&mut world.app, KeyCode::Char('i'));
+    let (req_id, _) = command(&actions);
+    let mut plain = issue(3, "Say hello");
+    plain.url = String::new();
+    reply(
+        &mut world,
+        req_id,
+        Ok(Reply::Issues {
+            source: None,
+            tracker: "tickets.txt".to_owned(),
+            issues: vec![plain],
+            mine: false,
+        }),
+    );
+    press(&mut world.app, KeyCode::Down);
+    let screen = render(&world.app);
+    assert!(screen.contains("#3 · app "), "{screen}");
+    assert!(!screen.contains("#3 · app ·"), "{screen}");
+    assert!(!screen.contains("b browser"), "{screen}");
+    assert!(screen.contains("x close"), "{screen}");
+}
+
+#[test]
 fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
     let mut world = on_tickets();
     // ⏎ asks which agent, Claude Code first; ⏎ again starts it.
