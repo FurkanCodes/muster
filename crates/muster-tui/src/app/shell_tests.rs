@@ -2,7 +2,8 @@
 //! shell in a panel of its own beside the session, both streamed, or the
 //! one it has; the list folds where the three do not fit, and the shell
 //! opens over the session where two do not; a click moves the keys
-//! between them; a shell is not counted among the agents.
+//! between them; a shell is not counted among the agents; and in the list
+//! it stands by its chats on one line, under the one chat of its worktree.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
 use muster_core::protocol::{ClientFrame, Command, Delta, Reply, ServerFrame, TermSize};
@@ -177,4 +178,130 @@ fn a_shell_is_not_counted_among_the_agents_nor_waits_on_the_person() {
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
     assert_eq!(world.app.shell, None);
     assert_eq!(world.app.mode, Mode::Browse);
+}
+
+/// The rendered list's line that holds `text`.
+fn line_with(world: &World, text: &str) -> String {
+    let screen = render_in(&world.app, WIDE);
+    screen
+        .lines()
+        .find(|line| line.contains(text))
+        .unwrap_or_else(|| panic!("no {text:?} in\n{screen}"))
+        .to_owned()
+}
+
+#[test]
+fn a_worktree_s_shell_stands_under_its_one_chat_on_one_line() {
+    let mut world = sized(WIDE);
+    // Started before the chat, still listed after it.
+    let mut shell = session(world.worktree.id, "cargo", 1);
+    shell.harness = "shell".to_owned();
+    shell.status = SessionStatus::Running;
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(shell.clone())));
+    let rows = world.app.rows();
+    let at = |id| {
+        rows.iter()
+            .position(|row| *row == Row::Session(id))
+            .unwrap()
+    };
+    assert_eq!(at(shell.id), at(world.session.id) + 1, "{rows:?}");
+    assert_eq!(world.app.row_heights(&rows)[at(shell.id)], 1, "one line");
+    let line = line_with(&world, "cargo");
+    assert!(line.contains("└ ❯ cargo"), "{line}");
+
+    // A click on its line selects it, the chat above taking two.
+    let list = areas(&world).list;
+    let offset = world.app.list_offset;
+    let lines: usize = world.app.row_heights(&rows)[offset..at(shell.id)]
+        .iter()
+        .sum();
+    let row = list.y + 1 + u16::try_from(lines).unwrap();
+    world.app.on_mouse(super::pointer_tests::mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        list.x + 6,
+        row,
+    ));
+    assert_eq!(world.app.selected, Some(Row::Session(shell.id)));
+}
+
+#[test]
+fn where_chats_share_a_workspace_its_shell_stands_after_them_all() {
+    let mut world = sized(WIDE);
+    let mut other = session(world.worktree.id, "Add dark mode", 3);
+    other.status = SessionStatus::Finished;
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(other.clone())));
+    let shell = a_shell(&mut world);
+    let rows = world.app.rows();
+    assert_eq!(
+        rows.iter().rev().find(|row| matches!(row, Row::Session(_))),
+        Some(&Row::Session(shell.id)),
+        "{rows:?}"
+    );
+    let line = line_with(&world, "❯ zsh");
+    assert!(!line.contains('└'), "beside both chats: {line}");
+}
+
+/// Whether `session` is streamed once `actions` are sent, from `was`: the
+/// last of its Attach and Detach decides.
+fn streamed_after(actions: &[Action], session: SessionId, was: bool) -> bool {
+    actions.iter().fold(was, |streamed, action| match action {
+        Action::Send(ClientFrame::Attach { session: id, .. }) if *id == session => true,
+        Action::Send(ClientFrame::Detach { session: id }) if *id == session => false,
+        _ => streamed,
+    })
+}
+
+#[test]
+fn the_shell_keeps_streaming_as_the_selection_moves_between_it_and_its_chat() {
+    let mut world = sized(WIDE);
+    let shell = a_shell(&mut world);
+    world.app.on_key(shift_t());
+    world.app.on_key(super::tests::shift_q());
+    let chat = world.session.id;
+    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    let mut streamed = true;
+    // Down to the shell's own line: it is the session shown.
+    let actions = world
+        .app
+        .on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(world.app.selected, Some(Row::Session(shell.id)));
+    streamed = streamed_after(&actions, shell.id, streamed);
+    assert!(streamed, "shown: {actions:?}");
+    // Up to the chat: the shell beside it again, still streamed.
+    let actions = world
+        .app
+        .on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(world.app.selected, Some(Row::Session(chat)));
+    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    streamed = streamed_after(&actions, shell.id, streamed);
+    assert!(streamed, "beside the chat: {actions:?}");
+    assert!(streamed_after(&actions, chat, true), "{actions:?}");
+}
+
+#[test]
+fn the_shell_beside_the_chat_streams_again_from_a_new_daemon() {
+    let mut world = sized(WIDE);
+    let shell = a_shell(&mut world);
+    world.app.on_key(shift_t());
+    world.app.on_key(super::tests::shift_q());
+    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    // The daemon restarted in place: the UI reconnects to a new one, which
+    // streams nothing to it yet.
+    world.app.on_disconnected("restarting".to_owned());
+    world.app.on_connected("0.1.1".to_owned());
+    let actions = world
+        .app
+        .on_frame(ServerFrame::Snapshot(muster_core::protocol::Snapshot {
+            projects: vec![world.project.clone()],
+            workspaces: vec![world.worktree.clone()],
+            sessions: vec![world.session.clone(), shell.clone()],
+            ..muster_core::protocol::Snapshot::default()
+        }));
+    let attached = attached(&actions);
+    assert!(attached.contains(&shell.id), "{actions:?}");
+    assert!(attached.contains(&world.session.id), "{actions:?}");
 }

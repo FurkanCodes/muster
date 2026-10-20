@@ -3,7 +3,7 @@
 //! the terminal streamed to this client in line with what is shown.
 
 use muster_core::SessionId;
-use muster_core::protocol::{ClientFrame, Command};
+use muster_core::protocol::{ClientFrame, Command, TermSize};
 
 use super::lines::in_view;
 use super::{Action, App, Link, Mode, Then, View};
@@ -47,98 +47,98 @@ impl App {
         actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
-        actions.extend(self.settle_shell());
         let told = self.tell_focus();
-        let focus = self.shown_session();
-        if focus == self.attached {
-            actions.extend(told);
-            // The panels moved, or the window changed size: the session
-            // shown is given the size it is shown at now.
-            // Not while a line between panels is dragged: as it is let go.
-            if self.attached.is_some()
-                && self.drag.is_none()
-                && self.fitted != Some(self.session_size())
-            {
-                actions.extend(self.fit_attached());
-            }
-            return actions;
-        }
-        if let Some(old) = self.attached.take() {
-            actions.push(Action::Send(ClientFrame::Detach { session: old }));
-        }
-        if let Some(session) = focus {
-            let size = self.session_size();
-            let screen = self.screen(session);
-            screen.resize(size.cols, size.rows);
-            let from_seq = screen.next_seq();
-            let running = self
-                .model
-                .session(session)
-                .is_some_and(|stored| stored.ended_at.is_none());
-            if running {
-                actions.push(Action::Send(ClientFrame::Resize {
-                    session,
-                    size,
-                    pixels: self.session_pixels(size),
-                }));
-            }
-            self.fitted = Some(size);
-            actions.push(Action::Send(ClientFrame::Attach {
-                session,
-                from_seq,
-                // Attached while the window is out of focus: nobody looks.
-                watching: self.focused != Some(false),
-            }));
-            self.attached = Some(session);
-        }
+        actions.extend(self.settle_streams());
         actions.extend(told);
         actions
     }
 
-    /// Streams the shell beside the session as it is shown, at its panel's
-    /// size.
-    fn settle_shell(&mut self) -> Vec<Action> {
-        let mut actions = Vec::new();
-        let wanted = self
+    /// Streams what is shown: the session the list shows or types in
+    /// (`attached`), and the shell beside it (`shell_attached`), each at
+    /// its panel's size. A session that moves from one to the other keeps
+    /// its stream: it is detached only where neither shows it, and
+    /// attached only where neither streamed it, so a Detach never follows
+    /// its own Attach.
+    fn settle_streams(&mut self) -> Vec<Action> {
+        let main = self.shown_session();
+        let shell = self
             .shell_beside()
             .filter(|_| !self.narrow() || self.typing_in_shell());
-        if wanted == self.shell_attached {
-            let size = self.shell_size();
-            if let Some(shell) = wanted
-                && self.drag.is_none()
-                && self.shell_fitted != Some(size)
-            {
-                self.screen(shell).resize(size.cols, size.rows);
-                self.shell_fitted = Some(size);
-                actions.push(Action::Send(ClientFrame::Resize {
-                    session: shell,
-                    size,
-                    pixels: self.session_pixels(size),
-                }));
+        let had = [self.attached, self.shell_attached];
+        let wanted = [main, shell];
+        let mut actions: Vec<Action> = had
+            .into_iter()
+            .flatten()
+            .filter(|old| !wanted.contains(&Some(*old)))
+            .map(|old| Action::Send(ClientFrame::Detach { session: old }))
+            .collect();
+        if main != self.attached {
+            self.attached = main;
+            self.fitted = None;
+            if let Some(session) = main.filter(|session| !had.contains(&Some(*session))) {
+                let size = self.session_size();
+                actions.extend(self.stream(session, size));
+                self.fitted = Some(size);
             }
-            return actions;
         }
-        if let Some(old) = self.shell_attached.take() {
-            actions.push(Action::Send(ClientFrame::Detach { session: old }));
+        // The panels moved, or the window changed size: each session shown
+        // is given the size it is shown at now; not while a line between
+        // panels is dragged, but as it is let go.
+        if self.attached.is_some()
+            && self.drag.is_none()
+            && self.fitted != Some(self.session_size())
+        {
+            actions.extend(self.fit_attached());
         }
-        if let Some(shell) = wanted {
-            let size = self.shell_size();
-            let screen = self.screen(shell);
-            screen.resize(size.cols, size.rows);
-            let from_seq = screen.next_seq();
+        if shell != self.shell_attached {
+            self.shell_attached = shell;
+            self.shell_fitted = None;
+            if let Some(session) = shell.filter(|session| !had.contains(&Some(*session))) {
+                let size = self.shell_size();
+                actions.extend(self.stream(session, size));
+                self.shell_fitted = Some(size);
+            }
+        }
+        let size = self.shell_size();
+        if let Some(shell) = self.shell_attached
+            && self.drag.is_none()
+            && self.shell_fitted != Some(size)
+        {
+            self.screen(shell).resize(size.cols, size.rows);
+            self.shell_fitted = Some(size);
             actions.push(Action::Send(ClientFrame::Resize {
                 session: shell,
                 size,
                 pixels: self.session_pixels(size),
             }));
-            actions.push(Action::Send(ClientFrame::Attach {
-                session: shell,
-                from_seq,
-                watching: self.focused != Some(false),
-            }));
-            self.shell_attached = Some(shell);
-            self.shell_fitted = Some(size);
         }
+        actions
+    }
+
+    /// Starts streaming `session`, shown at `size`, from what its screen
+    /// has: the program given the size first, while it runs.
+    fn stream(&mut self, session: SessionId, size: TermSize) -> Vec<Action> {
+        let screen = self.screen(session);
+        screen.resize(size.cols, size.rows);
+        let from_seq = screen.next_seq();
+        let mut actions = Vec::new();
+        if self
+            .model
+            .session(session)
+            .is_some_and(|stored| stored.ended_at.is_none())
+        {
+            actions.push(Action::Send(ClientFrame::Resize {
+                session,
+                size,
+                pixels: self.session_pixels(size),
+            }));
+        }
+        actions.push(Action::Send(ClientFrame::Attach {
+            session,
+            from_seq,
+            // Attached while the window is out of focus: nobody looks.
+            watching: self.focused != Some(false),
+        }));
         actions
     }
 

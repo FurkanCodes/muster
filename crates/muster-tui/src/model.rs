@@ -271,6 +271,28 @@ impl Model {
             .filter(move |session| session.workspace == workspace)
     }
 
+    /// A workspace's sessions as the list shows them: its chats, then its
+    /// shells, which stand by them rather than among them.
+    pub(crate) fn listed_of(&self, workspace: WorkspaceId) -> impl Iterator<Item = &Session> {
+        let (chats, shells): (Vec<&Session>, Vec<&Session>) = self
+            .sessions_of(workspace)
+            .partition(|session| !is_shell(session));
+        chats.into_iter().chain(shells)
+    }
+
+    /// Whether `shell` is shown as its workspace's one chat's: a worktree
+    /// with one agent at work in it, as most are, has its shell under that
+    /// agent's chat; where several chats share the workspace, its shells
+    /// serve them all, and stand after them.
+    pub(crate) fn under_its_chat(&self, shell: &Session) -> bool {
+        is_shell(shell)
+            && self
+                .sessions_of(shell.workspace)
+                .filter(|session| !is_shell(session))
+                .count()
+                == 1
+    }
+
     /// The sessions list: each project, its worktrees, their sessions.
     pub(crate) fn rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
@@ -278,7 +300,7 @@ impl Model {
             rows.push(Row::Project(project.id));
             for workspace in self.workspaces_of(project.id) {
                 rows.push(Row::Worktree(workspace.id));
-                rows.extend(self.sessions_of(workspace.id).map(|s| Row::Session(s.id)));
+                rows.extend(self.listed_of(workspace.id).map(|s| Row::Session(s.id)));
             }
         }
         rows
@@ -354,6 +376,11 @@ impl Model {
 }
 
 pub(crate) use muster_core::news::needs_attention;
+
+/// Whether `session` is a shell, the person's own, not an agent's chat.
+pub(crate) fn is_shell(session: &Session) -> bool {
+    session.harness == "shell"
+}
 
 fn upsert<T, K: PartialEq>(items: &mut Vec<T>, item: T, key: impl Fn(&T) -> K) {
     match items
