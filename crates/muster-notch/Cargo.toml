@@ -13,6 +13,7 @@ muster-core.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2.workspace = true
 dispatch2.workspace = true
 muster-client.workspace = true
 tokio.workspace = true
@@ -45,7 +46,17 @@ objc2-app-kit = { workspace = true, features = [
 ] }
 objc2-core-foundation = { workspace = true, features = ["CFCGTypes", "objc2"] }
 objc2-core-graphics = { workspace = true, features = ["CGPath"] }
-objc2-foundation = { workspace = true, features = ["NSArray", "NSData", "NSEnumerator", "NSGeometry", "NSString", "NSThread", "NSValue"] }
+objc2-foundation = { workspace = true, features = ["NSArray", "NSBundle", "NSData", "NSEnumerator", "NSError", "NSGeometry", "NSString", "NSThread", "NSValue"] }
+objc2-user-notifications = { workspace = true, features = [
+    "UNNotification",
+    "UNNotificationContent",
+    "UNNotificationRequest",
+    "UNNotificationResponse",
+    "UNNotificationSound",
+    "UNNotificationTrigger",
+    "UNUserNotificationCenter",
+    "block2",
+] }
 objc2-quartz-core = { workspace = true, features = [
     "CAAnimation",
     "CABase",

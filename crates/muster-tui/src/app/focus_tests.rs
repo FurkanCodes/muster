@@ -130,3 +130,66 @@ fn a_snapshot_announces_nothing_and_notifications_can_be_turned_off() {
     world.app.notify = false;
     assert!(notes(&status(&mut world, SessionStatus::Finished, true)).is_empty());
 }
+
+#[test]
+fn while_muster_s_helper_notifies_the_terminal_is_told_nothing() {
+    let mut world = world();
+    world.app.on_focus(false);
+    let waiting = SessionStatus::NeedsYou {
+        reason: WaitReason::Question,
+    };
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::Notifier { ready: true }));
+    assert!(notes(&status(&mut world, waiting, true)).is_empty());
+    status(&mut world, SessionStatus::Running, false);
+    // The helper gone: the terminal tells again.
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::Notifier { ready: false }));
+    assert_eq!(notes(&status(&mut world, waiting, true)).len(), 1);
+    status(&mut world, SessionStatus::Running, false);
+    // Turned off on the Settings screen: nothing at all.
+    super::tests::preferences(&mut world.app, |preferences| {
+        preferences.notifications = false;
+    });
+    assert!(notes(&status(&mut world, waiting, true)).is_empty());
+}
+
+#[test]
+fn notifications_are_turned_on_and_off_on_the_settings_screen() {
+    let mut world = world();
+    press(&mut world.app, KeyCode::Char('4'));
+    world.app.settings_selected = Some(super::SettingRow::Notifications);
+    let screen = super::tests::render(&world.app);
+    assert!(screen.contains("Notifications"), "{screen}");
+    let actions = press(&mut world.app, KeyCode::Enter);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            Action::Send(ClientFrame::Command {
+                command: muster_core::protocol::Command::ChangePreference(
+                    muster_core::settings::PreferenceChange::Notifications(false)
+                ),
+                ..
+            })
+        )),
+        "{actions:?}"
+    );
+}
+
+#[test]
+fn on_a_mac_the_helper_starts_for_notifications_with_the_notch_off() {
+    let mut world = world();
+    world.app.notch_here = true;
+    world.app.on_connected("0.1.0".to_owned());
+    let actions = world.app.on_frame(ServerFrame::Snapshot(Snapshot {
+        projects: vec![world.project.clone()],
+        preferences: muster_core::settings::Preferences {
+            notch: false,
+            ..muster_core::settings::Preferences::default()
+        },
+        ..Snapshot::default()
+    }));
+    assert!(actions.contains(&Action::StartNotch), "{actions:?}");
+}

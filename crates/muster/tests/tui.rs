@@ -83,7 +83,8 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     // Shift-Q gives the list the keys back; the session is listed.
     ui.keys(b"Q");
     ui.wait_for("f full screen");
-    ui.wait_for("Shell");
+    // The shell, by its mark: it is named by what runs in it.
+    ui.wait_for("❯");
 
     // f fills the window with it, and Shift-Q puts it back.
     ui.keys(b"f");
@@ -99,7 +100,7 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     let status = sandbox.run(&["status"]);
     let stdout = String::from_utf8_lossy(&status.stdout);
     assert!(stdout.contains("1 session"), "{stdout}");
-    assert!(stdout.contains("Shell"), "{stdout}");
+    assert!(stdout.contains("ses_"), "{stdout}");
     assert!(!stdout.contains("exited"), "{stdout}");
 }
 
@@ -151,7 +152,8 @@ fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
     ui.keys(b"Q");
     ui.wait_for("x close");
     ui.keys(b"x");
-    ui.wait_for("Close Shell? It stops and leaves the list.");
+    // A shell is named by what runs in it, once the sampler looks.
+    ui.wait_for("? It stops and leaves the list.");
     ui.keys(b"y");
     ui.wait_for("Closed the session.");
     let status = sandbox.run(&["status"]);

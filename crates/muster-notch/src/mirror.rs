@@ -48,6 +48,7 @@ pub(crate) fn apply(state: &mut Snapshot, delta: Delta) {
         }
         Delta::LookedAt { looked_at } => state.looked_at = looked_at,
         Delta::Preferences(preferences) => state.preferences = preferences,
+        Delta::Notifier { ready } => state.notifier = ready,
         // Nothing the notch shows.
         Delta::Resources(_) | Delta::RunUpserted(_) => {}
     }

@@ -24,6 +24,8 @@ mod link;
 mod mac;
 #[cfg(any(target_os = "macos", test))]
 mod mirror;
+#[cfg(target_os = "macos")]
+mod news;
 
 use std::path::Path;
 

@@ -100,7 +100,11 @@
 //! daemon of 37 or later); version 38 the person's own keys
 //! (`Preferences::keys`, a field older clients pass over;
 //! `PreferenceChange::Keys` and `PreferenceChange::AllKeysBack`, sent only
-//! to a daemon of 38 or later).
+//! to a daemon of 38 or later); version 39 notifications of the Mac's own
+//! (`Preferences::notifications` and `Snapshot::notifier`, fields older
+//! clients pass over; `ClientFrame::Notifier`, `PreferenceChange::
+//! Notifications`, sent only to a daemon of 39 or later; `Delta::Notifier`,
+//! sent only to a client of 39 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -119,7 +123,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 38;
+pub const PROTOCOL_VERSION: u32 = 39;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -243,6 +247,10 @@ pub enum ClientFrame {
     /// as it leaves it in every one. Sent whenever it changes, only to a
     /// daemon of 31 or later.
     Keys { session: Option<SessionId> },
+    /// Muster's helper on a Mac can show notifications of the Mac's own,
+    /// the person having allowed them, or no longer can. Sent only to a
+    /// daemon of 39 or later.
+    Notifier { ready: bool },
 }
 
 fn watching_by_default() -> bool {
@@ -741,6 +749,11 @@ pub struct Snapshot {
     /// Muster's own settings. From protocol 23.
     #[serde(default)]
     pub preferences: Preferences,
+    /// Whether Muster's helper on a Mac shows notifications of the Mac's
+    /// own now ([`ClientFrame::Notifier`]): the UIs then send their
+    /// terminals none. From protocol 39.
+    #[serde(default)]
+    pub notifier: bool,
 }
 
 /// What the machine and each running session use, measured every couple of
@@ -802,6 +815,11 @@ pub enum Delta {
     },
     /// Muster's own settings changed. Sent only to a client of 23 or later.
     Preferences(Preferences),
+    /// Muster's helper shows notifications now, or no longer does. Sent
+    /// only to a client of 39 or later.
+    Notifier {
+        ready: bool,
+    },
 }
 
 impl Reply {
@@ -830,6 +848,7 @@ impl Delta {
     pub fn since(&self) -> u32 {
         match self {
             Self::LookedAt { .. } | Self::Preferences(_) => crate::settings::NOTCH_PROTOCOL,
+            Self::Notifier { .. } => crate::settings::NOTIFIER_PROTOCOL,
             _ => FIRST_PROTOCOL_VERSION,
         }
     }

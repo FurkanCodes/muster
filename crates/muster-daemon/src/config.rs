@@ -8,9 +8,9 @@ use muster_core::config::agents::AgentDefinition;
 use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::settings::{
-    KEYS, LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH, ONLY_MINE,
-    PANELS, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange, SettingSource,
-    TICKETS_FROM_KEYS, TRACKER,
+    KEYS, LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH,
+    NOTIFICATIONS, ONLY_MINE, PANELS, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange,
+    SettingSource, TICKETS_FROM_KEYS, TRACKER,
 };
 
 /// The repository's settings file.
@@ -146,6 +146,7 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             list_folded: config.list_folded,
             naming: config.naming,
             keys: config.keys,
+            notifications: config.notifications,
         },
         agents: config.agents,
     })
@@ -206,6 +207,10 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             edit::remove_in(text.as_deref(), KEYS, action)
         }
         PreferenceChange::AllKeysBack => edit::remove_table_in(text.as_deref(), KEYS),
+        PreferenceChange::Notifications(on) => {
+            let (table, key) = NOTIFICATIONS;
+            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+        }
         PreferenceChange::NamedBy { agent, model } => edit::set_texts_in(
             text.as_deref(),
             preferences::NEW_FILE,

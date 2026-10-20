@@ -165,6 +165,15 @@ pub struct Preferences {
     /// protocol 38.
     #[serde(default)]
     pub keys: std::collections::BTreeMap<String, Vec<String>>,
+    /// Whether the person is told of what newly needs them while they look
+    /// away (`[notifications] show`); on unless they turn it off. From
+    /// protocol 39.
+    #[serde(default = "on")]
+    pub notifications: bool,
+}
+
+fn on() -> bool {
+    true
 }
 
 /// How chats are named by an agent (`PRODUCT.md` §6): the first line of
@@ -218,6 +227,7 @@ impl Default for Preferences {
             list_folded: false,
             naming: Naming::default(),
             keys: std::collections::BTreeMap::new(),
+            notifications: true,
         }
     }
 }
@@ -376,7 +386,18 @@ pub enum PreferenceChange {
     },
     /// Every key as Muster has it. From protocol 38.
     AllKeysBack,
+    /// Tell the person of what newly needs them while they look away, or
+    /// not. From protocol 39.
+    Notifications(bool),
 }
+
+/// The first protocol whose daemon keeps [`Preferences::notifications`]
+/// and whether Muster's helper shows notifications, and takes
+/// [`PreferenceChange::Notifications`] (`ARC-09`).
+pub const NOTIFIER_PROTOCOL: u32 = 39;
+
+/// Where telling the person is written: `[notifications] show`.
+pub const NOTIFICATIONS: (&str, &str) = ("notifications", "show");
 
 /// The first protocol whose daemon keeps [`Preferences::keys`] and takes
 /// [`PreferenceChange::Keys`] and [`PreferenceChange::AllKeysBack`]

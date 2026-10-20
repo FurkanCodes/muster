@@ -169,6 +169,7 @@ fn the_width_is_one_of_muster_s_own_settings() {
     assert_eq!(world.app.view, View::Settings);
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
+        SettingRow::Notifications,
         SettingRow::SideBySide,
         SettingRow::Colours,
         SettingRow::SessionLines,

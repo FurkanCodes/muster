@@ -110,6 +110,7 @@ The panels are yours to arrange: drag one by its title to another edge of the wi
 | `⏎` `space` | turn the selected setting on or off, per project: *Only my tickets*, which lists only the tickets assigned to you, in whichever tracker the project's tickets are; *Branches with muster/*, whether the branches Muster makes start with `muster/`; and, on a Mac, Muster's own *Agents in the notch* |
 | `←` `→` | on *Session beside the list from*, a smaller or a larger width (`⏎` goes to the next): in a window narrower than it, the list takes the whole window and `⏎` opens a session over it |
 | `⏎` | on *Panels*, every panel back where it was at first |
+| `⏎` | on *Notifications*, turn them on or off. On a Mac, Muster's helper sends notifications of the Mac's own, in any terminal and with every window closed, once you allow Muster's notifications (macOS asks once; later, System Settings, Notifications, Muster); a click opens the session |
 | `⏎` | on *Keys*, every key by what it does: `⏎` on one and then the key you want sets it (refused where another action has it on the same screen), `⌫` puts it back, `Shift-R` puts every key back |
 | `⏎` | on *Chats named by an agent*, turn it on or off; on *Named by*, the next agent that can name chats (each session's own first); on *Its model*, type the model or pick one it offers (`⇥`) |
 | `r` | read the settings again, after editing a file by hand: yours for the projects, and Muster's own, with the agents you added (*Your agents* says what is there, or which key does not read) |

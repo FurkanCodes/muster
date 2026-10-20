@@ -19,13 +19,13 @@
 
 mod list;
 mod look;
+mod notify;
 mod shape;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
 
 use dispatch2::DispatchQueue;
-use muster_core::SessionId;
 use objc2::rc::Retained;
 use objc2::{MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
@@ -39,7 +39,7 @@ use tokio::sync::mpsc;
 use crate::board::{Board, Row};
 use crate::geometry::{self, Notch, Rect, SIDE};
 use crate::hover::Hover;
-use crate::link::{self, Ended, ToScreen};
+use crate::link::{self, Ended, FromScreen, ToScreen};
 use crate::{MOVED_FOR, NotchError};
 use look::{Colour, Label};
 
@@ -67,15 +67,20 @@ pub(crate) fn run(
     relaunch: impl FnOnce(&str) -> std::io::Error + Send + 'static,
 ) -> Result<(), NotchError> {
     let mtm = MainThreadMarker::new().ok_or(NotchError::NotMainThread)?;
-    if geometry::find(&screens(mtm)).is_none() {
-        // No screen here has a notch.
+    let in_app = objc2_foundation::NSBundle::mainBundle()
+        .bundleIdentifier()
+        .is_some();
+    if geometry::find(&screens(mtm)).is_none() && !in_app {
+        // No screen here has a notch, and no notification can be shown.
         return Ok(());
     }
     let app = NSApplication::sharedApplication(mtm);
-    // No Dock icon and no menu bar of its own: the notch is all it shows.
+    // No Dock icon and no menu bar of its own: the notch and notifications
+    // are all it shows.
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     let (picks, picked) = mpsc::channel(8);
-    SCREEN.with(|screen| *screen.borrow_mut() = Some(Screen::new(mtm, picks)));
+    let notifier = notify::Notifier::start(&picks);
+    SCREEN.with(|screen| *screen.borrow_mut() = Some(Screen::new(mtm, picks, notifier)));
     // Lives as long as the notch: when the link ends, the program does.
     std::thread::Builder::new()
         .name("muster-notch-link".to_owned())
@@ -89,7 +94,7 @@ pub(crate) fn run(
 /// installed now.
 fn follow(
     socket: &std::path::Path,
-    picked: mpsc::Receiver<SessionId>,
+    picked: mpsc::Receiver<FromScreen>,
     relaunch: impl FnOnce(&str) -> std::io::Error,
 ) {
     let ended = match tokio::runtime::Builder::new_current_thread()
@@ -239,11 +244,17 @@ struct Screen {
     /// Where the notch was when last drawn.
     notch: Option<Notch>,
     /// Where the sessions the person picks go.
-    picks: mpsc::Sender<SessionId>,
+    picks: mpsc::Sender<FromScreen>,
+    /// Notifications of the Mac's own, where the program is Muster's app.
+    notifier: Option<notify::Notifier>,
 }
 
 impl Screen {
-    fn new(mtm: MainThreadMarker, picks: mpsc::Sender<SessionId>) -> Self {
+    fn new(
+        mtm: MainThreadMarker,
+        picks: mpsc::Sender<FromScreen>,
+        notifier: Option<notify::Notifier>,
+    ) -> Self {
         // Kept (`Retained`) for as long as the program runs, and never
         // closed.
         let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
@@ -306,6 +317,7 @@ impl Screen {
             listed: None,
             notch: None,
             picks,
+            notifier,
         }
     }
 
@@ -330,6 +342,12 @@ impl Screen {
                 self.step = step;
             }
             ToScreen::Note(text) => self.said = Some((text, self.step)),
+            ToScreen::Notify { session, text } => {
+                if let Some(notifier) = &self.notifier {
+                    notifier.post(session, &text);
+                }
+                return;
+            }
         }
         self.draw();
     }
@@ -563,7 +581,11 @@ impl Screen {
             }
             return;
         };
-        if self.picks.try_send(row.session).is_err() {
+        if self
+            .picks
+            .try_send(FromScreen::Picked(row.session))
+            .is_err()
+        {
             self.said = Some(("Muster is busy; try again.".to_owned(), self.step));
         } else {
             self.hover.close();

@@ -55,6 +55,8 @@ pub(crate) enum SettingRow {
     NamingModel,
     /// The keys, Muster's and the person's.
     Keys,
+    /// Whether the person is told of what newly needs them.
+    Notifications,
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -77,6 +79,7 @@ impl SettingRow {
             | Self::NamedBy
             | Self::NamingModel
             | Self::Keys
+            | Self::Notifications
             | Self::Agents => None,
         }
     }
@@ -116,6 +119,7 @@ impl App {
             .collect();
         let own = [
             (self.notch_known(), SettingRow::Notch),
+            (self.notifications_known(), SettingRow::Notifications),
             (self.side_by_side_known(), SettingRow::SideBySide),
             (self.look_known(), SettingRow::Colours),
             (self.look_known(), SettingRow::SessionLines),
@@ -149,6 +153,7 @@ impl App {
                 Some(SettingRow::NamedBy) => return self.next_namer(),
                 Some(SettingRow::NamingModel) => return self.choose_naming_model(),
                 Some(SettingRow::Keys) => return self.open_rebinding(),
+                Some(SettingRow::Notifications) => return self.toggle_notifications(),
                 _ => return self.toggle_setting(),
             },
             (KeyCode::Left | KeyCode::Right, _)
