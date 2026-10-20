@@ -1,15 +1,17 @@
-//! Samples of the plugins' messages (protocol 41), each variant with the
-//! values inside it filled in, for `protocol_round_trip`.
+//! Samples of the plugins' messages (protocol 41, a panel opened from
+//! 43), each variant with the values inside it filled in, for
+//! `protocol_round_trip`.
 
 use std::path::PathBuf;
 
 use muster_core::plugins::{Panel, PanelOn, PluginSource, TicketSetting, TicketSource};
 use muster_core::protocol::plugins::{
-    ChangedBy, PluginAction, PluginChange, PluginCommand, PluginDetails, PluginInfo, PluginList,
-    PluginOrigin, PluginPreview, PluginProblem, PreviewKind, Required,
+    Beside, ChangedBy, PluginAction, PluginChange, PluginCommand, PluginDetails, PluginInfo,
+    PluginList, PluginOrigin, PluginPreview, PluginProblem, PreviewKind, Required,
 };
-use muster_core::protocol::{Command, Delta, Reply};
+use muster_core::protocol::{Command, Delta, Reply, TermSize};
 use muster_core::time::Timestamp;
+use muster_core::{SessionId, WorkspaceId};
 
 fn details() -> PluginDetails {
     PluginDetails {
@@ -138,6 +140,18 @@ pub(crate) fn commands() -> Vec<Command> {
         },
         PluginCommand::Log {
             id: "youtrack".to_owned(),
+        },
+        PluginCommand::OpenPanel {
+            plugin: "zoetrope".to_owned(),
+            panel: "graph".to_owned(),
+            beside: Beside::Session(SessionId::new()),
+            size: TermSize { cols: 80, rows: 24 },
+        },
+        PluginCommand::OpenPanel {
+            plugin: "zoetrope".to_owned(),
+            panel: "files".to_owned(),
+            beside: Beside::Workspace(WorkspaceId::new()),
+            size: TermSize { cols: 60, rows: 20 },
         },
     ]
     .into_iter()

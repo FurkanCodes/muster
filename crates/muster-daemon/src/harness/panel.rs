@@ -18,9 +18,12 @@ pub(crate) struct PanelLaunch {
     /// a restart in place, known by its harness alone.
     pub(crate) command: Vec<String>,
     /// Its variables, after the sessions' own, so a value it names wins:
-    /// what Muster knows of where it is (`MUSTER_PLUGIN_*`), and those its
-    /// plugin may see.
+    /// what Muster knows of where it is (`MUSTER_PLUGIN_*`).
     pub(crate) env: Vec<(String, String)>,
+    /// The names of the person's variables its plugin may see, kept from
+    /// the daemon's environment beside the basics every plugin gets
+    /// (`scrub::kept_from_plugin`).
+    pub(crate) seen: Vec<String>,
 }
 
 impl PanelLaunch {
@@ -31,6 +34,7 @@ impl PanelLaunch {
             title: title.to_owned(),
             command,
             env: Vec::new(),
+            seen: Vec::new(),
         }
     }
 

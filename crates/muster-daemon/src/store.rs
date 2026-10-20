@@ -244,8 +244,9 @@ impl Store {
     pub fn insert_session(&mut self, session: &Session) -> Result<()> {
         self.conn.execute(
             "INSERT INTO sessions
-                (id, workspace_id, harness, title, status, unseen, resume_id, created_at, ended_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                (id, workspace_id, harness, title, status, unseen, resume_id, created_at, ended_at,
+                 beside)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 id_text(session.id),
                 id_text(session.workspace),
@@ -256,6 +257,7 @@ impl Store {
                 session.resume_id,
                 session.created_at.as_millis(),
                 session.ended_at.map(Timestamp::as_millis),
+                session.beside.map(id_text),
             ],
         )?;
         Ok(())
@@ -373,7 +375,8 @@ impl Store {
                      WHERE c.session_id = s.id AND c.status = s.status
                        AND c.seq > COALESCE((SELECT MAX(d.seq) FROM status_changes d
                                              WHERE d.session_id = s.id
-                                               AND d.status != s.status), 0))
+                                               AND d.status != s.status), 0)),
+                    s.beside
              FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
              WHERE w.removed_at IS NULL AND s.removed_at IS NULL
              ORDER BY s.created_at, s.id",

@@ -158,4 +158,9 @@ pub struct Session {
     /// Muster found once its agent stopped; never stored.
     #[serde(default)]
     pub tidy: Option<crate::tidy::Tidy>,
+    /// The chat a plugin's panel was opened beside, which it is shown
+    /// beside and told of; `None` for every other session, and for a
+    /// panel opened on its workspace. From protocol 43.
+    #[serde(default)]
+    pub beside: Option<SessionId>,
 }

@@ -161,6 +161,7 @@ fn sessions() -> Vec<Session> {
                 reason: "the branch moved".to_owned(),
             }),
         }),
+        beside: Some(SessionId::new()),
     };
     let statuses = [
         SessionStatus::Fresh,
@@ -180,6 +181,7 @@ fn sessions() -> Vec<Session> {
         activity: None,
         spend: None,
         tidy: None,
+        beside: None,
         ..full.clone()
     }));
     all

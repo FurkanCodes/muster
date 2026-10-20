@@ -337,6 +337,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         activity: None,
         spend: None,
         tidy: None,
+        beside: None,
     };
     let id = session.id;
     store

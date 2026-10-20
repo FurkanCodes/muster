@@ -104,6 +104,7 @@ mod tests {
             activity: None,
             spend: None,
             tidy: None,
+            beside: None,
         }
     }
 

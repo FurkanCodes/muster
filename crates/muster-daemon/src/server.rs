@@ -452,8 +452,8 @@ impl Connection {
 }
 
 /// Sends the client a snapshot and then every delta its protocol `version`
-/// knows. A client that falls behind the broadcast is sent a fresh snapshot
-/// instead of the deltas it missed.
+/// knows, each as it can read it (`ARC-09`). A client that falls behind
+/// the broadcast is sent a fresh snapshot instead of the deltas it missed.
 pub(crate) async fn pump_state(
     supervisor: SupervisorHandle,
     outgoing: mpsc::Sender<ServerFrame>,
@@ -461,7 +461,7 @@ pub(crate) async fn pump_state(
 ) {
     while let Some((snapshot, mut deltas)) = supervisor.subscribe().await {
         if outgoing
-            .send(ServerFrame::Snapshot(snapshot))
+            .send(ServerFrame::Snapshot(snapshot.for_version(version)))
             .await
             .is_err()
         {
@@ -469,8 +469,10 @@ pub(crate) async fn pump_state(
         }
         loop {
             match deltas.recv().await {
-                Ok(delta) if delta.since() > version => {}
                 Ok(delta) => {
+                    let Some(delta) = delta.for_version(version) else {
+                        continue;
+                    };
                     if outgoing.send(ServerFrame::Delta(delta)).await.is_err() {
                         return;
                     }

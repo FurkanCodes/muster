@@ -1,16 +1,12 @@
-//! A plugin's panel opened in a workspace (`PRD-15`, `ARC-23`): what
-//! Muster knows of where it opens, and its session started there, in the
-//! workspace's folder, from the environment every session gets, scrubbed,
-//! with what it is told (`MUSTER_PLUGIN_*`) over it.
+//! A plugin's panel opened in a workspace (`PRD-15`, `ARC-23`): the
+//! person's word to open one checked against the registry as it reads
+//! now, its command filled in from what Muster knows of where it opens,
+//! and its session started there, in the workspace's folder, from the
+//! basics of the environment sessions get, with what it is told
+//! (`MUSTER_PLUGIN_*`) and the variables its manifest names over them.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "`Command::OpenPanel` (protocol 42) opens panels; until then only the tests do"
-    )
-)]
-
+use muster_core::plugins::{Context, Missing, PanelOn};
+use muster_core::protocol::plugins::Beside;
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::{SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::Start;
@@ -18,60 +14,183 @@ use muster_state::session::Start;
 use super::Supervisor;
 use super::sessions::Mode;
 use crate::harness::{Harness, PanelLaunch, Place};
+use crate::plugins::PluginError;
 
-/// What Muster knows of the session or workspace a panel is beside, each
-/// value as its placeholder fills it in (`{branch}`) and its variable
-/// tells it (`MUSTER_PLUGIN_BRANCH`); a value it does not know is `None`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PanelContext {
-    /// The project's name.
-    pub(crate) project: Option<String>,
-    /// The project's folder.
-    pub(crate) root: Option<String>,
-    /// The workspace's folder.
-    pub(crate) workspace: Option<String>,
-    /// What the workspace has checked out; none in a plain folder.
-    pub(crate) branch: Option<String>,
-    /// The session's id.
-    pub(crate) session: Option<String>,
-    /// The session's harness: `claude`, `codex`, an agent the person added.
-    pub(crate) harness: Option<String>,
-    /// The id of the agent's conversation, as its resume takes it.
-    pub(crate) resume: Option<String>,
-    /// The agent's own record of the conversation: Claude Code's
-    /// transcript, Codex's rollout (`spend::transcript`).
-    pub(crate) transcript: Option<String>,
-    /// The ticket the workspace's branch is for.
-    pub(crate) ticket: Option<String>,
-    /// The pull request from the workspace's branch, by its address.
-    pub(crate) pr: Option<String>,
+/// Why a plugin's panel does not open, said for the person.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PanelError {
+    #[error(transparent)]
+    Plugin(#[from] PluginError),
+    #[error("the {plugin} plugin has no panel called {panel}")]
+    NoPanel { plugin: String, panel: String },
+    #[error("{title} is a session's panel: open it beside a session")]
+    NoSession { title: String },
+    #[error("{plugin} needs {program}, which is not on PATH{}", how(how_to_get.as_deref()))]
+    Needs {
+        plugin: String,
+        program: String,
+        how_to_get: Option<String>,
+    },
+    #[error("{title} cannot open: {missing}")]
+    Missing { title: String, missing: Missing },
 }
 
-impl PanelContext {
-    /// The `MUSTER_PLUGIN_*` variables of the values it has.
-    pub(crate) fn variables(&self) -> Vec<(String, String)> {
-        [
-            ("PROJECT", &self.project),
-            ("ROOT", &self.root),
-            ("WORKSPACE", &self.workspace),
-            ("BRANCH", &self.branch),
-            ("SESSION", &self.session),
-            ("HARNESS", &self.harness),
-            ("RESUME", &self.resume),
-            ("TRANSCRIPT", &self.transcript),
-            ("TICKET", &self.ticket),
-            ("PR", &self.pr),
-        ]
-        .into_iter()
-        .filter_map(|(name, value)| {
-            let value = value.as_ref()?;
-            Some((format!("MUSTER_PLUGIN_{name}"), value.clone()))
-        })
-        .collect()
+fn how(how_to_get: Option<&str>) -> String {
+    how_to_get.map_or_else(String::new, |how| format!(": {how}"))
+}
+
+impl PanelError {
+    /// The refusal as a client is told it (`ARC-07`).
+    fn body(&self) -> ErrorBody {
+        match self {
+            Self::Plugin(error) => error.body(),
+            Self::NoPanel { .. } => ErrorBody::new(ErrorCode::NotFound, self.to_string()),
+            Self::NoSession { .. } => ErrorBody::new(ErrorCode::BadRequest, self.to_string()),
+            Self::Needs { .. } | Self::Missing { .. } => {
+                ErrorBody::new(ErrorCode::Conflict, self.to_string())
+            }
+        }
     }
 }
 
 impl Supervisor {
+    /// `PluginCommand::OpenPanel`: `plugin`'s panel `panel` opened beside
+    /// the session or on the workspace `beside` names, or the one open
+    /// there already.
+    pub(super) async fn open_panel(
+        &mut self,
+        plugin: &str,
+        panel: &str,
+        beside: Beside,
+        size: TermSize,
+    ) -> Result<Reply, ErrorBody> {
+        let (workspace, session) = match beside {
+            Beside::Session(session) => (self.stored_session(session)?.workspace, Some(session)),
+            Beside::Workspace(workspace) => (workspace, None),
+        };
+        let (launch, beside, context) =
+            self.panel_launch(plugin, panel, workspace, session).await?;
+        if let Some(open) = self.open_already(launch.harness(), workspace, beside) {
+            return Ok(Reply::SessionStarted { id: open });
+        }
+        self.launch_panel(workspace, beside, launch, &context, size)
+            .await
+    }
+
+    /// Starts the ended panel `session` again in the same session, opened
+    /// afresh: its plugin as it reads now, told what Muster knows now.
+    pub(super) async fn restart_panel(
+        &mut self,
+        session: SessionId,
+        size: TermSize,
+    ) -> Result<Reply, ErrorBody> {
+        let stored = self.stored_session(session)?;
+        let Some((plugin, panel)) = muster_core::harness::panel_of(&stored.harness) else {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!("{} is no plugin's panel", stored.title),
+            ));
+        };
+        let (mut launch, _, context) = self
+            .panel_launch(plugin, panel, stored.workspace, stored.beside)
+            .await?;
+        launch.env.extend(context.variables());
+        let path = self.panel_path(stored.workspace)?;
+        self.reopen_and_launch(
+            session,
+            Harness::panel(launch),
+            Place::Host(path),
+            size,
+            Mode::Fresh { prompt: None },
+            Start::Idle,
+        )
+        .await?;
+        Ok(Reply::SessionStarted { id: session })
+    }
+
+    /// What runs for `plugin`'s panel `panel` in `workspace`, beside the
+    /// session `session` where it is a session's, and what it is told
+    /// there: refused, saying why, where the plugin is not there, is off
+    /// or cannot run, the panel is not its, a program it needs is not
+    /// found, or a placeholder of its command has no value. The registry
+    /// is read again first, so a manifest changed since its approval is
+    /// caught.
+    async fn panel_launch(
+        &mut self,
+        plugin: &str,
+        panel: &str,
+        workspace: WorkspaceId,
+        session: Option<SessionId>,
+    ) -> Result<(PanelLaunch, Option<SessionId>, Context), ErrorBody> {
+        self.read_plugins();
+        let refused = |error: PanelError| {
+            tracing::info!(command = "open panel", %error, "command refused");
+            error.body()
+        };
+        let (details, folder) = self
+            .plugins
+            .runnable(plugin)
+            .map_err(|error| refused(error.into()))?;
+        let found = details
+            .panels
+            .iter()
+            .find(|candidate| candidate.id == panel)
+            .ok_or_else(|| {
+                refused(PanelError::NoPanel {
+                    plugin: details.name.clone(),
+                    panel: panel.to_owned(),
+                })
+            })?;
+        let beside = match found.on {
+            PanelOn::Session => Some(session.ok_or_else(|| {
+                refused(PanelError::NoSession {
+                    title: found.title.clone(),
+                })
+            })?),
+            PanelOn::Workspace => None,
+        };
+        if let Some(needed) = details.requires.iter().find(|program| !program.found) {
+            return Err(refused(PanelError::Needs {
+                plugin: details.name.clone(),
+                program: needed.program.clone(),
+                how_to_get: details.how_to_get.clone(),
+            }));
+        }
+        let context = self.panel_context(workspace, beside).await?;
+        let mut command = context.expand(&found.command).map_err(|missing| {
+            refused(PanelError::Missing {
+                title: found.title.clone(),
+                missing,
+            })
+        })?;
+        // `./…` is in the plugin's folder.
+        if let (Some(program), Some(folder)) = (command.first_mut(), &folder)
+            && let Some(inside) = program.strip_prefix("./")
+        {
+            *program = folder.join(inside).to_string_lossy().into_owned();
+        }
+        let mut launch = PanelLaunch::new(plugin, panel, &found.title, command);
+        launch.seen.clone_from(&details.env);
+        Ok((launch, beside, context))
+    }
+
+    /// The panel running as `harness` in `workspace`, beside `beside`, if
+    /// one is open there.
+    fn open_already(
+        &self,
+        harness: &str,
+        workspace: WorkspaceId,
+        beside: Option<SessionId>,
+    ) -> Option<SessionId> {
+        self.state
+            .sessions
+            .iter()
+            .filter(|session| session.harness == harness && session.workspace == workspace)
+            .filter(|session| session.beside == beside && session.ended_at.is_none())
+            .find(|session| self.is_running(session.id))
+            .map(|session| session.id)
+    }
+
     /// What Muster knows of `workspace`, and of the session `beside` in it
     /// if a panel is beside one. The agent's record of its conversation is
     /// looked for off the loop.
@@ -79,7 +198,7 @@ impl Supervisor {
         &self,
         workspace: WorkspaceId,
         beside: Option<SessionId>,
-    ) -> Result<PanelContext, ErrorBody> {
+    ) -> Result<Context, ErrorBody> {
         let mut context = self.known_context(workspace, beside)?;
         if let (Some(harness), Some(resume)) = (context.harness.clone(), context.resume.clone()) {
             let places = self.places.clone();
@@ -100,7 +219,7 @@ impl Supervisor {
         &self,
         workspace: WorkspaceId,
         beside: Option<SessionId>,
-    ) -> Result<PanelContext, ErrorBody> {
+    ) -> Result<Context, ErrorBody> {
         let found = self
             .state
             .workspaces
@@ -115,7 +234,7 @@ impl Supervisor {
             .iter()
             .find(|project| project.id == found.project);
         let branch = Some(found.kind.branch()).filter(|branch| !branch.is_empty());
-        let mut context = PanelContext {
+        let mut context = Context {
             project: project.map(|project| project.name.clone()),
             root: project.map(|project| project.root.to_string_lossy().into_owned()),
             workspace: found
@@ -127,7 +246,7 @@ impl Supervisor {
                 .and_then(muster_core::tickets::issue_of_branch)
                 .map(String::from),
             pr: found.pull_request.as_ref().map(|pr| pr.url.clone()),
-            ..PanelContext::default()
+            ..Context::default()
         };
         if let Some(beside) = beside {
             let stored = self.stored_session(beside)?;
@@ -153,24 +272,34 @@ impl Supervisor {
     }
 
     /// Starts `panel` in `workspace`'s folder, beside the session `beside`
-    /// if it is beside one, told what Muster knows of where it is: as any
-    /// session, from the environment sessions get, scrubbed, and in Muster's
-    /// terminal; with its plugin's variables, and Muster's
-    /// (`MUSTER_PLUGIN_*`) over them. It is no agent: no hooks, no resume.
+    /// if it is beside one, told what Muster knows of where it is.
+    #[cfg(test)]
     pub(super) async fn start_panel(
         &mut self,
         workspace: WorkspaceId,
         beside: Option<SessionId>,
-        mut panel: PanelLaunch,
+        panel: PanelLaunch,
         size: TermSize,
     ) -> Result<Reply, ErrorBody> {
         let context = self.panel_context(workspace, beside).await?;
-        let Some(path) = self.workspace_path(workspace) else {
-            return Err(ErrorBody::new(
-                ErrorCode::BadRequest,
-                "a plugin's panel runs on this Mac, never in a run's container",
-            ));
-        };
+        self.launch_panel(workspace, beside, panel, &context, size)
+            .await
+    }
+
+    /// Starts `panel` in `workspace`'s folder, beside the session `beside`
+    /// if it is beside one, told `context`: as any session, from the
+    /// environment sessions get and in Muster's terminal, with its
+    /// variables and Muster's (`MUSTER_PLUGIN_*`) over them. It is no
+    /// agent: no hooks, no resume.
+    async fn launch_panel(
+        &mut self,
+        workspace: WorkspaceId,
+        beside: Option<SessionId>,
+        mut panel: PanelLaunch,
+        context: &Context,
+        size: TermSize,
+    ) -> Result<Reply, ErrorBody> {
+        let path = self.panel_path(workspace)?;
         if panel.command.first().is_none_or(String::is_empty) {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -180,7 +309,7 @@ impl Supervisor {
         panel.env.extend(context.variables());
         let harness = Harness::panel(panel);
         let id = self
-            .add_session(workspace, &harness, None, Start::Idle)
+            .add_session_beside(workspace, &harness, None, Start::Idle, beside)
             .await?;
         let mode = Mode::Fresh { prompt: None };
         let place = Place::Host(path);
@@ -196,5 +325,16 @@ impl Supervisor {
         }
         tracing::info!(session = %id, panel = harness.id(), "a plugin's panel opened");
         Ok(Reply::SessionStarted { id })
+    }
+
+    /// Where a panel in `workspace` runs: on this Mac, never in a run's
+    /// container.
+    fn panel_path(&self, workspace: WorkspaceId) -> Result<std::path::PathBuf, ErrorBody> {
+        self.workspace_path(workspace).ok_or_else(|| {
+            ErrorBody::new(
+                ErrorCode::BadRequest,
+                "a plugin's panel runs on this Mac, never in a run's container",
+            )
+        })
     }
 }

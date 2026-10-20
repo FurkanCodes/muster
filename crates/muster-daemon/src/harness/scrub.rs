@@ -168,18 +168,65 @@ const TERMINAL: &[&str] = &[
 
 /// Which of `keys` a session must not inherit.
 pub(crate) fn scrubbed(keys: impl Iterator<Item = String>) -> Vec<String> {
-    keys.filter(|key| {
-        [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL, MUSTER]
-            .iter()
-            .any(|names| names.contains(&key.as_str()))
-            || PREFIXES.iter().any(|prefix| key.starts_with(prefix))
-    })
-    .collect()
+    keys.filter(|key| is_scrubbed(key)).collect()
+}
+
+fn is_scrubbed(key: &str) -> bool {
+    [CLAUDE, CODEX, GEMINI, OPENCODE, COPILOT, TERMINAL, MUSTER]
+        .iter()
+        .any(|names| names.contains(&key))
+        || PREFIXES.iter().any(|prefix| key.starts_with(prefix))
+}
+
+/// The variables of the daemon's environment every plugin's program gets,
+/// as sessions do: where programs are, whose they are, how text reads, and
+/// the person's own description of terminals.
+fn is_basic(key: &str) -> bool {
+    matches!(
+        key,
+        "PATH" | "HOME" | "USER" | "LOGNAME" | "SHELL" | "TMPDIR" | "TZ" | "LANG" | "TERMINFO"
+    ) || key.starts_with("LC_")
+}
+
+/// Which of `keys` a plugin's program must not inherit (`ARC-23`): all
+/// but the basics and those its manifest names (`seen`), and never one a
+/// session must not inherit either.
+pub(crate) fn kept_from_plugin(keys: impl Iterator<Item = String>, seen: &[String]) -> Vec<String> {
+    keys.filter(|key| is_scrubbed(key) || !(is_basic(key) || seen.contains(key)))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_plugin_s_program_gets_the_basics_and_what_it_names_arc_23() {
+        let keys = [
+            "PATH",
+            "HOME",
+            "LANG",
+            "LC_ALL",
+            "LC_TERMINAL",
+            "GITHUB_TOKEN",
+            "ZOE_THEME",
+            "CLAUDE_CODE_ENTRYPOINT",
+            "MUSTER_HOOK_TOKEN",
+        ]
+        .map(str::to_owned);
+        let seen = ["ZOE_THEME".to_owned(), "CLAUDE_CODE_ENTRYPOINT".to_owned()];
+        assert_eq!(
+            kept_from_plugin(keys.into_iter(), &seen),
+            [
+                // An iTerm2 marker, though it starts as the basics do.
+                "LC_TERMINAL",
+                "GITHUB_TOKEN",
+                // Named, but no session inherits it.
+                "CLAUDE_CODE_ENTRYPOINT",
+                "MUSTER_HOOK_TOKEN",
+            ]
+        );
+    }
 
     #[test]
     fn agents_and_terminal_markers_are_scrubbed_and_settings_kept() {

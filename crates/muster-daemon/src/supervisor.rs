@@ -326,13 +326,6 @@ struct Supervisor {
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
     /// Where the agents keep their records.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "`Command::OpenPanel` (protocol 42) opens panels; until then only the tests do"
-        )
-    )]
     places: crate::spend::Places,
     /// The coding agents the person added in Muster's own settings, as
     /// last read.
@@ -429,7 +422,7 @@ impl Supervisor {
                     move_branch,
                 } => self.undo(workspace, number, move_branch, reply),
                 Command::MoveOnto { workspace } => self.move_onto(workspace, reply).await,
-                Command::Plugin(command) => self.plugin_command(command, reply),
+                Command::Plugin(command) => self.plugin_command(command, reply).await,
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }

@@ -68,13 +68,6 @@ pub(crate) fn readable(harness: &str) -> bool {
 /// found as its reader finds it: Claude Code's transcript or Codex's
 /// rollout, for a plugin's panel (`{transcript}`). `None` for another
 /// harness, or before the agent has written one.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "`Command::OpenPanel` (protocol 42) opens panels; until then only the tests do"
-    )
-)]
 pub(crate) fn transcript(places: &Places, harness: &str, agent_session: &str) -> Option<PathBuf> {
     match harness {
         "claude" | "review" => claude::find(places.claude_projects.as_deref()?, agent_session),

@@ -21,7 +21,7 @@ use crate::store::{Store, StoreHandle};
 use crate::supervisor::{self, SupervisorHandle};
 
 #[derive(Debug)]
-struct FixedClock;
+pub(crate) struct FixedClock;
 
 impl Clock for FixedClock {
     fn now(&self) -> Timestamp {
@@ -30,7 +30,7 @@ impl Clock for FixedClock {
 }
 
 /// A Supervisor on `dir`'s store, taking `adopted` over as it starts.
-async fn spawn(dir: &Path, adopted: Vec<HandedSession>) -> SupervisorHandle {
+pub(crate) async fn spawn(dir: &Path, adopted: Vec<HandedSession>) -> SupervisorHandle {
     let store =
         StoreHandle::spawn(Store::open(&dir.join("muster.db"), FixedClock.now()).unwrap()).unwrap();
     supervisor::spawn(supervisor::Settings {
@@ -69,7 +69,7 @@ async fn spawn(dir: &Path, adopted: Vec<HandedSession>) -> SupervisorHandle {
 
 /// A repository `app` on `muster/issue-42-fix`, added as a project; its
 /// checkout's id.
-async fn project(dir: &Path, supervisor: &SupervisorHandle) -> (PathBuf, WorkspaceId) {
+pub(crate) async fn project(dir: &Path, supervisor: &SupervisorHandle) -> (PathBuf, WorkspaceId) {
     let root = repository(dir, "app");
     git(&root, &["checkout", "--quiet", "-b", "muster/issue-42-fix"]);
     supervisor
@@ -84,7 +84,7 @@ async fn project(dir: &Path, supervisor: &SupervisorHandle) -> (PathBuf, Workspa
     (root, checkout)
 }
 
-async fn state(supervisor: &SupervisorHandle) -> Snapshot {
+pub(crate) async fn state(supervisor: &SupervisorHandle) -> Snapshot {
     supervisor.subscribe().await.unwrap().0
 }
 
@@ -120,14 +120,14 @@ async fn told(out: &Path) -> HashMap<String, String> {
         .collect()
 }
 
-fn started(reply: Reply) -> SessionId {
+pub(crate) fn started(reply: Reply) -> SessionId {
     match reply {
         Reply::SessionStarted { id } => id,
         other => panic!("unexpected {other:?}"),
     }
 }
 
-fn session(snapshot: &Snapshot, id: SessionId) -> &Session {
+pub(crate) fn session(snapshot: &Snapshot, id: SessionId) -> &Session {
     snapshot
         .sessions
         .iter()
@@ -136,7 +136,10 @@ fn session(snapshot: &Snapshot, id: SessionId) -> &Session {
 }
 
 /// Waits until `done` holds of the state.
-async fn until(supervisor: &SupervisorHandle, done: impl Fn(&Snapshot) -> bool) -> Snapshot {
+pub(crate) async fn until(
+    supervisor: &SupervisorHandle,
+    done: impl Fn(&Snapshot) -> bool,
+) -> Snapshot {
     timeout(Duration::from_secs(5), async {
         loop {
             let snapshot = state(supervisor).await;
@@ -170,6 +173,7 @@ async fn a_panel_runs_in_its_workspace_told_what_muster_knows_and_is_no_news_prd
         activity: None,
         spend: None,
         tidy: None,
+        beside: None,
     };
     let mut store = Store::open(&dir.path().join("muster.db"), FixedClock.now()).unwrap();
     store.insert_session(&chat).unwrap();

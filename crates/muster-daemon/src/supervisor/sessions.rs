@@ -99,6 +99,20 @@ impl Supervisor {
         title: Option<String>,
         start: Start,
     ) -> Result<SessionId, ErrorBody> {
+        self.add_session_beside(workspace, harness, title, start, None)
+            .await
+    }
+
+    /// [`add_session`](Self::add_session), for a plugin's panel opened
+    /// beside the session `beside`.
+    pub(super) async fn add_session_beside(
+        &mut self,
+        workspace: WorkspaceId,
+        harness: &Harness,
+        title: Option<String>,
+        start: Start,
+        beside: Option<SessionId>,
+    ) -> Result<SessionId, ErrorBody> {
         let now = self.clock.now();
         let session = Session {
             id: SessionId::new(),
@@ -121,6 +135,7 @@ impl Supervisor {
             activity: None,
             spend: None,
             tidy: None,
+            beside,
         };
         let id = session.id;
         let stored = session.clone();
@@ -317,7 +332,8 @@ impl Supervisor {
 
     /// Starts an ended session's program again in the same session. Claude
     /// Code resumes the conversation it had, if its transcript is still
-    /// there; otherwise, and for a shell, the program starts afresh. (The
+    /// there; otherwise, and for a shell, the program starts afresh, and a
+    /// plugin's panel is opened afresh (`restart_panel`). (The
     /// agent in a run's container is started again by
     /// [`restart_agent_in_container`](Self::restart_agent_in_container),
     /// once its credential is fetched.)
@@ -332,6 +348,9 @@ impl Supervisor {
                 ErrorCode::Conflict,
                 format!("{} is still running", stored.title),
             ));
+        }
+        if muster_core::harness::is_panel(&stored.harness) {
+            return self.restart_panel(session, size).await;
         }
         let harness = self.known_harness(&stored.harness)?;
         let place = self.place_for(stored.workspace, &harness)?;

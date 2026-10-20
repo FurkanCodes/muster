@@ -34,13 +34,23 @@ impl Supervisor {
 
     /// `Command::Plugin`: answered here, or, for what fetches, from a task
     /// of its own.
-    pub(super) fn plugin_command(
+    pub(super) async fn plugin_command(
         &mut self,
         command: PluginCommand,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         let (now, at) = (self.clock.instant(), self.clock.now());
         let outcome = match command {
+            PluginCommand::OpenPanel {
+                plugin,
+                panel,
+                beside,
+                size,
+            } => {
+                let opened = self.open_panel(&plugin, &panel, beside, size).await;
+                let _ = reply.send(opened);
+                return;
+            }
             PluginCommand::List => {
                 self.read_plugins();
                 return answer(reply, Ok(Reply::Plugins(self.plugins.list(at))));

@@ -679,12 +679,19 @@ fn on_host(
             panel.program()
         }
     };
+    let daemon_s = std::env::vars().map(|(key, _)| key);
+    let env_remove = match &harness.kind {
+        // The basics of the daemon's environment, and what its plugin may
+        // see (`ARC-23`).
+        Kind::Panel(panel) => scrub::kept_from_plugin(daemon_s, &panel.seen),
+        _ => scrub::scrubbed(daemon_s),
+    };
     SpawnSpec {
         program,
         args,
         cwd,
         env,
-        env_remove: scrub::scrubbed(std::env::vars().map(|(key, _)| key)),
+        env_remove,
         size: launch.size,
     }
 }

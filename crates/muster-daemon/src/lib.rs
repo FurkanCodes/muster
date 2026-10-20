@@ -42,6 +42,8 @@ mod changes_tests;
 #[cfg(test)]
 mod clashes_supervisor_tests;
 #[cfg(test)]
+mod open_panel_tests;
+#[cfg(test)]
 mod panel_tests;
 #[cfg(test)]
 mod pulls_tests;
