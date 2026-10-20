@@ -7,7 +7,8 @@ use std::fmt::Write as _;
 
 use muster_core::plugins::{PanelOn, PluginSource};
 use muster_core::protocol::plugins::{
-    PluginDetails, PluginInfo, PluginList, PluginPreview, PreviewKind, command_line as command,
+    HooksTried, PluginDetails, PluginInfo, PluginList, PluginPreview, PreviewKind,
+    command_line as command,
 };
 use muster_core::time::{Timestamp, between, span};
 
@@ -129,6 +130,18 @@ fn runs(details: &PluginDetails) -> Vec<String> {
             ));
         }
     }
+    for hook in &details.hooks {
+        lines.push(format!(
+            "hook {} runs for {} (at most {} s): {}",
+            shown(&hook.id),
+            hook.events(),
+            hook.timeout,
+            command(&hook.command)
+        ));
+        if !hook.when.is_empty() {
+            lines.push(format!("  only {}", shown(&hook.when.words())));
+        }
+    }
     if !details.requires.is_empty() {
         let programs: Vec<String> = details
             .requires
@@ -202,6 +215,34 @@ pub(crate) fn preview(preview: &PluginPreview) -> String {
     let _ = writeln!(out, "  its manifest's SHA-256: {}", details.sha256);
     if details.requires.iter().any(|required| !required.found) {
         out.push_str("  It needs programs that are not on PATH: it can be installed, but they are yours to get.\n");
+    }
+    out
+}
+
+/// What a plugin's hooks did with a sample event: each, how it ended
+/// and after how long, then what it said, cleaned of a terminal's
+/// controls (`PRD-07`).
+pub(crate) fn tried(tried: &HooksTried) -> String {
+    let mut out = String::new();
+    for run in &tried.runs {
+        let took = if run.millis > 0 {
+            format!(
+                " after {:.1} s",
+                std::time::Duration::from_millis(run.millis).as_secs_f32()
+            )
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            out,
+            "{} for a sample {}: {}{took}",
+            shown(&run.hook),
+            tried.event,
+            run.outcome.words()
+        );
+        for line in muster_core::text::multi_line(&run.output).lines() {
+            let _ = writeln!(out, "  {line}");
+        }
     }
     out
 }

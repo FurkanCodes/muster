@@ -59,6 +59,7 @@ struct PluginEntry {
     muster: Option<String>,
     panels: Vec<PanelEntry>,
     tickets: Option<TicketsEntry>,
+    hooks: Vec<HookEntry>,
     requires: Vec<RequiredEntry>,
     how_to_get: Option<String>,
     env: Vec<String>,
@@ -91,6 +92,27 @@ struct SettingEntry {
     key: String,
     label: String,
     required: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct HookEntry {
+    id: String,
+    /// The events it runs for, by name: `session.finished`.
+    on: Vec<&'static str>,
+    command: Vec<String>,
+    /// Its deadline, in seconds.
+    timeout: u64,
+    /// Its filters, each empty or null where it has none.
+    when: WhenEntry,
+}
+
+#[derive(Debug, Serialize)]
+struct WhenEntry {
+    project: Vec<String>,
+    harness: Vec<String>,
+    /// `question`, `permission`, `startup` or `action`.
+    reason: Vec<&'static str>,
+    away: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -150,6 +172,7 @@ fn entry(plugin: &PluginInfo) -> PluginEntry {
         muster: details.map(|details| details.muster.clone()),
         panels: details.map(panels).unwrap_or_default(),
         tickets: details.and_then(tickets),
+        hooks: details.map(hooks).unwrap_or_default(),
         requires: details.map(requires).unwrap_or_default(),
         how_to_get: details.and_then(|details| details.how_to_get.clone()),
         env: details
@@ -209,6 +232,30 @@ fn tickets(details: &PluginDetails) -> Option<TicketsEntry> {
             })
             .collect(),
     })
+}
+
+fn hooks(details: &PluginDetails) -> Vec<HookEntry> {
+    details
+        .hooks
+        .iter()
+        .map(|hook| HookEntry {
+            id: hook.id.clone(),
+            on: hook.on.iter().map(|kind| kind.name()).collect(),
+            command: hook.command.clone(),
+            timeout: hook.timeout,
+            when: WhenEntry {
+                project: hook.when.project.clone(),
+                harness: hook.when.harness.clone(),
+                reason: hook
+                    .when
+                    .reason
+                    .iter()
+                    .map(|reason| muster_core::plugins::hooks::reason_name(*reason))
+                    .collect(),
+                away: hook.when.away,
+            },
+        })
+        .collect()
 }
 
 fn requires(details: &PluginDetails) -> Vec<RequiredEntry> {

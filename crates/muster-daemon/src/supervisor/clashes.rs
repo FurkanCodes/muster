@@ -152,6 +152,13 @@ impl Supervisor {
     /// with workspaces still on the branches they were found on; none on
     /// a workspace not found. Tells clients of each change.
     fn settle_clashes(&mut self, project: ProjectId, found: &[(WorkspaceId, String, Vec<Clash>)]) {
+        let before: HashMap<WorkspaceId, Vec<Clash>> = self
+            .state
+            .workspaces
+            .iter()
+            .filter(|workspace| workspace.project == project)
+            .map(|workspace| (workspace.id, workspace.clashes.clone()))
+            .collect();
         let branches: HashMap<WorkspaceId, String> = self
             .state
             .workspaces
@@ -195,6 +202,7 @@ impl Supervisor {
         for workspace in changed {
             self.broadcast(Delta::WorkspaceUpserted(workspace));
         }
+        self.clashes_looked(project, &before);
     }
 
     /// The pull request timer's tick: every tenth, a look at every

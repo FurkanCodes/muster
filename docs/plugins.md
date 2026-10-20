@@ -2,24 +2,25 @@
 
 Muster keeps a lean core and grows through plugins. The core is what everything else stands on: the daemon, projects and worktrees, sessions and their status, the layout, keys and Settings, and the plugin system itself. The rest is plugins, and anyone can write one. Muster's own ticket sources, for GitHub, GitLab, Jira and Linear, are plugins speaking the same protocol yours will. If you write one others could use, please share it: [PLUGINS.md](../PLUGINS.md) lists them.
 
-This guide is for plugin authors. It says what a plugin is and may do, every key of its manifest, how plugins are installed and approved, how to write a ticket source and a panel, and how to test and publish one. Two complete examples are in [examples/plugins](../examples/plugins).
+This guide is for plugin authors. It says what a plugin is and may do, every key of its manifest, how plugins are installed and approved, how to write a ticket source, a panel and hooks, and how to test and publish one. Complete examples are in [examples/plugins](../examples/plugins).
 
 ## What a plugin is
 
 A plugin is a folder holding a manifest, `muster-plugin.toml`, and programs in any language. Muster runs the programs as separate processes. It never loads a plugin's code into itself.
 
-A plugin brings one or both of:
+A plugin brings one or more of:
 
 - **A ticket source:** a program that lists, shows and closes tickets, which Muster asks for a project's tickets. Its tickets fill the Tickets screen, and the person assigns agents to them as to GitHub's.
 - **Panels:** terminal programs shown in a panel beside a session, told what Muster knows of it: its workspace, branch, transcript and more.
+- **Hooks:** programs run as something happens (an agent needs the person, finishes, a worktree is made, a pull request changes), told of it.
 
 ### What a plugin may do, and may not
 
 A plugin's programs run as the person, like any program they start. Muster adds rules around them (`PRD-15` in [PRODUCT.md](../PRODUCT.md), `ARC-23` in [ARCHITECTURE.md](../ARCHITECTURE.md)):
 
 - **The person adds it.** Only the person installs a plugin, turns it on or approves it, after Muster shows everything it would run. Muster runs no installer of a plugin's: the programs it needs, the person installs.
-- **It never drives an agent.** A plugin never starts, prompts or types into an agent. The person assigns an agent to a ticket; the plugin only says what the ticket is.
-- **It gets only what it names.** Anyone's ticket source starts with the basics of the environment (`PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `TZ`, `LANG`, `LC_*`), then only the person's variables its manifest names in `env` and the secrets it names in `secrets`. No other credential reaches it.
+- **It never drives an agent.** A plugin never starts, prompts or types into an agent. The person assigns an agent to a ticket; the plugin only says what the ticket is. A hook only hears: nothing leads from it back into Muster.
+- **It gets only what it names.** Anyone's ticket source, panel or hook starts with the basics of the environment (`PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `TZ`, `LANG`, `LC_*`), then only the person's variables its manifest names in `env` and the secrets it names in `secrets`. No other credential reaches it.
 - **Its tickets are untrusted.** What a ticket source answers is checked and cleaned before anything sees it: keys must have a ticket's shape, control characters go, text is cut to a size, and a credential pasted into a ticket is hidden. A ticket reaches an agent fenced off as a description of the work, never as instructions (`PRD-07`).
 - **It lives in Muster's own folder.** An installed plugin is a copy in Muster's data folder (`~/Library/Application Support/muster/plugins` on macOS, `~/.local/share/muster/plugins` on Linux), private to the person, never in a repository or an agent's settings.
 
@@ -85,8 +86,9 @@ Its keys:
 | `how_to_get` | no | How to get them, in your words, one line of at most 300 characters. |
 | `env` | no | The names of the person's variables it may see. Letters, digits and `_`, not starting with a digit, never Muster's own `MUSTER_…`. |
 | `secrets` | no | The names of the secrets it is given, as `env`'s are written. See [Secrets](#secrets). |
-| `[tickets]` | one or both | A ticket source. |
-| `[[panels]]` | one or both | A panel, one table each. |
+| `[tickets]` | at least one of these three | A ticket source. |
+| `[[panels]]` | | A panel, one table each. |
+| `[[hooks]]` | | A hook, one table each. See [Hooks](#hooks). |
 
 `[tickets]`:
 
@@ -123,7 +125,7 @@ A command is a program and its arguments, `["./tickets", "--quiet"]`, never a li
 - a name, found on `PATH` (`zoe`). Name it in `requires` too.
 - a full path (`/usr/bin/python3`).
 
-A script needs a first line saying what runs it (`#!/bin/sh`, `#!/usr/bin/env python3`). Muster runs a ticket source's program in the plugin's folder.
+A script needs a first line saying what runs it (`#!/bin/sh`, `#!/usr/bin/env python3`). Muster runs a ticket source's program and a hook's in the plugin's folder.
 
 ## Installing, linking and updating
 
@@ -350,6 +352,106 @@ Muster opens it only where it can run: the plugin on and approved, and every pro
 
 A panel shows text and colours, as a session does; pictures drawn by a terminal's graphics protocols do not show in it.
 
+## Hooks
+
+A hook is a program Muster runs as something happens: an agent needs the person, finishes or fails; a worktree is made or removed; a pull request changes. It is told what happened, and does what it likes with it: a Slack or Telegram ping, a line in a log, a status light. A hook only hears. There is no way back from it into Muster: it cannot start, prompt or type into a session.
+
+```toml
+[[hooks]]
+id = "ping"
+on = ["session.needs_you", "session.finished"]
+command = ["./notify", "{project}", "{branch}"]
+timeout = 10
+
+[hooks.when]
+project = ["muster"]
+harness = ["claude", "codex"]
+reason = ["question", "permission"]
+away = true
+```
+
+[examples/plugins/notify-webhook](../examples/plugins/notify-webhook) is a complete one in `sh`: it posts a line to Slack, Discord or ntfy.sh.
+
+`[[hooks]]`:
+
+| Key | Needed | What it is |
+|---|---|---|
+| `id` | yes | The hook's id within the plugin, written as a plugin's `id` is. |
+| `on` | yes | The events it runs for, by name, at least one: see [Events](#events). |
+| `command` | yes | Its program and arguments, with placeholders. See [Commands](#commands) and [What a hook is given](#what-a-hook-is-given). |
+| `timeout` | no | How long it may run, in whole seconds, from 1 to 60; 10 if not given. |
+| `[hooks.when]` | no | Which of those events it takes. Every filter given must match. |
+
+`[hooks.when]`:
+
+| Key | What it takes |
+|---|---|
+| `project` | Events in these projects, by name: `["muster"]`. |
+| `harness` | A session's events (`session.*`, `ticket.assigned`) of these agents: `["claude", "codex"]`, or one the person added. |
+| `reason` | `session.needs_you` for these reasons: `question` (a question, or an MCP server's form), `permission`, `startup` (asking something before it starts: trusting the folder, signing in), `action` (its display says it waits, without saying for what, as Codex's does). |
+| `away` | `true`: only while the person looks away from every Muster window, as notifications are sent. `false`: only while they look at one. |
+
+A filter tests only the events that carry its value: with `on = ["session.needs_you", "worktree.created"]` and `harness = ["claude"]`, a worktree made passes, as it has no harness. A filter none of the hook's events could carry is refused as the manifest is read (`reason` without `session.needs_you`).
+
+### Events
+
+Each is raised once, as it happens, and never for the person's shell or a plugin's panel.
+
+| Event | When | Carries |
+|---|---|---|
+| `session.started` | An agent's session is started, or started again after it ended. | `session` |
+| `session.needs_you` | It comes to need the person, or waits for something else. | `session`, with `reason` |
+| `session.finished` | Its turn ends, and is still ended two seconds later, as the person is told of a finish; one that goes straight back to work is not told. | `session` |
+| `session.error` | Its program ends with an error, not stopped by the person; `session.ended` follows. | `session`, `success: false` |
+| `session.ended` | Its program ends, well or not. | `session`, with `success` |
+| `worktree.created` | Muster makes a worktree, or finds one made outside it. | |
+| `worktree.removed` | A worktree is removed, by Muster or outside it. | |
+| `pull_request.changed` | The pull request from a workspace's branch is opened, or its state, draft, checks or review change. Muster asks the host every minute while the person looks at Muster, every ten while they do not; the first look after the daemon starts is what is, and says nothing. | `pull_request` |
+| `clash.found` | The work of two workspaces of a project comes to meet in a file; told once for the pair. | `clash` |
+| `ticket.assigned` | The person starts an agent on a ticket. | `session`, `ticket` |
+
+Every event carries its `project` and `workspace`, and the `ticket` its branch is for, if it is for one.
+
+### What a hook is given
+
+On its stdin, the event as one line of JSON, then the end of it:
+
+```json
+{"event":"session.needs_you","at":1760960000000,
+ "project":{"id":"prj_01J…","name":"muster","root":"/Users/me/muster"},
+ "workspace":{"id":"wsp_01J…","folder":"/Users/me/…/worktrees/muster/fix-login","branch":"muster/issue-42-fix-login"},
+ "session":{"id":"ses_01J…","name":"Fix the login","harness":"claude","status":"needs_you","reason":"permission"},
+ "ticket":"42"}
+```
+
+(shown here on several lines; Muster writes it on one). `at` is when it happened, in milliseconds since 1970, UTC. A `session` has its `id`, its chat's `name` as the UI shows it, its `harness`, its `status` (`fresh`, `running`, `needs_you`, `finished` or `exited`), and its `reason` while it waits or `success` once it has ended. A `pull_request` has its `number`, `url`, `state` (`draft`, `open`, `merged` or `closed`), `draft`, and its `checks` (`pending`, `passing` or `failing`) and `review` (`required`, `approved` or `changes_requested`) where the host says. A `clash` has the other workspace as `with`, and how many `files` both change and how many of them would `conflicts`. A key Muster has no value for is `null` or left out, and Muster may add keys: read it as JSON, not by position.
+
+Names and ids only: never a ticket's text, a prompt, an agent's output, a file's path or code. A chat's name comes from its first prompt, its credentials hidden, as the UI shows it.
+
+In its environment, `MUSTER_PLUGIN_EVENT` names the event, and the [placeholders](#placeholders)' values are there as for a panel (`MUSTER_PLUGIN_PROJECT`, `MUSTER_PLUGIN_BRANCH`, …), each where the event has it. Its command takes the same placeholders, but `{resume}` and `{transcript}`, which a hook is never told; `{session}` and `{harness}` only where every event it runs for is a session's. A value its event does not have (`{pr}` before a pull request) leaves it unrun, said in its log: for a value that may be missing, read the JSON or the variable instead.
+
+It runs in the plugin's folder, with the basics of the environment and the variables and secrets its manifest names, as a ticket source does ([above](#6-environment-and-secrets)).
+
+### Its bounds
+
+- **A deadline.** At its `timeout`, its program and everything it started (its process group) are told to stop, and killed a second later. Once its program ends, whatever it left running is stopped too: a hook's run is over when its program ends.
+- **Its output, kept.** What it writes on stdout and stderr, together, up to 16 KiB a run, goes to its plugin's log with how it ended, its secrets and anything shaped like a credential hidden: `muster plugin log <id>`.
+- **Four at once.** At most four of a plugin's hooks run at once, and 32 more wait their turn; past that the oldest waiting is dropped, said in its log. Events may end out of order: `at` says when each happened.
+- **Only while it can run.** A plugin turned off, removed, or whose manifest changed since its approval hears nothing, and its runs under way are cut. One whose `requires` are not found runs nothing, said in its log.
+- **As Muster stops or restarts.** `muster reload` and stopping the daemon give runs under way two seconds, then cut them, said in the daemon's log.
+
+### Trying one
+
+`muster plugin hook <id> <event>` runs the plugin's hooks that take that kind of event on a sample of one (its project `sample`, branch `muster/issue-42-sample`, chat `A sample chat`, and `"sample": true`), their filters aside, and prints how each ended and what it said:
+
+```bash
+$ muster plugin hook notify-webhook session.needs_you
+notify for a sample session.needs_you: exited 0 after 0.4 s
+  posted: sample · muster/issue-42-sample · A sample chat · has a question for you
+```
+
+It fails if any did not end well, so a script can try a hook too. To feed it by hand without Muster, pipe an event in: `printf '%s\n' '{"event":"session.finished",…}' | MUSTER_PLUGIN_EVENT=session.finished ./notify`.
+
 ## Testing a plugin by hand
 
 **Speak to it yourself.** A ticket source is a program on a pipe, so test it with no Muster at all. Save the requests in a file, one a line, and pipe them in:
@@ -378,6 +480,8 @@ A program flushes what it holds back as it ends, so that test passes even where 
 2. On the Settings screen, choose your plugin under *Tickets from* for a project, with its fields.
 3. On the Tickets screen, its tickets are listed; `r` lists them again. Show one, and assign an agent to it if you like.
 4. `muster plugin log <id>` shows its stderr, and why it ended if it did.
+
+A hook is tried the same way, with no agent to wait for: link it, then `muster plugin hook <id> <event>` ([Trying one](#trying-one)), and `muster plugin log <id>` for every run since.
 
 While you work on it:
 

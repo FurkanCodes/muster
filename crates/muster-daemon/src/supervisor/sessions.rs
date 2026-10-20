@@ -146,6 +146,7 @@ impl Supervisor {
             .map_err(store_error)?;
         self.state.sessions.push(session.clone());
         self.broadcast(Delta::SessionUpserted(session));
+        self.session_added(id);
         if start == Start::WithPrompt {
             // Its first turn begins with it.
             self.turn_began(id);
@@ -547,6 +548,7 @@ impl Supervisor {
                 if failed_resume && self.start_fresh_after_failed_resume(session).await {
                     return;
                 }
+                self.events.ending(session, requested);
                 self.step_session(session, Signal::Exited { success, requested })
                     .await;
                 let at = self.clock.now();

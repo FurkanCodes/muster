@@ -1,6 +1,6 @@
 # Plugins
 
-Muster keeps a lean core and grows through plugins: ticket sources, and panels beside a session. This is the list of them. Muster's own come with it; the rest live in their authors' repositories and are installed by address:
+Muster keeps a lean core and grows through plugins: ticket sources, panels beside a session, and hooks that hear what happens. This is the list of them. Muster's own come with it; the rest live in their authors' repositories and are installed by address:
 
 ```bash
 muster plugin install https://github.com/someone/their-plugin
@@ -26,6 +26,7 @@ In this repository, to read and start from. Copy one somewhere of your own and `
 | Plugin | What it is | What it runs | What it needs | Licence |
 |---|---|---|---|---|
 | [`tickets-from-file`](examples/plugins/tickets-from-file) | Tickets from a plain text file: a ticket source in POSIX `sh` | `./tickets` | `awk`, `sed` | MIT |
+| [`notify-webhook`](examples/plugins/notify-webhook) | A line to Slack, Discord, ntfy.sh or any webhook when an agent needs you, finishes or fails: hooks in POSIX `sh` | `./notify` | `curl`, `sed`; the secret `WEBHOOK_URL` | MIT |
 | [`session-graph`](examples/plugins/session-graph) | A session's live flow graph beside it: a panel wrapping zoetrope's `zoe` | `zoe <transcript> --follow` | [zoetrope](https://github.com/furkankly/zoetrope) | MIT; zoetrope its own |
 
 ## The community's

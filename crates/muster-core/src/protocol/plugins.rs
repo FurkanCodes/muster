@@ -1,15 +1,16 @@
 //! Plugins on the wire (`ARCHITECTURE.md` §7a): what a client asks of the
 //! daemon's registry, and what it is told of each plugin. From protocol 41
 //! ([`crate::plugins::PLUGINS_PROTOCOL`]); a plugin's panel opened from 43
-//! ([`crate::plugins::PANELS_PROTOCOL`]).
+//! ([`crate::plugins::PANELS_PROTOCOL`]); its hooks shown and tried from 44
+//! ([`crate::plugins::HOOKS_PROTOCOL`]).
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::TermSize;
+use super::{ErrorBody, ErrorCode, Reply, TermSize};
 use crate::ids::{SessionId, WorkspaceId};
-use crate::plugins::{Manifest, Panel, PluginSource, TicketSource};
+use crate::plugins::{EventKind, Hook, Manifest, Panel, PluginSource, TicketSource};
 use crate::time::Timestamp;
 
 /// What a client asks of the daemon's plugins.
@@ -60,6 +61,14 @@ pub enum PluginCommand {
         beside: Beside,
         size: TermSize,
     },
+    /// Runs the hooks of the plugin `id` that take events of `event` on a
+    /// sample event of that kind, their filters aside, each as it would
+    /// run for a real one, and waits for them: for an author trying one
+    /// (`muster plugin hook`). Refused, saying why, where the plugin is off
+    /// or cannot run, or none of its hooks takes such events. Answered
+    /// with [`super::Reply::HooksTried`]. From protocol 44
+    /// ([`crate::plugins::HOOKS_PROTOCOL`]).
+    TryHooks { id: String, event: EventKind },
 }
 
 impl PluginCommand {
@@ -68,6 +77,7 @@ impl PluginCommand {
         match self {
             Self::Log { .. } => crate::plugins::TICKET_PLUGINS_PROTOCOL,
             Self::OpenPanel { .. } => crate::plugins::PANELS_PROTOCOL,
+            Self::TryHooks { .. } => crate::plugins::HOOKS_PROTOCOL,
             _ => crate::plugins::PLUGINS_PROTOCOL,
         }
     }
@@ -202,6 +212,11 @@ pub struct PluginDetails {
     pub panels: Vec<Panel>,
     #[serde(default)]
     pub tickets: Option<TicketSource>,
+    /// What it runs as something happens. From protocol 44: an older
+    /// client passes over it, and is never shown a preview with one
+    /// ([`shown_to`]).
+    #[serde(default)]
+    pub hooks: Vec<Hook>,
     /// The SHA-256 of its manifest, which approving it binds.
     pub sha256: String,
 }
@@ -228,6 +243,7 @@ impl PluginDetails {
             secrets: manifest.secrets.clone(),
             panels: manifest.panels.clone(),
             tickets: manifest.tickets.clone(),
+            hooks: manifest.hooks.clone(),
             sha256,
         }
     }
@@ -242,7 +258,91 @@ impl PluginDetails {
             .tickets
             .iter()
             .map(|tickets| ("ticket source".to_owned(), tickets.command.as_slice()));
-        panels.chain(tickets).collect()
+        let hooks = self
+            .hooks
+            .iter()
+            .map(|hook| (format!("hook {}", hook.id), hook.command.as_slice()));
+        panels.chain(tickets).chain(hooks).collect()
+    }
+}
+
+/// `reply` as a client that agreed to `version` may be sent it: a preview
+/// of a plugin with hooks is refused to one older than 44, which could not
+/// show them, so nobody approves what they were not shown (`PRD-15`,
+/// `ARC-09`).
+pub fn shown_to(reply: Reply, version: u32) -> Result<Reply, ErrorBody> {
+    match reply {
+        Reply::PluginPreview(preview)
+            if version < crate::plugins::HOOKS_PROTOCOL && !preview.details.hooks.is_empty() =>
+        {
+            Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!(
+                    "{} runs hooks, which this Muster's UI cannot show you before you approve \
+                     it: update the UI to the daemon's version, then add it again",
+                    crate::text::one_line(&preview.id)
+                ),
+            ))
+        }
+        reply => Ok(reply),
+    }
+}
+
+/// What a plugin's hooks did with a sample event, as
+/// [`PluginCommand::TryHooks`] is answered.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HooksTried {
+    pub id: String,
+    pub event: EventKind,
+    /// Each hook that took it, in the manifest's order.
+    pub runs: Vec<HookRun>,
+}
+
+/// What one hook's run came to.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookRun {
+    /// The hook's id.
+    pub hook: String,
+    pub outcome: HookOutcome,
+    /// What it wrote on stdout and stderr, at most 16 KiB, its plugin's
+    /// secrets and anything shaped like a credential hidden.
+    pub output: String,
+    /// How long it ran, in milliseconds.
+    pub millis: u64,
+}
+
+/// How a hook's run ended.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookOutcome {
+    /// Its program ended with `code`.
+    Exited { code: i32 },
+    /// Its program was ended by a signal it was not sent by Muster.
+    Signalled,
+    /// It ran past its deadline, of `seconds`, and was stopped.
+    TimedOut { seconds: u64 },
+    /// Cut before it ended: the daemon stopped or restarted in place
+    /// while it ran, after a grace, or its plugin was turned off.
+    Cut,
+    /// It never ran, and why.
+    NotRun { why: String },
+}
+
+impl HookOutcome {
+    /// As people read it: `exited 0`, `stopped at its 10 s deadline`.
+    pub fn words(&self) -> String {
+        match self {
+            Self::Exited { code } => format!("exited {code}"),
+            Self::Signalled => "ended by a signal".to_owned(),
+            Self::TimedOut { seconds } => format!("stopped at its {seconds} s deadline"),
+            Self::Cut => "cut before it ended".to_owned(),
+            Self::NotRun { why } => format!("not run: {}", crate::text::one_line(why)),
+        }
+    }
+
+    /// Whether it ran and ended well.
+    pub const fn is_success(&self) -> bool {
+        matches!(self, Self::Exited { code: 0 })
     }
 }
 
@@ -400,6 +500,59 @@ mod tests {
             crate::plugins::PLUGINS_PROTOCOL
         );
         assert_eq!(crate::plugins::PLUGINS_PROTOCOL, 41);
+    }
+
+    #[test]
+    fn a_preview_with_hooks_is_never_shown_to_a_client_that_could_not_show_them_arc_09() {
+        let manifest = crate::plugins::Manifest::parse(
+            "id = \"p\"\nname = \"P\"\nversion = \"1.0\"\nmuster = \"0.3\"\n\n[[hooks]]\n\
+             id = \"ping\"\non = [\"session.finished\"]\ncommand = [\"./ping\", \"{branch}\"]\n",
+        )
+        .unwrap();
+        let details = PluginDetails::of(&manifest, "ab".repeat(32), |_| true);
+        let commands: Vec<String> = details.commands().into_iter().map(|(at, _)| at).collect();
+        assert_eq!(commands, ["hook ping"]);
+        let preview = |details: PluginDetails| {
+            Reply::PluginPreview(Box::new(PluginPreview {
+                preview: "cd".repeat(16),
+                kind: PreviewKind::Link,
+                id: "p".to_owned(),
+                source: PluginSource::Folder {
+                    path: PathBuf::from("/p"),
+                },
+                details,
+                current: None,
+            }))
+        };
+        let refused = shown_to(preview(details.clone()), 43).unwrap_err();
+        assert_eq!(refused.code, ErrorCode::Conflict);
+        assert!(
+            refused.message.starts_with("p runs hooks"),
+            "{}",
+            refused.message
+        );
+        assert!(shown_to(preview(details.clone()), crate::plugins::HOOKS_PROTOCOL).is_ok());
+        let without = PluginDetails {
+            hooks: Vec::new(),
+            ..details
+        };
+        assert!(shown_to(preview(without), 41).is_ok());
+        assert!(shown_to(Reply::Done, 41).is_ok());
+    }
+
+    #[test]
+    fn a_hook_s_outcome_reads_as_words() {
+        assert_eq!(HookOutcome::Exited { code: 0 }.words(), "exited 0");
+        assert!(HookOutcome::Exited { code: 0 }.is_success());
+        assert!(!HookOutcome::Exited { code: 2 }.is_success());
+        assert_eq!(
+            HookOutcome::TimedOut { seconds: 10 }.words(),
+            "stopped at its 10 s deadline"
+        );
+        let not_run = HookOutcome::NotRun {
+            why: "it is\noff".to_owned(),
+        };
+        assert_eq!(not_run.words(), "not run: it is off");
     }
 
     #[test]

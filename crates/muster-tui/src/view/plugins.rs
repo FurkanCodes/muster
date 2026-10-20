@@ -186,6 +186,19 @@ fn brings(app: &App, plugin: &PluginInfo) -> String {
     if let Some(tickets) = &details.tickets {
         brings.push(format!("tickets: {}", one_line(&tickets.name)));
     }
+    if !details.hooks.is_empty() {
+        let noun = if details.hooks.len() == 1 {
+            "hook"
+        } else {
+            "hooks"
+        };
+        let hooks: Vec<String> = details
+            .hooks
+            .iter()
+            .map(|hook| one_line(&hook.id))
+            .collect();
+        brings.push(format!("{noun}: {}", hooks.join(", ")));
+    }
     brings.join(" · ")
 }
 
@@ -224,8 +237,9 @@ fn section_text(app: &App) -> Text<'static> {
     let mut lines = vec![
         Line::from("Plugins").bold(),
         Line::from(
-            "Plugins bring panels beside a session and sources of tickets: programs of their \
-             own, in any language, which the daemon runs apart from Muster, never inside it.",
+            "Plugins bring panels beside a session, sources of tickets, and hooks that hear \
+             what happens: programs of their own, in any language, which the daemon runs apart \
+             from Muster, never inside it.",
         ),
         Line::from(""),
         Line::from(format!(
@@ -366,6 +380,21 @@ pub(super) fn runs_lines(details: &PluginDetails) -> Vec<Line<'static>> {
             one_line(&tickets.name)
         )));
         lines.push(Line::from(format!("    {}", command_line(&tickets.command))).cyan());
+    }
+    for hook in &details.hooks {
+        lines.push(Line::from(format!(
+            "  hook {} on {}, at most {} s",
+            one_line(&hook.id),
+            hook.events(),
+            hook.timeout
+        )));
+        if !hook.when.is_empty() {
+            lines.push(Line::from(format!(
+                "    only {}",
+                one_line(&hook.when.words())
+            )));
+        }
+        lines.push(Line::from(format!("    {}", command_line(&hook.command))).cyan());
     }
     if !details.requires.is_empty() {
         lines.push(Line::from(""));

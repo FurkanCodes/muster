@@ -289,6 +289,13 @@ impl Plugins {
         self.held().processes.remove(id)
     }
 
+    /// The plugin `id`'s log, which its hooks' runs write to as well
+    /// (`plugins::hooks`). One whose plugin is gone leaves as the registry
+    /// is next published.
+    pub(crate) fn log_of(&self, id: &str) -> Arc<Mutex<Log>> {
+        self.held().logs.entry(id.to_owned()).or_default().clone()
+    }
+
     /// The end of the plugin `id`'s log, its secrets hidden: empty where
     /// it has not run.
     pub(crate) fn log(&self, id: &str) -> String {

@@ -60,6 +60,7 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         places: crate::spend::Places::default(),
         secrets: Arc::new(crate::secrets::Kept::default()),
+        hooks: crate::plugins::hooks::Hooks::idle(),
     })
     .await
     .unwrap()
@@ -377,6 +378,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         places: crate::spend::Places::default(),
         secrets: Arc::new(crate::secrets::Kept::default()),
+        hooks: crate::plugins::hooks::Hooks::idle(),
     })
     .await
     .unwrap();

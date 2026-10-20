@@ -94,7 +94,13 @@ impl Log {
         let (front, back) = self.bytes.as_slices();
         let mut bytes = front.to_vec();
         bytes.extend_from_slice(back);
-        let mut text = String::from_utf8_lossy(&bytes).into_owned();
+        self.hidden(&String::from_utf8_lossy(&bytes))
+    }
+
+    /// `text` with its plugin's secrets' values and anything shaped like a
+    /// credential hidden, as it would show it.
+    pub(crate) fn hidden(&self, text: &str) -> String {
+        let mut text = text.to_owned();
         for secret in &self.secrets {
             text = text.replace(secret.value(), muster_core::credentials::HIDDEN);
         }

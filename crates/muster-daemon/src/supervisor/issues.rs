@@ -280,10 +280,13 @@ impl Supervisor {
             .start_session(workspace, harness, Some(title), size, prompt)
             .await?
         {
-            Reply::SessionStarted { id } => Ok(Reply::IssueStarted {
-                workspace,
-                session: id,
-            }),
+            Reply::SessionStarted { id } => {
+                self.ticket_assigned(id, &detail.issue.key);
+                Ok(Reply::IssueStarted {
+                    workspace,
+                    session: id,
+                })
+            }
             other => Err(unexpected(&other)),
         }
     }

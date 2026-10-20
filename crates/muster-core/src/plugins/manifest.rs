@@ -8,7 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::hooks::Hook;
 use super::placeholders::Placeholder;
+
+mod hooks;
 
 /// What the file is called, at a plugin's folder's root.
 pub const FILE_NAME: &str = "muster-plugin.toml";
@@ -44,6 +47,8 @@ pub struct Manifest {
     pub secrets: Vec<String>,
     pub panels: Vec<Panel>,
     pub tickets: Option<TicketSource>,
+    /// Programs run as something happens.
+    pub hooks: Vec<Hook>,
 }
 
 /// A terminal program shown beside a session or a workspace.
@@ -123,6 +128,25 @@ pub enum ManifestError {
     },
     #[error("{key}: {{{word}}} is a session's, and this panel is a workspace's")]
     SessionOnly { key: String, word: String },
+    #[error("{key}: {{{word}}} is not told to a hook, which is given names and ids only")]
+    HookPlaceholder { key: String, word: String },
+    #[error("{key}: {{{word}}} is a session's, and {event} is no session's")]
+    NoSession {
+        key: String,
+        word: String,
+        event: &'static str,
+    },
+    #[error("{key}: {word:?} is not an event: they are {known}")]
+    UnknownEvent {
+        key: String,
+        word: String,
+        known: String,
+    },
+    #[error("{key}: none of the hook's events has one to test; only {carried_by} do")]
+    NotCarried {
+        key: String,
+        carried_by: &'static str,
+    },
     #[error(
         "tickets.command: a ticket source takes no placeholder; one process serves every \
          project, told the project in each request"
@@ -130,11 +154,11 @@ pub enum ManifestError {
     TicketPlaceholder,
     #[error("{key}: {id:?} is another's too")]
     Twice { key: String, id: String },
-    #[error("a plugin gives at least one [[panels]] or a [tickets]")]
+    #[error("a plugin gives at least one [[panels]], [[hooks]] or a [tickets]")]
     Nothing,
 }
 
-const KEYS: [&str; 11] = [
+const KEYS: [&str; 12] = [
     "id",
     "name",
     "version",
@@ -146,6 +170,7 @@ const KEYS: [&str; 11] = [
     "secrets",
     "panels",
     "tickets",
+    "hooks",
 ];
 const PANEL_KEYS: [&str; 5] = ["id", "title", "on", "command", "key"];
 const TICKET_KEYS: [&str; 4] = ["name", "noun", "command", "settings"];
@@ -166,7 +191,7 @@ impl Manifest {
     }
 
     /// Every command it would run, each with where it is written:
-    /// `panels[0].command`, `tickets.command`.
+    /// `panels[0].command`, `tickets.command`, `hooks[0].command`.
     pub fn commands(&self) -> Vec<(String, &[String])> {
         let panels = self
             .panels
@@ -177,7 +202,12 @@ impl Manifest {
             .tickets
             .iter()
             .map(|tickets| ("tickets.command".to_owned(), tickets.command.as_slice()));
-        panels.chain(tickets).collect()
+        let hooks = self
+            .hooks
+            .iter()
+            .enumerate()
+            .map(|(at, hook)| (format!("hooks[{at}].command"), hook.command.as_slice()));
+        panels.chain(tickets).chain(hooks).collect()
     }
 }
 
@@ -260,7 +290,8 @@ pub(crate) fn read(text: &str, running: &str, own: bool) -> Result<Manifest, Man
     }
     let panels = top.panels()?;
     let tickets = top.tickets()?;
-    if panels.is_empty() && tickets.is_none() {
+    let hooks = top.hooks()?;
+    if panels.is_empty() && tickets.is_none() && hooks.is_empty() {
         return Err(ManifestError::Nothing);
     }
     Ok(Manifest {
@@ -275,6 +306,7 @@ pub(crate) fn read(text: &str, running: &str, own: bool) -> Result<Manifest, Man
         secrets,
         panels,
         tickets,
+        hooks,
     })
 }
 

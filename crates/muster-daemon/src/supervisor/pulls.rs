@@ -136,6 +136,7 @@ impl Supervisor {
             }
         }
         let mut merged = Vec::new();
+        let mut seen = Vec::new();
         for (workspace, branch, found) in looked.found {
             let Some(stored) = self
                 .state
@@ -145,7 +146,11 @@ impl Supervisor {
             else {
                 continue;
             };
-            if stored.kind.branch() != branch || stored.pull_request == found {
+            if stored.kind.branch() != branch {
+                continue;
+            }
+            seen.push((workspace, stored.pull_request.clone(), found.clone()));
+            if stored.pull_request == found {
                 continue;
             }
             let merged_one = |pull: Option<&PullRequestStatus>| {
@@ -158,6 +163,9 @@ impl Supervisor {
             stored.pull_request = found;
             let updated = stored.clone();
             self.broadcast(Delta::WorkspaceUpserted(updated));
+        }
+        for (workspace, before, found) in seen {
+            self.pull_request_looked(workspace, before.as_ref(), found.as_ref());
         }
         for project in merged {
             self.check_clashes(project);

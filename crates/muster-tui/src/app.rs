@@ -97,6 +97,8 @@ mod panels_tests;
 #[cfg(test)]
 mod picker_tests;
 #[cfg(test)]
+mod plugin_hooks_tests;
+#[cfg(test)]
 mod plugin_panel_tests;
 #[cfg(test)]
 mod plugins_tests;

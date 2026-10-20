@@ -235,6 +235,10 @@ pub enum Stop {
     Reload,
 }
 
+/// How long plugins' hooks under way have to end as the daemon stops or
+/// restarts in place, before they are cut.
+const HOOK_GRACE: Duration = Duration::from_secs(2);
+
 /// The handoff format this build takes over from (`--can-adopt`).
 pub const HANDOFF_FORMAT: u32 = handoff::FORMAT;
 
@@ -277,6 +281,12 @@ pub async fn run(
     let plugins = trackers::plugin::Plugins::new(
         handoff::next_program().unwrap_or_else(|_| PathBuf::from("muster")),
     );
+    // Plugins' hooks, which write to the plugins' logs.
+    let hooks = plugins::hooks::Hooks::new(
+        tasks.clone(),
+        plugins.clone(),
+        Arc::new(secrets::Keychain::default()),
+    );
     let supervisor = start_supervisor(
         &config,
         Started {
@@ -286,6 +296,7 @@ pub async fn run(
             adopted,
             tasks: tasks.clone(),
             plugins: plugins.clone(),
+            hooks: hooks.clone(),
         },
     )
     .await?;
@@ -312,7 +323,8 @@ pub async fn run(
             break;
         }
         // The program that follows starts its own; these would outlive the
-        // exec unreaped.
+        // exec unreaped. Hooks' runs under way have a grace first.
+        hooks.cut(HOOK_GRACE).await;
         plugins.stop().await;
         let failed = match reload(
             paths,
@@ -328,12 +340,14 @@ pub async fn run(
             Err(reason) => reason,
         };
         tracing::warn!(reason = %failed, "could not restart in place; carrying on as before");
+        hooks.reopen();
         listener = serving(&socket_listener, &socket)?;
     }
 
     drop(watchers);
     let _ = stop_hooks.send(());
     let _ = hook_server.await;
+    hooks.cut(HOOK_GRACE).await;
     let left = tasks.finish(tasks::STOP_GRACE).await;
     if left > 0 {
         tracing::info!(left, "work still under way when the daemon stopped");
@@ -404,6 +418,7 @@ struct Started {
     adopted: Vec<handoff::HandedSession>,
     tasks: Tasks,
     plugins: trackers::plugin::Plugins,
+    hooks: plugins::hooks::Hooks,
 }
 
 /// Starts the Supervisor with the real systems behind its traits (`ARC-03`).
@@ -450,6 +465,7 @@ async fn start_supervisor(
         ticket_plugins: started.plugins,
         places: spend::Places::from_env(),
         secrets: Arc::new(secrets::Keychain::default()),
+        hooks: started.hooks,
     })
     .await?)
 }
