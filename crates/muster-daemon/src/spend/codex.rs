@@ -33,16 +33,19 @@ impl Codex {
             self.looked = Some(now);
             self.rollout = find(sessions, thread).map(Tail::new);
         }
-        match self.rollout.as_mut()?.read() {
-            Ok(read) => {
-                if read.restarted {
-                    self.tokens = None;
-                }
-                if let Some(total) = read.lines.iter().rev().find_map(|line| total(line)) {
-                    self.tokens = Some(total);
-                }
+        let mut last = None;
+        match self.rollout.as_mut()?.read(|line| {
+            if let Some(found) = total(line) {
+                last = Some(found);
             }
+        }) {
+            Ok(true) => self.tokens = None,
+            Ok(false) => {}
             Err(error) => tracing::debug!(%error, "a rollout could not be read"),
+        }
+        // Lines read before an error were read: the file goes on after them.
+        if last.is_some() {
+            self.tokens = last;
         }
         self.tokens
     }

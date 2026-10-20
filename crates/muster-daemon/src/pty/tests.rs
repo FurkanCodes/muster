@@ -571,3 +571,24 @@ async fn a_program_that_suspended_itself_is_continued_and_no_other_is() {
     pty.resume_if_suspended().await;
     read_until(&pty, Some(next), "got-cont-7").await;
 }
+
+// The reader's wait
+
+#[test]
+fn the_reader_wakes_for_output_and_for_its_stop_which_comes_first() {
+    use std::io::Write;
+
+    use super::{Ready, readable};
+
+    let (output, mut program) = std::io::pipe().unwrap();
+    let terminal = std::fs::File::from(std::os::fd::OwnedFd::from(output));
+    let (stop, stopper) = std::io::pipe().unwrap();
+    program.write_all(b"x").unwrap();
+    assert_eq!(readable(&terminal, &stop), Ok(Ready::Output));
+    drop(stopper);
+    assert_eq!(
+        readable(&terminal, &stop),
+        Ok(Ready::Stop),
+        "stopped between reads, the output left for the next daemon"
+    );
+}

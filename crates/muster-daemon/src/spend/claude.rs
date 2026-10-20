@@ -57,24 +57,40 @@ impl Claude {
                 }
             }
         }
-        let mut lines = Vec::new();
+        let Self {
+            transcript: main,
+            subagents,
+            seen,
+            tokens,
+            ..
+        } = self;
+        let mut count = |line: &str| {
+            if let Some((message, used)) = usage(line)
+                && seen.insert(message)
+            {
+                *tokens = tokens.saturating_add(used);
+            }
+        };
         let mut restarted = false;
-        // The main agent's own first: only it can be interrupted.
-        let mut main = 0;
-        let tails = self
-            .transcript
-            .iter_mut()
-            .chain(self.subagents.values_mut());
-        for (index, tail) in tails.enumerate() {
-            match tail.read() {
-                Ok(read) => {
-                    restarted |= read.restarted;
-                    lines.extend(read.lines);
+        // The last turn cut short in what is read now; only the main agent's
+        // own can be.
+        let mut cut_short = None;
+        if let Some(main) = main {
+            let read = main.read(|line| {
+                if let Some(prompt) = interrupted(line) {
+                    cut_short = Some(prompt);
                 }
+                count(line);
+            });
+            match read {
+                Ok(anew) => restarted |= anew,
                 Err(error) => tracing::debug!(%error, "a transcript could not be read"),
             }
-            if index == 0 {
-                main = lines.len();
+        }
+        for tail in subagents.values_mut() {
+            match tail.read(&mut count) {
+                Ok(anew) => restarted |= anew,
+                Err(error) => tracing::debug!(%error, "a transcript could not be read"),
             }
         }
         if restarted {
@@ -82,17 +98,7 @@ impl Claude {
             *self = Self::default();
             return self.read(projects, session_id);
         }
-        self.interrupted = lines[..main]
-            .iter()
-            .rev()
-            .find_map(|line| interrupted(line));
-        for line in &lines {
-            if let Some((message, tokens)) = usage(line)
-                && self.seen.insert(message)
-            {
-                self.tokens = self.tokens.saturating_add(tokens);
-            }
-        }
+        self.interrupted = cut_short;
         Some(self.tokens)
     }
 

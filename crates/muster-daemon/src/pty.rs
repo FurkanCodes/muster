@@ -32,11 +32,10 @@ mod props;
 mod tests;
 
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{PipeReader, PipeWriter, Read, Write};
 use std::os::fd::{AsFd, OwnedFd};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use muster_core::colours::TerminalColours;
@@ -60,9 +59,6 @@ const STOP_GRACE: Duration = Duration::from_secs(3);
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// The most output sent as one chunk.
 const MAX_CHUNK: usize = 8 * 1024;
-/// How long the reader waits for output before it looks whether it is to
-/// stop, for a handoff.
-const READ_WAIT: Duration = Duration::from_millis(100);
 
 /// What to run in a terminal.
 #[derive(Clone, Debug)]
@@ -392,9 +388,8 @@ fn start(
     let writer = File::from(master.try_clone()?);
 
     let (output, output_queue) = mpsc::channel(64);
-    let stop_reading = Arc::new(AtomicBool::new(false));
+    let (stop, stop_reading) = std::io::pipe()?;
     let (read_done, reader_done) = oneshot::channel();
-    let stop = stop_reading.clone();
     std::thread::Builder::new()
         .name("muster-pty-read".to_owned())
         .spawn(move || {
@@ -426,7 +421,7 @@ fn start(
         size,
         stopping,
         kill_at: stopping.then(|| Instant::now() + STOP_GRACE),
-        stop_reading,
+        stop_reading: Some(stop_reading),
         reader_done: Some(reader_done),
     };
     #[expect(
@@ -457,15 +452,17 @@ fn pty_size(size: TermSize) -> PtySize {
     }
 }
 
-/// Reads output until the terminal closes, or until `stop` is set, which is
-/// looked at between reads: a byte read is always sent on, so a handoff
-/// loses none.
-fn read_output(mut reader: File, output: &mpsc::Sender<Vec<u8>>, stop: &AtomicBool) {
+/// Reads output until the terminal closes, or until `stop` can be read,
+/// which its writer's end being closed makes so: it is looked at between
+/// reads, so a byte read is always sent on, and a handoff loses none. The
+/// reader sleeps until one of them wakes it, never on a timer.
+fn read_output(mut reader: File, output: &mpsc::Sender<Vec<u8>>, stop: &PipeReader) {
     let mut buffer = vec![0; 16 * 1024];
-    while !stop.load(Ordering::Acquire) {
-        match readable(&reader) {
-            Ok(true) => {}
-            Ok(false) | Err(nix::errno::Errno::EINTR) => continue,
+    loop {
+        match readable(&reader, stop) {
+            Ok(Ready::Output) => {}
+            Ok(Ready::Stop) => return,
+            Err(nix::errno::Errno::EINTR) => continue,
             Err(_) => return,
         }
         match reader.read(&mut buffer) {
@@ -480,16 +477,27 @@ fn read_output(mut reader: File, output: &mpsc::Sender<Vec<u8>>, stop: &AtomicBo
     }
 }
 
-/// Whether the terminal has output, waiting at most `READ_WAIT`. With
-/// `select`, as macOS's `poll` does not work on terminals.
-fn readable(reader: &File) -> nix::Result<bool> {
+/// What woke the reader.
+#[derive(Debug, PartialEq, Eq)]
+enum Ready {
+    Output,
+    Stop,
+}
+
+/// Waits until the terminal has output or the reader is to stop, which
+/// comes first when both are so. With `select`, as macOS's `poll` does not
+/// work on terminals.
+fn readable(reader: &File, stop: &PipeReader) -> nix::Result<Ready> {
     use nix::sys::select::{FdSet, select};
-    use nix::sys::time::{TimeVal, TimeValLike};
     let mut fds = FdSet::new();
     fds.insert(reader.as_fd());
-    let millis = i64::try_from(READ_WAIT.as_millis()).unwrap_or(100);
-    let mut timeout = TimeVal::milliseconds(millis);
-    select(None, &mut fds, None, None, &mut timeout).map(|ready| ready > 0)
+    fds.insert(stop.as_fd());
+    select(None, &mut fds, None, None, None)?;
+    if fds.contains(stop.as_fd()) {
+        Ok(Ready::Stop)
+    } else {
+        Ok(Ready::Output)
+    }
 }
 
 fn write_input(mut writer: File, input: &std::sync::mpsc::Receiver<Vec<u8>>) {
@@ -523,8 +531,9 @@ struct Actor {
     size: TermSize,
     stopping: bool,
     kill_at: Option<Instant>,
-    /// Set to stop the reader, for a handoff.
-    stop_reading: Arc<AtomicBool>,
+    /// Closed to stop the reader, for a handoff; it also stops once the
+    /// actor is gone.
+    stop_reading: Option<PipeWriter>,
     /// Told when the reader has stopped.
     reader_done: Option<oneshot::Receiver<()>>,
 }
@@ -613,7 +622,7 @@ impl Actor {
     /// handoff would wait for ever. Once its last send goes through it
     /// stops, so what is taken is at most a queue's worth.
     async fn stop_reader(&mut self, output: &mut mpsc::Receiver<Vec<u8>>) -> Vec<Vec<u8>> {
-        self.stop_reading.store(true, Ordering::Release);
+        drop(self.stop_reading.take());
         let mut taken = Vec::new();
         let Some(mut done) = self.reader_done.take() else {
             return taken;

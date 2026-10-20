@@ -262,6 +262,7 @@ async fn a_branch_s_pull_request_is_shown_on_its_worktree_and_kept_through_a_fai
         ..
     } = setup().await;
     let (snapshot, mut deltas) = supervisor.subscribe().await.unwrap();
+    let _looking = supervisor.looked_at_client().await;
     assert!(
         snapshot.workspaces.iter().all(|w| w.pull_request.is_none()),
         "nothing is known before the first look"
@@ -320,6 +321,7 @@ async fn another_branch_checked_out_lets_go_of_the_last_one_s_pull_request() {
         ..
     } = setup().await;
     let (_, mut deltas) = supervisor.subscribe().await.unwrap();
+    let _looking = supervisor.looked_at_client().await;
     let merged = status(7, PullRequestState::Merged);
     host.set("feature", Some(merged.clone()));
     assert_eq!(
@@ -350,10 +352,12 @@ async fn another_branch_checked_out_lets_go_of_the_last_one_s_pull_request() {
 }
 
 #[tokio::test]
-async fn while_no_client_watches_only_every_tenth_tick_looks() {
+async fn while_nobody_looks_at_a_client_only_every_tenth_tick_looks() {
     let Setup {
         host, supervisor, ..
     } = setup().await;
+    // Subscribed, as the notch is, but nobody looks at a client.
+    let (_, _deltas) = supervisor.subscribe().await.unwrap();
     host.set("feature", Some(status(3, PullRequestState::Open)));
     for _ in 0..9 {
         assert!(supervisor.check_pull_requests().await);
@@ -373,11 +377,40 @@ async fn while_no_client_watches_only_every_tenth_tick_looks() {
 }
 
 #[tokio::test]
+async fn looking_again_after_a_tick_went_by_looks_at_once_but_only_then() {
+    let Setup {
+        host, supervisor, ..
+    } = setup().await;
+    host.set("feature", Some(status(3, PullRequestState::Open)));
+    let asked = || host.asked().len();
+    let settled = || async {
+        supervisor.workspaces().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+    // Looked at before any tick went by: nothing missed, nothing asked.
+    let looking = supervisor.looked_at_client().await;
+    settled().await;
+    assert_eq!(asked(), 0);
+    drop(looking);
+    assert!(supervisor.check_pull_requests().await);
+    settled().await;
+    assert_eq!(asked(), 0, "nobody looks");
+    let _looking = supervisor.looked_at_client().await;
+    timeout(Duration::from_secs(5), async {
+        while asked() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the tick let go by is taken as the person looks");
+}
+
+#[tokio::test]
 async fn a_look_that_never_comes_back_holds_the_next_ones_back_ten_ticks_only() {
     let Setup {
         host, supervisor, ..
     } = setup().await;
-    let (_, _deltas) = supervisor.subscribe().await.unwrap();
+    let _looking = supervisor.looked_at_client().await;
     host.silent.store(true, std::sync::atomic::Ordering::SeqCst);
     let asked = || host.asked().len();
     assert!(supervisor.check_pull_requests().await);

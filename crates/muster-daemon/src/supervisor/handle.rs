@@ -99,6 +99,8 @@ pub(super) enum Request {
     TidyChecked(Box<(SessionId, Option<muster_core::tidy::TidyCheck>)>),
     /// The sampler asks which sessions run under which process.
     RunningProcesses(oneshot::Sender<Vec<(SessionId, u32)>>),
+    /// A watcher asks to follow whether the person looks at any client.
+    LookedAt(oneshot::Sender<tokio::sync::watch::Receiver<bool>>),
     /// The branch watcher asks where each workspace is and what it had
     /// checked out.
     Workspaces(oneshot::Sender<Vec<(WorkspaceId, PathBuf, String)>>),
@@ -159,6 +161,7 @@ impl std::fmt::Debug for Request {
             Self::TidyChecked(_) => f.write_str("TidyChecked"),
             Self::StackMoved(_) => f.write_str("StackMoved"),
             Self::RunningProcesses(_) => f.write_str("RunningProcesses"),
+            Self::LookedAt(_) => f.write_str("LookedAt"),
             Self::Workspaces(_) => f.write_str("Workspaces"),
             Self::Branches(_) => f.write_str("Branches"),
             Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
@@ -207,6 +210,14 @@ impl SupervisorHandle {
             .send(Request::RunningProcesses(reply))
             .await
             .ok()?;
+        answer.await.ok()
+    }
+
+    /// Whether the person looks at any client, now and as it changes, or
+    /// `None` once the Supervisor has stopped.
+    pub(crate) async fn looked_at(&self) -> Option<tokio::sync::watch::Receiver<bool>> {
+        let (reply, answer) = oneshot::channel();
+        self.requests.send(Request::LookedAt(reply)).await.ok()?;
         answer.await.ok()
     }
 
@@ -310,6 +321,17 @@ impl SupervisorHandle {
         let (reply, answer) = oneshot::channel();
         self.requests.send(Request::AddClient(reply)).await.ok()?;
         answer.await.ok()
+    }
+
+    /// A client the person looks at, for tests, until the guard is dropped;
+    /// its frames are kept on the receiver.
+    #[cfg(test)]
+    pub(crate) async fn looked_at_client(&self) -> (ClientGuard, mpsc::Receiver<ServerFrame>) {
+        let client = self.add_client().await.expect("the Supervisor runs");
+        let (outgoing, frames) = mpsc::channel(64);
+        assert!(self.add_looker(&client, outgoing).await);
+        assert!(self.looking(&client, true).await);
+        (client, frames)
     }
 
     /// Counts a client that will say whether the person is looking at it,

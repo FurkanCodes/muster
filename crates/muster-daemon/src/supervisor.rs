@@ -158,6 +158,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         keys_gone,
         colours: watch::channel(muster_core::colours::TerminalColours::default()).0,
         lookers: looking::Lookers::default(),
+        looked_at: watch::channel(false).0,
         sizing: sizing::Sizing::default(),
         next_client: 0,
         client_gone,
@@ -278,6 +279,9 @@ struct Supervisor {
     colours: watch::Sender<muster_core::colours::TerminalColours>,
     /// The clients that say whether the person is looking at them.
     lookers: looking::Lookers,
+    /// Whether the person looks at any, for the watchers that slow down
+    /// while nobody does.
+    looked_at: watch::Sender<bool>,
     /// The sizes clients gave sessions' terminals.
     sizing: sizing::Sizing,
     /// The key the last connection was given.
@@ -476,6 +480,9 @@ impl Supervisor {
             Request::TidyChecked(checked) => {
                 let (session, checked) = *checked;
                 self.tidy_checked(session, checked);
+            }
+            Request::LookedAt(reply) => {
+                let _ = reply.send(self.looked_at.subscribe());
             }
             Request::RunningProcesses(reply) => {
                 let running = self
