@@ -147,6 +147,7 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             naming: config.naming,
             keys: config.keys,
             notifications: config.notifications,
+            telling: config.telling,
         },
         agents: config.agents,
     })
@@ -210,6 +211,26 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
         PreferenceChange::Notifications(on) => {
             let (table, key) = NOTIFICATIONS;
             edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+        }
+        PreferenceChange::Tell { kind, tell } => {
+            let (table, _) = NOTIFICATIONS;
+            let sound = format!("{}_sound", kind.key());
+            edit::set_flag_in(
+                text.as_deref(),
+                preferences::NEW_FILE,
+                table,
+                kind.key(),
+                tell.on,
+            )
+            .and_then(|flagged| {
+                edit::set_text_in(
+                    Some(&flagged),
+                    preferences::NEW_FILE,
+                    table,
+                    &sound,
+                    tell.sound.key(),
+                )
+            })
         }
         PreferenceChange::NamedBy { agent, model } => edit::set_texts_in(
             text.as_deref(),
@@ -350,6 +371,42 @@ mod tests {
             "[layout]\nside_by_side_from = 120 # mine\npanels = \"session | list 28 | (changes / shell)\"\n\
              list_folded = true\n"
         );
+    }
+
+    #[test]
+    fn which_notifications_and_their_sounds_are_written_beside_the_rest() {
+        use muster_core::telling::{Kind, Sound, Tell};
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let file = config_dir.join("settings.toml");
+        std::fs::write(&file, "# mine\n[notifications]\nshow = true\n").unwrap();
+        let tell = |kind, on, sound| PreferenceChange::Tell {
+            kind,
+            tell: Tell { on, sound },
+        };
+        change_preference(&config_dir, &tell(Kind::Finish, false, Sound::Silent)).unwrap();
+        change_preference(
+            &config_dir,
+            &tell(Kind::Question, true, Sound::Named("Glass".to_owned())),
+        )
+        .unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert!(read.notifications);
+        assert!(!read.telling.finishes.on);
+        assert_eq!(read.telling.finishes.sound, Sound::Silent);
+        assert_eq!(
+            read.telling.questions.sound,
+            Sound::Named("Glass".to_owned())
+        );
+        assert_eq!(read.telling.errors, Tell::default());
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(written.starts_with("# mine\n"), "{written}");
+        assert!(
+            written.contains("finishes = false\nfinishes_sound = \"none\"\n"),
+            "{written}"
+        );
+        assert!(written.contains("questions_sound = \"Glass\""), "{written}");
     }
 
     #[test]

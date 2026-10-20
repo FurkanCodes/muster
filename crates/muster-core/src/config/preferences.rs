@@ -2,8 +2,9 @@
 //! project's, in `settings.toml` beside the projects' overrides in their
 //! settings folder: whether the notch shows (`[notch] show`), the coding
 //! agents they added (`[agents.<name>]`, [`super::agents`]), and the UI's
-//! layout and look (`[layout]`, `[look]`). Read strictly, as a project's
-//! are; parsing does no IO.
+//! layout and look (`[layout]`, `[look]`), and what they are told of
+//! (`[notifications]`). Read strictly, as a project's are; parsing does no
+//! IO.
 
 use std::collections::BTreeMap;
 
@@ -13,6 +14,7 @@ use super::ConfigError;
 use super::agents::{self, AgentDefinition};
 use crate::layout::Layout;
 use crate::settings::{Naming, Palette, SessionLines};
+use crate::telling::{Kind, Sound, Tell, Telling};
 
 /// What the file is called, in the person's settings folder.
 pub const FILE_NAME: &str = "settings.toml";
@@ -48,6 +50,9 @@ pub struct MusterConfig {
     /// Whether the person is told of what newly needs them while they look
     /// away (`[notifications] show`).
     pub notifications: bool,
+    /// Which kinds the person is told of, and how each sounds (the rest of
+    /// `[notifications]`).
+    pub telling: Telling,
 }
 
 impl Default for MusterConfig {
@@ -63,6 +68,7 @@ impl Default for MusterConfig {
             naming: Naming::default(),
             keys: BTreeMap::new(),
             notifications: true,
+            telling: Telling::default(),
         }
     }
 }
@@ -85,7 +91,19 @@ struct File {
     #[serde(default)]
     keys: BTreeMap<String, OneOrMore>,
     #[serde(default)]
-    notifications: Notch,
+    notifications: Notifications,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Notifications {
+    show: Option<bool>,
+    questions: Option<bool>,
+    finishes: Option<bool>,
+    errors: Option<bool>,
+    questions_sound: Option<String>,
+    finishes_sound: Option<String>,
+    errors_sound: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -189,6 +207,25 @@ impl MusterConfig {
             agent: one_line("agent", read.names.agent)?,
             model: one_line("model", read.names.model)?,
         };
+        let written = &read.notifications;
+        let mut telling = Telling::default();
+        for (kind, on, sound) in [
+            (Kind::Question, written.questions, &written.questions_sound),
+            (Kind::Finish, written.finishes, &written.finishes_sound),
+            (Kind::Error, written.errors, &written.errors_sound),
+        ] {
+            let sound = match sound {
+                None => Sound::Default,
+                Some(sound) => Sound::parse(sound).map_err(|error| {
+                    invalid(&format!("notifications.{}_sound: {error}", kind.key()))
+                })?,
+            };
+            let tell = Tell {
+                on: on.unwrap_or(true),
+                sound,
+            };
+            telling = telling.with(kind, tell);
+        }
         Ok(Self {
             notch: read.notch.show.unwrap_or(default.notch),
             agents,
@@ -203,6 +240,7 @@ impl MusterConfig {
             naming,
             keys,
             notifications: read.notifications.show.unwrap_or(default.notifications),
+            telling,
         })
     }
 }
@@ -385,5 +423,35 @@ mod tests {
             assert!(error.starts_with("s.toml"), "{error}");
             assert!(error.contains(says), "{error}");
         }
+    }
+
+    #[test]
+    fn each_kind_is_told_with_the_mac_s_sound_unless_written() {
+        let nothing = MusterConfig::parse(Some("[notifications]\nshow = true\n"), "f").unwrap();
+        assert_eq!(nothing.telling, Telling::default());
+        let written = MusterConfig::parse(
+            Some(
+                "[notifications]\nfinishes = false\nquestions_sound = \"Glass\"\n\
+                 errors_sound = \"none\"\n",
+            ),
+            "f",
+        )
+        .unwrap();
+        assert!(!written.telling.finishes.on);
+        assert_eq!(
+            written.telling.questions,
+            Tell {
+                on: true,
+                sound: Sound::Named("Glass".to_owned())
+            }
+        );
+        assert_eq!(written.telling.errors.sound, Sound::Silent);
+        let error = MusterConfig::parse(
+            Some("[notifications]\nerrors_sound = \"../x.wav\"\n"),
+            "settings.toml",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("notifications.errors_sound"), "{error}");
     }
 }

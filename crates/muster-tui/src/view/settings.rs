@@ -10,7 +10,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{list_block, look, panel, shorten};
+use super::{list_block, look, panel, shorten, telling};
 use crate::app::tickets_from::tracker_label;
 use crate::app::{App, SettingRow, Settings};
 
@@ -98,6 +98,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::NamingModel => labelled(NAMING_MODEL, naming_model_value(app), width),
         SettingRow::Keys => labelled(KEYS, keys_value(app), width),
         SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
+        SettingRow::Tell(kind) => labelled(&telling::label(kind), telling::value(app, kind), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -250,6 +251,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::Panels) => panels_text(app),
         Some(SettingRow::Keys) => keys_text(app),
         Some(SettingRow::Notifications) => notifications_text(app),
+        Some(SettingRow::Tell(kind)) => telling::text(app, kind),
         Some(SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel) => {
             naming_text(app)
         }
@@ -268,6 +270,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Panels => panels_text(app),
                 SettingRow::Keys => keys_text(app),
                 SettingRow::Notifications => notifications_text(app),
+                SettingRow::Tell(kind) => telling::text(app, kind),
                 SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
                     naming_text(app)
                 }
@@ -880,8 +883,17 @@ pub(super) fn hints(app: &App) -> Vec<String> {
                 "⏎ turn on"
             });
         }
+        Some(SettingRow::Tell(kind)) if !app.telling_changing => {
+            hints.push(if app.model.preferences().telling.of(kind).on {
+                "⏎ turn off"
+            } else {
+                "⏎ turn on"
+            });
+            hints.push("← → sound");
+        }
         Some(
             SettingRow::Project(_)
+            | SettingRow::Tell(_)
             | SettingRow::Muster
             | SettingRow::Notch
             | SettingRow::SideBySide

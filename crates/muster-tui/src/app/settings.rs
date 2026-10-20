@@ -57,6 +57,8 @@ pub(crate) enum SettingRow {
     Keys,
     /// Whether the person is told of what newly needs them.
     Notifications,
+    /// Whether a kind of notification is told, and how it sounds.
+    Tell(muster_core::telling::Kind),
     /// The coding agents the person added in Muster's own settings.
     Agents,
 }
@@ -80,6 +82,7 @@ impl SettingRow {
             | Self::NamingModel
             | Self::Keys
             | Self::Notifications
+            | Self::Tell(_)
             | Self::Agents => None,
         }
     }
@@ -117,9 +120,13 @@ impl App {
             })
             .flatten()
             .collect();
+        let told = self.telling_known();
         let own = [
             (self.notch_known(), SettingRow::Notch),
             (self.notifications_known(), SettingRow::Notifications),
+            (told, SettingRow::Tell(muster_core::telling::Kind::Question)),
+            (told, SettingRow::Tell(muster_core::telling::Kind::Finish)),
+            (told, SettingRow::Tell(muster_core::telling::Kind::Error)),
             (self.side_by_side_known(), SettingRow::SideBySide),
             (self.look_known(), SettingRow::Colours),
             (self.look_known(), SettingRow::SessionLines),
@@ -154,6 +161,7 @@ impl App {
                 Some(SettingRow::NamingModel) => return self.choose_naming_model(),
                 Some(SettingRow::Keys) => return self.open_rebinding(),
                 Some(SettingRow::Notifications) => return self.toggle_notifications(),
+                Some(SettingRow::Tell(kind)) => return self.toggle_tell(kind),
                 _ => return self.toggle_setting(),
             },
             (KeyCode::Left | KeyCode::Right, _)
@@ -161,6 +169,12 @@ impl App {
             {
                 let by = if key.code == KeyCode::Left { -1 } else { 1 };
                 return self.step_side_by_side(by, false);
+            }
+            (KeyCode::Left | KeyCode::Right, _) => {
+                if let Some(SettingRow::Tell(kind)) = self.settings_selected {
+                    let by = if key.code == KeyCode::Left { -1 } else { 1 };
+                    return self.step_sound(kind, by);
+                }
             }
             (_, Some(Does::ReadSettings)) => {
                 // Read again as they are shown, edits by hand included:

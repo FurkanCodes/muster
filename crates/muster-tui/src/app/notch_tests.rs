@@ -11,6 +11,7 @@ use muster_core::settings::{NOTCH_PROTOCOL, PreferenceChange, Preferences};
 use super::tests::{World, command, press, render, world};
 use super::{Action, App, Mode, SettingRow, View};
 use crate::model::Row;
+use muster_core::telling::Kind;
 
 fn looking(looking: bool) -> Action {
     Action::Send(ClientFrame::Looking { looking })
@@ -235,6 +236,9 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::Notifications,
+        SettingRow::Tell(Kind::Question),
+        SettingRow::Tell(Kind::Finish),
+        SettingRow::Tell(Kind::Error),
         SettingRow::SideBySide,
         SettingRow::Colours,
         SettingRow::SessionLines,
@@ -250,6 +254,9 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Muster,
         SettingRow::Notch,
         SettingRow::Notifications,
+        SettingRow::Tell(Kind::Question),
+        SettingRow::Tell(Kind::Finish),
+        SettingRow::Tell(Kind::Error),
         SettingRow::SideBySide,
         SettingRow::Colours,
         SettingRow::SessionLines,

@@ -73,6 +73,7 @@ const FROZEN: &[Frozen] = &[
     frozen!(37, 16, "0.3.29"),
     frozen!(38, 16, "0.3.29"),
     frozen!(39, 16, "0.3.29"),
+    frozen!(40, 16, "0.3.31"),
 ];
 
 /// The process id the frozen replies name.

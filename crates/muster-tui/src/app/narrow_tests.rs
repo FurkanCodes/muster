@@ -10,6 +10,7 @@ use ratatui::layout::Rect;
 use super::tests::{World, press, render_in, shift_q, world};
 use super::{Action, Mode, SettingRow, View};
 use crate::model::Row;
+use muster_core::telling::Kind;
 
 const NARROW: TermSize = TermSize { cols: 90, rows: 29 };
 
@@ -170,6 +171,9 @@ fn the_width_is_one_of_muster_s_own_settings() {
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::Notifications,
+        SettingRow::Tell(Kind::Question),
+        SettingRow::Tell(Kind::Finish),
+        SettingRow::Tell(Kind::Error),
         SettingRow::SideBySide,
         SettingRow::Colours,
         SettingRow::SessionLines,

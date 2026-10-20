@@ -342,9 +342,9 @@ impl Screen {
                 self.step = step;
             }
             ToScreen::Note(text) => self.said = Some((text, self.step)),
-            ToScreen::Notify { session, text } => {
+            ToScreen::Notify(posted) => {
                 if let Some(notifier) = &self.notifier {
-                    notifier.post(session, &text);
+                    notifier.post(&posted);
                 }
                 return;
             }

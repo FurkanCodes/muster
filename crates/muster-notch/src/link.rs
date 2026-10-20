@@ -19,7 +19,7 @@ use tokio::time::{Instant, MissedTickBehavior};
 
 use crate::board::Board;
 use crate::mirror;
-use crate::news::News;
+use crate::news::{News, Posted, posts};
 
 /// How the notch says who it is to the daemon.
 const CLIENT: &str = concat!("muster-notch ", env!("CARGO_PKG_VERSION"));
@@ -39,9 +39,8 @@ pub(crate) enum ToScreen {
     /// A word for the person under the list: why a session could not be
     /// shown.
     Note(String),
-    /// A notification of the Mac's own: `session` newly needs the person,
-    /// as `text` says.
-    Notify { session: SessionId, text: String },
+    /// A notification of the Mac's own.
+    Notify(Posted),
 }
 
 /// What the screen hands the link.
@@ -226,27 +225,8 @@ fn notify(
     if !state.preferences.notifications || state.looked_at || can_notify != Some(true) {
         return;
     }
-    for session in told {
-        let Some(stored) = state.sessions.iter().find(|stored| stored.id == *session) else {
-            continue;
-        };
-        let workspace = state
-            .workspaces
-            .iter()
-            .find(|workspace| workspace.id == stored.workspace);
-        let project = workspace
-            .and_then(|workspace| {
-                state
-                    .projects
-                    .iter()
-                    .find(|project| project.id == workspace.project)
-            })
-            .map(|project| project.name.as_str());
-        let branch = workspace.map(|workspace| workspace.kind.branch());
-        screen(ToScreen::Notify {
-            session: *session,
-            text: muster_core::news::told(stored, project, branch),
-        });
+    for posted in posts(state, told) {
+        screen(ToScreen::Notify(posted));
     }
 }
 

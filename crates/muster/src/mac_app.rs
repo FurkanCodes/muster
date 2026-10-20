@@ -6,6 +6,8 @@
 //! directory (`~/Library/Application Support/muster`): a copy of this
 //! `muster` in an app of Muster's own, signed for this machine only,
 //! written again whenever this `muster` changes, and opened with `open`.
+//! It carries a copy of the Mac's own sounds, as a notification's sound is
+//! looked for in its app and the person's `~/Library/Sounds` only.
 //! Muster's own files, beside its others, nothing of the person's
 //! (`PRD-13`).
 
@@ -87,6 +89,7 @@ pub(crate) fn ensure(data_dir: &Path, exe: &Path) -> std::io::Result<PathBuf> {
         info_plist(env!("CARGO_PKG_VERSION")),
     )?;
     std::fs::copy(exe, fresh.join("Contents/MacOS/muster"))?;
+    carry_sounds(Path::new(MAC_SOUNDS_DIR), &fresh.join("Contents/Resources"));
     std::fs::write(fresh.join("Contents/Resources/made-from"), &wanted)?;
     // Signed for this machine alone: macOS runs no app of another's
     // making unsigned, and asks nothing of the person for this one.
@@ -108,6 +111,19 @@ pub(crate) fn ensure(data_dir: &Path, exe: &Path) -> std::io::Result<PathBuf> {
     Ok(app)
 }
 
+/// Where the Mac keeps its own sounds.
+const MAC_SOUNDS_DIR: &str = "/System/Library/Sounds";
+
+/// Copies the Mac's sounds Muster offers (`muster_core::telling`) from
+/// `from` into `to`; one missing, or that cannot be copied, is left out,
+/// and a notification with it sounds the Mac's own instead.
+fn carry_sounds(from: &Path, to: &Path) {
+    for name in muster_core::telling::MAC_SOUNDS {
+        let file = format!("{name}.aiff");
+        let _ = std::fs::copy(from.join(&file), to.join(&file));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +135,23 @@ mod tests {
         assert!(plist.contains("<key>LSUIElement</key>\n\t<true/>"));
         assert!(plist.contains("<string>0.4.0</string>"));
         assert!(plist.contains("<key>CFBundleExecutable</key>\n\t<string>muster</string>"));
+    }
+
+    #[test]
+    fn the_app_carries_the_mac_s_sounds_it_finds() {
+        let dir = tempfile::tempdir().unwrap();
+        let (from, to) = (dir.path().join("system"), dir.path().join("app"));
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::create_dir_all(&to).unwrap();
+        std::fs::write(from.join("Glass.aiff"), "glass").unwrap();
+        std::fs::write(from.join("Other.aiff"), "not offered").unwrap();
+        carry_sounds(&from, &to);
+        assert_eq!(
+            std::fs::read_to_string(to.join("Glass.aiff")).unwrap(),
+            "glass"
+        );
+        assert!(!to.join("Other.aiff").exists());
+        assert!(!to.join("Tink.aiff").exists(), "missing: left out");
     }
 
     #[test]

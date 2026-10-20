@@ -30,6 +30,7 @@ mod settle;
 mod sharing;
 mod shell;
 mod stacks;
+mod telling;
 mod tickets;
 pub(crate) mod tickets_from;
 mod tidy;
@@ -111,6 +112,8 @@ mod slide_tests;
 #[cfg(test)]
 mod spend_tests;
 #[cfg(test)]
+mod telling_tests;
+#[cfg(test)]
 mod terminal_tests;
 #[cfg(test)]
 mod tests;
@@ -141,6 +144,8 @@ pub(crate) enum Action {
     /// Tell the person, who is looking elsewhere: a desktop notification
     /// where the terminal shows one, and its bell.
     Notify(String),
+    /// Play a sound the person is choosing for a notification, on a Mac.
+    Hear(muster_core::telling::Sound),
     /// Open a web page in the person's browser.
     Open(String),
     /// Put text on the person's clipboard.
@@ -357,6 +362,8 @@ enum Then {
     NotchChanged(bool),
     /// Say from how many columns a session sits beside the list now.
     SideBySideChanged(u16),
+    /// Say how a kind of notification is told now.
+    TellChanged(muster_core::telling::Kind, muster_core::telling::Tell),
     /// Say how the UI looks now.
     LookChanged(look::LookChange),
     /// The list's fold is kept, or could not be.
@@ -512,6 +519,8 @@ pub(crate) struct App {
     pub(crate) side_by_side_changing: bool,
     /// The look is being changed: whose colours, or how many lines.
     pub(crate) look_changing: bool,
+    /// How a kind of notification is told is being changed.
+    pub(crate) telling_changing: bool,
     /// The panels as the person moved them, until the daemon keeps them,
     /// or for as long as the window lasts where it cannot.
     panels_kept: Option<Layout>,
@@ -600,6 +609,7 @@ impl App {
             cell_pixels: None,
             side_by_side_changing: false,
             look_changing: false,
+            telling_changing: false,
             panels_kept: None,
             folded_kept: None,
             fitted: None,

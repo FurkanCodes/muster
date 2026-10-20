@@ -30,6 +30,7 @@ mod rebind;
 mod selection;
 mod sessions;
 mod settings;
+mod telling;
 mod terminal;
 pub(crate) mod theme;
 mod tickets;

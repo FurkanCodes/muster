@@ -35,6 +35,7 @@ use muster_core::settings::{
     SettingChange, SettingSource, TicketsFrom, Toggle,
 };
 use muster_core::stacks::Stacked;
+use muster_core::telling::{Kind, Sound, Tell, Telling};
 use muster_core::tidy::{Tidy, TidyCheck};
 use muster_core::time::Timestamp;
 use muster_core::timeline::{BranchMove, Entry, EntryKind, Timeline, UndoPlan};
@@ -258,6 +259,13 @@ fn preferences() -> Preferences {
         },
         keys: [("new_session".to_owned(), vec!["N".to_owned()])].into(),
         notifications: false,
+        telling: Telling::default().with(
+            Kind::Finish,
+            Tell {
+                on: false,
+                sound: Sound::Named("Glass".to_owned()),
+            },
+        ),
     }
 }
 
@@ -498,6 +506,13 @@ fn commands() -> Vec<Command> {
         }),
         Command::ChangePreference(PreferenceChange::AllKeysBack),
         Command::ChangePreference(PreferenceChange::Notifications(false)),
+        Command::ChangePreference(PreferenceChange::Tell {
+            kind: Kind::Error,
+            tell: Tell {
+                on: true,
+                sound: Sound::Silent,
+            },
+        }),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),
