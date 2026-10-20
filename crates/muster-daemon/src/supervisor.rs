@@ -79,8 +79,6 @@ pub(crate) struct Settings {
     /// What the hook receiver accepted.
     pub(crate) hook_queue: mpsc::Receiver<HookDelivery>,
     pub(crate) delta_capacity: usize,
-    /// Keep every this-many-th measurement in the store's history.
-    pub(crate) history_every: u32,
     /// The session machines' time windows.
     pub(crate) timing: Timing,
     /// Does runs' work.
@@ -164,8 +162,6 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         client_gone,
         hook_tokens: HashMap::new(),
         pty_events,
-        history_every: settings.history_every.max(1),
-        measurements: 0,
         timing: settings.timing,
         active_runs: HashMap::new(),
         work: settings.work,
@@ -290,9 +286,6 @@ struct Supervisor {
     client_gone: mpsc::UnboundedSender<u64>,
     /// Which session each issued hook token names (`ARC-11`).
     hook_tokens: HashMap<crate::secrets::Token, SessionId>,
-    history_every: u32,
-    /// Measurements received, to keep every `history_every`-th.
-    measurements: u32,
     timing: Timing,
     /// Runs in progress, with their machines.
     active_runs: HashMap<RunId, runs::ActiveRun>,
@@ -493,7 +486,7 @@ impl Supervisor {
                     .collect();
                 let _ = reply.send(running);
             }
-            Request::Resources(report) => self.record_resources(report).await,
+            Request::Resources(report) => self.record_resources(report),
             Request::Notifier { client, ready } => self.set_notifier(client, ready),
             Request::Shells(reply) => {
                 let _ = reply.send(self.shells());
@@ -655,29 +648,8 @@ impl Supervisor {
         }
     }
 
-    /// Keeps the latest measurement, tells clients, and now and then keeps
-    /// one in the store's history.
-    async fn record_resources(&mut self, report: ResourceReport) {
-        self.measurements = self.measurements.wrapping_add(1);
-        if self.measurements.is_multiple_of(self.history_every) {
-            let at = self.clock.now();
-            let samples: Vec<_> = report
-                .sessions
-                .iter()
-                .map(|usage| crate::store::ResourceSample {
-                    session: usage.session,
-                    at,
-                    cpu_permille: usage.cpu_permille,
-                    memory_bytes: usage.memory_bytes,
-                })
-                .collect();
-            self.write(move |store| {
-                samples
-                    .iter()
-                    .try_for_each(|sample| store.record_sample(sample))
-            })
-            .await;
-        }
+    /// Keeps only the latest measurement and tells clients (ARC-14).
+    fn record_resources(&mut self, report: ResourceReport) {
         self.state.resources = Some(report.clone());
         self.broadcast(Delta::Resources(report));
     }

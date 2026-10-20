@@ -190,7 +190,7 @@ async fn spawn_with(
         hook_socket: config_dir.join("hooks.sock"),
         hook_queue: mpsc::channel(1).1,
         delta_capacity: 256,
-        history_every: 1,
+
         timing: muster_state::session::Timing::default(),
         work,
         trackers: Arc::new(Fixed(Arc::new(OneIssue))),

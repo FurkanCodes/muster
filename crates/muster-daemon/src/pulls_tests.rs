@@ -149,7 +149,7 @@ pub(crate) async fn setup() -> Setup {
         hook_socket: dir.path().join("hooks.sock"),
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity: 64,
-        history_every: 1,
+
         timing: muster_state::session::Timing::default(),
         work: Arc::new(crate::runs::NotYetBuilt),
         trackers: Arc::new(crate::trackers::choose::ServiceTrackers {

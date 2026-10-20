@@ -4,9 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use muster_core::{
-    Project, Session, SessionId, SessionStatus, Timestamp, Workspace, WorkspaceKind,
-};
+use muster_core::{Project, Session, SessionStatus, Timestamp, Workspace, WorkspaceKind};
 use rusqlite::Row;
 
 use super::{Result, StoreError};
@@ -17,16 +15,6 @@ pub struct StatusChange {
     pub status: SessionStatus,
     pub unseen: bool,
     pub at: Timestamp,
-}
-
-/// A session's resource use at one moment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ResourceSample {
-    pub session: SessionId,
-    pub at: Timestamp,
-    /// CPU use in thousandths of one core: 1500 is one and a half cores.
-    pub cpu_permille: u32,
-    pub memory_bytes: u64,
 }
 
 pub(super) fn id_text(id: impl std::fmt::Display) -> String {
@@ -175,19 +163,4 @@ pub(super) fn status_change(row: &Row<'_>) -> rusqlite::Result<Result<StatusChan
     let status: String = row.get(0)?;
     let (unseen, at) = (row.get(1)?, Timestamp::from_millis(row.get(2)?));
     Ok(parse_status(&status).map(|status| StatusChange { status, unseen, at }))
-}
-
-pub(super) fn sample(row: &Row<'_>) -> rusqlite::Result<Result<ResourceSample>> {
-    let session: String = row.get(0)?;
-    let at = Timestamp::from_millis(row.get(1)?);
-    let (cpu_permille, memory): (u32, i64) = (row.get(2)?, row.get(3)?);
-    Ok((|| {
-        Ok(ResourceSample {
-            session: parse_id(&session)?,
-            at,
-            cpu_permille,
-            memory_bytes: u64::try_from(memory)
-                .map_err(|_| StoreError::Invalid(format!("memory {memory}")))?,
-        })
-    })())
 }

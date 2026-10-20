@@ -158,8 +158,6 @@ pub struct DaemonConfig {
     pub delta_capacity: usize,
     /// How often sessions' resource use is measured.
     pub sample_interval: Duration,
-    /// How often a measurement is kept in the store's history.
-    pub history_interval: Duration,
     /// How often workspaces' checked-out branches are looked at.
     pub branch_interval: Duration,
     /// How often projects are looked at for worktrees made or removed
@@ -183,7 +181,6 @@ impl DaemonConfig {
             paths,
             delta_capacity: 1024,
             sample_interval: Duration::from_secs(2),
-            history_interval: Duration::from_secs(30),
             branch_interval: Duration::from_secs(2),
             worktree_interval: Duration::from_secs(3),
             start_grace: muster_state::session::Timing::default().start_grace,
@@ -405,7 +402,6 @@ async fn start_supervisor(
         hook_socket: paths.hook_socket(),
         hook_queue: started.hook_queue,
         delta_capacity: config.delta_capacity,
-        history_every: history_every(config.sample_interval, config.history_interval),
         timing: muster_state::session::Timing {
             start_grace: config.start_grace,
             ..muster_state::session::Timing::default()
@@ -542,12 +538,6 @@ async fn watch_pull_requests(supervisor: supervisor::SupervisorHandle, every: Du
             return;
         }
     }
-}
-
-/// How many measurements pass between those kept in history.
-fn history_every(sample: Duration, history: Duration) -> u32 {
-    let ratio = history.as_millis() / sample.as_millis().max(1);
-    u32::try_from(ratio).unwrap_or(u32::MAX).max(1)
 }
 
 /// Binds a Unix socket only this user can use.

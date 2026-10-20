@@ -313,3 +313,62 @@ fn the_daemons_log_moves_on_to_a_fresh_file_and_keeps_seven() {
     assert_eq!(logs(), 7);
     drop(daemon);
 }
+
+#[tokio::test]
+async fn the_daemon_backs_up_schema_six_before_dropping_samples_arc_14_prd_09() {
+    let sandbox = Sandbox::new();
+    let paths = sandbox.paths();
+    std::fs::create_dir_all(&paths.data_dir).unwrap();
+    let database = paths.data_dir.join("muster.db");
+    let legacy = rusqlite::Connection::open(&database).unwrap();
+    legacy
+        .execute_batch(include_str!("fixtures/schema6.sql"))
+        .unwrap();
+    let project = muster_core::ProjectId::new().to_string();
+    let workspace = muster_core::WorkspaceId::new().to_string();
+    let session = muster_core::SessionId::new().to_string();
+    legacy
+        .execute(
+            "INSERT INTO projects VALUES (?1, 'kept', '/tmp/perf-fixture', 1)",
+            [&project],
+        )
+        .unwrap();
+    legacy.execute("INSERT INTO workspaces (id, project_id, kind, path, branch, created_at) VALUES (?1, ?2, 'checkout', '/tmp/perf-fixture', '', 1)", [&workspace, &project]).unwrap();
+    legacy.execute("INSERT INTO sessions (id, workspace_id, harness, title, status, unseen, created_at, ended_at) VALUES (?1, ?2, 'shell', 'kept', '{\"state\":\"finished\"}', 0, 1, 2)", [&session, &workspace]).unwrap();
+    legacy.execute("WITH RECURSIVE times(at) AS (VALUES(1) UNION ALL SELECT at+1 FROM times WHERE at < 49000) INSERT INTO resource_samples SELECT ?1, at, 250, 100000000 FROM times", [&session]).unwrap();
+    drop(legacy);
+    let daemon = sandbox.start();
+    let snapshot = daemon.connect().await.subscribe().await.unwrap();
+    assert_eq!(snapshot.projects[0].name, "kept");
+    let current = rusqlite::Connection::open(&database).unwrap();
+    assert_eq!(
+        current
+            .pragma_query_value::<u32, _>(None, "user_version", |row| row.get(0))
+            .unwrap(),
+        7
+    );
+    assert_eq!(
+        current
+            .query_row::<u32, _, _>(
+                "SELECT count(*) FROM sqlite_master WHERE name='resource_samples'",
+                [],
+                |row| row.get(0)
+            )
+            .unwrap(),
+        0
+    );
+    let backups: Vec<_> = std::fs::read_dir(paths.data_dir.join("backups"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(backups.len(), 1);
+    let copied = rusqlite::Connection::open(&backups[0]).unwrap();
+    assert_eq!(
+        copied
+            .query_row::<u32, _, _>("SELECT count(*) FROM resource_samples", [], |row| row
+                .get(0))
+            .unwrap(),
+        49_000
+    );
+    assert!(daemon.stop().success());
+}

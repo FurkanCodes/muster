@@ -1314,6 +1314,7 @@ dependencies = [
  "nix 0.31.3",
  "portable-pty",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",

@@ -41,7 +41,7 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         hook_socket: std::env::temp_dir().join("muster-unit-hooks.sock"),
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity,
-        history_every: 1,
+
         timing: muster_state::session::Timing::default(),
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
         trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
@@ -297,9 +297,7 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
     assert_eq!(resent.projects.len(), 6);
 }
 
-#[tokio::test]
-async fn every_nth_measurement_is_kept_in_history() {
-    use muster_core::protocol::{ResourceReport, SessionUsage};
+async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::SessionId) {
     use muster_core::{Project, ProjectId, Session, SessionId, SessionStatus};
     use muster_core::{Workspace, WorkspaceId, WorkspaceKind};
     let store = StoreHandle::spawn(Store::open_in_memory().unwrap()).unwrap();
@@ -356,7 +354,7 @@ async fn every_nth_measurement_is_kept_in_history() {
         hook_socket: std::env::temp_dir().join("muster-unit-hooks.sock"),
         hook_queue: tokio::sync::mpsc::channel(1).1,
         delta_capacity: 16,
-        history_every: 2,
+
         timing: muster_state::session::Timing::default(),
         work: std::sync::Arc::new(crate::runs::NotYetBuilt),
         trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
@@ -376,6 +374,13 @@ async fn every_nth_measurement_is_kept_in_history() {
     .await
     .unwrap();
 
+    (supervisor, store, id)
+}
+
+#[tokio::test]
+async fn measurements_remain_live_without_writing_history_arc_14() {
+    use muster_core::protocol::{ResourceReport, SessionUsage};
+    let (supervisor, store, id) = resource_supervisor().await;
     let report = ResourceReport {
         host_memory_used: 1,
         host_memory_total: 2,
@@ -385,21 +390,31 @@ async fn every_nth_measurement_is_kept_in_history() {
             cpu_permille: 5,
         }],
     };
-    let kept = || async {
-        // A round trip, so the measurements before it have been handled.
-        supervisor.subscribe().await.unwrap();
+    let (before, mut deltas) = supervisor.subscribe().await.unwrap();
+    assert_eq!(before.resources, None);
+    let changes = store
+        .call(|store| Ok::<_, crate::store::StoreError>(store.total_changes()))
+        .await
+        .unwrap()
+        .unwrap();
+    for _ in 0..32 {
+        assert!(supervisor.record_resources(report.clone()).await);
+        assert_eq!(
+            next_delta(&mut deltas).await,
+            Delta::Resources(report.clone())
+        );
+    }
+    let (after, _) = supervisor.subscribe().await.unwrap();
+    assert_eq!(after.resources, Some(report));
+    assert_eq!(
         store
-            .call(move |store| store.samples(id, Timestamp::from_millis(0)))
+            .call(|store| Ok::<_, crate::store::StoreError>(store.total_changes()))
             .await
             .unwrap()
-            .unwrap()
-    };
-    assert!(supervisor.record_resources(report.clone()).await);
-    assert!(kept().await.is_empty(), "the first is not kept");
-    assert!(supervisor.record_resources(report).await);
-    let samples = kept().await;
-    assert_eq!(samples.len(), 1);
-    assert_eq!(samples[0].memory_bytes, 1_000);
+            .unwrap(),
+        changes,
+        "measurements never write SQLite"
+    );
 }
 
 /// The next delta, waiting at most five seconds.
