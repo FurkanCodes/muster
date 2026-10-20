@@ -110,10 +110,15 @@ pub fn remove_table_in(text: Option<&str>, table: &str) -> Result<String, EditEr
     let Some(text) = text else {
         return Ok(String::new());
     };
-    let mut document: toml_edit::DocumentMut = text
-        .parse()
-        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
+    let mut document = parse(text)?;
+    let above = document
+        .get(table)
+        .and_then(toml_edit::Item::as_table)
+        .and_then(written_above);
     document.remove(table);
+    if let Some((position, above)) = above {
+        keep_above(&mut document, position, &above);
+    }
     Ok(document.to_string())
 }
 
@@ -308,6 +313,12 @@ pub fn remove_entry_in(
         return Ok(String::new());
     };
     let mut document = parse(text)?;
+    let above = document
+        .get(table)
+        .and_then(toml_edit::Item::as_table_like)
+        .and_then(|entries| entries.get(name))
+        .and_then(toml_edit::Item::as_table)
+        .and_then(written_above);
     let emptied = match document
         .get_mut(table)
         .and_then(|item| item.as_table_like_mut())
@@ -321,7 +332,72 @@ pub fn remove_entry_in(
     if emptied {
         document.remove(table);
     }
+    if let Some((position, above)) = above {
+        keep_above(&mut document, position, &above);
+    }
     Ok(document.to_string())
+}
+
+/// What is written above `table`'s header that is not its own: the
+/// paragraphs a blank line sets apart from it, such as the file's own
+/// first lines. The comment lines just above it are its own, and go with
+/// it. With where the table was.
+fn written_above(table: &toml_edit::Table) -> Option<(isize, String)> {
+    let prefix = table.decor().prefix()?.as_str()?;
+    let kept = &prefix[..prefix.rfind("\n\n").map_or(0, |at| at + 2)];
+    let position = table.position()?;
+    (!kept.trim().is_empty()).then(|| (position, kept.to_owned()))
+}
+
+/// Puts `above`, written above a table that was at `position`, above the
+/// table that came after it, or at the end where none did.
+fn keep_above(document: &mut toml_edit::DocumentMut, position: isize, above: &str) {
+    fn after(
+        table: &toml_edit::Table,
+        position: isize,
+        path: &mut Vec<String>,
+        best: &mut Option<(isize, Vec<String>)>,
+    ) {
+        for (key, item) in table {
+            let Some(inner) = item.as_table() else {
+                continue;
+            };
+            path.push(key.to_owned());
+            if let Some(at) = inner.position()
+                && !inner.is_implicit()
+                && at > position
+                && best.as_ref().is_none_or(|(best, _)| at < *best)
+            {
+                *best = Some((at, path.clone()));
+            }
+            after(inner, position, path, best);
+            path.pop();
+        }
+    }
+    let mut best = None;
+    after(document.as_table(), position, &mut Vec::new(), &mut best);
+    let next = best.and_then(|(_, path)| {
+        path.iter().try_fold(document.as_table_mut(), |table, key| {
+            table.get_mut(key)?.as_table_mut()
+        })
+    });
+    if let Some(table) = next {
+        let own = table
+            .decor()
+            .prefix()
+            .and_then(toml_edit::RawString::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        // One blank line between them is enough.
+        let own = own
+            .strip_prefix('\n')
+            .filter(|_| above.ends_with("\n\n"))
+            .unwrap_or(&own);
+        table.decor_mut().set_prefix(format!("{above}{own}"));
+    } else {
+        let trailing = document.trailing().as_str().unwrap_or_default().to_owned();
+        document.set_trailing(format!("{above}{trailing}"));
+    }
 }
 
 fn parse(text: &str) -> Result<toml_edit::DocumentMut, EditError> {
@@ -595,6 +671,25 @@ mod tests {
         assert_eq!(text, "# mine\n[notch]\nshow = false\n");
         // Not there: as it was.
         assert_eq!(remove_entry_in(Some(&text), PLUGIN).unwrap(), text);
+        // What is written above it, a blank line apart, stays; its own
+        // comment goes with it.
+        let file =
+            "# Your own settings.\n\n# zoe, for graphs\n[plugins.zoetrope]\nenabled = true\n";
+        assert_eq!(
+            remove_entry_in(Some(file), PLUGIN).unwrap(),
+            "# Your own settings.\n\n"
+        );
+        let file =
+            "# Your own settings.\n\n[plugins.zoetrope]\nenabled = true\n\n[notch]\nshow = false\n";
+        assert_eq!(
+            remove_entry_in(Some(file), PLUGIN).unwrap(),
+            "# Your own settings.\n\n[notch]\nshow = false\n"
+        );
+        let new = set_entry_in(None, "# Muster's own.\n", PLUGIN, &installed()).unwrap();
+        assert_eq!(
+            remove_entry_in(Some(&new), PLUGIN).unwrap(),
+            "# Muster's own.\n\n"
+        );
         assert_eq!(remove_entry_in(None, PLUGIN).unwrap(), "");
         assert_eq!(
             remove_entry_in(
