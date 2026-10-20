@@ -3,7 +3,7 @@
 //! sessions over, from the daemon's previous version as it starts, or back
 //! from a restart that did not happen.
 
-use muster_core::SessionId;
+use muster_core::{SessionId, SessionStatus};
 use muster_state::session::SessionMachine;
 use tokio::sync::oneshot;
 
@@ -110,6 +110,10 @@ impl Supervisor {
             if let Some(token) = &session.token {
                 self.hook_tokens.insert(token.clone(), id);
             }
+            // A finish still in its hold as the daemon before let go of it.
+            let finished = (session.machine.status == SessionStatus::Finished)
+                .then_some(session.machine.finished)
+                .flatten();
             self.live.insert(
                 id,
                 Live {
@@ -128,6 +132,9 @@ impl Supervisor {
                     named_by_person: false,
                 },
             );
+            if let Some(ago) = finished {
+                self.hold_carried_finish(id, ago);
+            }
             self.carry_watch(id);
             self.publish_terminal(id, pty, size);
         }
