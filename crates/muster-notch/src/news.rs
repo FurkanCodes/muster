@@ -72,9 +72,9 @@ impl News {
             .collect()
     }
 
-    /// Whether a finish is held, waiting to be told.
-    pub(crate) fn holding(&self) -> bool {
-        !self.held.is_empty()
+    /// The earliest held finish's deadline; no polling while it waits.
+    pub(crate) fn next_due(&self) -> Option<Instant> {
+        self.held.iter().map(|(_, at)| *at + HOLD).min()
     }
 }
 
@@ -191,11 +191,11 @@ mod tests {
             news.changed(&state(vec![finished.clone()]), start)
                 .is_empty()
         );
-        assert!(news.holding());
+        assert_eq!(news.next_due(), Some(start + HOLD));
         let now = state(vec![finished.clone()]);
         assert!(news.due(&now, start + Duration::from_secs(1)).is_empty());
         assert_eq!(news.due(&now, start + HOLD), [finished.id]);
-        assert!(!news.holding());
+        assert_eq!(news.next_due(), None);
 
         // At work again within the hold: never told.
         let again = session(SessionStatus::Finished, true);

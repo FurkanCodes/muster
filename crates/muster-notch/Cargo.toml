@@ -40,13 +40,14 @@ objc2-app-kit = { workspace = true, features = [
     "NSView",
     "NSWindow",
     "NSWorkspace",
+    "block2",
     "objc2-core-foundation",
     "objc2-core-graphics",
     "objc2-quartz-core",
 ] }
 objc2-core-foundation = { workspace = true, features = ["CFCGTypes", "objc2"] }
 objc2-core-graphics = { workspace = true, features = ["CGPath"] }
-objc2-foundation = { workspace = true, features = ["NSArray", "NSBundle", "NSData", "NSEnumerator", "NSError", "NSGeometry", "NSString", "NSThread", "NSValue"] }
+objc2-foundation = { workspace = true, features = ["NSArray", "NSBundle", "NSData", "NSEnumerator", "NSError", "NSDate", "NSNotification", "NSOperation", "NSTimer", "block2", "NSGeometry", "NSString", "NSThread", "NSValue"] }
 objc2-user-notifications = { workspace = true, features = [
     "UNNotification",
     "UNNotificationContent",

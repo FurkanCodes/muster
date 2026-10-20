@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -121,6 +121,10 @@ const V6: &str = r"
 ALTER TABLE workspaces ADD COLUMN stacked_on TEXT;
 ALTER TABLE workspaces ADD COLUMN stacked_at TEXT;
 ";
+
+/// Measurements are live state only. Their unused, unbounded history is
+/// removed after `Store::open` has backed up the old schema (ARC-14, PRD-09).
+const V7: &str = "DROP TABLE resource_samples;";
 
 /// The schema version this build creates.
 pub(super) fn latest_version() -> u32 {

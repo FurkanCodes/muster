@@ -101,3 +101,19 @@ fn a_program_s_copy_reaches_the_clipboard_and_is_not_made_again_on_attaching() {
     assert_eq!(sandbox.clipboard(), None);
     assert!(!again.text().contains("copied"), "{}", again.text());
 }
+
+#[test]
+fn resizing_the_window_updates_the_fixed_viewport_and_the_program_arc_13() {
+    let sandbox = Sandbox::new();
+    let _stop = StopDaemon(sandbox.paths().socket());
+    let (mut ui, _) = shell(&sandbox);
+    ui.resize(90, 36);
+    // A narrow window opens the session over the list. Its top bar takes
+    // one row, and its PTY must receive the new columns too.
+    ui.keys(b"sleep .1; printf 'size='; stty size\r");
+    ui.wait_for("size=35 90");
+    ui.resize(120, 36);
+    ui.keys(b"sleep .1; printf 'wide='; stty size\r");
+    // Back beside the list: the session has its border and bottom bar.
+    ui.wait_for("wide=32 88");
+}

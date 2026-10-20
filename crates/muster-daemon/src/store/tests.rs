@@ -9,7 +9,7 @@ use muster_core::{
 use rusqlite::Connection;
 
 use super::migrations::{MIGRATIONS, latest_version};
-use super::{ResourceSample, RunProgress, RunUpdate, StatusChange, Store, StoreError, StoreHandle};
+use super::{RunProgress, RunUpdate, StatusChange, Store, StoreError, StoreHandle};
 
 fn at(millis: i64) -> Timestamp {
     Timestamp::from_millis(millis)
@@ -154,6 +154,111 @@ fn data_survives_reopening() {
 
     let reopened = Store::open(&path, at(1)).unwrap();
     assert_eq!(reopened.snapshot().unwrap().projects, [project]);
+}
+
+/// The shipped schema, still with measurements, including committed WAL data.
+fn legacy_samples(path: &std::path::Path) -> Store {
+    let conn = Connection::open(path).unwrap();
+    conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+    conn.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
+    for migration in &MIGRATIONS[..6] {
+        conn.execute_batch(migration).unwrap();
+    }
+    conn.pragma_update(None, "user_version", 6).unwrap();
+    let mut store = Store { conn };
+    let project = project("/src/app");
+    let workspace = worktree(project.id);
+    let session = session(workspace.id);
+    store.insert_project(&project).unwrap();
+    store.insert_workspace(&workspace).unwrap();
+    store.insert_session(&session).unwrap();
+    store.conn.execute(
+        "WITH RECURSIVE times(at) AS (VALUES(1) UNION ALL SELECT at+1 FROM times WHERE at < 49000)
+         INSERT INTO resource_samples SELECT ?1, at, 250, 100000000 FROM times",
+        [session.id.to_string()],
+    ).unwrap();
+    store
+}
+
+#[test]
+fn unused_samples_are_dropped_only_after_a_complete_backup_arc_14_prd_09() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    let legacy = legacy_samples(&path);
+    let before = legacy.snapshot().unwrap();
+    let old_free: u32 = legacy
+        .conn
+        .pragma_query_value(None, "freelist_count", |row| row.get(0))
+        .unwrap();
+    let store = Store::open(&path, at(10)).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 7);
+    assert_eq!(store.snapshot().unwrap(), before);
+    let tables: u32 = store
+        .conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name='resource_samples'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(tables, 0);
+    let free: u32 = store
+        .conn
+        .pragma_query_value(None, "freelist_count", |row| row.get(0))
+        .unwrap();
+    assert!(free > old_free, "dropped pages are available for reuse");
+    let backups = dir.path().join("backups");
+    let copy = backups.join(&names_in(&backups)[0]);
+    assert_eq!(mode(&copy), 0o600);
+    let copied = Connection::open(copy).unwrap();
+    let rows: u32 = copied
+        .query_row("SELECT count(*) FROM resource_samples", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(rows, 49_000);
+    assert_eq!(
+        copied
+            .pragma_query_value::<u32, _>(None, "user_version", |row| row.get(0))
+            .unwrap(),
+        6
+    );
+    eprintln!("ARC-14 fixture: rows {rows} -> 0; reusable pages {old_free} -> {free}");
+    drop(store);
+    drop(legacy);
+    assert_eq!(
+        Store::open(&path, at(11))
+            .unwrap()
+            .schema_version()
+            .unwrap(),
+        7
+    );
+    assert_eq!(
+        names_in(&backups).len(),
+        1,
+        "a current store is not copied again"
+    );
+}
+
+#[test]
+fn a_failed_backup_keeps_every_sample_and_the_old_schema_arc_14_prd_09() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    let legacy = legacy_samples(&path);
+    std::fs::write(dir.path().join("backups"), "blocked").unwrap();
+    assert!(matches!(
+        Store::open(&path, at(10)),
+        Err(StoreError::Backup { .. })
+    ));
+    assert_eq!(legacy.schema_version().unwrap(), 6);
+    assert_eq!(
+        legacy
+            .conn
+            .query_row::<u32, _, _>("SELECT count(*) FROM resource_samples", [], |row| row
+                .get(0))
+            .unwrap(),
+        49_000
+    );
 }
 
 // Copies before migrating (`PRD-09`)
@@ -487,28 +592,6 @@ fn a_reopened_session_has_no_end() {
         store.reopen_session(SessionId::new()),
         Err(StoreError::NotFound(_))
     ));
-}
-
-#[test]
-fn samples_come_back_in_time_order_from_a_starting_point() {
-    let (mut store, _, _, session) = populated();
-    for (time, memory) in [(30, 300), (10, 100), (20, 200)] {
-        store
-            .record_sample(&ResourceSample {
-                session: session.id,
-                at: at(time),
-                cpu_permille: 250,
-                memory_bytes: memory,
-            })
-            .unwrap();
-    }
-    let memory: Vec<u64> = store
-        .samples(session.id, at(20))
-        .unwrap()
-        .iter()
-        .map(|sample| sample.memory_bytes)
-        .collect();
-    assert_eq!(memory, [200, 300]);
 }
 
 #[test]

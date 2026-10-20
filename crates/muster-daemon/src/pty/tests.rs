@@ -592,3 +592,86 @@ fn the_reader_wakes_for_output_and_for_its_stop_which_comes_first() {
         "stopped between reads, the output left for the next daemon"
     );
 }
+
+#[test]
+fn live_broadcast_retention_is_bounded_in_bytes_arc_14() {
+    use super::{Chunk, LIVE_CHUNKS, MAX_CHUNK};
+    use tokio::sync::broadcast;
+    use tokio::sync::broadcast::error::TryRecvError;
+    let retained = |capacity| {
+        let (sender, mut receiver) = broadcast::channel(capacity);
+        for seq in 0..512 {
+            sender
+                .send(Chunk {
+                    seq,
+                    data: vec![0; MAX_CHUNK].into(),
+                    modes: muster_core::protocol::TerminalModes::default(),
+                })
+                .unwrap();
+        }
+        assert!(matches!(receiver.try_recv(), Err(TryRecvError::Lagged(_))));
+        let mut bytes = 0;
+        while let Ok(chunk) = receiver.try_recv() {
+            bytes += chunk.data.len();
+        }
+        bytes
+    };
+    let before = retained(256);
+    let after = retained(LIVE_CHUNKS);
+    assert_eq!(before, 2 * 1024 * 1024);
+    assert_eq!(after, 256 * 1024);
+    eprintln!("ARC-14 fixed-size live chunks: {before} -> {after} retained bytes");
+}
+
+#[tokio::test]
+async fn lagged_live_output_replays_after_exit_with_only_wrapped_bytes_reset_arc_14() {
+    use super::{LIVE_CHUNKS, MAX_CHUNK};
+    use tokio::sync::broadcast::error::TryRecvError;
+    for count in [
+        (LIVE_CHUNKS + 8) * MAX_CHUNK,
+        2 * super::ring::RING_CAPACITY,
+    ] {
+        let (pty, events) = shell(Vec::new(), Vec::new());
+        let attachment = pty.attach(None).await.unwrap();
+        let from = attachment.replay.seq + attachment.replay.data.len() as u64;
+        let mut live = attachment.live.unwrap();
+        let command = format!("stty -echo; head -c {count} /dev/zero; printf 'flood-done'; exit\n");
+        assert!(pty.input(command.into_bytes()).await);
+        events.exit().await;
+        assert!(matches!(live.try_recv(), Err(TryRecvError::Lagged(_))));
+        let mut bytes = 0;
+        let mut chunks = 0;
+        loop {
+            match live.try_recv() {
+                Ok(chunk) => {
+                    assert!(chunk.data.len() <= MAX_CHUNK, "the batching limit is hard");
+                    bytes += chunk.data.len();
+                    chunks += 1;
+                }
+                Err(TryRecvError::Closed) => break,
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        assert!(bytes <= 256 * 1024 && chunks <= LIVE_CHUNKS);
+        // The channel has closed after lagging. Reattaching still gets the
+        // final bytes and modes; resetting is required only past the ring.
+        let replay = pty.attach(Some(from)).await.unwrap();
+        assert!(replay.live.is_none());
+        assert!(
+            replay
+                .replay
+                .data
+                .windows(b"flood-done".len())
+                .any(|bytes| bytes == b"flood-done")
+        );
+        assert_eq!(replay.replay.reset, count > super::ring::RING_CAPACITY);
+        if !replay.replay.reset {
+            assert_eq!(replay.replay.seq, from);
+        }
+        let fresh = pty.attach(None).await.unwrap();
+        assert_eq!(
+            fresh.replay.seq + fresh.replay.data.len() as u64,
+            replay.replay.seq + replay.replay.data.len() as u64
+        );
+    }
+}

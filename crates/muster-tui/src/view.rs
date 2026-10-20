@@ -13,6 +13,7 @@ use crate::app::{App, Mode, View};
 use crate::layout::{Divider, Solved};
 use crate::motion;
 
+pub(crate) mod areas;
 mod bottom_bar;
 mod changes;
 mod clashes;
@@ -102,6 +103,13 @@ pub(crate) fn shell_area(app: &App, area: Rect) -> Rect {
 }
 
 fn areas(app: &App, area: Rect, bottom: u16, beside_session: bool) -> BrowseAreas {
+    let key = areas::Key::of(app, area, bottom, beside_session);
+    app.areas_cache
+        .borrow_mut()
+        .get(key, || areas_uncached(app, area, bottom, beside_session))
+}
+
+fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> BrowseAreas {
     let [top, body, bottom] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(3),

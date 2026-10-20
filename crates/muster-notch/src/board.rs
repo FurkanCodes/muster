@@ -130,6 +130,46 @@ impl Board {
         }
     }
 
+    /// Until a listed time reads differently. Hidden boards have no clock;
+    /// minute/hour/day labels wake only at their next boundary (ARC-13).
+    #[cfg(any(target_os = "macos", test))]
+    pub(crate) fn next_change(
+        &self,
+        state: &Snapshot,
+        now: Timestamp,
+    ) -> Option<std::time::Duration> {
+        if !self.shown {
+            return None;
+        }
+        self.rows
+            .iter()
+            .filter(|row| !row.since.is_empty())
+            .filter_map(|row| {
+                let session = state
+                    .sessions
+                    .iter()
+                    .find(|session| session.id == row.session)?;
+                let elapsed = now
+                    .as_millis()
+                    .saturating_sub(session.status_since.as_millis());
+                let every: i64 = match elapsed.max(0) / 1000 {
+                    0..60 => 1000,
+                    60..3600 => 60_000,
+                    3600..86_400 => 3_600_000,
+                    _ => 86_400_000,
+                };
+                let left = if elapsed < 0 {
+                    every.saturating_sub(elapsed)
+                } else {
+                    every - elapsed % every
+                };
+                Some(std::time::Duration::from_millis(
+                    u64::try_from(left).unwrap_or(1000),
+                ))
+            })
+            .min()
+    }
+
     /// Nothing to show.
     pub fn hidden() -> Self {
         Self {
@@ -363,6 +403,43 @@ mod tests {
 
     fn board(state: &Snapshot) -> Board {
         Board::of(state, true, Timestamp::from_millis(NOW))
+    }
+
+    #[test]
+    fn only_a_visible_time_s_next_change_wakes_the_notch_arc_13() {
+        use std::time::Duration;
+        let (mut state, work) = state();
+        state
+            .sessions
+            .push(session(work, "busy", SessionStatus::Running, false, 0));
+        for (millis, left) in [
+            (0, 1000),
+            (1234, 766),
+            (60_001, 59_999),
+            (3_600_001, 3_599_999),
+            (86_400_001, 86_399_999),
+        ] {
+            let now = Timestamp::from_millis(millis);
+            let board = Board::of(&state, true, now);
+            assert_eq!(
+                board.next_change(&state, now),
+                Some(Duration::from_millis(left))
+            );
+        }
+        let now = Timestamp::from_millis(10);
+        state.looked_at = true;
+        assert_eq!(Board::of(&state, true, now).next_change(&state, now), None);
+        // A newly active line advances the next deadline, even when other
+        // rows have already settled to minute labels.
+        state.looked_at = false;
+        state
+            .sessions
+            .push(session(work, "new", SessionStatus::Running, false, 60_000));
+        let now = Timestamp::from_millis(60_001);
+        assert_eq!(
+            Board::of(&state, true, now).next_change(&state, now),
+            Some(Duration::from_millis(999))
+        );
     }
 
     #[test]

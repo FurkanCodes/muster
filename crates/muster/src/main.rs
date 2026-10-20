@@ -761,9 +761,7 @@ async fn daemon(paths: Paths, background: bool, adopt: Option<i32>) -> ExitCode 
     if let Some(ms) = millis("MUSTER_SAMPLE_MS") {
         config.sample_interval = std::time::Duration::from_millis(ms.max(10));
     }
-    if let Some(ms) = millis("MUSTER_HISTORY_MS") {
-        config.history_interval = std::time::Duration::from_millis(ms.max(10));
-    }
+
     if let Some(ms) = millis("MUSTER_BRANCH_MS") {
         config.branch_interval = std::time::Duration::from_millis(ms.max(10));
     }

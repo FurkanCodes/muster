@@ -200,10 +200,18 @@ pub(super) fn pulse(layer: &CALayer, times: f32) {
     fade(layer, 0.35, 0.75, times);
 }
 
-/// Fades `layer` down and back up, gently and for as long as it is shown:
-/// what works.
+/// Core Animation owns the endless breath. A change to Reduce Motion
+/// removes one already running, rather than waiting for it to end.
 pub(super) fn breathe(layer: &CALayer) {
-    fade(layer, 0.3, 1.2, f32::INFINITY);
+    breathing(layer, reduce_motion());
+}
+
+fn breathing(layer: &CALayer, reduced: bool) {
+    if reduced {
+        still(layer);
+    } else if !moving(layer) {
+        fade(layer, 0.3, 1.2, f32::INFINITY);
+    }
 }
 
 /// `layer` still: no pulse, no breath.
@@ -237,4 +245,24 @@ fn fade(layer: &CALayer, down_to: f64, each: f64, times: f32) {
         0.37, 0.0, 0.63, 1.0,
     )));
     layer.addAnimation_forKey(&fade, Some(&NSString::from_str(MOTION)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reduce_motion_stops_a_breath_already_running_arc_13() {
+        let layer = CALayer::new();
+        // Install an animation directly so the assertion does not depend
+        // on this machine's accessibility preference.
+        let animation =
+            CABasicAnimation::animationWithKeyPath(Some(&NSString::from_str("opacity")));
+        layer.addAnimation_forKey(&animation, Some(&NSString::from_str(MOTION)));
+        assert!(moving(&layer));
+        breathing(&layer, true);
+        assert!(!moving(&layer));
+        breathing(&layer, true);
+        assert!(!moving(&layer));
+    }
 }

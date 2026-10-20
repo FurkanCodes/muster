@@ -35,7 +35,7 @@ pub(crate) struct Ui {
     input: std::sync::mpsc::Sender<Vec<u8>>,
     child: Box<dyn Child + Send + Sync>,
     /// Held so the terminal stays open.
-    _master: Box<dyn portable_pty::MasterPty + Send>,
+    master: Box<dyn portable_pty::MasterPty + Send>,
 }
 
 impl Ui {
@@ -110,8 +110,19 @@ impl Ui {
             written,
             input,
             child,
-            _master: pair.master,
+            master: pair.master,
         }
+    }
+
+    pub(crate) fn resize(&self, cols: u16, rows: u16) {
+        self.master
+            .resize(PtySize {
+                cols,
+                rows,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
     }
 
     pub(crate) fn text(&self) -> String {

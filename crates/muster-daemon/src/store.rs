@@ -38,7 +38,7 @@ use muster_core::{Project, Session, SessionId, SessionStatus, Timestamp, Workspa
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub use handle::{StoreClosed, StoreHandle};
-pub use rows::{ResourceSample, StatusChange};
+pub use rows::StatusChange;
 pub use runs::{RunProgress, RunUpdate, StoredRun};
 
 use rows::{id_text, path_text, status_json};
@@ -86,6 +86,11 @@ pub struct Store {
 }
 
 impl Store {
+    #[cfg(test)]
+    pub(crate) fn total_changes(&self) -> u64 {
+        self.conn.total_changes()
+    }
+
     /// Opens or creates the database at `path` and migrates it. The parent
     /// directory must exist. A database from an older schema is first
     /// copied into `backups/` beside it, named with the time `now`; if the
@@ -347,33 +352,6 @@ impl Store {
         )?;
         let changes = statement.query_map([id_text(session)], rows::status_change)?;
         changes.map(|change| change?).collect()
-    }
-
-    pub fn record_sample(&mut self, sample: &ResourceSample) -> Result<()> {
-        let memory = i64::try_from(sample.memory_bytes)
-            .map_err(|_| StoreError::Invalid(format!("memory {}", sample.memory_bytes)))?;
-        self.conn.execute(
-            "INSERT OR REPLACE INTO resource_samples (session_id, at, cpu_permille, memory_bytes)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![
-                id_text(sample.session),
-                sample.at.as_millis(),
-                sample.cpu_permille,
-                memory
-            ],
-        )?;
-        Ok(())
-    }
-
-    /// A session's samples taken at or after `since`, oldest first.
-    pub fn samples(&self, session: SessionId, since: Timestamp) -> Result<Vec<ResourceSample>> {
-        let mut statement = self.conn.prepare(
-            "SELECT session_id, at, cpu_permille, memory_bytes FROM resource_samples
-             WHERE session_id = ?1 AND at >= ?2 ORDER BY at",
-        )?;
-        let samples =
-            statement.query_map(params![id_text(session), since.as_millis()], rows::sample)?;
-        samples.map(|sample| sample?).collect()
     }
 
     /// Everything a client needs: all projects, and the workspaces still in
