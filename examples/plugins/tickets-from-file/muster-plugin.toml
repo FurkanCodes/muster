@@ -4,7 +4,7 @@ id = "tickets-from-file"
 name = "Tickets from a file"
 version = "0.1.0"
 description = "Tickets from tickets.txt beside it, or a text file of the project's."
-muster = "0.3.35"
+muster = "0.4.0"
 requires = ["awk", "sed"]
 how_to_get = "awk and sed come with macOS and Linux."
 

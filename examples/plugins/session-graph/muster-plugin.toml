@@ -5,7 +5,7 @@ id = "session-graph"
 name = "Session graph"
 version = "0.1.0"
 description = "A session's live flow graph beside it, drawn by zoetrope."
-muster = "0.3.35"
+muster = "0.4.0"
 requires = ["zoe"]
 how_to_get = "brew install furkankly/tap/zoetrope, or see https://github.com/furkankly/zoetrope"
 
