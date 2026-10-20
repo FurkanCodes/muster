@@ -157,7 +157,7 @@ impl App {
                     does: None,
                     key: self.keymap.panel_label(&name),
                     panel: Some(name),
-                    what: action.title.clone(),
+                    what: self.keymap.panel_title(action),
                 }
             })
             .collect()

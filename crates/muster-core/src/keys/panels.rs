@@ -36,10 +36,16 @@ impl PanelAction {
         panel_action(&self.plugin, &self.panel)
     }
 
-    /// What its key does, for the help and the Settings screen.
+    /// What its key does, for the Settings screen, which lists it under
+    /// its plugin's name.
     pub fn what(&self) -> String {
-        format!("{} beside the session (again: put it away)", self.title)
+        opens(&self.title)
     }
+}
+
+/// What the key of the panel called `title` does.
+fn opens(title: &str) -> String {
+    format!("{title} beside the session (again: put it away)")
 }
 
 /// The name in `[keys]` of `plugin`'s panel `panel`.
@@ -227,6 +233,26 @@ impl Keymap {
         }
     }
 
+    /// What `action`'s panel is called where panels are listed together:
+    /// its title, with its plugin's name where another panel listed has the
+    /// same title.
+    pub fn panel_title(&self, action: &PanelAction) -> String {
+        let shared = self.panels.iter().any(|bound| {
+            bound.action.title == action.title && bound.action.name() != action.name()
+        });
+        if shared {
+            format!("{} ({})", action.title, action.plugin_name)
+        } else {
+            action.title.clone()
+        }
+    }
+
+    /// What `action`'s key does, for the help, which lists every panel
+    /// together.
+    pub fn panel_what(&self, action: &PanelAction) -> String {
+        opens(&self.panel_title(action))
+    }
+
     /// Whether the person set the panel `name`'s keys.
     pub fn panel_is_set(&self, name: &str) -> bool {
         self.bound(name).is_some_and(|bound| bound.set)
@@ -390,6 +416,20 @@ mod tests {
             "{:?}",
             keymap.warnings()
         );
+    }
+
+    #[test]
+    fn panels_of_the_same_title_are_told_apart_by_their_plugin() {
+        let mut theirs = zoetrope("graph", None);
+        theirs.plugin = "other".to_owned();
+        theirs.plugin_name = "Other".to_owned();
+        let keymap = Keymap::default().with_panels([
+            zoetrope("graph", None),
+            theirs.clone(),
+            zoetrope("log", None),
+        ]);
+        assert_eq!(keymap.panel_title(&theirs), "graph (Other)");
+        assert_eq!(keymap.panel_title(&zoetrope("log", None)), "log");
     }
 
     #[test]

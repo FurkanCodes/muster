@@ -259,7 +259,12 @@ impl Help {
             if at == 0 && lists {
                 let panels = keymap
                     .panels()
-                    .map(|(action, _)| (keymap.panel_labels(&action.name()), action.what()))
+                    .map(|(action, _)| {
+                        (
+                            keymap.panel_labels(&action.name()),
+                            keymap.panel_what(action),
+                        )
+                    })
                     .collect();
                 add(PANELS, panels);
             }
