@@ -88,11 +88,12 @@ fn memory_of(report: &ResourceReport, session: SessionId) -> Option<u64> {
 #[tokio::test]
 async fn a_running_session_and_the_host_are_measured() {
     let (_sandbox, daemon, mut connection, session) = shell_session().await;
+    // The first sample can come before macOS has an answer for a process
+    // just started, so it is the measure that comes in that is waited for.
     let report = expect_report(&mut connection, |report| {
-        memory_of(report, session).is_some()
+        memory_of(report, session).is_some_and(|memory| memory > 0)
     })
     .await;
-    assert!(memory_of(&report, session).unwrap() > 0);
     assert!(report.host_memory_total >= report.host_memory_used);
     assert!(report.host_memory_used > 0);
 
