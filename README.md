@@ -94,7 +94,7 @@ Every key below is Muster's until you set another: *Keys* on the *Settings* scre
 
 While you type in a session, beside the list or full screen, every key goes to the program, Esc, Backspace and `⇥` included (Claude Code and shells need them), but two: **Shift-Q** gives the keys back to the list, and so does a click on it; **Ctrl-\** folds the list away and back. So a capital Q cannot be typed in a session; Ctrl-Q reaches the program. A session is sized to where it is shown, so Claude Code draws for the pane it is in.
 
-The panels are yours to arrange: drag one by its title to another edge of the window or of another panel, where the place lights up, and drag the line between two to make one wider. The list starts as wide as its names need (30 to 36 columns). Where the panels are is kept in `~/.config/muster/settings.toml` (`[layout] panels`); *Panels* on the *Settings* screen puts them back as at first.
+The panels are yours to arrange: drag one by its title to another edge of the window or of another panel, where the place lights up, and drag the line between two to make one wider (or the column just before it). The title or line under the pointer lights up, to show what you can drag. The list starts as wide as its names need (30 to 36 columns). Where the panels are is kept in `~/.config/muster/settings.toml` (`[layout] panels`); *Panels* on the *Settings* screen puts them back as at first.
 
 | Key | On the *Tickets* screen |
 |---|---|

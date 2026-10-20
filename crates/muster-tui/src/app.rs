@@ -8,6 +8,7 @@ mod changes;
 pub(crate) mod drag;
 mod events;
 mod fold;
+pub(crate) mod grab;
 mod harness_choice;
 mod help;
 mod lines;
@@ -61,6 +62,8 @@ mod focus_tests;
 mod fold_tests;
 #[cfg(test)]
 mod folder_tests;
+#[cfg(test)]
+mod grab_tests;
 #[cfg(test)]
 mod help_tests;
 #[cfg(test)]
@@ -518,6 +521,8 @@ pub(crate) struct App {
     fitted: Option<TermSize>,
     /// A panel or the line between two being dragged.
     pub(crate) drag: Option<drag::Drag>,
+    /// What the pointer is over that a drag would move, lit.
+    pub(crate) hover: Option<grab::Grab>,
     /// The panels being moved with the keys.
     pub(crate) arranging: Option<drag::Arranging>,
     /// What each key does, Muster's own with the person's over them.
@@ -599,6 +604,7 @@ impl App {
             folded_kept: None,
             fitted: None,
             drag: None,
+            hover: None,
             arranging: None,
             keymap: muster_core::keys::Keymap::default(),
             shell: None,

@@ -57,6 +57,49 @@ impl Divider {
             }
         }
     }
+
+    /// Whether a press at `column`, `row` is near enough to take the line:
+    /// on it, or the cell before it, the first's last column or row; never
+    /// the second's first column, where a selection of a session's text
+    /// starts, nor its first row, its title.
+    pub(crate) fn near(&self, column: u16, row: u16) -> bool {
+        match self.split {
+            Split::Across => {
+                (self.cut.saturating_sub(2)..=self.cut).contains(&column)
+                    && (self.area.y..self.area.bottom()).contains(&row)
+            }
+            Split::Down => {
+                (self.cut.saturating_sub(2)..self.cut).contains(&row)
+                    && (self.area.x..self.area.right()).contains(&column)
+            }
+        }
+    }
+
+    /// The cells the line is drawn in: both frames' edges side by side,
+    /// the first's bottom edge one above the other.
+    pub(crate) fn line(&self) -> Rect {
+        match self.split {
+            Split::Across => Rect {
+                x: self.cut.saturating_sub(1),
+                width: 2,
+                ..self.area
+            },
+            Split::Down => Rect {
+                y: self.cut.saturating_sub(1),
+                height: 1,
+                ..self.area
+            },
+        }
+    }
+
+    /// How far into its place the first of the two reaches: its width side
+    /// by side, its height one above the other.
+    pub(crate) fn first_extent(&self) -> u16 {
+        match self.split {
+            Split::Across => self.cut.saturating_sub(self.area.x),
+            Split::Down => self.cut.saturating_sub(self.area.y),
+        }
+    }
 }
 
 /// The panels shown, each where it is drawn, and the lines between them.

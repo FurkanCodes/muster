@@ -6,7 +6,9 @@
 //! panel with the keys, ⇥ another, the arrows move it past its neighbour,
 //! `+` and `-` make it wider or narrower, ⏎ keeps the layout and Esc puts
 //! it back. A press on a title without moving gives that panel the keys,
-//! as a click on the panel does.
+//! as a click on the panel does. A line is taken by the cell before it
+//! too; from there it moves once the pointer has gone two cells, and a
+//! press that does not is the click it was.
 
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::layout::{Branch, Edge, Layout, Panel, Place, Size, Split};
@@ -14,6 +16,7 @@ use muster_core::protocol::Command;
 use muster_core::settings::PreferenceChange;
 use ratatui::layout::{Position, Rect};
 
+use super::grab::Hold;
 use super::{Action, App, Mode, Then, View};
 use crate::layout::Divider;
 
@@ -33,8 +36,16 @@ pub(crate) enum Drag {
         moved: bool,
         to: Option<Place>,
     },
-    /// The line between two panels, and the layout before it moved.
-    Divider { divider: Divider, was: Layout },
+    /// The line between two panels, and the layout before it moved; the
+    /// press that took it, and whether it has moved; `beside` where it was
+    /// taken by a cell beside it, not on it.
+    Divider {
+        divider: Divider,
+        was: Layout,
+        press: MouseEvent,
+        beside: bool,
+        moved: bool,
+    },
 }
 
 /// The panels being moved with the keys: the one picked, and the layout
@@ -46,21 +57,21 @@ pub(crate) struct Arranging {
 }
 
 impl App {
-    fn window(&self) -> Rect {
+    pub(super) fn window(&self) -> Rect {
         Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1)
     }
 
     /// Whether the panels can be moved now: beside the list, rather than in
     /// a window too narrow for it or full screen, and not under a dialog, a
     /// menu or the help.
-    fn can_arrange(&self) -> bool {
+    pub(super) fn can_arrange(&self) -> bool {
         !self.narrow()
             && !self.fills_window()
             && matches!(self.mode, Mode::Browse | Mode::Terminal(_) | Mode::Changes)
     }
 
     /// The panels shown, each where it is drawn.
-    fn shown_panels(&self) -> Vec<(Panel, Rect)> {
+    pub(super) fn shown_panels(&self) -> Vec<(Panel, Rect)> {
         let areas = crate::view::browse_areas(self, self.window());
         [
             (Panel::List, areas.list),
@@ -74,8 +85,8 @@ impl App {
     }
 
     /// The mouse, for a drag: a press on a panel's title or on a line
-    /// between two starts one, and while one is under way it takes every
-    /// event. `None` leaves the event to the mode.
+    /// between two (or beside it) starts one, and while one is under way
+    /// it takes every event. `None` leaves the event to the mode.
     pub(super) fn drag_mouse(&mut self, event: MouseEvent) -> Option<Vec<Action>> {
         let at = Position::new(event.column, event.row);
         if let Some(drag) = self.drag.clone() {
@@ -91,26 +102,22 @@ impl App {
         if event.kind != MouseEventKind::Down(MouseButton::Left) || !self.can_arrange() {
             return None;
         }
-        let areas = crate::view::browse_areas(self, self.window());
         // What is marked in a session is clicked away, as by any click.
-        if let Some(divider) = areas.dividers.iter().find(|line| line.holds(at.x, at.y)) {
-            self.selection = None;
-            self.drag = Some(Drag::Divider {
-                divider: divider.clone(),
+        self.drag = Some(match self.hold_at(at)? {
+            Hold::Line { divider, on_it } => Drag::Divider {
+                divider,
                 was: self.panels().clone(),
-            });
-            return Some(Vec::new());
-        }
-        let (panel, _) = self
-            .shown_panels()
-            .into_iter()
-            .find(|(_, area)| at.y == area.y && (area.x..area.right()).contains(&at.x))?;
-        self.selection = None;
-        self.drag = Some(Drag::Panel {
-            panel,
-            moved: false,
-            to: None,
+                press: event,
+                beside: !on_it,
+                moved: false,
+            },
+            Hold::Title(panel) => Drag::Panel {
+                panel,
+                moved: false,
+                to: None,
+            },
         });
+        self.selection = None;
         Some(Vec::new())
     }
 
@@ -123,13 +130,33 @@ impl App {
                     to: self.drop_place(panel, at),
                 });
             }
-            Drag::Divider { divider, .. } => {
-                let first = match divider.split {
-                    Split::Across => at.x.saturating_sub(divider.area.x) + 1,
-                    Split::Down => at.y.saturating_sub(divider.area.y) + 1,
+            Drag::Divider {
+                divider,
+                was,
+                press,
+                beside,
+                moved,
+            } => {
+                // Moved as far as the pointer, from where it was taken.
+                let (from, to) = match divider.split {
+                    Split::Across => (press.column, at.x),
+                    Split::Down => (press.row, at.y),
                 };
+                if beside && !moved && from.abs_diff(to) < 2 {
+                    return;
+                }
+                let first = (i32::from(divider.first_extent()) + i32::from(to) - i32::from(from))
+                    .clamp(1, i32::from(u16::MAX));
+                let first = u16::try_from(first).unwrap_or(1);
                 let resized = self.resized_at(&divider, first);
                 self.panels_kept = Some(resized);
+                self.drag = Some(Drag::Divider {
+                    divider,
+                    was,
+                    press,
+                    beside,
+                    moved: true,
+                });
             }
         }
     }
@@ -146,6 +173,21 @@ impl App {
                     }
                     (true, None) => Vec::new(),
                 }
+            }
+            Drag::Divider {
+                press,
+                beside: true,
+                moved: false,
+                ..
+            } if press.column.abs_diff(at.x) < 2 && press.row.abs_diff(at.y) < 2 => {
+                // Pressed beside the line and not moved: the click it was.
+                self.drag = None;
+                let mut actions = self.mode_mouse(press);
+                actions.extend(self.mode_mouse(MouseEvent {
+                    kind: MouseEventKind::Up(MouseButton::Left),
+                    ..press
+                }));
+                actions
             }
             Drag::Divider { ref was, .. } => {
                 let was = was.clone();
