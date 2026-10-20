@@ -201,6 +201,9 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
         }
         Row::Worktree(id) => ListItem::new(worktree_line(app, id, edge, width, by)),
         Row::Session(id) => match app.model.session(id) {
+            Some(session) if crate::model::is_shell(session) => {
+                ListItem::new(shell_line(app, session, session_lead(edge), width, by))
+            }
             Some(session) => {
                 let lines = session_lines(app, session, session_lead(edge), width, false, by);
                 ListItem::new(flashed(app, session, lines))
@@ -213,6 +216,57 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
 /// A session's line in the sessions list starts under its worktree's.
 fn session_lead(edge: Span<'static>) -> Vec<Span<'static>> {
     vec![edge, Span::raw("   ")]
+}
+
+/// The names a shell goes by while it waits at its prompt: what it runs
+/// then is itself.
+const SHELLS: [&str; 12] = [
+    "zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh",
+];
+
+/// A shell's one line after `lead`: under its worktree's one chat, set in
+/// with `└`, else after the chats it serves; its prompt `❯` and what runs
+/// in it (slid `by` characters where it is cut short), quietly while it
+/// waits at its prompt or has ended, and how long a program has run.
+fn shell_line(
+    app: &App,
+    shell: &Session,
+    lead: Vec<Span<'static>>,
+    width: usize,
+    by: usize,
+) -> Line<'static> {
+    let theme = super::theme::of(app);
+    let mut spans = lead;
+    if app.model.under_its_chat(shell) {
+        spans.push(Span::styled("  └ ", theme.quiet));
+    }
+    spans.push(Span::from("❯ ").dim());
+    let ended = shell.ended_at.is_some() || matches!(shell.status, SessionStatus::Exited { .. });
+    let waiting = SHELLS.contains(&shell.title.as_str());
+    let time = if ended || waiting {
+        String::new()
+    } else {
+        look::session_time(app, shell).unwrap_or_default()
+    };
+    let tail = if ended { "  ended" } else { "" };
+    let used: usize = spans.iter().map(Span::width).sum();
+    let room = width.saturating_sub(used + tail.len() + time.chars().count() + 1);
+    let name = slid(&shell.title, room.max(4), by);
+    spans.push(if ended || waiting {
+        Span::styled(name, theme.quiet)
+    } else {
+        Span::raw(name)
+    });
+    if ended {
+        spans.push(Span::styled(tail, theme.quiet));
+    }
+    if !time.is_empty() {
+        let used: usize = spans.iter().map(Span::width).sum();
+        let gap = width.saturating_sub(used + time.chars().count()).max(1);
+        spans.push(Span::raw(" ".repeat(gap)));
+        spans.push(Span::styled(time, theme.quiet));
+    }
+    Line::from(spans)
 }
 
 /// Where a project's or a worktree's triangle is drawn on its line, in

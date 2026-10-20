@@ -78,7 +78,7 @@ Every key below is Muster's until you set another: *Keys* on the *Settings* scre
 | `u` | move the selected worktree's branch onto the newest of what it is stacked on, or of its base, after asking; nothing changes if a commit would conflict |
 | `o` | push the selected worktree's branch and open a draft pull request from it |
 | `b` | open the pull request from the selected worktree's branch in your browser |
-| `Shift-T` | a shell in the selected session's workspace, beside it, with the keys (the one it has, or a new one); named by what runs in it (`zsh`, `bun`, `cargo`); `Shift-T` again puts it away, still running. A click moves the keys between the session and its shell |
+| `Shift-T` | a shell in the selected session's workspace, beside it, with the keys (the one it has, or a new one); named by what runs in it (`zsh`, `bun`, `cargo`), and listed on one line under its worktree's chat (or after the chats, where several share the folder); `Shift-T` again puts it away, still running. A click moves the keys between the session and its shell |
 | `d` | what the selected worktree's work has changed, or the selected session's, in a panel beside the session (beside the list where the window is narrower), with its agents' turns: `↑` `↓` choose a file or a turn, `⏎` its diff, `r` asks git again, `esc` goes back a step, `d` back to the list |
 | `z` | (in `d`, on a turn) put the files back as they were before it, after asking; `b` there moves the branch back too |
 | `⇥` `⇧⇥` | the next or previous tab: *Sessions*, *Needs you*, *Tickets*, *Settings* |

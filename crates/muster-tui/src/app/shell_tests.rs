@@ -2,7 +2,8 @@
 //! shell in a panel of its own beside the session, both streamed, or the
 //! one it has; the list folds where the three do not fit, and the shell
 //! opens over the session where two do not; a click moves the keys
-//! between them; a shell is not counted among the agents.
+//! between them; a shell is not counted among the agents; and in the list
+//! it stands by its chats on one line, under the one chat of its worktree.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
 use muster_core::protocol::{ClientFrame, Command, Delta, Reply, ServerFrame, TermSize};
@@ -177,4 +178,69 @@ fn a_shell_is_not_counted_among_the_agents_nor_waits_on_the_person() {
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
     assert_eq!(world.app.shell, None);
     assert_eq!(world.app.mode, Mode::Browse);
+}
+
+/// The rendered list's line that holds `text`.
+fn line_with(world: &World, text: &str) -> String {
+    let screen = render_in(&world.app, WIDE);
+    screen
+        .lines()
+        .find(|line| line.contains(text))
+        .unwrap_or_else(|| panic!("no {text:?} in\n{screen}"))
+        .to_owned()
+}
+
+#[test]
+fn a_worktree_s_shell_stands_under_its_one_chat_on_one_line() {
+    let mut world = sized(WIDE);
+    // Started before the chat, still listed after it.
+    let mut shell = session(world.worktree.id, "cargo", 1);
+    shell.harness = "shell".to_owned();
+    shell.status = SessionStatus::Running;
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(shell.clone())));
+    let rows = world.app.rows();
+    let at = |id| {
+        rows.iter()
+            .position(|row| *row == Row::Session(id))
+            .unwrap()
+    };
+    assert_eq!(at(shell.id), at(world.session.id) + 1, "{rows:?}");
+    assert_eq!(world.app.row_heights(&rows)[at(shell.id)], 1, "one line");
+    let line = line_with(&world, "cargo");
+    assert!(line.contains("└ ❯ cargo"), "{line}");
+
+    // A click on its line selects it, the chat above taking two.
+    let list = areas(&world).list;
+    let offset = world.app.list_offset;
+    let lines: usize = world.app.row_heights(&rows)[offset..at(shell.id)]
+        .iter()
+        .sum();
+    let row = list.y + 1 + u16::try_from(lines).unwrap();
+    world.app.on_mouse(super::pointer_tests::mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        list.x + 6,
+        row,
+    ));
+    assert_eq!(world.app.selected, Some(Row::Session(shell.id)));
+}
+
+#[test]
+fn where_chats_share_a_workspace_its_shell_stands_after_them_all() {
+    let mut world = sized(WIDE);
+    let mut other = session(world.worktree.id, "Add dark mode", 3);
+    other.status = SessionStatus::Finished;
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(other.clone())));
+    let shell = a_shell(&mut world);
+    let rows = world.app.rows();
+    assert_eq!(
+        rows.iter().rev().find(|row| matches!(row, Row::Session(_))),
+        Some(&Row::Session(shell.id)),
+        "{rows:?}"
+    );
+    let line = line_with(&world, "❯ zsh");
+    assert!(!line.contains('└'), "beside both chats: {line}");
 }

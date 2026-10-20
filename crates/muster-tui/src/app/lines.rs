@@ -1,7 +1,7 @@
 //! How many lines each list's rows take, and so which row a line shows
-//! and how far a list scrolls. A session's line takes one or two
-//! (`Preferences::session_lines`); a project's, a worktree's, a ticket's
-//! and a setting's one.
+//! and how far a list scrolls. A chat's line takes one or two
+//! (`Preferences::session_lines`); a shell's, a project's, a worktree's, a
+//! ticket's and a setting's one.
 
 use muster_core::settings::SessionLines;
 use ratatui::layout::Rect;
@@ -22,6 +22,10 @@ impl App {
     pub(crate) fn row_heights(&self, rows: &[Row]) -> Vec<usize> {
         rows.iter()
             .map(|row| match row {
+                // A shell takes one line, whatever a chat takes.
+                Row::Session(id) if self.model.session(*id).is_some_and(crate::model::is_shell) => {
+                    1
+                }
                 Row::Session(_) => self.session_height(),
                 Row::Project(_) | Row::Worktree(_) => 1,
             })

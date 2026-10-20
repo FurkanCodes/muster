@@ -30,7 +30,7 @@ impl App {
                 }
                 rows.extend(
                     self.model
-                        .sessions_of(workspace.id)
+                        .listed_of(workspace.id)
                         .map(|session| Row::Session(session.id)),
                 );
             }
