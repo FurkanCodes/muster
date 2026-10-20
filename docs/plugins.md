@@ -321,7 +321,7 @@ command = ["zoe", "{transcript}", "--follow"]
 key = "G"
 ```
 
-Its key opens it beside the selected session. It runs in the session's workspace, and ends with its workspace, as a shell does. It is no agent: it is never news, and never needs the person. [examples/plugins/session-graph](../examples/plugins/session-graph) wraps a program someone else wrote, [zoetrope](https://github.com/furkankly/zoetrope)'s `zoe`, with nothing but a manifest.
+Its key opens it beside the selected session (one with `on = "workspace"` on the selected worktree or checkout), and pressed again puts it away, its program ended; a line's right-click menu and the help list it too. A session shows only the panels opened beside it, or on its workspace. The person sets its key on *Settings › Keys*, under the plugin's name, kept in their settings as `"plugin.<id>.<panel>" = "G"`; a key Muster already uses on the lists of sessions, or another panel has, is not given to it, and Muster says so. It runs in the session's workspace, and ends with its workspace, as a shell does, and when its plugin is turned off or removed. It is no agent: it is never news, and never needs the person. [examples/plugins/session-graph](../examples/plugins/session-graph) wraps a program someone else wrote, [zoetrope](https://github.com/furkankly/zoetrope)'s `zoe`, with nothing but a manifest.
 
 ### Placeholders
 
@@ -341,6 +341,12 @@ A placeholder is a word between braces, anywhere in an argument (`--branch={bran
 | `{transcript}` | the agent's own record of the conversation, Claude Code's or Codex's | `session` only |
 
 Any other `{word}` is refused as the manifest is read, and so is a session's placeholder in a workspace's panel. Other braces are the argument's own (`{"x":1}`). A value Muster does not have refuses the panel with why ("this session has no transcript yet"), never an empty argument. The same values are in the program's environment, as `MUSTER_PLUGIN_PROJECT`, `MUSTER_PLUGIN_BRANCH` and so on.
+
+### Its environment
+
+The program starts in the workspace's folder, in a terminal of Muster's, with the basics of the daemon's environment (as a ticket source's, and `TERMINFO`), the variables and secrets its manifest names (as a ticket source's, [above](#6-environment-and-secrets)), and the `MUSTER_PLUGIN_*` variables. Nothing else of the person's reaches it, nor anything of an agent's or of Muster's hooks.
+
+Muster opens it only where it can run: the plugin on and approved, and every program in `requires` found. Otherwise it opens nothing and says why, with the plugin's `how_to_get`.
 
 A panel shows text and colours, as a session does; pictures drawn by a terminal's graphics protocols do not show in it.
 
