@@ -244,3 +244,64 @@ fn where_chats_share_a_workspace_its_shell_stands_after_them_all() {
     let line = line_with(&world, "❯ zsh");
     assert!(!line.contains('└'), "beside both chats: {line}");
 }
+
+/// Whether `session` is streamed once `actions` are sent, from `was`: the
+/// last of its Attach and Detach decides.
+fn streamed_after(actions: &[Action], session: SessionId, was: bool) -> bool {
+    actions.iter().fold(was, |streamed, action| match action {
+        Action::Send(ClientFrame::Attach { session: id, .. }) if *id == session => true,
+        Action::Send(ClientFrame::Detach { session: id }) if *id == session => false,
+        _ => streamed,
+    })
+}
+
+#[test]
+fn the_shell_keeps_streaming_as_the_selection_moves_between_it_and_its_chat() {
+    let mut world = sized(WIDE);
+    let shell = a_shell(&mut world);
+    world.app.on_key(shift_t());
+    world.app.on_key(super::tests::shift_q());
+    let chat = world.session.id;
+    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    let mut streamed = true;
+    // Down to the shell's own line: it is the session shown.
+    let actions = world
+        .app
+        .on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(world.app.selected, Some(Row::Session(shell.id)));
+    streamed = streamed_after(&actions, shell.id, streamed);
+    assert!(streamed, "shown: {actions:?}");
+    // Up to the chat: the shell beside it again, still streamed.
+    let actions = world
+        .app
+        .on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(world.app.selected, Some(Row::Session(chat)));
+    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    streamed = streamed_after(&actions, shell.id, streamed);
+    assert!(streamed, "beside the chat: {actions:?}");
+    assert!(streamed_after(&actions, chat, true), "{actions:?}");
+}
+
+#[test]
+fn the_shell_beside_the_chat_streams_again_from_a_new_daemon() {
+    let mut world = sized(WIDE);
+    let shell = a_shell(&mut world);
+    world.app.on_key(shift_t());
+    world.app.on_key(super::tests::shift_q());
+    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    // The daemon restarted in place: the UI reconnects to a new one, which
+    // streams nothing to it yet.
+    world.app.on_disconnected("restarting".to_owned());
+    world.app.on_connected("0.1.1".to_owned());
+    let actions = world
+        .app
+        .on_frame(ServerFrame::Snapshot(muster_core::protocol::Snapshot {
+            projects: vec![world.project.clone()],
+            workspaces: vec![world.worktree.clone()],
+            sessions: vec![world.session.clone(), shell.clone()],
+            ..muster_core::protocol::Snapshot::default()
+        }));
+    let attached = attached(&actions);
+    assert!(attached.contains(&shell.id), "{actions:?}");
+    assert!(attached.contains(&world.session.id), "{actions:?}");
+}

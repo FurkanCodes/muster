@@ -541,7 +541,7 @@ pub(crate) struct App {
     /// A shell started for the panel, until the state has it.
     wanted_shell: Option<SessionId>,
     /// The shell streamed beside the session, and the size it was given.
-    shell_attached: Option<SessionId>,
+    pub(super) shell_attached: Option<SessionId>,
     shell_fitted: Option<TermSize>,
 }
 

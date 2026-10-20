@@ -17,6 +17,7 @@ impl App {
         self.link = Link::Connected { daemon_version };
         self.keep_in_view();
         self.attached = None;
+        self.shell_attached = None;
         // A new daemon knows nothing of where the keys are.
         self.focus_told = None;
         self.pending.clear();
@@ -42,6 +43,7 @@ impl App {
     pub(crate) fn on_disconnected(&mut self, reason: String) {
         self.link = Link::Lost(reason);
         self.attached = None;
+        self.shell_attached = None;
         self.focus_told = None;
         self.pending.clear();
         self.forget_unanswered();
