@@ -431,10 +431,10 @@ async fn muster_plugin_hook_tries_a_plugin_s_hooks_on_a_sample_and_says_what_eac
         words.contains("say for a sample clash.found: exited 3 after"),
         "{words}"
     );
-    assert!(
-        words.contains("  said for sample\n  and on stderr\n"),
-        "{words}"
-    );
+    // Its stdout and stderr, read together, in the order they came.
+    for line in ["  said for sample\n", "  and on stderr\n"] {
+        assert!(words.contains(line), "{line:?} in {words}");
+    }
     assert!(words.contains("1 of 1 did not end well"), "{words}");
 
     let unknown = said(&plugin(&sandbox, &["hook", "recorder", "session.done"]));
