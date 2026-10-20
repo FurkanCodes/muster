@@ -12,7 +12,9 @@ use std::io::{BufRead as _, IsTerminal as _, Write as _};
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
-use muster_core::plugins::{PLUGINS_PROTOCOL, PluginSource, TICKET_PLUGINS_PROTOCOL};
+use muster_core::plugins::{
+    EventKind, HOOKS_PROTOCOL, PLUGINS_PROTOCOL, PluginSource, TICKET_PLUGINS_PROTOCOL,
+};
 use muster_core::protocol::plugins::{
     ChangedBy, PluginCommand as Asked, PluginInfo, PluginList, PluginOrigin, PreviewKind,
 };
@@ -77,8 +79,13 @@ pub(crate) enum PluginCommand {
         yes: bool,
     },
     /// Show the end of plugin ID's log: what its program wrote on stderr
-    /// while the daemon ran, its secrets hidden.
+    /// and its hooks said while the daemon ran, its secrets hidden.
     Log { id: String },
+    /// Fire a sample event of kind EVENT (session.finished,
+    /// worktree.created, …) at plugin ID's hooks that run for it, their
+    /// filters aside, and print what each did: for trying a hook without
+    /// waiting for an agent.
+    Hook { id: String, event: String },
 }
 
 pub(crate) async fn run(socket: &Path, command: PluginCommand) -> Outcome {
@@ -124,7 +131,47 @@ pub(crate) async fn run(socket: &Path, command: PluginCommand) -> Outcome {
         }
         PluginCommand::Remove { id, yes } => remove(socket, &id, yes).await,
         PluginCommand::Log { id } => log(socket, &id).await,
+        PluginCommand::Hook { id, event } => try_hooks(socket, &id, &event).await,
     }
+}
+
+/// `muster plugin hook`: what the plugin's hooks did with a sample event.
+async fn try_hooks(socket: &Path, id: &str, event: &str) -> Outcome {
+    let Some(kind) = EventKind::named(event) else {
+        return Err(format!(
+            "{} is not an event: they are {}",
+            shown(event),
+            EventKind::ALL.map(EventKind::name).join(", ")
+        )
+        .into());
+    };
+    let mut connection = open(socket).await?;
+    let version = connection.welcome().version;
+    if version < HOOKS_PROTOCOL {
+        return Err(format!(
+            "the daemon speaks protocol {version} and runs no hooks, which need \
+             {HOOKS_PROTOCOL}; `muster reload` moves it onto the version installed now"
+        )
+        .into());
+    }
+    let asked = Asked::TryHooks {
+        id: id.to_owned(),
+        event: kind,
+    };
+    let tried = match connection.command(Command::Plugin(asked)).await? {
+        Reply::HooksTried(tried) => tried,
+        reply => return Err(unexpected(&reply)),
+    };
+    print!("{}", shown::tried(&tried));
+    let failed = tried
+        .runs
+        .iter()
+        .filter(|run| !run.outcome.is_success())
+        .count();
+    if failed > 0 {
+        return Err(format!("{failed} of {} did not end well", tried.runs.len()).into());
+    }
+    Ok(())
 }
 
 /// `muster plugin log`.
