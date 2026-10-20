@@ -548,7 +548,7 @@ fn folder_lines(picker: &FolderPicker, typed: &str, columns: usize) -> Vec<Line<
 }
 
 /// How many lines text `width` columns wide takes when wrapped at `columns`.
-pub(super) fn wrapped_height(width: usize, columns: u16) -> u16 {
+fn wrapped_height(width: usize, columns: u16) -> u16 {
     let lines = width.div_ceil(usize::from(columns.max(1))).max(1);
     u16::try_from(lines).unwrap_or(u16::MAX)
 }

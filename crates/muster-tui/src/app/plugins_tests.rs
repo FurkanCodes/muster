@@ -521,7 +521,7 @@ fn u_updates_a_plugin_after_showing_what_it_runs_now() {
     let screen = render(&world);
     assert!(screen.contains(" Update zoe? "), "{screen}");
     assert!(
-        screen.contains("0.1.0 from git https://example.com/zoe.git at 0123456 (main), with a"),
+        screen.contains("0.1.0 at 0123456, with a manifest that is not this one"),
         "{screen}"
     );
     assert!(
@@ -632,4 +632,26 @@ fn the_section_says_what_plugins_are_and_its_keys_follow_the_person_s() {
     assert!(screen.contains("Shift-A adds one"), "{screen}");
     assert_eq!(press(&mut world.app, KeyCode::Char('a')), []);
     assert_eq!(world.app.mode, Mode::Browse);
+}
+
+#[test]
+fn a_long_address_wraps_to_rows_of_its_own_and_the_preview_still_ends_with_its_keys() {
+    let mut world = on(SettingRow::AddPlugin);
+    let mut shown = preview(PreviewKind::Install, None);
+    shown.source = PluginSource::Git {
+        url: format!(
+            "file:///private/tmp/{}/fixtures/zoetrope",
+            "a-long-folder".repeat(9)
+        ),
+        git_ref: None,
+        commit: "59a2c23".repeat(5),
+    };
+    world.app.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Preview {
+        preview: shown,
+        offset: 0,
+    }));
+    let screen = render(&world);
+    assert!(screen.contains("Adding it turns it on."), "{screen}");
+    assert!(screen.contains("y install   n no"), "{screen}");
+    assert!(!screen.contains("more"), "{screen}");
 }

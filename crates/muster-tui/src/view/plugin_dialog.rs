@@ -2,6 +2,7 @@
 //! then a wait while it is fetched, then everything it would run, for the
 //! person to say yes or no; or why it could not be fetched.
 
+use muster_core::plugins::PluginSource;
 use muster_core::protocol::plugins::{PluginPreview, PreviewKind};
 use muster_core::text::one_line;
 use ratatui::Frame;
@@ -10,7 +11,7 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
-use super::dialogs::{input_window, wrapped_height};
+use super::dialogs::input_window;
 use super::plugins::{runs_lines, source_text};
 use super::settings::detail;
 use crate::app::PluginDialog;
@@ -56,16 +57,7 @@ pub(super) fn draw_plugin_dialog(frame: &mut Frame<'_>, dialog: &PluginDialog, a
             )
         }
     };
-    let height = 2 + parts
-        .iter()
-        .map(|part| match part {
-            Part::Text(lines) => lines
-                .iter()
-                .map(|line| wrapped_height(line.width(), inner))
-                .sum(),
-            Part::Input(..) => 1,
-        })
-        .sum::<u16>();
+    let height = 2 + parts.iter().map(|part| part_rows(part, inner)).sum::<u16>();
     let rect = Rect {
         x: area.x + area.width.saturating_sub(width) / 2,
         y: area.y + area.height.saturating_sub(height) / 2,
@@ -79,39 +71,84 @@ pub(super) fn draw_plugin_dialog(frame: &mut Frame<'_>, dialog: &PluginDialog, a
         .border_type(BorderType::Rounded);
     let mut at = block.inner(rect);
     frame.render_widget(block, rect);
+    // The keys, last, keep to the bottom, whatever is cut above them.
+    let mut parts = parts;
+    let keys = parts.pop();
+    let keys_rows = keys
+        .as_ref()
+        .map_or(0, |part| part_rows(part, inner))
+        .min(at.height);
+    let mut bottom = Rect {
+        y: at.y + at.height - keys_rows,
+        height: keys_rows,
+        ..at
+    };
+    at.height -= keys_rows;
     for part in parts {
-        if at.height == 0 {
-            break;
+        draw_part(frame, part, &mut at, inner);
+    }
+    if let Some(keys) = keys {
+        draw_part(frame, keys, &mut bottom, inner);
+    }
+}
+
+/// Draws `part` at the top of `at`, which it takes its rows of.
+fn draw_part(frame: &mut Frame<'_>, part: Part<'_>, at: &mut Rect, inner: u16) {
+    let height = part_rows(&part, inner).min(at.height);
+    let here = Rect { height, ..*at };
+    match part {
+        Part::Text(lines) => {
+            frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), here);
         }
-        match part {
-            Part::Text(lines) => {
-                let height: u16 = lines
-                    .iter()
-                    .map(|line| wrapped_height(line.width(), inner))
-                    .sum();
-                let here = Rect {
-                    height: height.min(at.height),
-                    ..at
-                };
-                frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), here);
-                at.y += here.height;
-                at.height -= here.height;
-            }
-            Part::Input(input, cursor) => {
-                let (shown, column) = input_window(input.text(), input.before_cursor(), inner);
-                let here = Rect { height: 1, ..at };
-                frame.render_widget(Paragraph::new(Line::from(shown).bold()), here);
-                if cursor {
-                    frame.set_cursor_position(Position {
-                        x: here.x + column,
-                        y: here.y,
-                    });
-                }
-                at.y += 1;
-                at.height -= 1;
+        Part::Input(input, cursor) => {
+            let (shown, column) = input_window(input.text(), input.before_cursor(), inner);
+            frame.render_widget(Paragraph::new(Line::from(shown).bold()), here);
+            if cursor && height > 0 {
+                frame.set_cursor_position(Position {
+                    x: here.x + column,
+                    y: here.y,
+                });
             }
         }
     }
+    at.y += height;
+    at.height -= height;
+}
+
+fn part_rows(part: &Part<'_>, inner: u16) -> u16 {
+    match part {
+        Part::Text(lines) => lines.iter().map(|line| rows(line, inner)).sum(),
+        Part::Input(..) => 1,
+    }
+}
+
+/// The rows `line` takes `width` columns wide, wrapped as a paragraph
+/// wraps it: at spaces, a word longer than a row broken across rows. A
+/// long address goes to a row of its own, which counting its characters
+/// would miss.
+fn rows(line: &Line<'_>, width: u16) -> u16 {
+    let width = usize::from(width.max(1));
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+    let (mut rows, mut at) = (1_usize, 0_usize);
+    for word in text.split(' ') {
+        let len = word.chars().count();
+        let gap = usize::from(at > 0);
+        if at + gap + len <= width {
+            at += gap + len;
+            continue;
+        }
+        if at > 0 {
+            rows += 1;
+        }
+        let more = len.saturating_sub(1) / width;
+        rows += more;
+        at = len - more * width;
+    }
+    u16::try_from(rows).unwrap_or(u16::MAX)
 }
 
 /// Where to add a plugin from: an address or a folder, and a branch or
@@ -183,7 +220,7 @@ fn shown_preview(
     let mut shown = Vec::new();
     let mut used = 0;
     for line in lines.into_iter().skip(offset) {
-        let height = wrapped_height(line.width(), inner);
+        let height = rows(&line, inner);
         if used + height > available {
             break;
         }
@@ -227,7 +264,7 @@ pub(crate) fn preview_lines(preview: &PluginPreview) -> Vec<Line<'static>> {
     lines.push(Line::from(""));
     lines.push(detail("From", source_text(&preview.source)));
     let commit = match &preview.source {
-        muster_core::plugins::PluginSource::Git { commit, .. } => commit.get(..7).unwrap_or(commit),
+        PluginSource::Git { commit, .. } => commit.get(..7).unwrap_or(commit),
         _ => "",
     };
     lines.push(match preview.kind {
@@ -255,13 +292,19 @@ pub(crate) fn preview_lines(preview: &PluginPreview) -> Vec<Line<'static>> {
             Some(now) if now.sha256 == details.sha256 => "the same manifest",
             _ => "a manifest that is not this one",
         };
-        lines.push(detail(
-            "Now",
-            format!(
-                "{was}from {}, with {manifest}",
-                source_text(&current.source)
-            ),
-        ));
+        // From the same address, its commit says enough.
+        let from = match (&current.source, &preview.source) {
+            (
+                PluginSource::Git {
+                    url: was, commit, ..
+                },
+                PluginSource::Git { url, .. },
+            ) if was == url => {
+                format!("at {}", one_line(commit.get(..7).unwrap_or(commit)))
+            }
+            (source, _) => format!("from {}", source_text(source)),
+        };
+        lines.push(detail("Now", format!("{was}{from}, with {manifest}")));
     }
     lines.push(detail(
         "Works with",
