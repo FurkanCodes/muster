@@ -1,10 +1,12 @@
 //! What the person can do on the selected line of *Sessions* or *Needs
-//! you*, each by its key as the person's keys say (`muster_core::keys`):
-//! the bottom bar's hints and the menu a right-click opens say the same,
-//! and choosing one in the menu does what its key does.
+//! you*, each by its key as the person's keys say (`muster_core::keys`),
+//! the panels of the plugins that run among them: the bottom bar's hints
+//! and the menu a right-click opens say the same, and choosing one in the
+//! menu does what its key does.
 
 use muster_core::WorkspaceKind;
 use muster_core::keys::Action as Does;
+use muster_core::plugins::PanelOn;
 
 use super::{App, View};
 use crate::model::Row;
@@ -12,13 +14,17 @@ use crate::model::Row;
 /// One thing to do on the selected line, and the key that does it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Here {
-    /// What it does: `None` for ⏎, which does what is selected.
+    /// What it does: `None` for ⏎, which does what is selected, and for a
+    /// plugin's panel.
     pub(crate) does: Option<Does>,
+    /// The plugin's panel it opens or puts away, by its name in `[keys]`.
+    pub(crate) panel: Option<String>,
     /// Its key as the person reads it: `⏎`, `d`, `Shift-R`, or `none`
     /// where the person took its key away.
     pub(crate) key: String,
-    /// What it does, in a word or two: `full screen`, `changes`.
-    pub(crate) what: &'static str,
+    /// What it does, in a word or two: `full screen`, `changes`, a
+    /// panel's title.
+    pub(crate) what: String,
 }
 
 impl Here {
@@ -41,16 +47,22 @@ impl App {
         let session = self.focused_session().and_then(|id| self.model.session(id));
         match (self.view, self.selected, session) {
             (View::Tickets | View::Settings, _, _) => Vec::new(),
-            (_, _, Some(session)) if session.ended_at.is_none() => vec![
-                enter("type in it"),
-                self.here(Does::FullScreen, "full screen"),
-                self.here(Does::ShowChanges, "changes"),
-                self.here(Does::Shell, "shell"),
-                self.here(Does::Rename, "rename"),
-                self.here(Does::Close, "close"),
-                self.here(Does::StopSession, "stop"),
-                self.here(Does::NewSession, "session"),
-            ],
+            (_, _, Some(session)) if session.ended_at.is_none() => {
+                let mut here = vec![
+                    enter("type in it"),
+                    self.here(Does::FullScreen, "full screen"),
+                    self.here(Does::ShowChanges, "changes"),
+                    self.here(Does::Shell, "shell"),
+                ];
+                here.extend(self.panels_here(true));
+                here.extend([
+                    self.here(Does::Rename, "rename"),
+                    self.here(Does::Close, "close"),
+                    self.here(Does::StopSession, "stop"),
+                    self.here(Does::NewSession, "session"),
+                ]);
+                here
+            }
             (_, _, Some(_)) => vec![
                 enter("open"),
                 self.here(Does::FullScreen, "full screen"),
@@ -98,6 +110,9 @@ impl App {
             here.extend([
                 self.here(Does::ShowChanges, "changes"),
                 self.here(Does::Shell, "shell"),
+            ]);
+            here.extend(self.panels_here(false));
+            here.extend([
                 self.here(Does::Checks, "check"),
                 self.here(Does::Review, "review"),
                 self.here(Does::Tidy, "tidy"),
@@ -120,9 +135,32 @@ impl App {
     fn here(&self, does: Does, what: &'static str) -> Here {
         Here {
             does: Some(does),
+            panel: None,
             key: self.keymap.label(does),
-            what,
+            what: what.to_owned(),
         }
+    }
+
+    /// The panels of the plugins that run that open on the line: beside a
+    /// session and on its workspace where `on_a_session`, else on the
+    /// workspace only; each by its key.
+    fn panels_here(&self, on_a_session: bool) -> Vec<Here> {
+        self.keymap
+            .panels()
+            .filter(|(action, _)| {
+                self.manifest_panel(action)
+                    .is_some_and(|panel| on_a_session || panel.on == PanelOn::Workspace)
+            })
+            .map(|(action, _)| {
+                let name = action.name();
+                Here {
+                    does: None,
+                    key: self.keymap.panel_label(&name),
+                    panel: Some(name),
+                    what: action.title.clone(),
+                }
+            })
+            .collect()
     }
 
     /// What `e` does on a project's or a worktree's line, where it can.
@@ -139,7 +177,8 @@ impl App {
 fn enter(what: &'static str) -> Here {
     Here {
         does: None,
+        panel: None,
         key: "⏎".to_owned(),
-        what,
+        what: what.to_owned(),
     }
 }

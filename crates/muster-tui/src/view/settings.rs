@@ -554,14 +554,19 @@ fn notifications_text(app: &App) -> Text<'static> {
     ])
 }
 
-/// Whose keys they are: Muster's, or how many the person set.
+/// Whose keys they are: Muster's, or how many the person set, a panel's
+/// among them while its plugin runs.
 fn keys_value(app: &App) -> Span<'static> {
     let set = app
         .model
         .preferences()
         .keys
-        .len()
-        .saturating_sub(app.keymap.aside().len());
+        .keys()
+        .filter(|name| {
+            muster_core::keys::Action::named(name).is_some()
+                || app.keymap.panel_named(name).is_some()
+        })
+        .count();
     match set {
         0 => Span::from("Muster's").dim(),
         1 => Span::from("1 of yours"),

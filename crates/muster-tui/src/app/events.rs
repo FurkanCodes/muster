@@ -206,6 +206,12 @@ impl App {
             View::Settings => return self.settings_key(key, does),
             View::Sessions | View::NeedsYou => {}
         }
+        let panel = crate::keys::chord(key)
+            .and_then(|chord| self.keymap.panel(self.key_screen(), chord))
+            .map(muster_core::keys::PanelAction::name);
+        if let (None, Some(panel)) = (does, panel) {
+            return self.toggle_panel(&panel);
+        }
         match (key.code, does) {
             (KeyCode::Up, _) | (_, Some(Does::MoveUp)) => self.move_selection(-1),
             (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),

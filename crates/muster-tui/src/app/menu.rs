@@ -94,9 +94,10 @@ impl App {
     /// Does what `item` says, as its key would.
     fn choose(&mut self, item: &Here) -> Vec<Action> {
         self.mode = Mode::Browse;
-        match item.does {
-            Some(does) => self.list_action(does),
-            None => self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+        match (item.does, &item.panel) {
+            (Some(does), _) => self.list_action(does),
+            (None, Some(panel)) => self.toggle_panel(panel),
+            (None, None) => self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
         }
     }
 

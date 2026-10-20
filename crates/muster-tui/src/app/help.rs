@@ -240,10 +240,9 @@ impl Help {
             Entry::Fixed(keys, what) => (keys.to_owned(), what.to_owned()),
         };
         let mut lines = Vec::new();
-        for (heading, entries) in Self::sections(view, self.over_changes) {
+        let mut add = |heading: &'static str, entries: Vec<(String, String)>| {
             let shown: Vec<HelpLine> = entries
-                .iter()
-                .map(said)
+                .into_iter()
                 .filter(|(keys, _)| keys != "none")
                 .filter(holds)
                 .map(|(keys, what)| HelpLine::Key(keys, what))
@@ -252,10 +251,25 @@ impl Help {
                 lines.push(HelpLine::Heading(heading));
                 lines.extend(shown);
             }
+        };
+        let lists = matches!(view, View::Sessions | View::NeedsYou) && !self.over_changes;
+        for (at, (heading, entries)) in Self::sections(view, self.over_changes).iter().enumerate() {
+            add(heading, entries.iter().map(said).collect());
+            // The panels of the plugins that run, after the list's own keys.
+            if at == 0 && lists {
+                let panels = keymap
+                    .panels()
+                    .map(|(action, _)| (keymap.panel_labels(&action.name()), action.what()))
+                    .collect();
+                add(PANELS, panels);
+            }
         }
         lines
     }
 }
+
+/// What the panels of the plugins that run are listed under.
+const PANELS: &str = "Plugins' panels";
 
 /// How many lines of the help a page is.
 const PAGE: usize = 10;

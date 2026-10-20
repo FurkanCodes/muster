@@ -46,7 +46,7 @@ pub(crate) use help::{Help, HelpLine};
 pub(crate) use menu::Menu;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
 pub(crate) use plugins::{PluginDialog, PluginKey};
-pub(crate) use rebind::{RebindRow, Rebinding, rebind_rows};
+pub(crate) use rebind::{RebindRow, Rebinding, Rebound};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
 
@@ -90,6 +90,8 @@ mod navigation_tests;
 mod notch_tests;
 #[cfg(test)]
 mod palette_tests;
+#[cfg(test)]
+mod panel_keys_tests;
 #[cfg(test)]
 mod panels_tests;
 #[cfg(test)]

@@ -208,10 +208,7 @@ fn hints(app: &App) -> Vec<String> {
     hints.extend(
         app.actions_here()
             .into_iter()
-            .filter(|here| {
-                here.does
-                    .is_none_or(|does| !app.keymap.chords(does).is_empty())
-            })
+            .filter(|here| here.key != "none")
             .map(|here| format!("{} {}", here.key_name(), here.what)),
     );
     hints.extend(general.into_iter().flatten());

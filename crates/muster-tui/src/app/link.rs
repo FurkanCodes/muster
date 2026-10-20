@@ -62,7 +62,8 @@ impl App {
         let mut copied = None;
         let settings = matches!(
             frame,
-            ServerFrame::Snapshot(_) | ServerFrame::Delta(Delta::Preferences(_))
+            ServerFrame::Snapshot(_)
+                | ServerFrame::Delta(Delta::Preferences(_) | Delta::PluginsChanged(_))
         );
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
@@ -121,10 +122,12 @@ impl App {
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
         }
         if settings {
-            // The person's keys, as the daemon keeps them; ones that do not
-            // read leave Muster's, the Settings screen saying why.
-            self.keymap =
-                muster_core::keys::Keymap::with(&self.model.preferences().keys).unwrap_or_default();
+            // The person's keys, as the daemon keeps them, and those of the
+            // panels of the plugins that run; ones that do not read leave
+            // Muster's, the Settings screen saying why.
+            self.keymap = muster_core::keys::Keymap::with(&self.model.preferences().keys)
+                .unwrap_or_default()
+                .with_panels(self.panel_actions());
         }
         let mut actions: Vec<Action> = news.into_iter().collect();
         if let Some(text) = copied {
