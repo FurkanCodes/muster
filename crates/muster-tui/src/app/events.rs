@@ -52,6 +52,8 @@ impl App {
         }
         // Typed ahead, as the person knows the screens behind.
         self.skip_welcome();
+        // What a key changes may move what the pointer is over.
+        self.hover = None;
         // An error stays until the person has seen it and pressed on.
         if self.note.as_ref().is_some_and(|note| note.error) {
             self.note = None;

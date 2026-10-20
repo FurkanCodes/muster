@@ -25,6 +25,22 @@ const WHEEL_LINES: isize = 3;
 
 impl App {
     pub(crate) fn on_mouse(&mut self, event: MouseEvent) -> Vec<Action> {
+        let at = Position::new(event.column, event.row);
+        // Moving, the pointer only lights what it could take hold of, and
+        // reaches the program in a session that asked for it.
+        if event.kind == MouseEventKind::Moved {
+            self.hover = self.grab_under(at);
+            return match self.mode {
+                Mode::Terminal(session) if !self.welcome => self.terminal_mouse(session, event),
+                _ => Vec::new(),
+            };
+        }
+        let actions = self.pointer(event);
+        self.hover = self.grab_under(at);
+        actions
+    }
+
+    fn pointer(&mut self, event: MouseEvent) -> Vec<Action> {
         if self.skip_welcome() {
             return Vec::new();
         }
@@ -32,6 +48,11 @@ impl App {
             actions.extend(self.settle());
             return actions;
         }
+        self.mode_mouse(event)
+    }
+
+    /// What `event` does in the mode the app is in.
+    pub(super) fn mode_mouse(&mut self, event: MouseEvent) -> Vec<Action> {
         let mut actions = match self.mode {
             Mode::Terminal(session) => return self.terminal_mouse(session, event),
             Mode::Browse => self.browse_mouse(event),

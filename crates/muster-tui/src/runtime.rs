@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{
     DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange, Event,
-    EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    EventStream, KeyboardEnhancementFlags, MouseEventKind, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
@@ -152,6 +152,17 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
             Woke::Input(event) => match event {
                 Some(Ok(Event::Key(key))) => app.on_key(key),
                 Some(Ok(Event::Paste(text))) => app.on_paste(&text),
+                // A move that lights nothing new and sends nothing draws
+                // nothing: the pointer crossing the window costs no frame.
+                Some(Ok(Event::Mouse(mouse))) if mouse.kind == MouseEventKind::Moved => {
+                    let was = app.hover.clone();
+                    let actions = app.on_mouse(mouse);
+                    if actions.is_empty() && app.hover == was && due.is_empty() {
+                        draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
+                        continue;
+                    }
+                    actions
+                }
                 Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
                 Some(Ok(Event::FocusGained)) => app.on_focus(true),
                 Some(Ok(Event::FocusLost)) => app.on_focus(false),
@@ -558,9 +569,9 @@ fn printable(text: &str) -> String {
 }
 
 /// Asks the person's terminal for mouse presses, releases and the wheel,
-/// and movement while a button is held, in SGR encoding; not for every
-/// movement, as crossterm's `EnableMouseCapture` does, which would wake the
-/// UI whenever the pointer crosses its window.
+/// and every movement, in SGR encoding: a move lights what a drag would
+/// move, and reaches a program that asked for it; one that changes neither
+/// draws nothing.
 struct MouseReports(bool);
 
 impl crossterm::Command for MouseReports {
@@ -568,7 +579,7 @@ impl crossterm::Command for MouseReports {
         let switch = if self.0 { 'h' } else { 'l' };
         write!(
             out,
-            "\x1b[?1000{switch}\x1b[?1002{switch}\x1b[?1006{switch}"
+            "\x1b[?1000{switch}\x1b[?1003{switch}\x1b[?1006{switch}"
         )
     }
 }
