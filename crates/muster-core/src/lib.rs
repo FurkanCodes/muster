@@ -34,6 +34,7 @@ pub mod settings;
 pub mod stacks;
 pub mod telling;
 pub mod text;
+pub mod ticket_protocol;
 pub mod tickets;
 pub mod tidy;
 pub mod time;
