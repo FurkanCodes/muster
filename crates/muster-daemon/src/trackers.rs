@@ -1,8 +1,9 @@
 //! Where tickets come from (`ARCHITECTURE.md` §10, `ARC-03`): each project's
 //! tracker, chosen by its settings or, unsaid, by its git remote. GitHub's
-//! and GitLab's issues come through the person's own `gh` and `glab`; Jira
-//! and Linear through their MCP servers with the person's sign-in, or their
-//! APIs with a token the person gave Muster.
+//! and GitLab's issues come through the person's own `gh` and `glab`, asked
+//! by Muster's own ticket plugins (`plugin`); Jira and Linear through their
+//! MCP servers with the person's sign-in, or their APIs with a token the
+//! person gave Muster.
 //!
 //! Ticket text is untrusted (`PRD-07`): anyone who can file a ticket can
 //! write it. It reaches an agent only inside the prompt built here, marked
@@ -13,6 +14,7 @@ pub(crate) mod github;
 pub(crate) mod gitlab;
 pub(crate) mod jira;
 pub(crate) mod linear;
+pub(crate) mod plugin;
 
 use std::fmt::Write as _;
 use std::sync::Arc;

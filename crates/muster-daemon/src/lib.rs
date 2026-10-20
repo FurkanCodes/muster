@@ -20,6 +20,7 @@ mod hooks;
 mod log_files;
 mod mcp;
 mod oauth;
+mod plugin_run;
 mod plugins;
 mod pty;
 mod resources;
@@ -60,6 +61,7 @@ use muster_core::Paths;
 use tokio::net::UnixListener;
 
 pub use crate::log_files::LogLimits;
+pub use crate::plugin_run::{PluginRunError, plugin_run};
 pub use crate::runs::credentials::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
 pub use crate::service::ServiceError;
 
@@ -262,6 +264,10 @@ pub async fn run(
         .map_err(io_error("cannot start the store for", &paths.database()))?;
     let (hook_deliveries, hook_queue) = tokio::sync::mpsc::channel(1024);
     let tasks = Tasks::default();
+    // Muster's own ticket plugins are this program, run again.
+    let plugins = trackers::plugin::Plugins::new(
+        handoff::next_program().unwrap_or_else(|_| PathBuf::from("muster")),
+    );
     let supervisor = start_supervisor(
         &config,
         Started {
@@ -270,6 +276,7 @@ pub async fn run(
             hook_queue,
             adopted,
             tasks: tasks.clone(),
+            plugins: plugins.clone(),
         },
     )
     .await?;
@@ -295,6 +302,9 @@ pub async fn run(
         if stop != Some(Stop::Reload) {
             break;
         }
+        // The program that follows starts its own; these would outlive the
+        // exec unreaped.
+        plugins.stop().await;
         let failed = match reload(
             paths,
             &supervisor,
@@ -319,6 +329,7 @@ pub async fn run(
     if left > 0 {
         tracing::info!(left, "work still under way when the daemon stopped");
     }
+    plugins.stop().await;
     let _ = std::fs::remove_file(&hook_socket);
     let _ = std::fs::remove_file(&socket);
     drop(lock);
@@ -383,6 +394,7 @@ struct Started {
     hook_queue: tokio::sync::mpsc::Receiver<hooks::HookDelivery>,
     adopted: Vec<handoff::HandedSession>,
     tasks: Tasks,
+    plugins: trackers::plugin::Plugins,
 }
 
 /// Starts the Supervisor with the real systems behind its traits (`ARC-03`).
@@ -416,6 +428,7 @@ async fn start_supervisor(
         trackers: Arc::new(trackers::choose::ServiceTrackers {
             secrets: Arc::new(secrets::Keychain::default()),
             http: service::http_client(),
+            plugins: started.plugins,
         }),
         config_dir: paths.config_dir.clone(),
         credentials,

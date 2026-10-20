@@ -1,16 +1,20 @@
 //! Each project's tracker: the one its settings name (`[tickets]` in
 //! `muster.toml`, or the person's overrides), or else the one its git
-//! remote's host comes with, GitHub's or GitLab's.
+//! remote's host comes with, GitHub's or GitLab's. GitHub's and GitLab's
+//! are Muster's own ticket plugins (`plugin`); Jira and Linear are reached
+//! in the daemon still.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use muster_core::config::{HostKind, Tickets, TrackerKind};
 use muster_core::remote::Remote;
 
-use super::github::GitHubIssues;
-use super::gitlab::GitLabIssues;
+use muster_core::ticket_protocol::Project;
+
 use super::jira::Jira;
 use super::linear::Linear;
+use super::plugin::{PluginTickets, Plugins};
 use super::{BoxFuture, Hidden, ProjectPlace, ServiceError, TicketSource, Trackers};
 use crate::secrets::Secrets;
 use crate::service::Origin;
@@ -21,6 +25,8 @@ pub(crate) struct ServiceTrackers {
     /// The sign-ins and tokens for trackers reached by MCP or their APIs.
     pub(crate) secrets: Arc<dyn Secrets>,
     pub(crate) http: reqwest::Client,
+    /// The ticket plugins' processes.
+    pub(crate) plugins: Plugins,
 }
 
 impl Trackers for ServiceTrackers {
@@ -33,14 +39,11 @@ impl Trackers for ServiceTrackers {
             let origin = crate::service::origin(&place.root).await;
             let tracker = choose(&config.tickets, config.pull_requests.host, &origin)?;
             let source: Arc<dyn TicketSource> = match tracker {
-                TrackerKind::GitHub => Arc::new(GitHubIssues {
-                    root: place.root,
-                    mine: config.tickets.mine,
-                }),
-                TrackerKind::GitLab => Arc::new(GitLabIssues {
-                    root: place.root,
-                    mine: config.tickets.mine,
-                }),
+                TrackerKind::GitHub | TrackerKind::GitLab => Arc::new(PluginTickets::new(
+                    self.plugins.builtin(tracker),
+                    plugin_project(&place, &origin)?,
+                    config.tickets.mine,
+                )),
                 TrackerKind::Jira => {
                     Jira::for_settings(&config.tickets, self.secrets.as_ref(), self.http.clone())
                         .await?
@@ -55,6 +58,22 @@ impl Trackers for ServiceTrackers {
             Ok(hidden)
         })
     }
+}
+
+/// The project as a ticket plugin is told of it. Muster's own GitHub and
+/// GitLab take no settings: their CLIs find the repository from the
+/// checkout.
+fn plugin_project(place: &ProjectPlace, origin: &Origin) -> Result<Project, ServiceError> {
+    let remote = origin
+        .remote()
+        .map(|remote| format!("{}/{}", remote.host, remote.path));
+    Project::new(&place.root, remote, BTreeMap::new()).ok_or_else(|| {
+        ServiceError::NotConfigured(
+            "this project's folder has a name that is not UTF-8, which a ticket plugin \
+             cannot be told"
+                .to_owned(),
+        )
+    })
 }
 
 /// How to say where a project's tickets are.
