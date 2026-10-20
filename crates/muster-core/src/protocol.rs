@@ -122,7 +122,11 @@
 //! 43 plugins' panels (`PluginCommand::OpenPanel`, sent only to a daemon
 //! of 43 or later; `Session::beside`, a field older clients pass over; an
 //! older client is sent no panel's session, and a layout and keys without
-//! a panel's, [`Snapshot::for_version`] and [`Delta::for_version`]).
+//! a panel's, [`Snapshot::for_version`] and [`Delta::for_version`]);
+//! version 44 plugins' hooks (`PluginDetails::hooks`, a field older
+//! clients pass over, and a preview with hooks refused to them,
+//! `plugins::shown_to`; `PluginCommand::TryHooks`, sent only to a daemon
+//! of 44 or later, answered with `Reply::HooksTried`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -144,7 +148,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 43;
+pub const PROTOCOL_VERSION: u32 = 44;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -746,6 +750,8 @@ pub enum Reply {
         id: String,
         log: String,
     },
+    /// What a plugin's hooks did with a sample event. From protocol 44.
+    HooksTried(plugins::HooksTried),
     /// The command was carried out and has nothing to report.
     Done,
 }

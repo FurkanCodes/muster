@@ -15,6 +15,7 @@ mod changes;
 mod clashes;
 mod clients;
 mod containers;
+mod events;
 mod explain;
 mod handle;
 mod issues;
@@ -109,6 +110,9 @@ pub(crate) struct Settings {
     /// Where plugins' secrets are kept, for a plugin's panel given those
     /// its manifest names (`muster auth plugin`).
     pub(crate) secrets: Arc<dyn crate::secrets::Secrets>,
+    /// Runs plugins' hooks as things happen, which the daemon cuts as it
+    /// stops.
+    pub(crate) hooks: crate::plugins::hooks::Hooks,
 }
 
 /// The state and the runs as the store keeps them.
@@ -202,6 +206,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
         ticket_plugins: settings.ticket_plugins,
         reopening: HashSet::new(),
+        events: events::Events::new(settings.hooks),
     };
     supervisor.start_plugins().await;
     supervisor.ensure_checkouts().await;
@@ -351,6 +356,9 @@ struct Supervisor {
     ticket_plugins: crate::trackers::plugin::Plugins,
     /// Plugins' panels stopped to be opened afresh as they end.
     reopening: HashSet<SessionId>,
+    /// Plugins' hooks, and what raising their events keeps between
+    /// changes.
+    events: events::Events,
 }
 
 impl Supervisor {
@@ -709,6 +717,7 @@ impl Supervisor {
             .filter_map(|live| live.machine.next_deadline())
             .chain(self.next_run_deadline())
             .chain(self.resumes.next_deadline())
+            .chain(self.events.next_deadline())
             .min()
     }
 
@@ -725,6 +734,7 @@ impl Supervisor {
         }
         self.tick_runs(now).await;
         self.resume_next().await;
+        self.tick_events(now);
     }
     fn session_mut(&mut self, session: SessionId) -> Option<&mut muster_core::Session> {
         self.state

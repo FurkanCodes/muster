@@ -1,17 +1,20 @@
 //! Samples of the plugins' messages (protocol 41, a panel opened from
-//! 43), each variant with the values inside it filled in, for
-//! `protocol_round_trip`.
+//! 43, hooks from 44), each variant with the values inside it filled in,
+//! for `protocol_round_trip`.
 
 use std::path::PathBuf;
 
-use muster_core::plugins::{Panel, PanelOn, PluginSource, TicketSetting, TicketSource};
+use muster_core::plugins::{
+    EventKind, Hook, Panel, PanelOn, PluginSource, TicketSetting, TicketSource, When,
+};
 use muster_core::protocol::plugins::{
-    Beside, ChangedBy, PluginAction, PluginChange, PluginCommand, PluginDetails, PluginInfo,
-    PluginList, PluginOrigin, PluginPreview, PluginProblem, PreviewKind, Required,
+    Beside, ChangedBy, HookOutcome, HookRun, HooksTried, PluginAction, PluginChange, PluginCommand,
+    PluginDetails, PluginInfo, PluginList, PluginOrigin, PluginPreview, PluginProblem, PreviewKind,
+    Required,
 };
 use muster_core::protocol::{Command, Delta, Reply, TermSize};
 use muster_core::time::Timestamp;
-use muster_core::{SessionId, WorkspaceId};
+use muster_core::{SessionId, WaitReason, WorkspaceId};
 
 fn details() -> PluginDetails {
     PluginDetails {
@@ -43,6 +46,27 @@ fn details() -> PluginDetails {
                 required: true,
             }],
         }),
+        hooks: vec![
+            Hook {
+                id: "ping".to_owned(),
+                on: vec![EventKind::SessionNeedsYou, EventKind::SessionFinished],
+                command: vec!["./notify".to_owned(), "{project}".to_owned()],
+                timeout: 20,
+                when: When {
+                    project: vec!["muster".to_owned()],
+                    harness: vec!["claude".to_owned()],
+                    reason: vec![WaitReason::Question],
+                    away: Some(true),
+                },
+            },
+            Hook {
+                id: "log".to_owned(),
+                on: vec![EventKind::WorktreeCreated],
+                command: vec!["./log".to_owned()],
+                timeout: 10,
+                when: When::default(),
+            },
+        ],
         sha256: "9b".repeat(32),
     }
 }
@@ -153,6 +177,10 @@ pub(crate) fn commands() -> Vec<Command> {
             beside: Beside::Workspace(WorkspaceId::new()),
             size: TermSize { cols: 60, rows: 20 },
         },
+        PluginCommand::TryHooks {
+            id: "notify".to_owned(),
+            event: EventKind::SessionFinished,
+        },
     ]
     .into_iter()
     .map(Command::Plugin)
@@ -186,6 +214,29 @@ pub(crate) fn replies() -> Vec<Reply> {
         id: "youtrack".to_owned(),
         log: "listing APP\nsigned in as someone\n".to_owned(),
     });
+    let outcomes = [
+        HookOutcome::Exited { code: 0 },
+        HookOutcome::Exited { code: 3 },
+        HookOutcome::Signalled,
+        HookOutcome::TimedOut { seconds: 10 },
+        HookOutcome::Cut,
+        HookOutcome::NotRun {
+            why: "its manifest changed since you approved it".to_owned(),
+        },
+    ];
+    previews.push(Reply::HooksTried(HooksTried {
+        id: "notify".to_owned(),
+        event: EventKind::SessionNeedsYou,
+        runs: outcomes
+            .into_iter()
+            .map(|outcome| HookRun {
+                hook: "ping".to_owned(),
+                outcome,
+                output: "posted\n".to_owned(),
+                millis: 120,
+            })
+            .collect(),
+    }));
     previews
 }
 

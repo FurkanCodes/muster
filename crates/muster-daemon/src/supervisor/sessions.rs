@@ -146,6 +146,7 @@ impl Supervisor {
             .map_err(store_error)?;
         self.state.sessions.push(session.clone());
         self.broadcast(Delta::SessionUpserted(session));
+        self.session_added(id);
         if start == Start::WithPrompt {
             // Its first turn begins with it.
             self.turn_began(id);

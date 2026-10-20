@@ -111,6 +111,7 @@ impl Supervisor {
         self.state.workspaces.push(workspace.clone());
         let id = workspace.id;
         self.broadcast(Delta::WorkspaceUpserted(workspace));
+        self.worktree_created(id);
         Ok(Reply::WorktreeCreated { id })
     }
 
@@ -306,8 +307,10 @@ impl Supervisor {
         {
             Ok(Ok(())) => {
                 tracing::info!(path = %path.display(), "adopted a worktree made outside Muster");
+                let id = workspace.id;
                 self.state.workspaces.push(workspace.clone());
                 self.broadcast(Delta::WorkspaceUpserted(workspace));
+                self.worktree_created(id);
             }
             Ok(Err(error)) => tracing::error!(%error, "could not adopt a worktree"),
             Err(_) => tracing::error!("could not adopt a worktree: the store stopped"),
@@ -338,6 +341,8 @@ impl Supervisor {
     /// Takes a removed workspace and its sessions out of the state, and
     /// tells clients.
     pub(super) fn drop_workspace(&mut self, workspace: WorkspaceId) {
+        self.workspace_going(workspace);
+        self.forget_events_of(workspace);
         self.state.workspaces.retain(|kept| kept.id != workspace);
         let released: Vec<_> = self
             .state

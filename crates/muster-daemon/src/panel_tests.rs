@@ -72,6 +72,7 @@ pub(crate) async fn spawn_with(
             gemini_tmp: None,
         },
         secrets,
+        hooks: crate::plugins::hooks::Hooks::idle(),
     })
     .await
     .unwrap()

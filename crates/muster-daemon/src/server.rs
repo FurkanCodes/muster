@@ -12,7 +12,7 @@ use muster_client::{FramedRead, FramedWrite, TransportError};
 use muster_core::SessionId;
 use muster_core::protocol::{
     ClientFrame, DetachReason, ErrorBody, ErrorCode, Incompatible, MIN_PROTOCOL_VERSION,
-    PROTOCOL_VERSION, ServerFrame, Welcome, negotiate,
+    PROTOCOL_VERSION, ServerFrame, Welcome, negotiate, plugins,
 };
 use tokio::net::unix::OwnedReadHalf;
 use tokio::net::{UnixListener, UnixStream};
@@ -155,10 +155,12 @@ impl Connection {
                     let (supervisor, outgoing) = (self.supervisor.clone(), self.outgoing.clone());
                     let version = self.version;
                     self.tasks.spawn(async move {
-                        // As the client's protocol can read it (`ARC-09`).
+                        // As the client's protocol can read it, and never a
+                        // plugin it could not show whole (`ARC-09`).
                         let outcome = supervisor
                             .command(command)
                             .await
+                            .and_then(|reply| plugins::shown_to(reply, version))
                             .map(|reply| reply.for_version(version));
                         let _ = outgoing.send(ServerFrame::Reply { req_id, outcome }).await;
                     });

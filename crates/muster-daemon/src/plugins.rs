@@ -12,13 +12,16 @@
 mod change;
 mod fetch;
 mod files;
+pub(crate) mod hooks;
 mod previews;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use muster_core::config::ConfigError;
-use muster_core::plugins::{Manifest, ManifestError, PluginEntry, PluginSource, manifest, own};
+use muster_core::plugins::{
+    Event, Hook, Manifest, ManifestError, PluginEntry, PluginSource, manifest, own,
+};
 use muster_core::protocol::plugins::{
     PluginChange, PluginDetails, PluginInfo, PluginList, PluginProblem,
 };
@@ -98,6 +101,12 @@ pub(crate) enum PluginError {
     Broken { id: String, problem: PluginProblem },
     #[error("its manifest calls it {found} now, not {id}; remove {id} and install it afresh")]
     Renamed { id: String, found: String },
+    #[error("no hook of {id}'s runs for {event}{}", hooks_of(hooks))]
+    NoHook {
+        id: String,
+        event: muster_core::plugins::EventKind,
+        hooks: Vec<String>,
+    },
     #[error("Muster's own settings: {0}")]
     Settings(#[from] ConfigError),
     #[error("{what}: {error}")]
@@ -108,7 +117,7 @@ impl PluginError {
     /// The refusal as a client is told it (`ARC-07`).
     pub(crate) fn body(&self) -> ErrorBody {
         let code = match self {
-            Self::NoPlugin { .. } | Self::NoPreview => ErrorCode::NotFound,
+            Self::NoPlugin { .. } | Self::NoPreview | Self::NoHook { .. } => ErrorCode::NotFound,
             Self::Installed { .. }
             | Self::Own { .. }
             | Self::CannotRun { .. }
@@ -125,6 +134,15 @@ impl PluginError {
         let what = what.into();
         move |error| Self::Io { what, error }
     }
+}
+
+/// What a plugin's hooks run for, after a refusal: `: ping runs for
+/// session.finished`.
+fn hooks_of(hooks: &[String]) -> String {
+    if hooks.is_empty() {
+        return ": it has no hooks".to_owned();
+    }
+    format!(": {}", hooks.join("; "))
 }
 
 /// A plugin as last read: its entry in Muster's settings, if it has one
@@ -290,6 +308,37 @@ impl Registry {
         Ok((details, folder))
     }
 
+    /// The ids of the plugins that run: on, and approved as they are.
+    pub(crate) fn running_ids(&self) -> Vec<String> {
+        self.known
+            .iter()
+            .filter(|known| known.info.runs())
+            .map(|known| known.info.id.clone())
+            .collect()
+    }
+
+    /// A run of each hook that takes `event`, of every plugin that runs,
+    /// the person `away` from every Muster window or not (`PRD-15`): none
+    /// of a plugin off, gone or changed since its approval.
+    pub(crate) fn hook_jobs(&self, event: &Event, away: bool) -> Vec<hooks::Job> {
+        let mut jobs = Vec::new();
+        for known in self.known.iter().filter(|known| known.info.runs()) {
+            let (Some(details), Some(folder)) = (
+                &known.info.details,
+                known
+                    .entry
+                    .as_ref()
+                    .and_then(|entry| folder_of(&self.dir, entry)),
+            ) else {
+                continue;
+            };
+            for hook in details.hooks.iter().filter(|hook| hook.takes(event, away)) {
+                jobs.push(job(&known.info.id, details, &folder, hook, event.clone()));
+            }
+        }
+        jobs
+    }
+
     fn find(&self, id: &str) -> Result<&Known, PluginError> {
         self.known
             .iter()
@@ -301,6 +350,32 @@ impl Registry {
     #[cfg(test)]
     pub(crate) fn previews(&self) -> usize {
         self.previews.len()
+    }
+}
+
+/// A run of `hook`, one of the plugin `id`'s, whose manifest says
+/// `details`, in its `folder`, for `event`.
+pub(crate) fn job(
+    id: &str,
+    details: &PluginDetails,
+    folder: &Path,
+    hook: &Hook,
+    event: Event,
+) -> hooks::Job {
+    hooks::Job {
+        plugin: id.to_owned(),
+        hook: hook.clone(),
+        event,
+        folder: folder.to_owned(),
+        sha256: details.sha256.clone(),
+        env: details.env.clone(),
+        secrets: details.secrets.clone(),
+        refused: details
+            .requires
+            .iter()
+            .find(|required| !required.found)
+            .map(|required| format!("it needs {}, which is not on PATH", required.program)),
+        done: None,
     }
 }
 

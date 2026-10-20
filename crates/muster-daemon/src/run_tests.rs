@@ -207,6 +207,7 @@ async fn spawn_with(
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         places: crate::spend::Places::default(),
         secrets: Arc::new(crate::secrets::Kept::default()),
+        hooks: crate::plugins::hooks::Hooks::idle(),
     })
     .await
     .unwrap()

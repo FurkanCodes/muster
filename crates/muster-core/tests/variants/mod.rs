@@ -99,7 +99,7 @@ impl Variant for Command {
 }
 
 impl Variant for Reply {
-    const COUNT: usize = 25;
+    const COUNT: usize = 26;
     fn variant(&self) -> usize {
         match self {
             Self::Pong => 0,
@@ -127,6 +127,7 @@ impl Variant for Reply {
             Self::Plugins(_) => 22,
             Self::PluginPreview(_) => 23,
             Self::PluginLog { .. } => 24,
+            Self::HooksTried(_) => 25,
         }
     }
 }

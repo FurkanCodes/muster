@@ -180,6 +180,7 @@ impl Supervisor {
         self.after_turn(session, before, status);
         self.timeline_after_status(session, before, status);
         self.tidy_after_status(session, before, status);
+        self.status_events(session, before, status);
     }
 
     /// What a session is doing now, as its hooks tell; told to clients
