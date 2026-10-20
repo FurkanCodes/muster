@@ -319,6 +319,25 @@ impl Sandbox {
         root.canonicalize().unwrap()
     }
 
+    /// Anyone's ticket plugin, `fixtures/ticket-plugin`, as a git
+    /// repository of its own to install from.
+    pub(crate) fn ticket_plugin_repository(&self) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt as _;
+        let root = self.repository("fixture-plugin");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ticket-plugin");
+        for file in ["muster-plugin.toml", "tickets", "tickets.jsonl"] {
+            std::fs::copy(fixture.join(file), root.join(file)).unwrap();
+        }
+        std::fs::set_permissions(root.join("tickets"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        git(
+            &root,
+            &["add", "muster-plugin.toml", "tickets", "tickets.jsonl"],
+        );
+        git(&root, &["commit", "--quiet", "--message", "the plugin"]);
+        root
+    }
+
     /// `muster` with its environment pointed at this sandbox.
     pub(crate) fn command(&self) -> Command {
         let paths = self.paths();

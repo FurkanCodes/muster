@@ -1,0 +1,44 @@
+#!/bin/sh
+# A ticket plugin in POSIX sh: the ticket protocol on stdin and stdout,
+# one JSON-RPC message a line. Its tickets are tickets.jsonl, one JSON
+# object a line, in its folder, where Muster runs it; closing one takes
+# its line out. It says on stderr, its log, which variables it was given.
+
+reply() { printf '{"jsonrpc":"2.0","id":%s,"result":%s}\n' "$id" "$1"; }
+refuse() { printf '{"jsonrpc":"2.0","id":%s,"error":{"code":"%s","message":"%s"}}\n' "$id" "$1" "$2"; }
+# The text of "name":"…" in the line, the last if more than one.
+field() { printf '%s' "$line" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
+
+echo "given: $(env | cut -d= -f1 | sort | tr '\n' ' ')" >&2
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/^{"jsonrpc":"2.0","id":\([0-9]*\),.*/\1/p')
+  case "$line" in
+    *'"method":"hello"'*) reply '{"protocol":1}' ;;
+    *'"method":"list"'*)
+      if [ -z "$FIXTURE_TOKEN" ]; then
+        refuse signed_out "set FIXTURE_TOKEN, or keep it with muster auth plugin fixture FIXTURE_TOKEN"
+        continue
+      fi
+      board=$(field board)
+      echo "listing board $board for ${FIXTURE_GREETING:-nobody}, signed in with $FIXTURE_TOKEN" >&2
+      reply "{\"where\":\"Fixture board $board\",\"source\":\"fixture $board\",\"tickets\":[$(paste -s -d, tickets.jsonl)]}"
+      ;;
+    *'"method":"view"'*)
+      key=$(field key)
+      ticket=$(grep "\"key\":\"$key\"" tickets.jsonl)
+      if [ -z "$ticket" ]; then
+        refuse not_found "there is no task $key"
+      else
+        reply "{\"ticket\":$ticket,\"body\":\"$(line=$ticket field body)\"}"
+      fi
+      ;;
+    *'"method":"close"'*)
+      key=$(field key)
+      grep -v "\"key\":\"$key\"" tickets.jsonl > tickets.jsonl.new
+      mv tickets.jsonl.new tickets.jsonl
+      echo "closed $key" >&2
+      reply '{}'
+      ;;
+    *) refuse failed "it knows no such method" ;;
+  esac
+done

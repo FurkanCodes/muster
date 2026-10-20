@@ -1,0 +1,18 @@
+# A ticket source anyone could write, for Muster's tests: tickets from a
+# file beside it, one JSON object a line.
+id = "fixture"
+name = "Fixture tickets"
+version = "0.1.0"
+description = "Tickets from tickets.jsonl beside it, for Muster's tests."
+muster = "0.3"
+env = ["FIXTURE_GREETING"]
+secrets = ["FIXTURE_TOKEN"]
+
+[tickets]
+name = "Fixture"
+noun = "task"
+command = ["./tickets"]
+[[tickets.settings]]
+key = "board"
+label = "Board, such as WEB"
+required = true
