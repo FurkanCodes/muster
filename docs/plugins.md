@@ -356,6 +356,8 @@ A panel shows text and colours, as a session does; pictures drawn by a terminal'
 
 A hook is a program Muster runs as something happens: an agent needs the person, finishes or fails; a worktree is made or removed; a pull request changes. It is told what happened, and does what it likes with it: a Slack or Telegram ping, a line in a log, a status light. A hook only hears. There is no way back from it into Muster: it cannot start, prompt or type into a session.
 
+Hooks came in Muster 0.4.1: a plugin with hooks says `muster = "0.4.1"`, so an older Muster refuses it saying which it needs.
+
 ```toml
 [[hooks]]
 id = "ping"
