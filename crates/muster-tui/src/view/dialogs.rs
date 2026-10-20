@@ -64,6 +64,10 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
         super::rebind::draw_rebinding(frame, app, rebinding, area);
         return;
     }
+    if let Dialog::Plugin(plugin) = dialog {
+        super::plugin_dialog::draw_plugin_dialog(frame, plugin, area);
+        return;
+    }
     let width = area.width.saturating_sub(4).min(72);
     let inner_width = width.saturating_sub(2).max(1);
     let Shape {
@@ -184,8 +188,9 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             model,
             listed,
         } => naming_model(app, agent, model, listed.as_ref()),
-        // Drawn over the whole screen instead (`draw_dialog`).
+        // Drawn by themselves instead (`draw_dialog`).
         Dialog::Keys(_) => Shape::new(" Keys ", Vec::new(), None),
+        Dialog::Plugin(_) => Shape::new(" Plugin ", Vec::new(), None),
         Dialog::Rename { name, .. } => Shape {
             hint: "⏎ rename   esc cancel",
             ..Shape::new(
@@ -551,7 +556,7 @@ fn wrapped_height(width: usize, columns: u16) -> u16 {
 /// The part of an input's `text` that fits in `columns`, scrolled so the
 /// cursor (after `before_cursor`) stays in view, and the cursor's column
 /// within it.
-fn input_window(text: &str, before_cursor: &str, columns: u16) -> (String, u16) {
+pub(super) fn input_window(text: &str, before_cursor: &str, columns: u16) -> (String, u16) {
     let columns = usize::from(columns.max(1));
     let cursor = before_cursor.chars().count();
     // The cursor sits after the last character shown, so keep a column for it.

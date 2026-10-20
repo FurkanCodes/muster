@@ -182,7 +182,9 @@ fn the_width_is_one_of_muster_s_own_settings() {
         SettingRow::NamedBy,
         SettingRow::NamingModel,
         SettingRow::Keys,
-        SettingRow::Agents
+        SettingRow::Agents,
+        SettingRow::Plugins,
+        SettingRow::AddPlugin
     ]));
     world.app.settings_selected = Some(SettingRow::SideBySide);
     let screen = super::tests::render(&world.app);

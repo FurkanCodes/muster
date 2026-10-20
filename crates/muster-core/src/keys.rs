@@ -157,6 +157,9 @@ actions! {
     TicketInBrowser "ticket_in_browser" &[Screen::Tickets], ["b"], "the ticket in the browser";
     CloseTicket "close_ticket" &[Screen::Tickets], ["x"], "close the ticket in its tracker, after asking; then clean up";
     ReadSettings "read_settings" &[Screen::Settings], ["r"], "read the settings again, after editing a file by hand";
+    AddPlugin "add_plugin" &[Screen::Settings], ["a"], "add a plugin from a git repository or a folder, after showing what it runs";
+    UpdatePlugin "update_plugin" &[Screen::Settings], ["u"], "update the plugin, after showing what it runs then";
+    RemovePlugin "remove_plugin" &[Screen::Settings], ["x"], "remove the plugin, after asking";
     CloseChanges "close_changes" &[Screen::Changes], ["d", "q"], "back to the list";
     ChangesAgain "changes_again" &[Screen::Changes], ["r"], "ask git again";
     PutBack "put_back" &[Screen::Changes], ["z"], "on a turn, put the files back as before it, after asking";

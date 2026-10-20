@@ -47,6 +47,8 @@ impl App {
         self.focus_told = None;
         self.pending.clear();
         self.forget_unanswered();
+        self.forget_plugin_fetch();
+        self.plugin_changing = None;
         // The reason takes lines from the list.
         self.keep_in_view();
     }
@@ -285,6 +287,14 @@ impl App {
                 self.tell_changed(kind, &tell, outcome.map(drop));
             }
             (outcome, Then::LookChanged(change)) => self.look_changed(change, outcome.map(drop)),
+            (outcome, Then::PluginPreview(asked)) => self.on_plugin_preview(asked, outcome),
+            (outcome, Then::PluginToggled(plugin, on)) => {
+                self.plugin_toggled(plugin, on, outcome.map(drop));
+            }
+            (outcome, Then::PluginInstalled(preview)) => {
+                self.plugin_installed(&preview, outcome.map(drop));
+            }
+            (outcome, Then::PluginRemoved(id)) => self.plugin_removed(&id, outcome.map(drop)),
             (outcome, Then::ListFolded) => self.list_folded_kept(outcome.map(drop)),
             (outcome, Then::PanelsKept) => self.panels_kept(outcome.map(drop)),
             (Ok(Reply::Models(models)), Then::Models(agent)) => self.on_models(&agent, Ok(models)),

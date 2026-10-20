@@ -7,7 +7,8 @@
 //! agents; from how many columns a session sits beside the list; whose
 //! colours the UI draws in and how many lines a session takes; and the
 //! coding agents the person added in Muster's own settings, which are
-//! written by hand, so the row says what reads and what does not.
+//! written by hand, so the row says what reads and what does not. Then
+//! the plugins (`app::plugins`).
 //!
 //! ⏎ or space turns the selected setting on or off, goes to its next
 //! choice, or opens its dialog; ← → go to a smaller or larger choice.
@@ -23,7 +24,7 @@ use muster_core::settings::{
     AGENTS_PROTOCOL, MUSTER_PREFIX_PROTOCOL, ProjectSettings, SettingChange,
 };
 
-use super::{Action, App, Mode, Then, View};
+use super::{Action, App, Mode, PluginKey, Then, View};
 
 /// One line of the settings list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -61,6 +62,12 @@ pub(crate) enum SettingRow {
     Tell(muster_core::telling::Kind),
     /// The coding agents the person added in Muster's own settings.
     Agents,
+    /// The plugins, as a heading (`app::plugins`).
+    Plugins,
+    /// A plugin, by its id.
+    Plugin(PluginKey),
+    /// Adds a plugin.
+    AddPlugin,
 }
 
 impl SettingRow {
@@ -83,7 +90,10 @@ impl SettingRow {
             | Self::Keys
             | Self::Notifications
             | Self::Tell(_)
-            | Self::Agents => None,
+            | Self::Agents
+            | Self::Plugins
+            | Self::Plugin(_)
+            | Self::AddPlugin => None,
         }
     }
 }
@@ -103,7 +113,7 @@ impl App {
     /// prefix only where the daemon can change it. Then Muster's own, those
     /// the daemon keeps: the notch, on a Mac, the width a session sits
     /// beside the list from, the look, and the person's agents, where the
-    /// daemon knows them.
+    /// daemon knows them. Then the plugins, where the daemon has them.
     pub(crate) fn setting_rows(&self) -> Vec<SettingRow> {
         let prefix = self.daemon_protocol >= MUSTER_PREFIX_PROTOCOL;
         let mut rows: Vec<SettingRow> = self
@@ -141,6 +151,9 @@ impl App {
             rows.push(SettingRow::Muster);
             rows.extend(own.iter().filter(|(known, _)| *known).map(|(_, row)| *row));
         }
+        if self.model.loaded() && self.plugins_known() {
+            rows.extend(self.plugin_rows());
+        }
         rows
     }
 
@@ -162,8 +175,15 @@ impl App {
                 Some(SettingRow::Keys) => return self.open_rebinding(),
                 Some(SettingRow::Notifications) => return self.toggle_notifications(),
                 Some(SettingRow::Tell(kind)) => return self.toggle_tell(kind),
+                Some(SettingRow::Plugin(plugin)) => return self.toggle_plugin(plugin),
+                Some(SettingRow::AddPlugin) => return self.open_add_plugin(),
                 _ => return self.toggle_setting(),
             },
+            (_, Some(Does::AddPlugin)) => return self.open_add_plugin(),
+            (_, Some(Does::UpdatePlugin)) if self.plugins_known() => return self.update_plugin(),
+            (_, Some(Does::RemovePlugin)) if self.plugins_known() => {
+                return self.confirm_remove_plugin();
+            }
             (KeyCode::Left | KeyCode::Right, _)
                 if self.settings_selected == Some(SettingRow::SideBySide) =>
             {
@@ -290,9 +310,17 @@ impl App {
     }
 
     /// Keeps the settings selection on a line that exists: the first
-    /// setting, to begin with, so ⏎ does something at once.
+    /// setting, to begin with, so ⏎ does something at once; a plugin just
+    /// installed once it is listed, and *add a plugin* for one removed.
     pub(super) fn keep_setting_selection(&mut self) {
         let rows = self.setting_rows();
+        if let Some(wanted) = self.plugin_wanted
+            && rows.contains(&SettingRow::Plugin(wanted))
+        {
+            self.plugin_wanted = None;
+            self.settings_selected = Some(SettingRow::Plugin(wanted));
+            return;
+        }
         if self
             .settings_selected
             .is_some_and(|row| rows.contains(&row))
@@ -306,7 +334,10 @@ impl App {
         }
         self.settings_selected = self
             .settings_selected
-            .and_then(|row| row.project().map(SettingRow::Project))
+            .and_then(|row| match row {
+                SettingRow::Plugin(_) => Some(SettingRow::AddPlugin),
+                row => row.project().map(SettingRow::Project),
+            })
             .filter(|row| rows.contains(row))
             .or_else(|| {
                 rows.iter()

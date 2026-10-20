@@ -172,6 +172,15 @@ const SETTINGS: &[Section] = &[
             D(Does::ReadSettings),
         ],
     ),
+    (
+        "On the plugins",
+        &[
+            Fixed("⏎ space", "turn the plugin on or off"),
+            D(Does::AddPlugin),
+            D(Does::UpdatePlugin),
+            D(Does::RemovePlugin),
+        ],
+    ),
     ("Anywhere", ANYWHERE),
 ];
 

@@ -21,6 +21,7 @@ mod narrow;
 mod notch;
 mod panels;
 mod picker;
+pub(crate) mod plugins;
 mod pointer;
 mod rebind;
 mod rename;
@@ -43,6 +44,7 @@ pub(crate) use harness_choice::HarnessChoice;
 pub(crate) use help::{Help, HelpLine};
 pub(crate) use menu::Menu;
 pub(crate) use picker::{FolderPicker, PICKER_ROWS, Shown, picker_filter};
+pub(crate) use plugins::{PluginDialog, PluginKey};
 pub(crate) use rebind::{RebindRow, Rebinding, rebind_rows};
 pub(crate) use settings::{SettingRow, Settings};
 pub(crate) use tickets::{TicketRow, TicketText, Tickets};
@@ -91,6 +93,8 @@ mod palette_tests;
 mod panels_tests;
 #[cfg(test)]
 mod picker_tests;
+#[cfg(test)]
+mod plugins_tests;
 #[cfg(test)]
 mod pointer_tests;
 #[cfg(test)]
@@ -289,6 +293,8 @@ pub(crate) enum Dialog {
         /// Whether the key has the cursor, rather than Jira's site.
         on_key: bool,
     },
+    /// Adding or updating a plugin, a step at a time.
+    Plugin(PluginDialog),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -314,6 +320,8 @@ pub(crate) enum Confirmed {
     /// Move the worktree's branch onto the newest of its base, or of the
     /// branch it is stacked on.
     MoveOnto(WorkspaceId),
+    /// Remove the plugin by this id.
+    RemovePlugin(String),
 }
 
 /// A line under the screen telling the person what just happened. It
@@ -386,6 +394,16 @@ enum Then {
     Undone(WorkspaceId, u64),
     /// Say the branch moved, and onto what.
     Moved(WorkspaceId),
+    /// The daemon read its plugins again; what changed comes as a change.
+    PluginsRead,
+    /// Show the preview in the dialog waiting for request `0`.
+    PluginPreview(u64),
+    /// Say the plugin is turned on, or off.
+    PluginToggled(PluginKey, bool),
+    /// Say what the preview showed is done, and select the plugin.
+    PluginInstalled(Box<muster_core::protocol::plugins::PluginPreview>),
+    /// Say the plugin by this id is removed.
+    PluginRemoved(String),
     Say(&'static str),
 }
 
@@ -522,6 +540,10 @@ pub(crate) struct App {
     pub(crate) look_changing: bool,
     /// How a kind of notification is told is being changed.
     pub(crate) telling_changing: bool,
+    /// The plugin being turned on or off: the answer is on its way.
+    pub(crate) plugin_changing: Option<PluginKey>,
+    /// A plugin just installed, selected once the list has it.
+    plugin_wanted: Option<PluginKey>,
     /// The panels as the person moved them, until the daemon keeps them,
     /// or for as long as the window lasts where it cannot.
     panels_kept: Option<Layout>,
@@ -611,6 +633,8 @@ impl App {
             side_by_side_changing: false,
             look_changing: false,
             telling_changing: false,
+            plugin_changing: None,
+            plugin_wanted: None,
             areas_cache: std::cell::RefCell::default(),
             panels_kept: None,
             folded_kept: None,
