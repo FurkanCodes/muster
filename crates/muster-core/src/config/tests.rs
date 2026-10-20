@@ -197,3 +197,32 @@ fn branches_start_with_muster_unless_the_person_says_not() {
     );
     assert!(message("[branches]\nprefix = false").contains("prefix"));
 }
+
+#[test]
+fn another_tracker_the_person_names_brings_its_own_settings() {
+    let repository = "[tickets]\ntracker = \"jira\"\nsite = \"acme.atlassian.net\"\n\
+                      project = \"APP\"\nmine = true";
+    let theirs = ProjectConfig::parse(
+        Some(repository),
+        Some("[tickets]\ntracker = \"youtrack\"\nboard = \"WEB\""),
+        NAMES,
+    )
+    .unwrap()
+    .tickets;
+    assert_eq!(theirs.tracker.as_deref(), Some("youtrack"));
+    assert_eq!(
+        theirs.fields,
+        std::collections::BTreeMap::from([("board".to_owned(), "WEB".to_owned())])
+    );
+    assert!(theirs.mine, "mine is any tracker's");
+    // The same tracker is still merged key by key.
+    let other_project = ProjectConfig::parse(
+        Some(repository),
+        Some("[tickets]\ntracker = \"Jira\"\nproject = \"WEB\""),
+        NAMES,
+    )
+    .unwrap()
+    .tickets;
+    assert_eq!(other_project.field("site"), Some("acme.atlassian.net"));
+    assert_eq!(other_project.field("project"), Some("WEB"));
+}

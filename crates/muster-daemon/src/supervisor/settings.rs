@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 use super::Supervisor;
 use crate::trackers::ProjectPlace;
 use crate::trackers::choose::choose;
+use crate::trackers::plugin::Plugins;
 
 impl Supervisor {
     /// Reads a project's settings on a task of its own.
@@ -29,8 +30,9 @@ impl Supervisor {
                 return;
             }
         };
+        let plugins = self.ticket_plugins.clone();
         self.tasks.spawn(async move {
-            let outcome = settings_of(place).await;
+            let outcome = settings_of(place, &plugins).await;
             if let Err(error) = &outcome {
                 tracing::info!(command = "project settings", %error, "command refused");
             }
@@ -53,7 +55,13 @@ impl Supervisor {
                 return;
             }
         };
-        if let Err(error) = crate::config::change(&place.root, &place.overrides, change) {
+        let taken = match change {
+            SettingChange::TicketsFrom(Some(from)) => self.takes(from, &place.overrides),
+            _ => Ok(()),
+        };
+        if let Err(error) =
+            taken.and_then(|()| crate::config::change(&place.root, &place.overrides, change))
+        {
             tracing::info!(command = "change setting", %error, "command refused");
             let _ = reply.send(Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -62,14 +70,45 @@ impl Supervisor {
             return;
         }
         tracing::info!(%project, ?change, "changed a setting");
+        let plugins = self.ticket_plugins.clone();
         self.tasks.spawn(async move {
-            let _ = reply.send(settings_of(place).await);
+            let _ = reply.send(settings_of(place, &plugins).await);
         });
+    }
+
+    /// Whether the tickets can come from where `from` says: a ticket
+    /// plugin the registry has, on, given the settings it declares.
+    /// Muster's own are checked again as the settings are read.
+    fn takes(
+        &self,
+        from: &TicketsFrom,
+        file: &std::path::Path,
+    ) -> Result<(), muster_core::config::ConfigError> {
+        let refused = |message: String| muster_core::config::ConfigError::Invalid {
+            file: file.display().to_string(),
+            message,
+        };
+        let plugin = self
+            .ticket_plugins
+            .find(&from.tracker)
+            .map_err(|error| refused(error.to_string()))?;
+        let declared = plugin
+            .runnable()
+            .map_err(|error| refused(error.to_string()))?;
+        muster_core::config::check_fields(&from.tracker, &declared.settings, &from.fields)
+            .map_err(refused)
     }
 }
 
-/// The project's settings that the person can change, as they stand.
-async fn settings_of(place: ProjectPlace) -> Result<Reply, ErrorBody> {
+/// The project's settings that the person can change, as they stand, its
+/// tracker named as `plugins` say.
+async fn settings_of(place: ProjectPlace, plugins: &Plugins) -> Result<Reply, ErrorBody> {
+    let name = |tracker: &str| {
+        plugins.find(tracker).map_or_else(
+            |_| muster_core::config::tracker_name(tracker),
+            |plugin| plugin.name,
+        )
+    };
     let (root, overrides) = (place.root.clone(), place.overrides.clone());
     let (config, sources) =
         tokio::task::spawn_blocking(move || crate::config::load_with_sources(&root, &overrides))
@@ -77,14 +116,12 @@ async fn settings_of(place: ProjectPlace) -> Result<Reply, ErrorBody> {
             .map_err(|error| ErrorBody::new(ErrorCode::Internal, error.to_string()))?
             .map_err(|error| ErrorBody::new(ErrorCode::BadRequest, error.to_string()))?;
     let written = &config.tickets;
-    let tickets = written.tracker.map(|tracker| TicketsFrom {
+    let tickets = written.tracker.clone().map(|tracker| TicketsFrom {
         tracker,
-        site: written.site.clone(),
-        project: written.project.clone(),
-        jql: written.jql.clone(),
-        team: written.team.clone(),
+        fields: written.fields.clone(),
     });
-    let (tickets_from, tickets_untold) = if let Some(written) = config.tickets.written() {
+    let named = written.tracker.as_deref().map(name).unwrap_or_default();
+    let (tickets_from, tickets_untold) = if let Some(written) = config.tickets.written(&named) {
         (written, false)
     } else {
         let origin = crate::service::origin(&place.root).await;
@@ -93,12 +130,12 @@ async fn settings_of(place: ProjectPlace) -> Result<Reply, ErrorBody> {
             (Ok(tracker), Some(host)) => (
                 format!(
                     "{}, as its pull requests are on {}",
-                    tracker.name(),
+                    name(&tracker),
                     host.name()
                 ),
                 false,
             ),
-            (Ok(tracker), None) => (format!("{}, as its git remote says", tracker.name()), false),
+            (Ok(tracker), None) => (format!("{}, as its git remote says", name(&tracker)), false),
             (Err(error), _) => (error.to_string(), true),
         }
     };

@@ -136,6 +136,9 @@ pub(crate) fn commands() -> Vec<Command> {
         PluginCommand::Remove {
             id: "zoetrope".to_owned(),
         },
+        PluginCommand::Log {
+            id: "youtrack".to_owned(),
+        },
     ]
     .into_iter()
     .map(Command::Plugin)
@@ -165,6 +168,10 @@ pub(crate) fn replies() -> Vec<Reply> {
         now: Timestamp::from_millis(1_760_000_100_000),
         problem: Some("settings.toml: notch.shwo is not a key".to_owned()),
     }));
+    previews.push(Reply::PluginLog {
+        id: "youtrack".to_owned(),
+        log: "listing APP\nsigned in as someone\n".to_owned(),
+    });
     previews
 }
 

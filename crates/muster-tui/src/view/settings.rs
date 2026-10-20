@@ -11,7 +11,6 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 use super::{list_block, look, panel, plugins, shorten, telling};
-use crate::app::tickets_from::tracker_label;
 use crate::app::{App, SettingRow, Settings};
 
 /// What the only-my-tickets setting is called in the list.
@@ -126,7 +125,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         }
         SettingRow::TicketsFrom(_) => {
             let value = match settings {
-                Some(Settings::Loaded(found)) => tickets_value(found),
+                Some(Settings::Loaded(found)) => tickets_value(app, found),
                 Some(Settings::Failed(_)) => Span::from("?").red(),
                 None | Some(Settings::Loading) => Span::from("…").dim(),
             };
@@ -219,13 +218,26 @@ fn side_by_side_value(app: &App) -> Span<'static> {
     }
 }
 
-/// Where the tickets come from, in a word or two: `Jira TURPAT`; `choose`
-/// where nothing can tell.
-fn tickets_value(settings: &ProjectSettings) -> Span<'static> {
+/// Where the tickets come from, in a word or two: `Jira TURPAT`, the
+/// tracker's name and the first of its settings said, past a site or a
+/// query; `choose` where nothing can tell.
+fn tickets_value(app: &App, settings: &ProjectSettings) -> Span<'static> {
     match &settings.tickets {
         Some(from) => {
-            let which = from.project.as_ref().or(from.team.as_ref());
-            let tracker = tracker_label(Some(from.tracker));
+            let offered = app
+                .offered_trackers()
+                .into_iter()
+                .find(|offered| offered.id == from.tracker);
+            let which = offered.as_ref().and_then(|offered| {
+                offered
+                    .settings
+                    .iter()
+                    .filter(|setting| !matches!(setting.key.as_str(), "site" | "jql"))
+                    .find_map(|setting| from.fields.get(&setting.key))
+            });
+            let tracker = offered
+                .as_ref()
+                .map_or(from.tracker.as_str(), |offered| offered.name.as_str());
             Span::from(match which {
                 Some(which) => format!("{tracker} {which}"),
                 None => tracker.to_owned(),
@@ -265,7 +277,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings),
-                SettingRow::TicketsFrom(_) => tickets_from_text(settings),
+                SettingRow::TicketsFrom(_) => tickets_from_text(app, settings),
                 SettingRow::MusterPrefix(_) => muster_prefix_text(settings),
                 SettingRow::Project(project) => project_text(app, project, settings),
                 SettingRow::Muster | SettingRow::Notch => notch_text(app),
@@ -749,7 +761,7 @@ fn muster_prefix_text(settings: &ProjectSettings) -> Text<'static> {
     ])
 }
 
-fn tickets_from_text(settings: &ProjectSettings) -> Text<'static> {
+fn tickets_from_text(app: &App, settings: &ProjectSettings) -> Text<'static> {
     let from = match settings.tickets_set_by {
         SettingSource::Yours => "your settings",
         SettingSource::Project => "the project's muster.toml",
@@ -759,7 +771,7 @@ fn tickets_from_text(settings: &ProjectSettings) -> Text<'static> {
     let mut lines = vec![
         Line::from(vec![
             Span::from(format!("{TICKETS_FROM}  ")).bold(),
-            tickets_value(settings),
+            tickets_value(app, settings),
         ]),
         if settings.tickets_untold {
             said.red()
@@ -771,8 +783,8 @@ fn tickets_from_text(settings: &ProjectSettings) -> Text<'static> {
         detail("Saved in", settings.file.display().to_string()),
         Line::from(""),
         Line::from(
-            "⏎ chooses where they come from: its git remote, GitHub, GitLab, Jira (its site and a \
-             project's key) or Linear (a team's key).",
+            "⏎ chooses where they come from: its git remote, or a ticket plugin that is on, \
+             Muster's own (GitHub, GitLab, Jira, Linear) or one you added, with what it asks for.",
         )
         .dim(),
         Line::from(

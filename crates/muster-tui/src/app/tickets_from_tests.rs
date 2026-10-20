@@ -1,7 +1,9 @@
-//! Choosing where a project's tickets come from on the Settings screen.
+//! Choosing where a project's tickets come from on the Settings screen,
+//! among the ticket plugins the daemon has (`PRD-15`).
 
 use crossterm::event::KeyCode;
-use muster_core::config::TrackerKind;
+use muster_core::plugins::{Manifest, PluginSource, own};
+use muster_core::protocol::plugins::{PluginDetails, PluginInfo, PluginProblem};
 use muster_core::protocol::{Command, Delta, Reply, ServerFrame};
 use muster_core::settings::{ProjectSettings, SettingChange, SettingSource, TicketsFrom};
 
@@ -22,20 +24,70 @@ fn untold() -> ProjectSettings {
     }
 }
 
-fn jira(site: &str, key: &str) -> TicketsFrom {
+fn from(tracker: &str, fields: &[(&str, &str)]) -> TicketsFrom {
     TicketsFrom {
-        tracker: TrackerKind::Jira,
-        site: Some(site.to_owned()),
-        project: Some(key.to_owned()),
-        jql: None,
-        team: None,
+        tracker: tracker.to_owned(),
+        fields: fields
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect(),
     }
 }
 
+fn jira(site: &str, key: &str) -> TicketsFrom {
+    from("jira", &[("site", site), ("project", key)])
+}
+
+/// A plugin as the daemon lists it, its manifest `text`.
+fn plugin(text: &str, source: PluginSource) -> PluginInfo {
+    let manifest = if source == PluginSource::Builtin {
+        Manifest::parse_own(text)
+    } else {
+        Manifest::parse(text)
+    }
+    .unwrap();
+    PluginInfo {
+        id: manifest.id.clone(),
+        source,
+        enabled: true,
+        problem: None,
+        details: Some(PluginDetails::of(&manifest, "ab".repeat(32), |_| true)),
+        changed: None,
+    }
+}
+
+/// Anyone's ticket plugin, with a field it needs.
+const YOUTRACK: &str = "id = \"youtrack\"\nname = \"YouTrack tickets\"\nversion = \"0.1.0\"\n\
+                        muster = \"0.3\"\n\n[tickets]\nname = \"YouTrack\"\nnoun = \"issue\"\n\
+                        command = [\"./youtrack\"]\n[[tickets.settings]]\nkey = \"board\"\n\
+                        label = \"Board, such as APP\"\nrequired = true\n";
+
+/// The daemon's plugins: Muster's own, and `theirs`.
+fn with_plugins(world: &mut World, theirs: Vec<PluginInfo>) {
+    let mut plugins: Vec<PluginInfo> = own::MANIFESTS
+        .iter()
+        .map(|text| plugin(text, PluginSource::Builtin))
+        .collect();
+    plugins.extend(theirs);
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::PluginsChanged(plugins)));
+}
+
+fn youtrack() -> PluginInfo {
+    plugin(
+        YOUTRACK,
+        PluginSource::Folder {
+            path: "/Users/me/youtrack".into(),
+        },
+    )
+}
+
 /// The world on the Settings screen with `settings` read, Tickets from
-/// selected.
+/// selected, and Muster's own ticket plugins and one of anyone's.
 fn on_tickets_from(settings: ProjectSettings) -> World {
     let mut world = on_settings(true);
+    with_plugins(&mut world, vec![youtrack()]);
     let project = world.project.id;
     world
         .app
@@ -49,22 +101,28 @@ fn on_tickets_from(settings: ProjectSettings) -> World {
     world
 }
 
-fn dialog(world: &World) -> (Option<TrackerKind>, String, String, bool) {
+/// The dialog's tracker, each field's text, and which has the cursor.
+fn dialog(world: &World) -> (Option<String>, Vec<String>, usize) {
     match &world.app.mode {
         Mode::Dialog(Dialog::TicketsFrom {
             tracker,
-            site,
-            key,
-            on_key,
+            fields,
+            at,
             ..
         }) => (
-            *tracker,
-            site.text().to_owned(),
-            key.text().to_owned(),
-            *on_key,
+            tracker.clone(),
+            fields
+                .iter()
+                .map(|field| field.input.text().to_owned())
+                .collect(),
+            *at,
         ),
         other => panic!("no Tickets from dialog: {other:?}"),
     }
+}
+
+fn tracker(world: &World) -> Option<String> {
+    dialog(world).0
 }
 
 fn change_asked(actions: &[super::Action]) -> (u64, SettingChange) {
@@ -84,21 +142,28 @@ fn a_project_whose_remote_cannot_tell_is_pointed_at_jira_here() {
     assert!(screen.contains("⏎ choose"), "{screen}");
 
     press(&mut world.app, KeyCode::Enter);
-    assert_eq!(dialog(&world).0, None, "its git remote, to begin with");
+    assert_eq!(tracker(&world), None, "its git remote, to begin with");
+    let screen = render(&world.app);
+    for name in ["GitHub", "GitLab", "Jira", "Linear", "YouTrack"] {
+        assert!(screen.contains(&format!(" {name} ")), "{name}: {screen}");
+    }
     for _ in 0..3 {
         press(&mut world.app, KeyCode::Tab);
     }
-    assert_eq!(dialog(&world).0, Some(TrackerKind::Jira));
-    assert!(render(&world.app).contains("Jira site, such as"));
+    assert_eq!(tracker(&world).as_deref(), Some("jira"));
+    let screen = render(&world.app);
+    assert!(screen.contains("Jira site, such as"), "{screen}");
+    assert!(
+        screen.contains("Or a JQL query of your own (if you like)"),
+        "{screen}"
+    );
 
     // Not without its site: said, and the dialog stays.
     assert!(press(&mut world.app, KeyCode::Enter).is_empty());
-    assert!(render(&world.app).contains("Jira needs its site"));
+    assert!(render(&world.app).contains("Jira needs its Jira site"));
     typed(&mut world.app, "acme.atlassian.net");
-    // Nor without its project.
-    press(&mut world.app, KeyCode::Enter);
-    assert!(render(&world.app).contains("Jira needs the project's key"));
-    assert!(dialog(&world).3, "the cursor goes to what is missing");
+    press(&mut world.app, KeyCode::Down);
+    assert_eq!(dialog(&world).2, 1, "↓ to the project's key");
     typed(&mut world.app, "app");
 
     let actions = press(&mut world.app, KeyCode::Enter);
@@ -137,10 +202,10 @@ fn a_project_whose_remote_cannot_tell_is_pointed_at_jira_here() {
 
 #[test]
 fn the_dialog_starts_from_what_is_written_and_can_go_back_to_the_remote() {
-    let written = TicketsFrom {
-        jql: Some("labels = ui".to_owned()),
-        ..jira("acme.atlassian.net", "APP")
-    };
+    let mut written = jira("acme.atlassian.net", "APP");
+    written
+        .fields
+        .insert("jql".to_owned(), "labels = ui".to_owned());
     let mut world = on_tickets_from(ProjectSettings {
         tickets: Some(written.clone()),
         ..settings(false, SettingSource::Default)
@@ -149,13 +214,16 @@ fn the_dialog_starts_from_what_is_written_and_can_go_back_to_the_remote() {
     assert_eq!(
         dialog(&world),
         (
-            Some(TrackerKind::Jira),
-            "acme.atlassian.net".to_owned(),
-            "APP".to_owned(),
-            true
+            Some("jira".to_owned()),
+            vec![
+                "acme.atlassian.net".to_owned(),
+                "APP".to_owned(),
+                "labels = ui".to_owned()
+            ],
+            0
         )
     );
-    // Saved as it was, a query written by hand keeps.
+    // Saved as it was, a query of the person's own keeps.
     let (_, change) = change_asked(&press(&mut world.app, KeyCode::Enter));
     assert_eq!(change, SettingChange::TicketsFrom(Some(written.clone())));
 
@@ -170,18 +238,12 @@ fn the_dialog_starts_from_what_is_written_and_can_go_back_to_the_remote() {
     );
     press(&mut world.app, KeyCode::Enter);
     press(&mut world.app, KeyCode::BackTab);
-    assert_eq!(dialog(&world).0, Some(TrackerKind::GitLab));
-    assert!(render(&world.app).contains("through your glab login"));
+    assert_eq!(tracker(&world).as_deref(), Some("gitlab"));
+    assert!(render(&world.app).contains("through your own glab login"));
     let (_, change) = change_asked(&press(&mut world.app, KeyCode::Enter));
     assert_eq!(
         change,
-        SettingChange::TicketsFrom(Some(TicketsFrom {
-            tracker: TrackerKind::GitLab,
-            site: None,
-            project: None,
-            jql: None,
-            team: None,
-        }))
+        SettingChange::TicketsFrom(Some(from("gitlab", &[])))
     );
 
     // Round to its git remote: nothing written any more.
@@ -190,30 +252,72 @@ fn the_dialog_starts_from_what_is_written_and_can_go_back_to_the_remote() {
         Settings::Loaded(settings(false, SettingSource::Default)),
     );
     press(&mut world.app, KeyCode::Enter);
-    assert_eq!(dialog(&world).0, None);
+    assert_eq!(tracker(&world), None);
     let (_, change) = change_asked(&press(&mut world.app, KeyCode::Enter));
     assert_eq!(change, SettingChange::TicketsFrom(None));
 }
 
 #[test]
-fn linear_needs_a_team_and_a_paste_goes_where_the_cursor_is() {
+fn anyone_s_ticket_plugin_is_offered_with_the_fields_it_declares() {
+    let mut world = on_tickets_from(untold());
+    press(&mut world.app, KeyCode::Enter);
+    // Last of all, after Muster's own.
+    press(&mut world.app, KeyCode::BackTab);
+    assert_eq!(tracker(&world).as_deref(), Some("youtrack"));
+    let screen = render(&world.app);
+    assert!(screen.contains("Board, such as APP:"), "{screen}");
+    press(&mut world.app, KeyCode::Enter);
+    assert!(render(&world.app).contains("YouTrack needs its Board, such as APP."));
+    world.app.on_paste("WEB");
+    let (req_id, change) = change_asked(&press(&mut world.app, KeyCode::Enter));
+    assert_eq!(
+        change,
+        SettingChange::TicketsFrom(Some(from("youtrack", &[("board", "WEB")])))
+    );
+    reply(
+        &mut world,
+        req_id,
+        Ok(Reply::ProjectSettings(ProjectSettings {
+            tickets_from: "YouTrack tickets, board WEB".to_owned(),
+            tickets: Some(from("youtrack", &[("board", "WEB")])),
+            tickets_set_by: SettingSource::Yours,
+            ..settings(true, SettingSource::Yours)
+        })),
+    );
+    assert!(render(&world.app).contains("YouTrack WEB"));
+
+    // Turned off, or unable to run, it is offered no more.
+    let mut off = youtrack();
+    off.enabled = false;
+    let mut changed = youtrack();
+    changed.problem = Some(PluginProblem::Changed);
+    for gone in [off, changed] {
+        with_plugins(&mut world, vec![gone]);
+        assert!(
+            world
+                .app
+                .offered_trackers()
+                .iter()
+                .all(|offered| offered.id != "youtrack")
+        );
+    }
+}
+
+#[test]
+fn what_was_typed_for_a_tracker_waits_as_tab_goes_round() {
     let mut world = on_tickets_from(untold());
     press(&mut world.app, KeyCode::Enter);
     press(&mut world.app, KeyCode::BackTab);
-    assert_eq!(dialog(&world).0, Some(TrackerKind::Linear));
-    press(&mut world.app, KeyCode::Enter);
-    assert!(render(&world.app).contains("Linear needs the team's key"));
+    press(&mut world.app, KeyCode::BackTab);
+    assert_eq!(tracker(&world).as_deref(), Some("linear"));
     world.app.on_paste("eng");
+    press(&mut world.app, KeyCode::Tab);
+    press(&mut world.app, KeyCode::BackTab);
+    assert_eq!(dialog(&world).1, ["eng"]);
     let (_, change) = change_asked(&press(&mut world.app, KeyCode::Enter));
     assert_eq!(
         change,
-        SettingChange::TicketsFrom(Some(TicketsFrom {
-            tracker: TrackerKind::Linear,
-            site: None,
-            project: None,
-            jql: None,
-            team: Some("eng".to_owned()),
-        }))
+        SettingChange::TicketsFrom(Some(from("linear", &[("team", "eng")])))
     );
 }
 
@@ -235,13 +339,13 @@ fn a_jira_site_in_use_is_offered_to_the_next_project() {
     for _ in 0..3 {
         press(&mut world.app, KeyCode::Tab);
     }
-    let (_, site, key, on_key) = dialog(&world);
-    assert_eq!((site.as_str(), key.as_str()), ("acme.atlassian.net", ""));
-    assert!(on_key, "the site is in: the project's key is next");
+    let (_, fields, at) = dialog(&world);
+    assert_eq!(fields, ["acme.atlassian.net", "", ""]);
+    assert_eq!(at, 1, "the site is in: the project's key is next");
     // ↑ back to the site; the paste goes there.
     press(&mut world.app, KeyCode::Up);
     world.app.on_paste(".example");
-    assert_eq!(dialog(&world).1, "acme.atlassian.net.example");
+    assert_eq!(dialog(&world).1[0], "acme.atlassian.net.example");
     // Esc leaves it as it was.
     press(&mut world.app, KeyCode::Esc);
     assert_eq!(world.app.mode, Mode::Browse);
@@ -250,7 +354,7 @@ fn a_jira_site_in_use_is_offered_to_the_next_project() {
 #[test]
 fn an_older_daemon_is_never_sent_the_change() {
     let mut world = on_tickets_from(untold());
-    world.app.daemon_protocol = 16;
+    world.app.daemon_protocol = muster_core::plugins::TICKET_PLUGINS_PROTOCOL - 1;
     assert!(press(&mut world.app, KeyCode::Enter).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);
     assert!(render(&world.app).contains("muster reload"));

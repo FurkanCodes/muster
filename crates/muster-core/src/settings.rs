@@ -3,11 +3,11 @@
 //! person's own overrides of the project's `muster.toml`, never into the
 //! repository (`ARC-05`).
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::TrackerKind;
 use crate::layout::Layout;
 
 /// A project's settings that the person can change, as they stand.
@@ -61,41 +61,91 @@ pub enum SettingSource {
     Yours,
 }
 
-/// Where a project's tickets are, as `[tickets]` writes it: the tracker,
-/// and what it needs to find them.
+/// Where a project's tickets are, as `[tickets]` writes it: the ticket
+/// plugin, by its id, and what it needs to find them, as its manifest
+/// declares (`[[tickets.settings]]`).
+///
+/// On the wire from protocol 42 as `tracker` and `fields`. Until 41 a
+/// tracker was one of Muster's four, with Jira's and Linear's settings as
+/// fields of their own: those four keys are written beside `fields` too,
+/// and read where `fields` does not say them, so an older peer reads
+/// Muster's own trackers as it did (`ARC-09`); one of anyone else's never
+/// reaches it ([`crate::protocol::Reply::for_version`]).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "WrittenTickets", into = "WrittenTickets")]
 pub struct TicketsFrom {
-    pub tracker: TrackerKind,
-    /// Jira: the site, `acme.atlassian.net`, or a Data Center's address.
-    #[serde(default)]
-    pub site: Option<String>,
-    /// Jira: the project whose open tickets are listed, by its key.
-    #[serde(default)]
-    pub project: Option<String>,
-    /// Jira: a query of the person's own, instead of the project.
-    #[serde(default)]
-    pub jql: Option<String>,
-    /// Linear: the team whose open issues are listed, by its key.
-    #[serde(default)]
-    pub team: Option<String>,
+    /// The ticket plugin: `github`, `gitlab`, `jira`, `linear`, or
+    /// anyone's.
+    pub tracker: String,
+    /// What `[tickets]` says for it, by key: Jira's `site` and `project`.
+    pub fields: BTreeMap<String, String>,
 }
 
 impl TicketsFrom {
     /// Each key of `[tickets]` that says where the tickets are, with what
-    /// this sets it to; `None` leaves it unwritten.
-    pub fn written(&self) -> [(&'static str, Option<&str>); 5] {
-        [
-            ("tracker", Some(self.tracker.key())),
-            ("site", self.site.as_deref()),
-            ("project", self.project.as_deref()),
-            ("jql", self.jql.as_deref()),
-            ("team", self.team.as_deref()),
-        ]
+    /// this sets it to.
+    pub fn written(&self) -> Vec<(&str, &str)> {
+        std::iter::once(("tracker", self.tracker.as_str()))
+            .chain(
+                self.fields
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.as_str())),
+            )
+            .collect()
     }
 }
 
-/// The keys of `[tickets]` that say where the tickets are.
-pub const TICKETS_FROM_KEYS: [&str; 5] = ["tracker", "site", "project", "jql", "team"];
+/// The keys Jira and Linear had as fields of their own, until protocol 41.
+const OLD_KEYS: [&str; 4] = ["site", "project", "jql", "team"];
+
+/// [`TicketsFrom`] as the wire carries it.
+#[derive(Serialize, Deserialize)]
+struct WrittenTickets {
+    tracker: String,
+    #[serde(default)]
+    fields: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    site: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jql: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    team: Option<String>,
+}
+
+impl From<WrittenTickets> for TicketsFrom {
+    fn from(written: WrittenTickets) -> Self {
+        let mut fields = written.fields;
+        for (key, value) in
+            OLD_KEYS
+                .into_iter()
+                .zip([written.site, written.project, written.jql, written.team])
+        {
+            if let Some(value) = value {
+                fields.entry(key.to_owned()).or_insert(value);
+            }
+        }
+        Self {
+            tracker: written.tracker,
+            fields,
+        }
+    }
+}
+
+impl From<TicketsFrom> for WrittenTickets {
+    fn from(from: TicketsFrom) -> Self {
+        let old = |key: &str| from.fields.get(key).cloned();
+        Self {
+            site: old("site"),
+            project: old("project"),
+            jql: old("jql"),
+            team: old("team"),
+            tracker: from.tracker,
+            fields: from.fields,
+        }
+    }
+}
 
 /// The first protocol a daemon takes [`SettingChange::TicketsFrom`] in; an
 /// older one is never sent it (`ARC-09`).
@@ -516,15 +566,19 @@ mod tests {
         assert_eq!(SessionLines::from_count(3), None);
     }
 
+    fn jira() -> TicketsFrom {
+        TicketsFrom {
+            tracker: "jira".to_owned(),
+            fields: BTreeMap::from([
+                ("site".to_owned(), "acme.atlassian.net".to_owned()),
+                ("project".to_owned(), "APP".to_owned()),
+            ]),
+        }
+    }
+
     #[test]
-    fn where_tickets_are_goes_by_the_tracker_s_key() {
-        let jira = SettingChange::TicketsFrom(Some(TicketsFrom {
-            tracker: TrackerKind::Jira,
-            site: Some("acme.atlassian.net".to_owned()),
-            project: Some("APP".to_owned()),
-            jql: None,
-            team: None,
-        }));
+    fn where_tickets_are_goes_by_the_tracker_s_id_with_its_fields() {
+        let jira = SettingChange::TicketsFrom(Some(jira()));
         let bytes = rmp_serde::to_vec_named(&jira).unwrap();
         assert_eq!(
             rmp_serde::from_slice::<SettingChange>(&bytes).unwrap(),
@@ -537,12 +591,85 @@ mod tests {
         assert_eq!(
             from.written(),
             [
-                ("tracker", Some("jira")),
-                ("site", Some("acme.atlassian.net")),
-                ("project", Some("APP")),
-                ("jql", None),
-                ("team", None),
+                ("tracker", "jira"),
+                ("project", "APP"),
+                ("site", "acme.atlassian.net"),
             ]
+        );
+    }
+
+    /// `TicketsFrom` as protocol 41 had it.
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    struct OldTicketsFrom {
+        tracker: String,
+        #[serde(default)]
+        site: Option<String>,
+        #[serde(default)]
+        project: Option<String>,
+        #[serde(default)]
+        jql: Option<String>,
+        #[serde(default)]
+        team: Option<String>,
+    }
+
+    #[test]
+    fn a_client_of_41_is_told_of_no_tracker_it_could_not_read_arc_09() {
+        use crate::protocol::Reply;
+        let settings = |tracker: &str| ProjectSettings {
+            tickets_from: "YouTrack, board APP".to_owned(),
+            only_mine: Toggle {
+                on: false,
+                from: SettingSource::Default,
+            },
+            file: PathBuf::from("/me/app.toml"),
+            tickets: Some(TicketsFrom {
+                tracker: tracker.to_owned(),
+                fields: BTreeMap::new(),
+            }),
+            tickets_set_by: SettingSource::Yours,
+            tickets_untold: false,
+            muster_prefix: None,
+        };
+        let told = |tracker: &str, version: u32| match Reply::ProjectSettings(settings(tracker))
+            .for_version(version)
+        {
+            Reply::ProjectSettings(settings) => settings.tickets.map(|from| from.tracker),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(told("youtrack", 41), None);
+        assert_eq!(told("youtrack", 42).as_deref(), Some("youtrack"));
+        assert_eq!(told("jira", 41).as_deref(), Some("jira"));
+    }
+
+    #[test]
+    fn a_peer_of_41_reads_and_writes_muster_s_own_trackers_as_it_did_arc_09() {
+        let bytes = rmp_serde::to_vec_named(&jira()).unwrap();
+        let old: OldTicketsFrom = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(
+            old,
+            OldTicketsFrom {
+                tracker: "jira".to_owned(),
+                site: Some("acme.atlassian.net".to_owned()),
+                project: Some("APP".to_owned()),
+                jql: None,
+                team: None,
+            }
+        );
+        let linear = OldTicketsFrom {
+            tracker: "linear".to_owned(),
+            site: None,
+            project: None,
+            jql: None,
+            team: Some("ENG".to_owned()),
+        };
+        let read: TicketsFrom =
+            rmp_serde::from_slice(&rmp_serde::to_vec_named(&linear).unwrap()).unwrap();
+        assert_eq!(
+            read,
+            TicketsFrom {
+                tracker: "linear".to_owned(),
+                fields: BTreeMap::from([("team".to_owned(), "ENG".to_owned())]),
+            }
         );
     }
 }

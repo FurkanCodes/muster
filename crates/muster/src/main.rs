@@ -113,7 +113,7 @@ enum Commands {
     #[command(subcommand)]
     Plugin(plugins::PluginCommand),
     /// Sign-ins and tokens Muster keeps in the macOS Keychain: for Jira, Linear,
-    /// Bitbucket, and the autopilot's runs.
+    /// Bitbucket, plugins' secrets, and the autopilot's runs.
     #[command(subcommand)]
     Auth(AuthCommand),
     /// Show the agents in the MacBook's notch while you look away from
@@ -128,6 +128,10 @@ enum Commands {
         #[arg(long, hide = true)]
         background: bool,
     },
+    /// Serve Muster's own ticket plugin ID (`github`, `gitlab`) on stdin
+    /// and stdout: what the daemon runs to reach a project's tickets.
+    #[command(hide = true)]
+    PluginRun { id: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -162,6 +166,10 @@ enum AuthCommand {
         #[arg(long)]
         token: bool,
     },
+    /// Store secret NAME for plugin ID, as its manifest names it: pasted
+    /// when asked, not shown, or piped in. Muster gives it to that plugin
+    /// alone.
+    Plugin { id: String, name: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -356,6 +364,11 @@ fn main() -> ExitCode {
     {
         return launchd::run_job(file);
     }
+    // A ticket plugin the daemon runs: it needs no paths, and its stdout
+    // is the protocol's.
+    if let Some(Commands::PluginRun { id }) = &cli.command {
+        return plugin_run(id);
+    }
     let paths = match Paths::resolve(|key| std::env::var_os(key), nix::unistd::getuid().as_raw()) {
         Ok(paths) => paths,
         Err(error) => return fail(error),
@@ -452,8 +465,11 @@ fn main() -> ExitCode {
             Some(Commands::Auth(AuthCommand::Linear { token })) => {
                 return auth::linear(token).await;
             }
-            // Shown before the runtime was made.
-            Some(Commands::Notch { .. }) => Ok(()),
+            Some(Commands::Auth(AuthCommand::Plugin { id, name })) => {
+                return auth::plugin(&id, &name).await;
+            }
+            // Run before the runtime was made.
+            Some(Commands::Notch { .. } | Commands::PluginRun { .. }) => Ok(()),
             Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Plugin(command)) => plugins::run(&socket, command).await,
             Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
@@ -597,6 +613,22 @@ fn start_notch(paths: &Paths) -> std::io::Result<()> {
 /// time), and returns; otherwise shows it until it ends. On a Mac it is
 /// Muster's helper, which shows notifications of the Mac's own too, so it
 /// runs as Muster's app (`mac_app`), where it can.
+/// Serves Muster's own ticket plugin `id` until the daemon closes its
+/// stdin, on a runtime of one thread: it waits on `gh` or `glab`.
+fn plugin_run(id: &str) -> ExitCode {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => return fail(error),
+    };
+    match runtime.block_on(muster_daemon::plugin_run(id)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => fail(error),
+    }
+}
+
 fn notch(paths: &Paths, detach: bool, background: bool) -> ExitCode {
     use std::os::unix::process::CommandExt;
     #[cfg(target_os = "macos")]

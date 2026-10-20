@@ -131,7 +131,6 @@ mod welcome_tests;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use muster_core::config::TrackerKind;
 use muster_core::layout::Layout;
 use muster_core::protocol::{ClientFrame, Command, PixelSize, TermSize};
 use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
@@ -282,16 +281,17 @@ pub(crate) enum Dialog {
         workspace: WorkspaceId,
         harness: HarnessChoice,
     },
-    /// Where a project's tickets come from: a tracker, or `None` for the
-    /// one its git remote says; Jira's site and project's key, or Linear's
-    /// team's key, as typed.
+    /// Where a project's tickets come from: a ticket plugin, by its id, or
+    /// `None` for the one its git remote says; with its fields, as typed.
     TicketsFrom {
         project: ProjectId,
-        tracker: Option<TrackerKind>,
-        site: LineInput,
-        key: LineInput,
-        /// Whether the key has the cursor, rather than Jira's site.
-        on_key: bool,
+        tracker: Option<String>,
+        fields: Vec<tickets_from::Field>,
+        /// Which field has the cursor.
+        at: usize,
+        /// What was typed for another tracker's fields, by tracker and
+        /// key, kept as ⇥ goes round them.
+        typed: std::collections::BTreeMap<(String, String), String>,
     },
     /// Adding or updating a plugin, a step at a time.
     Plugin(PluginDialog),

@@ -47,6 +47,7 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
             secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
             http: crate::service::http_client(),
+            plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         }),
         config_dir,
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
@@ -57,6 +58,7 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         }),
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
+        ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
     })
     .await
     .unwrap()
@@ -360,6 +362,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         trackers: std::sync::Arc::new(crate::trackers::choose::ServiceTrackers {
             secrets: std::sync::Arc::new(crate::secrets::Kept::default()),
             http: crate::service::http_client(),
+            plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         }),
         config_dir: std::env::temp_dir(),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
@@ -370,6 +373,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         }),
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
+        ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
     })
     .await
     .unwrap();

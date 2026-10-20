@@ -6,11 +6,10 @@ use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
-use muster_core::config::TrackerKind;
 use muster_core::text::one_line;
 use muster_core::{ProjectId, TicketKey, WorkspaceId};
 
-use crate::app::tickets_from::{Field, TRACKERS, focused, tracker_label};
+use crate::app::tickets_from::Field;
 use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
 use crate::input::LineInput;
 
@@ -168,10 +167,10 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
         Dialog::TicketsFrom {
             project,
             tracker,
-            site,
-            key,
-            on_key,
-        } => tickets_from(app, *project, *tracker, (site, key), *on_key),
+            fields,
+            at,
+            ..
+        } => tickets_from(app, *project, tracker.as_deref(), fields, *at),
         Dialog::Undo {
             plan,
             what,
@@ -424,66 +423,72 @@ fn assign_agent(
 fn tickets_from<'a>(
     app: &App,
     project: ProjectId,
-    tracker: Option<TrackerKind>,
-    (site, key): (&'a LineInput, &'a LineInput),
-    on_key: bool,
+    tracker: Option<&str>,
+    fields: &'a [Field],
+    at: usize,
 ) -> Shape<'a> {
     let name = app
         .model
         .project(project)
         .map_or("?", |found| found.name.as_str());
-    let mut from = vec![Span::raw("From ")];
-    for option in TRACKERS {
-        from.push(choice(tracker_label(option), option == tracker));
+    let offered = app.offered_trackers();
+    let mut from = vec![
+        Span::raw("From "),
+        choice("its git remote", tracker.is_none()),
+    ];
+    for option in &offered {
+        from.push(choice(&option.name, tracker == Some(option.id.as_str())));
     }
     let mut lines = vec![
         Line::from(format!("Where {name}'s tickets come from")).bold(),
         Line::from(from),
         Line::from(""),
     ];
-    let jira = tracker == Some(TrackerKind::Jira);
-    let site_label = "Jira site, such as acme.atlassian.net:";
-    let key_label = if jira {
-        "Project key, such as APP:"
-    } else {
-        "Team key, such as ENG:"
+    let chosen = offered
+        .iter()
+        .find(|option| Some(option.id.as_str()) == tracker);
+    let Some(input) = fields.get(at) else {
+        lines.push(
+            Line::from(match chosen {
+                None => "Where its git remote's host keeps them, as Muster can tell.".to_owned(),
+                Some(chosen) => chosen
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| format!("Its tickets in {}.", chosen.name)),
+            })
+            .dim(),
+        );
+        lines.push(Line::from(""));
+        return Shape {
+            hint: "⇥ ⇧⇥ choose   ⏎ save   esc cancel",
+            ..Shape::new(" Tickets from ", lines, None)
+        };
     };
-    let hint = if jira {
-        "⇥ ⇧⇥ choose   ↑↓ field   ⏎ save   esc cancel"
-    } else {
-        "⇥ ⇧⇥ choose   ⏎ save   esc cancel"
+    let label = |field: &Field| {
+        let needed = if field.setting.required {
+            ""
+        } else {
+            " (if you like)"
+        };
+        Line::from(format!("{}{needed}:", field.setting.label))
     };
-    let (input, below) = match focused(tracker, on_key) {
-        Field::None => {
-            lines.push(
-                Line::from(match tracker {
-                    Some(TrackerKind::GitHub) => "Its GitHub issues, through your gh login.",
-                    Some(TrackerKind::GitLab) => "Its GitLab issues, through your glab login.",
-                    _ => "Where its git remote's host keeps them, as Muster can tell.",
-                })
-                .dim(),
-            );
-            lines.push(Line::from(""));
-            lines.push(Line::from(hint).dim());
-            (None, Vec::new())
-        }
-        Field::Site => {
-            lines.push(Line::from(site_label));
-            (Some(site), vec![Line::from(key_label), typed_line(key)])
-        }
-        Field::Key => {
-            if jira {
-                lines.push(Line::from(site_label));
-                lines.push(typed_line(site));
-            }
-            lines.push(Line::from(key_label));
-            (Some(key), Vec::new())
-        }
-    };
+    for field in &fields[..at] {
+        lines.push(label(field));
+        lines.push(typed_line(&field.input));
+    }
+    lines.push(label(input));
+    let below = fields[at + 1..]
+        .iter()
+        .flat_map(|field| [label(field), typed_line(&field.input)])
+        .collect();
     Shape {
         below,
-        hint,
-        ..Shape::new(" Tickets from ", lines, input)
+        hint: if fields.len() > 1 {
+            "⇥ ⇧⇥ choose   ↑↓ field   ⏎ save   esc cancel"
+        } else {
+            "⇥ ⇧⇥ choose   ⏎ save   esc cancel"
+        },
+        ..Shape::new(" Tickets from ", lines, Some(&input.input))
     }
 }
 

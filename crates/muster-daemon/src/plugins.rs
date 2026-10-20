@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use muster_core::config::ConfigError;
-use muster_core::plugins::{Manifest, ManifestError, PluginEntry, PluginSource, manifest};
+use muster_core::plugins::{Manifest, ManifestError, PluginEntry, PluginSource, manifest, own};
 use muster_core::protocol::plugins::{
     PluginChange, PluginDetails, PluginInfo, PluginList, PluginProblem,
 };
@@ -36,8 +36,23 @@ pub(crate) struct Builtin {
     pub(crate) manifest: &'static str,
 }
 
-/// Muster's own plugins. None yet: its ticket sources move here.
-pub(crate) const BUILTINS: &[Builtin] = &[];
+/// Muster's own plugins: its ticket sources, GitHub's and GitLab's run as
+/// `muster plugin-run <id>`, Jira's and Linear's listed with them and
+/// reached in the daemon still.
+pub(crate) const BUILTINS: &[Builtin] = &[
+    Builtin {
+        manifest: own::MANIFESTS[0],
+    },
+    Builtin {
+        manifest: own::MANIFESTS[1],
+    },
+    Builtin {
+        manifest: own::MANIFESTS[2],
+    },
+    Builtin {
+        manifest: own::MANIFESTS[3],
+    },
+];
 
 /// Why a change to the plugins was refused, said for the person.
 #[derive(Debug, thiserror::Error)]
@@ -195,6 +210,45 @@ impl Registry {
             now,
             problem: self.problem.clone(),
         }
+    }
+
+    /// Each plugin as finding a project's tickets needs it: what its
+    /// ticket source runs, from which folder, or why it cannot.
+    pub(crate) fn ticket_plugins(&self) -> Vec<crate::trackers::plugin::TicketPlugin> {
+        self.known
+            .iter()
+            .map(|known| {
+                let info = &known.info;
+                let details = info.details.as_ref();
+                let off = if info.enabled {
+                    info.problem
+                        .as_ref()
+                        .map(|problem| format!("cannot run: {problem}"))
+                } else {
+                    Some(format!(
+                        "is turned off: turn it on on the Settings screen's Plugins section, \
+                         or with `muster plugin enable {}`",
+                        info.id
+                    ))
+                };
+                crate::trackers::plugin::TicketPlugin {
+                    id: info.id.clone(),
+                    name: details.map_or_else(|| info.id.clone(), |details| details.name.clone()),
+                    folder: known
+                        .entry
+                        .as_ref()
+                        .and_then(|entry| folder_of(&self.dir, entry)),
+                    off,
+                    tickets: details.and_then(|details| details.tickets.clone()),
+                    env: details
+                        .map(|details| details.env.clone())
+                        .unwrap_or_default(),
+                    secrets: details
+                        .map(|details| details.secrets.clone())
+                        .unwrap_or_default(),
+                }
+            })
+            .collect()
     }
 
     fn find(&self, id: &str) -> Result<&Known, PluginError> {

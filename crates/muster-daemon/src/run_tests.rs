@@ -49,7 +49,7 @@ impl TicketSource for OneIssue {
                 Ok(IssueDetail {
                     issue: issue(),
                     body: "Users land on /404.".to_owned(),
-                    tracker: muster_core::config::TrackerKind::GitHub,
+                    noun: crate::trackers::Noun::own("github"),
                 })
             } else {
                 Err(ServiceError::NotFound(format!(
@@ -204,6 +204,7 @@ async fn spawn_with(
         }),
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
+        ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
     })
     .await
     .unwrap()

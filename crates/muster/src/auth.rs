@@ -87,6 +87,35 @@ pub(crate) async fn linear(token: bool) -> ExitCode {
     keep(muster_daemon::LINEAR_KEY_ACCOUNT, "API key: ").await
 }
 
+/// Keeps the secret `name` of the plugin `id`, which Muster gives that
+/// plugin alone, as the variable `name`.
+pub(crate) async fn plugin(id: &str, name: &str) -> ExitCode {
+    if !muster_core::plugins::is_id(id) {
+        return crate::fail(format!(
+            "{} is not a plugin's id: 1 to 32 of a-z, 0-9 and -",
+            crate::commands::shown(id)
+        ));
+    }
+    let named = name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && name.len() <= 64;
+    if !named {
+        return crate::fail(format!(
+            "{} is not a secret's name, as a plugin's manifest names one: letters, digits \
+             and _, not starting with a digit",
+            crate::commands::shown(name)
+        ));
+    }
+    if !keychain_here(name) {
+        return ExitCode::FAILURE;
+    }
+    println!(
+        "Muster gives it to the plugin {id} as {name}, if its manifest names that secret, and \
+         to nothing else."
+    );
+    keep(&muster_daemon::plugin_account(id, name), "Secret: ").await
+}
+
 /// Signs in to `service` in the person's browser.
 async fn browser(service: muster_daemon::SignIn, name: &str, variables: &str) -> ExitCode {
     if !keychain_here(variables) {

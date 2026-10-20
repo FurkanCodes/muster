@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use muster_core::config::TrackerKind;
+use muster_core::plugins::own;
 use muster_core::text::{multi_line, one_line};
 use muster_core::{Issue, TicketKey};
 use serde::Deserialize;
@@ -64,7 +64,7 @@ impl GhIssue {
                 author: self.author.map(|author| one_line(&author.login)),
             },
             body: multi_line(&self.body.unwrap_or_default()),
-            tracker: TrackerKind::GitHub,
+            noun: super::Noun::own(own::GITHUB),
         }
     }
 }
@@ -86,7 +86,7 @@ fn unreadable(error: serde_json::Error) -> ServiceError {
 
 impl TicketSource for GitHubIssues {
     fn describe(&self) -> String {
-        TrackerKind::GitHub.name().to_owned()
+        muster_core::config::tracker_name(own::GITHUB)
     }
 
     fn only_mine(&self) -> bool {
@@ -159,7 +159,7 @@ mod tests {
         assert_eq!(detail.issue.labels, ["bug"]);
         assert_eq!(detail.issue.author.as_deref(), Some("furkan"));
         assert_eq!(detail.body, "");
-        assert_eq!(detail.tracker, TrackerKind::GitHub);
+        assert_eq!(detail.noun.tracker, "GitHub");
     }
 
     #[test]

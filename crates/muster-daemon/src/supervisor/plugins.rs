@@ -26,6 +26,7 @@ impl Supervisor {
             Ok(reading) => {
                 self.plugins.take(reading);
                 self.state.plugins = self.plugins.infos();
+                self.publish_ticket_plugins();
             }
             Err(error) => tracing::warn!(%error, "could not read the plugins"),
         }
@@ -73,6 +74,18 @@ impl Supervisor {
                 let (outcome, gone) = self.plugins.remove(&id);
                 self.remove_later(gone);
                 outcome
+            }
+            PluginCommand::Log { id } => {
+                let outcome = self.plugins.infos().iter().any(|info| info.id == id);
+                return answer(
+                    reply,
+                    if outcome {
+                        let log = self.ticket_plugins.log(&id);
+                        Ok(Reply::PluginLog { id, log })
+                    } else {
+                        Err(PluginError::NoPlugin { id })
+                    },
+                );
             }
         };
         if outcome.is_ok() {
@@ -127,7 +140,9 @@ impl Supervisor {
     /// told if anything changed.
     pub(super) fn read_plugins(&mut self) {
         let reading = self.plugins.read();
-        if self.plugins.take(reading) {
+        let changed = self.plugins.take(reading);
+        self.publish_ticket_plugins();
+        if changed {
             self.tell_plugins();
         }
     }
@@ -136,7 +151,17 @@ impl Supervisor {
     fn read_plugins_and_tell(&mut self) {
         let reading = self.plugins.read();
         self.plugins.take(reading);
+        self.publish_ticket_plugins();
         self.tell_plugins();
+    }
+
+    /// Tells the ticket plugins what the registry says: a plugin turned
+    /// off, moved or gone has its process stopped, off the loop
+    /// (`ARC-14`).
+    fn publish_ticket_plugins(&self) {
+        for process in self.ticket_plugins.publish(self.plugins.ticket_plugins()) {
+            self.tasks.spawn(async move { process.stop().await });
+        }
     }
 
     fn tell_plugins(&mut self) {

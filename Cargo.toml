@@ -46,7 +46,7 @@ toml = { version = "1.1.6", default-features = false, features = ["std", "parse"
 toml_edit = { version = "0.25.16", default-features = false, features = ["parse", "display"] }
 # The 1.53 line has Tokio's long-term support (to September 2027): fixes
 # backported, nothing new. Moving on is a decision, not an update.
-tokio = { version = "~1.53.2", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "~1.53.2", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7.20", default-features = false, features = ["rt"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

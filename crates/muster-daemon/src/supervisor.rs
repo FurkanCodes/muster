@@ -99,6 +99,9 @@ pub(crate) struct Settings {
     pub(crate) adopted: Vec<crate::handoff::HandedSession>,
     /// Where its work off the loop runs (`ARC-13`).
     pub(crate) tasks: Tasks,
+    /// The ticket plugins' processes and logs, which `trackers` shares:
+    /// told what the registry says each time it is read.
+    pub(crate) ticket_plugins: crate::trackers::plugin::Plugins,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -182,6 +185,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         agents,
         asks: Arc::new(tokio::sync::Semaphore::new(naming::AT_ONCE)),
         plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
+        ticket_plugins: settings.ticket_plugins,
     };
     supervisor.start_plugins().await;
     supervisor.ensure_checkouts().await;
@@ -323,6 +327,8 @@ struct Supervisor {
     asks: Arc<tokio::sync::Semaphore>,
     /// The plugins the person installed (`ARCHITECTURE.md` §7a).
     plugins: crate::plugins::Registry,
+    /// The ticket plugins' processes and logs, shared with `trackers`.
+    ticket_plugins: crate::trackers::plugin::Plugins,
 }
 
 impl Supervisor {

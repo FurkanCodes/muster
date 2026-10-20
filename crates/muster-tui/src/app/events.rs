@@ -115,18 +115,8 @@ impl App {
                 self.plugin_paste(text);
                 Vec::new()
             }
-            Mode::Dialog(Dialog::TicketsFrom {
-                tracker,
-                site,
-                key,
-                on_key,
-                ..
-            }) => {
-                match super::tickets_from::focused(*tracker, *on_key) {
-                    super::tickets_from::Field::Site => site.paste(text),
-                    super::tickets_from::Field::Key => key.paste(text),
-                    super::tickets_from::Field::None => {}
-                }
+            Mode::Dialog(Dialog::TicketsFrom { .. }) => {
+                self.tickets_from_paste(text);
                 Vec::new()
             }
             _ => Vec::new(),

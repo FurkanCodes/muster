@@ -155,6 +155,7 @@ pub(crate) async fn setup() -> Setup {
         trackers: Arc::new(crate::trackers::choose::ServiceTrackers {
             secrets: Arc::new(crate::secrets::Kept::default()),
             http: crate::service::http_client(),
+            plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         }),
         config_dir: dir.path().join("config"),
         credentials: Arc::new(crate::runs::credentials::FixedCredentials::default()),
@@ -162,6 +163,7 @@ pub(crate) async fn setup() -> Setup {
         hosts: Arc::new(FakeHosts(host.clone())),
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
+        ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
     })
     .await
     .unwrap();

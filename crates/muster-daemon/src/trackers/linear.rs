@@ -11,7 +11,8 @@
 
 use std::sync::Arc;
 
-use muster_core::config::{Tickets, TrackerKind};
+use muster_core::config::Tickets;
+use muster_core::plugins::own;
 use muster_core::text::{multi_line, one_line};
 use muster_core::{Issue, TicketKey};
 use serde_json::{Value, json};
@@ -88,7 +89,7 @@ impl Linear {
         secrets: &dyn Secrets,
         http: reqwest::Client,
     ) -> Result<Arc<Self>, ServiceError> {
-        let team = tickets.team.clone().ok_or_else(|| {
+        let team = tickets.field("team").map(str::to_owned).ok_or_else(|| {
             ServiceError::NotConfigured("say which team with tickets.team".to_owned())
         })?;
         let access = if let Some(session) = oauth::session(secrets, MCP_ACCOUNT).await {
@@ -226,7 +227,7 @@ fn read_issue(item: &Value) -> Option<IssueDetail> {
             author: author.map(|author| one_line(&author)),
         },
         body: multi_line(text("description")),
-        tracker: TrackerKind::Linear,
+        noun: super::Noun::own(own::LINEAR),
     })
 }
 

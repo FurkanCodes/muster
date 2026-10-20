@@ -38,6 +38,21 @@ pub enum PluginCommand {
     /// The daemon asks nothing: the client asks the person first. Answered
     /// with [`super::Reply::Done`].
     Remove { id: String },
+    /// The end of the plugin `id`'s log: the last 64 KiB its process wrote
+    /// on stderr while this daemon ran, across its restarts, its secrets
+    /// hidden. Answered with [`super::Reply::PluginLog`]. From protocol 42
+    /// ([`crate::plugins::TICKET_PLUGINS_PROTOCOL`]).
+    Log { id: String },
+}
+
+impl PluginCommand {
+    /// The first protocol whose daemon takes it (`ARC-09`).
+    pub fn since(&self) -> u32 {
+        match self {
+            Self::Log { .. } => crate::plugins::TICKET_PLUGINS_PROTOCOL,
+            _ => crate::plugins::PLUGINS_PROTOCOL,
+        }
+    }
 }
 
 /// Where a plugin to install or link is.

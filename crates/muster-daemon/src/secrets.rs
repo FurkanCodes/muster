@@ -68,6 +68,24 @@ pub(crate) async fn token(secrets: &dyn Secrets, variable: &str, account: &str) 
     secrets.get(account).await
 }
 
+/// The Keychain account of the plugin `id`'s secret `name`
+/// (`muster auth plugin <id> <name>`).
+pub(crate) fn plugin_account(id: &str, name: &str) -> String {
+    format!("plugin:{id}:{name}")
+}
+
+/// The plugin `id`'s secret `name`, as its manifest names it: the one kept
+/// for it, else a variable of that name the person set for the daemon.
+pub(crate) async fn plugin_secret(secrets: &dyn Secrets, id: &str, name: &str) -> Option<Token> {
+    if let Some(kept) = secrets.get(&plugin_account(id, name)).await {
+        return Some(kept);
+    }
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| Token::new(value.trim()))
+}
+
 /// The longest piece of a value one Keychain item holds: `security -i`
 /// reads a line of at most about 4 KB, quoting can double a value, and an
 /// OAuth session with its tokens is longer than that.
@@ -295,6 +313,33 @@ mod tests {
         let json = serde_json::to_string(&token).unwrap();
         assert_eq!(json, "\"s3cret-value\"");
         assert_eq!(serde_json::from_str::<Token>(&json).unwrap(), token);
+    }
+
+    #[tokio::test]
+    async fn a_plugin_s_secret_is_the_one_kept_else_the_daemon_s_variable() {
+        let kept = Kept::default();
+        // A variable no one else sets.
+        let name = "MUSTER_TEST_NEVER_SET_SECRET";
+        assert_eq!(plugin_secret(&kept, "youtrack", name).await, None);
+        assert_eq!(
+            plugin_account("youtrack", "YT_TOKEN"),
+            "plugin:youtrack:YT_TOKEN"
+        );
+        kept.set("plugin:youtrack:PATH", &Token::new("kept"))
+            .await
+            .unwrap();
+        assert_eq!(
+            plugin_secret(&kept, "youtrack", "PATH").await,
+            Some(Token::new("kept")),
+            "the Keychain's wins"
+        );
+        assert_eq!(
+            plugin_secret(&kept, "other", "PATH")
+                .await
+                .map(Token::into_value),
+            std::env::var("PATH").ok(),
+            "else the variable"
+        );
     }
 
     #[test]
