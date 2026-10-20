@@ -13,7 +13,10 @@
 //! Claude Code's transcript also says when the person cut a turn short,
 //! which no hook tells; the reader hands that back too, by the turn's
 //! prompt id, and the Supervisor ends the turn if it is still the one under
-//! way.
+//! way. It says when a background task stopped as well, which for a
+//! subagent the person stopped by hand no hook tells either; the reader
+//! hands back the tasks' ids, and the Supervisor lets go of each subagent
+//! still taken to be at work.
 
 mod claude;
 mod codex;
@@ -44,6 +47,16 @@ pub(crate) struct Interrupted {
     pub(crate) agent_session: String,
     /// The prompt that began the turn.
     pub(crate) prompt: String,
+}
+
+/// Background tasks that stopped, as a session's agent's records say.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Stopped {
+    pub(crate) session: SessionId,
+    /// The agent's own id for the conversation the records are of.
+    pub(crate) agent_session: String,
+    /// The tasks' ids: a subagent's is its agent id.
+    pub(crate) tasks: Vec<String>,
 }
 
 /// Whose records Muster can read.
@@ -94,6 +107,8 @@ pub(crate) struct Readers {
     told: HashMap<SessionId, u64>,
     /// Turns the last read found interrupted, until taken.
     interrupted: Vec<Interrupted>,
+    /// Tasks the last read found stopped, until taken.
+    stopped: Vec<Stopped>,
 }
 
 impl Readers {
@@ -103,12 +118,18 @@ impl Readers {
             open: HashMap::new(),
             told: HashMap::new(),
             interrupted: Vec::new(),
+            stopped: Vec::new(),
         }
     }
 
     /// The turns the last read found the person interrupted, once.
     pub(crate) fn take_interrupted(&mut self) -> Vec<Interrupted> {
         std::mem::take(&mut self.interrupted)
+    }
+
+    /// The tasks the last read found stopped, once.
+    pub(crate) fn take_stopped(&mut self) -> Vec<Stopped> {
+        std::mem::take(&mut self.stopped)
     }
 
     /// Reads each target's records, and says the totals that changed since
@@ -153,6 +174,14 @@ impl Readers {
                             session: target.session,
                             agent_session: id.to_owned(),
                             prompt,
+                        });
+                    }
+                    let tasks = claude.take_stopped();
+                    if !tasks.is_empty() {
+                        self.stopped.push(Stopped {
+                            session: target.session,
+                            agent_session: id.to_owned(),
+                            tasks,
                         });
                     }
                     tokens
@@ -200,15 +229,21 @@ pub(crate) async fn run(supervisor: SupervisorHandle, interval: Duration, places
         let read = tokio::task::spawn_blocking(move || {
             let changed = taken.read(&targets, crate::clock::monotonic());
             let interrupted = taken.take_interrupted();
-            (taken, changed, interrupted)
+            let stopped = taken.take_stopped();
+            (taken, changed, interrupted, stopped)
         })
         .await;
-        let Ok((returned, changed, interrupted)) = read else {
+        let Ok((returned, changed, interrupted, stopped)) = read else {
             tracing::error!("reading sessions' spend failed");
             return;
         };
         readers = Some(returned);
         if !changed.is_empty() && !supervisor.record_spends(changed).await {
+            return;
+        }
+        // Before the turns cut short: a subagent stopped with its turn
+        // leaves the turn none to hold for.
+        if !stopped.is_empty() && !supervisor.record_stopped(stopped).await {
             return;
         }
         if !interrupted.is_empty() && !supervisor.record_interrupted(interrupted).await {
@@ -314,6 +349,35 @@ mod tests {
         );
         readers.read(&targets, crate::clock::monotonic());
         assert!(readers.take_interrupted().is_empty(), "told once");
+    }
+
+    #[test]
+    fn tasks_that_stopped_are_handed_back_with_their_session_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = dir.path().join("claude/projects/-w-app");
+        std::fs::create_dir_all(&projects).unwrap();
+        std::fs::write(
+            projects.join("c1.jsonl"),
+            claude::tests::task_stopped("a1", "killed") + "\n",
+        )
+        .unwrap();
+        let mut readers = Readers::new(Places {
+            claude_projects: Some(dir.path().join("claude/projects")),
+            ..Places::default()
+        });
+        let session = SessionId::new();
+        let targets = [target(session, "claude", "c1")];
+        readers.read(&targets, crate::clock::monotonic());
+        assert_eq!(
+            readers.take_stopped(),
+            [Stopped {
+                session,
+                agent_session: "c1".to_owned(),
+                tasks: vec!["a1".to_owned()],
+            }]
+        );
+        readers.read(&targets, crate::clock::monotonic());
+        assert!(readers.take_stopped().is_empty(), "told once");
     }
 
     /// `MUSTER_LIVE_SPEND=claude:<session id>` (or `codex:<thread id>`,

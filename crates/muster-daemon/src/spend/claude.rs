@@ -12,7 +12,13 @@
 //! the turn's `promptId`. Only that id is kept; nothing of the
 //! conversation is (`PRD-06`).
 //!
-//! Checked against Claude Code 2.1.296's transcripts.
+//! It says, too, when a background task stopped, a subagent among them,
+//! which for one the person stops by hand no hook does: Claude Code queues
+//! a `<task-notification>` for the main agent, its first lines the task's
+//! id (a subagent's agent id) and its status. Only the id is kept.
+//!
+//! Checked against Claude Code 2.1.296's transcripts, and 2.1.304's for a
+//! task stopping.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -31,10 +37,15 @@ pub(super) struct Claude {
     /// The last turn the person interrupted, by its prompt id, in what the
     /// last read found.
     interrupted: Option<String>,
+    /// The background tasks the last read found stopped, by their ids.
+    stopped: Vec<String>,
 }
 
 /// How the transcript begins the text it writes as the person interrupts.
 const INTERRUPTED: &str = "[Request interrupted by user";
+
+/// How the transcript begins the notice it queues as a background task stops.
+const TASK_NOTICE: &str = "<task-notification>";
 
 impl Claude {
     /// The session's tokens so far, once its transcript is found; `projects`
@@ -75,10 +86,15 @@ impl Claude {
         // The last turn cut short in what is read now; only the main agent's
         // own can be.
         let mut cut_short = None;
+        // Only the main agent is told of its tasks.
+        let mut stopped = Vec::new();
         if let Some(main) = main {
             let read = main.read(|line| {
                 if let Some(prompt) = interrupted(line) {
                     cut_short = Some(prompt);
+                }
+                if let Some(task) = stopped_task(line) {
+                    stopped.push(task);
                 }
                 count(line);
             });
@@ -99,6 +115,7 @@ impl Claude {
             return self.read(projects, session_id);
         }
         self.interrupted = cut_short;
+        self.stopped = stopped;
         Some(self.tokens)
     }
 
@@ -106,6 +123,12 @@ impl Claude {
     /// by its prompt id; once.
     pub(super) fn take_interrupted(&mut self) -> Option<String> {
         self.interrupted.take()
+    }
+
+    /// The background tasks the last read found stopped, by their ids;
+    /// once.
+    pub(super) fn take_stopped(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.stopped)
     }
 }
 
@@ -134,6 +157,34 @@ fn interrupted(line: &str) -> Option<String> {
         return None;
     }
     Some(value.get("promptId")?.as_str()?.to_owned())
+}
+
+/// The id of the background task a line of the main transcript says has
+/// stopped: the notice queued for the main agent as one completes, fails
+/// or is stopped.
+fn stopped_task(line: &str) -> Option<String> {
+    if !line.contains(TASK_NOTICE) {
+        return None;
+    }
+    let value: Value = serde_json::from_str(line).ok()?;
+    if value.get("type")?.as_str()? != "queue-operation"
+        || value.get("operation")?.as_str()? != "enqueue"
+    {
+        return None;
+    }
+    let notice = value.get("content")?.as_str()?.strip_prefix(TASK_NOTICE)?;
+    // The id and the status come first, before the task's own words.
+    let status = between(notice, "<status>", "</status>")?;
+    if !matches!(status, "completed" | "failed" | "killed" | "stopped") {
+        return None;
+    }
+    Some(between(notice, "<task-id>", "</task-id>")?.to_owned())
+}
+
+/// What `text` has between the first `open` and the `close` after it.
+fn between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let (_, rest) = text.split_once(open)?;
+    Some(rest.split_once(close)?.0)
 }
 
 /// The transcript of `session_id`: `<projects>/<folder slug>/<id>.jsonl`,
@@ -297,5 +348,60 @@ pub(super) mod tests {
             stopped.replace(r#""type":"user","#, r#""type":"user","isSidechain":true,"#);
         assert_eq!(interrupted(&sidechain), None);
         assert_eq!(interrupted(stopped).as_deref(), Some("p1"));
+    }
+
+    /// The line Claude Code 2.1.304 writes as a background task stops: the
+    /// notice queued for the main agent. Content shortened.
+    pub(crate) fn task_stopped(task: &str, status: &str) -> String {
+        serde_json::json!({
+            "type": "queue-operation", "operation": "enqueue",
+            "timestamp": "2026-10-20T14:14:14.985Z", "sessionId": "abc",
+            "content": format!(
+                "<task-notification>\n<task-id>{task}</task-id>\n\
+                 <tool-use-id>toolu_1</tool-use-id>\n<status>{status}</status>\n\
+                 <summary>Agent \"Look around\" was stopped by user</summary>\n\
+                 </task-notification>"
+            )
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_background_task_that_stopped_is_found_once_by_its_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let slug = dir.path().join("-Users-u-app");
+        std::fs::create_dir_all(slug.join("abc/subagents")).unwrap();
+        // The notice handed to the main agent later is the same stop.
+        let delivered = r#"{"type":"user","isSidechain":false,"promptId":"p1","origin":{"kind":"task-notification"},"message":{"role":"user","content":"<task-notification>\n<task-id>a1</task-id>\n<status>killed</status>\n</task-notification>"}}"#;
+        let dequeued = r#"{"type":"queue-operation","operation":"dequeue","sessionId":"abc"}"#;
+        std::fs::write(
+            slug.join("abc.jsonl"),
+            [
+                task_stopped("a1", "killed"),
+                delivered.to_owned(),
+                dequeued.to_owned(),
+                task_stopped("b2", "completed"),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        // A subagent's own transcript tells the main agent nothing.
+        std::fs::write(
+            slug.join("abc/subagents/agent-a1.jsonl"),
+            task_stopped("a9", "failed") + "\n",
+        )
+        .unwrap();
+        let mut claude = Claude::default();
+        claude.read(dir.path(), "abc");
+        assert_eq!(claude.take_stopped(), ["a1", "b2"]);
+        assert!(claude.take_stopped().is_empty(), "taken once");
+        claude.read(dir.path(), "abc");
+        assert!(claude.take_stopped().is_empty(), "nothing new");
+        // A task said to be going on has not stopped; a prompt the person
+        // queued is no notice.
+        assert_eq!(stopped_task(&task_stopped("a1", "running")), None);
+        let typed = r#"{"type":"queue-operation","operation":"enqueue","content":"what is <task-notification>"}"#;
+        assert_eq!(stopped_task(typed), None);
     }
 }

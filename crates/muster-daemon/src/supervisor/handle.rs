@@ -125,6 +125,8 @@ pub(super) enum Request {
     Spends(Vec<(SessionId, muster_core::Spend)>),
     /// Turns the spend reader found the person cut short.
     Interrupted(Vec<crate::spend::Interrupted>),
+    /// Background tasks the spend reader found stopped.
+    Stopped(Vec<crate::spend::Stopped>),
     /// Hand every running session over, for the daemon's restart in place.
     HandOver(oneshot::Sender<Vec<crate::handoff::HandedSession>>),
     /// Take sessions over that were handed over.
@@ -170,6 +172,7 @@ impl std::fmt::Debug for Request {
             Self::SpendTargets(_) => f.write_str("SpendTargets"),
             Self::Spends(spends) => write!(f, "Spends({})", spends.len()),
             Self::Interrupted(turns) => write!(f, "Interrupted({})", turns.len()),
+            Self::Stopped(stopped) => write!(f, "Stopped({})", stopped.len()),
             Self::HandOver(_) => f.write_str("HandOver"),
             Self::Adopt(sessions, _) => write!(f, "Adopt({})", sessions.len()),
         }
@@ -308,6 +311,12 @@ impl SupervisorHandle {
             .send(Request::Interrupted(turns))
             .await
             .is_ok()
+    }
+
+    /// Hands over background tasks that stopped. `false` once the
+    /// Supervisor has stopped.
+    pub(crate) async fn record_stopped(&self, stopped: Vec<crate::spend::Stopped>) -> bool {
+        self.requests.send(Request::Stopped(stopped)).await.is_ok()
     }
 
     /// Hands over a measurement. `false` once the Supervisor has stopped.

@@ -83,6 +83,33 @@ impl Supervisor {
         }
     }
 
+    /// Background tasks that stopped, as the agents' records say: a
+    /// subagent the person stops by hand runs no `SubagentStop`, and its
+    /// session would hold its turn for it until it fell quiet. Only a
+    /// subagent its session's machine still has at work is let go; one its
+    /// own hook told stopped, or a task that was no subagent, is passed over.
+    pub(super) async fn record_stopped(&mut self, stopped: Vec<crate::spend::Stopped>) {
+        for stopped in stopped {
+            for task in stopped.tasks {
+                let at_work = self
+                    .live
+                    .get(&stopped.session)
+                    .is_some_and(|live| live.machine.subagent_at_work(&task));
+                if !at_work {
+                    continue;
+                }
+                self.step_session(
+                    stopped.session,
+                    Signal::Hook {
+                        agent_session: Some(stopped.agent_session.clone()),
+                        event: muster_state::session::HookEvent::SubagentStopped { id: task },
+                    },
+                )
+                .await;
+            }
+        }
+    }
+
     /// Feeds a session's machine and carries out what it decides.
     pub(super) async fn step_session(&mut self, session: SessionId, signal: Signal) {
         self.step_noted(session, signal, None).await;

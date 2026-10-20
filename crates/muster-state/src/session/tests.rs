@@ -402,10 +402,13 @@ fn a_new_prompt_closes_every_open_prompt() {
 fn a_turn_end_waits_for_subagents_and_then_a_grace_period() {
     let mut session = Session::running_turn();
     session.at(0).hook(subagent_started("a"));
+    assert!(session.machine.subagent_at_work("a"));
+    assert!(!session.machine.subagent_at_work("b"));
     session.at(10).hook(HookEvent::TurnEnded);
     assert_eq!(session.status(), SessionStatus::Running);
 
     session.at(100).hook(subagent_stopped("a"));
+    assert!(!session.machine.subagent_at_work("a"));
     let finish_at = session.start + Duration::from_secs(280);
     assert_eq!(session.machine.next_deadline(), Some(finish_at));
 
