@@ -582,3 +582,21 @@ fn muster_s_own_are_known_before_the_registry_is_read() {
         }
     );
 }
+
+#[test]
+fn the_basics_are_a_session_s_without_what_a_terminal_set() {
+    let given = [
+        ("PATH", "/usr/bin"),
+        ("LC_ALL", "en_US.UTF-8"),
+        ("LC_TERMINAL", "iTerm2"),
+        ("LC_TERMINAL_VERSION", "3.6"),
+        ("GITHUB_TOKEN", "ghp_not_for_plugins"),
+        ("HOME", "/Users/me"),
+    ]
+    .map(|(key, value)| (key.into(), value.into()));
+    let names: Vec<String> = super::basics(given.into_iter())
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
+    assert_eq!(names, ["PATH", "LC_ALL", "HOME"]);
+}

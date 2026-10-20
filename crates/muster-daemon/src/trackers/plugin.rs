@@ -59,13 +59,30 @@ pub(crate) enum Environment {
     },
 }
 
-/// The variables of the daemon's environment every plugin gets, as
-/// sessions do: where programs are, whose they are, and how text reads.
+/// Whether `name` is one of the variables every plugin gets, as sessions
+/// do: where programs are, whose they are, and how text reads.
 pub(crate) fn is_basic(name: &str) -> bool {
     matches!(
         name,
         "PATH" | "HOME" | "USER" | "LOGNAME" | "SHELL" | "TMPDIR" | "TZ" | "LANG"
     ) || name.starts_with("LC_")
+}
+
+/// The basics of `environment` as sessions get it: what `harness::scrub`
+/// takes from a session's (a terminal's `LC_TERMINAL`) no plugin gets
+/// either.
+pub(crate) fn basics(
+    environment: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> Vec<(String, std::ffi::OsString)> {
+    let basic: Vec<(String, std::ffi::OsString)> = environment
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value)))
+        .filter(|(key, _)| is_basic(key))
+        .collect();
+    let scrubbed = crate::harness::scrub::scrubbed(basic.iter().map(|(key, _)| key.clone()));
+    basic
+        .into_iter()
+        .filter(|(key, _)| !scrubbed.contains(key))
+        .collect()
 }
 
 impl PluginSpec {

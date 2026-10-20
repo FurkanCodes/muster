@@ -232,11 +232,7 @@ impl Process {
             }
             Environment::Only { variables, secrets } => {
                 command.env_clear();
-                let basics = std::env::vars_os().filter_map(|(key, value)| {
-                    let key = key.into_string().ok()?;
-                    super::is_basic(&key).then_some((key, value))
-                });
-                command.envs(basics);
+                command.envs(super::basics(std::env::vars_os()));
                 for (name, value) in variables.iter().chain(secrets) {
                     command.env(name, value.value());
                 }

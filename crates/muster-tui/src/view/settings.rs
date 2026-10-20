@@ -783,8 +783,8 @@ fn tickets_from_text(app: &App, settings: &ProjectSettings) -> Text<'static> {
         detail("Saved in", settings.file.display().to_string()),
         Line::from(""),
         Line::from(
-            "⏎ chooses where they come from: its git remote, GitHub, GitLab, Jira (its site and a \
-             project's key) or Linear (a team's key).",
+            "⏎ chooses where they come from: its git remote, or a ticket plugin that is on, \
+             Muster's own (GitHub, GitLab, Jira, Linear) or one you added, with what it asks for.",
         )
         .dim(),
         Line::from(
