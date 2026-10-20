@@ -132,3 +132,50 @@ fn a_program_that_asked_for_every_movement_gets_it_and_one_that_did_not_never() 
     assert!(world.app.welcome);
     assert_eq!(world.app.hover, None);
 }
+
+#[test]
+fn the_pointer_shows_arrows_over_a_line_and_a_hand_over_a_title() {
+    use crate::pointer_shape::Shape;
+    let mut world = shown();
+    assert_eq!(world.app.pointer_shape(), Shape::Default);
+    moved(&mut world, (29, 10));
+    assert_eq!(world.app.pointer_shape(), Shape::Columns, "left and right");
+    moved(&mut world, (5, 1));
+    assert_eq!(world.app.pointer_shape(), Shape::Grab, "a hand");
+    moved(&mut world, (50, 10));
+    assert_eq!(world.app.pointer_shape(), Shape::Default);
+
+    // Carried, the hand closes; let go, it is a hand again over the title.
+    left(&mut world, MouseEventKind::Down, (5, 1));
+    assert_eq!(world.app.pointer_shape(), Shape::Grab, "not moved yet");
+    left(&mut world, MouseEventKind::Drag, (60, 12));
+    assert_eq!(world.app.pointer_shape(), Shape::Grabbing);
+    left(&mut world, MouseEventKind::Up, (60, 12));
+    assert_eq!(world.app.drag, None);
+    assert_ne!(world.app.pointer_shape(), Shape::Grabbing);
+
+    // A line being dragged keeps its arrows wherever the pointer goes.
+    let mut world = shown();
+    left(&mut world, MouseEventKind::Down, (29, 10));
+    left(&mut world, MouseEventKind::Drag, (45, 10));
+    assert_eq!(world.app.pointer_shape(), Shape::Columns);
+}
+
+#[test]
+fn panels_one_above_the_other_show_arrows_up_and_down() {
+    use crate::pointer_shape::Shape;
+    let mut world = shown();
+    super::tests::preferences(&mut world.app, |preferences| {
+        preferences.panels = Layout::parse("(list / session) | (changes / shell)").unwrap();
+    });
+    let size = world.app.terminal_size;
+    let areas = crate::view::browse_areas(&world.app, Rect::new(0, 0, size.cols, size.rows + 1));
+    let line = areas
+        .dividers
+        .iter()
+        .find(|divider| divider.split == muster_core::layout::Split::Down)
+        .expect("the list above the session")
+        .line();
+    moved(&mut world, (line.x + 2, line.y));
+    assert_eq!(world.app.pointer_shape(), Shape::Rows);
+}

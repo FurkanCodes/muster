@@ -20,6 +20,7 @@ mod layout;
 mod model;
 mod motion;
 mod mouse;
+mod pointer_shape;
 mod runtime;
 mod screen;
 mod view;

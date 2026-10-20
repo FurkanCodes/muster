@@ -22,6 +22,7 @@ use crate::clipboard;
 use crate::colours;
 use crate::folders::{self, Folder};
 use crate::motion;
+use crate::pointer_shape::{Shape, Shapes};
 use crate::view;
 
 mod link;
@@ -127,6 +128,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut next_draw = monotonic();
     let mut hold = FrameHold::default();
     let mut steps = motion::Steps::new(monotonic());
+    let mut pointer = Pointer::detect();
     let outcome = loop {
         // Asleep until an event or something of its own is due: idle, the
         // UI wakes for a time on screen to change, and not at all with no
@@ -170,22 +172,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
                 None => break Ok(()),
             },
-            Woke::Link(event) => match event {
-                LinkEvent::Connected {
-                    sender: connected,
-                    welcome,
-                } => {
-                    sender = Some(connected);
-                    app.daemon_protocol = welcome.version;
-                    app.on_connected(welcome.daemon_version)
-                }
-                LinkEvent::Frame(frame) => app.on_frame(*frame),
-                LinkEvent::Lost(reason) => {
-                    sender = None;
-                    app.on_disconnected(reason);
-                    Vec::new()
-                }
-            },
+            Woke::Link(event) => linked(&mut app, &mut sender, event),
             Woke::Folders((dir, folders)) => app.on_folders(&dir, folders),
             Woke::Time if due.is_empty() => {
                 draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
@@ -199,10 +186,75 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
         if quit {
             break Ok(());
         }
+        pointer.follow(&app);
         draw_if_due(&mut terminal, &app, &mut dirty, &mut next_draw, &mut hold)?;
     };
+    drop(pointer);
     drop(terminal);
     outcome
+}
+
+/// What the daemon's link brings: the app connected, a frame, or the
+/// connection lost.
+fn linked(app: &mut App, sender: &mut Option<Outgoing>, event: LinkEvent) -> Vec<Action> {
+    match event {
+        LinkEvent::Connected {
+            sender: connected,
+            welcome,
+        } => {
+            *sender = Some(connected);
+            app.daemon_protocol = welcome.version;
+            app.on_connected(welcome.daemon_version)
+        }
+        LinkEvent::Frame(frame) => app.on_frame(*frame),
+        LinkEvent::Lost(reason) => {
+            *sender = None;
+            app.on_disconnected(reason);
+            Vec::new()
+        }
+    }
+}
+
+/// The pointer's shape as last asked for, in the names the terminal knows,
+/// if it takes them; the terminal's own given back as it is dropped, as
+/// the UI ends.
+struct Pointer {
+    shapes: Option<Shapes>,
+    shown: Shape,
+}
+
+impl Pointer {
+    fn detect() -> Self {
+        Self {
+            shapes: Shapes::detect(|name| std::env::var(name).ok()),
+            shown: Shape::Default,
+        }
+    }
+
+    /// Asks the terminal for the shape `app` wants, if not the one asked
+    /// for last.
+    fn follow(&mut self, app: &App) {
+        self.show(app.pointer_shape());
+    }
+
+    fn show(&mut self, shape: Shape) {
+        use std::io::Write;
+        let Some(shapes) = self.shapes else {
+            return;
+        };
+        if shape != self.shown {
+            self.shown = shape;
+            let mut out = stdout();
+            let _ = out.write_all(shapes.sequence(shape).as_bytes());
+            let _ = out.flush();
+        }
+    }
+}
+
+impl Drop for Pointer {
+    fn drop(&mut self) {
+        self.show(Shape::Default);
+    }
 }
 
 /// Hands the app the step and the clock as they are now, marking what
