@@ -1,0 +1,162 @@
+#!/bin/sh
+# A ticket plugin for Muster in POSIX sh, with awk and sed (docs/plugins.md).
+#
+# Muster asks it for tickets on its stdin, one JSON-RPC message a line, and
+# it answers each on its stdout, one a line. Its tickets are the paragraphs
+# of a text file (tickets.txt says how): tickets.txt beside it, or the file
+# a project's [tickets] names as `file`. What it writes on stderr is its
+# log: `muster plugin log tickets-from-file`.
+
+here=$(cd "$(dirname "$0")" && pwd)
+
+# The text of "$1":"…" in the request, the last if there are more. Muster
+# writes a request on one line, without spaces, so this is enough for keys
+# and paths without quotes; a plugin in another language reads it as JSON.
+param() {
+  printf '%s\n' "$request" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"
+}
+
+# "$1" as text inside a JSON string.
+json() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+reply() {
+  printf '{"jsonrpc":"2.0","id":%s,"result":%s}\n' "$id" "$1"
+}
+
+# Refuses the request: "$1" is not_found, refused, signed_out,
+# not_configured or failed; "$2" says why, for the person.
+refuse() {
+  printf '{"jsonrpc":"2.0","id":%s,"error":{"code":"%s","message":"%s"}}\n' \
+    "$id" "$1" "$(json "$2")"
+}
+
+# Reads a file of tickets. With mode=list it prints them, as a listing's
+# "tickets" holds them; with mode=view, the one keyed $want and its text,
+# as "view" is answered; with mode=close, the file without that one. It
+# fails where there is no such ticket.
+tickets='
+function json(s,   out, i, c) {
+  out = ""
+  for (i = 1; i <= length(s); i++) {
+    c = substr(s, i, 1)
+    if (c == "\\" || c == "\"") out = out "\\" c
+    else if (c == "\t") out = out "\\t"
+    else out = out c
+  }
+  return out
+}
+function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+function is_key(k) { return k ~ /^[0-9]+$/ || k ~ /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/ }
+function ticket(   n, parts, i, label, labels) {
+  n = split(tags, parts, ",")
+  for (i = 1; i <= n; i++) {
+    label = trim(parts[i])
+    if (label != "") labels = labels (labels == "" ? "" : ",") "\"" json(label) "\""
+  }
+  return "{\"key\":\"" key "\",\"title\":\"" json(title) "\",\"labels\":[" labels "]}"
+}
+function end_ticket() {
+  if (key == "") return
+  if (!is_key(key)) {
+    if (mode == "list") print "skipped \"" first "\": a ticket starts with its key, a number (42) or a word and a number (WEB-7)" > "/dev/stderr"
+  } else if (mode == "list") {
+    printf "%s%s", (listed++ ? "," : ""), ticket()
+  } else if (toupper(key) == want) {
+    printf "{\"ticket\":%s,\"body\":\"%s\"}", ticket(), body
+    found = 1
+  }
+  key = ""
+}
+BEGIN { start = 1 }
+mode == "close" {
+  line = $0; sub(/\r$/, "", line)
+  if (line ~ /^[ \t]*$/) {
+    start = 1
+    if (dropping) { dropping = 0; next }
+    print
+    next
+  }
+  if (start && line !~ /^#/) {
+    start = 0
+    split(line, words)
+    dropping = (toupper(words[1]) == want)
+    if (dropping) found = 1
+  }
+  if (!dropping) print
+  next
+}
+{ sub(/\r$/, "") }
+/^[ \t]*$/ { end_ticket(); next }
+/^#/ { next }
+key == "" {
+  first = $0; key = $1; title = $0; sub(/^[ \t]*[^ \t]+[ \t]*/, "", title)
+  tags = ""; labelled = 0; body = ""; lines = 0
+  next
+}
+lines == 0 && !labelled && /^labels:/ { labelled = 1; tags = substr($0, 8); next }
+{ body = body (lines++ ? "\\n" : "") json($0) }
+END {
+  end_ticket()
+  if (mode != "list" && !found) exit 1
+}
+'
+
+# The project's tickets file: its [tickets] file, in the project's folder
+# unless it is a full path, or else tickets.txt beside the plugin.
+find_file() {
+  named=$(param file)
+  case $named in
+    "") file="$here/tickets.txt" ;;
+    /*) file=$named ;;
+    *) file="$(param root)/$named" ;;
+  esac
+}
+
+list() {
+  find_file
+  if [ ! -f "$file" ]; then
+    refuse not_configured "there is no $file: write it, or name another as file in the project's [tickets]"
+    return
+  fi
+  listed=$(awk -v mode=list -v want= "$tickets" "$file")
+  echo "listed $file" >&2
+  reply "{\"where\":\"$(json "$(basename "$file")")\",\"source\":\"$(json "$file")\",\"tickets\":[$listed]}"
+}
+
+view() {
+  find_file
+  key=$(param key)
+  if viewed=$(awk -v mode=view -v want="$key" "$tickets" "$file"); then
+    reply "$viewed"
+  else
+    refuse not_found "there is no ticket $key in $file"
+  fi
+}
+
+close() {
+  find_file
+  key=$(param key)
+  if awk -v mode=close -v want="$key" "$tickets" "$file" > "$file.closing"; then
+    mv "$file.closing" "$file"
+    echo "closed $key in $file" >&2
+    reply '{}'
+  else
+    rm -f "$file.closing"
+    refuse not_found "there is no ticket $key in $file"
+  fi
+}
+
+# One request a line, until Muster closes stdin. Muster writes "jsonrpc"
+# and "id" before "params", so the first "id" is the request's.
+while IFS= read -r request; do
+  id=$(printf '%s\n' "$request" | sed -n 's/^{[^{]*"id":\([0-9]*\).*/\1/p')
+  case $(param method) in
+    hello) reply '{"protocol":1}' ;;
+    list) list ;;
+    view) view ;;
+    close) close ;;
+    *) refuse failed "tickets-from-file knows no method $(param method)" ;;
+  esac
+done

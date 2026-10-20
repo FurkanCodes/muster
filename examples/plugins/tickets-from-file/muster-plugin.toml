@@ -1,0 +1,19 @@
+# A ticket source in POSIX sh: tickets from a plain text file.
+# docs/plugins.md says what every key means.
+id = "tickets-from-file"
+name = "Tickets from a file"
+version = "0.1.0"
+description = "Tickets from tickets.txt beside it, or a text file of the project's."
+muster = "0.3.35"
+requires = ["awk", "sed"]
+how_to_get = "awk and sed come with macOS and Linux."
+
+[tickets]
+name = "File"
+noun = "ticket"
+command = ["./tickets"]
+
+[[tickets.settings]]
+key = "file"
+label = "File, if not tickets.txt beside it"
+required = false
