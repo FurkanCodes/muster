@@ -324,6 +324,12 @@ fn the_agents_on_a_ticket_are_those_on_branches_named_for_it() {
     let second = agent_on_42(&mut world, "muster/issue-42-fix-2", 20);
     agent_on_42(&mut world, "muster/issue-4-other", 30);
     agent_on_42(&mut world, "feature/issue-42", 40);
+    // A plugin's panel beside an agent is no agent.
+    let mut panel = session(first.workspace, "graph", 50);
+    panel.harness = "plugin:session-graph/graph".to_owned();
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(panel)));
     let agents: Vec<_> = world
         .app
         .model
@@ -515,6 +521,12 @@ fn after_closing_a_ticket_its_agents_and_worktrees_go_if_asked() {
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(agent.clone())));
+    let mut panel = session(workspace.id, "graph", 11);
+    panel.harness = "plugin:session-graph/graph".to_owned();
+    panel.beside = Some(agent.id);
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(panel.clone())));
     press(&mut world.app, KeyCode::Char('x'));
     let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('y')));
     reply(&mut world, req_id, Ok(Reply::Done));
@@ -525,18 +537,25 @@ fn after_closing_a_ticket_its_agents_and_worktrees_go_if_asked() {
     );
     assert!(screen.contains("worktree? Branches are kept."), "{screen}");
 
-    // The agent is stopped; the worktree goes once nothing runs in it.
+    // The agent and the panel beside it are stopped; the worktree goes
+    // once nothing runs in it.
     let actions = press(&mut world.app, KeyCode::Char('y'));
     assert_eq!(
         commands(&actions),
-        [Command::StopSession { session: agent.id }]
+        [
+            Command::StopSession { session: agent.id },
+            Command::StopSession { session: panel.id }
+        ]
     );
-    let mut ended = agent.clone();
-    ended.status = SessionStatus::Exited { success: true };
-    ended.ended_at = Some(Timestamp::from_millis(20));
-    let actions = world
-        .app
-        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
+    let mut actions = Vec::new();
+    for mut ended in [agent.clone(), panel] {
+        assert!(commands(&actions).is_empty(), "{actions:?}");
+        ended.status = SessionStatus::Exited { success: true };
+        ended.ended_at = Some(Timestamp::from_millis(20));
+        actions = world
+            .app
+            .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
+    }
     assert_eq!(
         commands(&actions),
         [Command::RemoveWorktree {

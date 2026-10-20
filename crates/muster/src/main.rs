@@ -87,8 +87,8 @@ enum Commands {
     /// Start and stop sessions.
     #[command(subcommand)]
     Session(SessionCommand),
-    /// Tickets: a project's GitHub issues, through the GitHub CLI (`gh`),
-    /// and agents on them.
+    /// Tickets: a project's open tickets, from its tracker's plugin
+    /// (GitHub, GitLab, Jira, Linear or one you added), and agents on them.
     #[command(subcommand)]
     Issue(IssueCommand),
     /// Run the project's checks (`[checks]` in its `muster.toml`) in

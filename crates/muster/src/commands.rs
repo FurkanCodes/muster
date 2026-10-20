@@ -597,7 +597,8 @@ fn agents_on(
 }
 
 /// The agents on ticket `key`: the sessions in the project's worktrees on
-/// branches named for it, oldest first.
+/// branches named for it, oldest first; a plugin's panel beside them is
+/// none.
 fn sessions_on<'a>(
     snapshot: &'a Snapshot,
     project: muster_core::ProjectId,
@@ -615,6 +616,7 @@ fn sessions_on<'a>(
                         == Some(key)
             })
         })
+        .filter(|session| !muster_core::harness::is_panel(&session.harness))
         .collect();
     agents.sort_by_key(|session| (session.created_at, session.id));
     agents

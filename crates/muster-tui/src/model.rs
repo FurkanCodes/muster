@@ -184,14 +184,16 @@ impl Model {
             .collect()
     }
 
-    /// The sessions working on ticket `key` in `projects`: those in their
-    /// worktrees on branches named for it, oldest first.
+    /// The agents working on ticket `key` in `projects`: the sessions in
+    /// their worktrees on branches named for it, oldest first; a plugin's
+    /// panel beside them is none.
     pub(crate) fn agents_on(&self, projects: &[ProjectId], key: &TicketKey) -> Vec<&Session> {
         let workspaces = self.worktrees_for(projects, key);
         let mut agents: Vec<&Session> = self
             .sessions
             .iter()
             .filter(|session| workspaces.contains(&session.workspace))
+            .filter(|session| !muster_core::harness::is_panel(&session.harness))
             .collect();
         agents.sort_by_key(|session| (session.created_at, session.id));
         agents

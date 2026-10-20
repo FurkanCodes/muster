@@ -310,13 +310,13 @@ impl App {
         });
     }
 
-    /// Stops a closed ticket's agents and removes its worktrees once
-    /// nothing runs in them.
+    /// Stops a closed ticket's agents, and the panels beside them, and
+    /// removes its worktrees once nothing runs in them.
     pub(super) fn clean_up_ticket(&mut self, project: ProjectId, key: &TicketKey) -> Vec<Action> {
         let worktrees = self.ticket_worktrees(project, key);
-        let running: Vec<SessionId> = self
-            .ticket_agents(project, key)
+        let running: Vec<SessionId> = worktrees
             .iter()
+            .flat_map(|workspace| self.model.sessions_of(*workspace))
             .filter(|session| session.ended_at.is_none())
             .map(|session| session.id)
             .collect();
