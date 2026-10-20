@@ -669,5 +669,5 @@ fn every_example_plugin_s_manifest_reads_prd_15() {
         read.push(manifest.id);
     }
     read.sort();
-    assert_eq!(read, ["session-graph", "tickets-from-file"]);
+    assert_eq!(read, ["notify-webhook", "session-graph", "tickets-from-file"]);
 }

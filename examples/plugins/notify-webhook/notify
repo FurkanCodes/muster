@@ -1,0 +1,65 @@
+#!/bin/sh
+# A hook for Muster in POSIX sh, with sed and curl (docs/plugins.md, Hooks).
+#
+# Muster runs it as an agent needs you, finishes or fails, and writes the
+# event on its stdin as one line of JSON; the project, branch and event are
+# in MUSTER_PLUGIN_* too. It posts one short line to the webhook kept as
+# its secret WEBHOOK_URL (`muster auth plugin notify-webhook WEBHOOK_URL`):
+#
+#   muster · muster/fix-login · Fix the login · needs your permission
+#
+# as Slack's incoming webhooks and most chats take it ({"text": …}),
+# Discord's ({"content": …}), or plain text for ntfy.sh. What it writes
+# goes to its log: `muster plugin log notify-webhook`.
+
+event=$(cat)
+
+if [ -z "$WEBHOOK_URL" ]; then
+    echo "no webhook: keep one with \`muster auth plugin notify-webhook WEBHOOK_URL\`" >&2
+    exit 2
+fi
+
+# Muster writes the event on one line, its keys in a fixed order, so sed
+# finds what this needs; a hook in another language reads it as JSON. The
+# chat's name is the session's, after its id; the project has a name too.
+chat=$(printf '%s\n' "$event" |
+    sed -E -n 's/.*"session":\{"id":"[^"]*","name":"(([^"\\]|\\.)*)".*/\1/p' |
+    sed -e 's/\\"/"/g' -e 's/\\\\/\\/g')
+reason=$(printf '%s\n' "$event" | sed -n 's/.*"reason":"\([a-z_]*\)".*/\1/p')
+
+case "$MUSTER_PLUGIN_EVENT" in
+    session.needs_you)
+        case "$reason" in
+            permission) what="needs your permission" ;;
+            question) what="has a question for you" ;;
+            startup) what="is asking something before it starts" ;;
+            *) what="needs you" ;;
+        esac ;;
+    session.finished) what="finished" ;;
+    session.error) what="ended with an error" ;;
+    *) what="$MUSTER_PLUGIN_EVENT" ;;
+esac
+
+message="${MUSTER_PLUGIN_PROJECT:-Muster}"
+[ -n "$MUSTER_PLUGIN_BRANCH" ] && message="$message · $MUSTER_PLUGIN_BRANCH"
+[ -n "$chat" ] && message="$message · $chat"
+message="$message · $what"
+
+# The message as a JSON string's text.
+quoted=$(printf '%s' "$message" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+
+case "$WEBHOOK_URL" in
+    *ntfy*) type="text/plain"; body="$message" ;;
+    *discord.com/api/webhooks/*) type="application/json"; body="{\"content\":\"$quoted\"}" ;;
+    *) type="application/json"; body="{\"text\":\"$quoted\"}" ;;
+esac
+
+# The address is a secret: given to curl on a descriptor of its own, never
+# on its command line, where any program could read it.
+printf '%s' "$body" |
+    curl -sS -f -m 10 -H "Content-Type: $type" --data-binary @- -K /dev/fd/3 3<<CONFIG
+url = "$WEBHOOK_URL"
+CONFIG
+status=$?
+[ "$status" -eq 0 ] && echo "posted: $message"
+exit "$status"

@@ -1,0 +1,16 @@
+# Hooks in POSIX sh: a short message to a webhook when an agent needs you.
+# docs/plugins.md says what every key means.
+id = "notify-webhook"
+name = "Notify by webhook"
+version = "0.1.0"
+description = "Posts project · branch · chat · what happened to a webhook when an agent needs you, finishes or fails."
+muster = "0.4.0"
+requires = ["curl", "sed"]
+how_to_get = "curl and sed come with macOS and Linux."
+secrets = ["WEBHOOK_URL"]
+
+[[hooks]]
+id = "notify"
+on = ["session.needs_you", "session.finished", "session.error"]
+command = ["./notify"]
+timeout = 15
