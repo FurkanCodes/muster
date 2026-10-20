@@ -147,6 +147,11 @@ fn a_project_whose_remote_cannot_tell_is_pointed_at_jira_here() {
     for name in ["GitHub", "GitLab", "Jira", "Linear", "YouTrack"] {
         assert!(screen.contains(&format!(" {name} ")), "{name}: {screen}");
     }
+    // With nothing to type, it still says how to choose.
+    assert!(
+        screen.contains("⇥ ⇧⇥ choose   ⏎ save   esc cancel"),
+        "{screen}"
+    );
     for _ in 0..3 {
         press(&mut world.app, KeyCode::Tab);
     }

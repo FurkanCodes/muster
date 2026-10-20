@@ -458,11 +458,12 @@ fn tickets_from<'a>(
             })
             .dim(),
         );
-        lines.push(Line::from(""));
-        return Shape {
-            hint: "⇥ ⇧⇥ choose   ⏎ save   esc cancel",
-            ..Shape::new(" Tickets from ", lines, None)
-        };
+        // With nothing to type, its hint is a line of its own.
+        lines.extend([
+            Line::from(""),
+            Line::from("⇥ ⇧⇥ choose   ⏎ save   esc cancel").dim(),
+        ]);
+        return Shape::new(" Tickets from ", lines, None);
     };
     let label = |field: &Field| {
         let needed = if field.setting.required {
