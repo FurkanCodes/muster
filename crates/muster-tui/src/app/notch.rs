@@ -6,7 +6,7 @@
 
 use muster_core::SessionId;
 use muster_core::protocol::{ClientFrame, Command, ErrorBody};
-use muster_core::settings::{NOTCH_PROTOCOL, PreferenceChange};
+use muster_core::settings::{NOTCH_PROTOCOL, NOTIFIER_PROTOCOL, PreferenceChange};
 
 use super::{Action, App, Link, Then, View};
 use crate::model::Row;
@@ -28,10 +28,19 @@ impl App {
             })
     }
 
-    /// Starts the notch once the state says it is wanted; turned off, it
-    /// stops itself, and is started again once turned back on.
+    /// Whether the daemon keeps whether the person is notified, and knows
+    /// Muster's helper's notifications.
+    pub(crate) fn notifications_known(&self) -> bool {
+        self.daemon_protocol >= NOTIFIER_PROTOCOL
+    }
+
+    /// Starts Muster's helper once the state says it is wanted, for the
+    /// notch or for notifications of the Mac's own; turned off, it stops
+    /// itself, and is started again once turned back on.
     pub(super) fn start_notch(&mut self) -> Option<Action> {
-        let wanted = self.notch_known() && self.model.loaded() && self.model.preferences().notch;
+        let preferences = self.model.preferences();
+        let notifies = self.notifications_known() && preferences.notifications;
+        let wanted = self.notch_known() && self.model.loaded() && (preferences.notch || notifies);
         if !wanted {
             self.notch_started = false;
             return None;
@@ -55,6 +64,20 @@ impl App {
         let mut actions = vec![Action::Activate];
         actions.extend(self.settle());
         actions
+    }
+
+    /// ⏎ on *Notifications*: on, or off.
+    pub(super) fn toggle_notifications(&mut self) -> Vec<Action> {
+        let on = !self.model.preferences().notifications;
+        let said = if on {
+            "You are told of what newly needs you while you look away."
+        } else {
+            "Nothing is told: the waiting count and Needs you still say it."
+        };
+        vec![self.command(
+            Command::ChangePreference(PreferenceChange::Notifications(on)),
+            Then::Say(said),
+        )]
     }
 
     /// Turns the notch on or off.

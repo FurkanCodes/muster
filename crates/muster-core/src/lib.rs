@@ -21,6 +21,7 @@ pub mod ids;
 pub mod keys;
 pub mod layout;
 pub mod names;
+pub mod news;
 pub mod num;
 pub mod paths;
 pub mod protocol;

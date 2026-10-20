@@ -60,6 +60,11 @@ pub(super) enum Request {
         client: u64,
         looking: bool,
     },
+    /// Muster's helper says it can show notifications, or no longer can.
+    Notifier {
+        client: u64,
+        ready: bool,
+    },
     /// A UI says the colours of the person's terminal.
     Colours(muster_core::colours::TerminalColours),
     /// A client has the person's keys in a session's terminal, until it
@@ -137,6 +142,7 @@ impl std::fmt::Debug for Request {
             Self::AddLooker { client, .. } => write!(f, "AddLooker({client})"),
             Self::Looking { client, looking } => write!(f, "Looking({client}, {looking})"),
             Self::Colours(_) => f.write_str("Colours"),
+            Self::Notifier { client, ready } => write!(f, "Notifier({client}, {ready})"),
             Self::HoldKeys { session, .. } => write!(f, "HoldKeys({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
@@ -324,6 +330,19 @@ impl SupervisorHandle {
 
     /// Tells whether the person is looking at the client. `false` once the
     /// Supervisor has stopped.
+    /// Muster's helper on this connection can show notifications now, or
+    /// no longer can.
+    pub(crate) async fn notifier(&self, client: &ClientGuard, ready: bool) {
+        // Nothing to do once the Supervisor has stopped.
+        let _ = self
+            .requests
+            .send(Request::Notifier {
+                client: client.id(),
+                ready,
+            })
+            .await;
+    }
+
     pub(crate) async fn looking(&self, client: &ClientGuard, looking: bool) -> bool {
         self.requests
             .send(Request::Looking {

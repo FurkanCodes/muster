@@ -27,6 +27,7 @@ fn mac(notch: bool) -> World {
         sessions: vec![world.session.clone()],
         preferences: Preferences {
             notch,
+            notifications: false,
             file: "/home/me/.config/muster/settings.toml".into(),
             ..Preferences::default()
         },
@@ -38,6 +39,7 @@ fn mac(notch: bool) -> World {
 fn preferences(notch: bool) -> ServerFrame {
     ServerFrame::Delta(Delta::Preferences(Preferences {
         notch,
+        notifications: false,
         file: "/home/me/.config/muster/settings.toml".into(),
         ..Preferences::default()
     }))
@@ -164,6 +166,7 @@ fn the_snapshot_on_a_mac_starts_the_notch() {
     let off = Snapshot {
         preferences: Preferences {
             notch: false,
+            notifications: false,
             file: "/home/me/.config/muster/settings.toml".into(),
             ..Preferences::default()
         },
@@ -231,6 +234,7 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
     assert!(!world.app.setting_rows().contains(&SettingRow::Notch));
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
+        SettingRow::Notifications,
         SettingRow::SideBySide,
         SettingRow::Colours,
         SettingRow::SessionLines,
@@ -245,6 +249,7 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::Notch,
+        SettingRow::Notifications,
         SettingRow::SideBySide,
         SettingRow::Colours,
         SettingRow::SessionLines,

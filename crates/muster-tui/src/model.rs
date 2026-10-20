@@ -31,6 +31,8 @@ pub(crate) struct Model {
     resources: Option<ResourceReport>,
     /// Muster's own settings.
     preferences: Preferences,
+    /// Whether Muster's helper shows notifications of the Mac's own.
+    notifier: bool,
     /// Whether a snapshot has arrived; until then the model is empty, not
     /// "no sessions".
     loaded: bool,
@@ -52,6 +54,7 @@ impl Model {
         self.runs = snapshot.runs;
         self.resources = snapshot.resources;
         self.preferences = snapshot.preferences;
+        self.notifier = snapshot.notifier;
         self.loaded = true;
     }
 
@@ -111,6 +114,7 @@ impl Model {
             Delta::Resources(report) => self.resources = Some(report),
             Delta::RunUpserted(run) => upsert(&mut self.runs, run, |r| r.id),
             Delta::Preferences(preferences) => self.preferences = preferences,
+            Delta::Notifier { ready } => self.notifier = ready,
             // For the notch: this window says itself whether it is looked at.
             Delta::LookedAt { .. } => {}
         }
@@ -119,6 +123,12 @@ impl Model {
     /// Muster's own settings.
     pub(crate) fn preferences(&self) -> &Preferences {
         &self.preferences
+    }
+
+    /// Whether Muster's helper shows notifications of the Mac's own, so
+    /// this window's terminal is sent none.
+    pub(crate) fn notifier(&self) -> bool {
+        self.notifier
     }
 
     /// The latest measurement of the host, if any.
@@ -343,13 +353,7 @@ impl Model {
     }
 }
 
-/// Whether a session is waiting on the person: asking something, or with
-/// news they have not seen. A shell never is: it is the person's own, not
-/// an agent's (`PRODUCT.md` §6).
-pub(crate) fn needs_attention(session: &Session) -> bool {
-    session.harness != "shell"
-        && (matches!(session.status, SessionStatus::NeedsYou { .. }) || session.unseen)
-}
+pub(crate) use muster_core::news::needs_attention;
 
 fn upsert<T, K: PartialEq>(items: &mut Vec<T>, item: T, key: impl Fn(&T) -> K) {
     match items

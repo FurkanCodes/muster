@@ -154,44 +154,25 @@ impl App {
     /// A notification for a session that has come to need the person, if
     /// they are looking elsewhere and want to be told.
     pub(super) fn news(&self, session: SessionId) -> Option<Action> {
-        if !self.notify || self.focused != Some(false) {
+        // Muster's helper tells the person with the Mac's own notifications.
+        if !self.notify || self.focused != Some(false) || self.model.notifier() {
+            return None;
+        }
+        if !self.model.preferences().notifications {
             return None;
         }
         let stored = self.model.session(session)?;
         if !needs_attention(stored) {
             return None;
         }
-        let what = match stored.status {
-            muster_core::SessionStatus::NeedsYou {
-                reason: muster_core::WaitReason::Permission,
-            } => "needs your permission",
-            muster_core::SessionStatus::NeedsYou {
-                reason: muster_core::WaitReason::Question,
-            } => "has a question for you",
-            muster_core::SessionStatus::NeedsYou {
-                reason: muster_core::WaitReason::Startup,
-            } => "is asking something before it starts",
-            muster_core::SessionStatus::NeedsYou {
-                reason: muster_core::WaitReason::Action,
-            } => "needs you",
-            muster_core::SessionStatus::Exited { success: false } => "exited with an error",
-            muster_core::SessionStatus::Exited { success: true } => "exited",
-            _ => "finished",
-        };
         let project = self
             .model
             .project_of(Row::Session(session))
             .and_then(|id| self.model.project(id))
-            .map(|project| format!(" in {}", project.name))
-            .unwrap_or_default();
-        let place = self
-            .model
-            .branch(stored.workspace)
-            .map(|branch| format!(" ({branch})"))
-            .unwrap_or_default();
-        Some(Action::Notify(format!(
-            "{}{project}{place} {what}",
-            stored.title
+            .map(|project| project.name.as_str());
+        let branch = self.model.branch(stored.workspace);
+        Some(Action::Notify(muster_core::news::told(
+            stored, project, branch,
         )))
     }
 

@@ -10,6 +10,8 @@ mod commands;
 mod explain;
 mod json;
 mod launchd;
+#[cfg(target_os = "macos")]
+mod mac_app;
 mod output;
 mod reload;
 mod runs;
@@ -585,9 +587,15 @@ fn start_notch(paths: &Paths) -> std::io::Result<()> {
 
 /// `muster notch`: with `detach`, starts the notch as a process of its own,
 /// its errors in `notch.log` in the runtime directory (written afresh each
-/// time), and returns; otherwise shows it until it ends.
+/// time), and returns; otherwise shows it until it ends. On a Mac it is
+/// Muster's helper, which shows notifications of the Mac's own too, so it
+/// runs as Muster's app (`mac_app`), where it can.
 fn notch(paths: &Paths, detach: bool, background: bool) -> ExitCode {
     use std::os::unix::process::CommandExt;
+    #[cfg(target_os = "macos")]
+    if detach && let Some(started) = open_app(paths) {
+        return started;
+    }
     if detach {
         let started = std::fs::File::create(paths.runtime_dir.join("notch.log")).and_then(|log| {
             std::process::Command::new(std::env::current_exe()?)
@@ -608,17 +616,78 @@ fn notch(paths: &Paths, detach: bool, background: bool) -> ExitCode {
         let _ = nix::unistd::setsid();
     }
     // Moves onto the program installed now, as the daemon has: the notch
-    // speaks its version's protocol and draws its version's notch.
-    let relaunch = |version: &str| match std::env::current_exe() {
-        Ok(exe) => std::process::Command::new(exe)
-            .args(["notch", "--background"])
+    // speaks its version's protocol and draws its version's notch. As
+    // Muster's app, the `muster` that opened it makes the app again first.
+    let relaunch = |version: &str| match std::env::var_os(OPENED_BY) {
+        Some(muster) => std::process::Command::new(muster)
+            .args(["notch", "--detach"])
             .env(muster_notch::MOVED_FOR, version)
             .exec(),
-        Err(error) => error,
+        None => match std::env::current_exe() {
+            Ok(exe) => std::process::Command::new(exe)
+                .args(["notch", "--background"])
+                .env(muster_notch::MOVED_FOR, version)
+                .exec(),
+            Err(error) => error,
+        },
     };
     match muster_notch::run(&paths.socket(), &paths.runtime_dir, relaunch) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),
+    }
+}
+
+/// Set on Muster's app as it is opened: the `muster` that opened it, which
+/// makes the app again for another version.
+const OPENED_BY: &str = "MUSTER_OPENED_BY";
+
+/// Opens Muster's helper as Muster's app, made or made again from this
+/// `muster`, with what it needs passed on; `None` where it cannot be,
+/// saying why, for the helper to run as this program instead.
+#[cfg(target_os = "macos")]
+fn open_app(paths: &Paths) -> Option<ExitCode> {
+    let exe = std::env::current_exe().ok()?;
+    let app = match mac_app::ensure(&paths.data_dir, &exe) {
+        Ok(app) => app,
+        Err(error) => {
+            eprintln!(
+                "muster: no notifications of the Mac's own: could not make Muster's app: {error}"
+            );
+            return None;
+        }
+    };
+    let mut open = std::process::Command::new("/usr/bin/open");
+    open.args(["-g", "-n"])
+        .arg("--env")
+        .arg(format!(
+            "MUSTER_RUNTIME_DIR={}",
+            paths.runtime_dir.display()
+        ))
+        .arg("--env")
+        .arg(format!("MUSTER_DATA_DIR={}", paths.data_dir.display()))
+        .arg("--env")
+        .arg(format!("{OPENED_BY}={}", exe.display()))
+        .arg("--stderr")
+        .arg(paths.runtime_dir.join("notch.log"));
+    if let Some(version) = std::env::var_os(muster_notch::MOVED_FOR) {
+        open.arg("--env").arg(format!(
+            "{}={}",
+            muster_notch::MOVED_FOR,
+            version.to_string_lossy()
+        ));
+    }
+    let opened = open
+        .arg(&app)
+        .args(["--args", "notch", "--background"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .status();
+    match opened {
+        Ok(status) if status.success() => Some(ExitCode::SUCCESS),
+        _ => {
+            eprintln!("muster: could not open Muster's app; the notch runs without it");
+            None
+        }
     }
 }
 

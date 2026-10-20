@@ -180,3 +180,45 @@ async fn the_notch_is_turned_off_in_the_person_s_own_settings() {
             .notch
     );
 }
+
+#[tokio::test]
+async fn while_muster_s_helper_can_notify_every_window_is_told_and_no_longer_once_it_goes() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    let mut window = daemon.connect().await;
+    let snapshot = window.subscribe().await.unwrap();
+    assert!(!snapshot.notifier);
+    assert!(snapshot.preferences.notifications, "on unless turned off");
+    let mut helper = Window::open(daemon.connect().await);
+    helper
+        .sender
+        .send(&ClientFrame::Notifier { ready: true })
+        .await
+        .unwrap();
+    let ready = |wanted: bool| {
+        move |frame: &ServerFrame| match frame {
+            ServerFrame::Delta(Delta::Notifier { ready }) if *ready == wanted => Some(()),
+            _ => None,
+        }
+    };
+    expect_event(&mut window, ready(true)).await;
+    assert!(window.subscribe().await.unwrap().notifier);
+    // The helper gone, the windows' terminals tell the person again.
+    drop(helper);
+    expect_event(&mut window, ready(false)).await;
+    assert_eq!(
+        window
+            .command(Command::ChangePreference(PreferenceChange::Notifications(
+                false
+            )))
+            .await
+            .unwrap(),
+        Reply::Done
+    );
+    let written =
+        std::fs::read_to_string(sandbox.paths().config_dir.join("settings.toml")).unwrap();
+    assert!(
+        written.contains("[notifications]\nshow = false"),
+        "{written}"
+    );
+}

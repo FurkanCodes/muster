@@ -35,6 +35,8 @@ pub(super) struct Lookers {
     /// Counts each time a client came to be looked at, so the one looked at
     /// last is known.
     looks: u64,
+    /// Muster's helper that shows notifications, while it can.
+    notifier: Option<u64>,
 }
 
 impl Lookers {
@@ -80,6 +82,24 @@ impl Supervisor {
     pub(super) fn remove_looker(&mut self, client: u64) {
         self.lookers.clients.remove(&client);
         self.publish_looked_at();
+        if self.lookers.notifier == Some(client) {
+            self.set_notifier(client, false);
+        }
+    }
+
+    /// Muster's helper, as `client`, can show notifications now, or no
+    /// longer can: the UIs send their terminals none while it can.
+    pub(super) fn set_notifier(&mut self, client: u64, ready: bool) {
+        if ready {
+            self.lookers.notifier = Some(client);
+        } else if self.lookers.notifier == Some(client) {
+            self.lookers.notifier = None;
+        }
+        let notifier = self.lookers.notifier.is_some();
+        if notifier != self.state.notifier {
+            self.state.notifier = notifier;
+            self.broadcast(Delta::Notifier { ready: notifier });
+        }
     }
 
     /// Tells clients when the person began or stopped looking at every

@@ -45,6 +45,9 @@ pub struct MusterConfig {
     pub naming: Naming,
     /// The keys the person set, by action, as written (`[keys]`).
     pub keys: BTreeMap<String, Vec<String>>,
+    /// Whether the person is told of what newly needs them while they look
+    /// away (`[notifications] show`).
+    pub notifications: bool,
 }
 
 impl Default for MusterConfig {
@@ -59,6 +62,7 @@ impl Default for MusterConfig {
             list_folded: false,
             naming: Naming::default(),
             keys: BTreeMap::new(),
+            notifications: true,
         }
     }
 }
@@ -80,6 +84,8 @@ struct File {
     /// `leave_session = ["Q", "ctrl-]"]`.
     #[serde(default)]
     keys: BTreeMap<String, OneOrMore>,
+    #[serde(default)]
+    notifications: Notch,
 }
 
 #[derive(Debug, Deserialize)]
@@ -196,6 +202,7 @@ impl MusterConfig {
             list_folded: read.layout.list_folded.unwrap_or(default.list_folded),
             naming,
             keys,
+            notifications: read.notifications.show.unwrap_or(default.notifications),
         })
     }
 }

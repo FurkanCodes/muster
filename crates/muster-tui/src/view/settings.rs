@@ -41,6 +41,8 @@ const NAMED_BY: &str = "Named by";
 const NAMING_MODEL: &str = "Its model";
 /// What the setting of the keys is called.
 const KEYS: &str = "Keys";
+/// What the setting of notifications is called.
+const NOTIFICATIONS: &str = "Notifications";
 
 pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let block = list_block(app, "settings", app.list_has_keys());
@@ -95,6 +97,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::NamedBy => labelled(NAMED_BY, Span::from(app.namer_label()), width),
         SettingRow::NamingModel => labelled(NAMING_MODEL, naming_model_value(app), width),
         SettingRow::Keys => labelled(KEYS, keys_value(app), width),
+        SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -246,6 +249,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Panels) => panels_text(app),
         Some(SettingRow::Keys) => keys_text(app),
+        Some(SettingRow::Notifications) => notifications_text(app),
         Some(SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel) => {
             naming_text(app)
         }
@@ -263,6 +267,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::SessionLines => session_lines_text(app),
                 SettingRow::Panels => panels_text(app),
                 SettingRow::Keys => keys_text(app),
+                SettingRow::Notifications => notifications_text(app),
                 SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
                     naming_text(app)
                 }
@@ -481,6 +486,48 @@ fn agents_text(app: &App) -> Text<'static> {
         .dim(),
     ]);
     Text::from(lines)
+}
+
+/// Whether the person is told of what newly needs them, and how.
+fn notifications_value(app: &App) -> Span<'static> {
+    match (app.model.preferences().notifications, app.model.notifier()) {
+        (false, _) => Span::from("off").dim(),
+        (true, true) => Span::from("the Mac's").green().bold(),
+        (true, false) => Span::from("on").green().bold(),
+    }
+}
+
+fn notifications_text(app: &App) -> Text<'static> {
+    let how = if app.model.notifier() {
+        "Muster's helper tells you with the Mac's own notifications, in any terminal and with \
+         every window closed; a click on one opens its session in the Muster window you used \
+         last."
+    } else if app.notch_here {
+        "On a Mac, Muster's helper tells you with the Mac's own notifications once you allow \
+         them: macOS asks once, for Muster. Allowed later in System Settings, Notifications, \
+         Muster. Until then, this window's terminal tells you, as a desktop notification and \
+         its bell."
+    } else {
+        "This window's terminal tells you, as a desktop notification and its bell, while the \
+         window is not in front."
+    };
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{NOTIFICATIONS}  ")).bold(),
+            notifications_value(app),
+        ]),
+        Line::from(
+            "You are told when a session newly needs you (a question, a permission, a finish \
+             not yet seen) while you look away from every Muster window, once for each.",
+        ),
+        Line::from(""),
+        Line::from(how),
+        Line::from(""),
+        detail(
+            "Saved in",
+            app.model.preferences().file.display().to_string(),
+        ),
+    ])
 }
 
 /// Whose keys they are: Muster's, or how many the person set.
@@ -826,6 +873,13 @@ pub(super) fn hints(app: &App) -> Vec<String> {
         Some(SettingRow::NamedBy) => hints.push("⏎ next agent"),
         Some(SettingRow::NamingModel) => hints.push("⏎ choose"),
         Some(SettingRow::Keys) => hints.push("⏎ set them"),
+        Some(SettingRow::Notifications) => {
+            hints.push(if app.model.preferences().notifications {
+                "⏎ turn off"
+            } else {
+                "⏎ turn on"
+            });
+        }
         Some(
             SettingRow::Project(_)
             | SettingRow::Muster

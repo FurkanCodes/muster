@@ -176,6 +176,11 @@ impl Connection {
                 ClientFrame::Looking { looking } => self.looking(looking).await,
                 ClientFrame::Colours(colours) => self.supervisor.colours(colours).await,
                 ClientFrame::Keys { session } => self.keys(session).await,
+                ClientFrame::Notifier { ready } => {
+                    if let Some(client) = &self.client {
+                        self.supervisor.notifier(client, ready).await;
+                    }
+                }
                 ClientFrame::Input { session, data } => {
                     if let Some(pty) = self.terminal(session).await {
                         self.typed(session).await;

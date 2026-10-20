@@ -487,6 +487,7 @@ impl Supervisor {
                 let _ = reply.send(running);
             }
             Request::Resources(report) => self.record_resources(report).await,
+            Request::Notifier { client, ready } => self.set_notifier(client, ready),
             Request::Shells(reply) => {
                 let _ = reply.send(self.shells());
             }
