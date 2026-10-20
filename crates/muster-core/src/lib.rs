@@ -24,6 +24,7 @@ pub mod names;
 pub mod news;
 pub mod num;
 pub mod paths;
+pub mod plugins;
 pub mod protocol;
 pub mod pulls;
 pub mod remote;

@@ -212,6 +212,123 @@ pub fn set_texts_in(
     })
 }
 
+/// A value written into a table within a table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Written<'a> {
+    Text(&'a str),
+    Flag(bool),
+}
+
+impl From<Written<'_>> for toml_edit::Value {
+    fn from(written: Written<'_>) -> Self {
+        match written {
+            Written::Text(text) => Self::from(text),
+            Written::Flag(flag) => Self::from(flag),
+        }
+    }
+}
+
+/// `text` (`None` when there is no file yet, which then starts with
+/// `new_file`) with each key of `values` in `[table.name]` set, or taken
+/// out where it has none: a plugin's `[plugins.<id>]`. Values already
+/// there keep their comments, and the rest of the file stays as written.
+/// A new entry is written as its own `[table.name]` after the rest, with
+/// no empty `[table]` above it; one written inline or with dotted keys is
+/// changed where it is.
+pub fn set_entry_in(
+    text: Option<&str>,
+    new_file: &str,
+    (table, name): (&str, &str),
+    values: &[(&str, Option<Written<'_>>)],
+) -> Result<String, EditError> {
+    let mut document = parse(text.unwrap_or_default())?;
+    let outer = document.entry(table).or_insert_with(|| {
+        let mut implicit = toml_edit::Table::new();
+        implicit.set_implicit(true);
+        toml_edit::Item::Table(implicit)
+    });
+    let inline = outer.is_inline_table();
+    let Some(entries) = outer.as_table_like_mut() else {
+        return Err(EditError::NotATable(table.to_owned()));
+    };
+    let path = format!("{table}.{name}");
+    let item = entries.entry(name).or_insert_with(|| {
+        if inline {
+            toml_edit::Item::Value(toml_edit::Value::InlineTable(toml_edit::InlineTable::new()))
+        } else {
+            toml_edit::table()
+        }
+    });
+    let Some(entry) = item.as_table_like_mut() else {
+        return Err(EditError::NotATable(path));
+    };
+    for (key, value) in values {
+        match (entry.get_mut(key), value) {
+            (Some(existing), Some(value)) => {
+                let Some(written) = existing.as_value_mut() else {
+                    return Err(EditError::NotAValue(format!("{path}.{key}")));
+                };
+                let decor = written.decor().clone();
+                *written = toml_edit::Value::from(*value);
+                *written.decor_mut() = decor;
+            }
+            (None, Some(value)) => {
+                entry.insert(key, toml_edit::Item::Value(toml_edit::Value::from(*value)));
+            }
+            (Some(_), None) => {
+                entry.remove(key);
+            }
+            (None, None) => {}
+        }
+    }
+    // A table written inline is spaced afresh, or a value's spacing would
+    // come before the next one's comma.
+    if let Some(inline) = item.as_inline_table_mut() {
+        inline.fmt();
+    }
+    if let Some(inline) = document
+        .get_mut(table)
+        .and_then(toml_edit::Item::as_inline_table_mut)
+    {
+        inline.fmt();
+    }
+    Ok(match text {
+        Some(_) => document.to_string(),
+        None => format!("{new_file}\n{document}"),
+    })
+}
+
+/// `text` without `[table.name]` and all in it, and without `[table]` if
+/// nothing is left in it; as it was where neither is there.
+pub fn remove_entry_in(
+    text: Option<&str>,
+    (table, name): (&str, &str),
+) -> Result<String, EditError> {
+    let Some(text) = text else {
+        return Ok(String::new());
+    };
+    let mut document = parse(text)?;
+    let emptied = match document
+        .get_mut(table)
+        .and_then(|item| item.as_table_like_mut())
+    {
+        Some(entries) => {
+            entries.remove(name);
+            entries.is_empty()
+        }
+        None => false,
+    };
+    if emptied {
+        document.remove(table);
+    }
+    Ok(document.to_string())
+}
+
+fn parse(text: &str) -> Result<toml_edit::DocumentMut, EditError> {
+    text.parse()
+        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))
+}
+
 /// Where `[table] key` gets its value: the person's overrides (`local`)
 /// over the repository's `muster.toml`, over Muster's default.
 pub fn source_of(
@@ -348,6 +465,144 @@ mod tests {
         assert_eq!(
             set_texts(Some("tickets = 3\n"), "tickets", &jira),
             Err(EditError::NotATable("tickets".to_owned()))
+        );
+    }
+
+    const PLUGIN: (&str, &str) = ("plugins", "zoetrope");
+
+    fn installed() -> Vec<(&'static str, Option<Written<'static>>)> {
+        vec![
+            (
+                "git",
+                Some(Written::Text("https://github.com/someone/zoetrope")),
+            ),
+            ("ref", None),
+            ("enabled", Some(Written::Flag(true))),
+        ]
+    }
+
+    #[test]
+    fn a_plugin_s_entry_is_its_own_table_after_the_rest_with_no_empty_one_above() {
+        let new_file = "# Muster's own.\n";
+        let text = set_entry_in(None, new_file, PLUGIN, &installed()).unwrap();
+        assert_eq!(
+            text,
+            "# Muster's own.\n\n[plugins.zoetrope]\ngit = \"https://github.com/someone/zoetrope\"\n\
+             enabled = true\n"
+        );
+        let written =
+            "# mine\n[notch]\nshow = false # not on this Mac\n\n[keys]\nnew_session = \"N\"\n";
+        let text = set_entry_in(Some(written), new_file, PLUGIN, &installed()).unwrap();
+        assert_eq!(
+            text,
+            format!(
+                "{written}\n[plugins.zoetrope]\ngit = \"https://github.com/someone/zoetrope\"\n\
+                 enabled = true\n"
+            )
+        );
+        // Another comes after it.
+        let more = set_entry_in(
+            Some(&text),
+            new_file,
+            ("plugins", "my-panel"),
+            &[("folder", Some(Written::Text("/p")))],
+        )
+        .unwrap();
+        assert!(
+            more.ends_with("enabled = true\n\n[plugins.my-panel]\nfolder = \"/p\"\n"),
+            "{more}"
+        );
+        let read: toml::Table = more.parse().unwrap();
+        assert_eq!(read["plugins"]["my-panel"]["folder"].as_str(), Some("/p"));
+        assert_eq!(read["notch"]["show"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn a_plugin_s_values_change_where_they_are_keeping_their_comments() {
+        let written = "[plugins.zoetrope] # from the docs\ngit = \"https://h/z\"\nref = \"v1\"\n\
+                       enabled = true # for now\n\n[plugins.other]\nfolder = \"/o\"\n";
+        let text = set_entry_in(
+            Some(written),
+            "",
+            PLUGIN,
+            &[("enabled", Some(Written::Flag(false))), ("ref", None)],
+        )
+        .unwrap();
+        assert_eq!(
+            text,
+            "[plugins.zoetrope] # from the docs\ngit = \"https://h/z\"\n\
+             enabled = false # for now\n\n[plugins.other]\nfolder = \"/o\"\n"
+        );
+        assert_eq!(
+            set_entry_in(
+                Some("plugins.zoetrope.enabled = true\n"),
+                "",
+                PLUGIN,
+                &[("enabled", Some(Written::Flag(false)))]
+            )
+            .unwrap(),
+            "plugins.zoetrope.enabled = false\n"
+        );
+        assert_eq!(
+            set_entry_in(
+                Some("plugins = { zoetrope = { enabled = true } }\n"),
+                "",
+                PLUGIN,
+                &[("approved", Some(Written::Text("ab")))]
+            )
+            .unwrap(),
+            "plugins = { zoetrope = { enabled = true, approved = \"ab\" } }\n"
+        );
+        assert_eq!(
+            set_entry_in(
+                Some("plugins = {}\n"),
+                "",
+                PLUGIN,
+                &[("enabled", Some(Written::Flag(true)))]
+            )
+            .unwrap(),
+            "plugins = { zoetrope = { enabled = true } }\n"
+        );
+    }
+
+    #[test]
+    fn what_cannot_hold_a_plugin_is_refused_not_rewritten() {
+        let flag = [("enabled", Some(Written::Flag(true)))];
+        assert_eq!(
+            set_entry_in(Some("plugins = 3\n"), "", PLUGIN, &flag),
+            Err(EditError::NotATable("plugins".to_owned()))
+        );
+        assert_eq!(
+            set_entry_in(Some("[plugins]\nzoetrope = 3\n"), "", PLUGIN, &flag),
+            Err(EditError::NotATable("plugins.zoetrope".to_owned()))
+        );
+        assert_eq!(
+            set_entry_in(Some("[plugins.zoetrope.enabled]\n"), "", PLUGIN, &flag),
+            Err(EditError::NotAValue("plugins.zoetrope.enabled".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_plugin_s_entry_goes_whole_and_its_table_with_the_last() {
+        let written = "# mine\n[notch]\nshow = false\n\n[plugins.zoetrope]\ngit = \"https://h/z\"\n\
+                       enabled = true\n\n[plugins.other]\nfolder = \"/o\"\n";
+        let text = remove_entry_in(Some(written), PLUGIN).unwrap();
+        assert_eq!(
+            text,
+            "# mine\n[notch]\nshow = false\n\n[plugins.other]\nfolder = \"/o\"\n"
+        );
+        let text = remove_entry_in(Some(&text), ("plugins", "other")).unwrap();
+        assert_eq!(text, "# mine\n[notch]\nshow = false\n");
+        // Not there: as it was.
+        assert_eq!(remove_entry_in(Some(&text), PLUGIN).unwrap(), text);
+        assert_eq!(remove_entry_in(None, PLUGIN).unwrap(), "");
+        assert_eq!(
+            remove_entry_in(
+                Some("plugins = { zoetrope = { enabled = true } }\n"),
+                PLUGIN
+            )
+            .unwrap(),
+            ""
         );
     }
 
