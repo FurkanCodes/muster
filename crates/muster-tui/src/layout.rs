@@ -22,7 +22,7 @@ const fn least(panel: Panel, list: u16) -> (u16, u16) {
     match panel {
         Panel::List => (list, 6),
         Panel::Session | Panel::Changes => (60, 6),
-        Panel::Shell => (40, 6),
+        Panel::Shell | Panel::Plugin => (40, 6),
     }
 }
 
@@ -284,7 +284,7 @@ mod tests {
     fn shares_and_widths_are_as_the_person_gave_them() {
         let solved = solved(
             "list 34 | session 60% | (changes / shell)",
-            &Panel::ALL,
+            &[Panel::List, Panel::Session, Panel::Changes, Panel::Shell],
             BODY,
         );
         assert_eq!(solved.of(Panel::List).width, 34);
@@ -332,8 +332,8 @@ mod tests {
         let layout = Layout::default();
         let all = layout.shown(|_| true).unwrap();
         // The list's 30, the session's 60, and the changes' 60 above the
-        // shell's 40.
-        assert_eq!(needs(&all, 30), (150, 12));
+        // shell's 40 above a plugin's panel's 40.
+        assert_eq!(needs(&all, 30), (150, 18));
         let two = layout
             .shown(|panel| matches!(panel, Panel::List | Panel::Session))
             .unwrap();

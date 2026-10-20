@@ -1,11 +1,11 @@
 //! How the UI's panels are laid out (`PRODUCT.md` §6 Sessions): the list,
 //! the session (or what the screen shows beside the list), a workspace's
-//! changes and its shell, each where the person put it, side by side or
-//! one above the other. It is a small tree of the four, kept as one line
-//! of text in Muster's own settings (`[layout] panels`):
+//! changes, its shell and a plugin's panel, each where the person put it,
+//! side by side or one above the other. It is a small tree of the five,
+//! kept as one line of text in Muster's own settings (`[layout] panels`):
 //!
 //! ```text
-//! list | session 60% | (changes / shell)
+//! list | session 60% | (changes / shell / plugin)
 //! ```
 //!
 //! `|` puts two side by side and `/` one above the other; a run of one of
@@ -14,7 +14,9 @@
 //! one of: a share (`60%`) or a width in columns (`30`). One without a
 //! size shares evenly, but the list, which is as wide as its lines need.
 //! A panel with nothing to show leaves its place to the other of its two.
-//! Parsing does no IO (`ARC-01`).
+//! A layout written before a panel was added still reads: the panel is put
+//! where the default layout puts it, beside its neighbour there. Parsing
+//! does no IO (`ARC-01`).
 
 use std::fmt;
 
@@ -33,11 +35,19 @@ pub enum Panel {
     Changes,
     /// A shell in the session's workspace.
     Shell,
+    /// A plugin's panel in the session's workspace.
+    Plugin,
 }
 
 impl Panel {
     /// Every panel, in the order the default layout names them.
-    pub const ALL: [Self; 4] = [Self::List, Self::Session, Self::Changes, Self::Shell];
+    pub const ALL: [Self; 5] = [
+        Self::List,
+        Self::Session,
+        Self::Changes,
+        Self::Shell,
+        Self::Plugin,
+    ];
 
     /// As the layout's text names it.
     #[must_use]
@@ -47,6 +57,7 @@ impl Panel {
             Self::Session => "session",
             Self::Changes => "changes",
             Self::Shell => "shell",
+            Self::Plugin => "plugin",
         }
     }
 
@@ -143,8 +154,8 @@ pub struct Layout {
 }
 
 /// What the person sees first: the list, the session beside it, and the
-/// changes above the shell beside that.
-pub const DEFAULT: &str = "list | session 60% | (changes / shell)";
+/// changes above the shell above a plugin's panel beside that.
+pub const DEFAULT: &str = "list | session 60% | (changes / shell / plugin)";
 
 impl Default for Layout {
     fn default() -> Self {
@@ -155,12 +166,10 @@ impl Default for Layout {
 /// Why a layout does not read: said for the person, naming what is wrong.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum LayoutError {
-    #[error("{0:?} is not a panel: the panels are list, session, changes and shell")]
+    #[error("{0:?} is not a panel: the panels are list, session, changes, shell and plugin")]
     NotAPanel(String),
     #[error("{0} is in the layout twice")]
     Twice(&'static str),
-    #[error("{0} is not in the layout")]
-    Missing(&'static str),
     #[error("{0:?} is not a size: a size is a share like 60% or a width like 30")]
     NotASize(String),
     #[error("| and / are mixed without brackets around one of them")]
@@ -172,29 +181,25 @@ pub enum LayoutError {
 }
 
 impl Layout {
-    /// Reads a layout as `[layout] panels` writes it.
+    /// Reads a layout as `[layout] panels` writes it. A panel it lacks,
+    /// as one written before that panel was Muster's lacks it, is put
+    /// where the default layout puts it.
     pub fn parse(text: &str) -> Result<Self, LayoutError> {
-        let tokens = tokens(text)?;
-        let mut at = 0;
-        let root = node(&tokens, &mut at)?;
-        if at != tokens.len() {
-            return Err(match tokens[at] {
-                Token::Close => LayoutError::Brackets,
-                _ => LayoutError::Incomplete,
-            });
-        }
+        let root = tree(text)?;
         let mut seen = Vec::new();
         collect(&root, &mut seen);
         for panel in Panel::ALL {
-            match seen.iter().filter(|seen| **seen == panel).count() {
-                0 => return Err(LayoutError::Missing(panel.word())),
-                1 => {}
-                _ => return Err(LayoutError::Twice(panel.word())),
+            if seen.iter().filter(|seen| **seen == panel).count() > 1 {
+                return Err(LayoutError::Twice(panel.word()));
             }
         }
-        Ok(Self {
-            root: Node { size: None, ..root },
-        })
+        let mut root = Node { size: None, ..root };
+        for panel in Panel::ALL {
+            if !contains(&root, panel) {
+                root = completed(root, panel);
+            }
+        }
+        Ok(Self { root })
     }
 
     /// The tree, from the whole window down.
@@ -315,6 +320,67 @@ enum Token {
     Sign(Split),
     Open,
     Close,
+}
+
+/// The tree `text` writes, whatever panels it has.
+fn tree(text: &str) -> Result<Node, LayoutError> {
+    let tokens = tokens(text)?;
+    let mut at = 0;
+    let root = node(&tokens, &mut at)?;
+    if at != tokens.len() {
+        return Err(match tokens[at] {
+            Token::Close => LayoutError::Brackets,
+            _ => LayoutError::Incomplete,
+        });
+    }
+    Ok(root)
+}
+
+/// `root` with `panel`, which it lacks, where the default layout puts it:
+/// beside the panel nearest it there that `root` has, on the same side of
+/// it; along the window's right edge if the default says nothing.
+fn completed(root: Node, panel: Panel) -> Node {
+    let moving = Node {
+        part: Part::Panel(panel),
+        size: None,
+    };
+    let default = tree(DEFAULT).unwrap_or_else(|_| unreachable!("the default layout reads"));
+    match place_in(&default, panel, &|other| contains(&root, other)) {
+        Some((target, edge)) => beside(root, target, moving, edge),
+        None => joined(moving, root, Edge::Right, None),
+    }
+}
+
+/// Where `node` puts `panel`: at an edge of the panel nearest it in the
+/// smallest part around it that holds one `present` says is there.
+fn place_in(node: &Node, panel: Panel, present: &dyn Fn(Panel) -> bool) -> Option<(Panel, Edge)> {
+    let Part::Split(split, first, second) = &node.part else {
+        return None;
+    };
+    let (this, other, after) = if contains(first, panel) {
+        (first, second, false)
+    } else if contains(second, panel) {
+        (second, first, true)
+    } else {
+        return None;
+    };
+    if let Some(place) = place_in(this, panel, present) {
+        return Some(place);
+    }
+    let mut panels = Vec::new();
+    collect(other, &mut panels);
+    let nearest = if after {
+        panels.into_iter().rev().find(|other| present(*other))
+    } else {
+        panels.into_iter().find(|other| present(*other))
+    }?;
+    let edge = match (split, after) {
+        (Split::Across, true) => Edge::Right,
+        (Split::Across, false) => Edge::Left,
+        (Split::Down, true) => Edge::Bottom,
+        (Split::Down, false) => Edge::Top,
+    };
+    Some((nearest, edge))
 }
 
 fn tokens(text: &str) -> Result<Vec<Token>, LayoutError> {
@@ -591,214 +657,4 @@ fn write_run(f: &mut fmt::Formatter<'_>, node: &Node, split: Split) -> fmt::Resu
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn read(text: &str) -> Layout {
-        Layout::parse(text).unwrap()
-    }
-
-    #[test]
-    fn the_default_reads_and_writes_as_it_is_written() {
-        assert_eq!(Layout::default().to_string(), DEFAULT);
-    }
-
-    #[test]
-    fn a_layout_writes_as_it_reads() {
-        for text in [
-            "list | session | changes | shell",
-            "list 30 | session 60% | (changes / shell)",
-            "session | list | changes | shell",
-            "(list / shell) 40% | session | changes",
-            "list | (session / (changes | shell)) 70%",
-        ] {
-            assert_eq!(read(text).to_string(), text);
-        }
-        // Spaces and case are the person's; the layout writes its own way.
-        assert_eq!(
-            read("LIST|session|( changes/shell )").to_string(),
-            "list | session | (changes / shell)"
-        );
-    }
-
-    #[test]
-    fn a_run_of_one_sign_nests_to_the_right() {
-        let layout = read("list | session | changes | shell");
-        let Part::Split(Split::Across, first, rest) = &layout.root().part else {
-            panic!("{layout:?}");
-        };
-        assert_eq!(first.part, Part::Panel(Panel::List));
-        assert!(matches!(rest.part, Part::Split(Split::Across, ..)));
-    }
-
-    #[test]
-    fn what_does_not_read_is_named() {
-        let error = |text: &str| Layout::parse(text).unwrap_err();
-        assert_eq!(
-            error("list | session | changes"),
-            LayoutError::Missing("shell")
-        );
-        assert_eq!(
-            error("list | list | session | (changes / shell)"),
-            LayoutError::Twice("list")
-        );
-        assert_eq!(
-            error("list | terminal | changes | shell"),
-            LayoutError::NotAPanel("terminal".to_owned())
-        );
-        for size in ["0%", "100%", "0", "6x"] {
-            assert_eq!(
-                error(&format!("list {size} | session | changes | shell")),
-                LayoutError::NotASize(size.to_owned())
-            );
-        }
-        assert_eq!(
-            error("list | session / changes | shell"),
-            LayoutError::Mixed
-        );
-        assert_eq!(
-            error("(list | session | changes | shell"),
-            LayoutError::Brackets
-        );
-        assert_eq!(
-            error("list | session | changes | shell)"),
-            LayoutError::Brackets
-        );
-        assert_eq!(
-            error("list | | session | changes | shell"),
-            LayoutError::Incomplete
-        );
-        assert_eq!(
-            error("list session | changes | shell"),
-            LayoutError::Incomplete
-        );
-        assert!(
-            error("list | terminal | changes | shell")
-                .to_string()
-                .contains("the panels are list, session, changes and shell")
-        );
-    }
-
-    #[test]
-    fn a_panel_moved_to_an_edge_of_the_window_runs_along_it() {
-        let layout = read("list | session 60% | (changes / shell)");
-        assert_eq!(
-            layout
-                .moved(Panel::List, Place::Window(Edge::Right))
-                .to_string(),
-            "(session 60% | (changes / shell)) | list"
-        );
-        assert_eq!(
-            layout
-                .moved(Panel::Shell, Place::Window(Edge::Bottom))
-                .to_string(),
-            "(list | session 60% | changes) / shell"
-        );
-    }
-
-    #[test]
-    fn a_panel_moved_beside_another_shares_its_place() {
-        let layout = read("list | session 60% | (changes / shell)");
-        assert_eq!(
-            layout
-                .moved(Panel::Shell, Place::Beside(Panel::Session, Edge::Bottom))
-                .to_string(),
-            "list | (session / shell) 60% | changes"
-        );
-        assert_eq!(
-            layout
-                .moved(Panel::Changes, Place::Beside(Panel::List, Edge::Top))
-                .to_string(),
-            "(changes / list) | session 60% | shell"
-        );
-    }
-
-    #[test]
-    fn a_panel_keeps_its_width_in_cells_but_not_a_share() {
-        let layout = read("list 30 | session 60% | (changes / shell)");
-        assert_eq!(
-            layout
-                .moved(Panel::List, Place::Window(Edge::Right))
-                .to_string(),
-            "(session 60% | (changes / shell)) | list 30"
-        );
-        assert_eq!(
-            layout
-                .moved(Panel::Session, Place::Beside(Panel::Shell, Edge::Top))
-                .to_string(),
-            "list 30 | (changes / session / shell)"
-        );
-    }
-
-    #[test]
-    fn a_panel_moved_beside_itself_stays() {
-        let layout = Layout::default();
-        assert_eq!(
-            layout.moved(Panel::List, Place::Beside(Panel::List, Edge::Right)),
-            layout
-        );
-    }
-
-    #[test]
-    fn a_split_is_sized_from_either_side() {
-        let layout = read("list | session 60% | (changes / shell)");
-        let sized = layout.sized(&[], Branch::First, Size::Cells(28));
-        assert_eq!(
-            sized.to_string(),
-            "list 28 | session 60% | (changes / shell)"
-        );
-        let sized = layout.sized(&[Branch::Second], Branch::Second, Size::Share(30));
-        assert_eq!(sized.to_string(), "list | session | (changes / shell) 30%");
-        // A path that leads nowhere changes nothing.
-        assert_eq!(
-            layout.sized(&[Branch::First], Branch::First, Size::Share(5)),
-            layout
-        );
-    }
-
-    #[test]
-    fn panels_not_shown_leave_their_place_to_the_other_of_their_two() {
-        let layout = read("list 30 | session 60% | (changes / shell)");
-        let shown = layout
-            .shown(|panel| matches!(panel, Panel::List | Panel::Session))
-            .unwrap();
-        // The session takes the place it shared with the changes and the
-        // shell, and the size the two had there.
-        assert_eq!(Layout { root: shown }.to_string(), "list 30 | session");
-        assert!(layout.shown(|_| false).is_none());
-        let alone = layout.shown(|panel| panel == Panel::Session).unwrap();
-        assert_eq!(alone.part, Part::Panel(Panel::Session));
-    }
-
-    #[test]
-    fn the_split_between_panels_shown_is_found_past_those_not_shown() {
-        let layout = read("list | session 60% | (changes / shell)");
-        assert_eq!(
-            layout.split_between(&[Panel::List], &[Panel::Session]),
-            Some(vec![])
-        );
-        // The changes not shown, the session and the shell share a line.
-        assert_eq!(
-            layout.split_between(&[Panel::Session], &[Panel::Shell]),
-            Some(vec![Branch::Second])
-        );
-        assert_eq!(
-            layout.split_between(&[Panel::Changes], &[Panel::Shell]),
-            Some(vec![Branch::Second, Branch::Second])
-        );
-        assert_eq!(
-            layout.split_between(&[Panel::Shell], &[Panel::Changes]),
-            None,
-            "the other way round"
-        );
-    }
-
-    #[test]
-    fn a_layout_travels_as_its_text() {
-        let layout = read("session | list 30 | (changes / shell)");
-        let json = serde_json::to_string(&layout).unwrap();
-        assert_eq!(json, "\"session | list 30 | (changes / shell)\"");
-        assert_eq!(serde_json::from_str::<Layout>(&json).unwrap(), layout);
-        assert!(serde_json::from_str::<Layout>("\"list\"").is_err());
-    }
-}
+mod tests;

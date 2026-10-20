@@ -423,7 +423,7 @@ async fn where_the_panels_are_and_the_folded_list_are_the_person_s_own() {
     let snapshot = connection.subscribe().await.unwrap();
     assert_eq!(snapshot.preferences.panels, Layout::default());
     assert!(!snapshot.preferences.list_folded);
-    let moved = Layout::parse("session | list 40 | (changes / shell)").unwrap();
+    let moved = Layout::parse("session | list 40 | (changes / shell / plugin)").unwrap();
     for change in [
         PreferenceChange::Panels(moved.clone()),
         PreferenceChange::ListFolded(true),
@@ -440,7 +440,7 @@ async fn where_the_panels_are_and_the_folded_list_are_the_person_s_own() {
     let written = std::fs::read_to_string(&file).unwrap();
     assert!(
         written.contains(
-            "[layout]\npanels = \"session | list 40 | (changes / shell)\"\nlist_folded = true"
+            "[layout]\npanels = \"session | list 40 | (changes / shell / plugin)\"\nlist_folded = true"
         ),
         "{written}"
     );

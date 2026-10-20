@@ -62,6 +62,7 @@ fn area_of(areas: &BrowseAreas, panel: Panel) -> Rect {
         Panel::Session => areas.preview,
         Panel::Changes => areas.changes,
         Panel::Shell => areas.shell,
+        Panel::Plugin => areas.plugin,
     }
 }
 

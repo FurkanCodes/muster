@@ -31,7 +31,7 @@ impl App {
 
     /// The workspace the selected line works in: a session's, a
     /// worktree's, or a project's own checkout.
-    fn selected_workspace(&self) -> Option<WorkspaceId> {
+    pub(super) fn selected_workspace(&self) -> Option<WorkspaceId> {
         match self.view {
             View::Sessions => self.selected.and_then(|row| match row {
                 Row::Project(project) => self.model.checkout_of(project),

@@ -371,17 +371,28 @@ mod tests {
             "f",
         )
         .unwrap();
+        // Written before the plugin's panel: it goes where the default
+        // puts it, under the shell.
         assert_eq!(
             written.panels.to_string(),
-            "session | list 30 | (changes / shell)"
+            "session | list 30 | (changes / shell / plugin)"
         );
         assert!(written.list_folded);
-        let error = MusterConfig::parse(Some("[layout]\npanels = \"list | session\"\n"), "s.toml")
-            .unwrap_err()
-            .to_string();
+        let old_default = MusterConfig::parse(
+            Some("[layout]\npanels = \"list | session 60% | (changes / shell)\"\n"),
+            "f",
+        )
+        .unwrap();
+        assert_eq!(old_default.panels, Layout::default());
+        let error = MusterConfig::parse(
+            Some("[layout]\npanels = \"list | list | session\"\n"),
+            "s.toml",
+        )
+        .unwrap_err()
+        .to_string();
         assert!(error.starts_with("s.toml"), "{error}");
         assert!(
-            error.contains("layout.panels: changes is not in the layout"),
+            error.contains("layout.panels: list is in the layout twice"),
             "{error}"
         );
     }

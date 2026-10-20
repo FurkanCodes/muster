@@ -100,10 +100,11 @@ impl App {
                 actions.extend(self.settle());
                 return actions;
             }
-            // A press on the other of the session and its shell gives it
-            // the keys.
+            // A press on another of the session, its shell and a plugin's
+            // panel gives it the keys.
             let in_shell = self.typing_in_shell();
-            if pressed && in_shell && areas.preview.contains(at) {
+            let in_plugin = self.typing_in_plugin();
+            if pressed && (in_shell || in_plugin) && areas.preview.contains(at) {
                 let mut actions = self.leave_terminal(session);
                 self.open_selected();
                 actions.extend(self.settle());
@@ -117,8 +118,18 @@ impl App {
                 self.mode = Mode::Terminal(shell);
                 return self.settle();
             }
+            if pressed
+                && !in_plugin
+                && areas.plugin.contains(at)
+                && let Some(panel) = self.plugin_beside()
+            {
+                self.mode = Mode::Terminal(panel);
+                return self.settle();
+            }
             if in_shell {
                 crate::view::shell_area(self, window)
+            } else if in_plugin {
+                crate::view::plugin_area(self, window)
             } else {
                 crate::view::session_area(self, window)
             }
@@ -208,6 +219,10 @@ impl App {
                     && let Some(shell) = self.shell_beside()
                 {
                     self.mode = Mode::Terminal(shell);
+                } else if areas.plugin.contains(at)
+                    && let Some(panel) = self.plugin_beside()
+                {
+                    self.mode = Mode::Terminal(panel);
                 } else if areas.preview.contains(at)
                     && matches!(self.view, View::Sessions | View::NeedsYou)
                     && self.focused_session().is_some()
