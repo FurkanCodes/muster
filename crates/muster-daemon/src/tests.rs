@@ -58,6 +58,7 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
+        places: crate::spend::Places::default(),
     })
     .await
     .unwrap()
@@ -372,6 +373,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
+        places: crate::spend::Places::default(),
     })
     .await
     .unwrap();

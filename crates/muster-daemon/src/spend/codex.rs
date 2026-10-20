@@ -52,7 +52,7 @@ impl Codex {
 }
 
 /// The newest rollout of `thread`, its name ending in its id.
-fn find(sessions: &Path, thread: &str) -> Option<PathBuf> {
+pub(super) fn find(sessions: &Path, thread: &str) -> Option<PathBuf> {
     if thread.is_empty() || thread.contains(['/', '\\']) {
         return None;
     }

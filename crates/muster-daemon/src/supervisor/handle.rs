@@ -133,6 +133,15 @@ pub(super) enum Request {
     HandOver(oneshot::Sender<Vec<crate::handoff::HandedSession>>),
     /// Take sessions over that were handed over.
     Adopt(Vec<crate::handoff::HandedSession>, oneshot::Sender<()>),
+    /// Start a plugin's panel, as `Command::OpenPanel` will.
+    #[cfg(test)]
+    StartPanel {
+        workspace: WorkspaceId,
+        beside: Option<SessionId>,
+        panel: crate::harness::PanelLaunch,
+        size: TermSize,
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    },
 }
 
 impl std::fmt::Debug for Request {
@@ -178,6 +187,8 @@ impl std::fmt::Debug for Request {
             Self::Stopped(stopped) => write!(f, "Stopped({})", stopped.len()),
             Self::HandOver(_) => f.write_str("HandOver"),
             Self::Adopt(sessions, _) => write!(f, "Adopt({})", sessions.len()),
+            #[cfg(test)]
+            Self::StartPanel { workspace, .. } => write!(f, "StartPanel({workspace})"),
         }
     }
 }
@@ -195,6 +206,29 @@ impl SupervisorHandle {
         let (reply, answer) = oneshot::channel();
         self.requests.send(Request::Subscribe(reply)).await.ok()?;
         answer.await.ok()
+    }
+
+    /// Starts a plugin's panel in `workspace`, beside the session `beside`.
+    #[cfg(test)]
+    pub(crate) async fn start_panel(
+        &self,
+        workspace: WorkspaceId,
+        beside: Option<SessionId>,
+        panel: crate::harness::PanelLaunch,
+    ) -> Result<Reply, ErrorBody> {
+        let (reply, answer) = oneshot::channel();
+        let request = Request::StartPanel {
+            workspace,
+            beside,
+            panel,
+            size: TermSize::default(),
+            reply,
+        };
+        self.requests
+            .send(request)
+            .await
+            .expect("the Supervisor runs");
+        answer.await.expect("the Supervisor answers")
     }
 
     /// Carries out a client's command.

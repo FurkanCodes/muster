@@ -22,6 +22,7 @@ mod looking;
 mod names;
 mod naming;
 mod own_settings;
+mod panels;
 mod plugins;
 mod projects;
 mod pulls;
@@ -102,6 +103,9 @@ pub(crate) struct Settings {
     /// The ticket plugins' processes and logs, which `trackers` shares:
     /// told what the registry says each time it is read.
     pub(crate) ticket_plugins: crate::trackers::plugin::Plugins,
+    /// Where the agents keep their records, for a plugin's panel told of
+    /// one (`{transcript}`).
+    pub(crate) places: crate::spend::Places,
 }
 
 /// Loads the state from the store, resumes or settles sessions the last
@@ -182,6 +186,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         tidies: tidy::Tidies::default(),
         resumes: recovery::Resumes::default(),
         tasks: settings.tasks,
+        places: settings.places,
         agents,
         asks: Arc::new(tokio::sync::Semaphore::new(naming::AT_ONCE)),
         plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
@@ -320,6 +325,15 @@ struct Supervisor {
     resumes: recovery::Resumes,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
+    /// Where the agents keep their records.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "`Command::OpenPanel` (protocol 42) opens panels; until then only the tests do"
+        )
+    )]
+    places: crate::spend::Places,
     /// The coding agents the person added in Muster's own settings, as
     /// last read.
     agents: Vec<Arc<muster_core::config::agents::AgentDefinition>>,
@@ -518,6 +532,17 @@ impl Supervisor {
             Request::Adopt(sessions, reply) => {
                 self.adopt_sessions(sessions);
                 let _ = reply.send(());
+            }
+            #[cfg(test)]
+            Request::StartPanel {
+                workspace,
+                beside,
+                panel,
+                size,
+                reply,
+            } => {
+                let started = self.start_panel(workspace, beside, panel, size).await;
+                let _ = reply.send(started);
             }
             Request::Workspaces(reply) => {
                 let _ = reply.send(self.workspace_heads());

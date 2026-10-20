@@ -205,6 +205,7 @@ async fn spawn_with(
         adopted: Vec::new(),
         tasks: crate::tasks::Tasks::default(),
         ticket_plugins: crate::trackers::plugin::Plugins::new("muster".into()),
+        places: crate::spend::Places::default(),
     })
     .await
     .unwrap()
