@@ -211,10 +211,14 @@ impl Registry {
     }
 }
 
-/// The registry as the daemon starts: what no entry names swept from the
-/// plugins' folder `dir` first (`ARC-14`), unless Muster's own settings in
-/// `config_dir` do not read, when nothing there is known to be let go.
+/// The registry as the daemon starts: the last daemon's previews let go,
+/// and what no entry names swept from the plugins' folder `dir` (`ARC-14`),
+/// unless Muster's own settings in `config_dir` do not read, when nothing
+/// there is known to be let go.
 pub(crate) fn start(dir: &Path, config_dir: &Path) -> Reading {
+    if let Err(error) = files::remove(&files::incoming(dir)) {
+        tracing::warn!(%error, "could not let go of the last daemon's previews");
+    }
     if let Ok(entries) = crate::config::plugin_entries(config_dir) {
         for path in files::sweep(dir, &entries) {
             tracing::info!(folder = %path.display(), "removed a plugin's folder no plugin uses");

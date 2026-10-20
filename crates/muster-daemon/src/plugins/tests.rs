@@ -503,6 +503,8 @@ fn settings_that_do_not_read_leave_the_plugins_folder_alone() {
     let folders = Folders::new();
     let installed = folders.data().join("plugins/zoe").join("a1".repeat(20));
     std::fs::create_dir_all(&installed).unwrap();
+    let previewed = folders.data().join("plugins/.incoming/abc");
+    std::fs::create_dir_all(&previewed).unwrap();
     std::fs::create_dir_all(folders.config()).unwrap();
     std::fs::write(
         folders.config().join("settings.toml"),
@@ -511,6 +513,8 @@ fn settings_that_do_not_read_leave_the_plugins_folder_alone() {
     .unwrap();
     let reading = start(&folders.data().join("plugins"), &folders.config());
     assert!(installed.is_dir());
+    // The last daemon's previews go all the same.
+    assert!(!previewed.exists());
     let mut registry = Registry::new(&folders.data(), folders.config());
     registry.take(reading);
     let list = registry.list(at());

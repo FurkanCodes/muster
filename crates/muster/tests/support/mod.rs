@@ -362,6 +362,8 @@ impl Sandbox {
             // A UI under test shows no notch on the screen of whoever runs
             // the tests.
             .env("MUSTER_NOTCH", "off")
+            // Not inside a Muster session, whatever the tests run in.
+            .env_remove("MUSTER_SESSION")
             .env("CLAUDE_CODE_OAUTH_TOKEN", "")
             .env("ANTHROPIC_API_KEY", "")
             // As if the daemon were started from inside an agent session,
