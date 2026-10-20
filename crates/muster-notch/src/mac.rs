@@ -17,6 +17,7 @@
     reason = "ARC-12: AppKit's panel and a view class of the notch's own"
 )]
 
+mod events;
 mod list;
 mod look;
 mod notify;
@@ -227,6 +228,12 @@ struct Screen {
     list: list::List,
     board: Board,
     step: u64,
+    started: std::time::Instant,
+    timer: events::Timer,
+    mouse: Option<events::Mouse>,
+    pointer: Option<(bool, Option<usize>)>,
+    expanded: bool,
+    _motion: events::Motion,
     /// A note under the list, and the step it came at.
     said: Option<(String, u64)>,
     hover: Hover,
@@ -307,6 +314,12 @@ impl Screen {
             list,
             board: Board::hidden(),
             step: 0,
+            started: events::now(),
+            timer: events::Timer::default(),
+            mouse: None,
+            pointer: None,
+            expanded: false,
+            _motion: events::Motion::new(),
             said: None,
             hover: Hover::default(),
             drawn: Drawn::Hidden,
@@ -322,12 +335,13 @@ impl Screen {
     }
 
     fn update(&mut self, update: ToScreen) {
+        self.step = self.elapsed_steps();
         match update {
-            ToScreen::Board { board, step } => {
+            ToScreen::Board(board) => {
                 let fresh = board.fresh(&self.board);
                 self.alerted |= board.asks_anew(&self.board) || !fresh.is_empty();
                 if !fresh.is_empty() {
-                    self.peek_until = step + PEEK_STEPS;
+                    self.peek_until = self.step + PEEK_STEPS;
                 }
                 // What is peeked at as it is now, and only while it is.
                 let mut peek: Vec<Row> = std::mem::take(&mut self.peek)
@@ -339,7 +353,6 @@ impl Screen {
                 peek.dedup_by_key(|row| row.key);
                 self.peek = peek;
                 self.board = board;
-                self.step = step;
             }
             ToScreen::Note(text) => self.said = Some((text, self.step)),
             ToScreen::Notify(posted) => {
@@ -369,11 +382,33 @@ impl Screen {
         })
     }
 
+    /// Moves outside the notch and within the same row change nothing.
+    fn pointer_changed(&mut self) {
+        let Some(notch) = self.notch.filter(|_| self.board.shown) else {
+            return;
+        };
+        let at = NSEvent::mouseLocation();
+        let point = (at.x, at.y);
+        let lines = self.listed.as_ref().map(|(_, lines)| *lines);
+        let over = notch.over(lines.is_some(), lines.unwrap_or(0), point);
+        let line = lines.and_then(|lines| notch.line_at(lines, point));
+        if self.pointer != Some((over, line)) {
+            self.pointer = Some((over, line));
+            self.draw();
+        }
+    }
+
+    fn elapsed_steps(&self) -> u64 {
+        u64::try_from(events::now().duration_since(self.started).as_millis() / 100)
+            .unwrap_or(u64::MAX)
+    }
+
     fn draw(&mut self) {
+        self.step = self.elapsed_steps();
         if self
             .said
             .as_ref()
-            .is_some_and(|(_, at)| self.step.wrapping_sub(*at) > NOTE_STEPS)
+            .is_some_and(|(_, at)| self.step.wrapping_sub(*at) >= NOTE_STEPS)
         {
             self.said = None;
         }
@@ -383,6 +418,7 @@ impl Screen {
             self.hide();
             return;
         };
+        self.mouse.get_or_insert_with(events::Mouse::new);
         let at = NSEvent::mouseLocation();
         let point = (at.x, at.y);
         // Pointed at, the whole list; else, a moment, what newly needs the
@@ -424,10 +460,26 @@ impl Screen {
                 note: self.said.as_ref().map(|(text, _)| text.as_str()),
             });
         }
+        let expanded = listed.is_some();
+        if self.expanded != expanded && self.picks.try_send(FromScreen::Expanded(expanded)).is_ok()
+        {
+            self.expanded = expanded;
+        }
         self.listed = listed;
         if !self.panel.isVisible() {
             self.panel.orderFrontRegardless();
         }
+        let wake = [
+            (self.expanded != expanded).then_some(self.step + 1),
+            self.hover.next_step(),
+            self.said.as_ref().map(|(_, at)| at + NOTE_STEPS),
+            (!self.peek.is_empty()).then_some(self.peek_until),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|at| *at > self.step)
+        .min();
+        self.timer.set(self.started, wake);
     }
 
     /// Puts the panel where it goes, as big as the list at its longest, its
@@ -471,6 +523,12 @@ impl Screen {
     }
 
     fn hide(&mut self) {
+        self.timer.set(self.started, None);
+        self.mouse = None;
+        self.pointer = None;
+        if self.expanded && self.picks.try_send(FromScreen::Expanded(false)).is_ok() {
+            self.expanded = false;
+        }
         if self.drawn != Drawn::Hidden {
             self.panel.orderOut(None);
             self.drawn = Drawn::Hidden;
@@ -541,9 +599,7 @@ impl Screen {
             self.breath
                 .setFrame(ns_rect(Rect::new(start + width - 6.0, y + 5.0, 6.0, 6.0)));
             self.breath.setHidden(false);
-            if let Some(layer) = self.breath.layer()
-                && !shape::moving(&layer)
-            {
+            if let Some(layer) = self.breath.layer() {
                 shape::breathe(&layer);
             }
         } else {

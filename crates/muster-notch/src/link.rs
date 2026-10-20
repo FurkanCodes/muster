@@ -15,7 +15,7 @@ use muster_core::protocol::{ClientFrame, Command, ServerFrame, Snapshot};
 use muster_core::settings::{NOTCH_PROTOCOL, NOTIFIER_PROTOCOL};
 use muster_core::{SessionId, Timestamp};
 use tokio::sync::mpsc;
-use tokio::time::{Instant, MissedTickBehavior};
+use tokio::time::Instant;
 
 use crate::board::Board;
 use crate::mirror;
@@ -24,9 +24,6 @@ use crate::news::{News, Posted, posts};
 /// How the notch says who it is to the daemon.
 const CLIENT: &str = concat!("muster-notch ", env!("CARGO_PKG_VERSION"));
 
-/// How long each step of the motion is shown, as in the UI.
-pub(crate) const STEP: Duration = Duration::from_millis(100);
-
 /// How long the notch waits for a daemon that went away: a restart in
 /// place is back within a second, a stop is for good.
 const PATIENCE: Duration = Duration::from_secs(30);
@@ -34,8 +31,8 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// What the link hands the screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ToScreen {
-    /// What to show, at the motion's `step`.
-    Board { board: Board, step: u64 },
+    /// What to show. Motion is owned by AppKit, not the link.
+    Board(Board),
     /// A word for the person under the list: why a session could not be
     /// shown.
     Note(String),
@@ -46,6 +43,8 @@ pub(crate) enum ToScreen {
 /// What the screen hands the link.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FromScreen {
+    /// Times are visible only in an open list or a peek.
+    Expanded(bool),
     /// The person picked a session, in the notch or a notification: show
     /// it in a Muster window.
     Picked(SessionId),
@@ -107,10 +106,7 @@ pub(crate) async fn run(
             Err(_) => {}
         }
         // Gone: nothing to show meanwhile.
-        screen(ToScreen::Board {
-            board: Board::hidden(),
-            step: 0,
-        });
+        screen(ToScreen::Board(Board::hidden()));
         let since = *gone_since.get_or_insert_with(Instant::now);
         if since.elapsed() > PATIENCE {
             return Ended::NoDaemon("the daemon is gone".to_owned());
@@ -133,17 +129,19 @@ async fn serve(
     let mut news = News::default();
     // What the daemon was last told of notifying, on this connection.
     let mut told_ready: Option<bool> = None;
-    let mut holds = tokio::time::interval(STEP);
-    holds.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut state = Snapshot::default();
     let mut loaded = false;
+    let mut expanded = false;
     let mut next_req: u64 = 1;
-    let mut steps = tokio::time::interval(STEP);
-    steps.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    let mut step: u64 = 0;
     let mut shown: Option<Board> = None;
     loop {
-        let moving = shown.as_ref().is_some_and(|board| board.shown);
+        let now = Instant::now();
+        let time = shown
+            .as_ref()
+            .filter(|_| expanded)
+            .and_then(|board| board.next_change(&state, wall_clock()))
+            .map(|left| now + left);
+        let wake = [time, news.next_due()].into_iter().flatten().min();
         tokio::select! {
             frame = receiver.next() => match frame {
                 Ok(Some(ServerFrame::Snapshot(snapshot))) => {
@@ -163,6 +161,7 @@ async fn serve(
                 Ok(None) | Err(_) => return None,
             },
             Some(said) = picks.recv() => match said {
+                FromScreen::Expanded(open) => expanded = open,
                 FromScreen::Picked(session) => {
                     let frame = ClientFrame::Command {
                         req_id: next_req,
@@ -181,8 +180,7 @@ async fn serve(
                     *can_notify = Some(can);
                 }
             },
-            _ = steps.tick(), if moving => step = step.wrapping_add(1),
-            _ = holds.tick(), if news.holding() => {
+            () = sleep_until(wake) => {
                 let told = news.due(&state, Instant::now());
                 notify(&state, &told, *can_notify, screen);
             }
@@ -202,14 +200,17 @@ async fn serve(
             return Some(Ended::TurnedOff);
         }
         let board = Board::of(&state, true, wall_clock());
-        // Told while it moves, and otherwise only of a change.
-        if board.shown || shown.as_ref() != Some(&board) {
-            screen(ToScreen::Board {
-                board: board.clone(),
-                step,
-            });
+        if shown.as_ref() != Some(&board) {
+            screen(ToScreen::Board(board.clone()));
         }
         shown = Some(board);
+    }
+}
+
+async fn sleep_until(wake: Option<Instant>) {
+    match wake {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
     }
 }
 

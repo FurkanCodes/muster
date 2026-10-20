@@ -1,7 +1,7 @@
 //! When the list opens and closes: once the pointer has rested on the
 //! notch a moment, so passing over it on the way to the menu bar opens
 //! nothing, and a moment after the pointer leaves the open list, so a slip
-//! past its edge does not close it. Counted in the link's steps of 100 ms;
+//! past its edge does not close it. Counted in elapsed steps of 100 ms;
 //! pure, so it is tested anywhere.
 
 /// Steps the pointer rests on the notch before the list opens: 200 ms.
@@ -40,6 +40,12 @@ impl Hover {
         self.open
     }
 
+    /// When a pending open or close becomes due. No timer at rest.
+    pub fn next_step(self) -> Option<u64> {
+        self.since
+            .map(|since| since + if self.open { CLOSE_AFTER } else { OPEN_AFTER })
+    }
+
     /// A click on the closed notch: the list opens at once, as the person
     /// clearly asks for it.
     pub fn open_now(&mut self) {
@@ -56,6 +62,21 @@ impl Hover {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hover_has_only_one_deadline_and_none_at_rest_arc_13() {
+        let mut hover = Hover::default();
+        assert_eq!(hover.next_step(), None);
+        hover.at(true, 10);
+        assert_eq!(hover.next_step(), Some(12));
+        hover.at(false, 11);
+        assert_eq!(hover.next_step(), None);
+        hover.open_now();
+        hover.at(false, 20);
+        assert_eq!(hover.next_step(), Some(23));
+        hover.at(false, 23);
+        assert_eq!(hover.next_step(), None);
+    }
 
     #[test]
     fn the_list_opens_once_the_pointer_rests_and_not_as_it_passes() {
