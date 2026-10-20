@@ -170,6 +170,11 @@ pub struct Preferences {
     /// protocol 39.
     #[serde(default = "on")]
     pub notifications: bool,
+    /// Which kinds the person is told of, and how each sounds
+    /// (`[notifications]` `questions`, `finishes`, `errors` and their
+    /// `_sound`s). From protocol 40.
+    #[serde(default)]
+    pub telling: crate::telling::Telling,
 }
 
 fn on() -> bool {
@@ -228,6 +233,7 @@ impl Default for Preferences {
             naming: Naming::default(),
             keys: std::collections::BTreeMap::new(),
             notifications: true,
+            telling: crate::telling::Telling::default(),
         }
     }
 }
@@ -389,6 +395,11 @@ pub enum PreferenceChange {
     /// Tell the person of what newly needs them while they look away, or
     /// not. From protocol 39.
     Notifications(bool),
+    /// Whether `kind` is told, and how it sounds. From protocol 40.
+    Tell {
+        kind: crate::telling::Kind,
+        tell: crate::telling::Tell,
+    },
 }
 
 /// The first protocol whose daemon keeps [`Preferences::notifications`]
@@ -398,6 +409,10 @@ pub const NOTIFIER_PROTOCOL: u32 = 39;
 
 /// Where telling the person is written: `[notifications] show`.
 pub const NOTIFICATIONS: (&str, &str) = ("notifications", "show");
+
+/// The first protocol whose daemon keeps [`Preferences::telling`] and
+/// takes [`PreferenceChange::Tell`] (`ARC-09`).
+pub const TELLING_PROTOCOL: u32 = 40;
 
 /// The first protocol whose daemon keeps [`Preferences::keys`] and takes
 /// [`PreferenceChange::Keys`] and [`PreferenceChange::AllKeysBack`]

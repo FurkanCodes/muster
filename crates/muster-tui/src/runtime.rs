@@ -249,6 +249,7 @@ fn perform(
             Action::Quit => quit = true,
             Action::Notify(text) => notify(&text),
             Action::Open(url) => open_in_browser(&url),
+            Action::Hear(sound) => hear(&sound),
             Action::Copy(text) => clipboard::copy(&text),
             Action::StartNotch => {
                 if let Some(start) = &outside.start_notch {
@@ -519,6 +520,39 @@ fn open_in_browser(url: &str) {
             // Reaped in the background: it returns at once.
             let _ = std::thread::Builder::new()
                 .name("muster-open-wait".to_owned())
+                .spawn(move || child.wait());
+        });
+}
+
+/// Plays `sound`, one of the Mac's own or of the person's in
+/// `~/Library/Sounds`, as they choose it for a notification, with the
+/// system's own `afplay`; macOS only, and only a name with no folder in it.
+fn hear(sound: &muster_core::telling::Sound) {
+    use muster_core::telling::{MAC_SOUNDS, Sound};
+    let Sound::Named(name) = sound else {
+        return;
+    };
+    if !cfg!(target_os = "macos") || name.contains(['/', '\\']) || name.starts_with('.') {
+        return;
+    }
+    let file = if MAC_SOUNDS.contains(&name.as_str()) {
+        PathBuf::from(format!("/System/Library/Sounds/{name}.aiff"))
+    } else {
+        match std::env::var_os("HOME") {
+            Some(home) => PathBuf::from(home).join("Library/Sounds").join(name),
+            None => return,
+        }
+    };
+    let _ = std::process::Command::new("/usr/bin/afplay")
+        .arg(file)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|mut child| {
+            // Reaped in the background: it plays for a moment.
+            let _ = std::thread::Builder::new()
+                .name("muster-hear-wait".to_owned())
                 .spawn(move || child.wait());
         });
 }

@@ -221,4 +221,28 @@ async fn while_muster_s_helper_can_notify_every_window_is_told_and_no_longer_onc
         written.contains("[notifications]\nshow = false"),
         "{written}"
     );
+
+    // Which kinds, and their sounds: kept, and every client told.
+    let tell = muster_core::telling::Tell {
+        on: true,
+        sound: muster_core::telling::Sound::Named("Glass".to_owned()),
+    };
+    assert_eq!(
+        window
+            .command(Command::ChangePreference(PreferenceChange::Tell {
+                kind: muster_core::telling::Kind::Question,
+                tell: tell.clone(),
+            }))
+            .await
+            .unwrap(),
+        Reply::Done
+    );
+    let told = window.subscribe().await.unwrap().preferences.telling;
+    assert_eq!(told.questions, tell);
+    let written =
+        std::fs::read_to_string(sandbox.paths().config_dir.join("settings.toml")).unwrap();
+    assert!(
+        written.contains("questions = true\nquestions_sound = \"Glass\""),
+        "{written}"
+    );
 }

@@ -10,6 +10,7 @@ use muster_core::settings::{ProjectSettings, SettingChange, SettingSource, Toggl
 
 use super::tests::{World, command, press, render, world};
 use super::{Action, Mode, SettingRow, Settings, Tickets, View};
+use muster_core::telling::Kind;
 
 pub(super) fn settings(on: bool, from: SettingSource) -> ProjectSettings {
     ProjectSettings {
@@ -91,6 +92,9 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::MusterPrefix(project),
             SettingRow::Muster,
             SettingRow::Notifications,
+            SettingRow::Tell(Kind::Question),
+            SettingRow::Tell(Kind::Finish),
+            SettingRow::Tell(Kind::Error),
             SettingRow::SideBySide,
             SettingRow::Colours,
             SettingRow::SessionLines,

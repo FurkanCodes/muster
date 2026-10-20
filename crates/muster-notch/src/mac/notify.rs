@@ -2,10 +2,13 @@
 //! running as Muster's app, which macOS asks the person to allow once; a
 //! click on one asks for its session to be shown in the Muster window
 //! looked at last. A program that is not an app has no notifications: the
-//! link is told so, and the UIs' terminals tell the person instead.
+//! link is told so, and the UIs' terminals tell the person instead. Each
+//! says where as its title, the chat under it, what happened, with the
+//! sound the person chose for its kind.
 
 use block2::RcBlock;
 use muster_core::SessionId;
+use muster_core::telling::{MAC_SOUNDS, Sound};
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, NSObject, NSObjectProtocol, ProtocolObject};
 use objc2::{AllocAnyThread, DefinedClass, define_class, msg_send};
@@ -18,6 +21,7 @@ use objc2_user_notifications::{
 use tokio::sync::mpsc;
 
 use crate::link::FromScreen;
+use crate::news::Posted;
 
 define_class!(
     // SAFETY: NSObject asks nothing more of a subclass than that its
@@ -107,15 +111,32 @@ impl Notifier {
         })
     }
 
-    /// Tells the person `text` of `session`: one notification a session,
-    /// the newest in place of the one before.
-    pub(super) fn post(&self, session: SessionId, text: &str) {
+    /// Tells the person of `posted`'s session: one notification a
+    /// session, the newest in place of the one before, kept with the
+    /// others of its project.
+    pub(super) fn post(&self, posted: &Posted) {
         let content = UNMutableNotificationContent::new();
-        content.setTitle(&NSString::from_str("Muster"));
-        content.setBody(&NSString::from_str(text));
-        content.setSound(Some(&UNNotificationSound::defaultSound()));
+        content.setTitle(&NSString::from_str(&posted.notice.title));
+        content.setSubtitle(&NSString::from_str(&posted.notice.subtitle));
+        content.setBody(&NSString::from_str(&posted.notice.body));
+        content.setThreadIdentifier(&NSString::from_str(&posted.group));
+        let sound = match &posted.sound {
+            Sound::Default => Some(UNNotificationSound::defaultSound()),
+            Sound::Silent => None,
+            // The Mac's own, carried in Muster's app; else one of the
+            // person's in ~/Library/Sounds, by its file's name.
+            Sound::Named(name) => {
+                let file = if MAC_SOUNDS.contains(&name.as_str()) {
+                    format!("{name}.aiff")
+                } else {
+                    name.clone()
+                };
+                Some(UNNotificationSound::soundNamed(&NSString::from_str(&file)))
+            }
+        };
+        content.setSound(sound.as_deref());
         let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
-            &NSString::from_str(&session.to_string()),
+            &NSString::from_str(&posted.session.to_string()),
             &content,
             None,
         );

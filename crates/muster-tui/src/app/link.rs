@@ -162,7 +162,8 @@ impl App {
             return None;
         }
         let stored = self.model.session(session)?;
-        if !needs_attention(stored) {
+        let kind = muster_core::telling::Kind::of(stored);
+        if !needs_attention(stored) || !self.model.preferences().telling.of(kind).on {
             return None;
         }
         let project = self
@@ -277,6 +278,9 @@ impl App {
             (outcome, Then::NotchChanged(on)) => self.notch_changed(on, outcome.map(drop)),
             (outcome, Then::SideBySideChanged(columns)) => {
                 self.side_by_side_changed(columns, outcome.map(drop));
+            }
+            (outcome, Then::TellChanged(kind, tell)) => {
+                self.tell_changed(kind, &tell, outcome.map(drop));
             }
             (outcome, Then::LookChanged(change)) => self.look_changed(change, outcome.map(drop)),
             (outcome, Then::ListFolded) => self.list_folded_kept(outcome.map(drop)),

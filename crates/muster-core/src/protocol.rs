@@ -104,7 +104,9 @@
 //! (`Preferences::notifications` and `Snapshot::notifier`, fields older
 //! clients pass over; `ClientFrame::Notifier`, `PreferenceChange::
 //! Notifications`, sent only to a daemon of 39 or later; `Delta::Notifier`,
-//! sent only to a client of 39 or later).
+//! sent only to a client of 39 or later); version 40 which notifications
+//! and their sounds (`Preferences::telling`, a field older clients pass
+//! over; `PreferenceChange::Tell`, sent only to a daemon of 40 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -123,7 +125,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 39;
+pub const PROTOCOL_VERSION: u32 = 40;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
