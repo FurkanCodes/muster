@@ -459,6 +459,39 @@ async fn muster_plugin_hook_tries_a_plugin_s_hooks_on_a_sample_and_says_what_eac
 }
 
 #[tokio::test]
+async fn a_finish_still_held_as_muster_reloads_is_told_once_by_the_daemon_that_takes_over() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    let folder = recorder(&sandbox);
+    let mut connection = daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let project = project(&mut connection, &sandbox).await;
+    let workspace = worktree(&mut connection, project, "work").await;
+    let session = start(&mut connection, workspace, "claude").await;
+    let launch = sandbox.wait_for_launches(session, 1).remove(0);
+    let agent = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str, extra: Value| launch.fire(event, &payload(&agent, event, &extra));
+    fire("UserPromptSubmit", json!({ "prompt": "fix it" }));
+    status(&mut connection, session, SessionStatus::Running).await;
+    fire("Stop", json!({ "stop_hook_active": false }));
+    status(&mut connection, session, SessionStatus::Finished).await;
+
+    // Reloaded within the finish's hold: the daemon taking over tells it
+    // as its hold ends, and only once.
+    let reloaded = sandbox.run(&["reload"]);
+    assert!(reloaded.status.success(), "{}", said(&reloaded));
+    let finished = wait_heard(&folder, "all", "session.finished", 1);
+    assert_eq!(finished["session"]["id"], session.to_string());
+    std::thread::sleep(Duration::from_secs(3));
+    assert_eq!(
+        count(&folder, "all", "session.finished"),
+        1,
+        "{:#?}",
+        heard(&folder)
+    );
+}
+
+#[tokio::test]
 async fn a_reload_gives_a_hook_under_way_its_grace_then_cuts_it() {
     let sandbox = Sandbox::new();
     let manifest = "id = \"slow\"\nname = \"Slow\"\nversion = \"0.1.0\"\nmuster = \"0.4.0\"\n\n\

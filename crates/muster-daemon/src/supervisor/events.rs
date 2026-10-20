@@ -8,7 +8,7 @@
 //! daemon starts is what is, no news.
 
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use muster_core::clashes::Clash;
 use muster_core::plugins::{Event, EventKind};
@@ -163,6 +163,24 @@ impl Supervisor {
                 self.raise(&event);
             }
         }
+    }
+
+    /// `session`, taken over from the daemon before this one or back from
+    /// a restart that did not happen, finished `ago` and was not told yet:
+    /// it is told as its hold ends, as it would have been (`PRD-09`). One
+    /// held already, as after a restart that did not happen, is held once.
+    pub(super) fn hold_carried_finish(&mut self, session: SessionId, ago: Duration) {
+        let Some(left) = muster_core::news::FINISH_HOLD
+            .checked_sub(ago)
+            .filter(|left| !left.is_zero())
+        else {
+            return;
+        };
+        if self.events.held.iter().any(|(held, _)| *held == session) {
+            return;
+        }
+        let due = self.clock.instant() + left;
+        self.events.held.push((session, due));
     }
 
     /// The person started an agent, `session`, on the ticket `key`.
