@@ -28,7 +28,7 @@
 
 ## Security and privacy
 
-- **Local only.** No Muster server, account or telemetry. Muster talks only to your trackers, your git host and the agents you run.
+- **Local only.** No Muster server, account or telemetry. Muster talks only to your trackers, your git host and the agents you run, and to a plugin's repository when you install or update it.
 - **Your agents, your sign-ins.** Agents run as you, in your own environment, as if started in your terminal; Muster adds no credentials and never edits your agents' settings or your repository.
 - **Sign-ins in the Keychain.** Jira and Linear (browser sign-in through their MCP servers' OAuth) and API tokens are kept in the macOS Keychain, never in a file, the database or a log.
 - **Tickets are untrusted.** A ticket reaches an agent fenced off as data, never as instructions, and without its control characters. Credentials someone pasted into a ticket are replaced with `[hidden by Muster]` before the ticket is shown or handed to an agent.
@@ -250,6 +250,16 @@ After upgrading muster, stop the daemon the old build left running; the next `mu
 ```bash
 muster daemon stop
 ```
+
+## Plugins
+
+Muster keeps a lean core and grows through plugins: ticket sources, and panels that show any terminal program beside a session. GitHub, GitLab, Jira and Linear are Muster's own plugins, speaking the same protocol yours would, so a tracker Muster does not know is a small program away, in any language. Muster shows everything a plugin would run before you say yes, and runs none until you do.
+
+```bash
+muster plugin install https://github.com/someone/their-plugin
+```
+
+Or `a` on the Settings screen's *Plugins*. [PLUGINS.md](PLUGINS.md) lists them; [docs/plugins.md](docs/plugins.md) says how to write one, with [examples](examples/plugins). Yours is welcome.
 
 ## How it is built
 
