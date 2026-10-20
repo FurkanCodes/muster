@@ -14,6 +14,7 @@ use crossterm::execute;
 use futures_util::StreamExt;
 use muster_core::protocol::TermSize;
 use ratatui::DefaultTerminal;
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::mpsc;
 use tokio_util::task::AbortOnDropHandle;
 
@@ -80,6 +81,8 @@ enum Woke {
     Input(Option<std::io::Result<Event>>),
     Link(LinkEvent),
     Folders((PathBuf, Result<Vec<Folder>, String>)),
+    /// The person's window may have another size.
+    Window,
     /// Something of its own was due: a frame, a step or the clock.
     Time,
 }
@@ -93,6 +96,9 @@ const FRAME_WAIT: Duration = Duration::from_millis(150);
 /// Runs the UI until the person quits. The daemon, and every session, keep
 /// running.
 pub async fn run(mut options: Options) -> Result<(), TuiError> {
+    // Heard from before the window's size is first read, so no change to
+    // it goes unseen, not even one before crossterm listens.
+    let mut window_changes = signal(SignalKind::window_change())?;
     let mut terminal = HostTerminal::enter()?;
     let size = area_size(terminal.area.width, terminal.area.height);
     let mut app = App::new(options.cwd.clone(), size);
@@ -146,6 +152,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
             event = input.next() => Woke::Input(event),
             Some(event) = link.recv() => Woke::Link(event),
             Some(listed) = folder_lists.recv() => Woke::Folders(listed),
+            Some(()) = window_changes.recv() => Woke::Window,
             () = sleep_until(wake) => Woke::Time,
         };
         // The step and the clock first, so what an event starts is timed
@@ -170,15 +177,13 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
                 Some(Ok(Event::FocusGained)) => app.on_focus(true),
                 Some(Ok(Event::FocusLost)) => app.on_focus(false),
-                Some(Ok(Event::Resize(cols, rows))) => {
-                    terminal.resize(cols, rows)?;
-                    resized(&mut app, cols, rows)
-                }
+                Some(Ok(Event::Resize(..))) => follow_window(&mut terminal, &mut app)?,
                 Some(Err(error)) => break Err(TuiError::Terminal(error)),
                 None => break Ok(()),
             },
             Woke::Link(event) => linked(&mut app, &mut sender, event),
             Woke::Folders((dir, folders)) => app.on_folders(&dir, folders),
+            Woke::Window => follow_window(&mut terminal, &mut app)?,
             Woke::Time if due.is_empty() => {
                 draw_if_due(&mut terminal, &app, &mut draws)?;
                 continue;
@@ -421,11 +426,19 @@ impl FrameHold {
     }
 }
 
-/// The person's window is now `cols` by `rows`, its cells perhaps of
-/// another size in pixels too.
-fn resized(app: &mut App, cols: u16, rows: u16) -> Vec<Action> {
-    app.cell_pixels = cell_pixels();
-    app.on_resize(area_size(cols, rows))
+/// Follows the person's window to the size it has now, its cells perhaps
+/// of another size in pixels too. Read again at each sign of a change, the
+/// UI's own window-change signal or crossterm's resize event, rather than
+/// taken from the event, whose size can be older than the signal's read.
+fn follow_window(terminal: &mut HostTerminal, app: &mut App) -> std::io::Result<Vec<Action>> {
+    let (cols, rows) = crossterm::terminal::size()?;
+    let cell = cell_pixels();
+    if (cols, rows) == (terminal.area.width, terminal.area.height) && cell == app.cell_pixels {
+        return Ok(Vec::new());
+    }
+    terminal.resize(cols, rows)?;
+    app.cell_pixels = cell;
+    Ok(app.on_resize(area_size(cols, rows)))
 }
 
 /// One cell of the person's terminal in pixels, from the size the system

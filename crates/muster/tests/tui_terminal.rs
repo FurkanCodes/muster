@@ -110,10 +110,21 @@ fn resizing_the_window_updates_the_fixed_viewport_and_the_program_arc_13() {
     ui.resize(90, 36);
     // A narrow window opens the session over the list. Its top bar takes
     // one row, and its PTY must receive the new columns too.
-    ui.keys(b"sleep .1; printf 'size='; stty size\r");
+    ui.keys(&when_sized(35, 90));
     ui.wait_for("size=35 90");
     ui.resize(120, 36);
-    ui.keys(b"sleep .1; printf 'wide='; stty size\r");
     // Back beside the list: the session has its border and bottom bar.
-    ui.wait_for("wide=32 88");
+    ui.keys(&when_sized(32, 88));
+    ui.wait_for("size=32 88");
+}
+
+/// A command line that waits for the shell's terminal to be `rows` by
+/// `cols`, then prints `size=<rows> <cols>`, which the line itself, echoed,
+/// never reads.
+fn when_sized(rows: u16, cols: u16) -> Vec<u8> {
+    format!(
+        "until [ \"$(stty size)\" = '{rows} {cols}' ]; do sleep .05; done; \
+         printf 'si%s=%s\\n' ze \"$(stty size)\"\r"
+    )
+    .into_bytes()
 }
