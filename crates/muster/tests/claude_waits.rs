@@ -1,7 +1,9 @@
 //! End-to-end tests of a Claude Code session's waits on the person beyond
 //! a tool's own events: a permission the person declines, which Claude
 //! Code tells only in its transcript, and an MCP server's form for the
-//! person. A stand-in `claude` runs the exact hook commands Muster gave it.
+//! person; and of a turn's wait for its subagents, one of which the person
+//! stops, which too only the transcript tells. A stand-in `claude` runs the
+//! exact hook commands Muster gave it.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -135,6 +137,47 @@ fn declined(prompt: &str) -> String {
     .concat()
 }
 
+/// What Claude Code 2.1.304 writes to its transcript as background task
+/// `task` stops: the notice it queues for the main agent. Content
+/// shortened.
+fn task_stopped(task: &str, status: &str) -> String {
+    json!({
+        "type": "queue-operation", "operation": "enqueue",
+        "timestamp": "2026-10-20T14:14:14.985Z",
+        "content": format!(
+            "<task-notification>\n<task-id>{task}</task-id>\n<status>{status}</status>\n\
+             <summary>Agent \"Look around\" was stopped by user</summary>\n</task-notification>"
+        ),
+    })
+    .to_string()
+        + "\n"
+}
+
+/// Waits until the daemon takes `session`'s subagents at work to be
+/// `wanted`.
+async fn expect_subagents(connection: &mut Connection, session: SessionId, wanted: &[&str]) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let Reply::Explanation(explanation) = connection
+            .command(Command::ExplainSession { session })
+            .await
+            .unwrap()
+        else {
+            panic!("expected an explanation");
+        };
+        let machine = explanation.machine.expect("its machine is held");
+        if machine.subagents == wanted {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "subagents at work: {:?}",
+            machine.subagents
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 fn append(path: &std::path::Path, text: &str) {
     use std::io::Write;
     std::fs::OpenOptions::new()
@@ -247,5 +290,67 @@ async fn an_mcp_server_s_form_needs_the_person_until_they_respond() {
         expect_status(&mut connection, session).await,
         (SessionStatus::Finished, true),
         "nothing else opened on the way"
+    );
+}
+
+#[tokio::test]
+async fn a_subagent_the_person_stops_holds_no_turn() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    connection.subscribe().await.unwrap();
+    let session = start_claude(&mut connection, setup.workspace).await;
+    let launch = setup.sandbox.wait_for_launches(session, 1).remove(0);
+    let id = launch.value("--session-id").unwrap().to_owned();
+    let fire = |event: &str, extra| launch.fire(event, &payload(&id, event, extra));
+    let slug = setup.sandbox.claude_projects().join("-work");
+    std::fs::create_dir_all(&slug).unwrap();
+    let transcript = slug.join(format!("{id}.jsonl"));
+
+    fire(
+        "UserPromptSubmit",
+        json!({ "prompt": "look around", "prompt_id": "p1" }),
+    );
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Running, false)
+    );
+    fire(
+        "SubagentStart",
+        json!({ "agent_id": "a1", "agent_type": "fork", "prompt_id": "p1" }),
+    );
+    expect_subagents(&mut connection, session, &["a1"]).await;
+
+    // The person stops the turn, and the subagent working in the
+    // background with it: Claude Code runs no hook for either, and writes
+    // both to its transcript, after a shell of its own that ended.
+    append(
+        &transcript,
+        &[
+            task_stopped("b1", "completed"),
+            task_stopped("a1", "killed"),
+            declined("p1"),
+        ]
+        .concat(),
+    );
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, false),
+        "held for no subagent, and the person, who ended it, has seen it"
+    );
+    expect_subagents(&mut connection, session, &[]).await;
+
+    // The next turn holds for it no more either.
+    fire(
+        "UserPromptSubmit",
+        json!({ "prompt": "go on", "prompt_id": "p2" }),
+    );
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Running, false)
+    );
+    fire("Stop", json!({ "stop_hook_active": false }));
+    assert_eq!(
+        expect_status(&mut connection, session).await,
+        (SessionStatus::Finished, true)
     );
 }

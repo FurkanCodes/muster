@@ -504,6 +504,7 @@ impl Supervisor {
             }
             Request::Spends(spends) => self.record_spends(spends),
             Request::Interrupted(turns) => self.record_interrupted(turns).await,
+            Request::Stopped(stopped) => self.record_stopped(stopped).await,
             Request::HandOver(reply) => {
                 let handed = self.hand_over_sessions().await;
                 let _ = reply.send(handed);

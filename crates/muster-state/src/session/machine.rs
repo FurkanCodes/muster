@@ -169,6 +169,11 @@ impl SessionMachine {
         self.agent_session.as_deref()
     }
 
+    /// Whether subagent `id` is taken to be at work.
+    pub fn subagent_at_work(&self, id: &str) -> bool {
+        self.subagents.contains(id)
+    }
+
     /// When the daemon should next send [`Signal::Tick`], if ever.
     pub fn next_deadline(&self) -> Option<Instant> {
         self.next_deadline_and_kind().map(|(at, _)| at)
