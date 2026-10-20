@@ -4,8 +4,11 @@
 //! and puts it away again. It has the key its manifest suggests unless the
 //! person sets another (`[keys]`, kept aside until its plugin is known,
 //! [`Keymap::aside`]). A key Muster has a use for there already, one that
-//! is the same on every screen, or one a panel listed earlier took, is
-//! dropped and warned of, never refused: the person can set another.
+//! is the same on every screen, or one another panel has, is dropped and
+//! warned of, never refused: the person can set another. The keys the
+//! person set are bound first, then the suggestions in the plugins'
+//! order, by id, so a plugin added later never takes a key the person
+//! gave another's panel.
 
 use super::{Action, Chord, Keymap, KeysError, KeysWarning, SESSION_LISTS, Screen, kept};
 
@@ -64,50 +67,67 @@ pub(super) struct Bound {
 }
 
 impl Keymap {
-    /// The keys with `panels`' over them, in the order given: each the
-    /// person's where they set one, else the one it suggests, each kept
-    /// where it is free on the lists of sessions and dropped with a warning
-    /// where it is not.
+    /// The keys with `panels`' over them, listed in the order given: first
+    /// the keys the person set for any of them, then the ones the others
+    /// suggest, in that order, so a suggestion never takes a key the
+    /// person gave a panel; each kept where it is free on the lists of
+    /// sessions and dropped with a warning where it is not.
     #[must_use]
     pub fn with_panels(mut self, panels: impl IntoIterator<Item = PanelAction>) -> Self {
-        self.panels.clear();
+        self.panels = panels
+            .into_iter()
+            .map(|action| {
+                let set = self.aside.contains_key(&action.name());
+                Bound {
+                    action,
+                    chords: Vec::new(),
+                    set,
+                }
+            })
+            .collect();
         self.dropped.clear();
-        for action in panels {
-            let name = action.name();
-            let (written, set) = match self.aside.get(&name) {
-                Some(keys) => (keys.clone(), true),
-                None => (action.suggested.iter().cloned().collect(), false),
-            };
-            let mut chords = Vec::new();
-            for key in written {
-                let taken = Chord::parse(&key)
-                    .map_err(|error| error.to_string())
-                    .and_then(|chord| self.free_for_panel(&name, chord).map(|()| chord));
-                match taken {
-                    Ok(chord) => chords.push(chord),
-                    Err(why) => self.dropped.push(if set {
-                        KeysWarning::PanelKey {
-                            name: name.clone(),
-                            key,
-                            why,
-                        }
-                    } else {
-                        KeysWarning::Suggested {
-                            plugin: action.plugin_name.clone(),
-                            panel: action.title.clone(),
-                            key,
-                            why,
-                        }
-                    }),
+        for set in [true, false] {
+            for at in 0..self.panels.len() {
+                if self.panels[at].set == set {
+                    self.bind_panel(at);
                 }
             }
-            self.panels.push(Bound {
-                action,
-                chords,
-                set,
-            });
         }
         self
+    }
+
+    /// Binds the keys of the panel at `at` in the list: the person's, or
+    /// the one it suggests.
+    fn bind_panel(&mut self, at: usize) {
+        let Bound { action, set, .. } = &self.panels[at];
+        let (action, set) = (action.clone(), *set);
+        let name = action.name();
+        let written = match self.aside.get(&name) {
+            Some(keys) if set => keys.clone(),
+            _ => action.suggested.iter().cloned().collect(),
+        };
+        for key in written {
+            let taken = Chord::parse(&key)
+                .map_err(|error| error.to_string())
+                .and_then(|chord| self.free_for_panel(&name, chord).map(|()| chord));
+            match taken {
+                Ok(chord) => self.panels[at].chords.push(chord),
+                Err(why) => self.dropped.push(if set {
+                    KeysWarning::PanelKey {
+                        name: name.clone(),
+                        key,
+                        why,
+                    }
+                } else {
+                    KeysWarning::Suggested {
+                        plugin: action.plugin_name.clone(),
+                        panel: action.title.clone(),
+                        key,
+                        why,
+                    }
+                }),
+            }
+        }
     }
 
     /// Why `chord` cannot be the panel `name`'s, if it cannot: it is the
@@ -345,6 +365,28 @@ mod tests {
             keymap.warnings()[0]
                 .to_string()
                 .starts_with("keys.plugin.zoetrope.graph: d is Muster's for show_changes"),
+            "{:?}",
+            keymap.warnings()
+        );
+    }
+
+    #[test]
+    fn a_suggestion_never_takes_a_key_the_person_gave_another_panel() {
+        // `aaa` sorts first and suggests G, which the person gave zoetrope.
+        let mut first = zoetrope("files", Some("G"));
+        first.plugin = "aaa".to_owned();
+        let keymap = Keymap::with(&set(&[("plugin.zoetrope.graph", "G")]))
+            .unwrap()
+            .with_panels([first, zoetrope("graph", Some("Z"))]);
+        assert_eq!(keymap.panel_label("plugin.zoetrope.graph"), "Shift-G");
+        assert_eq!(keymap.panel_label("plugin.aaa.files"), "none");
+        // Listed as given all the same.
+        let names: Vec<String> = keymap.panels().map(|(action, _)| action.name()).collect();
+        assert_eq!(names, ["plugin.aaa.files", "plugin.zoetrope.graph"]);
+        assert!(
+            keymap.warnings()[0]
+                .to_string()
+                .contains("suggests G, which is plugin.zoetrope.graph's"),
             "{:?}",
             keymap.warnings()
         );
