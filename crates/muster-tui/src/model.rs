@@ -131,10 +131,6 @@ impl Model {
     }
 
     /// The plugins, as the daemon last said.
-    #[expect(
-        dead_code,
-        reason = "the Settings screen's Plugins section reads it next"
-    )]
     pub(crate) fn plugins(&self) -> &[PluginInfo] {
         &self.plugins
     }

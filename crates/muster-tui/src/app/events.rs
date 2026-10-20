@@ -111,6 +111,10 @@ impl App {
                 input.paste(text);
                 Vec::new()
             }
+            Mode::Dialog(Dialog::Plugin(_)) => {
+                self.plugin_paste(text);
+                Vec::new()
+            }
             Mode::Dialog(Dialog::TicketsFrom {
                 tracker,
                 site,
@@ -259,8 +263,9 @@ impl App {
     /// Shows `view`. The queue opens on its most urgent session, without
     /// one kept from the last visit; tickets that could not be fetched are
     /// tried again; the settings are read afresh, as they may have been
-    /// edited by hand.
+    /// edited by hand, and the plugins with them.
     pub(super) fn show(&mut self, view: View) -> Vec<Action> {
+        let mut read = None;
         if view == View::NeedsYou && self.view != View::NeedsYou {
             self.needs_selected = self.model.needs_you().first().copied();
         }
@@ -270,9 +275,12 @@ impl App {
         if view == View::Settings && self.view != View::Settings {
             self.settings
                 .retain(|_, settings| matches!(settings, super::Settings::Loading));
+            read = self.read_plugins();
         }
         self.view = view;
-        self.settle()
+        let mut actions = self.settle();
+        actions.extend(read);
+        actions
     }
 
     pub(super) fn move_selection(&mut self, by: isize) {
@@ -627,6 +635,7 @@ impl App {
             Dialog::Tidy { workspace, harness } => self.tidy_key(workspace, harness, key),
             Dialog::Rename { session, name } => self.rename_key(session, name, key),
             Dialog::Keys(rebinding) => self.rebind_key(rebinding, key),
+            Dialog::Plugin(dialog) => self.plugin_dialog_key(dialog, key),
             Dialog::NamingModel {
                 agent,
                 model,
@@ -770,6 +779,7 @@ impl App {
             Confirmed::CleanUpTicket { project, key } => {
                 return self.clean_up_ticket(project, &key);
             }
+            Confirmed::RemovePlugin(id) => self.remove_plugin(id),
         };
         vec![action]
     }

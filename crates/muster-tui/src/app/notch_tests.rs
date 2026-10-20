@@ -247,7 +247,9 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::NamedBy,
         SettingRow::NamingModel,
         SettingRow::Keys,
-        SettingRow::Agents
+        SettingRow::Agents,
+        SettingRow::Plugins,
+        SettingRow::AddPlugin
     ]));
     world.app.notch_here = true;
     assert!(world.app.setting_rows().ends_with(&[
@@ -265,7 +267,9 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::NamedBy,
         SettingRow::NamingModel,
         SettingRow::Keys,
-        SettingRow::Agents
+        SettingRow::Agents,
+        SettingRow::Plugins,
+        SettingRow::AddPlugin
     ]));
     world.app.daemon_protocol = NOTCH_PROTOCOL - 1;
     assert!(!world.app.setting_rows().contains(&SettingRow::Notch));

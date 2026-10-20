@@ -81,9 +81,15 @@ pub(crate) fn list_width(app: &App, beside_session: bool, window: u16) -> u16 {
     use crate::layout::{LIST_LEAST, LIST_MOST};
     if !beside_session {
         // No session beside it: tickets' titles are long, and take what
-        // the `window` spares.
-        let wide = u32::from(window) * 3 / 10;
-        return u16::try_from(wide.clamp(34, 48)).unwrap_or(48);
+        // the `window` spares; the settings, a plugin's line saying why it
+        // is off among them, a little more.
+        let (tenths, most) = if app.view == crate::app::View::Settings {
+            (4, 64)
+        } else {
+            (3, 48)
+        };
+        let wide = u32::from(window) * tenths / 10;
+        return u16::try_from(wide.clamp(34, u32::from(most))).unwrap_or(most);
     }
     // On one line, a session's name, what it is doing and for how long
     // share it.

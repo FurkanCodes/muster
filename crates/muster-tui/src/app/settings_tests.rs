@@ -104,6 +104,8 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::NamingModel,
             SettingRow::Keys,
             SettingRow::Agents,
+            SettingRow::Plugins,
+            SettingRow::AddPlugin,
         ]
     );
     // The first setting is selected, so ⏎ does something at once.
@@ -164,12 +166,12 @@ fn enter_turns_it_on_and_the_tickets_are_fetched_again_as_chosen() {
     // Asked once: pressed again before the answer, nothing more is sent.
     assert!(commands(&press(&mut world.app, KeyCode::Enter)).is_empty());
     let value_at_end = |value: &str| {
-        // The list's 32 columns past the project's edge, the value at
+        // The list's 38 columns past the project's edge, the value at
         // their end.
         let label = "  Only my tickets";
         format!(
             "{label}{}{value}",
-            " ".repeat(31 - label.len() - value.chars().count())
+            " ".repeat(37 - label.len() - value.chars().count())
         )
     };
     assert!(render(&world.app).contains(&value_at_end("…")));
@@ -292,7 +294,13 @@ fn settings_are_read_afresh_each_time_the_screen_is_shown_and_on_r() {
     let project = world.project.id;
     press(&mut world.app, KeyCode::Char('1'));
     let actions = press(&mut world.app, KeyCode::Char('4'));
-    assert_eq!(commands(&actions), [Command::ProjectSettings { project }]);
+    assert_eq!(
+        commands(&actions),
+        [
+            Command::ProjectSettings { project },
+            Command::Plugin(muster_core::protocol::plugins::PluginCommand::List)
+        ]
+    );
     // Asked of a daemon that went away: asked again of the next.
     world.app.on_disconnected("gone".to_owned());
     world.app.on_connected("0.1.0".to_owned());
@@ -335,7 +343,10 @@ fn the_project_s_line_tells_where_its_settings_are_and_enter_there_does_nothing(
         screen.contains("Your settings /home/me/.config/muster/projects/p.toml"),
         "{screen}"
     );
-    assert!(screen.contains("with yours over"), "{screen}");
+    assert!(
+        screen.contains("What you change here goes in yours."),
+        "{screen}"
+    );
     assert!(press(&mut world.app, KeyCode::Enter).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);
 }

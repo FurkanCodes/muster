@@ -10,7 +10,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{list_block, look, panel, shorten, telling};
+use super::{list_block, look, panel, plugins, shorten, telling};
 use crate::app::tickets_from::tracker_label;
 use crate::app::{App, SettingRow, Settings};
 
@@ -99,6 +99,9 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Keys => labelled(KEYS, keys_value(app), width),
         SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
         SettingRow::Tell(kind) => labelled(&telling::label(kind), telling::value(app, kind), width),
+        SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
+            plugins::row_text(app, row, width)
+        }
         SettingRow::Project(project) => {
             let colour = look::project_colour(app, project);
             let mut spans =
@@ -256,6 +259,9 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
             naming_text(app)
         }
         Some(SettingRow::Muster | SettingRow::Agents | SettingRow::Notch) => agents_text(app),
+        Some(row @ (SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin)) => {
+            plugins::details(app, row)
+        }
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings),
@@ -273,6 +279,9 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Tell(kind) => telling::text(app, kind),
                 SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
                     naming_text(app)
+                }
+                SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
+                    plugins::details(app, row)
                 }
             },
             Some(Settings::Failed(error)) => Text::from(vec![
@@ -807,7 +816,7 @@ fn project_text(app: &App, project: ProjectId, settings: &ProjectSettings) -> Te
 }
 
 /// A labelled line of details.
-fn detail(label: &str, value: String) -> Line<'static> {
+pub(super) fn detail(label: &str, value: String) -> Line<'static> {
     Line::from(vec![
         Span::from(format!("{label:<14}")).dim(),
         Span::raw(value),
@@ -816,8 +825,27 @@ fn detail(label: &str, value: String) -> Line<'static> {
 
 /// The keys that apply on the Settings screen, for what is selected.
 pub(super) fn hints(app: &App) -> Vec<String> {
+    let mut hints = match app.settings_selected {
+        Some(row @ (SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin)) => {
+            plugins::hints(app, row)
+        }
+        selected => setting_hints(app, selected)
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    };
+    hints.extend(super::bottom_bar::hint(
+        app,
+        muster_core::keys::Action::ReadSettings,
+        "read again",
+    ));
+    hints
+}
+
+/// The keys that apply to the selected setting, the plugins' aside.
+fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
     let mut hints = Vec::new();
-    match app.settings_selected {
+    match selected {
         Some(SettingRow::OnlyMine(project)) => {
             if let Some(Settings::Loaded(settings)) = app.settings.get(&project) {
                 hints.push(if settings.only_mine.on {
@@ -892,7 +920,10 @@ pub(super) fn hints(app: &App) -> Vec<String> {
             hints.push("← → sound");
         }
         Some(
-            SettingRow::Project(_)
+            SettingRow::Plugins
+            | SettingRow::Plugin(_)
+            | SettingRow::AddPlugin
+            | SettingRow::Project(_)
             | SettingRow::Tell(_)
             | SettingRow::Muster
             | SettingRow::Notch
@@ -903,11 +934,5 @@ pub(super) fn hints(app: &App) -> Vec<String> {
         )
         | None => {}
     }
-    let mut hints: Vec<String> = hints.into_iter().map(str::to_owned).collect();
-    hints.extend(super::bottom_bar::hint(
-        app,
-        muster_core::keys::Action::ReadSettings,
-        "read again",
-    ));
     hints
 }

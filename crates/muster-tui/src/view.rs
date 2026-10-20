@@ -25,6 +25,8 @@ pub(crate) mod logos;
 pub(crate) mod look;
 mod menu;
 pub(crate) mod picture;
+mod plugin_dialog;
+mod plugins;
 mod preview;
 mod pull_request;
 mod rebind;
@@ -40,6 +42,7 @@ mod version;
 
 use bottom_bar::{bottom_height, draw_bottom_bar};
 pub(crate) use menu::menu_area;
+pub(crate) use plugin_dialog::preview_lines;
 use preview::draw_preview;
 use sessions::{draw_needs_you, draw_sessions};
 pub(crate) use sessions::{fold_column, list_width};
