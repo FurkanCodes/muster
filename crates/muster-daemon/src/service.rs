@@ -169,8 +169,13 @@ pub(crate) async fn origin(root: &std::path::Path) -> Origin {
 /// The client for services reached by their APIs, with a time limit, so a
 /// stuck service costs a request, not a command.
 pub(crate) fn http_client() -> reqwest::Client {
+    http_client_within(std::time::Duration::from_secs(30))
+}
+
+/// The same, each request given `limit`.
+pub(crate) fn http_client_within(limit: std::time::Duration) -> reqwest::Client {
     reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(limit)
         .user_agent(concat!("muster/", env!("CARGO_PKG_VERSION")))
         .build()
         .unwrap_or_default()

@@ -128,8 +128,9 @@ enum Commands {
         #[arg(long, hide = true)]
         background: bool,
     },
-    /// Serve Muster's own ticket plugin ID (`github`, `gitlab`) on stdin
-    /// and stdout: what the daemon runs to reach a project's tickets.
+    /// Serve Muster's own ticket plugin ID (`github`, `gitlab`, `jira`,
+    /// `linear`) on stdin and stdout: what the daemon runs to reach a
+    /// project's tickets.
     #[command(hide = true)]
     PluginRun { id: String },
 }
@@ -614,7 +615,8 @@ fn start_notch(paths: &Paths) -> std::io::Result<()> {
 /// Muster's helper, which shows notifications of the Mac's own too, so it
 /// runs as Muster's app (`mac_app`), where it can.
 /// Serves Muster's own ticket plugin `id` until the daemon closes its
-/// stdin, on a runtime of one thread: it waits on `gh` or `glab`.
+/// stdin, on a runtime of one thread: it waits on `gh`, `glab` or the
+/// network.
 fn plugin_run(id: &str) -> ExitCode {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()

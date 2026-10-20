@@ -4,10 +4,10 @@
 //! plugin (`process`). A plugin is a `TicketSource` like any other, so
 //! `Hidden`, the prompt's fence and every caller stay as they are, and
 //! what it answers is checked and cleaned before anything sees it. Muster's
-//! own GitHub and GitLab are plugins, built into the `muster` program and
-//! run as `muster plugin-run github|gitlab` (`crate::plugin_run`); anyone
-//! else's run from their folders, given only what of the environment
-//! their manifests name.
+//! own GitHub, GitLab, Jira and Linear are plugins, built into the `muster`
+//! program and run as `muster plugin-run <id>` (`crate::plugin_run`) with
+//! the environment sessions get; anyone else's run from their folders,
+//! given only what of the environment their manifests name.
 
 pub(crate) mod process;
 pub(crate) mod streams;

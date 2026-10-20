@@ -154,7 +154,6 @@ pub(crate) async fn setup() -> Setup {
         work: Arc::new(crate::runs::NotYetBuilt),
         trackers: Arc::new(crate::trackers::choose::ServiceTrackers {
             secrets: Arc::new(crate::secrets::Kept::default()),
-            http: crate::service::http_client(),
             plugins: crate::trackers::plugin::Plugins::new("muster".into()),
         }),
         config_dir: dir.path().join("config"),
