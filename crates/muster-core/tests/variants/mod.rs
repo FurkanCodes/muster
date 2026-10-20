@@ -50,7 +50,7 @@ impl Variant for ServerFrame {
 }
 
 impl Variant for Command {
-    const COUNT: usize = 40;
+    const COUNT: usize = 41;
     fn variant(&self) -> usize {
         match self {
             Self::Ping => 0,
@@ -93,12 +93,13 @@ impl Variant for Command {
             Self::ReadPreferences => 37,
             Self::RenameSession { .. } => 38,
             Self::ListModels { .. } => 39,
+            Self::Plugin(_) => 40,
         }
     }
 }
 
 impl Variant for Reply {
-    const COUNT: usize = 22;
+    const COUNT: usize = 24;
     fn variant(&self) -> usize {
         match self {
             Self::Pong => 0,
@@ -123,12 +124,14 @@ impl Variant for Reply {
             Self::Done => 19,
             Self::Explanation(_) => 20,
             Self::Models(_) => 21,
+            Self::Plugins(_) => 22,
+            Self::PluginPreview(_) => 23,
         }
     }
 }
 
 impl Variant for Delta {
-    const COUNT: usize = 13;
+    const COUNT: usize = 14;
     fn variant(&self) -> usize {
         match self {
             Self::ProjectUpserted(_) => 0,
@@ -144,6 +147,7 @@ impl Variant for Delta {
             Self::LookedAt { .. } => 10,
             Self::Preferences(_) => 11,
             Self::Notifier { .. } => 12,
+            Self::PluginsChanged(_) => 13,
         }
     }
 }

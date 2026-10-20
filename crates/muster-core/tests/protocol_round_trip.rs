@@ -11,6 +11,7 @@
     reason = "a test: a failed step is the test failing"
 )]
 
+mod plugin_samples;
 mod variants;
 
 use std::path::PathBuf;
@@ -400,7 +401,7 @@ fn commands() -> Vec<Command> {
         SessionId::new(),
         RunId::new(),
     );
-    vec![
+    let mut all = vec![
         Command::Ping,
         Command::AddProject {
             root: PathBuf::from("/src/app"),
@@ -542,11 +543,13 @@ fn commands() -> Vec<Command> {
             another: true,
             on: Some(workspace),
         },
-    ]
+    ];
+    all.extend(plugin_samples::commands());
+    all
 }
 
 fn replies() -> Vec<Reply> {
-    vec![
+    let mut all = vec![
         Reply::Pong,
         Reply::ProjectAdded {
             id: ProjectId::new(),
@@ -626,11 +629,13 @@ fn replies() -> Vec<Reply> {
             session: SessionId::new(),
         },
         Reply::Done,
-    ]
+    ];
+    all.extend(plugin_samples::replies());
+    all
 }
 
 fn deltas() -> Vec<Delta> {
-    vec![
+    let mut all = vec![
         Delta::ProjectUpserted(project()),
         Delta::ProjectRemoved {
             id: ProjectId::new(),
@@ -660,7 +665,9 @@ fn deltas() -> Vec<Delta> {
         Delta::LookedAt { looked_at: true },
         Delta::Preferences(preferences()),
         Delta::Notifier { ready: true },
-    ]
+    ];
+    all.extend(plugin_samples::deltas());
+    all
 }
 
 fn client_frames() -> Vec<ClientFrame> {
@@ -748,6 +755,7 @@ fn server_frames() -> Vec<ServerFrame> {
             looked_at: true,
             preferences: preferences(),
             notifier: true,
+            plugins: plugin_samples::plugins(),
         }),
         ServerFrame::Error(ErrorBody::new(ErrorCode::BadRequest, "malformed")),
         ServerFrame::Reply {
@@ -836,6 +844,14 @@ fn every_protocol_message_reads_back_as_it_was_sent_arc_09() {
     }
     for frame in &server {
         assert_round_trip(frame);
+    }
+}
+
+/// Each change to a plugin, and who made it, reads back as it was sent.
+#[test]
+fn every_change_to_a_plugin_reads_back_as_it_was_sent_arc_09() {
+    for change in plugin_samples::every_action() {
+        assert_round_trip(&change);
     }
 }
 

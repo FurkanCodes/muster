@@ -22,6 +22,7 @@ mod looking;
 mod names;
 mod naming;
 mod own_settings;
+mod plugins;
 mod projects;
 mod pulls;
 mod recovery;
@@ -104,6 +105,10 @@ pub(crate) struct Settings {
 
 /// Loads the state from the store, resumes or settles sessions the last
 /// daemon left running, and starts the Supervisor.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the Supervisor built whole, a field to a line, then each step of its start"
+)]
 pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreError> {
     let (mut state, stored_runs) = settings
         .store
@@ -146,7 +151,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         store: settings.store,
         clock: settings.clock,
         worktrees_dir: settings.worktrees_dir,
-        data_dir: settings.data_dir,
+        data_dir: settings.data_dir.clone(),
         hook_socket: settings.hook_socket,
         deltas: broadcast::channel(settings.delta_capacity).0,
         state,
@@ -171,7 +176,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         work: settings.work,
         trackers: settings.trackers,
         run_reports,
-        config_dir: settings.config_dir,
+        config_dir: settings.config_dir.clone(),
         credentials: settings.credentials,
         docker: settings.docker,
         hosts: settings.hosts,
@@ -184,7 +189,9 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         tasks: settings.tasks,
         agents,
         asks: Arc::new(tokio::sync::Semaphore::new(naming::AT_ONCE)),
+        plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
     };
+    supervisor.start_plugins().await;
     supervisor.ensure_checkouts().await;
     // Running sessions handed over keep running: taken over before any is
     // taken to have died with the last daemon.
@@ -325,6 +332,8 @@ struct Supervisor {
     agents: Vec<Arc<muster_core::config::agents::AgentDefinition>>,
     /// Turns to ask an agent one question, few at once (`ARC-14`).
     asks: Arc<tokio::sync::Semaphore>,
+    /// The plugins the person installed (`ARCHITECTURE.md` §7a).
+    plugins: crate::plugins::Registry,
 }
 
 impl Supervisor {
@@ -411,6 +420,7 @@ impl Supervisor {
                     move_branch,
                 } => self.undo(workspace, number, move_branch, reply),
                 Command::MoveOnto { workspace } => self.move_onto(workspace, reply).await,
+                Command::Plugin(command) => self.plugin_command(command, reply),
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
                 Command::RestartSession { session, size }
@@ -458,6 +468,7 @@ impl Supervisor {
                 }
             },
             Request::IssueFetched(fetched) => self.start_fetched_issue(*fetched).await,
+            Request::PluginFetched(fetched) => self.plugin_fetched(*fetched),
             Request::RunTicketFetched(fetched) => self.start_fetched_run(*fetched).await,
             Request::CredentialFetched(fetched) => self.on_credential(*fetched).await,
             Request::CheckPullRequests => {
@@ -648,7 +659,8 @@ impl Supervisor {
             | Command::EntryDiff { .. }
             | Command::UndoPlan { .. }
             | Command::Undo { .. }
-            | Command::MoveOnto { .. } => Err(ErrorBody::new(
+            | Command::MoveOnto { .. }
+            | Command::Plugin(_) => Err(ErrorBody::new(
                 ErrorCode::Internal,
                 "this command is answered off the Supervisor's loop",
             )),
@@ -788,6 +800,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::RequestChanges { .. } => "request changes",
         Command::RunHistory { .. } => "run history",
         Command::StartFromIssue { .. } => "start from issue",
+        Command::Plugin(_) => "plugin",
     }
 }
 

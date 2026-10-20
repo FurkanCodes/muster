@@ -75,6 +75,8 @@ pub(super) enum Request {
     },
     /// An issue fetched off the loop, back to start work on it.
     IssueFetched(Box<issues::FetchedIssue>),
+    /// A plugin fetched off the loop, back to be held as a preview.
+    PluginFetched(Box<crate::plugins::Fetched>),
     /// A ticket fetched off the loop, back to start a run on it.
     RunTicketFetched(Box<runs::FetchedRun>),
     /// The runs' credential fetched off the loop, back to start an agent.
@@ -149,6 +151,7 @@ impl std::fmt::Debug for Request {
             Self::Notifier { client, ready } => write!(f, "Notifier({client}, {ready})"),
             Self::HoldKeys { session, .. } => write!(f, "HoldKeys({session})"),
             Self::IssueFetched(_) => f.write_str("IssueFetched"),
+            Self::PluginFetched(_) => f.write_str("PluginFetched"),
             Self::RunTicketFetched(_) => f.write_str("RunTicketFetched"),
             Self::CredentialFetched(_) => f.write_str("CredentialFetched"),
             Self::CheckPullRequests => f.write_str("CheckPullRequests"),

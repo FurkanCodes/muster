@@ -106,7 +106,11 @@
 //! Notifications`, sent only to a daemon of 39 or later; `Delta::Notifier`,
 //! sent only to a client of 39 or later); version 40 which notifications
 //! and their sounds (`Preferences::telling`, a field older clients pass
-//! over; `PreferenceChange::Tell`, sent only to a daemon of 40 or later).
+//! over; `PreferenceChange::Tell`, sent only to a daemon of 40 or later);
+//! version 41 plugins (`Command::Plugin`, sent only to a daemon of 41 or
+//! later, answered with `Reply::Plugins` and `Reply::PluginPreview`;
+//! `Snapshot::plugins`, a field older clients pass over; and
+//! `Delta::PluginsChanged`, sent only to a client of 41 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -114,6 +118,8 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+pub mod plugins;
 
 use crate::changes::{ChangePart, Changes, FileDiff};
 use crate::colours::TerminalColours;
@@ -125,7 +131,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 40;
+pub const PROTOCOL_VERSION: u32 = 41;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -624,6 +630,10 @@ pub enum Command {
         #[serde(default)]
         on: Option<WorkspaceId>,
     },
+    /// Ask of the daemon's plugins: list them, preview, install, update,
+    /// turn on or off, or remove one (`ARCHITECTURE.md` §7a). Sent only to
+    /// a daemon of 41 or later.
+    Plugin(plugins::PluginCommand),
 }
 
 /// A successful answer to a [`Command`].
@@ -712,6 +722,11 @@ pub enum Reply {
         workspace: WorkspaceId,
         session: SessionId,
     },
+    /// Every plugin. From protocol 41.
+    Plugins(plugins::PluginList),
+    /// What installing, linking or updating a plugin would do. From
+    /// protocol 41.
+    PluginPreview(Box<plugins::PluginPreview>),
     /// The command was carried out and has nothing to report.
     Done,
 }
@@ -756,6 +771,9 @@ pub struct Snapshot {
     /// terminals none. From protocol 39.
     #[serde(default)]
     pub notifier: bool,
+    /// Every plugin. From protocol 41.
+    #[serde(default)]
+    pub plugins: Vec<plugins::PluginInfo>,
 }
 
 /// What the machine and each running session use, measured every couple of
@@ -822,6 +840,9 @@ pub enum Delta {
     Notifier {
         ready: bool,
     },
+    /// The plugins changed: each, as it is now. Sent only to a client of
+    /// 41 or later.
+    PluginsChanged(Vec<plugins::PluginInfo>),
 }
 
 impl Reply {
@@ -851,6 +872,7 @@ impl Delta {
         match self {
             Self::LookedAt { .. } | Self::Preferences(_) => crate::settings::NOTCH_PROTOCOL,
             Self::Notifier { .. } => crate::settings::NOTIFIER_PROTOCOL,
+            Self::PluginsChanged(_) => crate::plugins::PLUGINS_PROTOCOL,
             _ => FIRST_PROTOCOL_VERSION,
         }
     }

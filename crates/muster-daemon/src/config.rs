@@ -5,8 +5,10 @@
 use std::path::{Path, PathBuf};
 
 use muster_core::config::agents::AgentDefinition;
+use muster_core::config::edit::Written;
 use muster_core::config::preferences::{self, MusterConfig};
 use muster_core::config::{ConfigError, ProjectConfig, edit};
+use muster_core::plugins::PluginEntry;
 use muster_core::settings::{
     KEYS, LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH,
     NOTIFICATIONS, ONLY_MINE, PANELS, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange,
@@ -15,6 +17,9 @@ use muster_core::settings::{
 
 /// The repository's settings file.
 pub const FILE_NAME: &str = "muster.toml";
+
+/// Where Muster's own settings keep the plugins: `[plugins.<id>]`.
+const PLUGINS: &str = "plugins";
 
 /// The settings, and the files they came from.
 #[derive(Clone, Debug, PartialEq)]
@@ -238,6 +243,40 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             NAMES,
             &[("agent", agent.as_deref()), ("model", model.as_deref())],
         ),
+    }
+    .map_err(|error| invalid(error.to_string()))?;
+    MusterConfig::parse(Some(&changed), &shown)?;
+    write(&file, &changed).map_err(|error| invalid(format!("cannot be written: {error}")))
+}
+
+/// The plugins the person installed, linked or turned off, as Muster's
+/// own settings in `config_dir` hold them (`[plugins.<id>]`).
+pub fn plugin_entries(config_dir: &Path) -> Result<Vec<PluginEntry>, ConfigError> {
+    let file = config_dir.join(preferences::FILE_NAME);
+    MusterConfig::parse(read(&file)?.as_deref(), &file.display().to_string())
+        .map(|config| config.plugins)
+}
+
+/// Sets or takes out each of `values` in the plugin `id`'s
+/// `[plugins.<id>]`, or with `None` takes the entry out whole, in Muster's
+/// own settings in `config_dir`, keeping the rest of the file as written;
+/// refused, writing nothing, if they would not read with it.
+pub fn change_plugin(
+    config_dir: &Path,
+    id: &str,
+    values: Option<&[(&str, Option<Written<'_>>)]>,
+) -> Result<(), ConfigError> {
+    let file = config_dir.join(preferences::FILE_NAME);
+    let shown = file.display().to_string();
+    let invalid = |message: String| ConfigError::Invalid {
+        file: shown.clone(),
+        message,
+    };
+    let text = read(&file)?;
+    let entry = (PLUGINS, id);
+    let changed = match values {
+        Some(values) => edit::set_entry_in(text.as_deref(), preferences::NEW_FILE, entry, values),
+        None => edit::remove_entry_in(text.as_deref(), entry),
     }
     .map_err(|error| invalid(error.to_string()))?;
     MusterConfig::parse(Some(&changed), &shown)?;

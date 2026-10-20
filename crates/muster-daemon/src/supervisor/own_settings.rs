@@ -112,6 +112,9 @@ impl Supervisor {
             "read Muster's own settings again"
         );
         self.take_own_settings(read);
+        // The plugins are in the same file, and their manifests are read
+        // again with it.
+        self.read_plugins();
         Reply::Done
     }
 }

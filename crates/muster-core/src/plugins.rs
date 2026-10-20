@@ -14,7 +14,7 @@ pub use placeholders::{Context, Missing, Placeholder};
 pub use registry::{PluginEntry, PluginSource, RegistryError};
 
 /// The first protocol whose daemon keeps a registry of plugins and takes
-/// `Command::Plugin` (`ARC-09`).
+/// [`crate::protocol::Command::Plugin`] (`ARC-09`).
 pub const PLUGINS_PROTOCOL: u32 = 41;
 
 /// The Muster reading manifests, which a manifest's `muster` must not be
