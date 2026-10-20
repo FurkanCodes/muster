@@ -204,3 +204,6 @@ async fn forward_program(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -59,6 +59,9 @@ const STOP_GRACE: Duration = Duration::from_secs(3);
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// The most output sent as one chunk.
 const MAX_CHUNK: usize = 8 * 1024;
+/// Shared live output is only a bridge to the ring. A stalled subscriber
+/// retains at most 256 KiB here, regardless of how long it stalls (ARC-14).
+const LIVE_CHUNKS: usize = 32;
 
 /// What to run in a terminal.
 #[derive(Clone, Debug)]
@@ -411,7 +414,7 @@ fn start(
         master: Some(master),
         process_group,
         ring,
-        live: Some(broadcast::channel(256).0),
+        live: Some(broadcast::channel(LIVE_CHUNKS).0),
         input: Some(input),
         osc: OscScanner::default(),
         queries,
@@ -671,16 +674,24 @@ impl Actor {
                 Err(_) => break,
             }
         }
+        // A reader's piece, or the last piece coalesced, can cross the
+        // batch limit. Enforce the broadcast's byte bound too (ARC-14).
+        for chunk in data.chunks(MAX_CHUNK) {
+            self.publish(chunk, events);
+        }
+    }
+
+    fn publish(&mut self, data: &[u8], events: &impl Fn(PtyEvent)) {
         // Every change is reported, in order: a harness's titles are steps
         // ("Working", then "Action Required"), not only a latest state.
-        for report in self.osc.scan(&data) {
+        for report in self.osc.scan(data) {
             events(match report {
                 Report::Progress { busy } => PtyEvent::Progress { busy },
                 Report::Title(title) => PtyEvent::Title(title),
             });
         }
-        self.answer_queries(&data);
-        let seq = self.ring.push(&data);
+        self.answer_queries(data);
+        let seq = self.ring.push(data);
         if let Some(live) = &self.live {
             // No subscribers is fine; the ring holds it.
             let _ = live.send(Chunk {
