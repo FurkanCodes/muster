@@ -201,6 +201,28 @@ impl PluginDetails {
     }
 }
 
+/// A command as it would be written in a shell: each argument quoted where
+/// it has to be, without the control characters a terminal would act on
+/// (`PRD-07`). As `muster plugin` and the Settings screen show it.
+pub fn command_line(arguments: &[String]) -> String {
+    arguments
+        .iter()
+        .map(|argument| {
+            let argument = crate::text::one_line(argument);
+            let plain = !argument.is_empty()
+                && argument
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || "-_./:=@%+,{}".contains(c));
+            if plain {
+                argument
+            } else {
+                format!("'{}'", argument.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// A program a plugin needs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Required {
@@ -312,6 +334,18 @@ mod tests {
                 ("ticket source".to_owned(), vec!["./t".to_owned()]),
             ]
         );
+    }
+
+    #[test]
+    fn a_command_is_shown_as_a_shell_would_read_it() {
+        let arguments =
+            ["zoe", "{transcript}", "two words", "it's", "", "--x=1"].map(str::to_owned);
+        assert_eq!(
+            command_line(&arguments),
+            "zoe {transcript} 'two words' 'it'\\''s' '' --x=1"
+        );
+        // A terminal's controls never reach it.
+        assert_eq!(command_line(&["a\u{1b}]0;x\u{7}".to_owned()]), "'a]0;x'");
     }
 
     #[test]

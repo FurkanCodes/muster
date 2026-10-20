@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 
 use muster_core::plugins::{PanelOn, PluginSource};
 use muster_core::protocol::plugins::{
-    PluginDetails, PluginInfo, PluginList, PluginPreview, PreviewKind,
+    PluginDetails, PluginInfo, PluginList, PluginPreview, PreviewKind, command_line as command,
 };
 use muster_core::time::{Timestamp, between, span};
 
@@ -160,27 +160,6 @@ fn runs(details: &PluginDetails) -> Vec<String> {
     lines
 }
 
-/// A command as it would be written in a shell: each argument quoted where
-/// it has to be.
-fn command(arguments: &[String]) -> String {
-    arguments
-        .iter()
-        .map(|argument| {
-            let argument = shown(argument);
-            let plain = !argument.is_empty()
-                && argument
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || "-_./:=@%+,{}".contains(c));
-            if plain {
-                argument
-            } else {
-                format!("'{}'", argument.replace('\'', "'\\''"))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 /// A preview: what the plugin is, where it is from, and everything it
 /// would run.
 pub(crate) fn preview(preview: &PluginPreview) -> String {
@@ -237,22 +216,5 @@ pub(crate) fn approved(preview: &PluginPreview) -> String {
         }
         PreviewKind::Link => format!("Linked {id} and turned it on."),
         PreviewKind::Update => format!("Updated {id} to {}.", shown(&preview.details.version)),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_command_is_shown_as_a_shell_would_read_it() {
-        let arguments =
-            ["zoe", "{transcript}", "two words", "it's", "", "--x=1"].map(str::to_owned);
-        assert_eq!(
-            command(&arguments),
-            "zoe {transcript} 'two words' 'it'\\''s' '' --x=1"
-        );
-        // A terminal's controls never reach it.
-        assert_eq!(command(&["a\u{1b}]0;x\u{7}".to_owned()]), "'a]0;x'");
     }
 }
