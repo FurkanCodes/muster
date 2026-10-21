@@ -2,6 +2,7 @@
 // work, two asking, some finished. The mock daemon starts from it, and tests
 // change it through the mock bridge.
 
+import type { Changes } from "../generated/Changes";
 import type { FileDiff } from "../generated/FileDiff";
 import type { PluginInfo } from "../generated/PluginInfo";
 import type { Preferences } from "../generated/Preferences";
@@ -10,6 +11,7 @@ import type { Session } from "../generated/Session";
 import type { SessionStatus } from "../generated/SessionStatus";
 import type { SessionUsage } from "../generated/SessionUsage";
 import type { Timeline } from "../generated/Timeline";
+import type { UndoPlan } from "../generated/UndoPlan";
 import type { Workspace } from "../generated/Workspace";
 import type { World } from "./model";
 
@@ -36,6 +38,14 @@ export interface Scenario extends World, TicketScenario {
   entryDiffs?: Record<string, Record<number, FileDiff>>;
   /** What sessions use, as the daemon's measurement says. */
   usage?: SessionUsage[];
+  /** Each workspace's changes, as `WorkspaceChanges` answers them. */
+  changes?: Record<string, Changes>;
+  /** Each file's diff, as `FileDiff` answers it, by `workspace:part:path`. */
+  diffs?: Record<string, FileDiff>;
+  /** What putting the files back before an entry would do, by `workspace:number`. */
+  undoPlans?: Record<string, UndoPlan>;
+  /** The listing as it was before each entry, for `Undo` to put back, by `workspace:number`. */
+  beforeUndo?: Record<string, Changes>;
 }
 
 function project(n: number, name: string, root: string): Project {
@@ -131,7 +141,8 @@ export function workingDay(): Scenario {
       changes: { files: 2, added: 12, removed: 3 },
     }),
     workspace(11, 1, "worktree", "feature/desktop-app", "~/.muster/worktrees/muster/desktop", {
-      changes: { files: 3, added: 203, removed: 4 },
+      // As its listing below sums: the uncommitted files and the branch's.
+      changes: { files: 3, added: 300, removed: 6 },
       pull_request: {
         number: 91,
         url: "https://github.com/FurkanCodes/muster/pull/91",
@@ -292,6 +303,79 @@ export function workingDay(): Scenario {
       },
     },
   };
+  // The desktop worktree's changes, as the Changes board shows them.
+  const changes: Record<string, Changes> = {
+    [ulid(11)]: {
+      base: "main",
+      more_commits: 0,
+      commits: [{ id: "a1b2c3d", subject: "Add the desktop crate" }],
+      uncommitted: [
+        { path: "src/link.rs", from: null, kind: "modified", lines: { added: 118, removed: 4 } },
+        { path: "src/main.rs", from: null, kind: "untracked", lines: { added: 61, removed: 0 } },
+        { path: "Cargo.toml", from: null, kind: "untracked", lines: { added: 24, removed: 0 } },
+      ],
+      branch: [
+        { path: "src/link.rs", from: null, kind: "added", lines: { added: 85, removed: 0 } },
+        { path: "Cargo.toml", from: null, kind: "modified", lines: { added: 12, removed: 2 } },
+      ],
+    },
+  };
+  const link: FileDiff = {
+    text: [
+      "diff --git a/src/link.rs b/src/link.rs",
+      "--- a/src/link.rs",
+      "+++ b/src/link.rs",
+      "@@ -1,2 +1,3 @@",
+      " //! The desktop app's link to the daemon.",
+      "-use muster_client::Connection;",
+      "+use muster_client::{Connection, Received};",
+      "+use tauri::ipc::Channel;",
+      "@@ -18,1 +19,1 @@",
+      "-// TODO: deltas",
+      "+// Hand each change to the webview.",
+    ].join("\n"),
+    cut: false,
+  };
+  const diffs: Record<string, FileDiff> = {};
+  for (const part of ["uncommitted", "branch"] as const)
+    for (const file of changes[ulid(11)]?.[part] ?? [])
+      diffs[`${ulid(11)}:${part}:${file.path}`] = link;
+  const desktopDiffs = entryDiffs[ulid(11)];
+  if (desktopDiffs)
+    for (const entry of timelines[ulid(11)]?.entries ?? []) desktopDiffs[entry.number] ??= link;
+  const desktop = workspaces.find((found) => found.id === ulid(11));
+  if (desktop)
+    desktop.clashes = [
+      {
+        with: ulid(12),
+        files: 1,
+        conflicts: 0,
+        shown: [{ path: "crates/muster-client/src/connection.rs", conflict: false }],
+      },
+    ];
+  // Putting the files back before each entry: the branch has moved one
+  // commit since every entry but the newest.
+  const undoPlans: Record<string, UndoPlan> = {};
+  const beforeUndo: Record<string, Changes> = {};
+  const entries = timelines[ulid(11)]?.entries ?? [];
+  for (const entry of entries) {
+    const key = `${ulid(11)}:${entry.number}`;
+    undoPlans[key] = {
+      number: entry.number,
+      later: entries.filter((other) => other.number > entry.number && other.summary).length,
+      branch:
+        entry.number < 4
+          ? {
+              branch: "feature/desktop-app",
+              to: "1234567",
+              commits: 1,
+              forward: false,
+              refused: null,
+            }
+          : null,
+    };
+    beforeUndo[key] = { base: "main", uncommitted: [], branch: [], commits: [], more_commits: 0 };
+  }
   // What the asking Codex session uses, as the daemon measures it.
   const usage: SessionUsage[] = [
     { session: ulid(101), memory_bytes: 212_000_000, cpu_permille: 30 },
@@ -307,5 +391,9 @@ export function workingDay(): Scenario {
     timelines,
     entryDiffs,
     usage,
+    changes,
+    diffs,
+    undoPlans,
+    beforeUndo,
   };
 }

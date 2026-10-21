@@ -1,0 +1,14 @@
+/* DiffView draws only the lines in sight, so each line keeps one height: 18px, a hunk head 30 with its margins. */
+.ui-diff {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.ui-diff-body .mu-dl,
+.ui-diff-body .mu-dl-hunk {
+  height: 18px;
+}
+.ui-diff-body > p {
+  margin: 0;
+  padding: var(--space-8) var(--space-12);
+}
