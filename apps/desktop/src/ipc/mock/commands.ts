@@ -8,6 +8,7 @@ import type { Changes } from "../generated/Changes";
 import type { Command } from "../generated/Command";
 import type { Reply } from "../generated/Reply";
 import type { MockBridge } from "./bridge";
+import { flowCommand } from "./flows";
 import { NOW } from "./now";
 import { sessionsCommand } from "./sessions";
 import { ticketCommand } from "./tickets";
@@ -62,7 +63,7 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
   }
   const changes = changesCommand(mock, command);
   if (changes !== undefined) return changes;
-  return ticketCommand(mock, command);
+  return ticketCommand(mock, command) ?? flowCommand(mock, command);
 }
 
 /** `Changes::summary`. */

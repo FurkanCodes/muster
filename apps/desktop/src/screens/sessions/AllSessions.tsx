@@ -55,7 +55,6 @@ export default function AllSessions() {
   const narrowed = useUi((state) => state.project !== null);
   const loaded = useDaemon((state) => state.loaded);
   const link = useDaemon((state) => state.link.state);
-  const away = useDaemon((state) => (state.link.state === "down" ? state.link.reason : null));
   const map = useKeymap();
   const session = selected?.kind === "session" ? selected.id : undefined;
   const tools = useSessionActions(session);
@@ -227,13 +226,6 @@ export default function AllSessions() {
           <h1 className="mu-queue-title">All sessions</h1>
           <span className="mu-meta">Every project, its worktrees, and their sessions.</span>
         </div>
-        {away ? (
-          <div className="mu-banner mu-banner--away sessions-away" role="alert">
-            <span className="mu-banner-text">
-              <span className="mu-banner-lead">Out of reach:</span> {away}
-            </span>
-          </div>
-        ) : null}
         {!loaded ? (
           <div className="mu-empty" role="status">
             <p className="mu-empty-text">

@@ -4,6 +4,7 @@
 
 mod commands;
 pub mod contract;
+mod folders;
 pub mod link;
 mod sounds;
 mod ticket_url;
@@ -53,6 +54,7 @@ pub fn run() {
             commands::looking,
             ticket_url::open_ticket_url,
             sounds::hear,
+            folders::list_folders,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

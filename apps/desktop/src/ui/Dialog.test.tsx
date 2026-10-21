@@ -95,4 +95,32 @@ describe("ARC-24 Dialog", () => {
     window.removeEventListener("keydown", seen);
     expect(seen).not.toHaveBeenCalled();
   });
+  it("PRD-03 ⏎ in a text area is a new line; ⌘⏎ there does the acting answer", () => {
+    const onAccept = vi.fn();
+    renderWithApp(
+      <Dialog
+        title="New session"
+        onClose={vi.fn()}
+        onAccept={onAccept}
+        actions={<Button>Start</Button>}
+      >
+        <textarea aria-label="First prompt" />
+      </Dialog>,
+    );
+    const prompt = screen.getByRole("textbox", { name: "First prompt" });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+    expect(onAccept).not.toHaveBeenCalled();
+    fireEvent.keyDown(prompt, { key: "Enter", metaKey: true });
+    expect(onAccept).toHaveBeenCalledTimes(1);
+  });
+  it("⇥ past the last goes round to the first, and ⇧⇥ the other way", () => {
+    renderWithApp(<Close />);
+    const keep = screen.getByRole("button", { name: "Keep it open" });
+    const close = screen.getByRole("button", { name: "Close ticket" });
+    close.focus();
+    fireEvent.keyDown(close, { key: "Tab" });
+    expect(keep).toHaveFocus();
+    fireEvent.keyDown(keep, { key: "Tab", shiftKey: true });
+    expect(close).toHaveFocus();
+  });
 });

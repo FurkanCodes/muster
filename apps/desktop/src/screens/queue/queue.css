@@ -40,9 +40,6 @@
 .queue-list .mu-question {
   max-width: calc(100% - var(--layout-indent-queue));
 }
-.queue-away {
-  margin: 0 var(--space-20) var(--space-8);
-}
 /* All clear: title-section, 48 from the top, the working agents below it. */
 .queue-clear {
   margin: 0 auto;

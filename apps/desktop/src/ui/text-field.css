@@ -1,0 +1,5 @@
+/* A path or a branch is set in mono at the size the boards draw it. */
+.mu-field-input.ui-field-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}

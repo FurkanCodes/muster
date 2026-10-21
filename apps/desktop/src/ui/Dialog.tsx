@@ -9,11 +9,33 @@ import "./dialog.css";
  * so a danger dialog, whose focus starts on the answer that does nothing,
  * never acts on a ⏎ meant for it; ← → go between the answers (⇥ reaches no
  * button in WebKit unless the person says so) and ⌘⏎ does the acting
- * answer wherever the focus is. The button that has the focus first
- * carries `data-dialog-initial`. While it is open the window's keys are the
+ * answer wherever the focus is; in a text area ⏎ is a new line. ⇥ past
+ * the last field goes round to the first, ⇧⇥ the other way, so the keys
+ * never leave it. The button that has the focus first carries
+ * `data-dialog-initial`. While it is open the window's keys are the
  * dialog's, so no screen behind it acts on them, and a key pressed in it
  * never reaches the window's listener.
  */
+const FOCUSABLE =
+  "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])";
+
+/** ⇥ past the last thing in the dialog goes round to the first, ⇧⇥ the other way. */
+function keepTab(event: KeyboardEvent<HTMLDialogElement>) {
+  const inside = [...event.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (element) => element.tabIndex >= 0,
+  );
+  const first = inside[0];
+  const last = inside.at(-1);
+  const at = document.activeElement;
+  if (event.shiftKey && (at === first || at === event.currentTarget)) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && at === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+}
+
 export function Dialog({
   title,
   meta,
@@ -66,6 +88,10 @@ export function Dialog({
         event.stopPropagation();
         onKeyDown?.(event);
         if (event.defaultPrevented) return;
+        if (event.key === "Tab") {
+          keepTab(event);
+          return;
+        }
         const answer =
           event.target instanceof HTMLElement
             ? event.target.closest<HTMLButtonElement>(".mu-dialog-actions button")
@@ -82,6 +108,8 @@ export function Dialog({
           return;
         }
         if (event.key !== "Enter" || (answer && !event.metaKey)) return;
+        const area = event.target instanceof HTMLTextAreaElement;
+        if (area && !event.metaKey && !event.ctrlKey) return;
         event.preventDefault();
         onAccept();
       }}

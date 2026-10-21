@@ -392,9 +392,11 @@ test("ARC-24 the queue keeps its last state while the daemon is out of reach", a
   await page.evaluate(() =>
     window.__muster.setLink({ state: "down", reason: "the daemon stopped", since: 0 }),
   );
+  // The window's banner says it, with the daemon's reason (src/flows/Away.tsx).
   await expect(queue(page).page().getByRole("alert")).toContainText(
-    "Out of reach: the daemon stopped",
+    "Muster's daemon is out of reach.",
   );
+  await expect(queue(page).page().getByRole("alert")).toContainText("the daemon stopped");
   await expect(option(page, "Sketch the Tauri shell")).toHaveAttribute("aria-selected", "true");
 });
 

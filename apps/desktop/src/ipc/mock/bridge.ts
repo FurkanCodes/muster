@@ -12,6 +12,7 @@ import {
   type TermFrame,
 } from "../frames";
 import type { Command } from "../generated/Command";
+import type { Folders } from "../generated/desktop/Folders";
 import type { LinkState } from "../generated/desktop/LinkState";
 import type { Patch } from "../generated/desktop/Patch";
 import type { StateMessage } from "../generated/desktop/StateMessage";
@@ -22,6 +23,8 @@ import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
 import type { Workspace } from "../generated/Workspace";
 import { handleCommand } from "./commands";
+import { FlowWorld } from "./flows";
+import { expandPath } from "./folders";
 import { derive } from "./model";
 import { NOW, type Scenario } from "./scenario";
 import { MockSettings } from "./settings";
@@ -46,6 +49,9 @@ function keysOf(command: Command): string[] {
 
 export class MockBridge implements Bridge {
   readonly world: Scenario;
+  /** What git and the file system say, for the flows (flows.ts). */
+  readonly flows: FlowWorld;
+  private readonly drops = new Set<(paths: string[]) => void>();
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
   readonly openedUrls: string[] = [];
@@ -69,6 +75,7 @@ export class MockBridge implements Bridge {
 
   constructor(world: Scenario) {
     this.world = world;
+    this.flows = new FlowWorld(world);
     for (const session of world.sessions) this.changed.set(session.id, this.tick());
     this.settings = new MockSettings(this);
   }
@@ -218,7 +225,32 @@ export class MockBridge implements Bridge {
     this.emitSession(session);
   }
 
+  async listFolders(typed: string): Promise<Folders> {
+    const path = expandPath(typed);
+    const why = this.flows.unreadable[path];
+    if (why) throw new BridgeFailure("refused", `Cannot read ${path}: ${why}`);
+    if (!path.startsWith("/"))
+      throw new BridgeFailure("refused", `Cannot read ${path}: start it with / or ~/`);
+    const folders = this.flows.folders[path];
+    if (!folders)
+      throw new BridgeFailure(
+        "refused",
+        `Cannot read ${path}: No such file or directory (os error 2)`,
+      );
+    return { path, folders };
+  }
+
+  async onFolderDrop(listener: (paths: string[]) => void): Promise<() => void> {
+    this.drops.add(listener);
+    return () => this.drops.delete(listener);
+  }
+
   // What tests drive.
+
+  /** Drops `paths` on the window, as Finder would. */
+  drop(paths: string[]): void {
+    for (const listener of this.drops) listener(paths);
+  }
 
   /**
    * Holds the replies to `command` until {@link release}, as a slow daemon or

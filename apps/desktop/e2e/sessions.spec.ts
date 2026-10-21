@@ -134,7 +134,9 @@ test("ARC-24 out of reach, and no projects yet", async ({ page }) => {
   await page.evaluate(() =>
     window.__muster.setLink({ state: "down", reason: "the daemon is not running", since: 0 }),
   );
-  await expect(page.getByRole("alert")).toContainText("Out of reach: the daemon is not running");
+  // The window's banner says it, with the daemon's reason (src/flows/Away.tsx).
+  await expect(page.getByRole("alert")).toContainText("Muster's daemon is out of reach.");
+  await expect(page.getByRole("alert")).toContainText("the daemon is not running");
   await expect(line(page, "muster")).toBeVisible();
   await page.evaluate(() => {
     const mock = window.__muster;
@@ -143,7 +145,8 @@ test("ARC-24 out of reach, and no projects yet", async ({ page }) => {
     mock.world.sessions = [];
     mock.publish({ reset: true });
   });
-  await expect(page.getByRole("heading", { name: "No projects yet" })).toBeVisible();
+  // With no projects, the window's first run takes the lists of sessions (Welcome.html).
+  await expect(page.getByRole("heading", { name: "Add a project to start" })).toBeVisible();
 });
 
 test("PRD-15 T opens the shell beside the agent, live and typed in; T puts it away", async ({

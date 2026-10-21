@@ -77,13 +77,26 @@ function ProjectItem({ id }: { id: string }) {
 }
 
 function Projects() {
+  const actions = useActions();
   const ids = useDaemon(useShallow((state) => projectsInOrder(state).map((project) => project.id)));
+  const linked = useDaemon((state) => state.link.state === "up");
   return (
     <>
       <div className="mu-nav-label">Projects</div>
       {ids.map((id) => (
         <ProjectItem key={id} id={id} />
       ))}
+      <button
+        type="button"
+        className="mu-nav-item"
+        disabled={!linked}
+        onClick={() => actions.openFlow({ kind: "add-project" })}
+      >
+        <span className="mu-nav-icon">
+          <Icon name="plus" />
+        </span>
+        Add a project
+      </button>
     </>
   );
 }

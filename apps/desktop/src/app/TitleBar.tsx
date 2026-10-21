@@ -96,8 +96,8 @@ export function TitleBar() {
             disabled={!linked}
           >
             <Icon name="search" />
-            <span>Go to a session or run a command</span>
-            <Kbd>⌘K</Kbd>
+            <span>{linked ? "Go to a session or run a command" : "Waiting for the daemon"}</span>
+            {linked ? <Kbd>⌘K</Kbd> : null}
           </button>
           <span className="mu-spacer" data-tauri-drag-region />
         </>

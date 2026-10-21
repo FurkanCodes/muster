@@ -72,7 +72,9 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
   it("tells the daemon out of reach, keeping the queue as it last stood", async () => {
     const { bridge } = await opened();
     act(() => bridge.setLink({ state: "down", reason: "the daemon stopped", since: 0 }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Out of reach: the daemon stopped");
+    // The window's banner says it, with the daemon's reason (src/flows/Away.tsx).
+    expect(screen.getByRole("alert")).toHaveTextContent("Muster's daemon is out of reach.");
+    expect(screen.getByRole("alert")).toHaveTextContent("the daemon stopped");
     expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
   });
 

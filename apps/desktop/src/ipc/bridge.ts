@@ -5,6 +5,7 @@
 
 import type { TermFrame } from "./frames";
 import type { Command } from "./generated/Command";
+import type { Folders } from "./generated/desktop/Folders";
 import type { StateMessage } from "./generated/desktop/StateMessage";
 import type { Reply } from "./generated/Reply";
 import type { SessionId } from "./generated/SessionId";
@@ -40,6 +41,10 @@ export interface Bridge {
    * cannot, the app's Rust side sends nothing and reads no question.
    */
   looking(looking: boolean, focused: SessionId | null, seen: boolean): Promise<void>;
+  /** The folders in the folder `path` (absolute, or from `~`), to add one as a project. Rejects with why it cannot. */
+  listFolders(path: string): Promise<Folders>;
+  /** Tells `listener` the paths of what is dropped on the window, until the returned function is called. */
+  onFolderDrop(listener: (paths: string[]) => void): Promise<() => void>;
 }
 
 /** Why a bridge call failed, as the Rust side says it (`BridgeError`). */

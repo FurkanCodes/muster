@@ -93,7 +93,6 @@ export function QueueScreen({ area }: { area: QueueArea }) {
   const keysIn = useUi((state) => state.keysIn);
   const loaded = useDaemon((state) => state.loaded);
   const link = useDaemon((state) => state.link.state);
-  const away = useDaemon((state) => (state.link.state === "down" ? state.link.reason : null));
   const sections = useDaemon(
     useShallow((state) =>
       ids.map((id) => {
@@ -215,13 +214,6 @@ export function QueueScreen({ area }: { area: QueueArea }) {
           <h1 className="mu-queue-title">{title}</h1>
           <span className="mu-meta">{help}</span>
         </div>
-        {away ? (
-          <div className="mu-banner mu-banner--away queue-away" role="alert">
-            <span className="mu-banner-text">
-              <span className="mu-banner-lead">Out of reach:</span> {away}
-            </span>
-          </div>
-        ) : null}
         {!loaded ? (
           <div className="mu-empty" role="status">
             <p className="mu-empty-text">

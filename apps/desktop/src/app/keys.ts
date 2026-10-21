@@ -29,17 +29,22 @@ export type KeyHandlers = Readonly<Record<string, (event: KeyboardEvent) => void
 // handlers are always its latest without registering again on every render.
 const stack: { current: KeyHandlers }[] = [];
 
-/** Adds `handlers` while the calling component is shown; the newest wins. */
-export function useKeys(handlers: KeyHandlers): void {
+/**
+ * Adds `handlers` while the calling component is shown; the newest wins.
+ * `beneath` puts them under every screen's, whenever either came: the
+ * window's flows (src/flows) answer a key only where no screen does.
+ */
+export function useKeys(handlers: KeyHandlers, { beneath = false } = {}): void {
   const ref = useRef(handlers);
   ref.current = handlers;
   useEffect(() => {
-    stack.push(ref);
+    if (beneath) stack.unshift(ref);
+    else stack.push(ref);
     return () => {
       const at = stack.lastIndexOf(ref);
       if (at >= 0) stack.splice(at, 1);
     };
-  }, []);
+  }, [beneath]);
 }
 
 function editable(target: EventTarget | null): boolean {
@@ -54,7 +59,11 @@ function editable(target: EventTarget | null): boolean {
 }
 
 const GLOBAL: Readonly<Record<string, (app: App) => void>> = {
-  "⌘K": (app) => app.actions.openPalette(!app.ui.getState().paletteOpen),
+  // The palette goes to or does what the daemon knows: not while it is out of reach.
+  "⌘K": (app) => {
+    if (app.daemon.store.getState().link.state === "up")
+      app.actions.openPalette(!app.ui.getState().paletteOpen);
+  },
   "⌘1": (app) => app.actions.show("needs-you"),
   "⌘2": (app) => app.actions.show("all"),
   "⌘3": (app) => app.actions.show("tickets"),
@@ -62,12 +71,37 @@ const GLOBAL: Readonly<Record<string, (app: App) => void>> = {
   "⌘\\": (app) => app.actions.foldSidebar(),
 };
 
+/**
+ * Does what `chord` does on the screen shown, as if pressed: the command
+ * palette runs a screen's action this way, through the screen's own keys.
+ * Whether anything did.
+ */
+export function pressKey(chord: string): boolean {
+  for (let at = stack.length - 1; at >= 0; at -= 1) {
+    const handler = stack[at]?.current[chord];
+    if (handler) {
+      handler(new KeyboardEvent("keydown", { key: chord }));
+      return true;
+    }
+  }
+  return false;
+}
+
 export function installKeys(app: App): () => void {
   const listener = (event: KeyboardEvent) => {
     const chord = chordOf(event);
     const ui = app.ui.getState();
     if (ui.note?.error) app.actions.clearNote();
 
+    // The palette keeps the keys, as a dialog does its own (ui/Dialog.tsx):
+    // nothing behind it moves, but ⌘K puts it away.
+    if (ui.paletteOpen) {
+      if (chord === "⌘K" && ui.paletteOpen) {
+        event.preventDefault();
+        app.actions.openPalette(false);
+      }
+      return;
+    }
     const global = GLOBAL[chord];
     if (global) {
       event.preventDefault();
@@ -81,7 +115,7 @@ export function installKeys(app: App): () => void {
       }
       return;
     }
-    if (ui.keysIn === "dialog" || ui.paletteOpen || editable(event.target)) return;
+    if (ui.keysIn === "dialog" || editable(event.target)) return;
 
     for (let at = stack.length - 1; at >= 0; at -= 1) {
       const handler = stack[at]?.current[chord];

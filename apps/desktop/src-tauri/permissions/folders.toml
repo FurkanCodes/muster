@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-list-folders"
+description = "Lists the folders in a folder, for the folder browser that adds a project."
+commands.allow = ["list_folders"]
