@@ -12,6 +12,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+#[cfg(all(test, feature = "ts"))]
+mod export;
 mod panels;
 
 pub use panels::{PanelAction, is_panel_action, panel_action};
