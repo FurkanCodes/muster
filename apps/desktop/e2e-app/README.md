@@ -1,6 +1,6 @@
 # The real app's end-to-end tests
 
-`pnpm e2e:app` builds the app with its embedded WebDriver server (`--features e2e`) and runs every `*.spec.ts` here; `pnpm exec wdio run wdio.conf.ts --spec e2e-app/<area>.spec.ts` runs one against the app already built. Each spec file gets a sandbox of its own: a fresh daemon the app starts, its own folders, `HOME`, and stand-ins on `PATH` for every agent, `gh`, the clipboard and `muster` itself. Nothing reaches the person's own Muster, and nothing is left running after a run. A failed test leaves a picture of the window in `test-results/e2e-app`.
+`pnpm e2e:app` builds the app with its embedded WebDriver server (`--features e2e`) and runs every `*.spec.ts` here; `pnpm exec wdio run wdio.conf.ts --spec e2e-app/<area>.spec.ts` runs one against the app already built. Each spec file gets a sandbox of its own: a fresh daemon the app starts, its own folders, `HOME` (for WebKit's storage too, through `CFFIXED_USER_HOME`), and stand-ins on `PATH` for every agent, `gh`, the clipboard and `muster` itself. Nothing reaches the person's own Muster, and nothing is left running after a run. A failed test leaves a picture of the window in `test-results/e2e-app`.
 
 A test does what the person does (keys, clicks) and asserts what the window shows **and** the real effect: the daemon's state, files, git, the stand-ins' records.
 

@@ -10,7 +10,7 @@ import { STAND_IN_AGENT, STAND_IN_COPY, STAND_IN_GH, STAND_IN_MUSTER } from "./s
 // something real (the agents, `gh`, the clipboard). Nothing reaches the
 // person's own Muster: its runtime folder is under /tmp (a socket's path
 // must stay short), the rest under the system's temporary folder, and HOME
-// is the sandbox's own.
+// is the sandbox's own, for the window's WebKit storage too.
 
 const root = resolve(import.meta.dirname, "../../../..");
 
@@ -81,6 +81,11 @@ export function makeSandbox(): Sandbox {
 
   const env: Record<string, string> = {
     HOME: folders.home,
+    // The home the Mac's own frameworks read (NSHomeDirectory), which
+    // ignores HOME: WebKit's storage and caches of the window go in the
+    // sandbox, never in the person's ~/Library/WebKit/muster-desktop,
+    // which every worktree's app would share.
+    CFFIXED_USER_HOME: folders.home,
     MUSTER_RUNTIME_DIR: runtime,
     MUSTER_DATA_DIR: at("data"),
     MUSTER_CONFIG_DIR: at("config"),
@@ -129,8 +134,11 @@ export function makeSandbox(): Sandbox {
 /** What every process the tests start is given: the sandbox's variables, nothing of the person's Muster. */
 export function sandboxEnv(sandbox: Sandbox): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...sandbox.env };
-  // Not inside the person's Muster session, whatever runs the tests.
+  // Not inside the person's Muster session, whatever runs the tests: never
+  // its session, nor its hooks' socket and token.
   delete env.MUSTER_SESSION;
+  delete env.MUSTER_HOOK_SOCKET;
+  delete env.MUSTER_HOOK_TOKEN;
   delete env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH;
   delete env.OPENCODE_CONFIG_CONTENT;
   return env;

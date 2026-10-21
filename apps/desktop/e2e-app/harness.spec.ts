@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { $, expect } from "@wdio/globals";
 import { agentOf, ask, change, finish, startAgent, title, work } from "./support/agents";
+import { sandbox } from "./support/harness";
 import { muster, status, until, untilSession } from "./support/muster";
 import { changes, commit, ghCalls, repository, tickets } from "./support/repos";
 import { goTo, pressOnWindow, shownScreen, terminalText, untilFlock } from "./support/window";
@@ -15,6 +18,13 @@ describe("The real-app harness", () => {
     await until(() => status().running, "the app to start its daemon", 30_000);
     repo = repository("app");
     muster("project", "add", repo);
+  });
+
+  it("gives the window's WebKit storage a home of the sandbox's own, never the person's", () => {
+    // Each spec file's window starts with nothing another left behind.
+    expect(existsSync(join(sandbox().env.HOME as string, "Library/WebKit/muster-desktop"))).toBe(
+      true,
+    );
   });
 
   it("makes a stand-in Claude Code ask, work and finish, as its hooks tell the daemon", async () => {
