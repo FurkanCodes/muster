@@ -10,11 +10,14 @@ import type { Reply } from "../generated/Reply";
 import type { MockBridge } from "./bridge";
 import { flowCommand } from "./flows";
 import { NOW } from "./now";
+import { sessionsCommand } from "./sessions";
 import { ticketCommand } from "./tickets";
 import { handleUndo } from "./undo";
 
 export function handleCommand(mock: MockBridge, command: Command): Reply | undefined {
   if (command === "Ping") return "Pong";
+  const sessions = sessionsCommand(mock, command);
+  if (sessions !== undefined) return sessions;
   const settings = mock.settings.handle(command);
   if (settings !== undefined) return settings;
   if (typeof command === "string") return undefined;

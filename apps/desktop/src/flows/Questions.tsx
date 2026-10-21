@@ -2,17 +2,13 @@
 // loaded with the first one asked.
 
 import { Move, Tidy } from "./BranchDialogs";
-import { Close, RemoveProject, RemoveWorktree, Rename, Stop } from "./SessionDialogs";
+import { RemoveProject, RemoveWorktree, Stop } from "./SessionDialogs";
 import type { Flow } from "./types";
 
 export type Question = Exclude<Flow, { kind: "add-project" | "new-session" | "new-worktree" }>;
 
 export default function Questions({ flow }: { flow: Question }) {
   switch (flow.kind) {
-    case "rename":
-      return <Rename session={flow.session} />;
-    case "close":
-      return <Close session={flow.session} />;
     case "stop":
       return <Stop session={flow.session} />;
     case "remove-worktree":

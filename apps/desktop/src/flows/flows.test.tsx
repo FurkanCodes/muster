@@ -97,60 +97,24 @@ describe("PRD-03 a new session", () => {
   });
 });
 
-describe("PRD-09 closing a session", () => {
-  it("removes it only once the daemon tells it has exited; a refused stop removes nothing", async () => {
-    const { bridge } = await windowOver();
-    bridge.hold("StopSession");
-    select("all", ulid(103));
-    await userEvent.keyboard("x");
-    const dialog = await screen.findByRole("dialog", {
-      name: "Close Flaky resize test under load?",
-    });
-    await userEvent.click(within(dialog).getByRole("button", { name: "Close session" }));
-    expect(await within(dialog).findByRole("button", { name: "Closing…" })).toHaveAttribute(
-      "aria-busy",
-      "true",
-    );
-    expect(named(bridge, "StopSession")).toHaveLength(1);
-    expect(named(bridge, "RemoveSession")).toHaveLength(0);
-    act(() => bridge.release("StopSession"));
-    await waitFor(() => expect(named(bridge, "RemoveSession")).toHaveLength(1));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(bridge.world.sessions.some((session) => session.id === ulid(103))).toBe(false);
-
-    // The daemon refuses the stop: the session stays, and the dialog says why.
-    select("all", ulid(100));
-    await userEvent.keyboard("x");
-    const again = await screen.findByRole("dialog", { name: /Close Split view.rs/ });
-    bridge.failNext("StopSession", `${ulid(100)} is not running`, "not_found");
-    await userEvent.click(within(again).getByRole("button", { name: "Close session" }));
-    expect(await within(again).findByRole("alert")).toHaveTextContent("is not running");
-    expect(named(bridge, "RemoveSession")).toHaveLength(1);
-  });
-});
-
 describe("PRD-01 refusals said before asking, in the TUI's words", () => {
   it("says what to select, and why a plain folder has no worktrees", async () => {
     const { bridge } = await windowOver();
-    act(() => ui().show("all"));
-    await userEvent.keyboard("x");
-    expect(
-      await screen.findByText("Select a worktree or an ended session to remove."),
-    ).toBeVisible();
+    select("all", ulid(1));
     await userEvent.keyboard("s");
     expect(await screen.findByText("Select a session to stop.")).toBeVisible();
+    await userEvent.keyboard("u");
+    expect(
+      await screen.findByText(
+        "Select a worktree, or a session in one, to move its branch onto its base.",
+      ),
+    ).toBeVisible();
     act(() => bridge.drop(["/Users/you/code/labs"]));
     expect(await screen.findByText("Added labs.")).toBeVisible();
     await userEvent.keyboard("w");
     expect(
       await screen.findByText(
         "labs is a plain folder, not a git repository, so it has no worktrees: press n for a session in it.",
-      ),
-    ).toBeVisible();
-    await userEvent.keyboard("u");
-    expect(
-      await screen.findByText(
-        "Select a worktree, or a session in one, to move its branch onto its base.",
       ),
     ).toBeVisible();
   });

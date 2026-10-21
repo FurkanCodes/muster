@@ -1,138 +1,20 @@
 // The questions asked before Muster acts on a session, a worktree or a
 // project, in the TUI's words where it asks them (crates/muster-tui/src/app/
-// events.rs, rename.rs) and the boards' (design/screens/Dialogs.html):
-// renaming (R), closing (x: stop, then remove once it has exited),
-// stopping (s), removing a worktree (with its changes, only when said) and
-// no longer tracking a project.
+// events.rs) and the boards' (design/screens/Dialogs.html): stopping (s),
+// removing a worktree (with its changes, only when said) and no longer
+// tracking a project. Renaming and closing a session are the lists' own
+// (src/session/useSessionActions.tsx).
 
-import { useEffect, useRef, useState } from "react";
-import { type App, useApp, useDaemon } from "../app/context";
+import { useState } from "react";
+import { useApp, useDaemon } from "../app/context";
 import { BridgeFailure } from "../ipc/bridge";
 import type { ProjectId } from "../ipc/generated/ProjectId";
-import type { Session } from "../ipc/generated/Session";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
-import { agentOf } from "../lib/agents";
-import { TextField } from "../ui/TextField";
 import { Ask } from "./Ask";
 import { count, useChanges } from "./changes";
 import { labelOf } from "./keymap";
 import { useTask } from "./useTask";
-
-export function Rename({ session }: { session: SessionId }) {
-  const app = useApp();
-  const [name, setName] = useState(
-    () => app.daemon.store.getState().sessions[session]?.title ?? "",
-  );
-  const [tried, setTried] = useState(false);
-  const task = useTask();
-  const empty = !name.trim();
-  const rename = () => {
-    setTried(true);
-    // Nothing to call it: the field stays for a name, as in the TUI.
-    if (empty) return;
-    void task.run(async () => {
-      await app.bridge.command({ RenameSession: { session, title: name.trim() } });
-      app.actions.openFlow(null);
-      app.actions.tell("Renamed.");
-    });
-  };
-  return (
-    <Ask
-      title="Rename the session"
-      act="Rename"
-      acting="Renaming…"
-      keep="Cancel"
-      task={task}
-      onAct={rename}
-    >
-      <TextField
-        label="Name"
-        value={name}
-        maxLength={80}
-        autoComplete="off"
-        data-dialog-initial
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={setName}
-        error={tried && empty ? "Name it with at least one letter." : null}
-        hint="Up to 80 characters. No agent renames it after you do."
-      />
-    </Ask>
-  );
-}
-
-/** Who is at work in a session, and how, for the question closing it. */
-function atWork(session: Session): string {
-  const who = session.harness === "shell" ? "A shell" : agentOf(session.harness).name;
-  switch (session.status.state) {
-    case "running":
-      return `${who} is working in it.`;
-    case "needs_you":
-      return `${who} is waiting on you in it.`;
-    case "fresh":
-      return `${who} is starting in it.`;
-    default:
-      return `${who} is running in it.`;
-  }
-}
-
-/** Resolves once the daemon tells the session has ended, or is gone. */
-function ended(app: App, session: SessionId, signal: AbortSignal): Promise<void> {
-  const done = () => {
-    const found = app.daemon.store.getState().sessions[session];
-    return !found || found.ended_at !== null;
-  };
-  if (done()) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const unsubscribe = app.daemon.store.subscribe(() => {
-      if (!done()) return;
-      unsubscribe();
-      resolve();
-    });
-    signal.addEventListener("abort", () => {
-      unsubscribe();
-      reject(new Error("Closing was left."));
-    });
-  });
-}
-
-export function Close({ session }: { session: SessionId }) {
-  const app = useApp();
-  const found = useDaemon((state) => state.sessions[session]);
-  const task = useTask();
-  const leaving = useRef<AbortController | null>(null);
-  useEffect(() => () => leaving.current?.abort(), []);
-  const close = () =>
-    void task.run(async () => {
-      leaving.current = new AbortController();
-      const now = app.daemon.store.getState().sessions[session];
-      if (now && now.ended_at === null) {
-        // The daemon says yes to a stop before the program has gone; it is
-        // removed once its end is told, as the TUI's closing list does.
-        await app.bridge.command({ StopSession: { session } });
-        await ended(app, session, leaving.current.signal);
-      }
-      if (app.daemon.store.getState().sessions[session])
-        await app.bridge.command({ RemoveSession: { session } });
-      app.actions.openFlow(null);
-      app.actions.tell("Closed the session.");
-    });
-  return (
-    <Ask
-      title={`Close ${found?.title ?? "the session"}?`}
-      act="Close session"
-      acting="Closing…"
-      tone="danger"
-      task={task}
-      onAct={close}
-    >
-      <p className="mu-dialog-text">
-        {found && found.ended_at === null ? `${atWork(found)} Closing stops it. ` : null}
-        Its worktree, branch and transcript stay, so it can be started again.
-      </p>
-    </Ask>
-  );
-}
 
 export function Stop({ session }: { session: SessionId }) {
   const app = useApp();

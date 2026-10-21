@@ -10,8 +10,6 @@ export type Flow =
   /** Where it was opened: a workspace to start in, or a project to start for. */
   | { kind: "new-session"; project: ProjectId | null; workspace: WorkspaceId | null }
   | { kind: "new-worktree"; project: ProjectId }
-  | { kind: "rename"; session: SessionId }
-  | { kind: "close"; session: SessionId }
   | { kind: "stop"; session: SessionId }
   | { kind: "tidy"; workspace: WorkspaceId }
   | { kind: "move"; workspace: WorkspaceId }

@@ -1,0 +1,72 @@
+/* All sessions (AllSessions board): the tree's column as wide as the queue's,
+   on the ground with a hairline at its right, the pane beside it. Every value
+   is a token. */
+.sessions-column {
+  flex: 0 1 var(--layout-queue);
+  min-width: var(--layout-queue-min);
+  max-width: var(--layout-queue-max);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-ground);
+  border-right: var(--stroke-hairline) solid var(--line);
+}
+.sessions-tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+.sessions-tree:focus-visible {
+  outline: var(--stroke-focus) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--stroke-focus));
+}
+.sessions-node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* Projects are space-16 apart. */
+.sessions-tree > .sessions-node + .sessions-node {
+  margin-top: var(--space-16);
+}
+.sessions-tree .mu-row,
+.sessions-tree .mu-tree-row {
+  flex: none;
+}
+.sessions-tree .mu-tree-fold {
+  cursor: pointer;
+}
+/* Selected while the keys are elsewhere: tinted, not lit (README: States). */
+.sessions-tree .mu-row[aria-selected="true"].is-resting,
+.sessions-tree .mu-tree-row[aria-selected="true"].is-resting {
+  background: var(--surface-tint);
+}
+.sessions-tree .mu-tree-end .mu-mark {
+  width: auto;
+}
+.sessions-asking {
+  font-weight: 600;
+}
+.sessions-waiting {
+  color: var(--waiting);
+}
+.sessions-running {
+  color: var(--text);
+}
+.sessions-one-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.sessions-one-doing {
+  max-width: 40%;
+  min-width: 0;
+  display: flex;
+}
+.sessions-detail {
+  flex: 1;
+}
+.sessions-detail-empty {
+  margin: auto;
+}

@@ -48,6 +48,10 @@ export interface UiState {
     intent: "diff" | "put-back";
     request: number;
   } | null;
+  /** The shell put beside the session (`T`); it runs on when put away. */
+  shell: SessionId | null;
+  /** The session filling the window (`f`), its panels with it. */
+  fullScreen: SessionId | null;
   sidebarFolded: boolean;
   theme: Theme;
   paletteOpen: boolean;
@@ -72,6 +76,8 @@ export interface UiActions {
   showTerminal(session: SessionId | null): void;
   showPane(mode: PaneMode): void;
   showTurn(workspace: WorkspaceId, number: number, intent: "diff" | "put-back"): void;
+  showShell(shell: SessionId | null): void;
+  fillWindow(session: SessionId | null): void;
   foldSidebar(): void;
   setTheme(theme: Theme): void;
   openPalette(open: boolean, mode?: PaletteMode): void;
@@ -107,6 +113,8 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     terminal: null,
     pane: "terminal",
     changesTurn: null,
+    shell: null,
+    fullScreen: null,
     sidebarFolded: false,
     theme: storedTheme(),
     paletteOpen: false,
@@ -121,7 +129,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
 
   const actions: UiActions = {
-    show: (screen) => set({ screen, keysIn: "list" }),
+    show: (screen) => set({ screen, keysIn: "list", fullScreen: null }),
     select: (screen, id) => set((state) => ({ selected: { ...state.selected, [screen]: id } })),
     narrow: (project) => set((state) => ({ project: state.project === project ? null : project })),
     keysTo: (keysIn) => set({ keysIn }),
@@ -133,6 +141,8 @@ export function createUi(): { store: UiStore; actions: UiActions } {
         keysIn: "list",
         changesTurn: { workspace, number, intent, request: (state.changesTurn?.request ?? 0) + 1 },
       })),
+    showShell: (shell) => set({ shell }),
+    fillWindow: (fullScreen) => set({ fullScreen }),
     foldSidebar: () => set((state) => ({ sidebarFolded: !state.sidebarFolded })),
     setTheme: (theme) => {
       set({ theme });

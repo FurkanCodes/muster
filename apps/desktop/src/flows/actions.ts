@@ -105,34 +105,25 @@ export function newWorktree(app: App): void {
   app.actions.openFlow({ kind: "new-worktree", project: project.id });
 }
 
-/** `R`: the selected session's new name. */
+/**
+ * `R`, where no list answers it: the lists rename a session in place
+ * (src/session/useSessionActions.tsx), so here only nothing is selected.
+ */
 export function rename(app: App): void {
-  const { session } = here(app);
-  if (!session) {
-    complain(app, "Select a session to rename it.");
-    return;
-  }
-  app.actions.openFlow({ kind: "rename", session: session.id });
+  if (!here(app).session) complain(app, "Select a session to rename it.");
 }
 
-/** `x`: closes a running session, removes an ended one at once, a worktree or a project after asking. */
+/**
+ * `x` on a worktree or a project, after asking; a session's is the lists'
+ * own (src/session/useSessionActions.tsx).
+ */
 export function close(app: App): void {
   const { session, workspace, project, onProject } = here(app);
   if (onProject && project) {
     app.actions.openFlow({ kind: "remove-project", project: project.id });
     return;
   }
-  if (session) {
-    if (runs(session)) {
-      app.actions.openFlow({ kind: "close", session: session.id });
-      return;
-    }
-    app.bridge.command({ RemoveSession: { session: session.id } }).then(
-      () => app.actions.tell("Removed the session."),
-      (error: unknown) => complain(app, said(error)),
-    );
-    return;
-  }
+  if (session) return;
   if (!workspace) {
     complain(app, "Select a worktree or an ended session to remove.");
     return;

@@ -121,10 +121,9 @@ test.describe("ARC-24 the command palette", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeHidden();
     await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
-    // The session is selected: R renames it.
+    // The session is selected: R renames it, in place on the list.
     await page.keyboard.press("Shift+R");
-    await expect(page.getByRole("dialog", { name: "Rename the session" })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
+    await expect(page.getByRole("textbox", { name: "Session name" })).toHaveValue(
       "Flaky resize test under load",
     );
   });
@@ -185,7 +184,7 @@ test.describe("ARC-24 the command palette", () => {
     await page.keyboard.press("Shift+R");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.keyboard.press("Control+e");
-    await expect(page.getByRole("dialog", { name: "Rename the session" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Session name" })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.keyboard.press("h");
     await expect(page.getByRole("dialog", { name: "Every key" })).toHaveCount(0);
@@ -425,65 +424,6 @@ test.describe("PRD-01 adding a project", () => {
 });
 
 test.describe("PRD-09 the session dialogs", () => {
-  test("R renames, refusing an empty name before asking", async ({ page }) => {
-    await open(page);
-    // On Needs you the queue renames in place; the list of all sessions asks.
-    await select(page, "all", SKETCH);
-    await page.keyboard.press("Shift+R");
-    const dialog = page.getByRole("dialog", { name: "Rename the session" });
-    const name = dialog.getByRole("textbox", { name: "Name" });
-    await expect(name).toBeFocused();
-    await expect(
-      dialog.getByText("Up to 80 characters. No agent renames it after you do."),
-    ).toBeVisible();
-    await name.fill("   ");
-    await page.keyboard.press("Enter");
-    await expect(dialog.getByText("Name it with at least one letter.")).toBeVisible();
-    expect(await sent(page, "RenameSession")).toEqual([]);
-    await name.fill("Tauri shell, first slice");
-    await page.keyboard.press("Enter");
-    await expect(dialog).toBeHidden();
-    await expect(statusBar(page)).toContainText("Renamed.");
-    expect(await sent(page, "RenameSession")).toEqual([
-      { RenameSession: { session: SKETCH, title: "Tauri shell, first slice" } },
-    ]);
-  });
-
-  test("x on a working session asks, Keep it first; Close stops it, waits for its end, then removes it", async ({
-    page,
-  }) => {
-    await open(page);
-    await page.evaluate(() => {
-      (window as unknown as { __muster: Mock }).__muster.hold("StopSession");
-    });
-    await select(page, "all", FLAKY);
-    await page.keyboard.press("x");
-    const dialog = page.getByRole("dialog", { name: "Close Flaky resize test under load?" });
-    await expect(dialog).toContainText(
-      "Claude Code is working in it. Closing stops it. Its worktree, branch and transcript stay, so it can be started again.",
-    );
-    // Focus starts on the answer that does nothing, so ⏎ keeps it.
-    await expect(dialog.getByRole("button", { name: "Keep it" })).toBeFocused();
-    await page.keyboard.press("Enter");
-    await expect(dialog).toBeHidden();
-    expect(await sent(page, "StopSession")).toEqual([]);
-
-    await page.keyboard.press("x");
-    await dialog.getByRole("button", { name: "Close session" }).click();
-    await expect(dialog.getByRole("button", { name: "Closing…" })).toHaveAttribute(
-      "aria-busy",
-      "true",
-    );
-    expect(await sent(page, "StopSession")).toEqual([{ StopSession: { session: FLAKY } }]);
-    expect(await sent(page, "RemoveSession")).toEqual([]);
-    await page.evaluate(() =>
-      (window as unknown as { __muster: Mock }).__muster.release("StopSession"),
-    );
-    await expect(dialog).toBeHidden();
-    await expect(statusBar(page)).toContainText("Closed the session.");
-    expect(await sent(page, "RemoveSession")).toEqual([{ RemoveSession: { session: FLAKY } }]);
-  });
-
   test("s asks before stopping; x then removes the ended session at once; r restarts it", async ({
     page,
   }) => {
@@ -651,19 +591,24 @@ test.describe("PRD-09 the session dialogs", () => {
     await expect(stacked).toContainText("It is stacked on fix/resize-under-load.");
   });
 
-  test("keys that need a selection say what to select", async ({ page }) => {
+  test("keys that need a worktree say what to select, in the TUI's words", async ({ page }) => {
     await open(page);
-    await page.keyboard.press("Shift+R");
-    await expect(statusBar(page)).toContainText("Select a session to rename it.");
-    // Tidying is on the list of all sessions only, as in the TUI.
-    await page.keyboard.press("t");
-    await expect(statusBar(page)).not.toContainText("Select");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.keyboard.press("Meta+2");
+    await select(page, "all", MUSTER);
     await page.keyboard.press("t");
     await expect(statusBar(page)).toContainText(
       "Select a worktree, or a session in one, to tidy its commits.",
     );
+    await page.keyboard.press("u");
+    await expect(statusBar(page)).toContainText(
+      "Select a worktree, or a session in one, to move its branch onto its base.",
+    );
+    await page.keyboard.press("s");
+    await expect(statusBar(page)).toContainText("Select a session to stop.");
+    // Tidying is on the list of all sessions only, as in the TUI.
+    await select(page, "needs-you", SKETCH);
+    await page.keyboard.press("t");
+    await expect(statusBar(page)).not.toContainText("Select");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 });
 

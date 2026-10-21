@@ -22,7 +22,6 @@ const BOUND: readonly [KeyAction, (app: App) => void, readonly ScreenId[]][] = [
   ["add_project", act.addProject, act.SESSION_LISTS],
   ["new_session", act.newSession, act.SESSION_LISTS],
   ["new_worktree", act.newWorktree, act.SESSION_LISTS],
-  ["rename", act.rename, act.SESSION_LISTS],
   ["close", act.close, act.SESSION_LISTS],
   ["stop_session", act.stop, act.SESSION_LISTS],
   ["restart_session", act.restart, act.SESSION_LISTS],
