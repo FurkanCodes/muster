@@ -132,6 +132,21 @@ fn derived_is_the_model_s_needs_you_rows_and_counts_with_the_questions() {
     );
     assert_eq!(derived.questions, questions);
     assert_eq!(derived.rows.len(), 4);
+    // Nothing at work but the shell, which is no agent.
+    assert!(derived.working.is_empty());
+}
+
+#[test]
+fn arc_24_working_is_the_model_s_the_longest_at_work_first() {
+    let (mut model, _, tree, one, _) = world();
+    let mut two = session(tree.id, "two", 2);
+    two.status = SessionStatus::Running;
+    two.status_since = Timestamp::from_millis(5);
+    model.apply(Delta::SessionUpserted(two.clone()));
+    model.apply(status(one.id, SessionStatus::Running, false));
+    let derived = derive(&model, BTreeMap::new());
+    assert_eq!(derived.working, [two.id, one.id]);
+    assert_eq!(derived.working, model.working());
 }
 
 #[test]

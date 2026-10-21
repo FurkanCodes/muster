@@ -29,9 +29,9 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
       "Share the Gradle cache across worktrees",
       "Resize settles once on release",
       "Explain the release script",
+      "Upgrade AGP to 9.1",
       "Split view.rs by responsibility",
       "Flaky resize test under load",
-      "Upgrade AGP to 9.1",
       "Sign-up page loads the old pricing",
     ]);
     const asking = selected();

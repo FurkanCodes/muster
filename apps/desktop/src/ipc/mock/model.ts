@@ -114,8 +114,14 @@ export function derive(
   }
 
   const chats = world.sessions.filter((session) => !standsBeside(session.harness));
+  // The agents at work, the longest at it first (`Model::working`).
+  const working = chats
+    .filter((session) => session.status.state === "running" && !needsAttention(session))
+    .sort((a, b) => a.status_since - b.status_since)
+    .map((session) => session.id);
   return {
     needs_you: needsYou,
+    working,
     rows,
     counts: {
       working: chats.filter((session) => session.status.state === "running").length,

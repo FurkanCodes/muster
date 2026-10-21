@@ -95,6 +95,9 @@ pub struct Derived {
     /// Sessions waiting on the person: asking first, then news not seen,
     /// oldest first within each (the terminal UI's *Needs you*).
     pub needs_you: Vec<SessionId>,
+    /// The agents at work, the longest at it first (*Working*): chats
+    /// running with no news for the person, never a shell or a panel.
+    pub working: Vec<SessionId>,
     /// The sessions list: each project, its workspaces, their sessions, in
     /// the order the terminal UI lists them.
     pub rows: Vec<Row>,

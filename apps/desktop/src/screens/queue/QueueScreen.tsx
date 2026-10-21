@@ -29,7 +29,7 @@ import "./queue.css";
 const HEADS: Record<QueueArea, [title: string, help: string]> = {
   "needs-you": ["Needs you", "Oldest first. Opening one clears it."],
   "not-seen": ["Not seen", "Finished while you looked elsewhere, oldest first."],
-  working: ["Working", "Agents at work now, project by project."],
+  working: ["Working", "Agents at work now, the longest first."],
 };
 
 const SECTIONS: Record<Section, string> = {

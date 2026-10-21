@@ -156,8 +156,14 @@ test("ARC-24 Not seen and Working are the queue filtered, and every queue narrow
     /Explain the release/,
   ]);
   await page.getByRole("button", { name: /^Working/ }).click();
-  await expect(page.getByText("Agents at work now, project by project.")).toBeVisible();
-  await expect(queue(page).getByRole("option")).toHaveCount(4);
+  await expect(page.getByText("Agents at work now, the longest first.")).toBeVisible();
+  // The longest at work first, as the model orders them (`Derived.working`).
+  await expect(queue(page).getByRole("option")).toHaveText([
+    /Upgrade AGP/,
+    /Split view\.rs/,
+    /Flaky resize/,
+    /Sign-up page/,
+  ]);
   const worker = option(page, "Upgrade AGP to 9.1");
   await expect(worker).toHaveClass(/mu-row--two/);
   await expect(worker).toContainText("lamphaus");
@@ -236,7 +242,7 @@ test("ARC-24 opening a finish clears its news, and it keeps its place until anot
     )?.id;
     if (id) window.__muster.removeSession(id);
   });
-  await expect(option(page, "Split view.rs by responsibility")).toHaveAttribute(
+  await expect(option(page, "Upgrade AGP to 9.1")).toHaveAttribute(
     "aria-selected",
     "true",
   );

@@ -1,8 +1,8 @@
 // The queue's lists. Their order is the model's, never the webview's
 // (`ARC-24`): *Needs you* is `derived.needs_you` (asking first, then news
-// not seen, oldest first) with the agents at work after it in the order the
-// sessions list has them (`derived.rows`); *Not seen* and *Working* are the
-// same lists filtered. Narrowing to a project filters them all.
+// not seen, oldest first) with the agents at work after it as *Working*
+// has them, the longest at it first (`derived.working`); *Not seen* is the
+// first filtered to the news. Narrowing to a project filters them all.
 
 import type { Session } from "../../ipc/generated/Session";
 import type { SessionId } from "../../ipc/generated/SessionId";
@@ -36,10 +36,9 @@ export function queueIds(state: DaemonState, area: QueueArea, project: string | 
     shown(id, (session) => area !== "not-seen" || sectionOf(session) === "news"),
   );
   if (area === "not-seen") return waiting;
-  const working = state.derived.rows
-    .filter((row) => row.kind === "session")
-    .map((row) => row.id)
-    .filter((id) => shown(id, (session) => session.status.state === "running" && !session.unseen));
+  const working = state.derived.working.filter((id) =>
+    shown(id, (session) => session.status.state === "running" && !session.unseen),
+  );
   if (area === "working") return working;
   return [...waiting, ...working.filter((id) => !waiting.includes(id))];
 }
