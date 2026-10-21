@@ -176,6 +176,7 @@ fn a_download_that_does_not_match_its_checksum_replaces_nothing() {
 }
 
 /// A stand-in Muster app saying it is `version`, at `app`.
+#[cfg(target_os = "macos")]
 fn muster_app(app: &Path, version: &str) {
     let contents = app.join("Contents");
     std::fs::create_dir_all(&contents).unwrap();
@@ -191,6 +192,7 @@ fn muster_app(app: &Path, version: &str) {
 }
 
 /// What app `app` says it is.
+#[cfg(target_os = "macos")]
 fn app_version(app: &Path) -> String {
     let said = Command::new("/usr/libexec/PlistBuddy")
         .args(["-c", "Print CFBundleShortVersionString"])
@@ -202,6 +204,7 @@ fn app_version(app: &Path) -> String {
 
 /// The release's Muster app, saying it is 9.9.9, with a checksum file
 /// saying `checksum` (the right one if `None`).
+#[cfg(target_os = "macos")]
 fn app_release(dir: &Path, checksum: Option<&str>) -> HashMap<String, Vec<u8>> {
     let name = "muster-app-universal-apple-darwin.tar.gz";
     let packing = dir.join("app");
@@ -226,6 +229,7 @@ fn app_release(dir: &Path, checksum: Option<&str>) -> HashMap<String, Vec<u8>> {
 }
 
 /// Runs `program upgrade` with the Muster app looked for in `apps`.
+#[cfg(target_os = "macos")]
 fn upgrade_with_app(sandbox: &Sandbox, program: &Path, base: &str, apps: &Path) -> (bool, String) {
     let template = sandbox.command();
     let mut command = Command::new(program);
