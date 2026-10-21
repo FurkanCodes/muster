@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef } from "react";
+import { useApp } from "../app/context";
 import "./dialog.css";
 
 /**
@@ -9,7 +10,8 @@ import "./dialog.css";
  * never acts on a ⏎ meant for it; ← → go between the answers (⇥ reaches no
  * button in WebKit unless the person says so) and ⌘⏎ does the acting
  * answer wherever the focus is. The button that has the focus first
- * carries `data-dialog-initial`.
+ * carries `data-dialog-initial`. While it is open the window's keys are the
+ * dialog's, so no screen behind it acts on them.
  */
 export function Dialog({
   title,
@@ -31,18 +33,22 @@ export function Dialog({
   onKeyDown?: (event: KeyboardEvent<HTMLDialogElement>) => void;
   width?: "normal" | "wide";
 }) {
+  const app = useApp();
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
     const dialog = ref.current;
     const previous = document.activeElement;
+    const keysWere = app.ui.getState().keysIn;
+    app.actions.keysTo("dialog");
     dialog?.showModal();
     dialog?.querySelector<HTMLElement>("[data-dialog-initial]")?.focus();
     return () => {
       dialog?.close();
+      if (app.ui.getState().keysIn === "dialog") app.actions.keysTo(keysWere);
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, []);
+  }, [app]);
   return (
     <dialog
       ref={ref}

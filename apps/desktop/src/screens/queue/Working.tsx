@@ -1,5 +1,5 @@
-import { Placeholder } from "../../app/Placeholder";
+import { QueueScreen } from "./QueueScreen";
 
 export default function Screen() {
-  return <Placeholder title="Working" branch="feature/desktop-queue" />;
+  return <QueueScreen area="working" />;
 }
