@@ -4,17 +4,22 @@
 // program but the one that leaves it (⇧Q) and ⌘ shortcuts.
 
 import { useEffect, useRef } from "react";
+import { charOfCode } from "../keys/chord";
 import type { App } from "./context";
 
-/** A key as Muster names it: `d`, `T`, `Enter`, `⌘K`, `⇧Tab`. */
+/** A key as Muster names it: `d`, `T`, `?`, `Enter`, `⌘K`, `⌥X`, `⇧Tab`. */
 export function chordOf(
-  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
+  event: Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
 ): string {
   const mods = `${event.metaKey ? "⌘" : ""}${event.ctrlKey ? "⌃" : ""}${event.altKey ? "⌥" : ""}`;
-  const single = event.key.length === 1;
-  // A capital letter already says Shift; other keys say it with ⇧.
-  const shift = event.shiftKey && !(single && event.key !== event.key.toLowerCase()) ? "⇧" : "";
-  const key = single && mods ? event.key.toUpperCase() : event.key;
+  // With ⌃ or ⌥, a character is named by the key it is on (⌥X, not ⌥≈).
+  const at = (event.ctrlKey || event.altKey) && !event.metaKey;
+  let key = (at && charOfCode(event.code, event.shiftKey)) || event.key;
+  const single = Array.from(key).length === 1;
+  // A character already says Shift (Q, ?); a letter with a modifier is a
+  // capital either way, so there Shift says itself, as on other keys.
+  const shift = event.shiftKey && (!single || (mods !== "" && /^[a-z]$/i.test(key))) ? "⇧" : "";
+  if (single && mods) key = key.toUpperCase();
   return `${mods}${shift}${key}`;
 }
 
