@@ -159,6 +159,48 @@ jobs:
         run: cargo test --locked
         working-directory: apps/desktop/src-tauri
 
+  # The real app over a real daemon of its own (ARCHITECTURE.md §5c, §13):
+  # built with its embedded WebDriver server (`--features e2e`), each spec
+  # file over a sandbox of its own, stand-ins for every agent and for gh.
+  # GitHub's macOS runners have a desktop session for its window. A failed
+  # test leaves a picture of the window, kept as the run's artifact.
+  desktop-real-app:
+    name: Desktop app over a real daemon (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v6
+      - name: Toolchain
+        run: rustup toolchain install
+        working-directory: .
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/desktop/src-tauri -> target
+            . -> target
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Real app end to end
+        run: pnpm e2e:app
+      - name: Pictures of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-real-app-failures
+          path: apps/desktop/test-results/e2e-app
+          if-no-files-found: ignore
+
   dependencies:
     name: Dependencies (licenses, advisories, build scripts)
     runs-on: ubuntu-24.04

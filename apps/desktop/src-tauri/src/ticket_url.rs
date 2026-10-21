@@ -32,6 +32,9 @@ fn browser_command(url: &str) -> Result<tokio::process::Command, BridgeError> {
 #[tauri::command]
 pub(crate) async fn open_ticket_url(url: String) -> Result<(), BridgeError> {
     let mut command = browser_command(&url)?;
+    if crate::e2e::recorded("opened", &url) {
+        return Ok(());
+    }
     let status = tokio::time::timeout(Duration::from_secs(5), command.status())
         .await
         .map_err(|_| invalid("The browser did not open in time. Try again."))?

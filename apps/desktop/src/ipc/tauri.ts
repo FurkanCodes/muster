@@ -11,6 +11,7 @@ import type { Folders } from "./generated/desktop/Folders";
 import type { StateMessage } from "./generated/desktop/StateMessage";
 import type { Reply } from "./generated/Reply";
 import type { SessionId } from "./generated/SessionId";
+import type { TerminalColours } from "./generated/TerminalColours";
 
 function failure(error: unknown): BridgeFailure {
   const known = error as Partial<BridgeError> | undefined;
@@ -39,6 +40,14 @@ export class TauriBridge implements Bridge {
     const onState = new Channel<StateMessage>();
     onState.onmessage = onMessage;
     await call("link_open", { onState });
+  }
+
+  tryNow(): Promise<void> {
+    return call("try_now");
+  }
+
+  showDaemonLog(): Promise<void> {
+    return call("show_daemon_log");
   }
 
   command(command: Command): Promise<Reply> {
@@ -89,6 +98,10 @@ export class TauriBridge implements Bridge {
 
   looking(looking: boolean, focused: SessionId | null, seen: boolean): Promise<void> {
     return call("looking", { looking, focused, seen });
+  }
+
+  colours(colours: TerminalColours): Promise<void> {
+    return call("colours", { colours });
   }
 
   async listFolders(path: string): Promise<Folders> {

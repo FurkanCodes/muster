@@ -193,14 +193,14 @@ export class MockSettings {
 
   private record(project: string): ProjectRecord {
     const record = this.projects.get(project);
-    if (!record) throw refused("not_found", `no project ${project}`);
+    if (!record) throw refused("not_found", `no project prj_${project}`);
     return record;
   }
 
   /** What a project's settings say, as the tickets mock keeps them. */
   private said(project: string): ProjectSettings {
     const said = this.mock.world.ticketSettings[project];
-    if (!said) throw refused("not_found", `no project ${project}`);
+    if (!said) throw refused("not_found", `no project prj_${project}`);
     return said;
   }
 
@@ -303,7 +303,7 @@ export class MockSettings {
     const world = this.mock.world;
     const name = this.projectName(project);
     if (!world.projects.some((found) => found.id === project)) {
-      throw refused("not_found", `no project ${project}`);
+      throw refused("not_found", `no project prj_${project}`);
     }
     const workspaces = world.workspaces.filter((workspace) => workspace.project === project);
     const worktrees = workspaces.filter((workspace) => workspace.kind.kind === "worktree").length;

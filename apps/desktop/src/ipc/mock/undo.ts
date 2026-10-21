@@ -10,7 +10,7 @@ export function handleUndo(mock: MockBridge, command: Command): Reply | undefine
   const request = "UndoPlan" in command ? command.UndoPlan : command.Undo;
   const { workspace, number } = request;
   const place = mock.world.workspaces.find((found) => found.id === workspace);
-  if (!place) throw new BridgeFailure("refused", `no workspace ${workspace}`, "not_found");
+  if (!place) throw new BridgeFailure("refused", `no workspace wsp_${workspace}`, "not_found");
   if (!place.kind.branch)
     throw new BridgeFailure(
       "refused",

@@ -9,7 +9,11 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
   clearScreen: false,
   server: { port: 1420, strictPort: true },
-  define: { __MOCK__: JSON.stringify(mode === "mock" || mode === "test") },
+  define: {
+    __MOCK__: JSON.stringify(mode === "mock" || mode === "test"),
+    // The app as `pnpm e2e:app` builds it, for its end-to-end tests only.
+    __E2E__: JSON.stringify(process.env.MUSTER_E2E_BUILD === "1"),
+  },
   build: {
     target: "safari16",
     sourcemap: false,

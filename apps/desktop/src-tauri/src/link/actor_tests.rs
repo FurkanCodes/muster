@@ -405,3 +405,52 @@ async fn a_webview_loaded_again_is_told_how_the_link_stands_and_everything_afres
     ));
     assert!(matches!(&messages[1], StateMessage::Patch { patch } if patch.reset));
 }
+
+fn grey(level: u16) -> muster_core::colours::Rgb {
+    muster_core::colours::Rgb {
+        red: level,
+        green: level,
+        blue: level,
+    }
+}
+
+fn colours(background: u16) -> TerminalColours {
+    TerminalColours {
+        foreground: Some(grey(0xd8d8)),
+        background: Some(grey(background)),
+        palette: (0..16).map(|n| Some(grey(n * 0x1000))).collect(),
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_terminals_colours_are_told_as_they_change_and_on_each_connection() {
+    let (mut actor, _told, mut frames) = connected(muster_core::colours::TERMINAL_PROTOCOL);
+    let _ = sent(&mut frames);
+    actor.on_request(Request::Colours(colours(0x1313)));
+    assert_eq!(sent(&mut frames), [ClientFrame::Colours(colours(0x1313))]);
+    // The same again tells nothing; another theme's are told.
+    actor.on_request(Request::Colours(colours(0x1313)));
+    assert_eq!(sent(&mut frames), []);
+    actor.on_request(Request::Colours(colours(0xffff)));
+    assert_eq!(sent(&mut frames), [ClientFrame::Colours(colours(0xffff))]);
+    // A new daemon is told them as it connects.
+    actor.on_event(LinkEvent::Lost("gone".to_owned()));
+    let (outgoing, mut again) = mpsc::unbounded_channel();
+    actor.on_event(LinkEvent::Connected {
+        outgoing,
+        welcome: Welcome {
+            version: muster_core::colours::TERMINAL_PROTOCOL,
+            daemon_pid: 2,
+            daemon_version: "0.4.1".to_owned(),
+        },
+    });
+    assert!(sent(&mut again).contains(&ClientFrame::Colours(colours(0xffff))));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_daemon_before_the_terminals_protocol_is_never_told_colours() {
+    let (mut actor, _told, mut frames) = connected(muster_core::colours::TERMINAL_PROTOCOL - 1);
+    let _ = sent(&mut frames);
+    actor.on_request(Request::Colours(colours(0x1313)));
+    assert_eq!(sent(&mut frames), []);
+}

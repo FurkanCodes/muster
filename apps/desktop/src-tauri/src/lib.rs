@@ -4,6 +4,8 @@
 
 mod commands;
 pub mod contract;
+mod daemon_log;
+mod e2e;
 mod folders;
 pub mod link;
 mod sounds;
@@ -35,6 +37,7 @@ pub fn run() {
             // variables (`MUSTER_RUNTIME_DIR` and the rest).
             let paths =
                 Paths::resolve(|key| std::env::var_os(key), nix::unistd::getuid().as_raw())?;
+            app.manage(daemon_log::DaemonLog(paths.runtime_dir.join("daemon.log")));
             let (link, task) = Link::new(Options {
                 socket: paths.socket(),
                 start_daemon: Some(link::starter(paths)),
@@ -52,6 +55,9 @@ pub fn run() {
             commands::resize,
             commands::watch,
             commands::looking,
+            commands::try_now,
+            commands::colours,
+            daemon_log::show_daemon_log,
             ticket_url::open_ticket_url,
             sounds::hear,
             folders::list_folders,

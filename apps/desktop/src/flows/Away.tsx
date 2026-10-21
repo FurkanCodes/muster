@@ -1,10 +1,11 @@
 // The daemon out of reach (design/screens/Away.html): the link starts it
 // again and tries every half second on its own; the window says so, keeps
 // what it last knew as it was, still, and says where to look meanwhile.
-// The time out of reach moves with the window's one clock (`useNow`).
+// The time out of reach moves with the window's one clock (`useNow`). The
+// banner opens the daemon's log and tries at once, on the person's word.
 
 import { useNow } from "../app/clock";
-import { useDaemon } from "../app/context";
+import { useActions, useBridge, useDaemon } from "../app/context";
 import { ago } from "../lib/format";
 import "./away.css";
 
@@ -18,7 +19,17 @@ function useAway(): { since: number; reason: string } | null {
 export function AwayBanner() {
   const away = useAway();
   const now = useNow();
+  const bridge = useBridge();
+  const actions = useActions();
   if (!away) return null;
+  const showLog = () => {
+    bridge.showDaemonLog().catch((error: unknown) => {
+      actions.tell(error instanceof Error ? error.message : String(error), true);
+    });
+  };
+  const tryNow = () => {
+    void bridge.tryNow().catch(() => {});
+  };
   return (
     <div className="mu-banner mu-banner--away ui-flow-away" role="alert">
       <span className="mu-mark ui-flow-away-mark" aria-hidden="true">
@@ -29,6 +40,17 @@ export function AwayBanner() {
         and trying every half second, {ago(now - away.since)} so far. What you see is as it was.
         {away.reason ? <span className="mu-quiet"> {away.reason}</span> : null}
       </span>
+      <button
+        type="button"
+        className="mu-btn mu-btn--quiet mu-btn--sm"
+        title="Open daemon.log"
+        onClick={showLog}
+      >
+        Show its log
+      </button>
+      <button type="button" className="mu-btn mu-btn--quiet mu-btn--sm" onClick={tryNow}>
+        Try now
+      </button>
     </div>
   );
 }

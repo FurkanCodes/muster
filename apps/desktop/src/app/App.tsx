@@ -6,12 +6,23 @@ import { SESSION_LISTS } from "../flows/actions";
 import { Flows } from "../flows/Flows";
 import { Welcome } from "../flows/Welcome";
 import type { Bridge } from "../ipc/bridge";
+import { screenKeys } from "../keys/keymap";
+import { KEY_SCREENS, useKeymap } from "../keys/useKeymap";
 import { installQueueHistory } from "../screens/queue/history";
 import { createDaemon } from "../state/daemon";
 import { createUi } from "../state/ui";
+import { terminalColours } from "../terminal/colours";
 import { runClock } from "./clock";
-import { AppContext, type App as AppValue, useApp, useDaemon, useUi } from "./context";
-import { installKeys } from "./keys";
+import {
+  AppContext,
+  type App as AppValue,
+  useActions,
+  useApp,
+  useBridge,
+  useDaemon,
+  useUi,
+} from "./context";
+import { installKeys, useKeys } from "./keys";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { SCREENS } from "./screens";
@@ -58,19 +69,44 @@ function useWiring(app: AppValue): void {
   }, [app]);
 }
 
+/**
+ * Draws the window in the person's theme, the system's where they chose
+ * it, and tells the daemon the colours its terminals are drawn in, so a
+ * program asking its terminal's is told them (terminal/colours.ts).
+ */
 function useTheme(): void {
   const theme = useUi((state) => state.theme);
+  const bridge = useBridge();
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && media.matches);
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      const root = document.documentElement;
+      root.dataset.theme = dark ? "dark" : "light";
+      void bridge.colours(terminalColours(root)).catch(() => {});
     };
     apply();
     if (theme !== "system") return;
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [theme]);
+  }, [theme, bridge]);
+}
+
+/**
+ * The window's own actions on the person's keys, beneath every screen's:
+ * `fold_list` folds the sidebar, as ⌘\\ does (the terminal UI's ⌃\\ folds
+ * its list).
+ */
+function WindowKeys() {
+  const screen = useUi((state) => state.screen);
+  const map = useKeymap();
+  const actions = useActions();
+  const handlers: Record<string, () => void> = {};
+  for (const [dom, action] of screenKeys(map, KEY_SCREENS[screen])) {
+    if (action === "fold_list") handlers[dom] = () => actions.foldSidebar();
+  }
+  useKeys(handlers, { beneath: true });
+  return null;
 }
 
 function Screen() {
@@ -111,6 +147,7 @@ function Window() {
       </div>
       <StatusBar />
       <Flows />
+      <WindowKeys />
     </div>
   );
 }

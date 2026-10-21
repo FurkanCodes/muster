@@ -264,6 +264,9 @@ fn the_terminal_joining_a_question_streams_from_where_it_is_and_the_question_car
     assert_eq!(frames.take(), [(frame::REPLAY, 0, "Which?\r\n".to_owned())]);
     streams.on_frame(output(session, 8, "A or B\r\n"));
     assert_eq!(streams.questions()[&session], ["Which?", "A or B"]);
+    // The terminal's output is handed on as the frame comes round.
+    assert_eq!(frames.take(), []);
+    streams.flush_output();
     assert_eq!(frames.take(), [(frame::OUTPUT, 8, "A or B\r\n".to_owned())]);
 
     // The webview lets it go; the question is still read, unwatched.
@@ -420,4 +423,51 @@ fn nothing_is_asked_of_the_daemon_while_out_of_reach() {
     streams.connected(1);
     streams.settle(|_| true);
     assert_eq!(streams.drain(), [attach(session, None, true)]);
+}
+
+#[test]
+fn arc_25_output_is_held_and_handed_on_once_a_frame_in_one_message() {
+    let session = SessionId::new();
+    let mut streams = connected();
+    let frames = Frames::default();
+    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.on_frame(replay(session, 0, "$ ", false));
+    assert_eq!(frames.take(), [(frame::REPLAY, 0, "$ ".to_owned())]);
+    for (seq, line) in [(2, "one\r\n"), (7, "two\r\n"), (12, "three\r\n")] {
+        streams.on_frame(output(session, seq, line));
+    }
+    assert!(streams.holds_output());
+    assert_eq!(frames.take(), []);
+    streams.flush_output();
+    assert_eq!(
+        frames.take(),
+        [(frame::OUTPUT, 2, "one\r\ntwo\r\nthree\r\n".to_owned())]
+    );
+    assert!(!streams.holds_output());
+    streams.flush_output();
+    assert_eq!(frames.take(), [], "nothing held, nothing sent");
+}
+
+#[test]
+fn arc_25_what_is_held_goes_before_a_replay_or_an_event_so_the_order_holds() {
+    let session = SessionId::new();
+    let mut streams = connected();
+    let frames = Frames::default();
+    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.on_frame(replay(session, 0, "$ ", false));
+    let _ = frames.take();
+    streams.on_frame(output(session, 2, "bye\r\n"));
+    streams.on_frame(ServerFrame::Detached {
+        session,
+        reason: DetachReason::Exited,
+    });
+    let sent = frames.take();
+    assert_eq!(sent[0], (frame::OUTPUT, 2, "bye\r\n".to_owned()));
+    assert_eq!(sent[1].0, frame::EVENT);
+
+    streams.on_frame(output(session, 7, "next\r\n"));
+    streams.on_frame(replay(session, 0, "fresh", true));
+    let sent = frames.take();
+    assert_eq!(sent[0], (frame::OUTPUT, 7, "next\r\n".to_owned()));
+    assert_eq!(sent[1].0, frame::REPLAY_RESET);
 }

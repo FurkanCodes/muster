@@ -65,7 +65,7 @@ export function sessionsCommand(mock: MockBridge, command: Command): Reply | und
     const label = HARNESSES[harness];
     if (!label) refuse(`no harness called "${harness}"`, "bad_request");
     if (!mock.world.workspaces.some((stored) => stored.id === workspace))
-      refuse(`no workspace ${workspace}`, "not_found");
+      refuse(`no workspace wsp_${workspace}`, "not_found");
     if (prompt?.trim() && harness === "shell") refuse("Shell takes no prompt", "bad_request");
     // A shell is named for the program in front in it, its own at first.
     const id = started(mock, {
@@ -95,7 +95,7 @@ export function sessionsCommand(mock: MockBridge, command: Command): Reply | und
       "session" in beside
         ? mock.world.sessions.find((one) => one.id === beside.session)?.workspace
         : beside.workspace;
-    if (!workspace) refuse(`no session ${besideSession}`, "not_found");
+    if (!workspace) refuse(`no session ses_${besideSession}`, "not_found");
     if (declared.on === "session" && !besideSession)
       refuse(`${declared.title} is a session's panel: open it beside a session`, "bad_request");
     const needed = manifest.requires.find((program) => !program.found);

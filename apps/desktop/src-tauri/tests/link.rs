@@ -367,3 +367,78 @@ async fn where_nothing_answers_the_link_starts_the_daemon_once() {
     drop(link);
     sandbox.stop_detached();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn try_now_starts_the_daemon_again_at_once_however_lately_it_was_started_arc_24() {
+    let sandbox = Sandbox::new();
+    let starts = Arc::new(AtomicUsize::new(0));
+    let start = {
+        let starts = Arc::clone(&starts);
+        // A daemon that will not start, as a broken install's.
+        Box::new(move || {
+            starts.fetch_add(1, Ordering::SeqCst);
+            Err(std::io::Error::other("held out of reach"))
+        })
+    };
+    let (link, task) = Link::new(Options {
+        socket: sandbox.paths().socket(),
+        start_daemon: Some(start),
+    });
+    tokio::spawn(task);
+    let (mut webview, states) = Webview::new();
+    link.open(states).unwrap();
+    webview
+        .until("the link out of reach", |w| {
+            matches!(w.link, Some(LinkState::Down { .. }))
+        })
+        .await;
+    // Trying every half second, it starts the daemon once in each
+    // START_AGAIN_AFTER: not again a second later.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    link.try_now();
+    let started_again = tokio::time::timeout(Duration::from_secs(2), async {
+        while starts.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    assert!(
+        started_again.is_ok(),
+        "Try now did not start the daemon again"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_burst_of_output_reaches_the_webview_at_most_once_a_frame_arc_25() {
+    let sandbox = Sandbox::new();
+    let _daemon = sandbox.start();
+    let (link, mut webview) = link_to(&sandbox);
+    let (_, checkout) = project(&sandbox, &link, &mut webview).await;
+    let shell = start(&link, checkout, "shell").await;
+    let (mut screen, frames) = Screen::new();
+    link.attach(shell, None, true, frames).unwrap();
+    link.input(shell, b"echo ready-$((40+2))\r".to_vec())
+        .unwrap();
+    screen.until_shows("ready-42").await;
+
+    let before = screen.kinds.len();
+    let started = std::time::Instant::now();
+    link.input(
+        shell,
+        b"i=0; while [ $i -lt 4000 ]; do echo line-$i; i=$((i+1)); done; echo burst-$((40+2))\r"
+            .to_vec(),
+    )
+    .unwrap();
+    screen.until_shows("burst-42").await;
+    let took = started.elapsed();
+    let sent = screen.kinds.len() - before;
+    let frames_of_time = usize::try_from(took.as_millis() / 16).unwrap() + 1;
+    eprintln!("4000 lines: {sent} frames to the webview in {took:?}, {frames_of_time} frame times");
+    // One message per frame (16 ms) per terminal, give or take the edges.
+    assert!(
+        sent <= frames_of_time + 2,
+        "{sent} frames in {took:?}: more than one a frame"
+    );
+    assert!(screen.text.contains("line-3999"));
+}

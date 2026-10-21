@@ -18,8 +18,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "e2e:app": "tauri build --debug --no-bundle --features e2e --ci && wdio run wdio.conf.ts",
+    "e2e:app": "MUSTER_E2E_BUILD=1 tauri build --debug --no-bundle --features e2e --ci && wdio run wdio.conf.ts",
     "bindings": "./scripts/bindings.sh",
+    "replies": "cd src-tauri && MUSTER_WRITE_REPLIES=1 cargo test --locked --test replies",
     "tauri": "tauri"
   },
   "dependencies": {
