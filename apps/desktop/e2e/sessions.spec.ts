@@ -189,21 +189,19 @@ test("PRD-15 a plugin's panel opens beside the session on its key, and its x put
   await allSessions(page);
   await page.keyboard.press("G");
   const graph = region(page, "Session graph");
-  await expect(graph).toContainText("from Zoetrope");
+  await expect(graph).toContainText("graph, from the plugin");
   await expect(line(page, "Panel: Session graph")).toContainText("G");
   // Another session of another worktree shows none.
   await line(page, /^Flaky resize/).click();
   await expect(graph).toHaveCount(0);
   await line(page, /^Split view\.rs/).click();
-  await graph.getByRole("button", { name: "Put Session graph away" }).click();
+  await graph.getByRole("button", { name: "Put the graph away" }).click();
   await expect(graph).toHaveCount(0);
   await expect(line(page, "Panel: Session graph")).toHaveCount(0);
   // A worktree's line has no session to open it beside.
   await line(page, "main").first().click();
   await page.keyboard.press("G");
-  await expect(page.locator(".mu-note")).toHaveText(
-    "Select a session to open Session graph beside it.",
-  );
+  await expect(page.locator(".mu-note")).toHaveText("Select a session to open graph beside it.");
 });
 
 test("ARC-24 panels move by their heads, resize by the line between, and are kept", async ({

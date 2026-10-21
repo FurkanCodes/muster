@@ -6,6 +6,8 @@ export interface SelectOption {
   value: string;
   label: string;
   note?: string;
+  /** A line above it, setting it apart from the options before it. */
+  apart?: boolean;
 }
 export function Select({
   label,
@@ -13,12 +15,21 @@ export function Select({
   value,
   onChange,
   disabled = false,
+  size = "lg",
+  onActive,
+  onStep,
 }: {
   label: string;
   options: readonly SelectOption[];
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /** A dialog's is large; a settings row's is the default size (design system: Select). */
+  size?: "md" | "lg";
+  /** The option the keys moved to, before it is chosen: a sound is heard as it is chosen. */
+  onActive?: (value: string) => void;
+  /** ← → step it the caller's way, as far as either end or round, in place of round. */
+  onStep?: (by: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState(0);
@@ -26,6 +37,10 @@ export function Select({
   const button = useRef<HTMLButtonElement>(null);
   const chosen = options.find((o) => o.value === value) ?? options[0];
   const step = (by: number) => {
+    if (onStep) {
+      onStep(by);
+      return;
+    }
     const index = options.findIndex((o) => o.value === value);
     const next = options[(index + by + options.length) % options.length];
     if (next) onChange(next.value);
@@ -35,7 +50,7 @@ export function Select({
       <button
         ref={button}
         type="button"
-        className="mu-select mu-select--lg"
+        className={`mu-select ${size === "lg" ? "mu-select--lg" : ""}`}
         aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -96,7 +111,11 @@ export function Select({
             }
             if (["ArrowDown", "ArrowUp"].includes(event.key)) {
               event.preventDefault();
-              setAt((at + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length);
+              const next =
+                (at + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+              setAt(next);
+              const option = options[next];
+              if (option) onActive?.(option.value);
             }
             if (["Enter", " "].includes(event.key)) {
               event.preventDefault();
@@ -107,7 +126,11 @@ export function Select({
             }
           }}
         >
-          {options.map((option, index) => (
+          {options.map((option, index) => [
+            option.apart ? (
+              // biome-ignore lint/a11y/useSemanticElements: the design system's menu separator is a hairline div, as its boards draw it.
+              <div key={`apart-${option.value}`} className="mu-menu-sep" role="separator" />
+            ) : null,
             <div
               key={option.value}
               id={`${id}-${index}`}
@@ -125,8 +148,8 @@ export function Select({
               <span className="mu-option-check">{value === option.value ? "✓" : ""}</span>
               {option.label}
               {option.note ? <span className="mu-quiet">{option.note}</span> : null}
-            </div>
-          ))}
+            </div>,
+          ])}
         </div>
       ) : null}
     </div>

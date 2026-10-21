@@ -8,12 +8,11 @@
 
 import type { App } from "../app/context";
 import type { Beside } from "../ipc/generated/Beside";
-import type { PanelOn } from "../ipc/generated/PanelOn";
-import type { PluginInfo } from "../ipc/generated/PluginInfo";
 import type { Session } from "../ipc/generated/Session";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { TermSize } from "../ipc/generated/TermSize";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import type { PanelAction } from "../keys/keymap";
 import type { DaemonState } from "../state/daemon";
 
 /** The size a session beside is started at, before its panel gives it its own. */
@@ -143,41 +142,6 @@ export async function toggleShell(
   }
 }
 
-/** A plugin's panel, as its key opens it (`muster_core::keys::PanelAction`). */
-export interface PanelAction {
-  /** Its name in `[keys]`: `plugin.zoetrope.graph`. */
-  name: string;
-  plugin: string;
-  panel: string;
-  title: string;
-  on: PanelOn;
-  /** Its keys as written: the person's, else the one its manifest suggests. */
-  keys: string[];
-}
-
-/** The panels of the plugins that run, each plugin's in its manifest's order, the plugins by id. */
-export function panelActions(
-  plugins: readonly PluginInfo[],
-  keys: Readonly<Record<string, string[] | undefined>>,
-): PanelAction[] {
-  return plugins
-    .filter((plugin) => plugin.enabled && plugin.problem === null && plugin.details)
-    .toSorted((a, b) => a.id.localeCompare(b.id))
-    .flatMap((plugin) =>
-      (plugin.details?.panels ?? []).map((panel) => {
-        const name = `plugin.${plugin.id}.${panel.id}`;
-        return {
-          name,
-          plugin: plugin.id,
-          panel: panel.id,
-          title: panel.title,
-          on: panel.on,
-          keys: keys[name] ?? (panel.key ? [panel.key] : []),
-        };
-      }),
-    );
-}
-
 /** Once `session` has ended, takes it off the list, as closing does. */
 function removeWhenEnded(app: App, session: SessionId): void {
   const ended = () => !running(app.daemon.store.getState().sessions[session]);
@@ -203,11 +167,16 @@ function removeWhenEnded(app: App, session: SessionId): void {
  */
 export async function togglePanel(
   app: App,
-  action: PanelAction,
+  action: Pick<PanelAction, "plugin" | "panel" | "title">,
   selected: { session: SessionId | null; workspace: WorkspaceId | null },
 ): Promise<void> {
+  const on = app.daemon.store
+    .getState()
+    .plugins.find((plugin) => plugin.id === action.plugin)
+    ?.details?.panels.find((panel) => panel.id === action.panel)?.on;
+  if (!on) return;
   let beside: Beside;
-  if (action.on === "session") {
+  if (on === "session") {
     if (!selected.session)
       return app.actions.tell(`Select a session to open ${action.title} beside it.`, true);
     beside = { session: selected.session };
@@ -240,34 +209,4 @@ export async function togglePanel(
   } catch (error) {
     refused(app, error);
   }
-}
-
-/**
- * A key as `[keys]` writes it (`T`, `ctrl-g`, `alt-p`, `f5`) as the
- * window's listener names it (`T`, `⌃G`, `⌥P`, `F5`).
- */
-export function chordOfWritten(written: string): string {
-  let rest = written.trim();
-  let mods = "";
-  for (
-    let match = /^(ctrl|alt|shift)-(.+)$/i.exec(rest);
-    match;
-    match = /^(ctrl|alt|shift)-(.+)$/i.exec(rest)
-  ) {
-    const mod = (match[1] as string).toLowerCase();
-    mods += mod === "ctrl" ? "⌃" : mod === "alt" ? "⌥" : "⇧";
-    rest = match[2] as string;
-  }
-  const named: Record<string, string> = {
-    enter: "Enter",
-    esc: "Escape",
-    tab: "Tab",
-    space: " ",
-    backspace: "Backspace",
-  };
-  const key = named[rest.toLowerCase()] ?? (/^f\d+$/i.test(rest) ? rest.toUpperCase() : rest);
-  const order = ["⌃", "⌥", "⇧"].filter((mod) => mods.includes(mod)).join("");
-  // A single letter with a modifier is named in capitals; Shift on it is the capital.
-  if (key.length === 1 && order) return `${order.replace("⇧", "")}${key.toUpperCase()}`;
-  return `${order}${key}`;
 }

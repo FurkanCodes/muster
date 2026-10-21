@@ -1,49 +1,17 @@
-// The session pane's keys for what stands beside it, the person's from
-// Settings › Keys where they set them (`muster_core::keys`): `T` the shell
-// (`shell`), `f` full screen (`full_screen`), each plugin's panel on its own
-// key, and Esc out of full screen. While a terminal has the keys every key is
-// its program's, so these act only while Muster has them.
+// The session pane's keys for what stands beside it, as the person set them
+// (the keymap, `src/keys`): `shell` the shell, `full_screen` full screen,
+// each plugin's panel on its own key (`plugin.<id>.<panel>`), and Esc out of
+// full screen. While a terminal has the keys every key is its program's, so
+// these act only while Muster has them.
 
 import { useEffect } from "react";
 import { type App, useApp, useDaemon, useUi } from "../app/context";
-import { type KeyHandlers, useKeys } from "../app/keys";
+import { useKeys } from "../app/keys";
 import type { SessionId } from "../ipc/generated/SessionId";
-import {
-  chordOfWritten,
-  giveKeys,
-  type PanelAction,
-  panelActions,
-  running,
-  togglePanel,
-  toggleShell,
-} from "./beside";
+import { KEY_SCREENS, useActionKeys, useKeymap } from "../keys/useKeymap";
+import { giveKeys, running, togglePanel, toggleShell } from "./beside";
 
-/** An action's keys as written: the person's, else Muster's own. */
-export function writtenKeys(
-  keys: Readonly<Record<string, string[] | undefined>> | undefined,
-  action: string,
-  defaults: readonly string[],
-): readonly string[] {
-  return keys?.[action] ?? defaults;
-}
-
-/** The chords of `written`, each bound to `does`. */
-export function bind(
-  handlers: Record<string, () => void>,
-  written: readonly string[],
-  does: () => void,
-) {
-  for (const key of written) handlers[chordOfWritten(key)] ??= does;
-}
-
-/** The plugins' panels with their keys. */
-export function usePanelActions(): PanelAction[] {
-  const plugins = useDaemon((state) => state.plugins);
-  const keys = useDaemon((state) => state.preferences?.keys);
-  return panelActions(plugins, keys ?? {});
-}
-
-/** Full screen on and off (`f`): the session fills the window with the keys, and gives it back. */
+/** Full screen on and off: the session fills the window with the keys, and gives it back. */
 export function toggleFullScreen(app: App, session: SessionId): void {
   if (app.ui.getState().fullScreen === session) {
     app.actions.fillWindow(null);
@@ -54,23 +22,35 @@ export function toggleFullScreen(app: App, session: SessionId): void {
   giveKeys(app, session);
 }
 
+/** What the plugins' panels' keys do for the line selected: each toggled there. */
+export function usePanelHandlers(selected: {
+  session: SessionId | null;
+  workspace: string | null;
+}): Record<string, () => void> {
+  const app = useApp();
+  const map = useKeymap();
+  const handlers: Record<string, () => void> = {};
+  for (const bound of map.panels) {
+    handlers[bound.name] = () => void togglePanel(app, bound.action, selected);
+  }
+  return handlers;
+}
+
 export function usePanelKeys(session: SessionId, plugin: SessionId | null): void {
   const app = useApp();
-  const keys = useDaemon((state) => state.preferences?.keys);
+  const screen = useUi((state) => KEY_SCREENS[state.screen]);
   const workspace = useDaemon((state) => state.sessions[session]?.workspace ?? null);
   const fullScreen = useUi((state) => state.fullScreen === session);
-  const actions = usePanelActions();
+  const panels = usePanelHandlers({ session, workspace });
 
-  const handlers: Record<string, () => void> = {};
-  bind(handlers, writtenKeys(keys, "full_screen", ["f"]), () => toggleFullScreen(app, session));
-  bind(handlers, writtenKeys(keys, "shell", ["T"]), () => {
-    if (workspace) void toggleShell(app, workspace, session);
+  useActionKeys(screen, {
+    ...panels,
+    full_screen: () => toggleFullScreen(app, session),
+    shell: () => {
+      if (workspace) void toggleShell(app, workspace, session);
+    },
   });
-  for (const action of actions) {
-    bind(handlers, action.keys, () => void togglePanel(app, action, { session, workspace }));
-  }
-  if (fullScreen) handlers.Escape = () => app.actions.fillWindow(null);
-  useKeys(handlers as KeyHandlers);
+  useKeys(fullScreen ? { Escape: () => app.actions.fillWindow(null) } : {});
 
   // Full screen ends with the session shown: another selected, or the pane gone.
   useEffect(

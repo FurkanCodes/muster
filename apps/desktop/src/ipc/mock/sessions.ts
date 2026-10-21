@@ -2,10 +2,9 @@
 // daemon's own code does: a shell started in a workspace (`StartSession`,
 // `supervisor::sessions`), a plugin's panel opened beside a session or on a
 // workspace, or the one open there already (`PluginCommand::OpenPanel`,
-// `supervisor::panels`), and the panels' layout and the list's fold kept in
-// Muster's own settings (`ChangePreference`, `config::change_preference`).
+// `supervisor::panels`). The panels' layout is kept with the rest of
+// Muster's own settings (`settings.ts`).
 
-import { Layout } from "../../panels/layout";
 import { BridgeFailure } from "../bridge";
 import type { Command } from "../generated/Command";
 import type { Reply } from "../generated/Reply";
@@ -119,22 +118,5 @@ export function sessionsCommand(mock: MockBridge, command: Command): Reply | und
     return { SessionStarted: { id } };
   }
 
-  if ("ChangePreference" in command) {
-    const change = command.ChangePreference;
-    if (typeof change !== "object") return undefined;
-    if ("Panels" in change) {
-      let layout: Layout;
-      try {
-        layout = Layout.parse(change.Panels);
-      } catch (error) {
-        throw new BridgeFailure("invalid", (error as Error).message);
-      }
-      mock.world.preferences = { ...mock.world.preferences, panels: layout.toString() };
-    } else if ("ListFolded" in change) {
-      mock.world.preferences = { ...mock.world.preferences, list_folded: change.ListFolded };
-    } else return undefined;
-    mock.publish({ preferences: { ...mock.world.preferences } });
-    return "Done";
-  }
   return undefined;
 }

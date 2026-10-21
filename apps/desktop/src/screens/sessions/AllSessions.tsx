@@ -8,10 +8,12 @@
 
 import { useEffect } from "react";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
-import { type KeyHandlers, useKeys } from "../../app/keys";
+import { useKeys } from "../../app/keys";
+import { labelOf } from "../../keys/keymap";
+import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { agentOf } from "../../lib/agents";
-import { togglePanel, toggleShell } from "../../panels/beside";
-import { bind, usePanelActions, writtenKeys } from "../../panels/usePanelKeys";
+import { toggleShell } from "../../panels/beside";
+import { usePanelHandlers } from "../../panels/usePanelKeys";
 import type { MenuItem } from "../../session/SessionMenu";
 import { SessionPane } from "../../session/SessionPane";
 import { CloseSession, useSessionActions } from "../../session/useSessionActions";
@@ -54,8 +56,7 @@ export default function AllSessions() {
   const loaded = useDaemon((state) => state.loaded);
   const link = useDaemon((state) => state.link.state);
   const away = useDaemon((state) => (state.link.state === "down" ? state.link.reason : null));
-  const keymap = useDaemon((state) => state.preferences?.keys);
-  const panelActions = usePanelActions();
+  const map = useKeymap();
   const session = selected?.kind === "session" ? selected.id : undefined;
   const tools = useSessionActions(session);
   const hasPullRequest = useDaemon((state) =>
@@ -66,8 +67,13 @@ export default function AllSessions() {
     return Boolean(stored && !standsBeside(stored));
   });
   const canFold = useDaemon((state) => (selected ? foldable(state, selected) : false));
-  const shellKey = writtenKeys(keymap, "shell", ["T"])[0] ?? "T";
-  const fullKey = writtenKeys(keymap, "full_screen", ["f"])[0] ?? "f";
+  const label = (action: string) => labelOf(map, action);
+  const shellKey = label("shell");
+  const fullKey = label("full_screen");
+  const changesKey = label("show_changes");
+  const renameKey = label("rename");
+  const closeKey = label("close");
+  const pullKey = label("pull_request_in_browser");
 
   /** The workspace a line works in: a session's, a worktree's, a project's own checkout. */
   const workspaceOf = (): string | null => {
@@ -125,35 +131,35 @@ export default function AllSessions() {
     });
   };
 
-  const keys: Record<string, () => void> = {
+  // The keys every list has, and the tree's own, as the person set them.
+  useKeys({
     ArrowDown: () => move(1),
     ArrowUp: () => move(-1),
-    j: () => move(1),
-    k: () => move(-1),
     ArrowLeft: out,
     ArrowRight: into,
     Enter: open,
-  };
-  bind(keys, writtenKeys(keymap, "fold", ["e"]), () => selected && tree.fold(selected.id));
-  if (session) {
-    bind(keys, writtenKeys(keymap, "show_changes", ["d"]), () => actions.showPane("changes"));
-    bind(keys, writtenKeys(keymap, "rename", ["R"]), tools.rename);
-    bind(keys, writtenKeys(keymap, "close", ["x"]), tools.close);
-    bind(keys, writtenKeys(keymap, "pull_request_in_browser", ["b"]), tools.browser);
-  } else {
-    // The pane's own keys answer on a session; on a project or a worktree, the tree's.
-    bind(keys, writtenKeys(keymap, "shell", ["T"]), shellHere);
-    bind(keys, writtenKeys(keymap, "full_screen", ["f"]), () =>
-      actions.tell("Select a session to open it full screen.", true),
-    );
-    for (const action of panelActions)
-      bind(
-        keys,
-        action.keys,
-        () => void togglePanel(app, action, { session: null, workspace: workspaceOf() }),
-      );
-  }
-  useKeys(keys as KeyHandlers);
+  });
+  const panelsHere = usePanelHandlers({ session: null, workspace: workspaceOf() });
+  useActionKeys("sessions", {
+    move_down: () => move(1),
+    move_up: () => move(-1),
+    fold: () => {
+      if (selected) tree.fold(selected.id);
+    },
+    ...(session
+      ? {
+          show_changes: () => actions.showPane("changes"),
+          rename: tools.rename,
+          close: tools.close,
+          pull_request_in_browser: tools.browser,
+        }
+      : {
+          // The pane's own keys answer on a session; on a project or a worktree, the tree's.
+          ...panelsHere,
+          shell: shellHere,
+          full_screen: () => actions.tell("Select a session to open it full screen.", true),
+        }),
+  });
 
   const kind = selected?.kind ?? null;
   useEffect(() => {
@@ -168,10 +174,10 @@ export default function AllSessions() {
         { key: "⏎", does: "type in it" },
         { key: shellKey, does: "shell" },
         { key: fullKey, does: "full screen" },
-        { key: "d", does: "see changes" },
-        ...(isChat ? [{ key: "R", does: "rename" }] : []),
-        { key: "x", does: "close" },
-        ...(hasPullRequest ? [{ key: "b", does: "pull request" }] : []),
+        { key: changesKey, does: "see changes" },
+        ...(isChat ? [{ key: renameKey, does: "rename" }] : []),
+        { key: closeKey, does: "close" },
+        ...(hasPullRequest ? [{ key: pullKey, does: "pull request" }] : []),
       ]);
     if (kind)
       return actions.setHints([
@@ -179,20 +185,39 @@ export default function AllSessions() {
         { key: shellKey, does: "shell" },
       ]);
     actions.setHints([]);
-  }, [actions, keysIn, fullScreen, kind, isChat, hasPullRequest, shellKey, fullKey]);
+  }, [
+    actions,
+    keysIn,
+    fullScreen,
+    kind,
+    isChat,
+    hasPullRequest,
+    shellKey,
+    fullKey,
+    changesKey,
+    renameKey,
+    closeKey,
+    pullKey,
+  ]);
   useEffect(() => () => actions.setHints([]), [actions]);
 
   const panelKeys: Record<string, string> = {};
-  for (const action of panelActions) {
-    const key = action.keys[0];
-    if (key) panelKeys[`plugin:${action.plugin}/${action.panel}`] = key;
+  for (const bound of map.panels) {
+    if (bound.chords.length)
+      panelKeys[`plugin:${bound.action.plugin}/${bound.action.panel}`] = label(bound.name);
   }
   const menu: MenuItem[] = [
-    ...(isChat ? [{ key: "R", label: "Rename", does: tools.rename }] : []),
+    ...(isChat ? [{ key: label("rename"), label: "Rename", does: tools.rename }] : []),
     ...(hasPullRequest
-      ? [{ key: "b", label: "Pull request in the browser", does: tools.browser }]
+      ? [
+          {
+            key: label("pull_request_in_browser"),
+            label: "Pull request in the browser",
+            does: tools.browser,
+          },
+        ]
       : []),
-    { key: "x", label: "Close", does: tools.close, danger: true },
+    { key: label("close"), label: "Close", does: tools.close, danger: true },
   ];
 
   return (

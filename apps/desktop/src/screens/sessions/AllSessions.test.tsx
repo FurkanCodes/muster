@@ -66,7 +66,7 @@ describe("ARC-24 All sessions", () => {
     await userEvent.click(row("lamphaus"));
     expect(app.ui.getState().hints).toEqual([
       { key: "⏎", does: "fold or unfold" },
-      { key: "T", does: "shell" },
+      { key: "⇧T", does: "shell" },
     ]);
     act(() => app.actions.keysTo("terminal"));
     expect(app.ui.getState().hints[0]).toEqual({ key: "⇧Q", does: "give the keys back" });
@@ -80,7 +80,7 @@ describe("ARC-24 All sessions", () => {
       }),
     );
     await userEvent.click(row("lamphaus"));
-    expect(app.ui.getState().hints[1]).toEqual({ key: "S", does: "shell" });
+    expect(app.ui.getState().hints[1]).toEqual({ key: "⇧S", does: "shell" });
     await userEvent.keyboard("z");
     expect(row("lamphaus")).toHaveAttribute("aria-expanded", "false");
   });

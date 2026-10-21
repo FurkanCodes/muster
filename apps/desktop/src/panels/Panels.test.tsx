@@ -74,10 +74,10 @@ describe("ARC-24 the panels beside the agent", () => {
     const { bridge } = await pane();
     await userEvent.keyboard("G");
     const graph = await screen.findByRole("region", { name: "Session graph" });
-    expect(graph).toHaveTextContent("from Zoetrope");
-    expect(within(graph).getByRole("button", { name: "Put Session graph away" })).toHaveAttribute(
+    expect(graph).toHaveTextContent("graph, from the plugin");
+    expect(within(graph).getByRole("button", { name: "Put the graph away" })).toHaveAttribute(
       "title",
-      "Put it away (G)",
+      "Put it away (⇧G)",
     );
     await userEvent.keyboard("G");
     await waitFor(() =>

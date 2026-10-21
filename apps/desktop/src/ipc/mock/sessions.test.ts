@@ -70,7 +70,7 @@ describe("the mock daemon's sessions and panels", () => {
       mock.command({
         Plugin: {
           OpenPanel: {
-            plugin: "zoetrope",
+            plugin: "session-graph",
             panel: "graph",
             beside: { session: codex },
             size: { cols: 1, rows: 1 },
@@ -85,7 +85,7 @@ describe("the mock daemon's sessions and panels", () => {
       off.command({
         Plugin: {
           OpenPanel: {
-            plugin: "zoetrope",
+            plugin: "session-graph",
             panel: "graph",
             beside: { workspace: desktop },
             size: { cols: 1, rows: 1 },
@@ -94,12 +94,12 @@ describe("the mock daemon's sessions and panels", () => {
       }),
     );
     expect(refused.code).toBe("conflict");
-    expect(refused.message).toContain("zoetrope is turned off");
+    expect(refused.message).toContain("session-graph is turned off");
     const onWorkspace = await refusal(
       mock.command({
         Plugin: {
           OpenPanel: {
-            plugin: "zoetrope",
+            plugin: "session-graph",
             panel: "graph",
             beside: { workspace: desktop },
             size: { cols: 1, rows: 1 },
@@ -107,21 +107,13 @@ describe("the mock daemon's sessions and panels", () => {
         },
       }),
     );
-    expect(onWorkspace.message).toBe(
-      "Session graph is a session's panel: open it beside a session",
-    );
+    expect(onWorkspace.message).toBe("graph is a session's panel: open it beside a session");
   });
 
-  it("keeps the panels' layout and the list's fold in the person's settings", async () => {
+  it("keeps the panels' layout in the person's settings", async () => {
     const mock = new MockBridge(workingDay());
-    expect(await mock.command({ ChangePreference: { Panels: "session | (shell / plugin)" } })).toBe(
-      "Done",
-    );
-    // What it lacks is completed where the default puts it, as the daemon reads it.
-    expect(mock.world.preferences.panels).toBe("(list | session) | ((changes / shell) / plugin)");
-    await mock.command({ ChangePreference: { ListFolded: true } });
-    expect(mock.world.preferences.list_folded).toBe(true);
-    const bad = await refusal(mock.command({ ChangePreference: { Panels: "list | terminal" } }));
-    expect(bad.kind).toBe("invalid");
+    const layout = "list | (session / shell) 60% | (changes / plugin)";
+    expect(await mock.command({ ChangePreference: { Panels: layout } })).toBe("Done");
+    expect(mock.world.preferences.panels).toBe(layout);
   });
 });

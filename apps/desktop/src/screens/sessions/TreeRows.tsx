@@ -247,12 +247,19 @@ export function SessionLine(props: LineProps) {
 /** A shell's or a plugin's panel's line, beside the chat it serves (`view::sessions::shell_line`). */
 export function BesideLine(props: LineProps & { panelKey: string | null }) {
   const session = useDaemon((state) => state.sessions[props.row.id]);
+  // A plugin's panel goes by its plugin's name, as the PluginPanel board writes it.
+  const plugin = useDaemon((state) => {
+    const harness = state.sessions[props.row.id]?.harness ?? "";
+    const id = harness.startsWith("plugin:") ? harness.slice(7).split("/")[0] : null;
+    return id ? (state.plugins.find((one) => one.id === id)?.details?.name ?? null) : null;
+  });
   const under = useDaemon((state) => {
     const stored = state.sessions[props.row.id];
     return stored ? underItsChat(state, stored) : false;
   });
   if (!session) return null;
   const shell = session.harness === "shell";
+  const name = shell ? session.title : (plugin ?? session.title);
   const ended = session.ended_at !== null || session.status.state === "exited";
   const waiting = shell && SHELLS.has(session.title);
   let end: ReactNode = null;
@@ -264,13 +271,13 @@ export function BesideLine(props: LineProps & { panelKey: string | null }) {
     <Line
       {...props}
       className="mu-tree-row mu-tree-shell"
-      label={`${shell ? "Shell" : "Panel"}: ${session.title}${ended ? ", ended" : ""}`}
+      label={`${shell ? "Shell" : "Panel"}: ${name}${ended ? ", ended" : ""}`}
     >
       <span className="mu-tree-fold" aria-hidden="true">
         {under ? "└" : ""}
       </span>
       <span className={`mu-cut ${ended || waiting ? "" : "sessions-running"}`}>
-        {shell ? "❯" : "◇"} {session.title}
+        {shell ? "❯" : "◇"} {name}
       </span>
       {end === null ? null : <span className="mu-tree-end">{end}</span>}
     </Line>

@@ -4,9 +4,10 @@
 
 import { useApp, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
+import { useKeyLabel } from "../keys/useKeymap";
 import { Button, IconButton } from "../ui/controls";
 import { shellBeside, toggleShell } from "./beside";
-import { toggleFullScreen, writtenKeys } from "./usePanelKeys";
+import { toggleFullScreen } from "./usePanelKeys";
 
 export function ShellButton({ session }: { session: SessionId }) {
   const app = useApp();
@@ -16,7 +17,7 @@ export function ShellButton({ session }: { session: SessionId }) {
     const shell = shellBeside(state, kept, session);
     return Boolean(shell && state.sessions[shell]?.workspace === workspace);
   });
-  const key = useDaemon((state) => writtenKeys(state.preferences?.keys, "shell", ["T"])[0]);
+  const key = useKeyLabel("shell");
   return (
     <Button
       title={open ? `Put the shell away (${key})` : `Shell in this workspace (${key})`}
@@ -35,7 +36,7 @@ export function ShellButton({ session }: { session: SessionId }) {
 
 export function FullScreenButton({ session }: { session: SessionId }) {
   const app = useApp();
-  const key = useDaemon((state) => writtenKeys(state.preferences?.keys, "full_screen", ["f"])[0]);
+  const key = useKeyLabel("full_screen");
   return (
     <IconButton
       icon="expand"

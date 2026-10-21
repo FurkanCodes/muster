@@ -5,13 +5,11 @@
 // back. While it lasts, those keys are its own.
 
 import { useEffect, useState } from "react";
-import { useActions, useDaemon } from "../app/context";
-import { useKeys } from "../app/keys";
-import { chordOfWritten } from "./beside";
+import { useActions, useUi } from "../app/context";
+import { KEY_SCREENS, useActionKeys } from "../keys/useKeymap";
 import type { Edge, Layout, PanelName } from "./layout";
 import type { Rect, Solved } from "./solve";
 import type { PanelsLayout } from "./useLayout";
-import { writtenKeys } from "./usePanelKeys";
 
 const EDGES: Readonly<Record<string, Edge>> = {
   ArrowLeft: "left",
@@ -72,7 +70,7 @@ export function useArranging(
   pane: readonly PanelName[],
 ): PanelName | null {
   const actions = useActions();
-  const keymap = useDaemon((state) => state.preferences?.keys);
+  const screen = useUi((state) => KEY_SCREENS[state.screen]);
   const [arranging, setArranging] = useState<PanelName | null>(null);
 
   const start = () => {
@@ -82,10 +80,7 @@ export function useArranging(
       `Moving ${NAMES[withKeys]}: the arrows move it, ⇥ picks another, + and − size it, ⏎ keeps it, ⎋ puts it back.`,
     );
   };
-  const handlers: Record<string, () => void> = {};
-  for (const key of writtenKeys(keymap, "move_panels", ["m"]))
-    handlers[chordOfWritten(key)] = start;
-  useKeys(handlers);
+  useActionKeys(screen, { move_panels: start });
 
   useEffect(() => {
     if (!arranging) return;

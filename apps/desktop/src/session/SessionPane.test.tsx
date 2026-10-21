@@ -43,7 +43,7 @@ describe("ARC-24 the session pane", () => {
     await screen.findByRole("heading", { name: "Sketch the Tauri shell" });
     expect(screen.getByRole("button", { name: "Shell" })).toHaveAttribute(
       "title",
-      "Shell in this workspace (T)",
+      "Shell in this workspace (⇧T)",
     );
     expect(screen.getByRole("button", { name: "Full screen" })).toHaveAttribute(
       "title",

@@ -6,6 +6,7 @@
 
 import { lazy, Suspense, useState } from "react";
 import { useActions, useDaemon, useUi } from "../app/context";
+import { useKeys } from "../app/keys";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { agentOf } from "../lib/agents";
 import { spend } from "../lib/format";
@@ -76,6 +77,12 @@ export function SessionPane({
   const workspace = useDaemon((state) => state.sessions[session]?.workspace ?? null);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const mode = useUi((state) => state.pane);
+  // The list has the keys in the changes, and the terminal its own again after.
+  const changes = () => {
+    actions.keysTo("list");
+    actions.showPane(mode === "changes" ? "terminal" : "changes");
+  };
+  useKeys({ d: changes });
   return (
     <section className="mu-pane app-pane session-pane" aria-label={title}>
       <div className="mu-pane-head">
@@ -90,7 +97,7 @@ export function SessionPane({
               icon="changes"
               title="Changes (d)"
               aria-pressed={mode === "changes"}
-              onClick={() => actions.showPane(mode === "changes" ? "terminal" : "changes")}
+              onClick={changes}
             >
               Changes
             </Button>
@@ -113,7 +120,7 @@ export function SessionPane({
       </div>
       {mode === "changes" && workspace ? (
         <Suspense fallback={null}>
-          <ChangesView workspace={workspace} />
+          <ChangesView key={workspace} workspace={workspace} />
         </Suspense>
       ) : (
         <>

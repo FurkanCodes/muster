@@ -8,14 +8,7 @@ import { MockBridge } from "../ipc/mock/bridge";
 import { ulid, workingDay } from "../ipc/mock/scenario";
 import { createDaemon } from "../state/daemon";
 import { createUi } from "../state/ui";
-import {
-  chordOfWritten,
-  panelActions,
-  panelBeside,
-  shellBeside,
-  togglePanel,
-  toggleShell,
-} from "./beside";
+import { panelBeside, shellBeside, togglePanel, toggleShell } from "./beside";
 
 const codex = ulid(101);
 const desktop = ulid(11);
@@ -88,37 +81,15 @@ describe("the shell beside the agent", () => {
 });
 
 describe("a plugin's panel", () => {
-  const graph = () => {
-    const action = panelActions(workingDay().plugins, {})[0];
-    if (!action) throw new Error("no panel");
-    return action;
-  };
-
-  it("is known by its plugin's manifest, on the key it suggests or the person's", () => {
-    expect(panelActions(workingDay().plugins, {})).toEqual([
-      {
-        name: "plugin.zoetrope.graph",
-        plugin: "zoetrope",
-        panel: "graph",
-        title: "Session graph",
-        on: "session",
-        keys: ["G"],
-      },
-    ]);
-    expect(
-      panelActions(workingDay().plugins, { "plugin.zoetrope.graph": ["ctrl-g"] })[0]?.keys,
-    ).toEqual(["ctrl-g"]);
-    const off = workingDay().plugins.map((plugin) => ({ ...plugin, enabled: false }));
-    expect(panelActions(off, {})).toEqual([]);
-  });
+  const graph = { plugin: "session-graph", panel: "graph", title: "graph" };
 
   it("opens beside the session selected, and shows there", async () => {
     const { app, bridge } = await makeApp();
-    await togglePanel(app, graph(), { session: codex, workspace: desktop });
+    await togglePanel(app, graph, { session: codex, workspace: desktop });
     expect(bridge.sent.at(-1)).toEqual({
       Plugin: {
         OpenPanel: {
-          plugin: "zoetrope",
+          plugin: "session-graph",
           panel: "graph",
           beside: { session: codex },
           size: { cols: 80, rows: 24 },
@@ -128,20 +99,21 @@ describe("a plugin's panel", () => {
     const state = app.daemon.store.getState();
     const panel = panelBeside(state, codex);
     expect(panel && state.sessions[panel]).toMatchObject({
-      harness: "plugin:zoetrope/graph",
-      title: "Session graph",
+      harness: "plugin:session-graph/graph",
+      title: "graph",
       beside: codex,
     });
     // Another chat of the workspace never shows it.
+    expect(panelBeside(state, ulid(103))).toBeNull();
     expect(app.ui.getState().note?.text).toBe("The plugin's panel is open.");
   });
 
   it("is put away on its key again: its program ended, and off the list", async () => {
     const { app, bridge } = await makeApp();
-    await togglePanel(app, graph(), { session: codex, workspace: desktop });
+    await togglePanel(app, graph, { session: codex, workspace: desktop });
     const panel = panelBeside(app.daemon.store.getState(), codex);
-    await togglePanel(app, graph(), { session: codex, workspace: desktop });
-    expect(app.ui.getState().note?.text).toBe("Session graph is put away.");
+    await togglePanel(app, graph, { session: codex, workspace: desktop });
+    expect(app.ui.getState().note?.text).toBe("graph is put away.");
     await settle();
     expect(bridge.sent.slice(-2)).toEqual([
       { StopSession: { session: panel } },
@@ -152,30 +124,16 @@ describe("a plugin's panel", () => {
 
   it("asks for a session where it opens beside one, and says the daemon's refusal", async () => {
     const { app, bridge } = await makeApp();
-    await togglePanel(app, graph(), { session: null, workspace: desktop });
+    await togglePanel(app, graph, { session: null, workspace: desktop });
     expect(app.ui.getState().note).toEqual({
-      text: "Select a session to open Session graph beside it.",
+      text: "Select a session to open graph beside it.",
       error: true,
     });
-    bridge.failNext("Plugin", "zoetrope needs zoetrope, which is not on PATH", "conflict");
-    await togglePanel(app, graph(), { session: codex, workspace: desktop });
+    bridge.failNext("Plugin", "Session graph needs zoe, which is not on PATH", "conflict");
+    await togglePanel(app, graph, { session: codex, workspace: desktop });
     expect(app.ui.getState().note).toEqual({
-      text: "zoetrope needs zoetrope, which is not on PATH",
+      text: "Session graph needs zoe, which is not on PATH",
       error: true,
     });
-  });
-});
-
-describe("a key as [keys] writes it", () => {
-  it("is named as the window's listener names it", () => {
-    expect(chordOfWritten("T")).toBe("T");
-    expect(chordOfWritten("G")).toBe("G");
-    expect(chordOfWritten("g")).toBe("g");
-    expect(chordOfWritten("ctrl-g")).toBe("⌃G");
-    expect(chordOfWritten("shift-g")).toBe("G");
-    expect(chordOfWritten("alt-p")).toBe("⌥P");
-    expect(chordOfWritten("f5")).toBe("F5");
-    expect(chordOfWritten("esc")).toBe("Escape");
-    expect(chordOfWritten("shift-tab")).toBe("⇧Tab");
   });
 });

@@ -3,10 +3,10 @@
 
 import { useActions, useDaemon } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
+import { useKeyLabel } from "../keys/useKeymap";
 import { branchOf, projectColour } from "../state/selectors";
 import { IconButton } from "../ui/controls";
 import { AgentLogo } from "../ui/status";
-import { writtenKeys } from "./usePanelKeys";
 
 export function FullScreenTitle({ session }: { session: SessionId }) {
   const title = useDaemon((state) => state.sessions[session]?.title ?? "");
@@ -37,7 +37,7 @@ export function FullScreenTitle({ session }: { session: SessionId }) {
 
 export function LeaveFullScreen() {
   const actions = useActions();
-  const key = useDaemon((state) => writtenKeys(state.preferences?.keys, "full_screen", ["f"])[0]);
+  const key = useKeyLabel("full_screen");
   return (
     <IconButton
       icon="collapse"

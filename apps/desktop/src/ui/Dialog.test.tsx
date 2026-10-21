@@ -87,4 +87,12 @@ describe("ARC-24 Dialog", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(app.ui.getState().keysIn).toBe("list");
   });
+  it("keeps its keys: the window's listener never sees them", () => {
+    const seen = vi.fn();
+    window.addEventListener("keydown", seen);
+    renderWithApp(<Close />);
+    fireEvent.keyDown(screen.getByText("Everyone watching it is told."), { key: "y" });
+    window.removeEventListener("keydown", seen);
+    expect(seen).not.toHaveBeenCalled();
+  });
 });

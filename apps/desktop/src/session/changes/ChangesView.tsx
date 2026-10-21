@@ -1,12 +1,310 @@
-import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
+// A workspace's changes in the session pane (PRODUCT.md §6, the Changes
+// board): what is not committed, the branch's commits and files, and the
+// timeline's turns, each with its diff, and putting a turn back. The keys
+// are the TUI's (app::changes): ↑↓ through the list, ⏎ opens a diff, ⎋ in
+// a diff goes back to the list and in the list back to the terminal, r asks
+// git again, z puts a turn back; ⇥ goes round the three views.
 
-/** A workspace's changes, diffs and turns: built on feature/desktop-changes. */
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useActions, useDaemon, useUi } from "../../app/context";
+import { useKeys } from "../../app/keys";
+import type { Command } from "../../ipc/generated/Command";
+import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
+import { splitPath } from "../../lib/format";
+import type { Hint } from "../../state/ui";
+import { Button, Segmented } from "../../ui/controls";
+import { fileKind } from "../../ui/FileRow";
+import { DiffStat } from "../../ui/status";
+import { ChangesList, type View } from "./ChangesList";
+import { ClashBanners } from "./ClashBanners";
+import { DiffPanel } from "./DiffPanel";
+import { entryLabel, oneLine } from "./labels";
+import { PUT_BACK_KEY, PutBack } from "./PutBack";
+import { useWorkspaceChanges } from "./useWorkspaceChanges";
+import "./changes.css";
+
+const VIEWS: readonly View[] = ["uncommitted", "branch", "turns"];
+const PART: Record<View, string> = {
+  uncommitted: "Not committed",
+  branch: "On the branch",
+  turns: "Turns",
+};
+/** How far PgUp and PgDn move through the list. */
+const PAGE = 10;
+
 export default function ChangesView({ workspace }: { workspace: WorkspaceId }) {
+  // This turn (the session pane's) opens the view on a turn, to see it or put it back.
+  const target = useUi((state) =>
+    state.changesTurn?.workspace === workspace ? state.changesTurn : null,
+  );
+  // Asked of the daemon only once the state names the workspace (a client's first patch).
+  const known = useDaemon((state) => workspace in state.workspaces);
+  if (!known) return null;
   return (
-    <div className="mu-empty">
-      <p className="mu-empty-text">
-        Changes of <span className="mu-mono">{workspace}</span>, on feature/desktop-changes.
-      </p>
-    </div>
+    <WorkspaceChanges
+      key={`${workspace}:${target?.request ?? 0}`}
+      workspace={workspace}
+      target={target}
+    />
+  );
+}
+
+function WorkspaceChanges({
+  workspace,
+  target,
+}: {
+  workspace: WorkspaceId;
+  target: { number: number; intent: "diff" | "put-back" } | null;
+}) {
+  const actions = useActions();
+  const [again, setAgain] = useState(0);
+  const [view, setView] = useState<View>(target ? "turns" : "uncommitted");
+  const [selection, setSelection] = useState<string | null>(target ? String(target.number) : null);
+  const [opened, setOpened] = useState<string | null>(
+    target?.intent === "diff" ? String(target.number) : null,
+  );
+  const [keysInDiff, setKeysInDiff] = useState(target?.intent === "diff");
+  const [undoing, setUndoing] = useState<number | null>(
+    target?.intent === "put-back" ? target.number : null,
+  );
+  const rows = useRef<HTMLDivElement>(null);
+  /** The entry an undo just made, to select and focus once the timeline lists it. */
+  const newEntry = useRef<string | null>(null);
+  const { listing, timeline } = useWorkspaceChanges(workspace, again);
+  const changes = listing.state === "ready" ? listing.value : null;
+  const kept = timeline.state === "ready" ? timeline.value : { entries: [] };
+  const files = view === "turns" ? [] : (changes?.[view] ?? []);
+  const ids =
+    view === "turns"
+      ? kept.entries.map((entry) => String(entry.number))
+      : files.map((file) => file.path);
+  const selected = selection !== null && ids.includes(selection) ? selection : (ids[0] ?? null);
+  const shown = opened !== null && ids.includes(opened) ? opened : null;
+  const entry =
+    view === "turns" ? kept.entries.find((found) => String(found.number) === shown) : undefined;
+  const file = files.find((found) => found.path === shown);
+
+  const listed = ids.join("\n");
+  useEffect(() => {
+    const made = newEntry.current;
+    if (made === null || !listed.split("\n").includes(made)) return;
+    rows.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+    newEntry.current = null;
+  }, [listed]);
+  const changeView = (next: View) => {
+    setView(next);
+    setSelection(null);
+    setOpened(null);
+  };
+  const toTerminal = () => actions.showPane("terminal");
+  const open = (id: string | null) => {
+    if (id === null) return;
+    setSelection(id);
+    setOpened(id);
+    setKeysInDiff(true);
+  };
+  const focusList = () => {
+    setKeysInDiff(false);
+    rows.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  };
+  const putBack = () => {
+    // The turn whose diff has the keys, else the one selected in the list.
+    const number = view === "turns" ? Number((keysInDiff ? shown : null) ?? selected) : 0;
+    if (number) setUndoing(number);
+    else
+      actions.tell("Choose a turn under Turns to put the files back as they were before it.", true);
+  };
+  const move = (by: number) => {
+    if (ids.length === 0) return;
+    const at = Math.min(ids.length - 1, Math.max(0, ids.indexOf(selected ?? "") + by));
+    const row = rows.current?.querySelectorAll<HTMLElement>('[role="option"]')[at];
+    setSelection(ids[at] ?? null);
+    row?.focus();
+    row?.scrollIntoView({ block: "nearest" });
+  };
+  const round = (by: 1 | 2) => changeView(VIEWS[(VIEWS.indexOf(view) + by) % VIEWS.length] ?? view);
+  useKeys({
+    Escape: toTerminal,
+    d: toTerminal,
+    q: toTerminal,
+    c: toTerminal,
+    h: () => setOpened(null),
+    ArrowLeft: () => setOpened(null),
+    Backspace: () => setOpened(null),
+    ArrowDown: () => move(1),
+    j: () => move(1),
+    ArrowUp: () => move(-1),
+    k: () => move(-1),
+    PageDown: () => move(PAGE),
+    PageUp: () => move(-PAGE),
+    Home: () => move(-ids.length),
+    End: () => move(ids.length),
+    Enter: () => open(selected),
+    ArrowRight: () => open(selected),
+    l: () => open(selected),
+    r: () => setAgain((count) => count + 1),
+    [PUT_BACK_KEY]: putBack,
+    Tab: () => round(1),
+    "⇧Tab": () => round(2),
+  });
+  const clashes = useDaemon((state) => state.workspaces[workspace]?.clashes.length ?? 0);
+  useEffect(() => {
+    const hints: Hint[] = [
+      { key: "↑↓", does: view === "turns" ? "turns" : "files" },
+      { key: "⏎", does: "diff" },
+      ...(shown ? [{ key: "n p", does: "next and last hunk" }] : []),
+      { key: "⇥", does: "not committed, branch, turns" },
+      { key: "r", does: "ask git again" },
+      ...(clashes > 0 ? [{ key: clashes > 1 ? `1–${clashes}` : "1", does: "the other work" }] : []),
+      ...(view === "turns" ? [{ key: PUT_BACK_KEY, does: "put back" }] : []),
+      { key: "d", does: "back to the terminal" },
+    ];
+    actions.setHints(hints);
+    return () => actions.setHints([]);
+  }, [actions, view, shown, clashes]);
+
+  const total = files.reduce(
+    (sum, found) => ({
+      added: sum.added + (found.lines?.added ?? 0),
+      removed: sum.removed + (found.lines?.removed ?? 0),
+    }),
+    { added: 0, removed: 0 },
+  );
+  const command: Command | null =
+    shown === null
+      ? null
+      : view === "turns"
+        ? { EntryDiff: { workspace, number: Number(shown) } }
+        : { FileDiff: { workspace, part: view, path: shown } };
+  return (
+    <section className="changes" aria-label="Changes">
+      <div className="changes-toolbar">
+        <Segmented<View>
+          label="Which changes"
+          segments={[
+            { value: "uncommitted", label: `Not committed ${changes?.uncommitted.length ?? ""}` },
+            { value: "branch", label: `On the branch ${changes?.branch.length ?? ""}` },
+            {
+              value: "turns",
+              label: `Turns ${timeline.state === "ready" ? kept.entries.length : ""}`,
+            },
+          ]}
+          value={view}
+          onChange={changeView}
+        />
+        {view !== "turns" && files.length > 0 ? <DiffStat {...total} files={files.length} /> : null}
+        {view === "turns" && selected ? (
+          <Button
+            size="sm"
+            title={`Put back as before this turn (${PUT_BACK_KEY})`}
+            onClick={putBack}
+          >
+            Put back
+          </Button>
+        ) : null}
+      </div>
+      <ClashBanners workspace={workspace} />
+      <div className="changes-content">
+        <div className="changes-list-column">
+          <ChangesList
+            view={view}
+            listing={listing}
+            timeline={timeline}
+            rows={rows}
+            selected={selected}
+            onSelect={(id) => {
+              // The dialog hands the focus back to the row it left; the new entry stays selected.
+              if (newEntry.current !== null) return;
+              setSelection(id);
+              setKeysInDiff(false);
+            }}
+            onOpen={open}
+            onAgain={() => setAgain((count) => count + 1)}
+          />
+        </div>
+        {command ? (
+          <DiffPanel
+            command={command}
+            revision={String(again)}
+            takeFocus={keysInDiff}
+            onLeave={focusList}
+            onFocus={() => setKeysInDiff(true)}
+            head={
+              entry ? (
+                <>
+                  <span className="mu-mono mu-cut changes-diff-path">
+                    {entryLabel(kept, entry)}
+                  </span>
+                  {entry.summary ? (
+                    <DiffStat added={entry.summary.added} removed={entry.summary.removed} />
+                  ) : (
+                    <span className="mu-quiet">changed no files</span>
+                  )}
+                </>
+              ) : (
+                <FileHead path={file?.path ?? shown ?? ""} kind={file?.kind} part={PART[view]}>
+                  {file?.lines ? (
+                    <DiffStat {...file.lines} />
+                  ) : (
+                    <span className="mu-quiet">binary</span>
+                  )}
+                </FileHead>
+              )
+            }
+          />
+        ) : (
+          <div className="mu-diffview ui-diff changes-pick">
+            <p className="mu-empty-text">
+              {view === "turns"
+                ? "Choose a turn to see what it changed."
+                : "Choose a file to see its diff."}
+            </p>
+          </div>
+        )}
+      </div>
+      {undoing !== null ? (
+        <PutBack
+          workspace={workspace}
+          number={undoing}
+          timeline={kept}
+          onClose={() => setUndoing(null)}
+          onDone={(made) => {
+            newEntry.current = String(made);
+            setUndoing(null);
+            setOpened(null);
+            setSelection(String(made));
+            setAgain((count) => count + 1);
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function FileHead({
+  path,
+  kind,
+  part,
+  children,
+}: {
+  path: string;
+  kind: Parameters<typeof fileKind>[0] | undefined;
+  part: string;
+  children: ReactNode;
+}) {
+  const { dir, name } = splitPath(oneLine(path));
+  const [letter, tone] = kind ? fileKind(kind) : ["", "M"];
+  return (
+    <>
+      <span className={`mu-file-kind mu-file-kind--${tone} mu-mono`} aria-hidden="true">
+        {letter}
+      </span>
+      <span className="mu-mono mu-cut changes-diff-path" title={path}>
+        <span className="mu-quiet">{dir}</span>
+        {name}
+      </span>
+      {children}
+      <span className="mu-quiet">{part}</span>
+    </>
   );
 }

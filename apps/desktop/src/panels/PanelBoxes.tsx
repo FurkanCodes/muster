@@ -1,12 +1,14 @@
 // Each panel of the session's pane (design system: Panel, as the AllSessions
 // and PluginPanel boards draw them): the agent's, its logo, name and how it
 // stands; the shell's, `❯ Shell` and the program in front in it; a plugin's,
-// its title and its plugin; and the line between two, which a drag or the
+// its plugin's name and its own title; and the line between two, which a drag or the
 // arrows on it resize.
 
 import { type CSSProperties, type KeyboardEvent, lazy, type PointerEvent, Suspense } from "react";
 import { useApp, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
+import { panelName } from "../keys/keymap";
+import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { doing, statusKind } from "../lib/status";
 import { branchOf } from "../state/selectors";
@@ -14,7 +16,6 @@ import { Panel, PanelClose, PanelHead, PanelTitle } from "../ui/Panel";
 import { AgentLogo, StatusMark } from "../ui/status";
 import { putPanelAway, putShellAway } from "./beside";
 import type { Divider } from "./solve";
-import { usePanelActions, writtenKeys } from "./usePanelKeys";
 
 // xterm is the heaviest part of the window: loaded once a terminal shows (ARC-25).
 const Terminal = lazy(() =>
@@ -103,7 +104,7 @@ export function ShellPanel({
       own && own !== state.sessions[shown]?.workspace ? state.workspaces[own] : null;
     return workspace ? branchOf(workspace) : null;
   });
-  const key = useDaemon((state) => writtenKeys(state.preferences?.keys, "shell", ["T"])[0] ?? null);
+  const key = useKeyLabel("shell");
   return (
     <Panel
       label="Shell"
@@ -143,12 +144,10 @@ export function PluginPanel({
   const plugin = useDaemon(
     (state) => state.plugins.find((one) => one.id === pluginId)?.details?.name ?? pluginId,
   );
-  const key =
-    usePanelActions().find((action) => action.plugin === pluginId && action.panel === panelId)
-      ?.keys[0] ?? null;
+  const key = useKeyLabel(panelName(pluginId, panelId));
   return (
     <Panel
-      label={title}
+      label={plugin}
       hasKeys={useHasKeys(panel)}
       className={`panels-box ${lifted ? "is-lifted" : ""}`}
       style={style}
@@ -157,11 +156,11 @@ export function PluginPanel({
         <span className="mu-mono" aria-hidden="true">
           ◇
         </span>
-        <PanelTitle>{title}</PanelTitle>
-        <span className="mu-cut">from {plugin}</span>
+        <PanelTitle>{plugin}</PanelTitle>
+        <span className="mu-cut">{title}, from the plugin</span>
         <PanelClose
-          label={`Put ${title} away`}
-          keyHint={key}
+          label={`Put the ${title} away`}
+          keyHint={key === "none" ? null : key}
           onClose={() => void putPanelAway(app, panel, title, shown)}
         />
       </PanelHead>
