@@ -48,6 +48,9 @@ tauri-plugin-wdio-webdriver = { version = "1.5.0", optional = true }
 e2e = ["dep:tauri-plugin-wdio-webdriver"]
 
 [dev-dependencies]
+# Stopping the daemons the end-to-end tests start, as `muster daemon stop`
+# does (SIGTERM).
+nix = { version = "0.31.3", default-features = false, features = ["user", "signal"] }
 # Paused time, for the link's patches a frame apart.
 tokio = { version = "~1.53.2", features = ["test-util"] }
 muster-model = { path = "../../../crates/muster-model", features = ["fixtures"] }
