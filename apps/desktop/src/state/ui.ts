@@ -6,6 +6,7 @@ import type { Flow } from "../flows/types";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import { keep, kept } from "./kept";
 
 export type ScreenId = "needs-you" | "not-seen" | "working" | "all" | "tickets" | "settings";
 
@@ -97,12 +98,8 @@ export type UiStore = StoreApi<UiState>;
 const THEME_KEY = "muster.theme";
 
 function storedTheme(): Theme {
-  try {
-    const value = localStorage.getItem(THEME_KEY);
-    return value === "light" || value === "system" ? value : "dark";
-  } catch {
-    return "dark";
-  }
+  const value = kept(THEME_KEY);
+  return value === "light" || value === "system" ? value : "dark";
 }
 
 export function createUi(): { store: UiStore; actions: UiActions } {
@@ -147,11 +144,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     foldSidebar: () => set((state) => ({ sidebarFolded: !state.sidebarFolded })),
     setTheme: (theme) => {
       set({ theme });
-      try {
-        localStorage.setItem(THEME_KEY, theme);
-      } catch {
-        // Storage refused (a private window): the theme lasts as long as the window.
-      }
+      keep(THEME_KEY, theme);
     },
     openPalette: (paletteOpen, paletteMode = "commands") =>
       set(paletteOpen ? { paletteOpen, paletteMode, flow: null } : { paletteOpen }),

@@ -43,9 +43,13 @@ vt100 = "0.16.2"
 # The embedded WebDriver server the end-to-end tests drive the real app
 # through (`pnpm e2e:app`). Only in builds made for them: never shipped.
 tauri-plugin-wdio-webdriver = { version = "1.5.0", optional = true }
+# The person's ⌘Q, posted into the app's own queue of events where the
+# Mac's menus take it (`e2e::e2e_command_key`); only in builds for the tests.
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSEvent", "NSGraphicsContext", "NSResponder"] }
+objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSGeometry", "NSString"] }
 
 [features]
-e2e = ["dep:tauri-plugin-wdio-webdriver"]
+e2e = ["dep:tauri-plugin-wdio-webdriver", "dep:objc2-app-kit", "dep:objc2-foundation"]
 
 [dev-dependencies]
 # Stopping the daemons the end-to-end tests start, as `muster daemon stop`

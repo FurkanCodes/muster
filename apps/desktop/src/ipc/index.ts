@@ -1,3 +1,4 @@
+import { keepIn } from "../state/kept";
 import type { Bridge } from "./bridge";
 import { TauriBridge } from "./tauri";
 
@@ -7,7 +8,12 @@ import { TauriBridge } from "./tauri";
  * (bundle-conditional).
  */
 export async function createBridge(): Promise<Bridge> {
-  if (!__MOCK__) return new TauriBridge();
+  if (!__MOCK__) {
+    const bridge = new TauriBridge();
+    // The window's own state, read before it draws (state/kept.ts).
+    await keepIn(bridge).catch(() => {});
+    return bridge;
+  }
   const [{ MockBridge }, { workingDay }] = await Promise.all([
     import("./mock/bridge"),
     import("./mock/scenario"),

@@ -6,7 +6,7 @@ A test does what the person does (keys, clicks) and asserts what the window show
 
 | `support/` | What it gives |
 |---|---|
-| `harness.ts` | `sandbox()` (its folders), `restartApp()`, `appRuns()` |
+| `harness.ts` | `sandbox()` (its folders), `restartApp(extra, "killed" \| "quit")`, `quitApp()` (the person's ⌘Q), `keptState()` (the window's own state the app keeps), `appRuns()` |
 | `muster.ts` | `muster(...args)`, `status()`, `session(title)`, `project(name)`, `until(read, what)`, `untilSession(title, "needs_you" \| "running" \| "finished")`, `settingsToml()`, `daemonLog()` |
 | `agents.ts` | `startAgent(project, title, {agent, branch})`, `askingSession(...)`, and for a launch: `ask`, `work`, `finish`, `change(file, text)`, `show(text)`, `title(text)`, `hook(event)` |
 | `repos.ts` | `repository(name)`, `commit`, `write`, `branch`, `branches`, `log`, `changes`, `tickets([...])`, `trackerDown(true)`, `ghCalls()`, `ticketsClosed()` |

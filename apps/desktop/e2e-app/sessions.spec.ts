@@ -2,19 +2,19 @@ import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { askingSession, type Launch, launches } from "./support/agents";
-import { restartApp, sandbox } from "./support/harness";
+import { keptState, restartApp, sandbox } from "./support/harness";
 import { muster, session, sessions, settingsToml, status, until } from "./support/muster";
 import { boxOf, dragTo, middleOf } from "./support/pointer";
 import { opened } from "./support/record";
 import { commit, ghCalls, git, read, repository } from "./support/repos";
-import { goTo, pressOnWindow, theWindow } from "./support/window";
+import { bareId, goTo, pressOnWindow, theWindow } from "./support/window";
 
 // All sessions and its panels in the real app over a real daemon (PRD §6,
-// PRD-15, ARC-24): the tree and its folds, kept across a restart of the
-// app; the shell on T and a plugin's panel on its key, beside the agent
-// and on one line in the tree; the panels dragged, resized and moved with
-// m, the layout in settings.toml; full screen; and the stages by hand, c,
-// v, o and b, against real git and the stand-in gh.
+// PRD-15, ARC-24): the tree and its folds, kept across a crash of the app
+// and a ⌘Q; the shell on T and a plugin's panel on its key, beside the
+// agent and on one line in the tree; the panels dragged, resized and moved
+// with m, the layout in settings.toml; full screen; and the stages by hand,
+// c, v, o and b, against real git and the stand-in gh.
 
 let repo = "";
 let worktree = "";
@@ -25,6 +25,14 @@ const line = (label: string) => $(`[role="treeitem"][aria-label="${label}"]`);
 const lineLike = (start: string) => $(`[role="treeitem"][aria-label^="${start}"]`);
 const panel = (name: string) => $(`section.mu-panel[aria-label="${name}"]`);
 const statusBar = () => $("footer.mu-statusbar");
+
+/** The lines the app keeps folded, as its file holds them. */
+function folds(): string[] {
+  const kept = JSON.parse(keptState()["muster.sessions.folds"] ?? "null") as {
+    projects: Record<string, string[]>;
+  } | null;
+  return Object.values(kept?.projects ?? {}).flat();
+}
 
 /** A plugin in a folder of the sandbox's own, with a panel on G that says it opened. */
 function panelPlugin(): string {
@@ -98,22 +106,42 @@ describe("All sessions and its panels, over the real daemon", () => {
     ]);
   });
 
-  it("ARC-24 a fold is kept across a restart of the app; the daemon is never told", async () => {
+  it("ARC-24 a fold is kept across a crash of the app and a ⌘Q; the daemon is never told", async () => {
     await line("feature/web").click();
     await pressOnWindow("e");
     await expect(line("feature/web")).toHaveAttribute("aria-expanded", "false");
     await expect(line("feature/web")).toHaveText(expect.stringContaining("1 folded"));
     await expect(lineLike(`${TITLE},`)).not.toBeExisting();
+    // Kept by the app as it is folded, in a file of its own (src-tauri/src/kept.rs).
+    const workspace = session(TITLE)?.workspace ?? "";
+    await until(() => folds().includes(bareId(workspace)), "the fold to be kept");
     const pid = status().daemon?.pid;
+    // Ended as a crash ends it, with no word to the window.
     await restartApp();
     await theWindow();
     await roomForPanels();
     await goTo("All sessions");
     await expect(line("feature/web")).toHaveAttribute("aria-expanded", "false");
+    await line("feature/web").click();
+    await pressOnWindow("→");
+    await expect(lineLike(`${TITLE},`)).toBeDisplayed();
+    await until(() => !folds().includes(bareId(workspace)), "the unfold to be kept");
+
+    // The project folded, then the app quit as the person quits it.
+    await line("web").click();
+    await pressOnWindow("e");
+    await expect(line("web")).toHaveAttribute("aria-expanded", "false");
+    await until(() => folds().length === 1, "the project's fold to be kept");
+    await restartApp({}, "quit");
+    await theWindow();
+    await roomForPanels();
+    await goTo("All sessions");
+    await expect(line("web")).toHaveAttribute("aria-expanded", "false");
+    await expect(line("feature/web")).not.toBeExisting();
     // The daemon ran on, and its session with it.
     expect(status().daemon?.pid).toBe(pid);
     expect(session(TITLE)?.status).toBe("needs_you");
-    await line("feature/web").click();
+    await line("web").click();
     await pressOnWindow("→");
     await expect(lineLike(`${TITLE},`)).toBeDisplayed();
   });

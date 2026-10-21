@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { agentOf, ask, askingSession, show, startAgent, work } from "./support/agents";
-import { restartApp, sandbox } from "./support/harness";
+import { keptState, restartApp, sandbox } from "./support/harness";
 import { muster, session, settingsToml, status, until, untilSession } from "./support/muster";
 import { daemonStarts, heard, holdDaemon, revealed } from "./support/record";
 import { repository } from "./support/repos";
@@ -65,22 +65,12 @@ exec /bin/sh
 
 describe("The window as a whole", () => {
   let app = "";
-  let theme = "";
 
   before(async () => {
     await until(() => status().running, "the app to start its daemon", 30_000);
-    theme = await browser.execute(() => localStorage.getItem("muster.theme") ?? "");
     app = repository("app");
     muster("project", "add", app);
     muster("project", "add", repository("other"));
-  });
-
-  after(async () => {
-    // The theme is the window's own, kept by WebKit outside the sandbox.
-    await browser.execute((was) => {
-      if (was) localStorage.setItem("muster.theme", was);
-      else localStorage.removeItem("muster.theme");
-    }, theme);
   });
 
   it("starts the daemon it finds none of, once, and says the link is up", async () => {
@@ -189,6 +179,8 @@ describe("The window as a whole", () => {
     await theme.$("button=Light").click();
     expect(await drawnIn()).toBe("light");
     await expect(note()).toHaveText("This window is light.");
+    // The window's own, kept by the app in the sandbox (src-tauri/src/kept.rs).
+    await until(() => keptState()["muster.theme"] === "light", "the theme to be kept");
     muster("session", "start", "app", "--harness", "asker", "--title", "Light asker");
     const light = await until(() => {
       const id = session("Light asker")?.id;

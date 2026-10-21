@@ -1,8 +1,9 @@
-// Which lines of the tree are folded: the window's own, kept per project in
-// this window's storage so they are folded again after a restart. The
-// daemon is never told, as the terminal UI never tells it.
+// Which lines of the tree are folded: the window's own, kept per project
+// (state/kept.ts) so they are folded again after a restart, a ⌘Q or a
+// crash. The daemon is never told, as the terminal UI never tells it.
 
 import type { DaemonState } from "../../state/daemon";
+import { keep, kept } from "../../state/kept";
 
 const KEY = "muster.sessions.folds";
 
@@ -12,12 +13,12 @@ interface Kept {
   projects: Record<string, string[]>;
 }
 
-/** The folds kept, or none where storage is refused or holds something else. */
+/** The folds kept, or none where nothing or something else is kept. */
 export function readFolds(): Set<string> {
   try {
-    const kept = JSON.parse(localStorage.getItem(KEY) ?? "null") as Kept | null;
-    if (kept?.version !== 1 || typeof kept.projects !== "object") return new Set();
-    return new Set(Object.values(kept.projects).flat());
+    const folds = JSON.parse(kept(KEY) ?? "null") as Kept | null;
+    if (folds?.version !== 1 || typeof folds.projects !== "object") return new Set();
+    return new Set(Object.values(folds.projects).flat());
   } catch {
     return new Set();
   }
@@ -33,9 +34,5 @@ export function writeFolds(state: DaemonState, folded: ReadonlySet<string>): voi
     lines.push(id);
     projects[project] = lines;
   }
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ version: 1, projects } satisfies Kept));
-  } catch {
-    // Storage refused (a private window): the folds last as long as the window.
-  }
+  keep(KEY, JSON.stringify({ version: 1, projects } satisfies Kept));
 }

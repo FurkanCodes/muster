@@ -76,6 +76,15 @@ export class TauriBridge implements Bridge {
     return call("edit_settings_file");
   }
 
+  /** The window's own state the app keeps (`state/kept.ts`). */
+  kept(): Promise<Record<string, string>> {
+    return call("kept");
+  }
+
+  keep(key: string, value: string | null): Promise<void> {
+    return call("keep", { key, value });
+  }
+
   async attach(
     session: SessionId,
     fromSeq: number | null,
