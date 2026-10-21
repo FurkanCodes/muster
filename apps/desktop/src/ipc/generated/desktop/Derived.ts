@@ -20,4 +20,11 @@ rows: Array<Row>,
 /**
  * The flock, as the title bar counts it.
  */
-counts: Counts, };
+counts: Counts, 
+/**
+ * What each session asking the person shows last: its screen's last
+ * four lines with anything on them, oldest first, control characters
+ * taken out. Only while the window is seen, and only for sessions
+ * asking (status `needs_you`) whose screen has come.
+ */
+questions: { [key in SessionId]: Array<string> }, };

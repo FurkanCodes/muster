@@ -53,7 +53,8 @@ function useWhere(session: Session) {
 
 function Asking({ session, keys }: { session: Session; keys: boolean }) {
   const { workspace, project, colour } = useWhere(session);
-  const [ask, ...rest] = questionOf(session);
+  const screen = useDaemon((state) => state.derived.questions[session.id]);
+  const [ask, ...rest] = questionOf(session, screen);
   return (
     <>
       <span className="mu-item-head">

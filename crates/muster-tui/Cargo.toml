@@ -13,6 +13,7 @@ crossterm.workspace = true
 futures-util.workspace = true
 muster-client.workspace = true
 muster-core.workspace = true
+muster-model.workspace = true
 nix.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
@@ -22,6 +23,7 @@ tui-term.workspace = true
 vt100.workspace = true
 
 [dev-dependencies]
+muster-model = { workspace = true, features = ["fixtures"] }
 tempfile.workspace = true
 
 [lints]

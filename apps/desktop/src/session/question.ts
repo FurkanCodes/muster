@@ -1,8 +1,7 @@
 // What a session that asks the person something asks, as its queue item and
-// banner show it. Until the link sends the agent's own last lines
-// (`Derived.questions`, feature/desktop-link), it is what the agent's hooks
-// say it waits for ("wants to run cargo build"); this one function changes
-// when they come.
+// banner show it: the agent's own last lines, as the Rust side reads them off
+// its screen while the window is seen (`Derived.questions`); until they come,
+// what the agent's hooks say it waits for ("wants to run cargo build").
 
 import type { Session } from "../ipc/generated/Session";
 import { doing } from "../lib/status";
@@ -24,9 +23,21 @@ export function plainText(text: string): string {
 }
 
 /** The question's last lines, at most four; the first is the one that asks. */
-export function questionOf(session: Pick<Session, "status" | "activity">): string[] {
-  return plainText(doing(session))
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .slice(-QUESTION_LINES);
+export function questionOf(
+  session: Pick<Session, "status" | "activity">,
+  screen: readonly string[] = [],
+): string[] {
+  const lines = (text: string) =>
+    plainText(text)
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .slice(-QUESTION_LINES);
+  const own = lines(screen.join("\n"));
+  return own.length > 0 ? dedented(own) : lines(doing(session));
+}
+
+/** Lines without the indent they all share, as a screen indents a dialog. */
+function dedented(lines: string[]): string[] {
+  const indent = Math.min(...lines.map((line) => line.length - line.trimStart().length));
+  return lines.map((line) => line.slice(indent));
 }

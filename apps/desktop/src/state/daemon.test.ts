@@ -54,7 +54,12 @@ describe("the daemon's state in the webview", () => {
 
   it("keeps derived parts that did not change, so their readers do not re-render", () => {
     const daemon = createDaemon();
-    const derived = { needs_you: ["a"], rows: [], counts: { working: 1, waiting: 1, done: 0 } };
+    const derived = {
+      needs_you: ["a"],
+      rows: [],
+      counts: { working: 1, waiting: 1, done: 0 },
+      questions: { a: ["Which?"] },
+    };
     daemon.apply({ kind: "patch", patch: patch({ reset: true, derived }) });
     const held = daemon.store.getState().derived;
     daemon.apply({ kind: "patch", patch: patch({ derived: { ...derived, needs_you: ["a"] } }) });
@@ -64,7 +69,27 @@ describe("the daemon's state in the webview", () => {
       patch: patch({ derived: { ...derived, needs_you: ["a", "b"] } }),
     });
     expect(daemon.store.getState().derived.counts).toBe(held.counts);
+    expect(daemon.store.getState().derived.questions).toBe(held.questions);
     expect(daemon.store.getState().derived.needs_you).toEqual(["a", "b"]);
+  });
+
+  it("keeps the questions as they were until one changes", () => {
+    const daemon = createDaemon();
+    const derived = { ...emptyDerived(), questions: { a: ["Which?", "› one"] } };
+    daemon.apply({ kind: "patch", patch: patch({ reset: true, derived }) });
+    const held = daemon.store.getState().derived.questions;
+    daemon.apply({
+      kind: "patch",
+      patch: patch({ derived: { ...derived, questions: { a: ["Which?", "› one"] } } }),
+    });
+    expect(daemon.store.getState().derived.questions).toBe(held);
+    daemon.apply({
+      kind: "patch",
+      patch: patch({ derived: { ...derived, questions: { a: ["Which?", "› two"] } } }),
+    });
+    expect(daemon.store.getState().derived.questions).toEqual({ a: ["Which?", "› two"] });
+    daemon.apply({ kind: "patch", patch: patch({ derived: emptyDerived() }) });
+    expect(daemon.store.getState().derived.questions).toEqual({});
   });
 
   it("tells the reveal listeners", () => {

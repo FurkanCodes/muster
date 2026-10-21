@@ -58,6 +58,8 @@ export class MockBridge implements Bridge {
   private listener: ((message: StateMessage) => void) | null = null;
   private readonly changed = new Map<SessionId, number>();
   private clock = 0;
+  /** Whether the window can be seen, as the page last said: questions only then. */
+  private seen = true;
   private lookingNow = false;
   private readonly watching = new Set<SessionId>();
   private readonly terminals = new Map<
@@ -92,7 +94,7 @@ export class MockBridge implements Bridge {
       resources: null,
       notifier: null,
       ...parts,
-      derived: derive(this.world, this.changed),
+      derived: derive(this.world, this.changed, this.seen),
     };
   }
 
@@ -200,9 +202,13 @@ export class MockBridge implements Bridge {
     else this.watching.delete(session);
     if (watching && this.lookingNow && this.terminals.has(session)) this.see(session);
   }
-  async looking(looking: boolean, _focused: SessionId | null = null): Promise<void> {
+  /** As the Rust side, too: questions are read only while the window is seen. */
+  async looking(looking: boolean, _focused: SessionId | null = null, seen = true): Promise<void> {
     this.lookingNow = looking;
     if (looking) for (const id of this.watching) this.see(id);
+    if (seen === this.seen) return;
+    this.seen = seen;
+    if (seen) this.emit({ kind: "patch", patch: this.patch({}) });
   }
 
   /** Watched while the person looks: its news is seen, as the daemon clears it. */
@@ -251,8 +257,16 @@ export class MockBridge implements Bridge {
     agentsOnTickets(this);
   }
 
-  /** Writes `text` to a session's terminal, as its program would. */
+  /**
+   * Writes `text` to a session's terminal, as its program would. A session
+   * asking the person shows it in its question.
+   */
   output(session: SessionId, text: string): void {
+    this.world.terminals[session] = (this.world.terminals[session] ?? "") + text;
+    const asking = this.world.sessions.some(
+      (found) => found.id === session && found.status.state === "needs_you",
+    );
+    if (asking && this.seen) this.emit({ kind: "patch", patch: this.patch({}) });
     const terminal = this.terminals.get(session);
     if (!terminal) return;
     const bytes = encoder.encode(text);

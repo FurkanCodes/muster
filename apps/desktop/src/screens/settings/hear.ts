@@ -1,8 +1,8 @@
 // Hearing a sound as it is chosen (PRODUCT.md §6: "heard as they choose
 // it"): one of the Mac's own or the person's, by name, played by the
-// app's Rust side, which the terminal UI does with `afplay`. A bridge that
-// cannot play one (the app's, until its Rust side does) plays nothing; the
-// mock records what it was asked.
+// app's Rust side (`src-tauri/src/sounds.rs`) with `afplay`, as the terminal
+// UI plays it. A bridge that cannot play one plays nothing; the mock
+// records what it was asked.
 
 import { useActions, useBridge } from "../../app/context";
 import type { Bridge } from "../../ipc/bridge";

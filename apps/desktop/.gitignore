@@ -5,4 +5,5 @@ test-results/
 playwright-report/
 src-tauri/target/
 src-tauri/gen/
+# ts-rs writes here when `cargo test` runs without `pnpm bindings`.
 src-tauri/bindings/

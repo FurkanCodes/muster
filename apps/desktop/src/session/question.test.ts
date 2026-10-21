@@ -20,6 +20,20 @@ describe("ARC-24 a session's question, as its item and banner show it", () => {
     ).toBe("link red");
   });
 
+  it("is the agent's own last lines off its screen once they come", () => {
+    const screen = ["  Allow Codex to run this command?", "  $ cargo build", "  › Yes", "    No"];
+    expect(questionOf(asking("wants to run cargo build"), screen)).toEqual([
+      "Allow Codex to run this command?",
+      "$ cargo build",
+      "› Yes",
+      "  No",
+    ]);
+    expect(questionOf(asking("wants to run cargo build"), ["", "  "])).toEqual([
+      "wants to run cargo build",
+    ]);
+    expect(questionOf(asking(""), ["\u001b[33mWhich?\u001b[0m"])).toEqual(["Which?"]);
+  });
+
   it("keeps its last four lines and drops empty ones", () => {
     expect(questionOf(asking("one\n\ntwo\nthree\nfour\nfive"))).toEqual([
       "two",
