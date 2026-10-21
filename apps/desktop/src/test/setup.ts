@@ -26,3 +26,11 @@ vi.mock("../terminal/Terminal", () => ({
   Terminal: ({ session }: { session: string }) =>
     createElement("div", { "aria-label": "Terminal", "data-session": session }),
 }));
+
+// jsdom has no modal dialogs; WebKit's own is tested end to end (e2e/).
+HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+  this.setAttribute("open", "");
+};
+HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+  this.removeAttribute("open");
+};

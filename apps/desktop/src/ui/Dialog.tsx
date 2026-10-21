@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef } from "react";
+import { useApp } from "../app/context";
 import "./dialog.css";
 
 /**
@@ -7,7 +8,8 @@ import "./dialog.css";
  * acting answer, ⎋ the other; ⏎ on a focused answer does that one, so a
  * danger dialog, whose focus starts on the answer that does nothing, never
  * acts on a ⏎ meant for it. The button that has the focus first carries
- * `data-dialog-initial`.
+ * `data-dialog-initial`. While it is open the window's keys are the
+ * dialog's, so no screen behind it acts on them.
  */
 export function Dialog({
   title,
@@ -26,18 +28,22 @@ export function Dialog({
   onKeyDown?: (event: KeyboardEvent<HTMLDialogElement>) => void;
   width?: "normal" | "wide";
 }) {
+  const app = useApp();
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
     const dialog = ref.current;
     const previous = document.activeElement;
+    const keysWere = app.ui.getState().keysIn;
+    app.actions.keysTo("dialog");
     dialog?.showModal();
     dialog?.querySelector<HTMLElement>("[data-dialog-initial]")?.focus();
     return () => {
       dialog?.close();
+      if (app.ui.getState().keysIn === "dialog") app.actions.keysTo(keysWere);
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, []);
+  }, [app]);
   return (
     <dialog
       ref={ref}
