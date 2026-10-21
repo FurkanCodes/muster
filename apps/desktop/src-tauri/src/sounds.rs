@@ -56,7 +56,7 @@ pub(crate) async fn hear(sound: String) -> Result<(), BridgeError> {
     let Some(file) = sound_file(&sound, home.as_deref())? else {
         return Ok(());
     };
-    if !cfg!(target_os = "macos") {
+    if crate::e2e::recorded("heard", &file.to_string_lossy()) || !cfg!(target_os = "macos") {
         return Ok(());
     }
     let mut child = player(&file)

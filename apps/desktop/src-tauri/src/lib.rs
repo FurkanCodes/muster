@@ -4,6 +4,7 @@
 
 mod commands;
 pub mod contract;
+mod e2e;
 mod folders;
 pub mod link;
 mod sounds;
