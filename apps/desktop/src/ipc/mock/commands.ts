@@ -5,6 +5,7 @@
 import type { Command } from "../generated/Command";
 import type { Reply } from "../generated/Reply";
 import type { MockBridge } from "./bridge";
+import { ticketCommand } from "./tickets";
 
 export function handleCommand(mock: MockBridge, command: Command): Reply | undefined {
   if (command === "Ping") return "Pong";
@@ -18,6 +19,7 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
   }
   if ("StopSession" in command) {
     const { session } = command.StopSession;
+    mock.updateSession(session, { ended_at: Date.now(), activity: null });
     mock.setStatus(session, { state: "exited", success: true });
     return "Done";
   }
@@ -25,5 +27,5 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
     mock.removeSession(command.RemoveSession.session);
     return "Done";
   }
-  return undefined;
+  return ticketCommand(mock, command);
 }

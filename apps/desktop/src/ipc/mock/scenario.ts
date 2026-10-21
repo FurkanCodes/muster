@@ -18,10 +18,11 @@ export function ulid(n: number): string {
 const MINUTE = 60_000;
 
 import { NOW } from "./now";
+import { type TicketScenario, ticketScenario } from "./tickets";
 
 export { NOW };
 
-export interface Scenario extends World {
+export interface Scenario extends World, TicketScenario {
   preferences: Preferences;
   plugins: PluginInfo[];
   /** What each session's terminal shows when attached. */
@@ -231,5 +232,13 @@ export function workingDay(): Scenario {
   const plugins: PluginInfo[] = [
     { id: "github", source: "builtin", enabled: true, problem: null, details: null, changed: null },
   ];
-  return { projects, workspaces, sessions, preferences: defaultPreferences(), plugins, terminals };
+  return {
+    projects,
+    workspaces,
+    sessions,
+    preferences: defaultPreferences(),
+    plugins,
+    terminals,
+    ...ticketScenario(projects),
+  };
 }
