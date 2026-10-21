@@ -5,12 +5,13 @@ import { useActions, useApp, useBridge, useDaemon, useUi } from "../../app/conte
 import { useKeys } from "../../app/keys";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
+import { labelOf } from "../../keys/keymap";
+import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { projectsInOrder } from "../../state/selectors";
 import { Button, Segmented } from "../../ui/controls";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { Detail } from "./Detail";
 import { groupProjects, message, ticketId, ticketsFor } from "./data";
-import { ticketChord, ticketKeyHint } from "./keys";
 import { ProjectName, ProjectSwatch, TicketRow } from "./TicketRow";
 import "./tickets.css";
 
@@ -37,7 +38,7 @@ export default function Tickets() {
   const names = useDaemon(useShallow((s) => projectsInOrder(s).map((p) => p.name)));
   const groupName = (projects: readonly string[]) =>
     projects.map((id) => names[ids.indexOf(id)] ?? "?").join(", ");
-  const keymap = useDaemon((s) => s.preferences?.keys);
+  const map = useKeymap();
   const lists = useStore(model.store, (s) => s.lists);
   const changing = useStore(model.store, (s) => s.changing);
   const [dialog, setDialog] = useState<TicketDialog | null>(null);
@@ -58,17 +59,12 @@ export default function Tickets() {
     entries.find((e) => ticketId(e.projects[0] ?? "", e.issue.key) === chosen) ??
     entries.find((e) => e.issue.key === chosen?.split(":")[1]) ??
     entries[0];
-  const bindings = {
-    another: keymap?.another_agent ?? ["a"],
-    browser: keymap?.ticket_in_browser ?? ["b"],
-    close: keymap?.close_ticket ?? ["x"],
-    refresh: keymap?.refresh_tickets ?? ["r"],
-  };
+  // The person's keys, as hints and tooltips show them.
   const keys = {
-    another: bindings.another.map(ticketKeyHint).join(" / "),
-    browser: bindings.browser.map(ticketKeyHint).join(" / "),
-    close: bindings.close.map(ticketKeyHint).join(" / "),
-    refresh: bindings.refresh.map(ticketKeyHint).join(" / "),
+    another: labelOf(map, "another_agent"),
+    browser: labelOf(map, "ticket_in_browser"),
+    close: labelOf(map, "close_ticket"),
+    refresh: labelOf(map, "refresh_tickets"),
   };
   const agentCount = useDaemon((s) =>
     selected
@@ -158,19 +154,15 @@ export default function Tickets() {
     const next = entries[Math.max(0, Math.min(entries.length - 1, at + by))];
     if (next) actions.select("tickets", ticketId(next.projects[0] ?? "", next.issue.key));
   };
-  const handlers: Record<string, () => void> = {
-    Enter: open,
-    ArrowDown: () => move(1),
-    ArrowUp: () => move(-1),
-  };
-  for (const key of keymap?.move_down ?? ["j"]) handlers[ticketChord(key)] = () => move(1);
-  for (const key of keymap?.move_up ?? ["k"]) handlers[ticketChord(key)] = () => move(-1);
-  for (const [action, binding] of Object.entries(bindings))
-    for (const key of binding)
-      handlers[ticketChord(key)] = { another: () => assign(true), browser, close, refresh }[
-        action as keyof typeof bindings
-      ];
-  useKeys(handlers);
+  useKeys({ Enter: open, ArrowDown: () => move(1), ArrowUp: () => move(-1) });
+  useActionKeys("tickets", {
+    move_down: () => move(1),
+    move_up: () => move(-1),
+    refresh_tickets: refresh,
+    another_agent: () => assign(true),
+    ticket_in_browser: browser,
+    close_ticket: close,
+  });
   return (
     <div className="tickets-screen" data-keys={dialog ? "dialog" : "list"}>
       <section className="tickets-list" aria-label="Tickets">
