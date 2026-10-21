@@ -227,6 +227,13 @@ export function workingDay(): Scenario {
       "\x1b[32m●\x1b[0m Update(crates/muster-tui/src/view/sessions.rs)\r\n  ⎿  Moved 212 lines to view/rows.rs\r\n\r\n\x1b[33m✻\x1b[0m Splitting sessions.rs…\r\n",
     [ulid(102)]:
       "\x1b[35m❯\x1b[0m git log --oneline -3\r\na1b2c3d Add the desktop crate\r\n\x1b[35m❯\x1b[0m ",
+    [ulid(200)]: [
+      "\x1b[1m✦\x1b[0m Two worktrees build lamphaus at once, each with its own cache.",
+      "",
+      "  Where should the shared cache live?",
+      "  \x1b[36m›\x1b[0m ~/.gradle/caches",
+      "    ~/code/lamphaus/.gradle-shared",
+    ].join("\r\n"),
   };
   const plugins: PluginInfo[] = [
     { id: "github", source: "builtin", enabled: true, problem: null, details: null, changed: null },

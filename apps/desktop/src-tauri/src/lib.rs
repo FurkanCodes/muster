@@ -1,16 +1,45 @@
 //! Muster's desktop app: another client of the daemon, like the terminal UI
 //! and the notch (`ARC-22`, `ARC-24`). Its Rust side holds the one
-//! connection and the model; its webview (`../src`) draws.
+//! connection and the model (`link`); its webview (`../src`) draws.
 
 mod commands;
 pub mod contract;
+pub mod link;
 
-/// Starts the app and blocks until it quits.
+use muster_core::Paths;
+use tauri::Manager;
+
+use crate::link::{Link, Options};
+
+/// The link's task, aborted as the app ends (`ARC-13`).
+struct LinkTask(tauri::async_runtime::JoinHandle<()>);
+
+impl Drop for LinkTask {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Starts the app and blocks until it quits. The daemon, and every
+/// session, keep running (`PRD-09`).
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(feature = "e2e")]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
     let result = builder
+        .setup(|app| {
+            // Where the terminal UI finds the daemon, from the same
+            // variables (`MUSTER_RUNTIME_DIR` and the rest).
+            let paths =
+                Paths::resolve(|key| std::env::var_os(key), nix::unistd::getuid().as_raw())?;
+            let (link, task) = Link::new(Options {
+                socket: paths.socket(),
+                start_daemon: Some(link::starter(paths)),
+            });
+            app.manage(link);
+            app.manage(LinkTask(tauri::async_runtime::spawn(task)));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::link_open,
             commands::command,

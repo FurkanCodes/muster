@@ -77,7 +77,7 @@ export class TauriBridge implements Bridge {
     return call("watch", { session, watching });
   }
 
-  looking(looking: boolean, focused: SessionId | null): Promise<void> {
-    return call("looking", { looking, focused });
+  looking(looking: boolean, focused: SessionId | null, seen: boolean): Promise<void> {
+    return call("looking", { looking, focused, seen });
   }
 }

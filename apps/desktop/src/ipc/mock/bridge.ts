@@ -32,6 +32,8 @@ export class MockBridge implements Bridge {
   private listener: ((message: StateMessage) => void) | null = null;
   private readonly changed = new Map<SessionId, number>();
   private clock = 0;
+  /** Whether the window can be seen, as the page last said: questions only then. */
+  private seen = true;
   private readonly terminals = new Map<
     SessionId,
     { onFrame: (frame: TermFrame) => void; seq: number }
@@ -63,7 +65,7 @@ export class MockBridge implements Bridge {
       resources: null,
       notifier: null,
       ...parts,
-      derived: derive(this.world, this.changed),
+      derived: derive(this.world, this.changed, this.seen),
     };
   }
 
@@ -132,12 +134,26 @@ export class MockBridge implements Bridge {
 
   async resize(): Promise<void> {}
   async watch(): Promise<void> {}
-  async looking(): Promise<void> {}
+
+  /** As the Rust side: questions are read only while the window is seen. */
+  async looking(_looking: boolean, _focused: SessionId | null, seen: boolean): Promise<void> {
+    if (seen === this.seen) return;
+    this.seen = seen;
+    if (seen) this.emit({ kind: "patch", patch: this.patch({}) });
+  }
 
   // What tests drive.
 
-  /** Writes `text` to a session's terminal, as its program would. */
+  /**
+   * Writes `text` to a session's terminal, as its program would. A session
+   * asking the person shows it in its question.
+   */
   output(session: SessionId, text: string): void {
+    this.world.terminals[session] = (this.world.terminals[session] ?? "") + text;
+    const asking = this.world.sessions.some(
+      (found) => found.id === session && found.status.state === "needs_you",
+    );
+    if (asking && this.seen) this.emit({ kind: "patch", patch: this.patch({}) });
     const terminal = this.terminals.get(session);
     if (!terminal) return;
     const bytes = encoder.encode(text);

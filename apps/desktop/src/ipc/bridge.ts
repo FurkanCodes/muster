@@ -32,8 +32,12 @@ export interface Bridge {
     height?: number,
   ): Promise<void>;
   watch(session: SessionId, watching: boolean): Promise<void>;
-  /** Whether the person looks at this window, and which terminal is in focus in it. */
-  looking(looking: boolean, focused: SessionId | null): Promise<void>;
+  /**
+   * Whether the person looks at this window (seen and in focus), which
+   * terminal is in focus in it, and whether it can be seen at all: while it
+   * cannot, the app's Rust side sends nothing and reads no question.
+   */
+  looking(looking: boolean, focused: SessionId | null, seen: boolean): Promise<void>;
 }
 
 /** Why a bridge call failed, as the Rust side says it (`BridgeError`). */

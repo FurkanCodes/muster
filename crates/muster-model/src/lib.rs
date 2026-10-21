@@ -237,6 +237,11 @@ impl Model {
         &self.projects
     }
 
+    /// Every workspace, as the daemon listed them.
+    pub fn workspaces(&self) -> &[Workspace] {
+        &self.workspaces
+    }
+
     pub fn project(&self, id: ProjectId) -> Option<&Project> {
         self.projects.iter().find(|project| project.id == id)
     }

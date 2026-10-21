@@ -39,7 +39,7 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   const visible = useUi((state) => state.visible);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const theme = useUi((state) => state.theme);
-  const host = useRef<HTMLDivElement>(null);
+  const host = useRef<HTMLElement>(null);
   const term = useRef<XTerm | null>(null);
   // The position after the last byte written, so a reattach asks only for what is new.
   const nextSeq = useRef<number | null>(null);
@@ -144,9 +144,8 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   }, [theme]);
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: xterm's own textarea takes the keys; a click here only gives the terminal the keys, as in the TUI.
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches the terminal through xterm's textarea.
-    <div
+    // biome-ignore lint/a11y/useKeyWithClickEvents: xterm's own textarea takes the keys; a click here only gives the terminal the keys, as in the TUI.
+    <section
       ref={host}
       className={`mu-term app-terminal ${compact ? "mu-term--compact" : ""} ${hasKeys ? "has-keys" : ""}`}
       aria-label="Terminal"

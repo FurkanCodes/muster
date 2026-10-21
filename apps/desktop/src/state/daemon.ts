@@ -33,7 +33,7 @@ export interface DaemonState {
 export type DaemonStore = StoreApi<DaemonState>;
 
 export function emptyDerived(): Derived {
-  return { needs_you: [], rows: [], counts: { working: 0, waiting: 0, done: 0 } };
+  return { needs_you: [], rows: [], counts: { working: 0, waiting: 0, done: 0 }, questions: {} };
 }
 
 function byId<T extends { id: string }>(items: readonly T[]): Record<string, T> {
@@ -59,6 +59,17 @@ function sameList<T>(a: readonly T[], b: readonly T[], same: (x: T, y: T) => boo
   return a.length === b.length && a.every((item, at) => same(item, b[at] as T));
 }
 
+function sameQuestions(a: Derived["questions"], b: Derived["questions"]): boolean {
+  const asked = Object.keys(a);
+  return (
+    asked.length === Object.keys(b).length &&
+    asked.every((session) => {
+      const lines = b[session];
+      return lines !== undefined && sameList(a[session] ?? [], lines, Object.is);
+    })
+  );
+}
+
 /** The new derivations, keeping each part that did not change as the same object. */
 function keptDerived(held: Derived, next: Derived): Derived {
   const counts =
@@ -73,9 +84,13 @@ function keptDerived(held: Derived, next: Derived): Derived {
   const rows = sameList(held.rows, next.rows, (a, b) => a.kind === b.kind && a.id === b.id)
     ? held.rows
     : next.rows;
-  return counts === held.counts && needs_you === held.needs_you && rows === held.rows
+  const questions = sameQuestions(held.questions, next.questions) ? held.questions : next.questions;
+  return counts === held.counts &&
+    needs_you === held.needs_you &&
+    rows === held.rows &&
+    questions === held.questions
     ? held
-    : { counts, needs_you, rows };
+    : { counts, needs_you, rows, questions };
 }
 
 function patched(state: DaemonState, patch: Patch): Partial<DaemonState> {
