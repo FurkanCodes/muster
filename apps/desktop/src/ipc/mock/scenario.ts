@@ -10,6 +10,7 @@ import type { Project } from "../generated/Project";
 import type { Session } from "../generated/Session";
 import type { SessionStatus } from "../generated/SessionStatus";
 import type { Timeline } from "../generated/Timeline";
+import type { UndoPlan } from "../generated/UndoPlan";
 import type { Workspace } from "../generated/Workspace";
 import type { World } from "./model";
 
@@ -32,6 +33,8 @@ export interface Scenario extends World {
   changes: Record<string, Changes>;
   diffs: Record<string, FileDiff>;
   timelines: Record<string, Timeline>;
+  undoPlans: Record<string, UndoPlan>;
+  beforeUndo: Record<string, Changes>;
 }
 
 function project(n: number, name: string, root: string): Project {
@@ -305,6 +308,28 @@ export function workingDay(): Scenario {
         shown: [{ path: "crates/muster-client/src/connection.rs", conflict: false }],
       },
     ];
+  const undoPlans: Record<string, UndoPlan> = {};
+  const beforeUndo: Record<string, Changes> = {};
+  for (const entry of timelines[ulid(11)]?.entries ?? []) {
+    const key = `${ulid(11)}:${entry.number}`;
+    undoPlans[key] = {
+      number: entry.number,
+      later: (timelines[ulid(11)]?.entries ?? []).filter(
+        (other) => other.number > entry.number && other.summary,
+      ).length,
+      branch:
+        entry.number < 4
+          ? {
+              branch: "feature/desktop-app",
+              to: "1234567",
+              commits: 1,
+              forward: false,
+              refused: null,
+            }
+          : null,
+    };
+    beforeUndo[key] = { base: "main", uncommitted: [], branch: [], commits: [], more_commits: 0 };
+  }
   return {
     projects,
     workspaces,
@@ -315,5 +340,7 @@ export function workingDay(): Scenario {
     changes,
     diffs,
     timelines,
+    undoPlans,
+    beforeUndo,
   };
 }

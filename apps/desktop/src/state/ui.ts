@@ -4,6 +4,7 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
+import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 
 export type ScreenId = "needs-you" | "not-seen" | "working" | "all" | "tickets" | "settings";
 
@@ -37,6 +38,13 @@ export interface UiState {
   terminal: SessionId | null;
   /** What the session pane shows. */
   pane: PaneMode;
+  /** This turn opens the changes pane at a specific entry. */
+  changesTurn: {
+    workspace: WorkspaceId;
+    number: number;
+    intent: "diff" | "put-back";
+    request: number;
+  } | null;
   sidebarFolded: boolean;
   theme: Theme;
   paletteOpen: boolean;
@@ -54,6 +62,7 @@ export interface UiActions {
   keysTo(keysIn: KeysIn): void;
   showTerminal(session: SessionId | null): void;
   showPane(mode: PaneMode): void;
+  showTurn(workspace: WorkspaceId, number: number, intent: "diff" | "put-back"): void;
   foldSidebar(): void;
   setTheme(theme: Theme): void;
   openPalette(open: boolean): void;
@@ -85,6 +94,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     keysIn: "list",
     terminal: null,
     pane: "terminal",
+    changesTurn: null,
     sidebarFolded: false,
     theme: storedTheme(),
     paletteOpen: false,
@@ -101,7 +111,13 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     narrow: (project) => set((state) => ({ project: state.project === project ? null : project })),
     keysTo: (keysIn) => set({ keysIn }),
     showTerminal: (terminal) => set({ terminal }),
-    showPane: (pane) => set({ pane }),
+    showPane: (pane) => set({ pane, changesTurn: null }),
+    showTurn: (workspace, number, intent) =>
+      set((state) => ({
+        pane: "changes",
+        keysIn: "list",
+        changesTurn: { workspace, number, intent, request: (state.changesTurn?.request ?? 0) + 1 },
+      })),
     foldSidebar: () => set((state) => ({ sidebarFolded: !state.sidebarFolded })),
     setTheme: (theme) => {
       set({ theme });

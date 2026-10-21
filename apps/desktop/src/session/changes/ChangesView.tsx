@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useActions, useDaemon } from "../../app/context";
+import { useActions, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
 import type { Changes } from "../../ipc/generated/Changes";
 import type { Timeline } from "../../ipc/generated/Timeline";
@@ -11,6 +11,7 @@ import { TurnRow } from "../../ui/TurnRow";
 import { ClashBanners } from "./ClashBanners";
 import { DiffPanel } from "./DiffPanel";
 import { entryLabel } from "./labels";
+import { PutBack } from "./PutBack";
 import { useReply } from "./useReply";
 import "./changes.css";
 
@@ -26,13 +27,37 @@ const EMPTY_CHANGES: Changes = {
 };
 
 export default function ChangesView({ workspace }: { workspace: WorkspaceId }) {
+  const target = useUi((state) =>
+    state.changesTurn?.workspace === workspace ? state.changesTurn : null,
+  );
+  return (
+    <WorkspaceChanges
+      key={`${workspace}:${target?.request ?? 0}`}
+      workspace={workspace}
+      target={target}
+    />
+  );
+}
+
+function WorkspaceChanges({
+  workspace,
+  target,
+}: {
+  workspace: WorkspaceId;
+  target: { number: number; intent: "diff" | "put-back" } | null;
+}) {
   const actions = useActions();
   const summary = useDaemon((state) => state.workspaces[workspace]?.changes);
   const newest = useDaemon((state) => state.workspaces[workspace]?.timeline ?? null);
   const [again, setAgain] = useState(0);
-  const [view, setView] = useState<View>("uncommitted");
-  const [selection, setSelection] = useState<string | null>(null);
-  const [opened, setOpened] = useState<string | null>(null);
+  const [view, setView] = useState<View>(target ? "turns" : "uncommitted");
+  const [selection, setSelection] = useState<string | null>(target ? String(target.number) : null);
+  const [opened, setOpened] = useState<string | null>(
+    target?.intent === "diff" ? String(target.number) : null,
+  );
+  const [undoTarget, setUndoTarget] = useState<number | null>(
+    target?.intent === "put-back" ? target.number : null,
+  );
   const list = useRef<HTMLDivElement>(null);
   const revision = `${JSON.stringify(summary)}:${newest}:${again}`;
   const listing = useReply({ WorkspaceChanges: { workspace } }, revision);
@@ -64,6 +89,12 @@ export default function ChangesView({ workspace }: { workspace: WorkspaceId }) {
     setOpened(null);
   };
   const back = () => actions.showPane("terminal");
+  const putBack = () => {
+    const number = view === "turns" ? Number(shown ?? selected) : null;
+    if (number) setUndoTarget(number);
+    else
+      actions.tell("Choose a turn under Turns to put the files back as they were before it.", true);
+  };
   const move = (by: number) => {
     const next = Math.min(ids.length - 1, Math.max(0, ids.indexOf(selected ?? "") + by));
     const id = ids[next];
@@ -92,6 +123,8 @@ export default function ChangesView({ workspace }: { workspace: WorkspaceId }) {
     ArrowRight: () => setOpened(selected),
     l: () => setOpened(selected),
     r: () => setAgain((count) => count + 1),
+    z: putBack,
+    u: putBack,
     Tab: () => changeView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length] ?? "uncommitted"),
     "⇧Tab": () => changeView(VIEWS[(VIEWS.indexOf(view) + 2) % VIEWS.length] ?? "uncommitted"),
   });
@@ -102,6 +135,7 @@ export default function ChangesView({ workspace }: { workspace: WorkspaceId }) {
       { key: "n p", does: "hunks" },
       { key: "⇥", does: "not committed, branch, turns" },
       { key: "r", does: "ask git again" },
+      ...(view === "turns" ? [{ key: "z", does: "put back" }] : []),
       { key: "c", does: "terminal" },
     ]);
     return () => actions.setHints([]);
@@ -127,6 +161,11 @@ export default function ChangesView({ workspace }: { workspace: WorkspaceId }) {
           onChange={changeView}
         />
         {view !== "turns" ? <DiffStat {...total} files={files.length} /> : null}
+        {view === "turns" && selected ? (
+          <Button title="Put back before this turn (z, u)" onClick={putBack}>
+            Put back
+          </Button>
+        ) : null}
       </div>
       <ClashBanners workspace={workspace} />
       <div className="changes-content">
@@ -246,6 +285,20 @@ export default function ChangesView({ workspace }: { workspace: WorkspaceId }) {
           </div>
         )}
       </div>
+      {undoTarget !== null ? (
+        <PutBack
+          workspace={workspace}
+          number={undoTarget}
+          timeline={timeline}
+          onClose={() => setUndoTarget(null)}
+          onDone={(entry) => {
+            setUndoTarget(null);
+            setOpened(null);
+            setSelection(String(entry));
+            setAgain((count) => count + 1);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

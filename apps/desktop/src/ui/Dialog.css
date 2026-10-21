@@ -1,0 +1,18 @@
+.app-dialog {
+  color: var(--text);
+  border: 0;
+  width: var(--size-dialog-wide);
+  max-width: calc(100vw - var(--space-24) * 2);
+  max-height: calc(100vh - var(--space-24) * 2);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.app-dialog:not([open]) {
+  display: none;
+}
+.app-dialog::backdrop {
+  background: var(--scrim);
+}
+.app-dialog .mu-dialog-actions {
+  flex-wrap: wrap;
+}

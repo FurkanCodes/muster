@@ -6,10 +6,13 @@ import { BridgeFailure } from "../bridge";
 import type { Command } from "../generated/Command";
 import type { Reply } from "../generated/Reply";
 import type { MockBridge } from "./bridge";
+import { handleUndo } from "./undo";
 
 export function handleCommand(mock: MockBridge, command: Command): Reply | undefined {
   if (command === "Ping") return "Pong";
   if (typeof command === "string") return undefined;
+  const undone = handleUndo(mock, command);
+  if (undone !== undefined) return undone;
 
   if (
     "WorkspaceChanges" in command ||
@@ -69,7 +72,7 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
       if (!mock.world.timelines[workspace.id]?.entries.some((entry) => entry.number === number))
         throw new BridgeFailure(
           "refused",
-          `no entry ${number} is kept in this workspace's timeline`,
+          `there is no entry ${number} in this workspace's timeline`,
           "not_found",
         );
       return {
