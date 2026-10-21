@@ -8,3 +8,4 @@ src-tauri/gen/
 # ts-rs writes here when `cargo test` runs without `pnpm bindings`.
 src-tauri/bindings/
 .vitest/
+dist-app/
