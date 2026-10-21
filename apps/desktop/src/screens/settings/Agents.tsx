@@ -19,7 +19,9 @@ function Fact({ can, children }: { can: boolean; children: string }) {
   return (
     <span>
       {can ? (
-        <span className="mu-found">✓</span>
+        <span className="mu-found" aria-hidden="true">
+          ✓
+        </span>
       ) : (
         <span className="mu-quiet" aria-hidden="true">
           ✗
@@ -66,12 +68,16 @@ function AddedRow({ agent }: { agent: AddedAgent }) {
         <span className="mu-agentrow-facts">
           <span className="mu-mono">{oneLine(agent.name)}</span>
           <span>
-            {agent.takes_prompt ? <span className="mu-found">✓</span> : "✗"}{" "}
+            <span className={agent.takes_prompt ? "mu-found" : "mu-quiet"} aria-hidden="true">
+              {agent.takes_prompt ? "✓" : "✗"}
+            </span>{" "}
             {agent.takes_prompt ? "takes a first prompt" : "takes no first prompt"}
           </span>
           <span>status from its window title</span>
           <span>
-            {agent.asks ? <span className="mu-found">✓</span> : "✗"}{" "}
+            <span className={agent.asks ? "mu-found" : "mu-quiet"} aria-hidden="true">
+              {agent.asks ? "✓" : "✗"}
+            </span>{" "}
             {agent.asks ? "names chats" : "names no chats: its settings say no way to ask it"}
           </span>
         </span>

@@ -265,3 +265,15 @@
 .app-settings-note-text {
   color: var(--text);
 }
+
+/* A key row's keys are its own control, for one who tabs to it. */
+.app-keyrow-set {
+  flex: none;
+  display: flex;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}

@@ -176,3 +176,16 @@ test("the keys set here are the ones the screens answer", async ({ page }) => {
     .click();
   await expect(page.locator(".mu-statusbar")).toContainText("F5read the files again");
 });
+
+test("a key is set from its own button too, for one who tabs to it", async ({ page }) => {
+  await openKeys(page);
+  const set = page.getByRole("button", {
+    name: /^Set the key for Rename the session's chat, now ⇧R/,
+  });
+  await set.focus();
+  await page.keyboard.press("Enter");
+  await expect(key(page, "rename")).toHaveClass(/is-waiting/);
+  await page.keyboard.press("F2");
+  await expect(note(page)).toHaveText("The key is set.");
+  await expect(key(page, "rename").locator(".mu-kbd")).toHaveText(["F2"]);
+});

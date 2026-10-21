@@ -37,17 +37,18 @@ function KeyItem({ entry, suggested }: { entry: KeyEntry; suggested: boolean }) 
   const row = rowKey("keys", `key.${entry.name}`);
   const waiting = state.waiting?.name === entry.name;
   const busy = state.busy.has(row);
+  const start = () => {
+    if (busy) return;
+    actions.wait({ name: entry.name, refused: null });
+    ui.tell(`Press the key for: ${entry.what}.`);
+  };
   return (
     <>
       <SettingRow
         id={row}
         press="acts"
         className={`mu-keyrow ${waiting ? "is-waiting" : ""}`}
-        act={() => {
-          if (busy) return;
-          actions.wait({ name: entry.name, refused: null });
-          ui.tell(`Press the key for: ${entry.what}.`);
-        }}
+        act={start}
         back={() => {
           if (!isSet(map, entry.name)) return;
           actions.preference(
@@ -62,18 +63,25 @@ function KeyItem({ entry, suggested }: { entry: KeyEntry; suggested: boolean }) 
           {entry.set ? <span className="mu-label">yours</span> : null}
           {suggested ? <span className="mu-label">its suggestion</span> : null}
         </span>
-        <span className="mu-keyrow-keys">
-          {waiting ? (
-            <>
-              <span className="mu-keyrow-wait">Press a key…</span>
-              <span className="mu-meta">⎋ cancels</span>
-            </>
-          ) : entry.labels.length > 0 ? (
-            entry.labels.map((label) => <Kbd key={label}>{label}</Kbd>)
-          ) : (
-            <span className="mu-quiet">none</span>
-          )}
-        </span>
+        <button
+          type="button"
+          className="app-keyrow-set"
+          aria-label={`Set the key for ${entry.what}, now ${entry.labels.join(" ") || "none"}`}
+          onClick={start}
+        >
+          <span className="mu-keyrow-keys">
+            {waiting ? (
+              <>
+                <span className="mu-keyrow-wait">Press a key…</span>
+                <span className="mu-meta">⎋ cancels</span>
+              </>
+            ) : entry.labels.length > 0 ? (
+              entry.labels.map((label) => <Kbd key={label}>{label}</Kbd>)
+            ) : (
+              <span className="mu-quiet">none</span>
+            )}
+          </span>
+        </button>
       </SettingRow>
       {waiting && state.waiting?.refused ? (
         <div className="mu-keyrow-error" role="alert">
