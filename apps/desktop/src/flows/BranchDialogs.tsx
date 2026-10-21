@@ -17,6 +17,7 @@ import { offered, stepAgent } from "./agents";
 import { count, useChanges } from "./changes";
 import { labelOf } from "./keymap";
 import { useTask } from "./useTask";
+import { whenKnown } from "./whenKnown";
 
 const NO_AGENTS: AddedAgent[] = [];
 
@@ -48,8 +49,10 @@ export function Tidy({ workspace }: { workspace: WorkspaceId }) {
       app.actions.choseAgent(harness);
       app.actions.openFlow(null);
       app.actions.show("all");
-      app.actions.select("all", session);
-      app.actions.showTerminal(session);
+      whenKnown(app, "sessions", session, () => {
+        app.actions.select("all", session);
+        app.actions.showTerminal(session);
+      });
       app.actions.tell("Starting the tidy…");
     });
   // ⇥ ⇧⇥ (and the arrows) go round the agents, as in the TUI's dialog.

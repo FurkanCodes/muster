@@ -48,6 +48,15 @@ function keysOf(command: Command): string[] {
   return [`name:${nameOf(command)}`, `command:${JSON.stringify(command)}`];
 }
 
+/** The commands that make something, whose change the daemon tells after its answer. */
+const MAKES = new Set([
+  "AddProject",
+  "CreateWorktree",
+  "StartSession",
+  "TidyCommits",
+  "StartFromIssue",
+]);
+
 export class MockBridge implements Bridge {
   readonly world: Scenario;
   /** What git and the file system say, for the flows (flows.ts). */
@@ -89,8 +98,12 @@ export class MockBridge implements Bridge {
     return this.clock;
   }
 
+  /** What a command that makes something tells, held until after its answer (see `command`). */
+  private told: StateMessage[] | null = null;
+
   private emit(message: StateMessage): void {
-    this.listener?.(message);
+    if (this.told) this.told.push(message);
+    else this.listener?.(message);
   }
 
   private patch(parts: Partial<Patch>): Patch {
@@ -159,7 +172,21 @@ export class MockBridge implements Bridge {
       this.failures.delete(key);
       throw failure;
     }
-    const reply = handleCommand(this, command);
+    // The daemon answers a command that makes something before the change
+    // it made reaches its clients: the mock tells it after its answer too.
+    const makes = MAKES.has(nameOf(command));
+    if (makes) this.told = [];
+    let reply: Reply | undefined;
+    try {
+      reply = handleCommand(this, command);
+    } finally {
+      const told = this.told ?? [];
+      this.told = null;
+      if (told.length > 0)
+        setTimeout(() => {
+          for (const message of told) this.emit(message);
+        }, 0);
+    }
     if (reply === undefined) {
       const name = typeof command === "string" ? command : Object.keys(command)[0];
       throw new BridgeFailure("invalid", `The mock daemon does not do ${name} yet`);
