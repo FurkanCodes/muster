@@ -1,0 +1,15 @@
+[[permission]]
+identifier = "allow-muster"
+description = "Muster's own link to its daemon: its state, the daemon's commands, sessions' terminals, a ticket opened in the browser and a sound heard as it is chosen."
+commands.allow = [
+  "link_open",
+  "command",
+  "attach",
+  "detach",
+  "input",
+  "resize",
+  "watch",
+  "looking",
+  "open_ticket_url",
+  "hear",
+]
