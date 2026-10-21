@@ -24,6 +24,7 @@ use muster_core::explain::{
 };
 use muster_core::frame::{FrameDecoder, encode};
 use muster_core::layout::Layout;
+use muster_core::protocol::agents::AgentFound;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, DetachReason, ErrorBody, ErrorCode, Health, Hello, Incompatible,
     MouseEncoding, MouseTracking, PixelSize, Reply, ResourceReport, ServerFrame, SessionUsage,
@@ -487,6 +488,7 @@ fn commands() -> Vec<Command> {
         Command::Health,
         Command::ExplainSession { session },
         Command::ReadPreferences,
+        Command::Agents,
         Command::Reveal { session },
         Command::ChangePreference(PreferenceChange::Notch(false)),
         Command::ChangePreference(PreferenceChange::SideBySideFrom(0)),
@@ -604,6 +606,18 @@ fn replies() -> Vec<Reply> {
         Reply::Changes(changes()),
         Reply::Explanation(Box::new(explanation())),
         Reply::Models(vec!["haiku".to_owned(), "sonnet".to_owned()]),
+        Reply::Agents(vec![
+            AgentFound {
+                harness: "claude".to_owned(),
+                path: Some("/opt/homebrew/bin/claude".to_owned()),
+                version: Some("2.1.303".to_owned()),
+            },
+            AgentFound {
+                harness: "copilot".to_owned(),
+                path: None,
+                version: None,
+            },
+        ]),
         Reply::FileDiff(FileDiff {
             text: "@@ -1 +1 @@\n-old\n+new\n".to_owned(),
             cut: true,

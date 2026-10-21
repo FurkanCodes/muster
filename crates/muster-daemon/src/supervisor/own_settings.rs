@@ -2,7 +2,8 @@
 //! shows, and the coding agents they added (`[agents.<name>]`), which are
 //! offered and started beside Muster's own. Read as the daemon starts,
 //! after a change on the Settings screen, and when the person asks for them
-//! again after editing the file by hand (`Command::ReadPreferences`).
+//! again after editing the file by hand (`Command::ReadPreferences`); and
+//! where each coding agent is installed (`Command::Agents`).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,8 +11,10 @@ use std::sync::Arc;
 use muster_core::config::agents::AgentDefinition;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
 use muster_core::settings::Preferences;
+use tokio::sync::oneshot;
 
 use super::Supervisor;
+use crate::agents_found::{self, Wanted};
 use crate::harness::{self, Harness};
 
 /// Muster's own settings in `config_dir` and the agents the person added,
@@ -120,5 +123,26 @@ impl Supervisor {
         // again with it.
         self.read_plugins();
         Reply::Done
+    }
+
+    /// `Agents`: where each coding agent is installed, on the daemon's own
+    /// `PATH`, and the version it says, answered from a task of its own.
+    /// Only Muster's own agents' programs and the person's are run.
+    pub(super) fn find_agents(&self, reply: oneshot::Sender<Result<Reply, ErrorBody>>) {
+        let wanted = harness::coding_agents(&self.agents)
+            .iter()
+            .filter_map(|agent| {
+                Some(Wanted {
+                    harness: agent.id().to_owned(),
+                    program: agent.program()?.to_owned(),
+                })
+            })
+            .collect();
+        let path = std::env::var_os("PATH");
+        let folder = crate::ask::folder(&self.runtime_dir());
+        self.tasks.spawn(async move {
+            let found = agents_found::find(wanted, path, folder).await;
+            let _ = reply.send(Ok(Reply::Agents(found)));
+        });
     }
 }

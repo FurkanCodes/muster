@@ -107,7 +107,14 @@ export function Dialog({
           answers[Math.max(0, Math.min(answers.length - 1, at))]?.focus();
           return;
         }
-        if (event.key !== "Enter" || (answer && !event.metaKey)) return;
+        if (event.key !== "Enter") return;
+        // ⏎ on an answer gives that answer, as the browser's own press of a
+        // button would: whatever made the key, a hand or a script.
+        if (answer && !event.metaKey) {
+          event.preventDefault();
+          answer.click();
+          return;
+        }
         const area = event.target instanceof HTMLTextAreaElement;
         if (area && !event.metaKey && !event.ctrlKey) return;
         event.preventDefault();

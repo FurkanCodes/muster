@@ -56,6 +56,7 @@ describe("the daemon's state in the webview", () => {
     const daemon = createDaemon();
     const derived = {
       needs_you: ["a"],
+      working: [],
       rows: [],
       counts: { working: 1, waiting: 1, done: 0 },
       questions: { a: ["Which?"] },

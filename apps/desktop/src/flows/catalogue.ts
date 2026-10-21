@@ -9,6 +9,7 @@ import { pressKey } from "../app/keys";
 import type { Issue } from "../ipc/generated/Issue";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { Session } from "../ipc/generated/Session";
+import * as byHand from "../session/byHand";
 import { projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import * as act from "./actions";
@@ -136,6 +137,24 @@ function actionsHere(app: App): PaletteItem[] {
     }
     add("new_worktree", "Make a new worktree for the project", act.newWorktree);
   }
+  // The stages by hand, on a worktree or a session in one (src/session/byHand.ts).
+  if (workspace && !onProject && workspace.kind.kind !== "container") {
+    add("checks", "Run the project's checks", byHand.runChecks);
+    if (!act.plain(workspace)) {
+      add("review", "Have Claude Code review the change", byHand.review);
+      add(
+        "open_pull_request",
+        "Push the branch and open a draft pull request",
+        byHand.openPullRequest,
+      );
+    }
+  }
+  if (workspace?.pull_request && !onProject)
+    add(
+      "pull_request_in_browser",
+      "Open the pull request in the browser",
+      byHand.browsePullRequest,
+    );
   // The screen's own actions, as its status bar hints say them.
   for (const hint of app.ui.getState().hints) {
     if (items.some((item) => item.keys === hint.key)) continue;

@@ -13,6 +13,11 @@ export type Derived = {
  */
 needs_you: Array<SessionId>, 
 /**
+ * The agents at work, the longest at it first (*Working*): chats
+ * running with no news for the person, never a shell or a panel.
+ */
+working: Array<SessionId>, 
+/**
  * The sessions list: each project, its workspaces, their sessions, in
  * the order the terminal UI lists them.
  */

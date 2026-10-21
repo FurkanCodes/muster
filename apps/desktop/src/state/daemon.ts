@@ -33,7 +33,13 @@ export interface DaemonState {
 export type DaemonStore = StoreApi<DaemonState>;
 
 export function emptyDerived(): Derived {
-  return { needs_you: [], rows: [], counts: { working: 0, waiting: 0, done: 0 }, questions: {} };
+  return {
+    needs_you: [],
+    working: [],
+    rows: [],
+    counts: { working: 0, waiting: 0, done: 0 },
+    questions: {},
+  };
 }
 
 function byId<T extends { id: string }>(items: readonly T[]): Record<string, T> {
@@ -81,16 +87,18 @@ function keptDerived(held: Derived, next: Derived): Derived {
   const needs_you = sameList(held.needs_you, next.needs_you, Object.is)
     ? held.needs_you
     : next.needs_you;
+  const working = sameList(held.working, next.working, Object.is) ? held.working : next.working;
   const rows = sameList(held.rows, next.rows, (a, b) => a.kind === b.kind && a.id === b.id)
     ? held.rows
     : next.rows;
   const questions = sameQuestions(held.questions, next.questions) ? held.questions : next.questions;
   return counts === held.counts &&
     needs_you === held.needs_you &&
+    working === held.working &&
     rows === held.rows &&
     questions === held.questions
     ? held
-    : { counts, needs_you, rows, questions };
+    : { counts, needs_you, working, rows, questions };
 }
 
 function patched(state: DaemonState, patch: Patch): Partial<DaemonState> {

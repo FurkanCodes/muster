@@ -16,7 +16,7 @@ function stateOf(world = workingDay()): DaemonState {
 }
 
 describe("ARC-24 the queue's lists, in the model's order", () => {
-  it("lists Needs you as the model orders it, then the agents at work as the sessions list does", () => {
+  it("lists Needs you as the model orders it, then the agents at work as Working does", () => {
     const state = stateOf();
     expect(state.derived.needs_you).toEqual([ulid(101), ulid(200), ulid(104), ulid(202)]);
     expect(queueIds(state, "needs-you", null)).toEqual([
@@ -24,9 +24,9 @@ describe("ARC-24 the queue's lists, in the model's order", () => {
       ulid(200),
       ulid(104),
       ulid(202),
+      ulid(201),
       ulid(100),
       ulid(103),
-      ulid(201),
       ulid(400),
     ]);
   });
@@ -39,12 +39,16 @@ describe("ARC-24 the queue's lists, in the model's order", () => {
     };
     expect(queueIds(reversed, "needs-you", null).slice(0, 4)).toEqual(reversed.derived.needs_you);
     expect(queueIds(reversed, "not-seen", null)).toEqual([ulid(202), ulid(104)]);
+    const working = [ulid(400), ulid(100), ulid(201), ulid(103)];
+    expect(queueIds({ ...state, derived: { ...state.derived, working } }, "working", null)).toEqual(
+      working,
+    );
   });
 
-  it("filters Not seen to the finished unseen and Working to the agents at work, never a shell", () => {
+  it("filters Not seen to the finished unseen, and Working is the agents at work, the longest first, never a shell", () => {
     const state = stateOf();
     expect(queueIds(state, "not-seen", null)).toEqual([ulid(104), ulid(202)]);
-    expect(queueIds(state, "working", null)).toEqual([ulid(100), ulid(103), ulid(201), ulid(400)]);
+    expect(queueIds(state, "working", null)).toEqual([ulid(201), ulid(100), ulid(103), ulid(400)]);
     expect(queueIds(state, "working", null)).not.toContain(ulid(102));
   });
 

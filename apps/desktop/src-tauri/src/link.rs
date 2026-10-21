@@ -31,7 +31,7 @@ mod patches;
 mod questions;
 mod streams;
 
-pub use daemon::{find_muster, starter};
+pub use daemon::{find_muster, installed_muster, starter};
 
 /// How often a lost link tries again (`ARCHITECTURE.md` §5a, *Link*).
 pub const RETRY_EVERY: Duration = Duration::from_millis(500);

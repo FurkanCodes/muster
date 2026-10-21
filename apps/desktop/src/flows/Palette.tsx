@@ -41,8 +41,8 @@ function useModal(onClose: () => void) {
 }
 
 export default function Palette() {
-  const keys = useUi((state) => state.paletteMode === "keys");
-  return keys ? <EveryKey /> : <Commands />;
+  const mode = useUi((state) => state.paletteMode);
+  return mode === "commands" ? <Commands /> : <EveryKey changes={mode === "changes"} />;
 }
 
 /** The tickets of the projects that are repositories, asked for once the person types. */
@@ -248,7 +248,8 @@ function Item({
   );
 }
 
-function EveryKey() {
+/** Every key of the screen in view, or with `changes` of the changes beside it. */
+function EveryKey({ changes }: { changes: boolean }) {
   const app = useApp();
   const actions = useActions();
   const screen = useUi((state) => state.screen);
@@ -256,7 +257,11 @@ function EveryKey() {
   const list = useRef<HTMLDivElement>(null);
   const close = () => actions.openPalette(false);
   const modal = useModal(close);
-  const sections = helpFor(screen, app.daemon.store.getState().preferences, typed);
+  const sections = helpFor(
+    changes ? "changes" : screen,
+    app.daemon.store.getState().preferences,
+    typed,
+  );
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const by = { ArrowDown: 32, ArrowUp: -32, PageDown: 320, PageUp: -320 }[event.key];
     if (by !== undefined) {

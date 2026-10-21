@@ -52,6 +52,11 @@ pub fn find_muster(
         .find(|candidate| is_program(candidate))
 }
 
+/// `muster`, where [`find_muster`] finds it from the app's own variables.
+pub fn installed_muster() -> Option<PathBuf> {
+    find_muster(|key| std::env::var_os(key), is_program)
+}
+
 /// Whether `path` is a file anyone may run.
 fn is_program(path: &Path) -> bool {
     path.metadata()

@@ -353,6 +353,23 @@ impl Model {
         waiting.into_iter().map(|session| session.id).collect()
     }
 
+    /// The agents at work, the longest at it first: each chat running
+    /// with no news for the person, by when it began this stretch of work
+    /// (*Working*). A shell or a plugin's panel is not an agent.
+    pub fn working(&self) -> Vec<SessionId> {
+        let mut working: Vec<&Session> = self
+            .sessions
+            .iter()
+            .filter(|session| {
+                session.status == SessionStatus::Running
+                    && !stands_beside(session)
+                    && !needs_attention(session)
+            })
+            .collect();
+        working.sort_by_key(|session| session.status_since);
+        working.into_iter().map(|session| session.id).collect()
+    }
+
     /// How the agents stand, as the top bar counts them: working, waiting
     /// on the person (asking something), and done (finished).
     pub fn counts(&self) -> Counts {
@@ -539,6 +556,44 @@ mod tests {
             since: muster_core::Timestamp::from_millis(10),
         });
         assert_eq!(model.needs_you(), [three.id, one.id]);
+    }
+
+    #[test]
+    fn working_lists_the_agents_at_work_the_longest_at_it_first() {
+        let app = project("app");
+        let tree = worktree(app.id, "work");
+        let at_work = |title: &str, created: i64, since: i64| {
+            let mut found = session(tree.id, title, created);
+            found.status = SessionStatus::Running;
+            found.status_since = muster_core::Timestamp::from_millis(since);
+            found
+        };
+        let lately = at_work("lately", 1, 300);
+        let longest = at_work("longest", 2, 100);
+        let between = at_work("between", 3, 200);
+        let mut news = at_work("news", 4, 50);
+        news.unseen = true;
+        let mut shell = at_work("zsh", 5, 10);
+        shell.harness = "shell".to_owned();
+        let mut asking = session(tree.id, "asking", 6);
+        asking.status = SessionStatus::NeedsYou {
+            reason: WaitReason::Question,
+        };
+        let mut model = Model::default();
+        model.replace(Snapshot {
+            projects: vec![app],
+            workspaces: vec![tree],
+            sessions: vec![
+                lately.clone(),
+                longest.clone(),
+                between.clone(),
+                news,
+                shell,
+                asking,
+            ],
+            ..Snapshot::default()
+        });
+        assert_eq!(model.working(), [longest.id, between.id, lately.id]);
     }
 
     #[test]

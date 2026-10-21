@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActions, useBridge, useDaemon, useUi } from "../app/context";
 import type { Entry } from "../ipc/generated/Entry";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import { useKeyLabel } from "../keys/useKeymap";
 import { splitPath } from "../lib/format";
 import { standsBeside } from "../state/selectors";
 import { Button } from "../ui/controls";
@@ -98,6 +99,7 @@ function useNewestTurn(workspace: WorkspaceId): [Read, () => void] {
 export function ThisTurn({ workspace }: { workspace: WorkspaceId }) {
   const actions = useActions();
   const [read, again] = useNewestTurn(workspace);
+  const putBackKey = useKeyLabel("put_back");
   // While an agent works there, its files are not to be put back (PRD-14).
   const busy = useDaemon((state) =>
     Object.values(state.sessions).some(
@@ -160,7 +162,11 @@ export function ThisTurn({ workspace }: { workspace: WorkspaceId }) {
         <Button
           size="sm"
           disabled={busy}
-          title={busy ? "Wait for its turn to end" : "Put the files back as before this turn (z)"}
+          title={
+            busy
+              ? "Wait for its turn to end"
+              : `Put the files back as before this turn (${putBackKey})`
+          }
           onClick={() => actions.showTurn(workspace, entry.number, "put-back")}
         >
           Put back

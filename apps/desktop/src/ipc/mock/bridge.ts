@@ -23,6 +23,7 @@ import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
 import type { TerminalColours } from "../generated/TerminalColours";
 import type { Workspace } from "../generated/Workspace";
+import { ByHandWorld } from "./byHand";
 import { handleCommand } from "./commands";
 import { FlowWorld } from "./flows";
 import { expandPath } from "./folders";
@@ -61,12 +62,16 @@ export class MockBridge implements Bridge {
   readonly world: Scenario;
   /** What git and the file system say, for the flows (flows.ts). */
   readonly flows: FlowWorld;
+  /** What the projects' settings and the host say, for the stages by hand (byHand.ts). */
+  readonly byHand: ByHandWorld;
   private readonly drops = new Set<(paths: string[]) => void>();
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
   readonly openedUrls: string[] = [];
   private readonly holds = new Map<string, { promise: Promise<void>; release: () => void }>();
   private readonly failures = new Map<string, BridgeFailure>();
+  /** Every one of Settings' asks of muster and the Mac, in order (`screens/settings/asks.ts`). */
+  readonly asked: string[] = [];
   /** How often the page asked to reach the daemon now, and to open its log. */
   triedNow = 0;
   logsShown = 0;
@@ -89,6 +94,7 @@ export class MockBridge implements Bridge {
   constructor(world: Scenario) {
     this.world = world;
     this.flows = new FlowWorld(world);
+    this.byHand = new ByHandWorld(world.projects.map((project) => project.id));
     for (const session of world.sessions) this.changed.set(session.id, this.tick());
     this.settings = new MockSettings(this);
   }
@@ -126,7 +132,7 @@ export class MockBridge implements Bridge {
     this.listener = onMessage;
     this.emit({ kind: "link", link: { state: "connecting" } });
     queueMicrotask(() => {
-      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 44 } });
+      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 45 } });
       this.emit({
         kind: "patch",
         patch: this.patch({
@@ -245,6 +251,19 @@ export class MockBridge implements Bridge {
   }
 
   /** Plays a sound by its name, as the app's Rust side would: the mock records it. */
+  async restartInPlace(): Promise<string> {
+    this.asked.push("restart in place");
+    return "The daemon is now muster 0.4.1, its sessions running on.";
+  }
+
+  async openNotificationSettings(): Promise<void> {
+    this.asked.push("notification settings");
+  }
+
+  async editSettingsFile(): Promise<void> {
+    this.asked.push("edit settings.toml");
+  }
+
   async hear(sound: string): Promise<void> {
     this.heard.push(sound);
   }

@@ -1,8 +1,8 @@
 // What a list does to its selected session on a key, as the terminal UI
-// does it: R renames it in place, x closes it (after asking, while it runs),
-// b its pull request in the browser. Closing one that runs stops it and
-// takes it off the list once its program has ended, wherever the person
-// has gone by then.
+// does it: R renames it in place, x closes it (after asking, while it
+// runs), b its pull request in the browser (byHand.ts). Closing one that
+// runs stops it and takes it off the list once its program has ended,
+// wherever the person has gone by then.
 
 import { useEffect, useRef, useState } from "react";
 import { type App, useApp, useDaemon } from "../app/context";
@@ -10,6 +10,7 @@ import type { SessionId } from "../ipc/generated/SessionId";
 import { Button } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
 import { TextField } from "../ui/TextField";
+import { browsePullRequest } from "./byHand";
 
 /** Says a refusal as the daemon gave it, in the status bar until the next key. */
 function refused(app: App, error: unknown): void {
@@ -92,16 +93,7 @@ export function useSessionActions(session: SessionId | undefined) {
         (error) => refused(app, error),
       );
     },
-    browser() {
-      const found = stored();
-      const pr = found
-        ? app.daemon.store.getState().workspaces[found.workspace]?.pull_request
-        : null;
-      if (!pr) return app.actions.tell("No pull request from this branch is known.", true);
-      app.actions.tell(
-        `Opening pull requests in the browser is coming to the app. #${pr.number} is at ${pr.url}`,
-      );
-    },
+    browser: () => browsePullRequest(app),
   };
 }
 
@@ -164,6 +156,12 @@ export function RenameSession({ actions }: { actions: SessionActions }) {
         });
       }}
       onKeyDown={(event) => {
+        // ⏎ renames whatever made the key, as the shared Dialog takes it.
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.requestSubmit();
+          return;
+        }
         if (event.key !== "Escape") return;
         event.preventDefault();
         event.stopPropagation();

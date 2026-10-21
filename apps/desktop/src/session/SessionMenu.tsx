@@ -3,14 +3,25 @@
 // item's own key does it at once. While it is open its keys are its own.
 
 import { type KeyboardEvent, useEffect, useRef } from "react";
+import { chordOf } from "../app/keys";
+import { domChord } from "../keys/chord";
+import { chordsOf, type Keymap, labelOf } from "../keys/keymap";
 import { Kbd } from "../ui/controls";
 
 export interface MenuItem {
+  /** Its keys, as a key cap shows them. */
   key: string;
+  /** Its keys as the key listener names a press (`chordOf`); `key` where there are none. */
+  chords?: readonly string[];
   label: string;
   does: () => void;
   /** Destructive: last, after a separator, in the waiting colour. */
   danger?: boolean;
+}
+
+/** `action`'s keys as the person set them, for a menu item. */
+export function keysOf(map: Keymap, action: string): Pick<MenuItem, "key" | "chords"> {
+  return { key: labelOf(map, action), chords: chordsOf(map, action).map(domChord) };
 }
 
 export function SessionMenu({
@@ -48,7 +59,10 @@ export function SessionMenu({
       const by = event.key === "ArrowDown" ? 1 : entries.length - 1;
       entries[(at + by) % entries.length]?.focus();
     } else {
-      const item = items.find((candidate) => candidate.key === event.key);
+      const pressed = chordOf(event);
+      const item = items.find((candidate) =>
+        (candidate.chords ?? [candidate.key]).includes(pressed),
+      );
       if (item) {
         event.preventDefault();
         choose(item);

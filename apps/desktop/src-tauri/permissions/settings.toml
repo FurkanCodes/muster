@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-settings"
+description = "Settings' own asks, each on the person's word: the daemon restarted in place with `muster reload`, the Mac's notification settings opened at Muster's helper, and Muster's own settings.toml opened in the person's editor. None takes a path or a word from the webview."
+commands.allow = ["restart_in_place", "open_notification_settings", "edit_settings_file"]

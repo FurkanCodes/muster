@@ -7,7 +7,9 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installKeys } from "../../app/keys";
-import { ulid } from "../../ipc/mock/scenario";
+import type { Session } from "../../ipc/generated/Session";
+import { MockBridge } from "../../ipc/mock/bridge";
+import { ulid, workingDay } from "../../ipc/mock/scenario";
 import { renderWithApp } from "../../test/render";
 import AllSessions from "./AllSessions";
 
@@ -114,5 +116,36 @@ describe("ARC-24 All sessions", () => {
     act(() => app.actions.narrow(lamphaus));
     await waitFor(() => expect(screen.queryByRole("treeitem", { name: "muster" })).toBeNull());
     expect(row("lamphaus")).toBeInTheDocument();
+  });
+});
+
+describe("ARC-25 a tree of thousands of sessions", () => {
+  it("draws only the lines in sight, and the one selected for the person wherever it is", async () => {
+    const bridge = new MockBridge(workingDay());
+    const many = Array.from({ length: 3000 }, (_, n) => ({
+      ...(bridge.world.sessions[0] as Session),
+      id: ulid(20_000 + n),
+      title: `Session ${n}`,
+    }));
+    bridge.world.sessions.push(...many);
+    const rendered = renderWithApp(<AllSessions />, bridge);
+    uninstall = installKeys(rendered.app);
+    const tree = await screen.findByRole("tree");
+    await screen.findByRole("treeitem", { name: /^Session 0,/ });
+    expect(screen.getAllByRole("treeitem").length).toBeLessThan(80);
+    expect(screen.queryByRole("treeitem", { name: /^Session 2999,/ })).toBeNull();
+
+    act(() => rendered.app.actions.select("all", ulid(20_000 + 2999)));
+    const last = await screen.findByRole("treeitem", { name: /^Session 2999,/ });
+    expect(last).toHaveAttribute("aria-selected", "true");
+    expect(tree).toHaveAttribute("aria-activedescendant", last.id);
+    expect(tree.scrollTop).toBeGreaterThan(100_000);
+    expect(screen.getAllByRole("treeitem").length).toBeLessThan(80);
+    // The keys move on from there, drawn as they go.
+    await userEvent.keyboard("k");
+    expect(screen.getByRole("treeitem", { name: /^Session 2998,/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 });

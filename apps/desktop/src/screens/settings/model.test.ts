@@ -61,8 +61,9 @@ describe("the settings as one list", () => {
   });
 
   it("moves through every page in order, no further than either end", () => {
-    expect(movedRow(rows, "general/side_by_side", 1)?.key).toBe("notifications/notifications");
-    expect(movedRow(rows, "notifications/notifications", -1)?.key).toBe("general/side_by_side");
+    expect(movedRow(rows, "general/side_by_side", 1)?.key).toBe("general/restart");
+    expect(movedRow(rows, "general/restart", 1)?.key).toBe("notifications/notifications");
+    expect(movedRow(rows, "notifications/notifications", -1)?.key).toBe("general/restart");
     expect(movedRow(rows, "general/theme", -1)?.key).toBe("general/theme");
     expect(movedRow(rows, keys[keys.length - 1], 1)?.key).toBe("project:p2/remove");
     expect(movedRow(rows, "gone/row", 1)?.key).toBe("general/theme");

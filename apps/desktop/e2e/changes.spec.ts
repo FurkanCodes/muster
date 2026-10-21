@@ -443,3 +443,66 @@ test("ARC-25 asked again as the workspace moves, without polling", async ({ page
   await expect.poll(async () => (await sent(page, "Timeline")).length).toBe(timelines + 1);
   expect((await sent(page, "WorkspaceChanges")).length).toBe(2);
 });
+
+test("ARC-25 5,000 files not committed: a few dozen rows drawn, End and Home and the wheel stay smooth", async ({
+  page,
+}) => {
+  await open(page, async (page) => {
+    await page.evaluate((workspace) => {
+      const changes = window.__muster.world.changes?.[workspace];
+      if (changes)
+        changes.uncommitted = Array.from({ length: 5000 }, (_, n) => ({
+          path: `src/file${String(n).padStart(4, "0")}.rs`,
+          from: null,
+          kind: "modified" as const,
+          lines: { added: 1, removed: 1 },
+        }));
+    }, workspace);
+  });
+  const files = page.getByRole("listbox", { name: "Files not committed" });
+  await expect(files.getByRole("option").first()).toHaveAccessibleName("modified: src/file0000.rs");
+  expect(await files.getByRole("option").count()).toBeLessThan(80);
+  // Each row is where its place says, so the rows drawn meet the spacers exactly.
+  const pitch = await files
+    .getByRole("option")
+    .evaluateAll(
+      (rows) =>
+        (rows[1]?.getBoundingClientRect().top ?? 0) - (rows[0]?.getBoundingClientRect().top ?? 0),
+    );
+  expect(pitch).toBe(26);
+
+  await page.keyboard.press("End");
+  const last = files.getByRole("option", { name: "modified: src/file4999.rs" });
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport();
+  expect(await files.getByRole("option").count()).toBeLessThan(80);
+  await page.keyboard.press("Home");
+  await expect(files.getByRole("option", { name: "modified: src/file0000.rs" })).toBeFocused();
+
+  // The wheel draws the rows it brings into sight, without a gap.
+  await files.hover();
+  await page.mouse.wheel(0, 26 * 2000);
+  await expect(files.getByRole("option", { name: "modified: src/file2000.rs" })).toBeInViewport();
+  expect(await files.getByRole("option").count()).toBeLessThan(80);
+  await files.getByRole("option", { name: "modified: src/file2003.rs" }).click();
+  await expect(page.locator(".mu-diffview-head")).toContainText("src/file2003.rs");
+});
+
+test("ARC-24 ? lists the keys in the changes, the person's, and ⇧Q goes back to the terminal", async ({
+  page,
+}) => {
+  await open(page);
+  await page.keyboard.press("?");
+  const keys = page.getByRole("dialog", { name: "Every key" });
+  await expect(keys.getByRole("heading", { name: "In the changes" })).toBeVisible();
+  await expect(keys.getByRole("listitem").filter({ hasText: "ask git again" })).toHaveText(
+    "ask git againr",
+  );
+  await expect(
+    keys.getByRole("listitem").filter({ hasText: "on a turn, put the files back" }),
+  ).toContainText("z");
+  await page.keyboard.press("Escape");
+  await expect(keys).toBeHidden();
+  await page.keyboard.press("Shift+Q");
+  await expect(page.getByLabel("Terminal", { exact: true })).toBeVisible();
+});

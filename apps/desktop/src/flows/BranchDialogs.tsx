@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useApp, useDaemon, useUi } from "../app/context";
 import type { AddedAgent } from "../ipc/generated/AddedAgent";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import { whenKnown } from "../state/whenKnown";
 import { AgentChoice } from "../ui/AgentChoice";
 import { Ask } from "./Ask";
 import { START_SIZE } from "./actions";
@@ -17,7 +18,6 @@ import { offered, stepAgent } from "./agents";
 import { count, useChanges } from "./changes";
 import { labelOf } from "./keymap";
 import { useTask } from "./useTask";
-import { whenKnown } from "./whenKnown";
 
 const NO_AGENTS: AddedAgent[] = [];
 

@@ -63,6 +63,19 @@ export class TauriBridge implements Bridge {
     return call("hear", { sound });
   }
 
+  /** Restarts the daemon in place, as `muster reload` does; what it said (`screens/settings/asks.ts`). */
+  restartInPlace(): Promise<string> {
+    return call<string>("restart_in_place");
+  }
+
+  openNotificationSettings(): Promise<void> {
+    return call("open_notification_settings");
+  }
+
+  editSettingsFile(): Promise<void> {
+    return call("edit_settings_file");
+  }
+
   async attach(
     session: SessionId,
     fromSeq: number | null,

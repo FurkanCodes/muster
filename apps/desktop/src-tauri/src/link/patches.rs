@@ -133,6 +133,7 @@ pub(super) fn derive(model: &Model, questions: BTreeMap<SessionId, Vec<String>>)
     let counts = model.counts();
     Derived {
         needs_you: model.needs_you(),
+        working: model.working(),
         rows: model
             .rows()
             .into_iter()

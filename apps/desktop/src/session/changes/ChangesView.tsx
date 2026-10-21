@@ -2,14 +2,18 @@
 // board): what is not committed, the branch's commits and files, and the
 // timeline's turns, each with its diff, and putting a turn back. The keys
 // are the TUI's (app::changes): ↑↓ through the list, ⏎ opens a diff, ⎋ in
-// a diff goes back to the list and in the list back to the terminal, r asks
-// git again, z puts a turn back; ⇥ goes round the three views.
+// a diff goes back to the list and in the list back to the terminal; ⇥
+// goes round the three views. Its actions answer the person's keys
+// (`muster_core::keys`, "In the changes"): d or q back to the terminal, r
+// asks git again, z puts a turn back, ? lists these keys.
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useActions, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
 import type { Command } from "../../ipc/generated/Command";
 import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
+import { labelOf } from "../../keys/keymap";
+import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { splitPath } from "../../lib/format";
 import type { Hint } from "../../state/ui";
 import { Button, Segmented } from "../../ui/controls";
@@ -19,7 +23,7 @@ import { ChangesList, type View } from "./ChangesList";
 import { ClashBanners } from "./ClashBanners";
 import { DiffPanel } from "./DiffPanel";
 import { entryLabel, oneLine } from "./labels";
-import { PUT_BACK_KEY, PutBack } from "./PutBack";
+import { PutBack } from "./PutBack";
 import { useWorkspaceChanges } from "./useWorkspaceChanges";
 import "./changes.css";
 
@@ -70,6 +74,14 @@ function WorkspaceChanges({
   const rows = useRef<HTMLDivElement>(null);
   /** The entry an undo just made, to select and focus once the timeline lists it. */
   const newEntry = useRef<string | null>(null);
+  /** The selected row takes the focus once it is drawn: a long list draws only what is in sight. */
+  const focusing = useRef(false);
+  // Moving to where the selection already is draws again, so the row takes the focus all the same.
+  const [, setFollow] = useState(0);
+  const focusSelected = () => {
+    focusing.current = true;
+    setFollow((count) => count + 1);
+  };
   const { listing, timeline } = useWorkspaceChanges(workspace, again);
   const changes = listing.state === "ready" ? listing.value : null;
   const kept = timeline.state === "ready" ? timeline.value : { entries: [] };
@@ -84,13 +96,23 @@ function WorkspaceChanges({
     view === "turns" ? kept.entries.find((found) => String(found.number) === shown) : undefined;
   const file = files.find((found) => found.path === shown);
 
-  const listed = ids.join("\n");
+  /** Gives the selected row the focus, where it is wanted and drawn. */
+  const focusWanted = () => {
+    if (!focusing.current) return;
+    const row = rows.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!row) return;
+    focusing.current = false;
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+  };
   useEffect(() => {
     const made = newEntry.current;
-    if (made === null || !listed.split("\n").includes(made)) return;
-    rows.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
-    newEntry.current = null;
-  }, [listed]);
+    if (made !== null && ids.includes(made)) {
+      newEntry.current = null;
+      focusing.current = true;
+    }
+    focusWanted();
+  });
   const changeView = (next: View) => {
     setView(next);
     setSelection(null);
@@ -99,13 +121,14 @@ function WorkspaceChanges({
   const toTerminal = () => actions.showPane("terminal");
   const open = (id: string | null) => {
     if (id === null) return;
+    focusing.current = false;
     setSelection(id);
     setOpened(id);
     setKeysInDiff(true);
   };
   const focusList = () => {
     setKeysInDiff(false);
-    rows.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+    focusSelected();
   };
   const putBack = () => {
     // The turn whose diff has the keys, else the one selected in the list.
@@ -114,20 +137,16 @@ function WorkspaceChanges({
     else
       actions.tell("Choose a turn under Turns to put the files back as they were before it.", true);
   };
+  const askAgain = () => setAgain((count) => count + 1);
   const move = (by: number) => {
     if (ids.length === 0) return;
     const at = Math.min(ids.length - 1, Math.max(0, ids.indexOf(selected ?? "") + by));
-    const row = rows.current?.querySelectorAll<HTMLElement>('[role="option"]')[at];
     setSelection(ids[at] ?? null);
-    row?.focus();
-    row?.scrollIntoView({ block: "nearest" });
+    focusSelected();
   };
   const round = (by: 1 | 2) => changeView(VIEWS[(VIEWS.indexOf(view) + by) % VIEWS.length] ?? view);
   useKeys({
     Escape: toTerminal,
-    d: toTerminal,
-    q: toTerminal,
-    c: toTerminal,
     h: () => setOpened(null),
     ArrowLeft: () => setOpened(null),
     Backspace: () => setOpened(null),
@@ -142,11 +161,20 @@ function WorkspaceChanges({
     Enter: () => open(selected),
     ArrowRight: () => open(selected),
     l: () => open(selected),
-    r: () => setAgain((count) => count + 1),
-    [PUT_BACK_KEY]: putBack,
     Tab: () => round(1),
     "⇧Tab": () => round(2),
   });
+  useActionKeys("changes", {
+    close_changes: toTerminal,
+    leave_session: toTerminal,
+    changes_again: askAgain,
+    put_back: putBack,
+    changes_help: () => actions.openPalette(true, "changes"),
+  });
+  const map = useKeymap();
+  const againKey = labelOf(map, "changes_again");
+  const putBackKey = labelOf(map, "put_back");
+  const closeKey = labelOf(map, "close_changes");
   const clashes = useDaemon((state) => state.workspaces[workspace]?.clashes.length ?? 0);
   useEffect(() => {
     const hints: Hint[] = [
@@ -154,14 +182,15 @@ function WorkspaceChanges({
       { key: "⏎", does: "diff" },
       ...(shown ? [{ key: "n p", does: "next and last hunk" }] : []),
       { key: "⇥", does: "not committed, branch, turns" },
-      { key: "r", does: "ask git again" },
+      { key: againKey, does: "ask git again" },
       ...(clashes > 0 ? [{ key: clashes > 1 ? `1–${clashes}` : "1", does: "the other work" }] : []),
-      ...(view === "turns" ? [{ key: PUT_BACK_KEY, does: "put back" }] : []),
-      { key: "d", does: "back to the terminal" },
+      ...(view === "turns" ? [{ key: putBackKey, does: "put back" }] : []),
+      { key: closeKey, does: "back to the terminal" },
     ];
-    actions.setHints(hints);
+    // A key the person took from its action is no hint.
+    actions.setHints(hints.filter((hint) => hint.key !== "none"));
     return () => actions.setHints([]);
-  }, [actions, view, shown, clashes]);
+  }, [actions, view, shown, clashes, againKey, putBackKey, closeKey]);
 
   const total = files.reduce(
     (sum, found) => ({
@@ -196,7 +225,7 @@ function WorkspaceChanges({
         {view === "turns" && selected ? (
           <Button
             size="sm"
-            title={`Put back as before this turn (${PUT_BACK_KEY})`}
+            title={`Put back as before this turn (${putBackKey})`}
             onClick={putBack}
           >
             Put back
@@ -219,7 +248,8 @@ function WorkspaceChanges({
               setKeysInDiff(false);
             }}
             onOpen={open}
-            onAgain={() => setAgain((count) => count + 1)}
+            onAgain={askAgain}
+            onDrawn={focusWanted}
           />
         </div>
         {command ? (

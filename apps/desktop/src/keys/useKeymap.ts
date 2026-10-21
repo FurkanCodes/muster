@@ -6,7 +6,16 @@ import { useDaemon } from "../app/context";
 import { type KeyHandlers, useKeys } from "../app/keys";
 import type { PluginInfo } from "../ipc/generated/PluginInfo";
 import type { ScreenId } from "../state/ui";
-import { type Keymap, type KeyScreen, keymapOf, labelOf, panelsOf, screenKeys } from "./keymap";
+import { domChord } from "./chord";
+import {
+  chordsOf,
+  type Keymap,
+  type KeyScreen,
+  keymapOf,
+  labelOf,
+  panelsOf,
+  screenKeys,
+} from "./keymap";
 
 const NONE: Readonly<Record<string, string[]>> = {};
 
@@ -62,6 +71,28 @@ export function useActionKeys(
   for (const [dom, action] of screenKeys(map, screen)) {
     const handler = does[action];
     if (handler) handlers[dom] = handler;
+  }
+  useKeys(handlers as KeyHandlers);
+}
+
+/**
+ * Answers, on `screen`, the keys of actions the table keeps for another
+ * screen (the queues' `b` and `z`), each on its keys as the person set
+ * them where no action of `screen` has that key.
+ */
+export function useBorrowedKeys(
+  screen: KeyScreen,
+  does: Readonly<Partial<Record<string, (event: KeyboardEvent) => void>>>,
+): void {
+  const map = useKeymap();
+  const own = screenKeys(map, screen);
+  const handlers: Record<string, (event: KeyboardEvent) => void> = {};
+  for (const [action, handler] of Object.entries(does)) {
+    if (!handler) continue;
+    for (const chord of chordsOf(map, action)) {
+      const dom = domChord(chord);
+      if (!own.has(dom) && !handlers[dom]) handlers[dom] = handler;
+    }
   }
   useKeys(handlers as KeyHandlers);
 }

@@ -99,16 +99,19 @@ export function settingRows(input: RowsInput): Row[] {
       ["panels", "button"],
       ["colours", "select"],
       ["side_by_side", "select"],
+      ["restart", "button"],
     ]),
     ...rows("notifications", [
       ["notifications", "switch"],
       ["tell.question", "switch"],
       ["tell.finish", "switch"],
       ["tell.error", "switch"],
+      ["system_settings", "button"],
       ["notch", "switch"],
     ]),
     ...rows("agents", [
       ...input.agents.map((agent): [string, RowKind] => [`agent.${agent}`, "item"]),
+      ["edit", "button"],
       ["read_again", "button"],
     ]),
     ...rows("naming", [

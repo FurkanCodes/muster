@@ -41,7 +41,11 @@ export type KeyAction =
   | "add_plugin"
   | "update_plugin"
   | "remove_plugin"
-  | "put_back";
+  | "put_back"
+  | "changes_again"
+  | "close_changes"
+  | "leave_session"
+  | "changes_help";
 
 export interface Key {
   /** As `chordOf` names the key pressed: `R`, `⌃E`, `⇧Tab`. */

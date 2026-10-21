@@ -14,19 +14,46 @@ export interface OwnAgent {
   resumes: boolean;
   /** Whether it can be asked one question, and so name chats. */
   names: boolean;
+  /** How it is installed, where it is not found. */
+  install: string;
 }
 
 export const OWN_AGENTS: readonly OwnAgent[] = [
-  { id: "claude", status: "status from its hooks", resumes: true, names: true },
+  {
+    id: "claude",
+    status: "status from its hooks",
+    resumes: true,
+    names: true,
+    install: "npm install -g @anthropic-ai/claude-code",
+  },
   {
     id: "codex",
     status: "status from its turn notice and window title",
     resumes: true,
     names: true,
+    install: "npm install -g @openai/codex",
   },
-  { id: "gemini", status: "status from its hooks", resumes: true, names: false },
-  { id: "opencode", status: "status from a plugin of Muster's", resumes: true, names: false },
-  { id: "copilot", status: "status from its hooks", resumes: true, names: false },
+  {
+    id: "gemini",
+    status: "status from its hooks",
+    resumes: true,
+    names: false,
+    install: "npm install -g @google/gemini-cli",
+  },
+  {
+    id: "opencode",
+    status: "status from a plugin of Muster's",
+    resumes: true,
+    names: false,
+    install: "npm install -g opencode-ai",
+  },
+  {
+    id: "copilot",
+    status: "status from its hooks",
+    resumes: true,
+    names: false,
+    install: "npm install -g @github/copilot",
+  },
 ];
 
 /** Every agent by id, Muster's own then the person's. */

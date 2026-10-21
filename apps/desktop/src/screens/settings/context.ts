@@ -54,6 +54,8 @@ export interface SettingsState {
   /** The action whose key Settings › Keys waits for, and why the last one pressed was refused. */
   waiting: { name: string; refused: string | null } | null;
   dialog: PluginDialog | null;
+  /** How many times the settings were read again on the person's word, this screen shown. */
+  reads: number;
 }
 
 export interface SettingsActions {
