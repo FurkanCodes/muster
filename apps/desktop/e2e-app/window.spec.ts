@@ -147,6 +147,11 @@ describe("The window as a whole", () => {
     await expect(sidebar.$("div*=Projects")).not.toBeDisplayed();
     await pressOnWindow("⌘\\");
     await expect(sidebar).not.toHaveElementClass("mu-nav--folded");
+    // And on the person's fold_list key, the terminal UI's ⌃\\.
+    await pressOnWindow("⌃\\");
+    await expect(sidebar).toHaveElementClass("mu-nav--folded");
+    await pressOnWindow("⌃\\");
+    await expect(sidebar).not.toHaveElementClass("mu-nav--folded");
   });
 
   it("draws in the theme chosen, says so to a screen reader, and tells programs its colours", async () => {

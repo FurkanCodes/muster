@@ -85,4 +85,14 @@ describe("the window", () => {
     expect(said).toHaveAttribute("aria-live", "assertive");
     expect(said).toHaveTextContent("The daemon refused it.");
   });
+
+  it("folds the sidebar on the person's fold_list key as on ⌘\\", async () => {
+    renderApp();
+    const sidebar = await screen.findByRole("navigation", { name: "Screens" });
+    await screen.findByText("Projects");
+    await userEvent.keyboard("{Control>}\\{/Control}");
+    await waitFor(() => expect(sidebar).toHaveClass("mu-nav--folded"));
+    await userEvent.keyboard("{Control>}\\{/Control}");
+    await waitFor(() => expect(sidebar).not.toHaveClass("mu-nav--folded"));
+  });
 });
