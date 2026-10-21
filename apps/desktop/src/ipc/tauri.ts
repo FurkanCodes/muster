@@ -48,6 +48,11 @@ export class TauriBridge implements Bridge {
     return call("open_ticket_url", { url });
   }
 
+  /** Plays a sound by its name, as it is chosen (`screens/settings/hear.ts`). */
+  hear(sound: string): Promise<void> {
+    return call("hear", { sound });
+  }
+
   async attach(
     session: SessionId,
     fromSeq: number | null,
