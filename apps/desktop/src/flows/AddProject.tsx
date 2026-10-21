@@ -88,6 +88,7 @@ export default function AddProject() {
   return (
     <Dialog
       title="Add a project"
+      meta="A git repository gets worktrees, tickets and pull requests. A plain folder gets sessions in the folder itself, and the rest once it is a repository."
       width="wide"
       onClose={close}
       onAccept={() => void submit()}
@@ -116,10 +117,6 @@ export default function AddProject() {
         </>
       }
     >
-      <p className="mu-meta ui-flow-lead">
-        A git repository gets worktrees, tickets and pull requests. A plain folder gets sessions in
-        the folder itself, and the rest once it is a repository.
-      </p>
       <TextField
         label="Folder"
         mono

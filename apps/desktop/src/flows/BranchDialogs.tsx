@@ -76,6 +76,12 @@ export function Tidy({ workspace }: { workspace: WorkspaceId }) {
   return (
     <Ask
       title={`Tidy the commits on ${branch}?`}
+      meta={
+        <>
+          {since ? `${since}. ` : null}An agent rewrites those not pushed yet into clear ones, the
+          files left as they are; its turn goes in the timeline, so it can be put back.
+        </>
+      }
       act={`Tidy with ${name}`}
       acting="Starting the tidy…"
       keep="Cancel"
@@ -83,10 +89,6 @@ export function Tidy({ workspace }: { workspace: WorkspaceId }) {
       onAct={tidy}
       onKeyDown={onKeyDown}
     >
-      <span className="mu-meta ui-flow-lead">
-        {since ? `${since}. ` : null}An agent rewrites those not pushed yet into clear ones, the
-        files left as they are; its turn goes in the timeline, so it can be put back.
-      </span>
       <AgentChoice agents={agents} value={harness} last={last} onChange={setHarness} />
     </Ask>
   );

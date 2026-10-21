@@ -13,6 +13,7 @@ import "./flows.css";
 
 export function Ask({
   title,
+  meta,
   act,
   acting,
   keep = "Keep it",
@@ -23,6 +24,8 @@ export function Ask({
   children,
 }: {
   title: string;
+  /** A line under the title, as what the question is about. */
+  meta?: ReactNode;
   /** The acting answer: "Close session". */
   act: string;
   /** What it says while the daemon answers: "Closing…". */
@@ -42,6 +45,7 @@ export function Ask({
   return (
     <Dialog
       title={title}
+      meta={meta}
       onClose={close}
       onAccept={onAct}
       onKeyDown={onKeyDown}

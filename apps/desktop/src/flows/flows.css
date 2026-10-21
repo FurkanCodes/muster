@@ -61,10 +61,6 @@
 .ui-flow-quiet {
   font-weight: 400;
 }
-/* A dialog's lead under its title, as the boards draw it. */
-.ui-flow-lead {
-  margin: calc(var(--space-12) * -1) 0 0;
-}
 .ui-flow-error {
   color: var(--waiting);
 }
@@ -87,9 +83,16 @@
   }
 }
 
-/* The palette's field is where typing goes from the start; the board draws no ring around it. */
+/* The palette's field is where typing goes from the start: no ring around
+   it, as the board draws it, but its line turns accent while it has the keys. */
 .ui-palette .mu-palette-input:focus-visible {
   outline: none;
+}
+.ui-palette .mu-palette-field:focus-within {
+  border-bottom-color: var(--accent);
+}
+.ui-palette .mu-palette-list {
+  overscroll-behavior: contain;
 }
 /* Where's choices keep to one line each, Project taking the rest of the row. */
 .ui-flow-columns:has(.mu-seg) {
