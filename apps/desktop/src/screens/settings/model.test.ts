@@ -78,5 +78,8 @@ describe("the settings as one list", () => {
     expect(keptRow(rows, "keys/key.close")?.key).toBe("keys/find");
     // A project removed: the first row of all.
     expect(keptRow(rows, "project:p9/only_mine")?.key).toBe("general/theme");
+    // A page asked for by its name alone, as the command palette does: its first row.
+    expect(keptRow(rows, "keys")?.key).toBe("keys/find");
+    expect(keptRow(rows, "naming")?.section).toBe("naming");
   });
 });

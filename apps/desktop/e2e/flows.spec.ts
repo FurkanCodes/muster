@@ -94,6 +94,24 @@ test.describe("ARC-24 the command palette", () => {
     await expect(palette).toBeHidden();
   });
 
+  test("a setting's page chosen in it opens that page", async ({ page }) => {
+    await open(page);
+    for (const [typed, title] of [
+      ["naming", "Naming chats"],
+      ["keys", "Keys"],
+    ] as const) {
+      await page.keyboard.press("Meta+k");
+      const palette = page.getByRole("dialog", { name: "Command palette" });
+      await palette.getByRole("combobox", { name: "Go to or do" }).fill(typed);
+      await palette
+        .locator(".mu-palette-group", { hasText: "Settings" })
+        .locator("xpath=following-sibling::*[1]")
+        .waitFor();
+      await palette.getByRole("option", { name: new RegExp(`^${title}`) }).click();
+      await expect(page.locator(".mu-settings-title")).toHaveText(title);
+    }
+  });
+
   test("typing narrows each group, lights the letters, and finds tickets", async ({ page }) => {
     await open(page);
     await page.keyboard.press("Meta+k");

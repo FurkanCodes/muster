@@ -55,8 +55,10 @@ export function rowKey(section: Section, row: string): string {
   return `${section}/${row}`;
 }
 
+/** A row key's page; a page's own name, as the command palette asks for one, is that page. */
 export function sectionOf(key: string): Section {
-  return key.slice(0, key.indexOf("/")) as Section;
+  const at = key.indexOf("/");
+  return (at < 0 ? key : key.slice(0, at)) as Section;
 }
 
 /** A row's own part of its key: `theme`, `plugin.github`. */
