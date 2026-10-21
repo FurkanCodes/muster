@@ -58,6 +58,29 @@ function runs(plugin: PluginInfo): boolean {
   return plugin.enabled && plugin.problem === null;
 }
 
+/**
+ * Each project's asks for its settings, numbered as sent, and the newest
+ * answered and shown: the daemon answers each from a task of its own, so an
+ * answer can come after one to an ask sent after it, and is then out of date.
+ */
+type SettingsAsks = Map<ProjectId, { sent: number; shown: number }>;
+
+/** Numbers an ask for `project`'s settings. */
+function asking(asks: SettingsAsks, project: ProjectId): number {
+  const its = asks.get(project) ?? { sent: 0, shown: 0 };
+  its.sent += 1;
+  asks.set(project, its);
+  return its.sent;
+}
+
+/** Whether the answer to ask `number` is the newest yet, and so is shown. */
+function newest(asks: SettingsAsks, project: ProjectId, number: number): boolean {
+  const its = asks.get(project);
+  if (!its || number < its.shown) return false;
+  its.shown = number;
+  return true;
+}
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const bridge = useBridge();
   const ui = useActions();
@@ -79,6 +102,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const focusFollows = useRef(false);
   // The preview waited for: an answer to any other is dropped.
   const asked = useRef(0);
+  const settingsAsks = useRef<SettingsAsks>(new Map());
 
   const offered = offeredTrackers(plugins);
   const rows = settingRows({
@@ -125,9 +149,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return next;
     });
     for (const project of missing) {
+      const number = asking(settingsAsks.current, project);
       bridge.command({ ProjectSettings: { project } }).then(
         (reply) => {
-          if (typeof reply === "object" && "ProjectSettings" in reply) {
+          if (
+            typeof reply === "object" &&
+            "ProjectSettings" in reply &&
+            newest(settingsAsks.current, project, number)
+          ) {
             const settings = reply.ProjectSettings;
             setProjects((now) => new Map(now).set(project, { state: "loaded", settings }));
           }
@@ -204,10 +233,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         hold(row, true);
         // The choice this change was made from: one made since is the person's, and stays.
         const from = drafts.get(project);
+        const number = asking(settingsAsks.current, project);
         send({ ChangeSetting: { project, change } })
           .then(
             (reply) => {
-              if (typeof reply === "object" && "ProjectSettings" in reply) {
+              // Out of date, its words with it: a newer answer says how things stand.
+              if (
+                typeof reply === "object" &&
+                "ProjectSettings" in reply &&
+                newest(settingsAsks.current, project, number)
+              ) {
                 const settings = reply.ProjectSettings;
                 setProjects((now) => new Map(now).set(project, { state: "loaded", settings }));
                 setDrafts((now) => {

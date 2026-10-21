@@ -1,6 +1,6 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, openSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { browser } from "@wdio/globals";
 import { makeSandbox, removeSandbox, type Sandbox, sandboxEnv } from "./sandbox";
@@ -77,24 +77,71 @@ export async function startApp(extra: Record<string, string> = {}): Promise<void
   }
 }
 
+/** Waits up to `timeout` for the app to be gone; whether it went. */
+async function gone(timeout: number): Promise<boolean> {
+  for (let waited = 0; appRuns() && waited < timeout; waited += 100) {
+    await new Promise((done) => setTimeout(done, 100));
+  }
+  return !appRuns();
+}
+
 /** Ends the app, and waits until it is gone. The daemon runs on (`PRD-09`). */
 export async function stopApp(): Promise<void> {
   if (app) app.kill("SIGTERM");
   else if (appRuns()) execFileSync("pkill", ["-f", APP], { stdio: "ignore" });
   app = null;
-  for (let waited = 0; appRuns() && waited < 50; waited += 1) {
-    await new Promise((done) => setTimeout(done, 100));
-  }
-  if (appRuns()) execFileSync("pkill", ["-9", "-f", APP], { stdio: "ignore" });
+  if (!(await gone(5_000))) execFileSync("pkill", ["-9", "-f", APP], { stdio: "ignore" });
 }
 
-/** Ends the app and starts it again over the same sandbox; the WebDriver session with it. */
-export async function restartApp(extra: Record<string, string> = {}): Promise<void> {
-  await stopApp();
+/**
+ * Quits the app as the person does, with ⌘Q: the key goes into the app's
+ * own queue of events, where the Mac's menu takes it (`e2e_command_key`).
+ * Throws if the app is still running after it.
+ */
+export async function quitApp(): Promise<void> {
+  try {
+    await browser.execute(() => {
+      void (
+        window as unknown as {
+          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__
+        .invoke("e2e_command_key", { letter: "q" })
+        .catch(() => {});
+    });
+  } catch {
+    // The app quit before its WebDriver server could answer.
+  }
+  if (!(await gone(10_000))) throw new Error("the app was still running after ⌘Q");
+  app = null;
+}
+
+/**
+ * Ends the app and starts it again over the same sandbox; the WebDriver
+ * session with it. `how` it ends: killed, as a crash ends it, or quit with ⌘Q.
+ */
+export async function restartApp(
+  extra: Record<string, string> = {},
+  how: "killed" | "quit" = "killed",
+): Promise<void> {
+  if (how === "quit") await quitApp();
+  else await stopApp();
   await startApp(extra);
   await browser.reloadSession();
   await theWindow();
   await frontWindow(PORT);
+}
+
+/**
+ * The window's own state the app keeps (folds, the theme), as its file in
+ * the sandbox's home holds it (src-tauri/src/kept.rs).
+ */
+export function keptState(): Record<string, string> {
+  const file = join(
+    sandbox().env.HOME as string,
+    "Library/Application Support/dev.muster.desktop/window.json",
+  );
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, string>) : {};
 }
 
 /** Makes this spec file's sandbox and starts the app over it. */

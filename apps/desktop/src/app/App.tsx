@@ -77,19 +77,22 @@ function useWiring(app: AppValue): void {
 function useTheme(): void {
   const theme = useUi((state) => state.theme);
   const bridge = useBridge();
+  const actions = useActions();
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && media.matches);
       const root = document.documentElement;
       root.dataset.theme = dark ? "dark" : "light";
+      // The terminals redraw in it: the theme chosen stays "system" as the Mac's changes.
+      actions.drawIn(dark ? "dark" : "light");
       void bridge.colours(terminalColours(root)).catch(() => {});
     };
     apply();
     if (theme !== "system") return;
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [theme, bridge]);
+  }, [theme, bridge, actions]);
 }
 
 /**

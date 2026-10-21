@@ -475,7 +475,7 @@ impl Actor {
 /// daemon again whenever it last did.
 async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: Arc<Notify>) {
     let start = options.start_daemon.map(Arc::new);
-    let mut last_start: Option<Instant> = None;
+    let mut last_start: Option<LastStart> = None;
     loop {
         match connect(&options.socket, start.as_ref(), &mut last_start, &again).await {
             Ok(connection) => {
@@ -554,13 +554,21 @@ async fn write_frames(mut sender: FrameSender, mut frames: mpsc::UnboundedReceiv
     }
 }
 
+/// The daemon's last start by the link: when, and why it failed, if it did.
+struct LastStart {
+    at: Instant,
+    failed: Option<String>,
+}
+
 /// Connects to the daemon, starting it if nothing answers and it was not
-/// started in the last [`START_AGAIN_AFTER`]; why not, in words. Woken by
+/// started in the last [`START_AGAIN_AFTER`]; why not, in words. Until it
+/// is started again, a start that failed is why: nothing was started to
+/// wait for, and the connection's own words would say less. Woken by
 /// `again` while it waits for a daemon it started, it starts it again.
 async fn connect(
     socket: &std::path::Path,
     start: Option<&Arc<Start>>,
-    last_start: &mut Option<Instant>,
+    last_start: &mut Option<LastStart>,
     again: &Notify,
 ) -> Result<Connection, String> {
     loop {
@@ -573,17 +581,29 @@ async fn connect(
                 .await
                 .map_err(|error| error.to_string());
         };
-        if last_start.is_none_or(|at| at.elapsed() > START_AGAIN_AFTER) {
-            *last_start = Some(Instant::now());
+        if last_start
+            .as_ref()
+            .is_none_or(|last| last.at.elapsed() > START_AGAIN_AFTER)
+        {
+            let at = Instant::now();
             let start = Arc::clone(start);
             // Starting asks the person's login shell for their PATH: off the
             // loop's threads.
             let started = tokio::task::spawn_blocking(move || start())
                 .await
                 .map_err(|error| error.to_string())?;
-            if let Err(error) = started {
-                return Err(format!("could not start Muster's daemon: {error}"));
+            let failed = started
+                .err()
+                .map(|error| format!("could not start Muster's daemon: {error}"));
+            *last_start = Some(LastStart {
+                at,
+                failed: failed.clone(),
+            });
+            if let Some(failed) = failed {
+                return Err(failed);
             }
+        } else if let Some(failed) = last_start.as_ref().and_then(|last| last.failed.clone()) {
+            return Err(failed);
         }
         let deadline = Instant::now() + START_WAIT;
         loop {

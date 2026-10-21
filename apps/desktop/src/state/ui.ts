@@ -6,6 +6,7 @@ import type { Flow } from "../flows/types";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import { keep, kept } from "./kept";
 
 export type ScreenId = "needs-you" | "not-seen" | "working" | "all" | "tickets" | "settings";
 
@@ -55,6 +56,8 @@ export interface UiState {
   fullScreen: SessionId | null;
   sidebarFolded: boolean;
   theme: Theme;
+  /** The theme the window is drawn in now: the system's, where the theme follows it. */
+  drawnIn: "dark" | "light";
   paletteOpen: boolean;
   /** What the palette shows: everything to go to or do, or every key of the screen (`h`) or of the changes (`?` there). */
   paletteMode: PaletteMode;
@@ -81,6 +84,8 @@ export interface UiActions {
   fillWindow(session: SessionId | null): void;
   foldSidebar(): void;
   setTheme(theme: Theme): void;
+  /** Says which theme the window is drawn in, as the system's changes too. */
+  drawIn(drawnIn: "dark" | "light"): void;
   openPalette(open: boolean, mode?: PaletteMode): void;
   /** Opens a dialog of src/flows over the window, or closes it with null. */
   openFlow(flow: Flow | null): void;
@@ -97,12 +102,8 @@ export type UiStore = StoreApi<UiState>;
 const THEME_KEY = "muster.theme";
 
 function storedTheme(): Theme {
-  try {
-    const value = localStorage.getItem(THEME_KEY);
-    return value === "light" || value === "system" ? value : "dark";
-  } catch {
-    return "dark";
-  }
+  const value = kept(THEME_KEY);
+  return value === "light" || value === "system" ? value : "dark";
 }
 
 export function createUi(): { store: UiStore; actions: UiActions } {
@@ -118,6 +119,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     fullScreen: null,
     sidebarFolded: false,
     theme: storedTheme(),
+    drawnIn: "dark",
     paletteOpen: false,
     paletteMode: "commands",
     flow: null,
@@ -147,12 +149,9 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     foldSidebar: () => set((state) => ({ sidebarFolded: !state.sidebarFolded })),
     setTheme: (theme) => {
       set({ theme });
-      try {
-        localStorage.setItem(THEME_KEY, theme);
-      } catch {
-        // Storage refused (a private window): the theme lasts as long as the window.
-      }
+      keep(THEME_KEY, theme);
     },
+    drawIn: (drawnIn) => set({ drawnIn }),
     openPalette: (paletteOpen, paletteMode = "commands") =>
       set(paletteOpen ? { paletteOpen, paletteMode, flow: null } : { paletteOpen }),
     openFlow: (flow) => set({ flow, paletteOpen: false }),

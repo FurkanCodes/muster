@@ -64,3 +64,32 @@ test("a session's terminal streams its program's output and takes typing", async
   await page.keyboard.type("yes");
   await expect.poll(shown).toContain("yes");
 });
+
+test("an open terminal redraws as the Mac turns light or dark, with the theme following it", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addInitScript(() => localStorage.setItem("muster.theme", "system"));
+  await page.goto("/");
+  const codex = "01JD0000000000000000000101";
+  /** The background the terminal draws on, and the theme's own for it now. */
+  const drawn = () =>
+    page.evaluate((session) => {
+      const shown =
+        (
+          window as unknown as { __musterBackgrounds?: Record<string, () => string> }
+        ).__musterBackgrounds?.[session]?.() ?? "";
+      const wanted = getComputedStyle(document.documentElement)
+        .getPropertyValue("--surface-term")
+        .trim();
+      return { shown, wanted };
+    }, codex);
+  await expect.poll(async () => (await drawn()).shown).not.toBe("");
+  const dark = await drawn();
+  expect(dark.shown).toBe(dark.wanted);
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect.poll(async () => (await drawn()).shown).not.toBe(dark.shown);
+  const light = await drawn();
+  expect(light.shown).toBe(light.wanted);
+});

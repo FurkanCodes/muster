@@ -77,6 +77,8 @@ describe("Settings › Keys over the real daemon", () => {
     await pressOnWindow("E");
     await expect(note()).toHaveText("The key is set.");
     await until(() => /rename = \["E"\]/.test(keys()), `rename in [keys]:\n${keys()}`);
+    // The reply says it is set; the window answers it once the daemon tells it its keys.
+    await expect(key("rename").$(".mu-kbd")).toHaveText(expect.stringContaining("E"));
     await goTo("Needs you");
     await pressOnWindow("R");
     await expect($('input[name="session-name"]')).not.toBeExisting();

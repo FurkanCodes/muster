@@ -68,7 +68,10 @@ export class MockBridge implements Bridge {
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
   readonly openedUrls: string[] = [];
-  private readonly holds = new Map<string, { promise: Promise<void>; release: () => void }>();
+  private readonly holds = new Map<
+    string,
+    { promise: Promise<void>; release: () => void; done: "later" | "now" }
+  >();
   private readonly failures = new Map<string, BridgeFailure>();
   /** Every one of Settings' asks of muster and the Mac, in order (`screens/settings/asks.ts`). */
   readonly asked: string[] = [];
@@ -171,7 +174,10 @@ export class MockBridge implements Bridge {
 
   async command(command: Command): Promise<Reply> {
     this.sent.push(command);
-    for (const key of keysOf(command)) await this.holds.get(key)?.promise;
+    for (const key of keysOf(command)) {
+      const held = this.holds.get(key);
+      if (held?.done === "later") await held.promise;
+    }
     const key = keysOf(command).find((key) => this.failures.has(key));
     const failure = key === undefined ? undefined : this.failures.get(key);
     if (key !== undefined && failure) {
@@ -198,7 +204,12 @@ export class MockBridge implements Bridge {
       throw new BridgeFailure("invalid", `The mock daemon does not do ${name} yet`);
     }
     // A copy, as one that came over the wire: the page never holds the mock's own objects.
-    return structuredClone(reply);
+    const answer = structuredClone(reply);
+    for (const key of keysOf(command)) {
+      const held = this.holds.get(key);
+      if (held?.done === "now") await held.promise;
+    }
+    return answer;
   }
 
   async openUrl(url: string): Promise<void> {
@@ -321,16 +332,19 @@ export class MockBridge implements Bridge {
   /**
    * Holds the replies to `command` until {@link release}, as a slow daemon or
    * tracker would: a command's name holds every one of its kind, a whole
-   * command only that one.
+   * command only that one. Done `"later"`, the command is done as it is
+   * released; done `"now"`, it is done at once and its answer, as things
+   * stood then, comes as it is released, as the daemon answers a
+   * `ChangeSetting` from a task of its own, after any sent since.
    */
-  hold(command: string | Command): void {
+  hold(command: string | Command, done: "later" | "now" = "later"): void {
     const key = keyOf(command);
     if (this.holds.has(key)) return;
     let release = () => {};
     const promise = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.holds.set(key, { promise, release });
+    this.holds.set(key, { promise, release, done });
   }
 
   /** Answers a held command. */

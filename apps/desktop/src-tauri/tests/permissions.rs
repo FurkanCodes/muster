@@ -14,16 +14,28 @@
 use std::fs;
 use std::path::Path;
 
-/// The commands `lib.rs` registers, by name.
+/// `text` without its attributes (`#[cfg(feature = "e2e")]` before a command
+/// only builds for the tests have).
+fn without_attributes(text: &str) -> String {
+    let mut rest = text;
+    let mut kept = String::new();
+    while let Some(at) = rest.find("#[") {
+        kept.push_str(&rest[..at]);
+        let end = rest[at..].find(")]").expect("an attribute ends") + at + 2;
+        rest = &rest[end..];
+    }
+    kept.push_str(rest);
+    kept
+}
+
+/// The commands `lib.rs` registers, by name, those of builds for the tests too.
 fn registered() -> Vec<String> {
     let source = include_str!("../src/lib.rs");
     let open = "generate_handler![";
     let start = source.find(open).expect("lib.rs registers its commands") + open.len();
-    let end = start
-        + source[start..]
-            .find(']')
-            .expect("the list of commands ends");
-    source[start..end]
+    let source = without_attributes(&source[start..]);
+    let end = source.find(']').expect("the list of commands ends");
+    source[..end]
         .split(',')
         .filter_map(|entry| entry.trim().rsplit("::").next())
         .filter(|name| !name.is_empty())

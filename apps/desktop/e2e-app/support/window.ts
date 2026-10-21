@@ -261,6 +261,23 @@ export function row(name: string) {
   );
 }
 
+/**
+ * Waits until the row named `name` says `doing` after its name (`ended`,
+ * `working`…): the window shows what the daemon said. A key pressed once
+ * only `muster status` says it acts on what the window last knew, as the
+ * person's would: the daemon answers before it tells its windows.
+ */
+export async function untilRowSays(name: string, doing: RegExp): Promise<void> {
+  const found = row(name);
+  await browser.waitUntil(
+    async () => {
+      const label = (await found.isExisting()) ? await found.getAttribute("aria-label") : "";
+      return doing.test((label ?? "").slice(name.length + 2));
+    },
+    { timeoutMsg: `the window never showed ${name} as ${doing}` },
+  );
+}
+
 /** Selects the row named `name` on All sessions, as a click on it does. */
 export async function selectRow(name: string): Promise<void> {
   await goTo("All sessions");

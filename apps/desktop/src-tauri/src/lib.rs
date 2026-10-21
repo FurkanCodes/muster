@@ -7,6 +7,7 @@ pub mod contract;
 mod daemon_log;
 mod e2e;
 mod folders;
+mod kept;
 pub mod link;
 mod settings_actions;
 mod sounds;
@@ -39,6 +40,9 @@ pub fn run() {
             let paths =
                 Paths::resolve(|key| std::env::var_os(key), nix::unistd::getuid().as_raw())?;
             app.manage(daemon_log::DaemonLog(paths.runtime_dir.join("daemon.log")));
+            app.manage(kept::Kept::open(
+                app.path().app_data_dir()?.join("window.json"),
+            ));
             let (link, task) = Link::new(Options {
                 socket: paths.socket(),
                 start_daemon: Some(link::starter(paths)),
@@ -65,6 +69,10 @@ pub fn run() {
             settings_actions::restart_in_place,
             settings_actions::open_notification_settings,
             settings_actions::edit_settings_file,
+            kept::kept,
+            kept::keep,
+            #[cfg(feature = "e2e")]
+            e2e::e2e_command_key,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

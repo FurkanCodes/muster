@@ -24,7 +24,7 @@ use std::time::Duration;
 use muster_core::protocol::{Command, Reply, TermSize};
 use muster_core::{ProjectId, SessionId, SessionStatus, WorkspaceId};
 use muster_desktop::contract::{BridgeError, LinkState, Row, frame};
-use muster_desktop::link::{Link, Looking, Options};
+use muster_desktop::link::{Link, Looking, Options, START_WAIT};
 use support::{Sandbox, Screen, Webview};
 
 /// A link to `sandbox`'s daemon that never starts one, its webview open.
@@ -406,6 +406,44 @@ async fn try_now_starts_the_daemon_again_at_once_however_lately_it_was_started_a
     assert!(
         started_again.is_ok(),
         "Try now did not start the daemon again"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_daemon_that_will_not_start_is_said_so_while_it_stays_out_of_reach_arc_24() {
+    let sandbox = Sandbox::new();
+    let (link, task) = Link::new(Options {
+        socket: sandbox.paths().socket(),
+        // A daemon that will not start, as a broken install's.
+        start_daemon: Some(Box::new(|| Err(std::io::Error::other("held out of reach")))),
+    });
+    tokio::spawn(task);
+    let (mut webview, states) = Webview::new();
+    link.open(states).unwrap();
+    webview
+        .until("the link out of reach", |w| {
+            matches!(w.link, Some(LinkState::Down { .. }))
+        })
+        .await;
+    // Tried again every half second, and not started again within
+    // START_AGAIN_AFTER: the reason stays why it could not start, never
+    // turning to the connection's own words between starts, longer than
+    // a wait for a daemon starting (START_WAIT) would take.
+    tokio::time::sleep(START_WAIT + Duration::from_secs(1)).await;
+    webview.take_waiting();
+    let reasons: Vec<&str> = webview
+        .links
+        .iter()
+        .filter_map(|link| match link {
+            LinkState::Down { reason, .. } => Some(reason.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        reasons,
+        ["could not start Muster's daemon: held out of reach"],
+        "{:?}",
+        webview.links
     );
 }
 

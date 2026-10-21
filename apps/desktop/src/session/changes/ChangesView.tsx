@@ -170,6 +170,8 @@ function WorkspaceChanges({
     changes_again: askAgain,
     put_back: putBack,
     changes_help: () => actions.openPalette(true, "changes"),
+    // Every screen's, the changes' too: they hold the keys from the window's own.
+    fold_list: () => actions.foldSidebar(),
   });
   const map = useKeymap();
   const againKey = labelOf(map, "changes_again");
