@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use muster_core::SessionId;
 use muster_core::protocol::{Command, PixelSize, Reply, TermSize};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 
 use crate::contract::{BridgeError, StateMessage};
 
@@ -141,6 +141,8 @@ impl Default for Looking {
 pub struct Link {
     requests: mpsc::UnboundedSender<Request>,
     connected: Arc<AtomicBool>,
+    /// Wakes the loop that keeps the connection: *Try now*.
+    again: Arc<Notify>,
 }
 
 impl fmt::Debug for Link {
@@ -162,11 +164,13 @@ impl Link {
         )]
         let (requests, received) = mpsc::unbounded_channel();
         let connected = Arc::new(AtomicBool::new(false));
-        let task = actor::run(options, received, connected.clone());
+        let again = Arc::new(Notify::new());
+        let task = actor::run(options, received, connected.clone(), again.clone());
         (
             Self {
                 requests,
                 connected,
+                again,
             },
             task,
         )
@@ -176,6 +180,13 @@ impl Link {
         self.requests
             .send(request)
             .map_err(|_| BridgeError::Unreachable)
+    }
+
+    /// Tries to reach the daemon now rather than in half a second, and
+    /// starts it again if nothing answers, however lately it was started:
+    /// the person's *Try now* while it is out of reach.
+    pub fn try_now(&self) {
+        self.again.notify_one();
     }
 
     /// Whether the link is connected to a daemon just now.

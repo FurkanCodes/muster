@@ -41,6 +41,14 @@ export class TauriBridge implements Bridge {
     await call("link_open", { onState });
   }
 
+  tryNow(): Promise<void> {
+    return call("try_now");
+  }
+
+  showDaemonLog(): Promise<void> {
+    return call("show_daemon_log");
+  }
+
   command(command: Command): Promise<Reply> {
     return call<Reply>("command", { command });
   }

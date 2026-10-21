@@ -367,3 +367,44 @@ async fn where_nothing_answers_the_link_starts_the_daemon_once() {
     drop(link);
     sandbox.stop_detached();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn try_now_starts_the_daemon_again_at_once_however_lately_it_was_started_arc_24() {
+    let sandbox = Sandbox::new();
+    let starts = Arc::new(AtomicUsize::new(0));
+    let start = {
+        let starts = Arc::clone(&starts);
+        // A daemon that will not start, as a broken install's.
+        Box::new(move || {
+            starts.fetch_add(1, Ordering::SeqCst);
+            Err(std::io::Error::other("held out of reach"))
+        })
+    };
+    let (link, task) = Link::new(Options {
+        socket: sandbox.paths().socket(),
+        start_daemon: Some(start),
+    });
+    tokio::spawn(task);
+    let (mut webview, states) = Webview::new();
+    link.open(states).unwrap();
+    webview
+        .until("the link out of reach", |w| {
+            matches!(w.link, Some(LinkState::Down { .. }))
+        })
+        .await;
+    // Trying every half second, it starts the daemon once in each
+    // START_AGAIN_AFTER: not again a second later.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    link.try_now();
+    let started_again = tokio::time::timeout(Duration::from_secs(2), async {
+        while starts.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    assert!(
+        started_again.is_ok(),
+        "Try now did not start the daemon again"
+    );
+}

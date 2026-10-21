@@ -13,6 +13,10 @@ import type { SessionId } from "./generated/SessionId";
 export interface Bridge {
   /** Opens the link. Messages arrive on `onMessage`, in order, until `close`. */
   open(onMessage: (message: StateMessage) => void): Promise<void>;
+  /** Tries to reach the daemon now, starting it again if nothing answers, while it is out of reach. */
+  tryNow(): Promise<void>;
+  /** Opens the daemon's log (daemon.log in Muster's runtime folder). Rejects with why it cannot. */
+  showDaemonLog(): Promise<void>;
   /** Sends a command to the daemon. Rejects with a {@link BridgeFailure}. */
   command(command: Command): Promise<Reply>;
   /** Opens a ticket's HTTP(S) address in the person's browser, only on request. */

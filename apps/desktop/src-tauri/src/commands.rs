@@ -134,3 +134,11 @@ pub(crate) async fn looking(
         focused,
     })
 }
+
+/// Tries to reach the daemon now, starting it again if nothing answers:
+/// the person's *Try now* while it is out of reach.
+#[tauri::command]
+pub(crate) async fn try_now(link: State<'_, Link>) -> Result<(), BridgeError> {
+    link.try_now();
+    Ok(())
+}

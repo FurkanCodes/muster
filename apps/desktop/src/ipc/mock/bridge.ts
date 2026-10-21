@@ -57,6 +57,9 @@ export class MockBridge implements Bridge {
   readonly openedUrls: string[] = [];
   private readonly holds = new Map<string, { promise: Promise<void>; release: () => void }>();
   private readonly failures = new Map<string, BridgeFailure>();
+  /** How often the page asked to reach the daemon now, and to open its log. */
+  triedNow = 0;
+  logsShown = 0;
   /** Every sound asked to be heard, in order. */
   readonly heard: string[] = [];
   /** Its settings and plugins, and what tests drive of them. */
@@ -128,6 +131,15 @@ export class MockBridge implements Bridge {
         }),
       });
     });
+  }
+
+  /** The pretend daemon is never out of reach but as a test says (`setLink`): asked, it counts. */
+  async tryNow(): Promise<void> {
+    this.triedNow += 1;
+  }
+
+  async showDaemonLog(): Promise<void> {
+    this.logsShown += 1;
   }
 
   async command(command: Command): Promise<Reply> {

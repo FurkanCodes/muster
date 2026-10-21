@@ -20,7 +20,7 @@ use muster_client::{ClientError, Connection, FrameReceiver, FrameSender};
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame, Welcome};
 use muster_core::{SessionId, SessionStatus};
 use muster_model::Model;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -66,6 +66,7 @@ pub(super) async fn run(
     options: Options,
     mut requests: mpsc::UnboundedReceiver<Request>,
     connected: Arc<AtomicBool>,
+    again: Arc<Notify>,
 ) {
     let (events, mut linked) = mpsc::channel(LINK_EVENTS);
     // Ends as the loop does.
@@ -73,7 +74,7 @@ pub(super) async fn run(
         clippy::disallowed_methods,
         reason = "ARC-13: the Owned handle holds it, for as long as the link's loop"
     )]
-    let _keeper = Owned(tokio::spawn(keep_linked(options, events)));
+    let _keeper = Owned(tokio::spawn(keep_linked(options, events, again)));
     let mut actor = Actor::new(connected);
     loop {
         let flush = actor.flush_at;
@@ -413,12 +414,14 @@ impl Actor {
 // Keeping the connection, off the loop.
 
 /// Connects, starting the daemon if need be, and reconnects every half
-/// second whenever the connection is lost, until the loop goes.
-async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>) {
+/// second whenever the connection is lost, until the loop goes. Woken by
+/// `again` (the person's *Try now*), it tries at once and starts the
+/// daemon again whenever it last did.
+async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: Arc<Notify>) {
     let start = options.start_daemon.map(Arc::new);
     let mut last_start: Option<Instant> = None;
     loop {
-        match connect(&options.socket, start.as_ref(), &mut last_start).await {
+        match connect(&options.socket, start.as_ref(), &mut last_start, &again).await {
             Ok(connection) => {
                 let (sender, receiver, welcome) = connection.into_split();
                 // Unbounded on purpose: the loop must never wait on a
@@ -454,7 +457,10 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>) {
                 }
             }
         }
-        tokio::time::sleep(RETRY_EVERY).await;
+        tokio::select! {
+            () = tokio::time::sleep(RETRY_EVERY) => {}
+            () = again.notified() => last_start = None,
+        }
     }
 }
 
@@ -493,41 +499,50 @@ async fn write_frames(mut sender: FrameSender, mut frames: mpsc::UnboundedReceiv
 }
 
 /// Connects to the daemon, starting it if nothing answers and it was not
-/// started in the last [`START_AGAIN_AFTER`]; why not, in words.
+/// started in the last [`START_AGAIN_AFTER`]; why not, in words. Woken by
+/// `again` while it waits for a daemon it started, it starts it again.
 async fn connect(
     socket: &std::path::Path,
     start: Option<&Arc<Start>>,
     last_start: &mut Option<Instant>,
+    again: &Notify,
 ) -> Result<Connection, String> {
-    match Connection::connect(socket, CLIENT).await {
-        Err(ClientError::Unreachable { .. }) => {}
-        other => return other.map_err(|error| error.to_string()),
-    }
-    let Some(start) = start else {
-        return Connection::connect(socket, CLIENT)
-            .await
-            .map_err(|error| error.to_string());
-    };
-    if last_start.is_none_or(|at| at.elapsed() > START_AGAIN_AFTER) {
-        *last_start = Some(Instant::now());
-        let start = Arc::clone(start);
-        // Starting asks the person's login shell for their PATH: off the
-        // loop's threads.
-        let started = tokio::task::spawn_blocking(move || start())
-            .await
-            .map_err(|error| error.to_string())?;
-        if let Err(error) = started {
-            return Err(format!("could not start Muster's daemon: {error}"));
-        }
-    }
-    let deadline = Instant::now() + START_WAIT;
     loop {
         match Connection::connect(socket, CLIENT).await {
-            Err(ClientError::Unreachable { .. }) if Instant::now() < deadline => {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
+            Err(ClientError::Unreachable { .. }) => {}
             other => return other.map_err(|error| error.to_string()),
         }
+        let Some(start) = start else {
+            return Connection::connect(socket, CLIENT)
+                .await
+                .map_err(|error| error.to_string());
+        };
+        if last_start.is_none_or(|at| at.elapsed() > START_AGAIN_AFTER) {
+            *last_start = Some(Instant::now());
+            let start = Arc::clone(start);
+            // Starting asks the person's login shell for their PATH: off the
+            // loop's threads.
+            let started = tokio::task::spawn_blocking(move || start())
+                .await
+                .map_err(|error| error.to_string())?;
+            if let Err(error) = started {
+                return Err(format!("could not start Muster's daemon: {error}"));
+            }
+        }
+        let deadline = Instant::now() + START_WAIT;
+        loop {
+            match Connection::connect(socket, CLIENT).await {
+                Err(ClientError::Unreachable { .. }) if Instant::now() < deadline => {
+                    tokio::select! {
+                        () = tokio::time::sleep(Duration::from_millis(50)) => {}
+                        () = again.notified() => break,
+                    }
+                }
+                other => return other.map_err(|error| error.to_string()),
+            }
+        }
+        // The person asked to try now: the daemon is started again at once.
+        *last_start = None;
     }
 }
 
