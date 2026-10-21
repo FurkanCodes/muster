@@ -9,8 +9,8 @@ import type { Project } from "../ipc/generated/Project";
 import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
 import type { ScreenId } from "../state/ui";
+import { whenKnown } from "../state/whenKnown";
 import { labelOf } from "./keymap";
-import { whenKnown } from "./whenKnown";
 
 /** The screens whose lines are sessions, worktrees and projects. */
 export const SESSION_LISTS: readonly ScreenId[] = ["needs-you", "not-seen", "working", "all"];

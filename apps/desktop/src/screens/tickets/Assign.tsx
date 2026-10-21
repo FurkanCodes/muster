@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon } from "../../app/context";
-import { whenKnown } from "../../flows/whenKnown";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
 import { agentOf } from "../../lib/agents";
+import { whenKnown } from "../../state/whenKnown";
 import { AgentChoice } from "../../ui/AgentChoice";
 import { Button } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";

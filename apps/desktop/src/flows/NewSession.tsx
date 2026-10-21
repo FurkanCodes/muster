@@ -13,6 +13,7 @@ import type { AddedAgent } from "../ipc/generated/AddedAgent";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { projectsInOrder } from "../state/selectors";
+import { whenKnown } from "../state/whenKnown";
 import { AgentChoice } from "../ui/AgentChoice";
 import { Button, Segmented } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
@@ -22,7 +23,6 @@ import { START_SIZE } from "./actions";
 import { offered, stepAgent } from "./agents";
 import type { Flow } from "./types";
 import { useTask } from "./useTask";
-import { whenKnown } from "./whenKnown";
 import "./flows.css";
 
 type Where = "new" | "checkout" | "worktree";
