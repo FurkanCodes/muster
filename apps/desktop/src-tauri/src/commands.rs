@@ -5,6 +5,7 @@
 //! `link_open` is given, each terminal on the channel its `attach` is.
 
 use muster_core::SessionId;
+use muster_core::colours::TerminalColours;
 use muster_core::protocol::{Command, PixelSize, Reply, TermSize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Manager, State};
@@ -133,4 +134,21 @@ pub(crate) async fn looking(
         looking,
         focused,
     })
+}
+
+/// Tries to reach the daemon now, starting it again if nothing answers:
+/// the person's *Try now* while it is out of reach.
+#[tauri::command]
+pub(crate) async fn try_now(link: State<'_, Link>) -> Result<(), BridgeError> {
+    link.try_now();
+    Ok(())
+}
+
+/// The colours the window's terminals draw in, as its theme has them.
+#[tauri::command]
+pub(crate) async fn colours(
+    link: State<'_, Link>,
+    colours: TerminalColours,
+) -> Result<(), BridgeError> {
+    link.colours(colours)
 }

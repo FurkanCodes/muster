@@ -1,5 +1,8 @@
 import { $, browser } from "@wdio/globals";
 
+/** An element as `$` finds it. */
+type ChainablePromiseElement = ReturnType<typeof $>;
+
 // The window as the person drives it. The embedded WebDriver server makes
 // every key in the page itself (a keydown on the element in focus, then,
 // on a field, the character and an input event), so:
@@ -42,9 +45,29 @@ export function keysOf(chord: string): string[] {
   return keys;
 }
 
-/** Presses each of `chords`, in turn, on what has focus. */
+/**
+ * Presses each of `chords`, in turn, on what has focus. Enter or Space on
+ * a focused button goes as a browser takes a key the person presses: the
+ * key to the page first, then, if nothing there took it, a click on the
+ * button. The driver's own keys are made in the page and have no default.
+ */
 export async function press(...chords: string[]): Promise<void> {
-  for (const chord of chords) await browser.keys(keysOf(chord));
+  for (const chord of chords) {
+    if (["Enter", "⏎", "Space"].includes(chord)) {
+      const done = await browser.execute(
+        (key) => {
+          const focused = document.activeElement;
+          if (!(focused instanceof HTMLButtonElement) || focused.disabled) return false;
+          const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+          if (focused.dispatchEvent(event)) focused.click();
+          return true;
+        },
+        chord === "Space" ? " " : "Enter",
+      );
+      if (done) continue;
+    }
+    await browser.keys(keysOf(chord));
+  }
 }
 
 /** Takes focus off any field, so a key reaches the window's keys rather than the field. */
@@ -145,4 +168,121 @@ export async function shown(selector: string): Promise<boolean> {
 export async function theWindow(): Promise<void> {
   const [main] = await browser.getWindowHandles();
   if (main) await browser.switchToWindow(main);
+}
+
+/**
+ * Puts the window where no other worktree's test window covers it all,
+ * and in front: a window covered whole cannot be seen, and is sent nothing
+ * (ARC-25), so another branch's tests running beside these would stall
+ * them. `place` is this worktree's own (its port).
+ */
+export async function frontWindow(place: number): Promise<void> {
+  await browser.setWindowRect(40 + (place % 7) * 60, 40 + (place % 5) * 40, 1200, 800);
+  await toFront();
+}
+
+/** Brings the window to the front, as the person's click on it would. */
+export async function toFront(): Promise<void> {
+  await browser.execute(() =>
+    (
+      window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+      }
+    ).__TAURI_INTERNALS__
+      .invoke("plugin:window|set_focus", { label: "main" })
+      .catch(() => {}),
+  );
+}
+
+/** The open dialog titled `title` (ui/Dialog.tsx), or the palette (`Command palette`, `Every key`). */
+export function dialog(title: string) {
+  return $(`//dialog[@open][@aria-label="${title}" or .//h2[normalize-space()="${title}"]]`);
+}
+
+/** Whether no dialog is open. */
+export async function noDialog(): Promise<boolean> {
+  return !(await $("//dialog[@open]").isExisting());
+}
+
+/** The button in `scope` whose words hold `name` (its key cap may follow them). */
+export function button(scope: ChainablePromiseElement, name: string) {
+  return scope.$(`.//button[contains(normalize-space(), "${name}")]`);
+}
+
+/** The field labelled `label` in `scope`: its `<label>`, or its own `aria-label`. */
+export function field(scope: ChainablePromiseElement, label: string) {
+  return scope.$(
+    `.//*[@aria-label="${label}" or @id=(//label[starts-with(normalize-space(), "${label}")]/@for)]`,
+  );
+}
+
+/**
+ * Puts `text` in `element` (an input or a text area) as a paste does: its
+ * value set the way the page's own code sees, then an input event. The
+ * embedded driver's typing sets the value behind React's back.
+ */
+export async function fill(element: ChainablePromiseElement, text: string): Promise<void> {
+  const found = await element;
+  await found.click();
+  await browser.execute(
+    (node, value) => {
+      const own = Object.getPrototypeOf(node) as object;
+      const setter = Object.getOwnPropertyDescriptor(own, "value")?.set;
+      setter?.call(node, value);
+      node.dispatchEvent(new Event("input", { bubbles: true }));
+    },
+    found as unknown as HTMLInputElement,
+    text,
+  );
+}
+
+/** The radio in `scope` whose words hold `name` (an agent to choose). */
+export function radio(scope: ChainablePromiseElement, name: string) {
+  return scope.$(`.//*[@role="radio"][contains(normalize-space(), "${name}")]`);
+}
+
+/** The option in `scope` (a list, the palette) whose words hold `name`. */
+export function option(scope: ChainablePromiseElement, name: string) {
+  return scope.$(`.//*[@role="option"][contains(normalize-space(), "${name}")]`);
+}
+
+/** The alert in `scope`: what went wrong, as a dialog says it. */
+export function alertIn(scope: ChainablePromiseElement) {
+  return scope.$('.//*[@role="alert"]');
+}
+
+/**
+ * The row on the screen in view named `name`: a project or a branch in All
+ * sessions, or a session there or in a queue, by its title.
+ */
+export function row(name: string) {
+  return $(
+    `//main//*[(@role="treeitem" or @role="option") and (@aria-label="${name}" or starts-with(@aria-label, "${name},"))]`,
+  );
+}
+
+/** Selects the row named `name` on All sessions, as a click on it does. */
+export async function selectRow(name: string): Promise<void> {
+  await goTo("All sessions");
+  const found = row(name);
+  await found.click();
+  await browser.waitUntil(async () => (await found.getAttribute("aria-selected")) === "true", {
+    timeoutMsg: `${name} was not selected`,
+  });
+}
+
+/**
+ * Sends the daemon `command` through the app, as a screen does: for a
+ * test's setting up of what no key reaches. Its reply.
+ */
+export async function sendCommand(command: unknown): Promise<unknown> {
+  return browser.execute(
+    (sent) =>
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__.invoke("command", { command: sent }),
+    command as object,
+  );
 }

@@ -100,6 +100,8 @@ export function makeSandbox(): Sandbox {
     MUSTER_KEYCHAIN: "off",
     MUSTER_LOG: "debug",
     CLAUDE_CONFIG_DIR: folders.claude,
+    // The secret the fixture ticket plugin asks for (support/ticket-plugin.ts).
+    FIXTURE_TOKEN: "fixture-token",
     CLAUDE_CODE_OAUTH_TOKEN: "",
     ANTHROPIC_API_KEY: "",
     GIT_CONFIG_GLOBAL: "/dev/null",
@@ -136,10 +138,26 @@ export function sandboxEnv(sandbox: Sandbox): NodeJS.ProcessEnv {
 
 /** Stops whatever still runs from the sandbox (its daemon, its sessions) and removes it. */
 export function removeSandbox(sandbox: Sandbox): void {
+  const env = sandboxEnv(sandbox);
+  let pid: number | undefined;
   try {
-    execFileSync(MUSTER, ["daemon", "stop"], { env: sandboxEnv(sandbox), stdio: "ignore" });
+    const said = execFileSync(MUSTER, ["status", "--json"], { env, encoding: "utf8" });
+    pid = (JSON.parse(said) as { daemon?: { pid: number } }).daemon?.pid;
+  } catch {
+    // None answers.
+  }
+  try {
+    execFileSync(MUSTER, ["daemon", "stop"], { env, stdio: "ignore" });
   } catch {
     // None was running.
+  }
+  // The daemon writes its last words as it goes: its folders are removed
+  // once it has gone, and one that outlives its stop is ended.
+  if (pid) {
+    for (let waited = 0; alive(pid) && waited < 50; waited += 1) {
+      execFileSync("sleep", ["0.1"]);
+    }
+    if (alive(pid)) process.kill(pid, "SIGKILL");
   }
   for (const folder of [sandbox.root, sandbox.runtime]) {
     try {
@@ -149,6 +167,27 @@ export function removeSandbox(sandbox: Sandbox): void {
     }
   }
   for (const folder of [sandbox.root, sandbox.runtime]) {
-    rmSync(folder, { recursive: true, force: true });
+    rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ends any daemon of this worktree's `muster` still running: one a worker
+ * that crashed never stopped. The person's own daemon is another program.
+ */
+export function endStrayDaemons(): void {
+  try {
+    execFileSync("pkill", ["-f", `${MUSTER} daemon`], { stdio: "ignore" });
+  } catch {
+    // None.
   }
 }

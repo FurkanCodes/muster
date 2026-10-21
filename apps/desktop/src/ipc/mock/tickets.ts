@@ -164,13 +164,13 @@ export function ticketCommand(mock: MockBridge, command: Command): Reply | undef
   if ("ProjectSettings" in command) {
     const { project } = command.ProjectSettings;
     const setting = world.ticketSettings[project];
-    if (!setting) throw refused(`no project ${project}`, "not_found");
+    if (!setting) throw refused(`no project prj_${project}`, "not_found");
     return { ProjectSettings: structuredClone(setting) };
   }
   if ("ListIssues" in command) {
     const { project } = command.ListIssues;
     const list = world.tickets[project];
-    if (!list) throw refused(`no project ${project}`, "not_found");
+    if (!list) throw refused(`no project prj_${project}`, "not_found");
     return { Issues: structuredClone(list) };
   }
   if ("ViewIssue" in command) {
@@ -182,7 +182,7 @@ export function ticketCommand(mock: MockBridge, command: Command): Reply | undef
   if ("ChangeSetting" in command) {
     const { project, change } = command.ChangeSetting;
     const setting = world.ticketSettings[project];
-    if (!setting) throw refused(`no project ${project}`, "not_found");
+    if (!setting) throw refused(`no project prj_${project}`, "not_found");
     if (!("OnlyMyTickets" in change)) return undefined;
     setting.only_mine = { on: change.OnlyMyTickets, from: "yours" };
     const list = world.tickets[project];
@@ -197,7 +197,7 @@ export function ticketCommand(mock: MockBridge, command: Command): Reply | undef
   if ("CloseIssue" in command) {
     const { project, key } = command.CloseIssue;
     const list = world.tickets[project];
-    if (!list) throw refused(`no project ${project}`, "not_found");
+    if (!list) throw refused(`no project prj_${project}`, "not_found");
     for (const [id, other] of Object.entries(world.tickets))
       if (id === project || (list.source !== null && other.source === list.source))
         other.issues = other.issues.filter((i) => i.key !== key);
@@ -214,7 +214,7 @@ function removeWorktree(
 ): Reply {
   const world = mock.world;
   const found = world.workspaces.find((w) => w.id === workspace);
-  if (!found) throw refused(`no worktree ${workspace}`, "not_found");
+  if (!found) throw refused(`no worktree wsp_${workspace}`, "not_found");
   if (found.kind.kind !== "worktree")
     throw refused(
       "that is the project's own checkout, which Muster never removes; remove the project instead",

@@ -1,5 +1,8 @@
 // The window's bottom edge: the selected thing's keys, Muster's notes, and
-// the way to every key (design system: StatusBar).
+// the way to every key (design system: StatusBar). The note is said to a
+// screen reader as it comes: its place is a live region always there, so a
+// note put in it is announced, and the note shown is the one said, never a
+// hidden copy of it.
 
 import { useKeyLabel } from "../keys/useKeymap";
 import { Hint } from "../ui/controls";
@@ -13,9 +16,14 @@ export function StatusBar() {
   const help = useKeyLabel("help");
   return (
     <footer className="mu-statusbar app-statusbar">
-      {note ? (
-        <span className={`mu-note ${note.error ? "mu-note--error" : ""}`}>{note.text}</span>
-      ) : null}
+      <span
+        data-said="note"
+        aria-live={note?.error ? "assertive" : "polite"}
+        aria-atomic="true"
+        className={note ? `mu-note ${note.error ? "mu-note--error" : ""}` : "app-statusbar-said"}
+      >
+        {note?.text}
+      </span>
       {hints.map((hint) => (
         <Hint key={hint.key} keys={hint.key} does={hint.does} />
       ))}

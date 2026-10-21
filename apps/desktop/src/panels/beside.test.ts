@@ -2,7 +2,7 @@
 // its key, as the terminal UI's `app::shell` and `app::plugin_panel` open
 // and put them away, against the mock daemon (ARC-24, PRD-15, PRD §6).
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { App } from "../app/context";
 import { MockBridge } from "../ipc/mock/bridge";
 import { ulid, workingDay } from "../ipc/mock/scenario";
@@ -58,8 +58,14 @@ describe("the shell beside the agent", () => {
       },
     });
     expect(shell).not.toBeNull();
-    const stored = shell ? app.daemon.store.getState().sessions[shell] : undefined;
-    expect(stored).toMatchObject({ harness: "shell", title: "zsh", workspace: resize });
+    // The daemon tells the session after its answer.
+    await vi.waitFor(() =>
+      expect(shell ? app.daemon.store.getState().sessions[shell] : undefined).toMatchObject({
+        harness: "shell",
+        title: "zsh",
+        workspace: resize,
+      }),
+    );
     expect(app.ui.getState().shell).toBe(shell);
   });
 

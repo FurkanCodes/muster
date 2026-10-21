@@ -21,6 +21,7 @@ import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
+import type { TerminalColours } from "../generated/TerminalColours";
 import type { Workspace } from "../generated/Workspace";
 import { ByHandWorld } from "./byHand";
 import { handleCommand } from "./commands";
@@ -48,6 +49,15 @@ function keysOf(command: Command): string[] {
   return [`name:${nameOf(command)}`, `command:${JSON.stringify(command)}`];
 }
 
+/** The commands that make something, whose change the daemon tells after its answer. */
+const MAKES = new Set([
+  "AddProject",
+  "CreateWorktree",
+  "StartSession",
+  "TidyCommits",
+  "StartFromIssue",
+]);
+
 export class MockBridge implements Bridge {
   readonly world: Scenario;
   /** What git and the file system say, for the flows (flows.ts). */
@@ -62,6 +72,9 @@ export class MockBridge implements Bridge {
   private readonly failures = new Map<string, BridgeFailure>();
   /** Every one of Settings' asks of muster and the Mac, in order (`screens/settings/asks.ts`). */
   readonly asked: string[] = [];
+  /** How often the page asked to reach the daemon now, and to open its log. */
+  triedNow = 0;
+  logsShown = 0;
   /** Every sound asked to be heard, in order. */
   readonly heard: string[] = [];
   /** Its settings and plugins, and what tests drive of them. */
@@ -90,8 +103,12 @@ export class MockBridge implements Bridge {
     return this.clock;
   }
 
+  /** What a command that makes something tells, held until after its answer (see `command`). */
+  private told: StateMessage[] | null = null;
+
   private emit(message: StateMessage): void {
-    this.listener?.(message);
+    if (this.told) this.told.push(message);
+    else this.listener?.(message);
   }
 
   private patch(parts: Partial<Patch>): Patch {
@@ -135,6 +152,22 @@ export class MockBridge implements Bridge {
     });
   }
 
+  /** The pretend daemon is never out of reach but as a test says (`setLink`): asked, it counts. */
+  async tryNow(): Promise<void> {
+    this.triedNow += 1;
+  }
+
+  async showDaemonLog(): Promise<void> {
+    this.logsShown += 1;
+  }
+
+  /** The terminals' colours the page last told, as the daemon keeps them. */
+  toldColours: TerminalColours | null = null;
+
+  async colours(colours: TerminalColours): Promise<void> {
+    this.toldColours = colours;
+  }
+
   async command(command: Command): Promise<Reply> {
     this.sent.push(command);
     for (const key of keysOf(command)) await this.holds.get(key)?.promise;
@@ -144,7 +177,21 @@ export class MockBridge implements Bridge {
       this.failures.delete(key);
       throw failure;
     }
-    const reply = handleCommand(this, command);
+    // The daemon answers a command that makes something before the change
+    // it made reaches its clients: the mock tells it after its answer too.
+    const makes = MAKES.has(nameOf(command));
+    if (makes) this.told = [];
+    let reply: Reply | undefined;
+    try {
+      reply = handleCommand(this, command);
+    } finally {
+      const told = this.told ?? [];
+      this.told = null;
+      if (told.length > 0)
+        setTimeout(() => {
+          for (const message of told) this.emit(message);
+        }, 0);
+    }
     if (reply === undefined) {
       const name = typeof command === "string" ? command : Object.keys(command)[0];
       throw new BridgeFailure("invalid", `The mock daemon does not do ${name} yet`);

@@ -10,6 +10,7 @@ import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
 import type { ScreenId } from "../state/ui";
 import { labelOf } from "./keymap";
+import { whenKnown } from "./whenKnown";
 
 /** The screens whose lines are sessions, worktrees and projects. */
 export const SESSION_LISTS: readonly ScreenId[] = ["needs-you", "not-seen", "working", "all"];
@@ -218,10 +219,11 @@ export async function addProjectAt(app: App, path: string): Promise<void> {
   if (typeof reply !== "object" || !("ProjectAdded" in reply))
     throw new Error("The daemon answered something else; try again.");
   const id = reply.ProjectAdded.id;
-  const name = app.daemon.store.getState().projects[id]?.name ?? path.split("/").at(-1) ?? path;
   app.actions.show("all");
-  app.actions.select("all", id);
-  app.actions.tell(`Added ${name}.`);
+  whenKnown(app, "projects", id, () => {
+    app.actions.select("all", id);
+    app.actions.tell(`Added ${app.daemon.store.getState().projects[id]?.name ?? path}.`);
+  });
 }
 
 /** What a refused command says. */

@@ -45,6 +45,7 @@ const WHAT: Record<KeyAction, string> = {
   move_up: "move up (as ↑)",
   move_down: "move down (as ↓)",
   last_alarm: "the session that needed you last, as notified",
+  fold_list: "fold the sidebar away, or bring it back, as ⌘\\",
   refresh_tickets: "fetch the tickets again",
   another_agent: "start another agent on it, in a worktree of its own",
   ticket_in_browser: "the ticket in the browser",
@@ -69,6 +70,7 @@ const ANYWHERE: Entry[] = [
   fixed("⌘3", "Tickets"),
   fixed("⌘,", "Settings"),
   fixed("⌘\\", "fold the sidebar away, or bring it back"),
+  "fold_list",
   "last_alarm",
   "help",
 ];

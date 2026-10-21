@@ -32,6 +32,7 @@ export type KeyAction =
   | "move_up"
   | "move_down"
   | "last_alarm"
+  | "fold_list"
   | "refresh_tickets"
   | "another_agent"
   | "ticket_in_browser"

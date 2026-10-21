@@ -1,9 +1,10 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, openSync } from "node:fs";
+import { copyFileSync, mkdirSync, openSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { browser } from "@wdio/globals";
 import { makeSandbox, removeSandbox, type Sandbox, sandboxEnv } from "./sandbox";
+import { frontWindow, theWindow } from "./window";
 
 // The real app over a sandbox of its own, one per spec file: wdio.conf.ts
 // calls `startHarness` before the worker's WebDriver session begins and
@@ -92,6 +93,8 @@ export async function restartApp(extra: Record<string, string> = {}): Promise<vo
   await stopApp();
   await startApp(extra);
   await browser.reloadSession();
+  await theWindow();
+  await frontWindow(PORT);
 }
 
 /** Makes this spec file's sandbox and starts the app over it. */
@@ -109,7 +112,24 @@ export async function startHarness(): Promise<void> {
  */
 export async function stopHarness(): Promise<void> {
   await stopApp();
+  keepLogs();
   if (process.env.MUSTER_E2E_SANDBOX) removeSandbox(sandbox());
   current = null;
   delete process.env.MUSTER_E2E_SANDBOX;
+}
+
+/** Keeps the app's and the daemon's logs of the last spec file, for a failure to be read. */
+function keepLogs(): void {
+  if (!process.env.MUSTER_E2E_SANDBOX) return;
+  const box = sandbox();
+  for (const [from, to] of [
+    [join(box.root, "app.log"), "app.log"],
+    [join(box.runtime, "daemon.log"), "daemon.log"],
+  ] as const) {
+    try {
+      copyFileSync(from, join(OUTPUT, to));
+    } catch {
+      // Never written.
+    }
+  }
 }

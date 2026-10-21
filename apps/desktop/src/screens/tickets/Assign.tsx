@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon } from "../../app/context";
+import { whenKnown } from "../../flows/whenKnown";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
 import { agentOf } from "../../lib/agents";
@@ -125,14 +126,14 @@ export function Assign({
         lastProjects: source ? { ...s.lastProjects, [source]: project } : s.lastProjects,
       }));
       const session = reply.IssueStarted.session;
-      const screen = app.daemon.store.getState().derived.needs_you.includes(session)
-        ? "needs-you"
-        : "all";
       actions.narrow(null);
-      actions.show(screen);
-      actions.select(screen, session);
-      actions.showTerminal(session);
-      actions.keysTo("list");
+      actions.show("all");
+      // Selected once the daemon has told it, which it does after its answer.
+      whenKnown(app, "sessions", session, () => {
+        actions.select("all", session);
+        actions.showTerminal(session);
+        actions.keysTo("list");
+      });
       actions.tell(`Started ${name} on ${shownKey(issue.key)}.`);
       onClose();
     } catch (error) {

@@ -5,6 +5,12 @@
 //! the session's output; the link asks the daemon from the earliest place
 //! any of them holds and hands each only what it lacks, so a second reader
 //! never makes the first start over.
+//!
+//! Output for the webview's terminal is held and handed on at most once a
+//! frame (`PATCH_EVERY`), in one message however many the daemon sent
+//! (`ARC-25`): the actor flushes it (`flush_output`). Anything else for
+//! that terminal (a replay, an event) first hands on what is held, so the
+//! order never changes.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -115,6 +121,9 @@ struct View {
     cursor: Cursor,
     /// Whether the person looks at it (`ClientFrame::Watch`).
     watching: bool,
+    /// Output not yet handed on, and the place of its first byte.
+    held: Vec<u8>,
+    held_seq: u64,
 }
 
 /// One session's stream and who reads it.
@@ -257,6 +266,8 @@ impl Streams {
             sink,
             cursor,
             watching,
+            held: Vec::new(),
+            held_seq: 0,
         });
         self.attach(session);
     }
@@ -402,6 +413,7 @@ impl Streams {
     }
 
     fn replay(&mut self, session: SessionId, seq: u64, data: &[u8], reset: bool) {
+        self.hand_on(session);
         let Some(stream) = self.held.get_mut(&session) else {
             return;
         };
@@ -433,14 +445,76 @@ impl Streams {
         let Some(view) = &mut stream.view else {
             return;
         };
-        let sent = match view.cursor.output(seq, data) {
-            Piece::More { seq, data } => view.sink.send(frame::encode(frame::OUTPUT, seq, data)),
-            Piece::Reset { seq, data } => {
-                view.sink
-                    .send(frame::encode(frame::REPLAY_RESET, seq, data))
+        match view.cursor.output(seq, data) {
+            Piece::More { seq, data } => {
+                // Held with what came before it, if it follows on.
+                if view.held.is_empty() || view.held_seq + view.held.len() as u64 == seq {
+                    if view.held.is_empty() {
+                        view.held_seq = seq;
+                    }
+                    view.held.extend_from_slice(data);
+                } else {
+                    let (before, at) = (std::mem::take(&mut view.held), view.held_seq);
+                    view.held_seq = seq;
+                    view.held.extend_from_slice(data);
+                    let sent = view.sink.send(frame::encode(frame::OUTPUT, at, &before));
+                    self.fed(session, sent);
+                }
             }
-            Piece::Nothing => true,
+            Piece::Reset { seq, data } => {
+                let reset = frame::encode(frame::REPLAY_RESET, seq, data);
+                view.held.clear();
+                let sent = view.sink.send(reset);
+                self.fed(session, sent);
+            }
+            Piece::Nothing => {}
+        }
+    }
+
+    /// Whether any terminal has output held for the webview.
+    pub(super) fn holds_output(&self) -> bool {
+        self.held.values().any(|stream| {
+            stream
+                .view
+                .as_ref()
+                .is_some_and(|view| !view.held.is_empty())
+        })
+    }
+
+    /// Hands every terminal's held output to the webview, one message each.
+    pub(super) fn flush_output(&mut self) {
+        let holding: Vec<SessionId> = self
+            .held
+            .iter()
+            .filter(|(_, stream)| {
+                stream
+                    .view
+                    .as_ref()
+                    .is_some_and(|view| !view.held.is_empty())
+            })
+            .map(|(session, _)| *session)
+            .collect();
+        for session in holding {
+            self.hand_on(session);
+        }
+    }
+
+    /// Hands `session`'s held output to the webview, if it holds any.
+    fn hand_on(&mut self, session: SessionId) {
+        let Some(view) = self
+            .held
+            .get_mut(&session)
+            .and_then(|stream| stream.view.as_mut())
+        else {
+            return;
         };
+        if view.held.is_empty() {
+            return;
+        }
+        let held = std::mem::take(&mut view.held);
+        let sent = view
+            .sink
+            .send(frame::encode(frame::OUTPUT, view.held_seq, &held));
         self.fed(session, sent);
     }
 
@@ -473,6 +547,7 @@ impl Streams {
     }
 
     fn event(&mut self, session: SessionId, event: &TermEvent) {
+        self.hand_on(session);
         let Some(view) = self
             .held
             .get_mut(&session)

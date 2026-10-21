@@ -79,6 +79,10 @@ body {
 .app-statusbar {
   flex: none;
 }
+/* The notes' live region with nothing to say: no room, no gap after it. */
+.app-statusbar-said:empty {
+  margin-right: calc(-1 * var(--space-16));
+}
 
 .app-placeholder {
   flex: 1;

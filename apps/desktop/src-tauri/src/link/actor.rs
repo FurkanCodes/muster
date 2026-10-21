@@ -17,10 +17,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use muster_client::{ClientError, Connection, FrameReceiver, FrameSender};
+use muster_core::colours::TerminalColours;
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame, Welcome};
 use muster_core::{SessionId, SessionStatus};
 use muster_model::Model;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -66,6 +67,7 @@ pub(super) async fn run(
     options: Options,
     mut requests: mpsc::UnboundedReceiver<Request>,
     connected: Arc<AtomicBool>,
+    again: Arc<Notify>,
 ) {
     let (events, mut linked) = mpsc::channel(LINK_EVENTS);
     // Ends as the loop does.
@@ -73,7 +75,7 @@ pub(super) async fn run(
         clippy::disallowed_methods,
         reason = "ARC-13: the Owned handle holds it, for as long as the link's loop"
     )]
-    let _keeper = Owned(tokio::spawn(keep_linked(options, events)));
+    let _keeper = Owned(tokio::spawn(keep_linked(options, events, again)));
     let mut actor = Actor::new(connected);
     loop {
         let flush = actor.flush_at;
@@ -84,6 +86,7 @@ pub(super) async fn run(
             },
             Some(event) = linked.recv() => actor.on_event(event),
             () = sleep_until(flush) => actor.flush(),
+            () = sleep_until(actor.output_at) => actor.flush_output(),
         }
     }
 }
@@ -123,9 +126,17 @@ struct Actor {
     looking: Looking,
     /// What the daemon was last told of it on this connection.
     told: Option<(bool, Option<SessionId>)>,
+    /// The colours of the window's terminals, as the webview's theme
+    /// draws them: told to each daemon that knows them, as it connects
+    /// and as they change, so a program asking its terminal is told them.
+    colours: Option<TerminalColours>,
     /// When the next patch is due, if one is.
     flush_at: Option<Instant>,
     last_flush: Option<Instant>,
+    /// When the terminals' held output is due, if any is held, and when it
+    /// was last handed on: at most once a frame (`ARC-25`).
+    output_at: Option<Instant>,
+    last_output: Option<Instant>,
 }
 
 impl Actor {
@@ -143,8 +154,11 @@ impl Actor {
             next_request: 1,
             looking: Looking::default(),
             told: None,
+            colours: None,
             flush_at: None,
             last_flush: None,
+            output_at: None,
+            last_output: None,
         }
     }
 
@@ -222,6 +236,12 @@ impl Actor {
                 self.streams.view_watch(session, watching);
                 self.send_streams();
             }
+            Request::Colours(colours) => {
+                if self.colours.as_ref() != Some(&colours) {
+                    self.colours = Some(colours);
+                    self.tell_colours();
+                }
+            }
             Request::Looking(looking) => {
                 let was_seen = self.looking.seen;
                 self.looking = looking;
@@ -264,6 +284,18 @@ impl Actor {
         }
     }
 
+    /// Tells the daemon the terminals' colours, if the webview has said
+    /// them and the daemon knows them (`ARC-09`).
+    fn tell_colours(&self) {
+        let knows = self
+            .linked
+            .as_ref()
+            .is_some_and(|linked| linked.version >= muster_core::colours::TERMINAL_PROTOCOL);
+        if let (true, Some(colours)) = (knows, &self.colours) {
+            self.send(ClientFrame::Colours(colours.clone()));
+        }
+    }
+
     // The daemon's frames, and the link coming and going.
 
     fn on_event(&mut self, event: LinkEvent) {
@@ -280,6 +312,7 @@ impl Actor {
                 self.streams.connected(self.connections);
                 self.send(ClientFrame::Subscribe);
                 self.tell_looking();
+                self.tell_colours();
             }
             LinkEvent::Frame(frame) => self.on_frame(*frame),
             LinkEvent::Lost(reason) => self.lost(reason),
@@ -335,6 +368,7 @@ impl Actor {
             | ServerFrame::Detached { .. }) => {
                 self.streams.on_frame(frame);
                 self.send_streams();
+                self.schedule_output();
                 self.schedule_flush_if_questions_changed();
             }
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
@@ -394,6 +428,29 @@ impl Actor {
         self.flush_at = Some(at);
     }
 
+    /// Output is held for the webview: handed on now if none was this
+    /// frame, else a frame after the last, so a keystroke's echo is never
+    /// kept waiting and a flood is one message a frame.
+    fn schedule_output(&mut self) {
+        if self.output_at.is_some() || !self.streams.holds_output() {
+            return;
+        }
+        let now = Instant::now();
+        self.output_at = Some(
+            self.last_output
+                .map_or(now, |last| (last + PATCH_EVERY).max(now)),
+        );
+    }
+
+    /// Hands the webview's terminals the output held for them.
+    pub(super) fn flush_output(&mut self) {
+        self.output_at = None;
+        self.last_output = Some(Instant::now());
+        self.streams.flush_output();
+        // A terminal nobody reads any more is let go.
+        self.send_streams();
+    }
+
     /// Sends the webview what changed since the last patch.
     fn flush(&mut self) {
         self.flush_at = None;
@@ -413,12 +470,14 @@ impl Actor {
 // Keeping the connection, off the loop.
 
 /// Connects, starting the daemon if need be, and reconnects every half
-/// second whenever the connection is lost, until the loop goes.
-async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>) {
+/// second whenever the connection is lost, until the loop goes. Woken by
+/// `again` (the person's *Try now*), it tries at once and starts the
+/// daemon again whenever it last did.
+async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: Arc<Notify>) {
     let start = options.start_daemon.map(Arc::new);
     let mut last_start: Option<Instant> = None;
     loop {
-        match connect(&options.socket, start.as_ref(), &mut last_start).await {
+        match connect(&options.socket, start.as_ref(), &mut last_start, &again).await {
             Ok(connection) => {
                 let (sender, receiver, welcome) = connection.into_split();
                 // Unbounded on purpose: the loop must never wait on a
@@ -454,7 +513,10 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>) {
                 }
             }
         }
-        tokio::time::sleep(RETRY_EVERY).await;
+        tokio::select! {
+            () = tokio::time::sleep(RETRY_EVERY) => {}
+            () = again.notified() => last_start = None,
+        }
     }
 }
 
@@ -493,41 +555,50 @@ async fn write_frames(mut sender: FrameSender, mut frames: mpsc::UnboundedReceiv
 }
 
 /// Connects to the daemon, starting it if nothing answers and it was not
-/// started in the last [`START_AGAIN_AFTER`]; why not, in words.
+/// started in the last [`START_AGAIN_AFTER`]; why not, in words. Woken by
+/// `again` while it waits for a daemon it started, it starts it again.
 async fn connect(
     socket: &std::path::Path,
     start: Option<&Arc<Start>>,
     last_start: &mut Option<Instant>,
+    again: &Notify,
 ) -> Result<Connection, String> {
-    match Connection::connect(socket, CLIENT).await {
-        Err(ClientError::Unreachable { .. }) => {}
-        other => return other.map_err(|error| error.to_string()),
-    }
-    let Some(start) = start else {
-        return Connection::connect(socket, CLIENT)
-            .await
-            .map_err(|error| error.to_string());
-    };
-    if last_start.is_none_or(|at| at.elapsed() > START_AGAIN_AFTER) {
-        *last_start = Some(Instant::now());
-        let start = Arc::clone(start);
-        // Starting asks the person's login shell for their PATH: off the
-        // loop's threads.
-        let started = tokio::task::spawn_blocking(move || start())
-            .await
-            .map_err(|error| error.to_string())?;
-        if let Err(error) = started {
-            return Err(format!("could not start Muster's daemon: {error}"));
-        }
-    }
-    let deadline = Instant::now() + START_WAIT;
     loop {
         match Connection::connect(socket, CLIENT).await {
-            Err(ClientError::Unreachable { .. }) if Instant::now() < deadline => {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
+            Err(ClientError::Unreachable { .. }) => {}
             other => return other.map_err(|error| error.to_string()),
         }
+        let Some(start) = start else {
+            return Connection::connect(socket, CLIENT)
+                .await
+                .map_err(|error| error.to_string());
+        };
+        if last_start.is_none_or(|at| at.elapsed() > START_AGAIN_AFTER) {
+            *last_start = Some(Instant::now());
+            let start = Arc::clone(start);
+            // Starting asks the person's login shell for their PATH: off the
+            // loop's threads.
+            let started = tokio::task::spawn_blocking(move || start())
+                .await
+                .map_err(|error| error.to_string())?;
+            if let Err(error) = started {
+                return Err(format!("could not start Muster's daemon: {error}"));
+            }
+        }
+        let deadline = Instant::now() + START_WAIT;
+        loop {
+            match Connection::connect(socket, CLIENT).await {
+                Err(ClientError::Unreachable { .. }) if Instant::now() < deadline => {
+                    tokio::select! {
+                        () = tokio::time::sleep(Duration::from_millis(50)) => {}
+                        () = again.notified() => break,
+                    }
+                }
+                other => return other.map_err(|error| error.to_string()),
+            }
+        }
+        // The person asked to try now: the daemon is started again at once.
+        *last_start = None;
     }
 }
 

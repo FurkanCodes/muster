@@ -434,9 +434,10 @@ impl Screen {
             while !self.text.contains(marker) {
                 match self.frames.recv().await {
                     Some(bytes) => {
-                        if self.kinds.is_empty() {
-                            // The first replay starts wherever the daemon's
-                            // ring does.
+                        let bytes_so_far = self.kinds.iter().any(|&kind| kind != frame::EVENT);
+                        if !bytes_so_far && bytes[0] != frame::EVENT {
+                            // The first bytes start wherever the daemon's
+                            // ring does, or where the screen said it was.
                             self.next = u64::from_le_bytes(
                                 bytes[1..frame::HEADER].try_into().expect("a header"),
                             );

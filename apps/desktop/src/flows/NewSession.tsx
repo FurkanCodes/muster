@@ -22,6 +22,7 @@ import { START_SIZE } from "./actions";
 import { offered, stepAgent } from "./agents";
 import type { Flow } from "./types";
 import { useTask } from "./useTask";
+import { whenKnown } from "./whenKnown";
 import "./flows.css";
 
 type Where = "new" | "checkout" | "worktree";
@@ -107,7 +108,7 @@ export default function NewSession({
         const made = await makeWorktree();
         actions.openFlow(null);
         actions.show("all");
-        actions.select("all", made);
+        whenKnown(app, "workspaces", made, () => actions.select("all", made));
         actions.tell("Made the worktree.");
         return;
       }
@@ -134,9 +135,11 @@ export default function NewSession({
       actions.choseAgent(harness);
       actions.openFlow(null);
       actions.show("all");
-      actions.select("all", session);
-      actions.showTerminal(session);
-      actions.keysTo("terminal");
+      whenKnown(app, "sessions", session, () => {
+        actions.select("all", session);
+        actions.showTerminal(session);
+        actions.keysTo("terminal");
+      });
     });
 
   // ←→ (and ↑↓) go round the agents while one has the focus.
