@@ -100,6 +100,8 @@ export function makeSandbox(): Sandbox {
     MUSTER_KEYCHAIN: "off",
     MUSTER_LOG: "debug",
     CLAUDE_CONFIG_DIR: folders.claude,
+    // The secret the fixture ticket plugin asks for (support/ticket-plugin.ts).
+    FIXTURE_TOKEN: "fixture-token",
     CLAUDE_CODE_OAUTH_TOKEN: "",
     ANTHROPIC_API_KEY: "",
     GIT_CONFIG_GLOBAL: "/dev/null",
@@ -149,9 +151,10 @@ export function removeSandbox(sandbox: Sandbox): void {
   } catch {
     // None was running.
   }
-  // A daemon that outlives its stop is ended: it never outlives its folders.
-  if (pid && alive(pid)) {
-    for (let waited = 0; alive(pid) && waited < 30; waited += 1) {
+  // The daemon writes its last words as it goes: its folders are removed
+  // once it has gone, and one that outlives its stop is ended.
+  if (pid) {
+    for (let waited = 0; alive(pid) && waited < 50; waited += 1) {
       execFileSync("sleep", ["0.1"]);
     }
     if (alive(pid)) process.kill(pid, "SIGKILL");
@@ -164,7 +167,7 @@ export function removeSandbox(sandbox: Sandbox): void {
     }
   }
   for (const folder of [sandbox.root, sandbox.runtime]) {
-    rmSync(folder, { recursive: true, force: true });
+    rmSync(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 

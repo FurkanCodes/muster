@@ -355,6 +355,7 @@ describe("The flows", () => {
       await until(() => session(tidying.title)?.status !== "running", "its turn to end");
       await button(move, "Move it").click();
       await until(() => log(app, "fix/login").includes("main moved on"), "fix/login to be on main");
+      await until(noDialog, "the dialog to close");
       expect(log(app, "fix/login")).toEqual(expect.arrayContaining(["wip two", "wip one"]));
     });
 

@@ -47,19 +47,24 @@ export function keysOf(chord: string): string[] {
 
 /**
  * Presses each of `chords`, in turn, on what has focus. Enter or Space on
- * a focused button clicks it, as the browser does for a key the person
- * presses: the driver's keys are made in the page and have no such default.
+ * a focused button goes as a browser takes a key the person presses: the
+ * key to the page first, then, if nothing there took it, a click on the
+ * button. The driver's own keys are made in the page and have no default.
  */
 export async function press(...chords: string[]): Promise<void> {
   for (const chord of chords) {
     if (["Enter", "⏎", "Space"].includes(chord)) {
-      const clicked = await browser.execute(() => {
-        const focused = document.activeElement;
-        if (!(focused instanceof HTMLButtonElement) || focused.disabled) return false;
-        focused.click();
-        return true;
-      });
-      if (clicked) continue;
+      const done = await browser.execute(
+        (key) => {
+          const focused = document.activeElement;
+          if (!(focused instanceof HTMLButtonElement) || focused.disabled) return false;
+          const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+          if (focused.dispatchEvent(event)) focused.click();
+          return true;
+        },
+        chord === "Space" ? " " : "Enter",
+      );
+      if (done) continue;
     }
     await browser.keys(keysOf(chord));
   }
@@ -264,4 +269,20 @@ export async function selectRow(name: string): Promise<void> {
   await browser.waitUntil(async () => (await found.getAttribute("aria-selected")) === "true", {
     timeoutMsg: `${name} was not selected`,
   });
+}
+
+/**
+ * Sends the daemon `command` through the app, as a screen does: for a
+ * test's setting up of what no key reaches. Its reply.
+ */
+export async function sendCommand(command: unknown): Promise<unknown> {
+  return browser.execute(
+    (sent) =>
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__.invoke("command", { command: sent }),
+    command as object,
+  );
 }
