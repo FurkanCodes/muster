@@ -60,4 +60,12 @@ describe("ARC-24 Dialog", () => {
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+  it("keeps its keys: the window's listener never sees them", () => {
+    const seen = vi.fn();
+    window.addEventListener("keydown", seen);
+    render(<Close />);
+    fireEvent.keyDown(screen.getByText("Everyone watching it is told."), { key: "y" });
+    window.removeEventListener("keydown", seen);
+    expect(seen).not.toHaveBeenCalled();
+  });
 });

@@ -6,8 +6,8 @@ import "./dialog.css";
  * modal keeps the focus inside and the window behind it inert. ⏎ does the
  * acting answer, ⎋ the other; ⏎ on a focused answer does that one, so a
  * danger dialog, whose focus starts on the answer that does nothing, never
- * acts on a ⏎ meant for it. The button that has the focus first carries
- * `data-dialog-initial`.
+ * acts on a ⏎ meant for it. Keys pressed in it stay in it. The button that
+ * has the focus first carries `data-dialog-initial`.
  */
 export function Dialog({
   title,
@@ -48,6 +48,10 @@ export function Dialog({
         onClose();
       }}
       onKeyDown={(event) => {
+        // Keys in a modal are its own: the window's listener (app/keys.ts)
+        // never sees them, so it neither acts on them nor clears a note an
+        // answer has just put in the status bar.
+        event.stopPropagation();
         onKeyDown?.(event);
         if (event.defaultPrevented || event.key !== "Enter") return;
         const answer =
