@@ -461,3 +461,22 @@ test("ARC-24 a ticket with no description says so", async ({ page }) => {
   await tickets(page);
   await expect(page.getByRole("article")).toHaveText("(No description.)");
 });
+
+test("ARC-24 a ticket row flashes once when an agent on it comes to need the person", async ({
+  page,
+}) => {
+  await start(page);
+  await tickets(page);
+  await expect(ticket(page, "#214")).not.toHaveClass(/mu-flash/);
+  await expect(ticket(page, "#205")).not.toHaveClass(/mu-flash/);
+  await page.evaluate(() => {
+    const mock = window.__muster;
+    const tree = mock.world.workspaces.find((w) => w.kind.branch.startsWith("muster/issue-205-"));
+    const agent = mock.world.sessions.find(
+      (s) => s.workspace === tree?.id && s.status.state !== "needs_you",
+    );
+    if (agent) mock.setStatus(agent.id, { state: "needs_you", reason: "permission" });
+  });
+  await expect(ticket(page, "#205")).toHaveClass(/mu-flash--waiting/);
+  await expect(ticket(page, "#214")).not.toHaveClass(/mu-flash/);
+});
