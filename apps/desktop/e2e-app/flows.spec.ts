@@ -1,17 +1,16 @@
-import { mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
-import { agentOf, launches } from "./support/agents";
+import { agentOf, finish, launches } from "./support/agents";
 import { sandbox } from "./support/harness";
 import { muster, project, session, status, until, untilSession } from "./support/muster";
-import { branches, git, repository } from "./support/repos";
+import { branches, commit, git, log, repository, write } from "./support/repos";
 import {
   alertIn,
   button,
   dialog,
   field,
   fill,
-  goTo,
   noDialog,
   option,
   press,
@@ -280,6 +279,173 @@ describe("The flows", () => {
         "the worktree",
       );
       expect(branches(app)).toContain("spike/webgl");
+    });
+  });
+
+  describe("the dialogs", () => {
+    const login = "Fix the login redirect";
+    const worktreeOf = (branch: string) =>
+      project("app")?.workspaces.find((one) => one.branch === branch);
+
+    it("s asks before stopping a session, and stops it", async () => {
+      await selectRow(login);
+      await press("s");
+      const stop = dialog(`Stop ${login}?`);
+      await expect(stop).toBeDisplayed();
+      await press("Enter");
+      await untilSession(login, "exited");
+    });
+
+    it("r starts an ended session again", async () => {
+      const id = session(login)?.id ?? "";
+      await selectRow(login);
+      await press("r");
+      await until(() => launches(id).length >= 2, "the agent to start again");
+      await until(() => session(login)?.status !== "exited", "the session to run again");
+    });
+
+    it("x removes an ended session at once", async () => {
+      await selectRow(login);
+      await press("s");
+      await press("Enter");
+      await untilSession(login, "exited");
+      await press("x");
+      await until(() => !session(login), "the session to be removed");
+      expect(await noDialog()).toBe(true);
+    });
+
+    it("t asks which agent tidies a worktree's commits, and starts it there", async () => {
+      const tree = worktreeOf("fix/login");
+      if (!tree) throw new Error("no fix/login worktree");
+      commit(tree.path, "wip one", { "login.txt": "one\n" });
+      commit(tree.path, "wip two", { "login.txt": "two\n" });
+      const before = new Set(sessionIds());
+      await selectRow("fix/login");
+      await press("t");
+      const tidy = dialog("Tidy the commits on fix/login?");
+      await expect(tidy).toBeDisplayed();
+      await radio(tidy, "Claude Code").click();
+      await button(tidy, "Tidy with Claude Code").click();
+      await until(noDialog, "the dialog to close");
+      const made = await until(
+        () => sessionsNow().find((one) => !before.has(one.id)),
+        "the tidying agent",
+      );
+      expect(made.harness).toBe("claude");
+      expect(made.workspace).toBe(tree.id);
+      const started = await until(() => launches(made.id)[0], "the agent to start");
+      expect(started.cwd).toBe(realpathSync(tree.path));
+    });
+
+    it("u asks before moving a branch onto its base, and moves it", async () => {
+      commit(app, "main moved on", { "main.txt": "new\n" });
+      await selectRow("fix/login");
+      await press("u");
+      const move = dialog("Move fix/login onto main?");
+      await expect(move).toBeDisplayed();
+      // Refused while the tidying agent works there, in the daemon's words.
+      await press("Enter");
+      await expect(move).toHaveText(expect.stringContaining("is at work there"));
+      expect(log(app, "fix/login")).not.toContain("main moved on");
+      const tidying = sessionsNow().find(
+        (one) => one.harness === "claude" && one.branch === "fix/login" && one.status === "running",
+      );
+      if (!tidying) throw new Error("no tidying agent");
+      await finish(await until(() => launches(tidying.id)[0], "the tidying agent"));
+      await until(() => session(tidying.title)?.status !== "running", "its turn to end");
+      await button(move, "Move it").click();
+      await until(() => log(app, "fix/login").includes("main moved on"), "fix/login to be on main");
+      expect(log(app, "fix/login")).toEqual(expect.arrayContaining(["wip two", "wip one"]));
+    });
+
+    it("x on a worktree asks, says its changes, and removes it with them, keeping its branch", async () => {
+      const tree = worktreeOf("spike/webgl");
+      if (!tree) throw new Error("no spike/webgl worktree");
+      write(tree.path, "draft.txt", "not committed\n");
+      await selectRow("spike/webgl");
+      await press("x");
+      const remove = dialog("Remove ⎇ spike/webgl?");
+      await expect(remove).toBeDisplayed();
+      await expect(remove).toHaveText(
+        expect.stringContaining("It has 1 file with changes not committed."),
+      );
+      await button(remove, "Remove with its changes").click();
+      await until(noDialog, "the dialog to close");
+      await until(() => !worktreeOf("spike/webgl"), "the worktree to go");
+      expect(existsSync(tree.path)).toBe(false);
+      expect(branches(app)).toContain("spike/webgl");
+    });
+
+    it("the palette runs every action it offers: anywhere, and on a project, a worktree and a session", async () => {
+      /** Picks the palette's item `label` once `typed` finds it. */
+      const run = async (typed: string, label: string) => {
+        await find(typed);
+        await option(palette(), label).click();
+      };
+      const opens = async (title: string) => {
+        await expect(dialog(title)).toBeDisplayed();
+        await press("Escape");
+        await until(noDialog, `${title} to close`);
+      };
+      await pressOnWindow("⌘1");
+      await run("add a project", "Add a project");
+      await opens("Add a project");
+      await run("new session", "Start a new session");
+      await opens("New session");
+      for (const screen of [
+        "Needs you",
+        "Not seen",
+        "Working",
+        "All sessions",
+        "Tickets",
+        "Settings",
+      ] as const) {
+        await run(`go to ${screen}`, `Go to ${screen}`);
+        expect(await shownScreen()).toBe(screen);
+      }
+      await run("fold the sidebar", "Fold the sidebar away");
+      await expect($('nav[aria-label="Screens"]')).toHaveElementClass("mu-nav--folded");
+      await run("fold the sidebar", "Fold the sidebar away");
+      await expect($('nav[aria-label="Screens"]')).not.toHaveElementClass("mu-nav--folded");
+      await run("every key", "Every key of this screen");
+      await expect(help()).toBeDisplayed();
+      await press("Escape");
+      await until(noDialog, "the keys to close");
+
+      await selectRow("app");
+      await run("new worktree", "Make a new worktree for the project");
+      await opens("New worktree");
+      await selectRow("app");
+      await run("stop tracking", "Stop tracking the project");
+      await opens("Stop tracking app?");
+      await selectRow("fix/login");
+      await run("tidy", "Tidy the commits");
+      await opens("Tidy the commits on fix/login?");
+      await selectRow("fix/login");
+      await run("move the branch", "Move the branch onto its base");
+      await opens("Move fix/login onto main?");
+      await selectRow("fix/login");
+      await run("remove the worktree", "Remove the worktree");
+      await opens("Remove ⎇ fix/login?");
+      await selectRow("Palette agent");
+      await run("rename", "Rename the session");
+      await expect(field($("main"), "Session name")).toBeDisplayed();
+      await press("Escape");
+      await selectRow("Palette agent");
+      await run("restart", "Restart the session");
+      await until(() => session("Palette agent")?.status !== "exited", "it to run again");
+    });
+
+    it("x on a project asks before Muster stops tracking it, and leaves its folder", async () => {
+      const root = project("lib")?.root ?? "";
+      await selectRow("lib");
+      await press("x");
+      const forget = dialog("Stop tracking lib?");
+      await expect(forget).toBeDisplayed();
+      await button(forget, "Stop tracking").click();
+      await until(noDialog, "the dialog to close");
+      await until(() => !project("lib"), "lib to be forgotten");
+      expect(existsSync(root)).toBe(true);
     });
   });
 });
