@@ -146,3 +146,27 @@ export async function theWindow(): Promise<void> {
   const [main] = await browser.getWindowHandles();
   if (main) await browser.switchToWindow(main);
 }
+
+/**
+ * Puts the window where no other worktree's test window covers it all,
+ * and in front: a window covered whole cannot be seen, and is sent nothing
+ * (ARC-25), so another branch's tests running beside these would stall
+ * them. `place` is this worktree's own (its port).
+ */
+export async function frontWindow(place: number): Promise<void> {
+  await browser.setWindowRect(40 + (place % 7) * 60, 40 + (place % 5) * 40, 1200, 800);
+  await toFront();
+}
+
+/** Brings the window to the front, as the person's click on it would. */
+export async function toFront(): Promise<void> {
+  await browser.execute(() =>
+    (
+      window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+      }
+    ).__TAURI_INTERNALS__
+      .invoke("plugin:window|set_focus", { label: "main" })
+      .catch(() => {}),
+  );
+}

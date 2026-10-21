@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { browser } from "@wdio/globals";
 import { APP, appRuns, OUTPUT, PORT, startHarness, stopHarness } from "./e2e-app/support/harness";
 import { MUSTER } from "./e2e-app/support/sandbox";
-import { theWindow } from "./e2e-app/support/window";
+import { frontWindow, theWindow, toFront } from "./e2e-app/support/window";
 
 // The real app over a real daemon of its own (ARCHITECTURE.md §5c, §13):
 // the app built with `--features e2e` (`pnpm e2e:app` builds it), its
@@ -52,6 +52,12 @@ export const config: WebdriverIO.Config = {
 
   async before() {
     await theWindow();
+    await frontWindow(PORT);
+  },
+
+  /** Each test starts with the window in front, where another's cannot cover it all. */
+  async beforeTest() {
+    await toFront();
   },
 
   /** A failed test leaves a picture of the window, named for the test. */
