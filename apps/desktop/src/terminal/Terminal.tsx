@@ -144,7 +144,7 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   }, [theme]);
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: xterm's own textarea takes the keys; a click here only gives the terminal the keys, as in the TUI.
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches the terminal through xterm's textarea.
     <section
       ref={host}
       className={`mu-term app-terminal ${compact ? "mu-term--compact" : ""} ${hasKeys ? "has-keys" : ""}`}

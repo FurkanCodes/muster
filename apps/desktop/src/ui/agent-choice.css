@@ -1,0 +1,10 @@
+/* Two columns in a wide dialog leave room for the last-chosen note beside the whole name. */
+.ui-dialog--wide .mu-choices {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.mu-choice-note {
+  flex: none;
+}
+.ui-choice-logo {
+  display: contents;
+}
