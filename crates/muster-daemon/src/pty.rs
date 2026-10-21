@@ -210,6 +210,13 @@ impl PtyHandle {
         let _ = self.commands.send(Command::Focus(focused)).await;
     }
 
+    /// Says it is in focus or not without waiting, for a terminal just
+    /// taken over, whose queue has room; `false` if it had none or the
+    /// terminal is gone.
+    pub(crate) fn focus_now(&self, focused: bool) -> bool {
+        self.commands.try_send(Command::Focus(focused)).is_ok()
+    }
+
     /// Resizes without waiting, for a terminal just started, whose queue
     /// has room; `false` if it had none or the terminal is gone.
     pub(crate) fn resize_now(&self, size: TermSize, pixels: Option<PixelSize>) -> bool {

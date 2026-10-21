@@ -20,7 +20,8 @@
 //! terminal (beside the list or filling the window, in a window the
 //! person looks at; the guards keep their first name, the keys), its
 //! program is in focus, and it is told so as that starts and
-//! ends (`CSI I`, `CSI O`) if it asked. Each such client holds a
+//! ends (`CSI I`, `CSI O`) if it asked; but Claude Code is never told it is
+//! out of focus (`Harness::stays_in_focus`). Each such client holds a
 //! [`KeysGuard`], beside its connection's
 //! [`ClientGuard`](super::ClientGuard).
 //!
@@ -234,7 +235,7 @@ impl Supervisor {
     }
 
     /// One client let go of the person's keys in `session`'s terminal: the
-    /// last tells its program it is out of focus.
+    /// last tells its program it is out of focus, unless it stays in focus.
     pub(super) async fn let_go_keys(&mut self, session: SessionId) {
         let Some(typing) = self.typing.get_mut(&session) else {
             return;
@@ -242,7 +243,9 @@ impl Supervisor {
         *typing = typing.saturating_sub(1);
         if *typing == 0 {
             self.typing.remove(&session);
-            if let Some(live) = self.live.get(&session) {
+            if let Some(live) = self.live.get(&session)
+                && !live.harness.stays_in_focus()
+            {
                 live.pty.focus(false).await;
             }
         }

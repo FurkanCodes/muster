@@ -23,6 +23,12 @@ use support::{Daemon, Sandbox, read_terminal};
 
 /// A daemon with one project, and a shell attached in its checkout.
 async fn shell(sandbox: &Sandbox) -> (Daemon, Connection, SessionId) {
+    started(sandbox, "shell").await
+}
+
+/// A daemon with one project, and a session of `harness` attached in its
+/// checkout: the stand-in for an agent behaves as a shell.
+async fn started(sandbox: &Sandbox, harness: &str) -> (Daemon, Connection, SessionId) {
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
@@ -43,7 +49,7 @@ async fn shell(sandbox: &Sandbox) -> (Daemon, Connection, SessionId) {
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
             workspace,
-            harness: "shell".to_owned(),
+            harness: harness.to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
@@ -183,6 +189,36 @@ async fn a_program_that_asked_is_told_as_the_person_s_keys_come_and_go_in_any_cl
         .and_then(|rest| rest.split('=').next())
         .unwrap_or_default();
     assert_eq!(told, "E[IE[OE[I", "{text:?}");
+}
+
+#[tokio::test]
+async fn claude_code_is_told_it_is_in_focus_and_never_out_of_it() {
+    let sandbox = Sandbox::new();
+    let (daemon, mut watching, session) = started(&sandbox, "claude").await;
+    // Asks to be told of focus, then prints the 4 bytes it is sent.
+    let probe = "stty -echo -icanon min 1; printf '\\033[?1004h'; echo ready-$((1+2)); \
+                 r=$(dd bs=1 count=4 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"focus=$r=$((2*21))\"\n";
+    watching.input(session, probe.as_bytes()).await.unwrap();
+    read_terminal(&mut watching, session, "ready-3").await;
+
+    let mut one = daemon.connect().await;
+    // In, as a client has the keys; never out, however it lets go of them,
+    // so it writes its suggestion as a turn ends wherever the person is.
+    keys(&mut one, Some(session)).await;
+    keys(&mut one, None).await;
+    keys(&mut one, Some(session)).await;
+    drop(one);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    watching.input(session, b"x").await.unwrap();
+
+    let (text, _) = read_terminal(&mut watching, session, "=42").await;
+    let told = text
+        .rsplit("focus=")
+        .next()
+        .and_then(|rest| rest.split('=').next())
+        .unwrap_or_default();
+    assert_eq!(told, "E[Ix", "{text:?}");
 }
 
 #[tokio::test]

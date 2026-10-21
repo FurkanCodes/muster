@@ -2,7 +2,8 @@
 //! the real binary replaces itself with its sessions handed over, and they
 //! run on. A shell keeps what it was told and finishes the work it was
 //! doing; a Claude Code session's hooks still reach the daemon with the
-//! token it was started with; clients connect again and pick up where they
+//! token it was started with, and it is told it is in focus, whatever the
+//! daemon before told it; clients connect again and pick up where they
 //! were.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
@@ -85,6 +86,15 @@ async fn a_reload_keeps_every_session_running() {
     let launch = sandbox.wait_for_launches(claude, 1).remove(0);
     let agent = launch.value("--session-id").unwrap().to_owned();
 
+    // Claude Code asks to be told of focus, and waits for the 3 bytes it
+    // is sent; nothing has told it yet.
+    connection.attach(claude, None).await.unwrap();
+    let probe = "stty -echo -icanon min 1; printf '\\033[?1004h'; echo ready-$((1+2)); \
+                 r=$(dd bs=1 count=3 2>/dev/null | tr '\\033' 'E'); stty echo icanon; \
+                 echo \"focus=$r=$((2*21))\"\n";
+    connection.input(claude, probe.as_bytes()).await.unwrap();
+    read_terminal(&mut connection, claude, "ready-3").await;
+
     connection.attach(shell, None).await.unwrap();
     connection
         .input(shell, b"MARK=kept-$((40+2)); echo before-$((1+1))\n")
@@ -128,8 +138,13 @@ async fn a_reload_keeps_every_session_running() {
         .unwrap();
     read_terminal(&mut connection, shell, "still-kept-42").await;
 
-    // Claude Code: its hooks, with the token it was started with, still
-    // move its status.
+    // Claude Code: told it is in focus by the daemon that took it over,
+    // with no client holding its keys.
+    connection.attach(claude, None).await.unwrap();
+    let (text, _) = read_terminal(&mut connection, claude, "=42").await;
+    assert!(text.contains("focus=E[I=42"), "{text:?}");
+
+    // Its hooks, with the token it was started with, still move its status.
     launch.fire(
         "UserPromptSubmit",
         &json!({"session_id": agent, "hook_event_name": "UserPromptSubmit", "cwd": "/work"}),
