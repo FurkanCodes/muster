@@ -11,6 +11,8 @@ import { ticketCommand } from "./tickets";
 
 export function handleCommand(mock: MockBridge, command: Command): Reply | undefined {
   if (command === "Ping") return "Pong";
+  const settings = mock.settings.handle(command);
+  if (settings !== undefined) return settings;
   if (typeof command === "string") return undefined;
 
   if ("RenameSession" in command) {

@@ -12,6 +12,7 @@ import type { SessionUsage } from "../generated/SessionUsage";
 import type { Timeline } from "../generated/Timeline";
 import type { Workspace } from "../generated/Workspace";
 import type { World } from "./model";
+import { workingDayPlugins } from "./plugins";
 
 /** A ULID-shaped id: the daemon sends ids as 26 Crockford base-32 characters. */
 export function ulid(n: number): string {
@@ -238,9 +239,7 @@ export function workingDay(): Scenario {
     [ulid(102)]:
       "\x1b[35m❯\x1b[0m git log --oneline -3\r\na1b2c3d Add the desktop crate\r\n\x1b[35m❯\x1b[0m ",
   };
-  const plugins: PluginInfo[] = [
-    { id: "github", source: "builtin", enabled: true, problem: null, details: null, changed: null },
-  ];
+  const plugins: PluginInfo[] = workingDayPlugins();
   // The desktop worktree's timeline, newest first: Codex's third turn there
   // is the newest, after the person's own edits between its turns.
   const turn = (number: number, minutesAgo: number, files: number, added: number) => ({
