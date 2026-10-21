@@ -1,9 +1,10 @@
 import { useShallow } from "zustand/react/shallow";
-import { useDaemon } from "../../app/context";
+import { useApp, useDaemon } from "../../app/context";
 import type { Issue } from "../../ipc/generated/Issue";
 import { statusKind } from "../../lib/status";
 import { projectColour } from "../../state/selectors";
 import { AgentLogo, PullRequest, StatusMark } from "../../ui/status";
+import { changedInSight, stamp } from "../queue/history";
 import { agentsOn, shownKey, ticketPullRequest, worktreesFor } from "./agents";
 import { ticketText } from "./TicketText";
 
@@ -18,15 +19,23 @@ export function TicketRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const app = useApp();
   const worktrees = useDaemon(
     useShallow((s) => worktreesFor(Object.values(s.workspaces), projects, issue.key)),
   );
   const agents = useDaemon(useShallow((s) => agentsOn(Object.values(s.sessions), worktrees)));
   const pr = ticketPullRequest(worktrees);
+  // An agent on it that came to need the person as they watched flashes
+  // the row once, as the queue's rows flash.
+  const asking = agents.findLast(
+    (s) => ["waiting", "error"].includes(statusKind(s)) && changedInSight(app.daemon, s),
+  );
   return (
     <button
+      // Drawn afresh for each new need, so each flashes once.
+      key={asking ? stamp(asking) : "still"}
       type="button"
-      className="mu-ticket"
+      className={`mu-ticket${asking ? " mu-flash mu-flash--waiting" : ""}`}
       aria-label={`${shownKey(issue.key)} ${ticketText(issue.title)}`}
       aria-current={selected || undefined}
       onClick={onSelect}
