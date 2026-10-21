@@ -174,3 +174,145 @@ fn a_download_that_does_not_match_its_checksum_replaces_nothing() {
         format!("muster {}", env!("CARGO_PKG_VERSION"))
     );
 }
+
+/// A stand-in Muster app saying it is `version`, at `app`.
+fn muster_app(app: &Path, version: &str) {
+    let contents = app.join("Contents");
+    std::fs::create_dir_all(&contents).unwrap();
+    std::fs::write(
+        contents.join("Info.plist"),
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD \
+             PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist \
+             version=\"1.0\"><dict><key>CFBundleShortVersionString</key><string>{version}</string></dict></plist>\n"
+        ),
+    )
+    .unwrap();
+}
+
+/// What app `app` says it is.
+fn app_version(app: &Path) -> String {
+    let said = Command::new("/usr/libexec/PlistBuddy")
+        .args(["-c", "Print CFBundleShortVersionString"])
+        .arg(app.join("Contents/Info.plist"))
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&said.stdout).trim().to_owned()
+}
+
+/// The release's Muster app, saying it is 9.9.9, with a checksum file
+/// saying `checksum` (the right one if `None`).
+fn app_release(dir: &Path, checksum: Option<&str>) -> HashMap<String, Vec<u8>> {
+    let name = "muster-app-universal-apple-darwin.tar.gz";
+    let packing = dir.join("app");
+    muster_app(&packing.join("Muster.app"), "9.9.9");
+    let archive = dir.join(name);
+    let packed = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&packing)
+        .arg("Muster.app")
+        .status()
+        .unwrap();
+    assert!(packed.success());
+    let bytes = std::fs::read(&archive).unwrap();
+    let right = muster_core::hex::encode(&Sha256::digest(&bytes));
+    let sum = format!("{}  {name}\n", checksum.unwrap_or(&right));
+    HashMap::from([
+        (format!("/{name}"), bytes),
+        (format!("/{name}.sha256"), sum.into_bytes()),
+    ])
+}
+
+/// Runs `program upgrade` with the Muster app looked for in `apps`.
+fn upgrade_with_app(sandbox: &Sandbox, program: &Path, base: &str, apps: &Path) -> (bool, String) {
+    let template = sandbox.command();
+    let mut command = Command::new(program);
+    for (key, value) in template.get_envs() {
+        if let Some(value) = value {
+            command.env(key, value);
+        }
+    }
+    let output = command
+        .arg("upgrade")
+        .env("MUSTER_RELEASES", base)
+        .env("MUSTER_APP_DIR", apps)
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (output.status.success(), said)
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn prd_09_an_upgrade_updates_the_muster_app_installed_with_the_release_s() {
+    let sandbox = Sandbox::new();
+    let copy = copy_of_muster(&sandbox);
+    let apps = sandbox.root().join("Applications");
+    muster_app(&apps.join("Muster.app"), "0.0.1");
+    let mut files = release(&sandbox.root().join("release"), None);
+    files.extend(app_release(&sandbox.root().join("release"), None));
+    let base = serve(files);
+    let (ok, said) = upgrade_with_app(&sandbox, &copy, &base, &apps);
+    assert!(ok, "{said}");
+    assert!(said.contains("Installed muster 9.9.9"), "{said}");
+    assert!(
+        said.contains("Installed the Muster app 9.9.9") && said.contains("(it was 0.0.1)"),
+        "{said}"
+    );
+    assert_eq!(app_version(&apps.join("Muster.app")), "9.9.9");
+    // Nothing left beside it.
+    let left: Vec<_> = std::fs::read_dir(&apps)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(left, ["Muster.app"]);
+
+    // Again, from a muster of this build (the first upgrade put the
+    // release's stand-in in its place): the app is the release's already.
+    let copy = copy_of_muster(&sandbox);
+    let (ok, said) = upgrade_with_app(&sandbox, &copy, &base, &apps);
+    assert!(ok, "{said}");
+    assert!(
+        said.contains("The Muster app 9.9.9 is the latest"),
+        "{said}"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn arc_21_a_muster_app_that_does_not_match_its_checksum_replaces_nothing() {
+    let sandbox = Sandbox::new();
+    let copy = copy_of_muster(&sandbox);
+    let apps = sandbox.root().join("Applications");
+    muster_app(&apps.join("Muster.app"), "0.0.1");
+    let wrong = "0".repeat(64);
+    let mut files = release(&sandbox.root().join("release"), None);
+    files.extend(app_release(&sandbox.root().join("release"), Some(&wrong)));
+    let (ok, said) = upgrade_with_app(&sandbox, &copy, &serve(files), &apps);
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("the Muster app does not match its published checksum"),
+        "{said}"
+    );
+    assert_eq!(app_version(&apps.join("Muster.app")), "0.0.1");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_release_without_the_app_leaves_the_muster_app_installed_alone() {
+    let sandbox = Sandbox::new();
+    let copy = copy_of_muster(&sandbox);
+    let apps = sandbox.root().join("Applications");
+    muster_app(&apps.join("Muster.app"), "0.0.1");
+    let base = serve(release(&sandbox.root().join("release"), None));
+    let (ok, said) = upgrade_with_app(&sandbox, &copy, &base, &apps);
+    assert!(ok, "{said}");
+    assert!(said.contains("This release has no Muster app"), "{said}");
+    assert_eq!(app_version(&apps.join("Muster.app")), "0.0.1");
+}

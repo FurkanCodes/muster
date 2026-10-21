@@ -7,7 +7,11 @@
 //! made as the release workflow built it, before anything is replaced; a
 //! mismatch replaces nothing (`ARC-21`). The new program
 //! is swapped in with a rename in its own folder, so the file is never half
-//! written, and running programs keep the one they started with.
+//! written, and running programs keep the one they started with. On a
+//! Mac the Muster app, where one is installed, is updated the same way
+//! (`app`).
+
+mod app;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -41,7 +45,11 @@ fn installed() -> std::io::Result<PathBuf> {
 }
 
 pub(crate) async fn run(socket: &Path, runtime_dir: &Path) -> ExitCode {
-    match install().await {
+    let (http, base) = match client() {
+        Ok(found) => found,
+        Err(error) => return crate::fail(error),
+    };
+    match install(&http, &base).await {
         Ok(Installed::Current(version)) => {
             println!("Muster {version} is the latest.");
         }
@@ -50,7 +58,76 @@ pub(crate) async fn run(socket: &Path, runtime_dir: &Path) -> ExitCode {
         }
         Err(error) => return crate::fail(error),
     }
+    match app::upgrade(&http, &base).await {
+        Ok(app::App::NotInstalled) => {}
+        Ok(app::App::NotInRelease) => println!("This release has no Muster app."),
+        Ok(app::App::Current(version)) => println!("The Muster app {version} is the latest."),
+        Ok(app::App::New { from, to, at }) => match from {
+            Some(from) => println!(
+                "Installed the Muster app {to} at {} (it was {from}).",
+                at.display()
+            ),
+            None => println!("Installed the Muster app {to} at {}.", at.display()),
+        },
+        Err(error) => return crate::fail(error),
+    }
     crate::reload::reload_daemon(socket, runtime_dir).await
+}
+
+/// The client releases are downloaded with, and where they are:
+/// `MUSTER_RELEASES` points elsewhere, for tests.
+fn client() -> Result<(reqwest::Client, String), String> {
+    let base = std::env::var("MUSTER_RELEASES")
+        .unwrap_or_else(|_| format!("{REPOSITORY}/releases/latest/download"));
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .user_agent(concat!("muster/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok((http, base))
+}
+
+/// Whether `bytes` are what the checksum file `published` says.
+fn matches(bytes: &[u8], published: &[u8]) -> bool {
+    let expected = String::from_utf8_lossy(published)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    expected.len() == 64 && muster_core::hex::encode(&Sha256::digest(bytes)) == expected
+}
+
+/// Checks the archive at `saved` against its build attestation, saying how
+/// it went; a stand-in release, as tests use, has none.
+async fn say_attested(saved: &Path) -> Result<(), String> {
+    if std::env::var_os("MUSTER_RELEASES").is_some() {
+        return Ok(());
+    }
+    if attested(saved).await? {
+        println!("Checked: built by {REPOSITORY}'s release workflow.");
+    } else {
+        println!(
+            "Not checked against its build attestation: the GitHub CLI (gh) is not installed, too \
+             old, or not signed in."
+        );
+    }
+    Ok(())
+}
+
+/// Unpacks the archive at `archive` into `into`.
+fn untar(archive: &Path, into: &Path) -> Result<(), String> {
+    let untarred = std::process::Command::new("tar")
+        .arg("-xzf")
+        .arg(archive)
+        .arg("-C")
+        .arg(into)
+        .status()
+        .map_err(|error| format!("cannot run tar: {error}"))?;
+    if untarred.success() {
+        Ok(())
+    } else {
+        Err("the archive could not be unpacked".to_owned())
+    }
 }
 
 #[derive(Debug)]
@@ -63,7 +140,7 @@ enum Installed {
     },
 }
 
-async fn install() -> Result<Installed, String> {
+async fn install(http: &reqwest::Client, base: &str) -> Result<Installed, String> {
     let target = target().ok_or_else(|| {
         format!(
             "there is no prebuilt muster for {} on {}; build it from source: cargo install \
@@ -72,25 +149,11 @@ async fn install() -> Result<Installed, String> {
             std::env::consts::OS
         )
     })?;
-    // `MUSTER_RELEASES` points elsewhere, for tests.
-    let base = std::env::var("MUSTER_RELEASES")
-        .unwrap_or_else(|_| format!("{REPOSITORY}/releases/latest/download"));
     let archive = format!("muster-{target}.tar.gz");
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .user_agent(concat!("muster/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|error| error.to_string())?;
     println!("Downloading {base}/{archive}");
-    let bytes = fetch(&http, &format!("{base}/{archive}")).await?;
-    let published = fetch(&http, &format!("{base}/{archive}.sha256")).await?;
-    let expected = String::from_utf8_lossy(&published)
-        .split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let actual = muster_core::hex::encode(&Sha256::digest(&bytes));
-    if expected.len() != 64 || actual != expected {
+    let bytes = fetch(http, &format!("{base}/{archive}")).await?;
+    let published = fetch(http, &format!("{base}/{archive}.sha256")).await?;
+    if !matches(&bytes, &published) {
         return Err(
             "the download does not match its published checksum; nothing was replaced".to_owned(),
         );
@@ -107,27 +170,8 @@ async fn install() -> Result<Installed, String> {
         .map_err(|error| format!("cannot write in {}: {error}", folder.display()))?;
     let saved = unpacked.path().join(&archive);
     std::fs::write(&saved, &bytes).map_err(|error| error.to_string())?;
-    // A stand-in release, as tests use, has no attestation.
-    if std::env::var_os("MUSTER_RELEASES").is_none() {
-        if attested(&saved).await? {
-            println!("Checked: built by {REPOSITORY}'s release workflow.");
-        } else {
-            println!(
-                "Not checked against its build attestation: the GitHub CLI (gh) is not installed, \
-                 too old, or not signed in."
-            );
-        }
-    }
-    let untarred = std::process::Command::new("tar")
-        .arg("-xzf")
-        .arg(&saved)
-        .arg("-C")
-        .arg(unpacked.path())
-        .status()
-        .map_err(|error| format!("cannot run tar: {error}"))?;
-    if !untarred.success() {
-        return Err("the archive could not be unpacked".to_owned());
-    }
+    say_attested(&saved).await?;
+    untar(&saved, unpacked.path())?;
     let new = unpacked
         .path()
         .join(format!("muster-{target}"))
@@ -202,6 +246,26 @@ async fn attested(path: &Path) -> Result<bool, String> {
                 .to_owned(),
         ),
     }
+}
+
+/// What `url` holds, or `None` where it is not found (404).
+async fn fetch_if_there(http: &reqwest::Client, url: &str) -> Result<Option<Vec<u8>>, String> {
+    let response = http
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| format!("cannot download {url}: {error}"))?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!("{url} answered {}", response.status()));
+    }
+    response
+        .bytes()
+        .await
+        .map(|bytes| Some(bytes.to_vec()))
+        .map_err(|error| format!("cannot download {url}: {error}"))
 }
 
 async fn fetch(http: &reqwest::Client, url: &str) -> Result<Vec<u8>, String> {
