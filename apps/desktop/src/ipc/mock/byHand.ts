@@ -68,7 +68,8 @@ export function byHandCommand(mock: MockBridge, command: Command): Reply | undef
       beside: null,
     };
     mock.world.sessions.push(started);
-    mock.publish({ sessions: [started] });
+    // As the daemon does, the reply comes first and the session after it.
+    setTimeout(() => mock.publish({ sessions: [started] }), 0);
     return { SessionStarted: { id: started.id } };
   };
 

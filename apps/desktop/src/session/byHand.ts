@@ -14,6 +14,23 @@ function complain(app: App, text: string): void {
   app.actions.tell(text, true);
 }
 
+/**
+ * Does `then` once the state shows `session`: a reply can name a session
+ * before the delta that brings it, and a list cannot select a line it has
+ * not drawn (the TUI's `wanted`).
+ */
+function whenKnown(app: App, session: string, then: () => void): void {
+  if (app.daemon.store.getState().sessions[session]) {
+    then();
+    return;
+  }
+  const stop = app.daemon.store.subscribe((state) => {
+    if (!state.sessions[session]) return;
+    stop();
+    then();
+  });
+}
+
 /** Starts the session `command` asks for and opens it, the keys with it (`Then::OpenSession`). */
 function startAndOpen(app: App, command: Command): void {
   app.bridge.command(command).then(
@@ -22,11 +39,13 @@ function startAndOpen(app: App, command: Command): void {
         return complain(app, "The daemon answered something else; try again.");
       const session = reply.SessionStarted.id;
       app.actions.clearNote();
-      app.actions.show("all");
-      app.actions.select("all", session);
-      app.actions.showPane("terminal");
-      app.actions.showTerminal(session);
-      app.actions.keysTo("terminal");
+      whenKnown(app, session, () => {
+        app.actions.show("all");
+        app.actions.select("all", session);
+        app.actions.showPane("terminal");
+        app.actions.showTerminal(session);
+        app.actions.keysTo("terminal");
+      });
     },
     (error: unknown) => complain(app, said(error)),
   );
