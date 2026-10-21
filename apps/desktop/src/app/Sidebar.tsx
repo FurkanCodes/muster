@@ -90,11 +90,14 @@ function Projects() {
 
 const WAITING = <span className="app-nav-waiting">▲</span>;
 const NEWS = <span className="mu-dot" />;
-const WORKING = (
-  <span className="app-nav-working">
-    <Spinner />
-  </span>
-);
+/** Working's mark spins only while an agent works: an idle window draws nothing (`ARC-25`). */
+function Working({ working }: { working: boolean }) {
+  return (
+    <span className="app-nav-working">
+      <Spinner still={!working} />
+    </span>
+  );
+}
 const ALL = <span>≡</span>;
 const TICKETS = <span>#</span>;
 const SETTINGS = <Icon name="gear" size={16} />;
@@ -126,7 +129,7 @@ export function Sidebar() {
       <NavItem
         screen="working"
         label="Working"
-        icon={WORKING}
+        icon={<Working working={counts.working > 0} />}
         count={counts.working}
         folded={folded}
       />

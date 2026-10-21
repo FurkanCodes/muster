@@ -144,6 +144,10 @@ textarea {
   animation: mu-spin 1s steps(10) infinite;
 }
 
+.mu-spin--still .mu-spin-strip {
+  animation: none;
+}
+
 @keyframes mu-spin {
   to {
     transform: translateX(-10ch);
