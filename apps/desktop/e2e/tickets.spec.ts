@@ -372,7 +372,7 @@ test("PRD-07 ARC-24 browser and close use saved key bindings", async ({ page }) 
   await expect
     .poll(() => page.evaluate(() => window.__muster.openedUrls))
     .toEqual(["https://github.com/FurkanCodes/muster/issues/214"]);
-  await page.getByRole("button", { name: "Open in the browser (B)" }).click();
+  await page.getByRole("button", { name: "Open in the browser (⇧B)" }).click();
   await expect.poll(() => page.evaluate(() => window.__muster.openedUrls.length)).toBe(2);
   await page.keyboard.press("x");
   await expect(page.getByRole("dialog")).toHaveCount(0);
