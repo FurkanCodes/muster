@@ -180,9 +180,20 @@ async fn codex_is_heard_through_its_title_and_turn_notices_and_resumes_its_threa
     expect_until(&mut connection, session, SessionStatus::Finished).await;
 
     // Its turn notice, through the program it was told to run: the thread
-    // to resume.
+    // to resume. The hidden thread naming the session ends first, and is
+    // not the session's.
     let notify = notify_program(&launch);
     assert_eq!(notify[..2], ["sh", "-c"]);
+    let title_notice = json!({
+        "type": "agent-turn-complete",
+        "thread-id": "019a7c3e-title",
+        "turn-id": "t0",
+        "cwd": "/work",
+        "input-messages": ["Generate a concise, single-line task title"],
+        "last-assistant-message": r#"{"title":"Fix it"}"#,
+    })
+    .to_string();
+    launch.run(&notify[2], &[&notify[3], &title_notice], "");
     let notice = json!({
         "type": "agent-turn-complete",
         "thread-id": "019a7c3e-thread",

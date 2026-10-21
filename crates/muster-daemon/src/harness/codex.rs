@@ -8,6 +8,10 @@
 //!
 //! - `notify`, a program Codex runs as each turn ends, with the turn as JSON
 //!   in its last argument: its `thread-id` is the id to resume the session by.
+//!   It runs for Codex's hidden title thread too, which names a thread as its
+//!   first prompt arrives and usually ends before the turn does; that notice
+//!   is dropped, or the session would seem finished, hear none of its own
+//!   turns' ends and be resumed by a thread kept nowhere.
 //! - the window title, set to the activity and the run state: `⠋ Working`,
 //!   `Ready`, or `[ ! ] Action Required` while it waits on the person, for a
 //!   permission and a question alike.
@@ -83,7 +87,7 @@ fn toml_string(text: &str) -> String {
 /// What a notice means: a turn's end, with the thread to resume.
 pub(crate) fn translate(body: &[u8]) -> Option<(Option<String>, HookEvent)> {
     let value: Value = serde_json::from_slice(body).ok()?;
-    if value.get("type")?.as_str()? != "agent-turn-complete" {
+    if value.get("type")?.as_str()? != "agent-turn-complete" || names_the_thread(&value) {
         return None;
     }
     let thread = value
@@ -91,6 +95,19 @@ pub(crate) fn translate(body: &[u8]) -> Option<(Option<String>, HookEvent)> {
         .and_then(Value::as_str)
         .map(str::to_owned);
     Some((thread, HookEvent::TurnEnded))
+}
+
+/// Whether a notice is the end of Codex's hidden title thread: its whole
+/// answer is the title it was asked for, `{"title": …}`, which Codex reads
+/// with no other field allowed.
+fn names_the_thread(notice: &Value) -> bool {
+    let Some(answer) = notice.get("last-assistant-message").and_then(Value::as_str) else {
+        return false;
+    };
+    let Ok(Value::Object(answer)) = serde_json::from_str::<Value>(answer) else {
+        return false;
+    };
+    answer.len() == 1 && answer.get("title").is_some_and(Value::is_string)
 }
 
 /// What Codex's window title says: waiting on the person, working, or
@@ -190,6 +207,29 @@ mod tests {
         );
         assert_eq!(translate(br#"{"type":"something-else"}"#), None);
         assert_eq!(translate(b"not json"), None);
+    }
+
+    #[test]
+    fn the_hidden_title_thread_s_end_is_not_the_session_s() {
+        // As Codex 0.162.1 sends it, a few seconds into the session's first turn.
+        let title = br#"{"type":"agent-turn-complete","thread-id":"019a-title","turn-id":"t0","cwd":"/work","client":"codex-tui","input-messages":["Generate a concise, single-line task title of at most 36 characters and under five words where possible.\n\nUser prompt:\nfix it"],"last-assistant-message":"{\"title\":\"Fix it\"}"}"#;
+        assert_eq!(translate(title), None);
+
+        // An answer that only mentions a title, or carries more, is a turn's.
+        for answer in [
+            r#"The title is \"Fix it\""#,
+            r#"{\"title\":\"Fix it\",\"done\":true}"#,
+            r#"{\"title\":7}"#,
+        ] {
+            let body = format!(
+                r#"{{"type":"agent-turn-complete","thread-id":"019a-thread","input-messages":["name it"],"last-assistant-message":"{answer}"}}"#
+            );
+            assert_eq!(
+                translate(body.as_bytes()),
+                Some((Some("019a-thread".to_owned()), HookEvent::TurnEnded)),
+                "{answer}"
+            );
+        }
     }
 
     #[test]
