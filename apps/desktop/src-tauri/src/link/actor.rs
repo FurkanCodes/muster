@@ -17,6 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use muster_client::{ClientError, Connection, FrameReceiver, FrameSender};
+use muster_core::colours::TerminalColours;
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame, Welcome};
 use muster_core::{SessionId, SessionStatus};
 use muster_model::Model;
@@ -85,6 +86,7 @@ pub(super) async fn run(
             },
             Some(event) = linked.recv() => actor.on_event(event),
             () = sleep_until(flush) => actor.flush(),
+            () = sleep_until(actor.output_at) => actor.flush_output(),
         }
     }
 }
@@ -124,9 +126,17 @@ struct Actor {
     looking: Looking,
     /// What the daemon was last told of it on this connection.
     told: Option<(bool, Option<SessionId>)>,
+    /// The colours of the window's terminals, as the webview's theme
+    /// draws them: told to each daemon that knows them, as it connects
+    /// and as they change, so a program asking its terminal is told them.
+    colours: Option<TerminalColours>,
     /// When the next patch is due, if one is.
     flush_at: Option<Instant>,
     last_flush: Option<Instant>,
+    /// When the terminals' held output is due, if any is held, and when it
+    /// was last handed on: at most once a frame (`ARC-25`).
+    output_at: Option<Instant>,
+    last_output: Option<Instant>,
 }
 
 impl Actor {
@@ -144,8 +154,11 @@ impl Actor {
             next_request: 1,
             looking: Looking::default(),
             told: None,
+            colours: None,
             flush_at: None,
             last_flush: None,
+            output_at: None,
+            last_output: None,
         }
     }
 
@@ -223,6 +236,12 @@ impl Actor {
                 self.streams.view_watch(session, watching);
                 self.send_streams();
             }
+            Request::Colours(colours) => {
+                if self.colours.as_ref() != Some(&colours) {
+                    self.colours = Some(colours);
+                    self.tell_colours();
+                }
+            }
             Request::Looking(looking) => {
                 let was_seen = self.looking.seen;
                 self.looking = looking;
@@ -265,6 +284,18 @@ impl Actor {
         }
     }
 
+    /// Tells the daemon the terminals' colours, if the webview has said
+    /// them and the daemon knows them (`ARC-09`).
+    fn tell_colours(&self) {
+        let knows = self
+            .linked
+            .as_ref()
+            .is_some_and(|linked| linked.version >= muster_core::colours::TERMINAL_PROTOCOL);
+        if let (true, Some(colours)) = (knows, &self.colours) {
+            self.send(ClientFrame::Colours(colours.clone()));
+        }
+    }
+
     // The daemon's frames, and the link coming and going.
 
     fn on_event(&mut self, event: LinkEvent) {
@@ -281,6 +312,7 @@ impl Actor {
                 self.streams.connected(self.connections);
                 self.send(ClientFrame::Subscribe);
                 self.tell_looking();
+                self.tell_colours();
             }
             LinkEvent::Frame(frame) => self.on_frame(*frame),
             LinkEvent::Lost(reason) => self.lost(reason),
@@ -336,6 +368,7 @@ impl Actor {
             | ServerFrame::Detached { .. }) => {
                 self.streams.on_frame(frame);
                 self.send_streams();
+                self.schedule_output();
                 self.schedule_flush_if_questions_changed();
             }
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
@@ -393,6 +426,29 @@ impl Actor {
             .last_flush
             .map_or(now, |last| (last + PATCH_EVERY).max(now));
         self.flush_at = Some(at);
+    }
+
+    /// Output is held for the webview: handed on now if none was this
+    /// frame, else a frame after the last, so a keystroke's echo is never
+    /// kept waiting and a flood is one message a frame.
+    fn schedule_output(&mut self) {
+        if self.output_at.is_some() || !self.streams.holds_output() {
+            return;
+        }
+        let now = Instant::now();
+        self.output_at = Some(
+            self.last_output
+                .map_or(now, |last| (last + PATCH_EVERY).max(now)),
+        );
+    }
+
+    /// Hands the webview's terminals the output held for them.
+    pub(super) fn flush_output(&mut self) {
+        self.output_at = None;
+        self.last_output = Some(Instant::now());
+        self.streams.flush_output();
+        // A terminal nobody reads any more is let go.
+        self.send_streams();
     }
 
     /// Sends the webview what changed since the last patch.

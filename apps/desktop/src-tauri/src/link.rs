@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use muster_core::SessionId;
+use muster_core::colours::TerminalColours;
 use muster_core::protocol::{Command, PixelSize, Reply, TermSize};
 use tokio::sync::{Notify, mpsc, oneshot};
 
@@ -110,6 +111,7 @@ enum Request {
         watching: bool,
     },
     Looking(Looking),
+    Colours(TerminalColours),
 }
 
 /// How the person looks at the window, as the webview last said.
@@ -265,6 +267,12 @@ impl Link {
     /// Whether the person is looking at an attached session.
     pub fn watch(&self, session: SessionId, watching: bool) -> Result<(), BridgeError> {
         self.ask(Request::Watch { session, watching })
+    }
+
+    /// The colours the window's terminals draw in, as its theme has them:
+    /// a program in a session asking its terminal's colours is told them.
+    pub fn colours(&self, colours: TerminalColours) -> Result<(), BridgeError> {
+        self.ask(Request::Colours(colours))
     }
 
     /// How the person looks at the window now.

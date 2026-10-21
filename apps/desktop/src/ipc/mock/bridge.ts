@@ -21,6 +21,7 @@ import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
+import type { TerminalColours } from "../generated/TerminalColours";
 import type { Workspace } from "../generated/Workspace";
 import { handleCommand } from "./commands";
 import { FlowWorld } from "./flows";
@@ -140,6 +141,13 @@ export class MockBridge implements Bridge {
 
   async showDaemonLog(): Promise<void> {
     this.logsShown += 1;
+  }
+
+  /** The terminals' colours the page last told, as the daemon keeps them. */
+  toldColours: TerminalColours | null = null;
+
+  async colours(colours: TerminalColours): Promise<void> {
+    this.toldColours = colours;
   }
 
   async command(command: Command): Promise<Reply> {

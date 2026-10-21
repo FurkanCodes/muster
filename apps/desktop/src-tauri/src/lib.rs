@@ -56,6 +56,7 @@ pub fn run() {
             commands::watch,
             commands::looking,
             commands::try_now,
+            commands::colours,
             daemon_log::show_daemon_log,
             ticket_url::open_ticket_url,
             sounds::hear,

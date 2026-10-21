@@ -9,8 +9,9 @@ import type { Bridge } from "../ipc/bridge";
 import { installQueueHistory } from "../screens/queue/history";
 import { createDaemon } from "../state/daemon";
 import { createUi } from "../state/ui";
+import { terminalColours } from "../terminal/colours";
 import { runClock } from "./clock";
-import { AppContext, type App as AppValue, useApp, useDaemon, useUi } from "./context";
+import { AppContext, type App as AppValue, useApp, useBridge, useDaemon, useUi } from "./context";
 import { installKeys } from "./keys";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
@@ -58,19 +59,27 @@ function useWiring(app: AppValue): void {
   }, [app]);
 }
 
+/**
+ * Draws the window in the person's theme, the system's where they chose
+ * it, and tells the daemon the colours its terminals are drawn in, so a
+ * program asking its terminal's is told them (terminal/colours.ts).
+ */
 function useTheme(): void {
   const theme = useUi((state) => state.theme);
+  const bridge = useBridge();
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
       const dark = theme === "dark" || (theme === "system" && media.matches);
-      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      const root = document.documentElement;
+      root.dataset.theme = dark ? "dark" : "light";
+      void bridge.colours(terminalColours(root)).catch(() => {});
     };
     apply();
     if (theme !== "system") return;
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [theme]);
+  }, [theme, bridge]);
 }
 
 function Screen() {

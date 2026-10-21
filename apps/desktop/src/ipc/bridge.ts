@@ -9,6 +9,7 @@ import type { Folders } from "./generated/desktop/Folders";
 import type { StateMessage } from "./generated/desktop/StateMessage";
 import type { Reply } from "./generated/Reply";
 import type { SessionId } from "./generated/SessionId";
+import type { TerminalColours } from "./generated/TerminalColours";
 
 export interface Bridge {
   /** Opens the link. Messages arrive on `onMessage`, in order, until `close`. */
@@ -45,6 +46,8 @@ export interface Bridge {
    * cannot, the app's Rust side sends nothing and reads no question.
    */
   looking(looking: boolean, focused: SessionId | null, seen: boolean): Promise<void>;
+  /** The colours the window's terminals draw in, for programs that ask their terminal's (`ClientFrame::Colours`). */
+  colours(colours: TerminalColours): Promise<void>;
   /** The folders in the folder `path` (absolute, or from `~`), to add one as a project. Rejects with why it cannot. */
   listFolders(path: string): Promise<Folders>;
   /** Tells `listener` the paths of what is dropped on the window, until the returned function is called. */
