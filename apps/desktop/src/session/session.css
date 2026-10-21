@@ -1,0 +1,37 @@
+/* The session pane, as the Spec board measures it: everything 20 from its
+   sides, the terminal 12 below the banner, This turn 12 below the terminal
+   and 16 above the status bar. */
+.session-pane {
+  min-width: var(--layout-detail-min);
+}
+.session-pane .mu-pane-title-row {
+  position: relative;
+}
+.session-banner {
+  flex: none;
+  margin: 0 var(--space-20) var(--space-12);
+}
+.session-terminal {
+  padding-bottom: 0;
+}
+.session-turn {
+  flex: none;
+  max-height: 35%;
+  margin: var(--space-12) var(--space-20) var(--space-16);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.session-turn .mu-pill {
+  max-width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+}
+.session-menu {
+  position: absolute;
+  top: calc(100% + var(--space-4));
+  right: 0;
+  z-index: var(--z-menu);
+}
+.session-menu hr.mu-menu-sep {
+  border: 0;
+}

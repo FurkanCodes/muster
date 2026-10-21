@@ -112,7 +112,8 @@ export class MockBridge implements Bridge {
       const name = typeof command === "string" ? command : Object.keys(command)[0];
       throw new BridgeFailure("invalid", `The mock daemon does not do ${name} yet`);
     }
-    return reply;
+    // A copy, as one that came over the wire: the page never holds the mock's own objects.
+    return structuredClone(reply);
   }
 
   async attach(
