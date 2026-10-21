@@ -11,13 +11,11 @@ import { useActions, useBridge } from "../../app/context";
 import type { Entry } from "../../ipc/generated/Entry";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import type { UndoPlan } from "../../ipc/generated/UndoPlan";
+import { useKeyLabel } from "../../keys/useKeymap";
 import { ago } from "../../lib/format";
 import { Button } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { entryLabel, oneLine, turnOf } from "./labels";
-
-/** The key that puts a turn back (`muster_core::keys`, PutBack). */
-export const PUT_BACK_KEY = "z";
 
 function failure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -114,6 +112,7 @@ function PlanDialog({
   const actions = useActions();
   const bridge = useBridge();
   const now = useNow();
+  const putBackKey = useKeyLabel("put_back");
   const [busy, setBusy] = useState<"files" | "branch" | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -139,7 +138,7 @@ function PlanDialog({
         throw new Error("The daemon did not say the files were put back.");
       const branch = reply.Undone.moved_branch ? ", and the branch with them" : "";
       actions.tell(
-        `The files are as they were before #${plan.number}${branch}. ${PUT_BACK_KEY} on #${reply.Undone.entry} brings them back.`,
+        `The files are as they were before #${plan.number}${branch}. ${putBackKey} on #${reply.Undone.entry} brings them back.`,
       );
       onDone(reply.Undone.entry);
     } catch (error) {

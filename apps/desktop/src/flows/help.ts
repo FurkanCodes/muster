@@ -1,4 +1,5 @@
-// Every key of the screen in view (`h`, or `?` from habit), as the TUI's
+// Every key of the screen in view (`h`, or `?` from habit), or of the
+// changes beside a session (`?` there), as the TUI's
 // help lists them (crates/muster-tui/src/app/help.rs): under headings, each
 // action by its keys as the person set them and in the words
 // `muster_core::keys` says it in, and the keys no setting changes. The
@@ -53,6 +54,10 @@ const WHAT: Record<KeyAction, string> = {
   update_plugin: "update the plugin, after showing what it runs then",
   remove_plugin: "remove the plugin, after asking",
   put_back: "on a turn, put the files back as before it, after asking",
+  changes_again: "ask git again",
+  close_changes: "back to the terminal",
+  leave_session: "back to the terminal",
+  changes_help: "these keys",
 };
 
 const fixed = (keys: string, what: string): Entry => ({ fixed: keys, what });
@@ -183,13 +188,36 @@ const SETTINGS: HelpSectionOf[] = [
   ["Anywhere", ANYWHERE],
 ];
 
-const BY_SCREEN: Record<ScreenId, HelpSectionOf[]> = {
+// The changes beside a session (crates/muster-tui/src/app/help.rs, CHANGES).
+const CHANGES: HelpSectionOf[] = [
+  [
+    "In the changes",
+    [
+      fixed("↑ ↓  j k", "choose a file or a turn; in a diff, scroll"),
+      fixed("⏎ → l", "its diff"),
+      fixed("PgUp PgDn", "a page"),
+      fixed("Home End", "the first or the last; in a diff, its top or bottom"),
+      fixed("n p", "in a diff, the next and the last hunk"),
+      fixed("⎋ ← h", "back from a diff; on the list, back to the terminal"),
+      fixed("⇥ ⇧⇥", "not committed, on the branch, turns"),
+      "changes_again",
+      "put_back",
+      "close_changes",
+      "leave_session",
+      "changes_help",
+    ],
+  ],
+  ["Anywhere", ANYWHERE],
+];
+
+const BY_SCREEN: Record<ScreenId | "changes", HelpSectionOf[]> = {
   "needs-you": QUEUE,
   "not-seen": QUEUE,
   working: QUEUE,
   all: SESSIONS,
   tickets: TICKETS,
   settings: SETTINGS,
+  changes: CHANGES,
 };
 
 /**
@@ -198,7 +226,7 @@ const BY_SCREEN: Record<ScreenId, HelpSectionOf[]> = {
  * action the person took every key from.
  */
 export function helpFor(
-  screen: ScreenId,
+  screen: ScreenId | "changes",
   preferences: Preferences | null,
   typed = "",
 ): HelpSection[] {

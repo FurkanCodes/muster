@@ -8,8 +8,8 @@ import type { Changes } from "../../ipc/generated/Changes";
 import type { FileChange } from "../../ipc/generated/FileChange";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import { Button } from "../../ui/controls";
-import { FileRow } from "../../ui/FileRow";
 import { TurnRow } from "../../ui/TurnRow";
+import { FileList } from "./FileList";
 import { commonFolder, entryLabel, oneLine } from "./labels";
 import type { Answer } from "./useReply";
 
@@ -51,7 +51,7 @@ function plural(count: number, one: string): string {
   return `${count} ${one}${count === 1 ? "" : "s"}`;
 }
 
-/** Files in a listbox; `rows` is the list the keys move through. */
+/** Files in a listbox, however many; `rows` is the list the keys move through. */
 function Files({
   files,
   label,
@@ -59,6 +59,7 @@ function Files({
   selected,
   onSelect,
   onOpen,
+  onDrawn,
 }: {
   files: readonly FileChange[];
   label: string;
@@ -66,22 +67,21 @@ function Files({
   selected: string | null;
   onSelect(path: string): void;
   onOpen(path: string): void;
+  onDrawn(): void;
 }) {
   const folder = commonFolder(files.map((file) => file.path));
   return (
     <>
-      <div ref={rows} role="listbox" aria-label={label} className="changes-list">
-        {files.map((file) => (
-          <FileRow
-            key={file.path}
-            file={file}
-            folder={folder}
-            selected={selected === file.path}
-            onSelect={() => onSelect(file.path)}
-            onOpen={() => onOpen(file.path)}
-          />
-        ))}
-      </div>
+      <FileList
+        files={files}
+        folder={folder}
+        label={label}
+        rows={rows}
+        selected={selected}
+        onSelect={onSelect}
+        onOpen={onOpen}
+        onDrawn={onDrawn}
+      />
       <p className="mu-meta changes-note">
         {folder ? (
           <>
@@ -103,6 +103,7 @@ export function ChangesList({
   onSelect,
   onOpen,
   onAgain,
+  onDrawn,
 }: {
   view: View;
   listing: Answer<Changes>;
@@ -112,6 +113,8 @@ export function ChangesList({
   onSelect(id: string): void;
   onOpen(id: string): void;
   onAgain(): void;
+  /** Called once a long list of files has drawn the rows in sight. */
+  onDrawn(): void;
 }) {
   if (view === "turns") {
     if (timeline.state !== "ready")
@@ -163,6 +166,7 @@ export function ChangesList({
         selected={selected}
         onSelect={onSelect}
         onOpen={onOpen}
+        onDrawn={onDrawn}
       />
     );
   if (changes.base === null)
@@ -199,6 +203,7 @@ export function ChangesList({
         selected={selected}
         onSelect={onSelect}
         onOpen={onOpen}
+        onDrawn={onDrawn}
       />
     </>
   );

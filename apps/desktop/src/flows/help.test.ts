@@ -12,6 +12,22 @@ describe("ARC-24 every key of the screen in view, as the TUI's help lists them",
     expect(headings("settings")).toEqual(["On the settings", "On the plugins", "Anywhere"]);
   });
 
+  it("lists the changes' keys, the person's, as the TUI's help over the changes does", () => {
+    expect(helpFor("changes", null).map((section) => section.heading)).toEqual([
+      "In the changes",
+      "Anywhere",
+    ]);
+    const preferences = { ...defaultPreferences(), keys: { changes_again: ["g"] } };
+    const changes = helpFor("changes", preferences)[0]?.entries ?? [];
+    expect(changes).toContainEqual({ keys: "g", what: "ask git again" });
+    expect(changes).toContainEqual({
+      keys: "z",
+      what: "on a turn, put the files back as before it, after asking",
+    });
+    expect(changes).toContainEqual({ keys: "d q", what: "back to the terminal" });
+    expect(changes).toContainEqual({ keys: "?", what: "these keys" });
+  });
+
   it("narrows to the keys whose keys or words hold what is typed, ignoring case", () => {
     expect(helpFor("all", null, "TIDY")).toEqual([
       {

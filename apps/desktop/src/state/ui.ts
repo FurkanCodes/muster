@@ -14,7 +14,8 @@ export type KeysIn = "list" | "terminal" | "dialog";
 
 export type Theme = "dark" | "light" | "system";
 
-export type PaletteMode = "commands" | "keys";
+/** The palette: everything to go to or do, every key of the screen, or every key in the changes. */
+export type PaletteMode = "commands" | "keys" | "changes";
 
 /** What the session pane shows: the terminal, or the workspace's changes. */
 export type PaneMode = "terminal" | "changes";
@@ -55,7 +56,7 @@ export interface UiState {
   sidebarFolded: boolean;
   theme: Theme;
   paletteOpen: boolean;
-  /** What the palette shows: everything to go to or do, or every key of the screen (`h`). */
+  /** What the palette shows: everything to go to or do, or every key of the screen (`h`) or of the changes (`?` there). */
   paletteMode: PaletteMode;
   /** The dialog open over the window, if any (src/flows). */
   flow: Flow | null;

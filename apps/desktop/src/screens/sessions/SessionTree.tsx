@@ -115,15 +115,19 @@ export function SessionTree({
 
   // Scrolled to as it is selected, drawn or not.
   const at = selected === undefined ? -1 : rows.findIndex((row) => row.id === selected);
-  const [followed, setFollowed] = useState<string | undefined>(undefined);
-  if (selected !== followed) {
-    setFollowed(selected);
-    if (at >= 0) setTop(inSight(top, height, places[at] ?? 0, places[at + 1] ?? 0));
-  }
+  // The list's own scroll first and what is drawn after it, so an update a
+  // scroll made earlier never puts it back.
+  const followed = useRef<string | undefined>(undefined);
+  const from = places[at] ?? 0;
+  const to = places[at + 1] ?? 0;
   useLayoutEffect(() => {
     const box = list.current;
-    if (box && Math.abs(box.scrollTop - top) > 1) box.scrollTop = top;
-  }, [top]);
+    if (!box || followed.current === selected || at < 0) return;
+    followed.current = selected;
+    const next = inSight(box.scrollTop, box.clientHeight || height, from, to);
+    if (box.scrollTop !== next) box.scrollTop = next;
+    setTop(next);
+  }, [selected, at, from, to, height]);
 
   const draw = (row: TreeRow, index: number): ReactNode => {
     const level = levelOf(row);
@@ -161,7 +165,9 @@ export function SessionTree({
       tabIndex={0}
       aria-label="Projects, worktrees and sessions"
       aria-activedescendant={at >= start && at < end && selected ? rowId(selected) : undefined}
-      onScroll={(event) => setTop(event.currentTarget.scrollTop)}
+      // Read as the update is applied: a scroll's update can come after a
+      // key's that moved the list since, and must not put it back.
+      onScroll={() => setTop((was) => list.current?.scrollTop ?? was)}
     >
       <div aria-hidden="true" style={{ height: places[start] ?? 0 }} />
       {rows.slice(start, end).map((row, offset) => draw(row, start + offset))}

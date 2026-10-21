@@ -447,3 +447,54 @@ describe("ARC-24 other work on the same files", () => {
     expect(screen.queryByText("Overlap")).toBeNull();
   });
 });
+
+describe("ARC-24 the changes' actions answer the person's keys", () => {
+  it("asks again, puts back, lists the keys and goes back on the keys set, and hints them", async () => {
+    const bridge = new MockBridge(workingDay());
+    bridge.world.preferences.keys = {
+      changes_again: ["g"],
+      put_back: ["u"],
+      close_changes: ["x"],
+      changes_help: ["ctrl-h"],
+    };
+    const { app } = setup(bridge);
+    await screen.findByRole("option", { name: "modified: src/link.rs" });
+    await waitFor(() =>
+      expect(app.ui.getState().hints).toContainEqual({ key: "g", does: "ask git again" }),
+    );
+    expect(app.ui.getState().hints).toContainEqual({ key: "x", does: "back to the terminal" });
+    const listings = () => sent(bridge, "WorkspaceChanges").length;
+    expect(listings()).toBe(1);
+    await userEvent.keyboard("r");
+    expect(listings()).toBe(1);
+    await userEvent.keyboard("g");
+    await waitFor(() => expect(listings()).toBe(2));
+
+    await userEvent.click(screen.getByRole("button", { name: /^Turns/ }));
+    expect(app.ui.getState().hints).toContainEqual({ key: "u", does: "put back" });
+    await screen.findByRole("option", { name: /Codex, turn 3/ });
+    await userEvent.keyboard("z");
+    expect(sent(bridge, "UndoPlan")).toEqual([]);
+    await userEvent.keyboard("u");
+    await waitFor(() => expect(sent(bridge, "UndoPlan")).toHaveLength(1));
+    await userEvent.click(await screen.findByRole("button", { name: "Keep it" }));
+
+    await userEvent.keyboard("{Control>}h{/Control}");
+    expect(app.ui.getState()).toMatchObject({ paletteOpen: true, paletteMode: "changes" });
+    act(() => app.actions.openPalette(false));
+    await userEvent.keyboard("d");
+    expect(app.ui.getState().pane).toBe("changes");
+    await userEvent.keyboard("x");
+    expect(app.ui.getState().pane).toBe("terminal");
+  });
+
+  it("⇧Q, as in a session, goes back to the terminal; ? lists the changes' keys", async () => {
+    const { app } = setup();
+    await screen.findByRole("option", { name: "modified: src/link.rs" });
+    await userEvent.keyboard("?");
+    expect(app.ui.getState()).toMatchObject({ paletteOpen: true, paletteMode: "changes" });
+    act(() => app.actions.openPalette(false));
+    await userEvent.keyboard("Q");
+    expect(app.ui.getState().pane).toBe("terminal");
+  });
+});

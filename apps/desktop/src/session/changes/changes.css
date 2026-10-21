@@ -85,3 +85,14 @@
     max-height: 40%;
   }
 }
+/* A list of files draws only the rows in sight, each one height (FileList.tsx's ROW): it scrolls itself. */
+.changes-files {
+  display: block;
+  flex: 1 1 auto;
+  min-height: calc(3 * (var(--size-control-sm) + var(--space-2)));
+  overflow-y: auto;
+}
+.changes-files > .mu-file {
+  height: var(--size-control-sm);
+  margin-bottom: var(--space-2);
+}
