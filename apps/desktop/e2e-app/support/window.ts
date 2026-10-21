@@ -75,6 +75,14 @@ export async function typeInTerminal(line: string): Promise<void> {
   await browser.keys("Enter");
 }
 
+/**
+ * A session's id as the window knows it: `muster` prints ids with their
+ * kind in front (`ses_…`), the protocol carries them bare.
+ */
+export function bareId(id: string): string {
+  return id.replace(/^[a-z]+_/, "");
+}
+
 /** The text of `session`'s terminal, as e2e builds expose it (src/terminal/testing.ts). */
 export async function terminalText(session: string): Promise<string> {
   return browser.execute(
@@ -82,7 +90,7 @@ export async function terminalText(session: string): Promise<string> {
       (
         window as unknown as { __musterTerminals?: Record<string, () => string> }
       ).__musterTerminals?.[id]?.() ?? "",
-    session,
+    bareId(session),
   );
 }
 
@@ -99,10 +107,20 @@ export async function goTo(screen: Screen): Promise<void> {
 }
 
 /** The screen the sidebar says is shown. */
-export async function shownScreen(): Promise<string> {
+export async function shownScreen(): Promise<Screen | null> {
   const current = await $('nav[aria-label="Screens"] [aria-current="page"]');
-  return (await current.getText()).replace(/\d+$/, "").trim();
+  const text = await current.getText();
+  return SCREENS.find((screen) => text.includes(screen)) ?? null;
 }
+
+const SCREENS: readonly Screen[] = [
+  "Needs you",
+  "Not seen",
+  "Working",
+  "All sessions",
+  "Tickets",
+  "Settings",
+];
 
 /** The flock in the title bar: working, waiting on the person, done. */
 export async function flock(): Promise<string> {

@@ -88,14 +88,14 @@ export function project(name: string, state: Status = status()): StatusProject |
 
 /** Waits until `read` gives something truthy, and returns it. */
 export async function until<T>(
-  read: () => T | undefined | null | false,
+  read: () => T | undefined | null | false | Promise<T | undefined | null | false>,
   what: string,
   timeout = 20_000,
 ): Promise<T> {
   let got: T | undefined | null | false;
   await browser.waitUntil(
-    () => {
-      got = read();
+    async () => {
+      got = await read();
       return Boolean(got);
     },
     { timeout, interval: 100, timeoutMsg: `waited ${timeout / 1000} s for ${what}` },
@@ -122,7 +122,7 @@ export function untilSession(title: string, wanted: string, timeout?: number) {
       const found = session(title);
       return found?.status === wanted ? found : null;
     },
-    `${title} to be ${wanted} (it is ${session(title)?.status ?? "not there"})`,
+    `${title} to be ${wanted}`,
     timeout,
   );
 }
