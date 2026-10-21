@@ -25,8 +25,8 @@ describe("a question, as the Rust side reads it off a session's screen", () => {
     const world = workingDay();
     const asking = derive(world, new Map()).questions;
     expect(Object.keys(asking).sort()).toEqual([ulid(101), ulid(200)]);
+    expect(asking[ulid(101)]?.[0]).toBe("  Allow Codex to run this command?");
     expect(asking[ulid(200)]).toEqual([
-      "✦ Two worktrees build lamphaus at once, each with its own cache.",
       "  Where should the shared cache live?",
       "  › ~/.gradle/caches",
       "    ~/code/lamphaus/.gradle-shared",

@@ -65,10 +65,12 @@ describe("Muster's window over its own daemon", () => {
     muster("session", "start", "app", "--harness", "codex", "--title", TITLE);
   });
 
-  it("connects and shows the session that asks the person", async () => {
+  it("connects and shows the session that asks the person, with its question", async () => {
     await expect($(`h2=${TITLE}`)).toBeDisplayed();
     await expect($('[aria-label="0 working, 1 waiting on you, 0 done"]')).toBeExisting();
     await expect($('section[aria-label="Terminal"]')).toBeDisplayed();
+    // Its question, as the link reads it off the stand-in's screen.
+    await expect($(".mu-question-ask")).toHaveText("Shall the stand-in go on?");
   });
 
   it("types into the session's terminal, and what is typed reaches its program", async () => {

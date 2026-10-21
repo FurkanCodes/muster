@@ -343,6 +343,7 @@ async fn where_nothing_answers_the_link_starts_the_daemon_once() {
                 .command()
                 .args(["daemon", "--detach"])
                 .env("SSH_CONNECTION", "test")
+                .stderr(std::process::Stdio::null())
                 .status()
                 .map(|_| ())
         })
