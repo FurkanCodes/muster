@@ -126,7 +126,9 @@
 //! version 44 plugins' hooks (`PluginDetails::hooks`, a field older
 //! clients pass over, and a preview with hooks refused to them,
 //! `plugins::shown_to`; `PluginCommand::TryHooks`, sent only to a daemon
-//! of 44 or later, answered with `Reply::HooksTried`).
+//! of 44 or later, answered with `Reply::HooksTried`); version 45 where
+//! each coding agent is installed and its version (`Command::Agents`, sent
+//! only to a daemon of 45 or later, answered with `Reply::Agents`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -135,6 +137,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod agents;
 mod older;
 pub mod plugins;
 mod terminal;
@@ -153,7 +156,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 44;
+pub const PROTOCOL_VERSION: u32 = 45;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -519,6 +522,12 @@ pub enum Command {
     /// suggests for it. Answered with [`Reply::Models`]. Sent only to a
     /// daemon of 37 or later.
     ListModels { agent: String },
+    /// Where each coding agent Muster can start is installed, on the
+    /// daemon's own `PATH`, and the version it says it is: Muster's own and
+    /// those the person added, each program run with `--version`, never
+    /// anything else. Answered with [`Reply::Agents`]. Sent only to a
+    /// daemon of 45 or later ([`agents::AGENTS_FOUND_PROTOCOL`]).
+    Agents,
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with
@@ -645,6 +654,9 @@ pub enum Reply {
     /// The models an agent offers, as it listed them or as Muster
     /// suggests. From protocol 37.
     Models(Vec<String>),
+    /// Where each coding agent is installed, and its version. From
+    /// protocol 45.
+    Agents(Vec<agents::AgentFound>),
     /// What a workspace's work has changed.
     Changes(Changes),
     /// One changed file's diff.

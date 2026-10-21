@@ -416,6 +416,8 @@ impl Supervisor {
                 Command::ProjectSettings { project } => self.project_settings(project, reply),
                 // It asks an agent's program.
                 Command::ListModels { agent } => self.list_models(&agent, reply),
+                // It runs each agent's program.
+                Command::Agents => self.find_agents(reply),
                 Command::ChangeSetting { project, change } => {
                     self.change_setting(project, &change, reply);
                 }
@@ -684,6 +686,7 @@ impl Supervisor {
             | Command::CloseIssue { .. }
             | Command::ProjectSettings { .. }
             | Command::ListModels { .. }
+            | Command::Agents
             | Command::ChangeSetting { .. }
             | Command::StartFromIssue { .. }
             | Command::StartRun { .. }
@@ -792,6 +795,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::ChangePreference(_) => "change preference",
         Command::ReadPreferences => "read preferences",
         Command::ListModels { .. } => "list models",
+        Command::Agents => "agents",
         Command::AddProject { .. } => "add project",
         Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",
