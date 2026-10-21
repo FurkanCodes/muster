@@ -60,4 +60,32 @@ describe("ARC-24 Dialog", () => {
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+  it("⏎ in a text area is a new line; ⌘⏎ there does the acting answer", () => {
+    const onAccept = vi.fn();
+    render(
+      <Dialog
+        title="New session"
+        onClose={vi.fn()}
+        onAccept={onAccept}
+        actions={<Button>Start</Button>}
+      >
+        <textarea aria-label="First prompt" />
+      </Dialog>,
+    );
+    const prompt = screen.getByRole("textbox", { name: "First prompt" });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+    expect(onAccept).not.toHaveBeenCalled();
+    fireEvent.keyDown(prompt, { key: "Enter", metaKey: true });
+    expect(onAccept).toHaveBeenCalledTimes(1);
+  });
+  it("⇥ goes round what is in it and never leaves it", () => {
+    render(<Close />);
+    const keep = screen.getByRole("button", { name: "Keep it open" });
+    const close = screen.getByRole("button", { name: "Close ticket" });
+    close.focus();
+    fireEvent.keyDown(close, { key: "Tab" });
+    expect(keep).toHaveFocus();
+    fireEvent.keyDown(keep, { key: "Tab", shiftKey: true });
+    expect(close).toHaveFocus();
+  });
 });
