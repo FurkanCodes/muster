@@ -4,6 +4,7 @@
 
 mod commands;
 pub mod contract;
+mod folders;
 
 /// Starts the app and blocks until it quits.
 pub fn run() {
@@ -12,6 +13,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
     let result = builder
         .invoke_handler(tauri::generate_handler![
+            folders::list_folders,
             commands::link_open,
             commands::command,
             commands::attach,

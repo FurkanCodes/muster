@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the app's own webview may do: its window, and Muster's own commands. Nothing reaches the file system, the shell or the network.",
+  "description": "What the app's own webview may do: its window, Muster's own commands, and the names of the folders the person browses to when adding a project. Nothing else reaches the file system, the shell or the network.",
   "windows": ["main"],
   "permissions": [
+    "allow-list-folders",
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-focus",
