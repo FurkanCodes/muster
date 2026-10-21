@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { MockBridge } from "../src/ipc/mock/bridge";
 
-// All sessions, its panels and full screen, end to end over the mock daemon
+// Sessions, its panels and full screen, end to end over the mock daemon
 // (the AllSessions, Working, FullScreen and PluginPanel boards).
 
 declare global {
@@ -18,8 +18,8 @@ const region = (page: Page, name: string) => page.getByRole("region", { name, ex
 async function allSessions(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Needs you" })).toBeVisible();
-  await page.keyboard.press("Meta+2");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await page.keyboard.press("Meta+1");
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
 }
 
 /** What a session's terminal shows (xterm draws on the GPU). */
@@ -113,7 +113,7 @@ test("ARC-24 folds: ← → and e, a click on the triangle, the folded mark, kep
   await expect(page.locator(".mu-note")).toHaveText("No sessions here to fold away.");
   // The folds are the window's own, kept across a restart.
   await page.reload();
-  await page.keyboard.press("Meta+2");
+  await page.keyboard.press("Meta+1");
   await expect(line(page, "fix/resize-under-load")).toHaveAttribute("aria-expanded", "false");
   await expect(line(page, "lamphaus")).toHaveAttribute("aria-expanded", "false");
 });

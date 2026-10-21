@@ -118,7 +118,7 @@ export async function terminalText(session: string): Promise<string> {
 }
 
 /** The sidebar's screens, by the words on them. */
-export type Screen = "Needs you" | "Not seen" | "Working" | "All sessions" | "Tickets" | "Settings";
+export type Screen = "Sessions" | "Needs you" | "Tickets" | "Settings";
 
 /** Goes to `screen` from the sidebar, as the person clicks it. */
 export async function goTo(screen: Screen): Promise<void> {
@@ -136,14 +136,7 @@ export async function shownScreen(): Promise<Screen | null> {
   return SCREENS.find((screen) => text.includes(screen)) ?? null;
 }
 
-const SCREENS: readonly Screen[] = [
-  "Needs you",
-  "Not seen",
-  "Working",
-  "All sessions",
-  "Tickets",
-  "Settings",
-];
+const SCREENS: readonly Screen[] = ["Sessions", "Needs you", "Tickets", "Settings"];
 
 /** The flock in the title bar: working, waiting on the person, done. */
 export async function flock(): Promise<string> {
@@ -278,9 +271,9 @@ export async function untilRowSays(name: string, doing: RegExp): Promise<void> {
   );
 }
 
-/** Selects the row named `name` on All sessions, as a click on it does. */
+/** Selects the row named `name` on Sessions, as a click on it does. */
 export async function selectRow(name: string): Promise<void> {
-  await goTo("All sessions");
+  await goTo("Sessions");
   const found = row(name);
   await found.click();
   await browser.waitUntil(async () => (await found.getAttribute("aria-selected")) === "true", {

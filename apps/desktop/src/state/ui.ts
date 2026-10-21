@@ -8,7 +8,13 @@ import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { keep, kept } from "./kept";
 
-export type ScreenId = "needs-you" | "not-seen" | "working" | "all" | "tickets" | "settings";
+export type ScreenId = "all" | "needs-you" | "tickets" | "settings";
+
+/** The tabs in the terminal UI's order, as Tab and ⇧Tab go round them (`next_tab`). */
+export const TABS: readonly ScreenId[] = ["all", "needs-you", "tickets", "settings"];
+
+/** The screens narrowing to a project filters: elsewhere, choosing one goes to its sessions. */
+const NARROWED: readonly ScreenId[] = ["all", "needs-you"];
 
 /** Where typed keys go: the list (Muster's keys), a terminal (its program), or a dialog. */
 export type KeysIn = "list" | "terminal" | "dialog";
@@ -34,7 +40,7 @@ export interface Note {
 
 export interface UiState {
   screen: ScreenId;
-  /** The project the queues and tree are narrowed to, if any. */
+  /** The project *Sessions* and *Needs you* are narrowed to, if any. */
   project: ProjectId | null;
   /** Each screen's selected item (a session, ticket or setting id). */
   selected: Partial<Record<ScreenId, string>>;
@@ -74,6 +80,8 @@ export interface UiState {
 
 export interface UiActions {
   show(screen: ScreenId): void;
+  /** Goes `by` tabs on round {@link TABS}, as Tab (1) and ⇧Tab (-1) do. */
+  cycle(by: number): void;
   select(screen: ScreenId, id: string | undefined): void;
   narrow(project: ProjectId | null): void;
   keysTo(keysIn: KeysIn): void;
@@ -134,7 +142,20 @@ export function createUi(): { store: UiStore; actions: UiActions } {
   const actions: UiActions = {
     show: (screen) => set({ screen, keysIn: "list", fullScreen: null }),
     select: (screen, id) => set((state) => ({ selected: { ...state.selected, [screen]: id } })),
-    narrow: (project) => set((state) => ({ project: state.project === project ? null : project })),
+    cycle: (by) =>
+      set((state) => {
+        const at = Math.max(0, TABS.indexOf(state.screen));
+        const screen = TABS[(at + by + TABS.length) % TABS.length] ?? state.screen;
+        return { screen, keysIn: "list", fullScreen: null };
+      }),
+    narrow: (project) =>
+      set((state) => {
+        const chosen = state.project === project ? null : project;
+        // Tickets and Settings are not narrowed: a project chosen there shows its sessions.
+        if (chosen && !NARROWED.includes(state.screen))
+          return { project: chosen, screen: "all", keysIn: "list", fullScreen: null };
+        return { project: chosen };
+      }),
     keysTo: (keysIn) => set({ keysIn }),
     showTerminal: (terminal) => set({ terminal }),
     showPane: (pane) => set({ pane, changesTurn: null }),

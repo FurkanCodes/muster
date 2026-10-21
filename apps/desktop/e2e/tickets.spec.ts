@@ -185,7 +185,7 @@ test("PRD-01 Assign board: Tab chooses agent, arrows choose base, Enter starts o
   ).toBe(1);
   await page.evaluate(() => window.__muster.release("StartFromIssue"));
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
   const command = await page.evaluate(() =>
     window.__muster.sent.find((c) => typeof c !== "string" && "StartFromIssue" in c),
   );
@@ -224,7 +224,9 @@ test("ARC-24 shared tickets ask which project and remember it", async ({ page })
   await page.keyboard.press("Enter");
   // Assigned once the window shows the agent: until the daemon answers, the
   // dialog, busy, still holds the keys, ⌘3 among them.
-  await expect(page.getByRole("heading", { name: "All sessions", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Sessions", level: 1, exact: true }),
+  ).toBeVisible();
   await expect(dialog).toHaveCount(0);
   await tickets(page);
   await page.keyboard.press("a");
@@ -245,7 +247,7 @@ test("PRD-01 a refused start stays in the dialog and can be tried again", async 
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Codex is not installed");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
 });
 
 test("PRD-01 close asks first; Escape keeps it, refusal keeps it, success offers cleanup", async ({
@@ -433,7 +435,7 @@ test("PRD-01 another agent starts in its own worktree on the chosen branch", asy
   await expect(page.getByRole("dialog", { name: "Assign an agent to #214" })).toBeVisible();
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
   expect(
     await page.evaluate(() =>
       window.__muster.sent.find((c) => typeof c !== "string" && "StartFromIssue" in c),

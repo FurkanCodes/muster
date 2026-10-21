@@ -13,7 +13,7 @@ import { whenKnown } from "../state/whenKnown";
 import { labelOf } from "./keymap";
 
 /** The screens whose lines are sessions, worktrees and projects. */
-export const SESSION_LISTS: readonly ScreenId[] = ["needs-you", "not-seen", "working", "all"];
+export const SESSION_LISTS: readonly ScreenId[] = ["all", "needs-you"];
 
 /** A session's terminal at the size the pane starts it at; it settles to the pane's own on show. */
 export const START_SIZE = { cols: 100, rows: 30 };

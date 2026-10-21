@@ -1,4 +1,4 @@
-// *All sessions* (the AllSessions board; design system: SessionTree): every
+// *Sessions* (the AllSessions board; design system: SessionTree): every
 // project, its worktrees and their sessions, as the model lists them, and
 // beside the tree the selected session's pane, live, with its shell and
 // plugins' panels. The keys are the terminal UI's: ↑↓ (k j) move, ← → fold
@@ -11,9 +11,9 @@
 import { useEffect } from "react";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
+import { Narrowed } from "../../app/Narrowed";
 import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
-import { agentOf } from "../../lib/agents";
 import { toggleShell } from "../../panels/beside";
 import { usePanelHandlers } from "../../panels/usePanelKeys";
 import * as byHand from "../../session/byHand";
@@ -104,7 +104,6 @@ export default function AllSessions() {
     actions.showPane("terminal");
     actions.showTerminal(stored.id);
     actions.keysTo("terminal");
-    actions.tell(`Typing in ${stored.title}. Every key goes to ${agentOf(stored.harness).name}.`);
   };
   const out = () => {
     if (!selected) return;
@@ -254,10 +253,11 @@ export default function AllSessions() {
 
   return (
     <>
-      <section className="sessions-column" aria-label="All sessions">
+      <section className="sessions-column" aria-label="Sessions">
         <div className="mu-queue-head">
-          <h1 className="mu-queue-title">All sessions</h1>
+          <h1 className="mu-queue-title">Sessions</h1>
           <span className="mu-meta">Every project, its worktrees, and their sessions.</span>
+          <Narrowed />
         </div>
         {!loaded ? (
           <div className="mu-empty" role="status">

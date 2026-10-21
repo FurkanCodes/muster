@@ -108,21 +108,42 @@ describe("The window as a whole", () => {
     expect(await meter.getAttribute("aria-label")).toMatch(/^Memory \d+ percent used$/);
   });
 
-  it("goes to each screen from the sidebar and on ⌘1, ⌘2, ⌘3 and ⌘,", async () => {
-    for (const screen of ["Not seen", "Working", "All sessions", "Tickets", "Settings"] as const) {
+  it("goes to each tab from the sidebar, on ⌘1 to ⌘4 and ⌘,, and round them on Tab and ⇧Tab", async () => {
+    for (const screen of ["Sessions", "Tickets", "Settings", "Needs you"] as const) {
       await goTo(screen);
       expect(await shownScreen()).toBe(screen);
     }
     for (const [key, screen] of [
-      ["⌘1", "Needs you"],
-      ["⌘2", "All sessions"],
+      ["⌘1", "Sessions"],
+      ["⌘2", "Needs you"],
       ["⌘3", "Tickets"],
+      ["⌘4", "Settings"],
       ["⌘,", "Settings"],
-      ["⌘1", "Needs you"],
+      ["⌘2", "Needs you"],
     ] as const) {
       await pressOnWindow(key);
       expect(await shownScreen()).toBe(screen);
     }
+    // The terminal UI's order: Sessions, Needs you, Tickets, Settings.
+    for (const screen of ["Tickets", "Settings", "Sessions", "Needs you"] as const) {
+      await pressOnWindow("Tab");
+      expect(await shownScreen()).toBe(screen);
+    }
+    // The embedded driver sends ⇧ and a named key apart (a plain Tab), so
+    // ⇧Tab goes as the person's keyboard makes it: one keydown, Shift held.
+    await browser.execute(() => {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Tab",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(await shownScreen()).toBe("Sessions");
+    await pressOnWindow("⌘2");
   });
 
   it("lists the projects with their sessions, narrows the screens to one, and folds on ⌘\\", async () => {
@@ -130,13 +151,16 @@ describe("The window as a whole", () => {
     const appItem = sidebar.$("button*=app");
     await expect(appItem).toHaveText(expect.stringContaining("2"));
     await expect(sidebar.$("button*=other")).toBeDisplayed();
-    // Narrowed to the other project, All sessions lists none of app's.
+    // Narrowed to the other project, Sessions lists none of app's.
     muster("session", "start", "other", "--harness", "claude", "--title", "Other agent");
-    await goTo("All sessions");
+    await goTo("Sessions");
     await expect(inMain("Other agent")).toBeDisplayed();
     await expect(inMain("Asking agent")).toBeDisplayed();
     await sidebar.$("button*=other").click();
     await expect(sidebar.$("button*=other")).toHaveAttribute("aria-pressed", "true");
+    // A filter said on the list it filters, Sessions still the tab shown.
+    await expect($("button=Only other")).toBeDisplayed();
+    expect(await shownScreen()).toBe("Sessions");
     await expect(inMain("Asking agent")).not.toBeDisplayed();
     await expect(inMain("Other agent")).toBeDisplayed();
     await sidebar.$("button*=other").click();
@@ -220,7 +244,7 @@ describe("The window as a whole", () => {
   });
 
   it("streams nothing while it cannot be seen, and comes back current", async () => {
-    await pressOnWindow("⌘1");
+    await pressOnWindow("⌘2");
     const asking = await agentOf("Asking agent");
     await ask(asking, "Shall it go on?");
     await untilSession("Asking agent", "needs_you");

@@ -35,7 +35,7 @@ async function open(page: Page) {
   await expect(page.getByRole("img", { name: /working, .* waiting on you/ })).toBeVisible();
 }
 
-const TITLES: Record<string, string> = { "needs-you": "Needs you", all: "All sessions" };
+const TITLES: Record<string, string> = { "needs-you": "Needs you", all: "Sessions" };
 
 /** Selects `item` on `screen`, as that screen's list would, once the screen is shown. */
 async function select(page: Page, screen: string, item: string) {
@@ -148,7 +148,7 @@ test.describe("ARC-24 the command palette", () => {
     await page.keyboard.type("flaky");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog", { name: "Command palette" })).toBeHidden();
-    await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
     // The session is selected: R renames it, in place on the list.
     await page.keyboard.press("Shift+R");
     await expect(page.getByRole("textbox", { name: "Session name" })).toHaveValue(
@@ -263,7 +263,7 @@ test.describe("PRD-03 a new session", () => {
         },
       },
     ]);
-    await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
   });
 
   test("a new worktree on a branch, then a shell in it, which takes no prompt", async ({

@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { MockBridge } from "../src/ipc/mock/bridge";
 
-// Needs you, Not seen and Working end to end in WebKit, over the mock
+// Needs you end to end in WebKit, over the mock
 // daemon (window.__muster), in each state the Triage and Working boards draw.
 
 declare global {
@@ -146,38 +146,35 @@ test("ARC-24 All clear says how many work, with the agents at work below it", as
   await expect(page.getByText("The session you select shows here, live.")).toBeVisible();
 });
 
-test("ARC-24 Not seen and Working are the queue filtered, and every queue narrows to a project", async ({
+test("ARC-24 the agents at work follow those waiting, longest first, and a project narrows the queue as a filter said on it", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: /^Not seen/ }).click();
-  await expect(page.getByRole("heading", { name: "Not seen", level: 1 })).toBeVisible();
-  await expect(queue(page).getByRole("option")).toHaveText([
-    /Resize settles/,
-    /Explain the release/,
-  ]);
-  await page.getByRole("button", { name: /^Working/ }).click();
-  await expect(page.getByText("Agents at work now, the longest first.")).toBeVisible();
   // The longest at work first, as the model orders them (`Derived.working`).
   await expect(queue(page).getByRole("option")).toHaveText([
+    /Sketch the Tauri/,
+    /Share the Gradle/,
+    /Resize settles/,
+    /Explain the release/,
     /Upgrade AGP/,
     /Split view\.rs/,
     /Flaky resize/,
     /Sign-up page/,
   ]);
-  const worker = option(page, "Upgrade AGP to 9.1");
-  await expect(worker).toHaveClass(/mu-row--two/);
-  await expect(worker).toContainText("lamphaus");
-  await page.getByRole("button", { name: /^lamphaus/ }).click();
-  await expect(queue(page).getByRole("option")).toHaveText([/Upgrade AGP/]);
-  await page.getByRole("button", { name: /Needs you/ }).click();
+  const lamphaus = page.getByRole("button", { name: /^lamphaus/ });
+  await lamphaus.click();
   await expect(queue(page).getByRole("option")).toHaveCount(3);
-  await page.getByRole("button", { name: /^lamphaus/ }).click();
+  await expect(lamphaus).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Needs you/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await page.getByRole("button", { name: "Only lamphaus" }).click();
+  await expect(queue(page).getByRole("option")).toHaveCount(8);
+  await expect(lamphaus).toHaveAttribute("aria-pressed", "false");
   await page.getByRole("button", { name: /^kep-site/ }).click();
   await expect(page.getByRole("heading", { name: "All clear" })).toBeVisible();
-  await page.getByRole("button", { name: /^Not seen/ }).click();
-  await expect(page.getByRole("heading", { name: "All seen" })).toBeVisible();
-  await page.getByRole("button", { name: /^Working/ }).click();
-  await expect(page.getByRole("heading", { name: "No agent at work" })).toBeVisible();
+  await page.getByRole("button", { name: /^kep-site/ }).click();
+  await expect(queue(page).getByRole("option")).toHaveCount(8);
 });
 
 test("ARC-24 ↑↓ move, ⏎ gives the live terminal the keys, ⇧Q gives them back", async ({ page }) => {
@@ -261,7 +258,7 @@ test("ARC-24 l goes to the session that needed the person last", async ({ page }
   );
   await page.keyboard.press("k");
   await page.keyboard.press("l");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
 });
 
 test("ARC-24 R renames in place, ⎋ gives up, and the more menu offers the same with its keys", async ({
@@ -305,8 +302,7 @@ test("ARC-24 b opens the session's pull request in the browser, and says when no
   await expect(statusBar(page)).toContainText(
     "No pull request from this branch is known; o opens one.",
   );
-  // On Not seen and Working too.
-  await page.getByRole("button", { name: /^Working/ }).click();
+  // On an agent at work too.
   await option(page, "Flaky resize test under load").click();
   await page.keyboard.press("b");
   await expect

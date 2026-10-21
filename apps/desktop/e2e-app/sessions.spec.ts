@@ -9,7 +9,7 @@ import { opened } from "./support/record";
 import { commit, ghCalls, git, read, repository } from "./support/repos";
 import { bareId, goTo, pressOnWindow, theWindow } from "./support/window";
 
-// All sessions and its panels in the real app over a real daemon (PRD §6,
+// Sessions and its panels in the real app over a real daemon (PRD §6,
 // PRD-15, ARC-24): the tree and its folds, kept across a crash of the app
 // and a ⌘Q; the shell on T and a plugin's panel on its key, beside the
 // agent and on one line in the tree; the panels dragged, resized and moved
@@ -72,7 +72,7 @@ async function roomForPanels(): Promise<void> {
   await browser.setWindowRect(40, 40, 1680, 1000);
 }
 
-describe("All sessions and its panels, over the real daemon", () => {
+describe("Sessions and its panels, over the real daemon", () => {
   before(async () => {
     await roomForPanels();
     await until(() => status().running, "the app to start its daemon", 30_000);
@@ -91,7 +91,7 @@ describe("All sessions and its panels, over the real daemon", () => {
     agent = await askingSession("web", TITLE, "Shall I begin?", { branch: "feature/web" });
     worktree = agent.cwd;
     muster("plugin", "link", panelPlugin(), "--yes");
-    await goTo("All sessions");
+    await goTo("Sessions");
   });
 
   it("ARC-24 lists every project, its worktrees and their sessions as the daemon holds them", async () => {
@@ -120,7 +120,7 @@ describe("All sessions and its panels, over the real daemon", () => {
     await restartApp();
     await theWindow();
     await roomForPanels();
-    await goTo("All sessions");
+    await goTo("Sessions");
     await expect(line("feature/web")).toHaveAttribute("aria-expanded", "false");
     await line("feature/web").click();
     await pressOnWindow("→");
@@ -135,7 +135,7 @@ describe("All sessions and its panels, over the real daemon", () => {
     await restartApp({}, "quit");
     await theWindow();
     await roomForPanels();
-    await goTo("All sessions");
+    await goTo("Sessions");
     await expect(line("web")).toHaveAttribute("aria-expanded", "false");
     await expect(line("feature/web")).not.toBeExisting();
     // The daemon ran on, and its session with it.

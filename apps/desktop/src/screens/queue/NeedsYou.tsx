@@ -1,5 +1,5 @@
 import { QueueScreen } from "./QueueScreen";
 
 export default function Screen() {
-  return <QueueScreen area="needs-you" />;
+  return <QueueScreen />;
 }

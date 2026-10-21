@@ -54,10 +54,8 @@ const CHORDS: Record<string, string> = {
 };
 
 const SCREENS: readonly [ScreenId, string, string | null][] = [
-  ["needs-you", "Needs you", "⌘1"],
-  ["not-seen", "Not seen", null],
-  ["working", "Working", null],
-  ["all", "All sessions", "⌘2"],
+  ["all", "Sessions", "⌘1"],
+  ["needs-you", "Needs you", "⌘2"],
   ["tickets", "Tickets", "⌘3"],
   ["settings", "Settings", "⌘,"],
 ];

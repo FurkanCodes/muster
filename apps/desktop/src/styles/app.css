@@ -39,10 +39,6 @@ body {
   overflow-y: auto;
 }
 
-.app-sidebar-gap {
-  flex: 1;
-}
-
 .app-sidebar-project {
   color: var(--text);
 }
@@ -52,7 +48,13 @@ body {
   font-size: 10px;
 }
 
-.app-nav-working,
+/* A project narrowing the lists is a filter, not the tab shown: outlined, never filled. */
+.app-sidebar-filter[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+
 .app-flock-working {
   color: var(--working);
 }
@@ -178,4 +180,30 @@ html[data-visible="false"] *::after {
 
 ::selection {
   background: var(--surface-lit);
+}
+
+/* Under a narrowed list's title: the project it shows, and ✕ to show every project. */
+.app-narrowed {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-top: var(--space-6);
+  height: var(--size-badge);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-xs);
+  border: var(--stroke-hairline) solid var(--accent);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.app-narrowed:hover {
+  background: var(--surface-raised);
+}
+
+/* While a terminal has the keys the status bar says so in the accent, as its frame is lit. */
+.app-statusbar [data-typing] {
+  color: var(--accent);
 }

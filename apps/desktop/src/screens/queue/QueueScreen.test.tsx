@@ -86,25 +86,11 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
   });
 });
 
-describe("ARC-24 Not seen and Working are the queue filtered", () => {
-  it("shows finishes not seen on Not seen, and agents at work on two lines on Working", async () => {
+describe("ARC-24 narrowing to a project, a filter said where it filters", () => {
+  it("narrows the queue to the project chosen, says so under the title, and shows every project again", async () => {
     await opened();
-    await userEvent.click(screen.getByRole("button", { name: /^Not seen/ }));
-    await waitFor(() =>
-      expect(names()).toEqual(["Resize settles once on release", "Explain the release script"]),
-    );
-    expect(screen.getByRole("heading", { name: "Not seen" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Working/ }));
-    await waitFor(() => expect(options()).toHaveLength(4));
-    const worker = within(queue()).getByRole("option", { name: "Upgrade AGP to 9.1" });
-    expect(worker).toHaveClass("mu-row--two");
-    expect(worker).toHaveTextContent("running ./gradlew assembleDebuglamphaus8m");
-    expect(within(queue()).queryByRole("presentation")).not.toBeInTheDocument();
-  });
-
-  it("narrows each to the project chosen, with what each says when empty", async () => {
-    await opened();
-    await userEvent.click(screen.getByRole("button", { name: /^lamphaus/ }));
+    const lamphaus = screen.getByRole("button", { name: /^lamphaus/ });
+    await userEvent.click(lamphaus);
     await waitFor(() =>
       expect(names()).toEqual([
         "Share the Gradle cache across worktrees",
@@ -112,16 +98,35 @@ describe("ARC-24 Not seen and Working are the queue filtered", () => {
         "Upgrade AGP to 9.1",
       ]),
     );
-    await userEvent.click(screen.getByRole("button", { name: /^lamphaus/ }));
+    // A filter, not the tab shown: Needs you is still the page.
+    expect(lamphaus).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /Needs you/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    const chip = screen.getByRole("button", { name: "Only lamphaus" });
+    await userEvent.click(chip);
+    await waitFor(() => expect(options()).toHaveLength(8));
+    expect(lamphaus).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "Only lamphaus" })).not.toBeInTheDocument();
+  });
+
+  it("says All clear in a project where nothing waits", async () => {
+    await opened();
     await userEvent.click(screen.getByRole("button", { name: /^kep-site/ }));
     expect(await screen.findByRole("heading", { name: "All clear" })).toBeInTheDocument();
     expect(
       screen.getByText("No agent is at work. Muster will show them here when they need you."),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Not seen/ }));
-    expect(await screen.findByRole("heading", { name: "All seen" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Working/ }));
-    expect(await screen.findByRole("heading", { name: "No agent at work" })).toBeInTheDocument();
+  });
+
+  it("goes to the project's sessions when chosen on a tab it does not narrow", async () => {
+    await opened();
+    await userEvent.click(screen.getByRole("button", { name: /Tickets/ }));
+    await screen.findByRole("heading", { name: "Tickets", level: 1 });
+    await userEvent.click(screen.getByRole("button", { name: /^lamphaus/ }));
+    expect(await screen.findByRole("heading", { name: "Sessions", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Only lamphaus" })).toBeInTheDocument();
   });
 });
 
@@ -189,7 +194,7 @@ describe("ARC-24 the queue's keys", () => {
     expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
   });
 
-  it("l goes to the session that needed the person last, here or on All sessions", async () => {
+  it("l goes to the session that needed the person last, here or on Sessions", async () => {
     const { bridge } = await opened();
     await userEvent.keyboard("l");
     expect(hints()).toContain("No session has needed you since Muster started.");
@@ -199,7 +204,7 @@ describe("ARC-24 the queue's keys", () => {
     act(() => bridge.setStatus(ulid(201), { state: "finished" }));
     await userEvent.keyboard("k");
     await userEvent.keyboard("l");
-    expect(await screen.findByRole("heading", { name: "All sessions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
   });
 
   it("PRD-14 d shows the changes; z puts the newest turn back, never while its agent works", async () => {

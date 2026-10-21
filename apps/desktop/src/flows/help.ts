@@ -3,7 +3,7 @@
 // help lists them (crates/muster-tui/src/app/help.rs): under headings, each
 // action by its keys as the person set them and in the words
 // `muster_core::keys` says it in, and the keys no setting changes. The
-// window's own keys (⌘1, ⌘K…) take the place of the terminal's tabs.
+// window's own keys (⌘1, ⌘K…) go to the tabs too.
 
 import type { Preferences } from "../ipc/generated/Preferences";
 import type { ScreenId } from "../state/ui";
@@ -24,6 +24,8 @@ type Entry = KeyAction | [KeyAction, string] | { fixed: string; what: string };
 
 const WHAT: Record<KeyAction, string> = {
   help: "these keys",
+  next_tab: "the next tab: Sessions, Needs you, Tickets, Settings",
+  previous_tab: "the tab before",
   add_project: "add a project",
   new_worktree: "a new worktree for the project",
   new_session: "a new session in the worktree, or a project's checkout",
@@ -65,9 +67,12 @@ const fixed = (keys: string, what: string): Entry => ({ fixed: keys, what });
 
 const ANYWHERE: Entry[] = [
   fixed("⌘K", "go to a session, a ticket or a setting, or do something"),
-  fixed("⌘1", "Needs you"),
-  fixed("⌘2", "All sessions"),
+  "next_tab",
+  "previous_tab",
+  fixed("⌘1", "Sessions"),
+  fixed("⌘2", "Needs you"),
   fixed("⌘3", "Tickets"),
+  fixed("⌘4", "Settings"),
   fixed("⌘,", "Settings"),
   fixed("⌘\\", "fold the sidebar away, or bring it back"),
   "fold_list",
@@ -213,10 +218,8 @@ const CHANGES: HelpSectionOf[] = [
 ];
 
 const BY_SCREEN: Record<ScreenId | "changes", HelpSectionOf[]> = {
-  "needs-you": QUEUE,
-  "not-seen": QUEUE,
-  working: QUEUE,
   all: SESSIONS,
+  "needs-you": QUEUE,
   tickets: TICKETS,
   settings: SETTINGS,
   changes: CHANGES,

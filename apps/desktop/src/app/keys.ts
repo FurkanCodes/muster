@@ -113,9 +113,11 @@ const GLOBAL: Readonly<Record<string, (app: App) => void>> = {
     if (app.daemon.store.getState().link.state === "up")
       app.actions.openPalette(!app.ui.getState().paletteOpen);
   },
-  "⌘1": (app) => app.actions.show("needs-you"),
-  "⌘2": (app) => app.actions.show("all"),
+  // The tabs in the terminal UI's order (Sessions, Needs you, Tickets, Settings).
+  "⌘1": (app) => app.actions.show("all"),
+  "⌘2": (app) => app.actions.show("needs-you"),
   "⌘3": (app) => app.actions.show("tickets"),
+  "⌘4": (app) => app.actions.show("settings"),
   "⌘,": (app) => app.actions.show("settings"),
   "⌘\\": (app) => app.actions.foldSidebar(),
 };

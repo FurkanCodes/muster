@@ -10,7 +10,7 @@ import { screenKeys } from "../keys/keymap";
 import { KEY_SCREENS, useKeymap } from "../keys/useKeymap";
 import { installQueueHistory } from "../screens/queue/history";
 import { createDaemon } from "../state/daemon";
-import { createUi } from "../state/ui";
+import { createUi, type UiActions } from "../state/ui";
 import { terminalColours } from "../terminal/colours";
 import { runClock } from "./clock";
 import {
@@ -95,10 +95,20 @@ function useTheme(): void {
   }, [theme, bridge, actions]);
 }
 
+/** What the tab keys do, as the terminal UI's: Tab and ⇧Tab go round, 1–4 go to one. */
+const TAB_KEYS: Readonly<Record<string, (actions: UiActions) => void>> = {
+  next_tab: (actions) => actions.cycle(1),
+  previous_tab: (actions) => actions.cycle(-1),
+  sessions_tab: (actions) => actions.show("all"),
+  needs_you_tab: (actions) => actions.show("needs-you"),
+  tickets_tab: (actions) => actions.show("tickets"),
+  settings_tab: (actions) => actions.show("settings"),
+};
+
 /**
  * The window's own actions on the person's keys, beneath every screen's:
- * `fold_list` folds the sidebar, as ⌘\\ does (the terminal UI's ⌃\\ folds
- * its list).
+ * the tab keys, and `fold_list`, which folds the sidebar as ⌘\\ does (the
+ * terminal UI's ⌃\\ folds its list).
  */
 function WindowKeys() {
   const screen = useUi((state) => state.screen);
@@ -107,6 +117,8 @@ function WindowKeys() {
   const handlers: Record<string, () => void> = {};
   for (const [dom, action] of screenKeys(map, KEY_SCREENS[screen])) {
     if (action === "fold_list") handlers[dom] = () => actions.foldSidebar();
+    const tab = TAB_KEYS[action];
+    if (tab) handlers[dom] = () => tab(actions);
   }
   useKeys(handlers, { beneath: true });
   return null;

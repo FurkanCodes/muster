@@ -132,7 +132,7 @@ describe("The flows", () => {
       await expect(option(palette(), "Palette agent")).toBeDisplayed();
       await press("Enter");
       await until(noDialog, "the palette to close");
-      expect(await shownScreen()).toBe("All sessions");
+      expect(await shownScreen()).toBe("Sessions");
       await expect(
         $('//*[@role="treeitem"][starts-with(@aria-label, "Palette agent,")]'),
       ).toHaveAttribute("aria-selected", "true");
@@ -169,7 +169,7 @@ describe("The flows", () => {
 
   describe("every key", () => {
     it("h lists the keys of the screen in view, narrows by words, and ⏎ closes it", async () => {
-      await pressOnWindow("⌘1");
+      await pressOnWindow("⌘2");
       await pressOnWindow("h");
       await expect(help()).toBeDisplayed();
       const headings = await help()
@@ -391,19 +391,12 @@ describe("The flows", () => {
         await press("Escape");
         await until(noDialog, `${title} to close`);
       };
-      await pressOnWindow("⌘1");
+      await pressOnWindow("⌘2");
       await run("add a project", "Add a project");
       await opens("Add a project");
       await run("new session", "Start a new session");
       await opens("New session");
-      for (const screen of [
-        "Needs you",
-        "Not seen",
-        "Working",
-        "All sessions",
-        "Tickets",
-        "Settings",
-      ] as const) {
+      for (const screen of ["Sessions", "Needs you", "Tickets", "Settings"] as const) {
         await run(`go to ${screen}`, `Go to ${screen}`);
         expect(await shownScreen()).toBe(screen);
       }

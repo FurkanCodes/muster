@@ -418,7 +418,7 @@ test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other w
   );
   // The other workspace's session, in All sessions (its tree is feature/desktop-sessions').
   await page.keyboard.press("1");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
 });
 
 test("ARC-25 asked again as the workspace moves, without polling", async ({ page }) => {

@@ -21,7 +21,7 @@ test("keys go between screens", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Tickets" })).toBeVisible();
   await page.keyboard.press("Meta+,");
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await page.keyboard.press("Meta+1");
+  await page.keyboard.press("Meta+2");
   await expect(page.getByRole("heading", { name: "Needs you" })).toBeVisible();
 });
 

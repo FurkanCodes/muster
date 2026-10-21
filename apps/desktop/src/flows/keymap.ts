@@ -33,6 +33,8 @@ export type KeyAction =
   | "move_down"
   | "last_alarm"
   | "fold_list"
+  | "next_tab"
+  | "previous_tab"
   | "refresh_tickets"
   | "another_agent"
   | "ticket_in_browser"

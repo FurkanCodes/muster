@@ -62,6 +62,9 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
     const fit = new FitAddon();
     xterm.loadAddon(fit);
     xterm.open(element);
+    // Out of Tab's way: Tab goes round the tabs, as in the terminal UI, and
+    // a terminal takes the keys only on ⏎ or a click, never by Tab.
+    xterm.textarea?.setAttribute("tabindex", "-1");
     try {
       const webgl = new WebglAddon();
       // Lost after a sleep or under memory pressure: fall back to the DOM renderer.
@@ -156,6 +159,15 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
       className={`mu-term app-terminal ${compact ? "mu-term--compact" : ""} ${hasKeys ? "has-keys" : ""}`}
       aria-label="Terminal"
       onClick={() => {
+        actions.showTerminal(session);
+        actions.keysTo("terminal");
+      }}
+      // Wherever its input got the focus from, the window says the terminal
+      // has the keys, so what the window says and where keys go never part.
+      onFocus={() => {
+        const state = ui.getState();
+        if (state.keysIn === "terminal" && state.terminal === session) return;
+        if (state.keysIn === "dialog") return;
         actions.showTerminal(session);
         actions.keysTo("terminal");
       }}

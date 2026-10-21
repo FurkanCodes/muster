@@ -2,8 +2,7 @@
 // QueueItem, QueueRow): a session asking something is an item with its
 // question; one that finished unseen a two-line row with its branch, what
 // its work comes to and its pull request; one at work a row saying what it
-// is doing, on one line under *Needs you* and on two on *Working*, where
-// every project's agents mix.
+// is doing, on one line.
 
 import { type ReactNode, useEffect } from "react";
 import { useNow } from "../../app/clock";
@@ -17,7 +16,7 @@ import { branchOf, projectColour } from "../../state/selectors";
 import { Hint } from "../../ui/controls";
 import { AgentLogo, Branch, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
 import { changedInSight, stamp } from "./history";
-import { type QueueArea, sectionOf } from "./queue";
+import { sectionOf } from "./queue";
 
 /** The option's id in the list, for `aria-activedescendant`. */
 export function optionId(session: SessionId): string {
@@ -114,38 +113,17 @@ function Finished({ session }: { session: Session }) {
   );
 }
 
-function Working({ session, lines }: { session: Session; lines: "one" | "two" }) {
-  const { project, colour } = useWhere(session);
+function Working({ session }: { session: Session }) {
   const what = doing(session);
-  if (lines === "one") {
-    return (
-      <>
-        <StatusMark kind="working" />
-        <AgentLogo harness={session.harness} />
-        <span className="mu-cut queue-name" title={session.title}>
-          {session.title}
-        </span>
-        <span className="mu-meta mu-cut queue-doing" title={what}>
-          {what}
-        </span>
-        <Age since={session.status_since} />
-      </>
-    );
-  }
   return (
     <>
       <StatusMark kind="working" />
       <AgentLogo harness={session.harness} />
-      <span className="mu-row-text">
-        <span className="mu-cut" title={session.title}>
-          {session.title}
-        </span>
-        <span className="mu-row-line mu-meta">
-          <span className="mu-cut" title={what}>
-            {what}
-          </span>
-          {project ? <span className={`mu-p${colour}`}>{project}</span> : null}
-        </span>
+      <span className="mu-cut queue-name" title={session.title}>
+        {session.title}
+      </span>
+      <span className="mu-meta mu-cut queue-doing" title={what}>
+        {what}
       </span>
       <Age since={session.status_since} />
     </>
@@ -154,13 +132,11 @@ function Working({ session, lines }: { session: Session; lines: "one" | "two" })
 
 export function QueueEntry({
   id,
-  area,
   selected,
   resting,
   onPick,
 }: {
   id: SessionId;
-  area: QueueArea;
   selected: boolean;
   /** Selected while the keys are elsewhere (the terminal, a dialog). */
   resting: boolean;
@@ -183,9 +159,8 @@ export function QueueEntry({
     look = "mu-item";
     content = <Asking session={session} keys={selected && !resting} />;
   } else if (section === "working") {
-    const lines = area === "working" ? "two" : "one";
-    look = lines === "two" ? "mu-row mu-row--two" : "mu-row";
-    content = <Working session={session} lines={lines} />;
+    look = "mu-row";
+    content = <Working session={session} />;
   } else {
     look = "mu-row mu-row--two";
     content = <Finished session={session} />;

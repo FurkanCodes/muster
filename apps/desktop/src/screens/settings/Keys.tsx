@@ -21,7 +21,7 @@ import { Footnote, Page, SettingRow } from "./Row";
 /** This window's own keys, the same on every screen: set in no file, so never the person's. */
 const WINDOW_KEYS: readonly { what: string; keys: readonly string[] }[] = [
   { what: "Go to a session or run a command", keys: ["⌘K"] },
-  { what: "Needs you, All sessions, Tickets", keys: ["⌘1", "⌘2", "⌘3"] },
+  { what: "Sessions, Needs you, Tickets, Settings", keys: ["⌘1", "⌘2", "⌘3", "⌘4"] },
   { what: "Settings", keys: ["⌘,"] },
   { what: "Fold the sidebar", keys: ["⌘\\"] },
 ];

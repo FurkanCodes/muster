@@ -18,7 +18,7 @@ import {
   untilRowSays,
 } from "./support/window";
 
-// Needs you, Not seen and Working in the real app over a real daemon
+// Needs you in the real app over a real daemon
 // (PRD-01, ARC-24): the queue's sections in the model's order, the keys on
 // the selected session, its terminal, the banner, This turn from a real
 // turn of a stand-in agent, and what the list does to a session, each
@@ -71,7 +71,7 @@ async function turn(title: string, launch: Launch, files: Record<string, string>
   await finish(launch);
 }
 
-describe("Needs you, Not seen and Working, over the real daemon", () => {
+describe("Needs you, over the real daemon", () => {
   before(async () => {
     await until(() => status().running, "the app to start its daemon", 30_000);
     repo = repository("app");
@@ -100,10 +100,6 @@ describe("Needs you, Not seen and Working, over the real daemon", () => {
     expect(heads).toEqual(["Asking you", "Finished, not seen", "Working"]);
     expect(session("Done unseen")?.unseen).toBe(true);
     await untilFlock(2, 1, 1);
-    // Working is the agents at work alone, in the daemon's own order.
-    await goTo("Working");
-    await untilShown(["Long at work", "Lately at work"], "Working");
-    await goTo("Needs you");
   });
 
   it("PRD-01 the asking session's pane says what it waits for, over its live terminal", async () => {
@@ -129,23 +125,24 @@ describe("Needs you, Not seen and Working, over the real daemon", () => {
     await untilShown(["Asks first", "Long at work", "Lately at work"]);
   });
 
-  it("PRD-01 Not seen lists what finished while the person looked elsewhere, until it is shown", async () => {
+  it("PRD-01 what finished while the person looked elsewhere waits in Needs you until it is shown", async () => {
     agents.later = await startAgent("app", "Finished later");
     await work(agents.later);
     await finish(agents.later);
     await untilSession("Finished later", "finished");
     await until(() => session("Finished later")?.unseen, "the daemon to keep it as news");
-    await goTo("Not seen");
-    await untilShown(["Finished later"], "Not seen");
+    await untilShown(["Asks first", "Finished later", "Long at work", "Lately at work"]);
+    await pressOnWindow("j");
     await untilSelected("Finished later");
     await until(() => session("Finished later")?.unseen === false, "its news to be seen");
-    await goTo("Needs you");
+    await pressOnWindow("k");
     await untilSelected("Asks first");
   });
 
   it("ARC-24 ⏎ gives the terminal the keys, typing reaches the agent, and Q gives them back", async () => {
     await pressOnWindow("Enter");
     await expect(statusBar()).toHaveText(expect.stringContaining("give the keys back"));
+    await expect(statusBar()).toHaveText(expect.stringContaining("Typing in Asks first."));
     await typeInTerminal("touch typed-from-the-queue");
     await until(
       () => existsSync(join(repo, "typed-from-the-queue")),
@@ -153,6 +150,7 @@ describe("Needs you, Not seen and Working, over the real daemon", () => {
     );
     await pressOnWindow("Q");
     await expect(statusBar()).toHaveText(expect.stringContaining("rename"));
+    await expect(statusBar()).not.toHaveText(expect.stringContaining("Typing in"));
   });
 
   it("ARC-24 l goes to the session that came to need the person last", async () => {
@@ -189,8 +187,8 @@ describe("Needs you, Not seen and Working, over the real daemon", () => {
     await untilSession("Asks, renamed", "exited");
     const id = session("Asks, renamed")?.id ?? "";
     expect(launches(id)).toHaveLength(1);
-    // Ended, it is no longer in Needs you: All sessions holds it.
-    await goTo("All sessions");
+    // Ended, it is no longer in Needs you: Sessions holds it.
+    await goTo("Sessions");
     const line = $(`[role="treeitem"][id="tree-${bareId(id)}"]`);
     // r on a session the window still shows at work says so and starts nothing.
     await untilRowSays("Asks, renamed", /^(ended|exited)/);

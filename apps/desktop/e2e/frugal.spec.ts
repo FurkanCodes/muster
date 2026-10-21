@@ -17,7 +17,8 @@ const running = () =>
 test("ARC-25 with no agent at work, nothing in the window moves", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("img", { name: /4 working/ })).toBeVisible();
-  expect(await page.evaluate(running)).toBeGreaterThan(0);
+  // The working rows' marks spin while their agents work.
+  await expect.poll(() => page.evaluate(running)).toBeGreaterThan(0);
   await page.evaluate(() => {
     for (const n of [100, 103, 201, 400]) {
       window.__muster.setStatus(`01JD0000000000000000000${n}`, { state: "finished" });
