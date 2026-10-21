@@ -24,17 +24,22 @@ export type KeyHandlers = Readonly<Record<string, (event: KeyboardEvent) => void
 // handlers are always its latest without registering again on every render.
 const stack: { current: KeyHandlers }[] = [];
 
-/** Adds `handlers` while the calling component is shown; the newest wins. */
-export function useKeys(handlers: KeyHandlers): void {
+/**
+ * Adds `handlers` while the calling component is shown; the newest wins.
+ * `beneath` puts them under every screen's, whenever either came: the
+ * window's flows (src/flows) answer a key only where no screen does.
+ */
+export function useKeys(handlers: KeyHandlers, { beneath = false } = {}): void {
   const ref = useRef(handlers);
   ref.current = handlers;
   useEffect(() => {
-    stack.push(ref);
+    if (beneath) stack.unshift(ref);
+    else stack.push(ref);
     return () => {
       const at = stack.lastIndexOf(ref);
       if (at >= 0) stack.splice(at, 1);
     };
-  }, []);
+  }, [beneath]);
 }
 
 function editable(target: EventTarget | null): boolean {
@@ -83,9 +88,9 @@ export function installKeys(app: App): () => void {
     const ui = app.ui.getState();
     if (ui.note?.error) app.actions.clearNote();
 
-    // A dialog keeps the keys (design system: Dialog): nothing behind it
-    // moves, but ⌘K puts the command palette away.
-    if (document.querySelector("dialog[open]")) {
+    // A dialog or the palette keeps the keys (design system: Dialog):
+    // nothing behind it moves, but ⌘K puts the palette away.
+    if (ui.keysIn === "dialog" || ui.paletteOpen) {
       if (chord === "⌘K" && ui.paletteOpen) {
         event.preventDefault();
         app.actions.openPalette(false);
@@ -105,7 +110,7 @@ export function installKeys(app: App): () => void {
       }
       return;
     }
-    if (ui.keysIn === "dialog" || ui.paletteOpen || editable(event.target)) return;
+    if (editable(event.target)) return;
 
     for (let at = stack.length - 1; at >= 0; at -= 1) {
       const handler = stack[at]?.current[chord];

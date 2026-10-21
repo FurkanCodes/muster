@@ -1,17 +1,38 @@
-// The detail pane beside a list: which session, where it runs, and its live
-// terminal (design system: PaneHeader, Terminal). The queue branch adds the
-// needs-you banner and This turn; the changes branch fills ChangesView.
+// The detail pane beside a list (design system: PaneHeader, NeedsYouBanner,
+// Terminal, ThisTurn): which session, where it runs and what it uses, what
+// it waits for while it asks, its live terminal, and what its newest turn
+// changed. The changes branch fills ChangesView; the sessions branch the
+// shell and full screen.
 
-import { lazy, Suspense } from "react";
-import { useDaemon, useUi } from "../app/context";
+import { lazy, Suspense, useState } from "react";
+import { useActions, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { agentOf } from "../lib/agents";
 import { spend } from "../lib/format";
 import { branchOf, projectColour } from "../state/selectors";
-import { Terminal } from "../terminal/Terminal";
+import { Button, IconButton } from "../ui/controls";
 import { AgentLogo, Branch, PullRequest } from "../ui/status";
+import { NeedsYouBanner } from "./NeedsYouBanner";
+import { type MenuItem, SessionMenu } from "./SessionMenu";
+import { ThisTurn } from "./ThisTurn";
+import "./session.css";
 
 const ChangesView = lazy(() => import("./changes/ChangesView"));
+// xterm is the heaviest part of the window: loaded once a terminal shows (ARC-25).
+const Terminal = lazy(() =>
+  import("../terminal/Terminal").then((module) => ({ default: module.Terminal })),
+);
+
+/** "212 MB, 3% CPU": what the session's processes use, as last measured. */
+function Usage({ session }: { session: SessionId }) {
+  const usage = useDaemon((state) => {
+    const found = state.resources?.sessions.find((measured) => measured.session === session);
+    return found
+      ? `${Math.round(found.memory_bytes / 1e6)} MB, ${Math.round(found.cpu_permille / 10)}% CPU`
+      : null;
+  });
+  return usage ? <span>{usage}</span> : null;
+}
 
 function PaneMeta({ session }: { session: SessionId }) {
   const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
@@ -36,25 +57,73 @@ function PaneMeta({ session }: { session: SessionId }) {
       <Branch branch={branch} project={project} colour={colour} />
       <span>{agentOf(harness).name}</span>
       {tokens === null ? null : <span>{spend(tokens, cost)}</span>}
+      <Usage session={session} />
       {pr ? <PullRequest pr={pr} /> : null}
     </div>
   );
 }
 
-export function SessionPane({ session }: { session: SessionId }) {
+export function SessionPane({
+  session,
+  menu = [],
+}: {
+  session: SessionId;
+  /** What the list's keys do to the session, offered again in the more menu. */
+  menu?: readonly MenuItem[];
+}) {
+  const actions = useActions();
+  const [menuOpen, setMenuOpen] = useState(false);
   const title = useDaemon((state) => state.sessions[session]?.title ?? "");
   const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
   const workspace = useDaemon((state) => state.sessions[session]?.workspace ?? null);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const mode = useUi((state) => state.pane);
   return (
-    <section className="mu-pane app-pane" aria-label={title}>
+    <section className="mu-pane app-pane session-pane" aria-label={title}>
       <div className="mu-pane-head">
         <div className="mu-pane-title-row">
           <AgentLogo harness={harness} size="lg" />
           <h2 className={`mu-pane-title ${hasKeys ? "app-pane-title--keys" : ""}`} title={title}>
             {title}
           </h2>
+          <div className="mu-pane-actions">
+            {/* The shell beside the session and full screen are feature/desktop-sessions'. */}
+            <Button
+              disabled
+              title="Shell in this workspace (T): comes with panels beside the session"
+            >
+              <span className="mu-mono" aria-hidden="true">
+                ❯
+              </span>
+              Shell
+            </Button>
+            <Button
+              icon="changes"
+              title="Changes (d)"
+              aria-pressed={mode === "changes"}
+              onClick={() => actions.showPane(mode === "changes" ? "terminal" : "changes")}
+            >
+              Changes
+            </Button>
+            <IconButton
+              icon="expand"
+              label="Full screen"
+              disabled
+              title="Full screen (f): comes with panels beside the session"
+            />
+            {menu.length ? (
+              <IconButton
+                icon="more"
+                label="More"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(!menuOpen)}
+              />
+            ) : null}
+          </div>
+          {menuOpen ? (
+            <SessionMenu label={title} items={menu} onClose={() => setMenuOpen(false)} />
+          ) : null}
         </div>
         <PaneMeta session={session} />
       </div>
@@ -63,9 +132,15 @@ export function SessionPane({ session }: { session: SessionId }) {
           <ChangesView workspace={workspace} />
         </Suspense>
       ) : (
-        <div className="app-pane-terminal">
-          <Terminal session={session} />
-        </div>
+        <>
+          <NeedsYouBanner session={session} />
+          <div className="app-pane-terminal session-terminal">
+            <Suspense fallback={null}>
+              <Terminal session={session} />
+            </Suspense>
+          </div>
+          {workspace ? <ThisTurn key={workspace} workspace={workspace} /> : null}
+        </>
       )}
     </section>
   );

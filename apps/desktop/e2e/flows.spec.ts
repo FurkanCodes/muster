@@ -19,9 +19,10 @@ const MUSTER = id(1);
 type Mock = {
   sent: unknown[];
   world: { projects: unknown[]; workspaces: unknown[]; sessions: unknown[]; preferences: unknown };
-  flows: { holdExits: boolean; unreadable: Record<string, string> };
-  tell(parts: unknown): void;
-  exitHeld(): void;
+  flows: { unreadable: Record<string, string> };
+  publish(parts: unknown): void;
+  hold(command: string): void;
+  release(command: string): void;
   drop(paths: string[]): void;
   setLink(link: unknown): void;
   setStatus(session: string, status: unknown): void;
@@ -31,10 +32,12 @@ type Mock = {
 
 async function open(page: Page) {
   await page.goto("/");
-  await expect(page.getByRole("img", { name: /working/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /working, .* waiting on you/ })).toBeVisible();
 }
 
-/** Selects `item` on `screen`, as that screen's list would. */
+const TITLES: Record<string, string> = { "needs-you": "Needs you", all: "All sessions" };
+
+/** Selects `item` on `screen`, as that screen's list would, once the screen is shown. */
 async function select(page: Page, screen: string, item: string) {
   await page.evaluate(
     ([screen, item]) => {
@@ -48,6 +51,7 @@ async function select(page: Page, screen: string, item: string) {
     },
     [screen, item],
   );
+  await expect(page.getByRole("heading", { name: TITLES[screen], exact: true })).toBeVisible();
 }
 
 async function sent(page: Page, name: string): Promise<unknown[]> {
@@ -175,9 +179,9 @@ test.describe("ARC-24 the command palette", () => {
         ...(mock.world.preferences as object),
         keys: { rename: ["ctrl-e"], help: ["?"] },
       };
-      mock.tell({ preferences });
+      mock.publish({ preferences });
     });
-    await select(page, "needs-you", SKETCH);
+    await select(page, "all", SKETCH);
     await page.keyboard.press("Shift+R");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.keyboard.press("Control+e");
@@ -265,6 +269,7 @@ test.describe("PRD-03 a new session", () => {
     await open(page);
     await page.keyboard.press("n");
     const dialog = page.getByRole("dialog", { name: "New session" });
+    await dialog.getByRole("button", { name: "A new worktree" }).click();
     await dialog.getByRole("textbox", { name: /Branch/ }).fill("not a branch");
     await dialog.getByRole("radio", { name: /Claude Code/ }).focus();
     await page.keyboard.press("ArrowRight");
@@ -422,7 +427,8 @@ test.describe("PRD-01 adding a project", () => {
 test.describe("PRD-09 the session dialogs", () => {
   test("R renames, refusing an empty name before asking", async ({ page }) => {
     await open(page);
-    await select(page, "needs-you", SKETCH);
+    // On Needs you the queue renames in place; the list of all sessions asks.
+    await select(page, "all", SKETCH);
     await page.keyboard.press("Shift+R");
     const dialog = page.getByRole("dialog", { name: "Rename the session" });
     const name = dialog.getByRole("textbox", { name: "Name" });
@@ -448,7 +454,7 @@ test.describe("PRD-09 the session dialogs", () => {
   }) => {
     await open(page);
     await page.evaluate(() => {
-      (window as unknown as { __muster: Mock }).__muster.flows.holdExits = true;
+      (window as unknown as { __muster: Mock }).__muster.hold("StopSession");
     });
     await select(page, "all", FLAKY);
     await page.keyboard.press("x");
@@ -470,7 +476,9 @@ test.describe("PRD-09 the session dialogs", () => {
     );
     expect(await sent(page, "StopSession")).toEqual([{ StopSession: { session: FLAKY } }]);
     expect(await sent(page, "RemoveSession")).toEqual([]);
-    await page.evaluate(() => (window as unknown as { __muster: Mock }).__muster.exitHeld());
+    await page.evaluate(() =>
+      (window as unknown as { __muster: Mock }).__muster.release("StopSession"),
+    );
     await expect(dialog).toBeHidden();
     await expect(statusBar(page)).toContainText("Closed the session.");
     expect(await sent(page, "RemoveSession")).toEqual([{ RemoveSession: { session: FLAKY } }]);
@@ -623,7 +631,7 @@ test.describe("PRD-09 the session dialogs", () => {
           if (parent?.pull_request)
             parent.pull_request = { ...parent.pull_request, state: merged ? "merged" : "open" };
           if (child) child.stacked_on = { branch: "fix/resize-under-load", at: "a1b2c3d" };
-          mock.tell({ workspaces: [parent, child] });
+          mock.publish({ workspaces: [parent, child] });
         },
         [RESIZE, id(11), merged] as const,
       );
@@ -669,7 +677,7 @@ test.describe("PRD-01 the first run and the daemon out of reach", () => {
       mock.world.projects = [];
       mock.world.workspaces = [];
       mock.world.sessions = [];
-      mock.tell({ reset: true, preferences: mock.world.preferences });
+      mock.publish({ reset: true, preferences: mock.world.preferences });
     });
     await expect(page.getByRole("heading", { name: "Add a project to start" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Kep, Muster's sheepdog" })).toBeVisible();

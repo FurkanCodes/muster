@@ -27,6 +27,7 @@ export function AwayBanner() {
       <span className="ui-flow-away-text">
         <span className="mu-banner-lead">Muster's daemon is out of reach.</span> Starting it again
         and trying every half second, {ago(now - away.since)} so far. What you see is as it was.
+        {away.reason ? <span className="mu-quiet"> {away.reason}</span> : null}
       </span>
     </div>
   );

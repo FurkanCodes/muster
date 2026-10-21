@@ -53,7 +53,7 @@ export function Rename({ session }: { session: SessionId }) {
         autoComplete="off"
         data-dialog-initial
         onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => setName(event.target.value)}
+        onChange={setName}
         error={tried && empty ? "Name it with at least one letter." : null}
         hint="Up to 80 characters. No agent renames it after you do."
       />

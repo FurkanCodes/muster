@@ -102,21 +102,25 @@ export function Segmented<T extends string>({
   segments,
   value,
   onChange,
+  busy = false,
 }: {
   label: string;
   segments: readonly Segment<T>[];
   value: T;
   onChange: (value: T) => void;
+  /** A change is on its way: no second press until it is answered. */
+  busy?: boolean;
 }) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, not a form; a fieldset would bring a legend and form semantics.
-    <div className="mu-seg" role="group" aria-label={label}>
+    <div className="mu-seg" role="group" aria-label={label} aria-busy={busy || undefined}>
       {segments.map((segment) => (
         <button
           key={segment.value}
           type="button"
           className="mu-seg-item"
           aria-pressed={value === segment.value}
+          disabled={busy}
           onClick={() => onChange(segment.value)}
         >
           {segment.label}

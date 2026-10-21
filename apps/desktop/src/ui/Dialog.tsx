@@ -1,14 +1,19 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef } from "react";
+import { useApp } from "../app/context";
 import "./dialog.css";
 
 /**
  * A question Muster asks before it acts (design system: Dialog). A native
  * modal keeps the focus inside and the window behind it inert. ⏎ does the
- * acting answer, ⎋ the other; ⏎ on a focused answer does that one, so a
- * danger dialog, whose focus starts on the answer that does nothing, never
- * acts on a ⏎ meant for it; in a text area ⏎ is a new line and ⌘⏎ the
- * acting answer. ⇥ and ⇧⇥ go round what is in it and never leave it. The
- * button that has the focus first carries `data-dialog-initial`.
+ * acting answer and ⎋ the other, but ⏎ on a focused answer does that one,
+ * so a danger dialog, whose focus starts on the answer that does nothing,
+ * never acts on a ⏎ meant for it; ← → go between the answers (⇥ reaches no
+ * button in WebKit unless the person says so) and ⌘⏎ does the acting
+ * answer wherever the focus is; in a text area ⏎ is a new line. ⇥ past
+ * the last field goes round to the first, ⇧⇥ the other way, so the keys
+ * never leave it. The button that has the focus first carries
+ * `data-dialog-initial`. While it is open the window's keys are the
+ * dialog's, so no screen behind it acts on them.
  */
 const FOCUSABLE =
   "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])";
@@ -32,6 +37,7 @@ function keepTab(event: KeyboardEvent<HTMLDialogElement>) {
 
 export function Dialog({
   title,
+  meta,
   children,
   actions,
   onClose,
@@ -40,6 +46,8 @@ export function Dialog({
   width = "normal",
 }: {
   title: string;
+  /** A line under the title, as what the question is about. */
+  meta?: ReactNode;
   children?: ReactNode;
   actions: ReactNode;
   onClose: () => void;
@@ -47,18 +55,22 @@ export function Dialog({
   onKeyDown?: (event: KeyboardEvent<HTMLDialogElement>) => void;
   width?: "normal" | "wide";
 }) {
+  const app = useApp();
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
     const dialog = ref.current;
     const previous = document.activeElement;
+    const keysWere = app.ui.getState().keysIn;
+    app.actions.keysTo("dialog");
     dialog?.showModal();
     dialog?.querySelector<HTMLElement>("[data-dialog-initial]")?.focus();
     return () => {
       dialog?.close();
+      if (app.ui.getState().keysIn === "dialog") app.actions.keysTo(keysWere);
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, []);
+  }, [app]);
   return (
     <dialog
       ref={ref}
@@ -75,17 +87,40 @@ export function Dialog({
           keepTab(event);
           return;
         }
-        if (event.key !== "Enter") return;
-        const target = event.target instanceof HTMLElement ? event.target : null;
-        if (target?.closest(".mu-dialog-actions button")) return;
-        if (target instanceof HTMLTextAreaElement && !event.metaKey && !event.ctrlKey) return;
+        const answer =
+          event.target instanceof HTMLElement
+            ? event.target.closest<HTMLButtonElement>(".mu-dialog-actions button")
+            : null;
+        if (answer && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+          event.preventDefault();
+          const answers = [
+            ...(answer
+              .closest(".mu-dialog-actions")
+              ?.querySelectorAll<HTMLButtonElement>("button:enabled") ?? []),
+          ];
+          const at = answers.indexOf(answer) + (event.key === "ArrowLeft" ? -1 : 1);
+          answers[Math.max(0, Math.min(answers.length - 1, at))]?.focus();
+          return;
+        }
+        if (event.key !== "Enter" || (answer && !event.metaKey)) return;
+        const area = event.target instanceof HTMLTextAreaElement;
+        if (area && !event.metaKey && !event.ctrlKey) return;
         event.preventDefault();
         onAccept();
       }}
     >
-      <h2 className="mu-dialog-title" id={id}>
-        {title}
-      </h2>
+      {meta ? (
+        <div className="ui-dialog-head">
+          <h2 className="mu-dialog-title" id={id}>
+            {title}
+          </h2>
+          <span className="mu-meta">{meta}</span>
+        </div>
+      ) : (
+        <h2 className="mu-dialog-title" id={id}>
+          {title}
+        </h2>
+      )}
       {children}
       <div className="mu-dialog-actions">{actions}</div>
     </dialog>

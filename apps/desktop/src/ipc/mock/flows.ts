@@ -1,7 +1,10 @@
-// The commands the flows send, answered as the daemon answers them, with
-// its refusals word for word (crates/muster-daemon/src/supervisor/
-// projects.rs, worktrees.rs, sessions.rs, names.rs, tidy.rs, stacks.rs,
-// changes.rs, issues.rs), and what git would say kept in `FlowWorld`.
+// The commands the flows send that the rest of the mock does not answer,
+// answered as the daemon answers them, with its refusals word for word
+// (crates/muster-daemon/src/supervisor/projects.rs, worktrees.rs,
+// sessions.rs, tidy.rs, stacks.rs, changes.rs), and what git and the file
+// system would say kept in `FlowWorld`. Renaming, stopping and removing a
+// session, removing a worktree and the tickets are answered in commands.ts
+// and tickets.ts.
 
 import { agentOf } from "../../lib/agents";
 import { BridgeFailure } from "../bridge";
@@ -9,7 +12,6 @@ import type { Changes } from "../generated/Changes";
 import type { Command } from "../generated/Command";
 import type { Folder } from "../generated/desktop/Folder";
 import type { Patch } from "../generated/desktop/Patch";
-import type { Issue } from "../generated/Issue";
 import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { Workspace } from "../generated/Workspace";
@@ -25,11 +27,6 @@ export class FlowWorld {
   readonly unreadable: Record<string, string> = {};
   /** What each workspace has changed, as WorkspaceChanges answers. */
   readonly changes: Record<string, Changes> = {};
-  /** Each project's tickets, as ListIssues answers. */
-  readonly issues: Record<string, Issue[]> = {};
-  /** Holds sessions' exits after a stop, until `exitHeld`; the daemon's come a moment later. */
-  holdExits = false;
-  readonly held: string[] = [];
   next = 0;
 
   constructor(world: Scenario) {
@@ -57,36 +54,11 @@ export class FlowWorld {
         "settings.gradle",
         "README.md",
       ].map((path) => ({ path, from: null, kind: "modified", lines: { added: 3, removed: 1 } }));
-    this.issues[ulid(1)] = [
-      issue("205", "Resize settles once on release"),
-      issue("212", "Share the Gradle cache across worktrees"),
-      issue("220", "Restart the daemon in place from Settings"),
-    ];
   }
-}
-
-function issue(key: string, title: string): Issue {
-  return {
-    key,
-    title,
-    url: `https://github.com/FurkanCodes/muster/issues/${key}`,
-    labels: [],
-    author: null,
-  };
 }
 
 function refuse(code: "bad_request" | "not_found" | "conflict", message: string): never {
   throw new BridgeFailure("refused", message, code);
-}
-
-/** `one_line`, then the cleaning `names::given` does: at most 80 characters. */
-function given(title: string): string {
-  const line = Array.from(title.replace(/[\n\r\t]/g, " "))
-    .filter((c) => c >= " " && c !== "\u007f")
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
-  return Array.from(line).slice(0, 80).join("").trimEnd();
 }
 
 /** The name a first prompt gives a chat (`names::from_prompt`): its first line, cut at a word to 60. */
@@ -108,7 +80,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
   if (typeof command === "string") return undefined;
   const world = mock.world;
   const flows = mock.flows;
-  const tell = (parts: Partial<Patch>) => mock.tell(parts);
+  const tell = (parts: Partial<Patch>) => mock.publish(parts);
   const id = () => ulid(5000 + ++flows.next);
   const project = (projectId: string) =>
     world.projects.find((p) => p.id === projectId) ??
@@ -242,41 +214,6 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     return { WorktreeCreated: { id: made } };
   }
 
-  if ("RemoveWorktree" in command) {
-    const { workspace, force } = command.RemoveWorktree;
-    const found =
-      world.workspaces.find((w) => w.id === workspace) ??
-      refuse("not_found", `no worktree ${workspace}`);
-    if (found.kind.kind === "checkout")
-      refuse(
-        "bad_request",
-        "that is the project's own checkout, which Muster never removes; remove the project instead",
-      );
-    if (found.kind.kind === "container")
-      refuse(
-        "bad_request",
-        "that is a run's container, which goes when the run ends; cancel the run instead",
-      );
-    const agents = world.sessions.filter(
-      (s) =>
-        s.workspace === workspace &&
-        runs(s) &&
-        s.harness !== "shell" &&
-        !s.harness.startsWith("plugin:"),
-    ).length;
-    if (agents > 0) refuse("conflict", `stop the worktree's ${agents} running session(s) first`);
-    if (!force && (flows.changes[workspace]?.uncommitted.length ?? 0) > 0)
-      refuse(
-        "conflict",
-        `${found.kind.path} has uncommitted changes; remove it with force to discard them`,
-      );
-    const sessions = world.sessions.filter((s) => s.workspace === workspace).map((s) => s.id);
-    world.workspaces = world.workspaces.filter((w) => w.id !== workspace);
-    world.sessions = world.sessions.filter((s) => s.workspace !== workspace);
-    tell({ gone: { projects: [], workspaces: [workspace], sessions } });
-    return "Done";
-  }
-
   if ("StartSession" in command) {
     const { workspace, harness, title, prompt } = command.StartSession;
     const known =
@@ -317,38 +254,12 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     return { SessionStarted: { id: started.id } };
   }
 
-  if ("StopSession" in command) {
-    const found = world.sessions.find((s) => s.id === command.StopSession.session);
-    if (!found || !runs(found))
-      refuse("not_found", `${command.StopSession.session} is not running`);
-    // The daemon says yes once the program is told; its end comes after.
-    flows.held.push(found.id);
-    if (!flows.holdExits) queueMicrotask(() => mock.exitHeld());
-    return "Done";
-  }
-
-  if ("RemoveSession" in command) {
-    const found = session(command.RemoveSession.session);
-    if (runs(found)) refuse("conflict", `${found.title} is still running; stop it first`);
-    mock.removeSession(found.id);
-    return "Done";
-  }
-
   if ("RestartSession" in command) {
     const found = session(command.RestartSession.session);
     if (runs(found)) refuse("conflict", `${found.title} is still running`);
     mock.updateSession(found.id, { ended_at: null });
     mock.setStatus(found.id, { state: "fresh" });
     return { SessionStarted: { id: found.id } };
-  }
-
-  if ("RenameSession" in command) {
-    const found = session(command.RenameSession.session);
-    const title = given(command.RenameSession.title);
-    if (!title) refuse("bad_request", "a session's name cannot be empty");
-    mock.updateSession(found.id, { title });
-    mock.emitSession(found.id);
-    return "Done";
   }
 
   if ("WorkspaceChanges" in command) {
@@ -447,16 +358,5 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     return { Moved: { onto, commits: changes?.commits.length ?? 0, entry } };
   }
 
-  if ("ListIssues" in command) {
-    const found = project(command.ListIssues.project);
-    return {
-      Issues: {
-        issues: flows.issues[found.id] ?? [],
-        tracker: "GitHub",
-        mine: true,
-        source: null,
-      },
-    };
-  }
   return undefined;
 }

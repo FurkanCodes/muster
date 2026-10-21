@@ -11,7 +11,7 @@ import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { Session } from "../ipc/generated/Session";
 import type { ScreenId } from "../state/ui";
 import * as act from "./actions";
-import { type KeyAction, labelOf } from "./keymap";
+import { type KeyAction, keysOf, labelOf } from "./keymap";
 import { narrowed } from "./match";
 
 export type Lead =
@@ -80,6 +80,8 @@ function actionsHere(app: App): PaletteItem[] {
         ? `Actions on ⎇ ${workspace.kind.branch || project?.name || ""}`
         : "Actions";
   const items: PaletteItem[] = [];
+  // Each runs as its key does on the screen shown, which may answer it
+  // itself (the queue renames in place); else as the flows do.
   const add = (action: KeyAction, label: string, run: (app: App) => void) =>
     items.push({
       id: `do:${action}`,
@@ -88,7 +90,10 @@ function actionsHere(app: App): PaletteItem[] {
       keys: labelOf(prefs, action),
       meta: null,
       lead: { kind: "none" },
-      run: () => run(app),
+      run: () => {
+        const key = keysOf(prefs, action)[0];
+        if (!key || !pressKey(key.chord)) run(app);
+      },
     });
   if (session && act.runs(session)) {
     add("rename", "Rename the session", act.rename);

@@ -1,7 +1,6 @@
 // The first run (design/screens/Welcome.html): no projects yet, so Kep and
 // the one thing to do, add a project, on its key or by dropping a folder on
-// the window. Before the daemon's state has come, Kep rounds up the
-// sessions, as the TUI's welcome says (crates/muster-tui/src/view/kep.rs).
+// the window.
 
 import { useEffect } from "react";
 import { useActions, useDaemon } from "../app/context";
@@ -38,15 +37,6 @@ export function Welcome() {
         </Button>
       </div>
       <span className="mu-meta">Or drop a folder on this window.</span>
-    </div>
-  );
-}
-
-export function RoundingUp() {
-  return (
-    <div className="mu-empty" role="status">
-      <KepPortrait />
-      <p className="mu-empty-text">Rounding up your sessions…</p>
     </div>
   );
 }

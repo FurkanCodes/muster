@@ -6,6 +6,7 @@ import { chats, projectColour, projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import { Spinner } from "../ui/controls";
 import { Icon } from "../ui/Icon";
+import { useMediaQuery } from "../ui/useMediaQuery";
 import { useActions, useDaemon, useUi } from "./context";
 
 function NavItem({
@@ -14,22 +15,24 @@ function NavItem({
   icon,
   count = 0,
   waiting = false,
+  folded,
 }: {
   screen: ScreenId;
   label: string;
   icon: ReactNode;
   count?: number;
   waiting?: boolean;
+  folded: boolean;
 }) {
   const actions = useActions();
   const current = useUi((state) => state.screen === screen);
-  const folded = useUi((state) => state.sidebarFolded);
   return (
     <button
       type="button"
       className="mu-nav-item"
       aria-current={current ? "page" : undefined}
       title={folded ? label : undefined}
+      aria-label={folded ? label : undefined}
       onClick={() => actions.show(screen)}
     >
       <span className="mu-nav-icon">{icon}</span>
@@ -110,7 +113,11 @@ const TICKETS = <span>#</span>;
 const SETTINGS = <Icon name="gear" size={16} />;
 
 export function Sidebar() {
-  const folded = useUi((state) => state.sidebarFolded);
+  // Under 1100 wide (sidebar 220, queue 360, detail 520) it folds by itself;
+  // ⌘\ folds and unfolds it at any width (design system: layout).
+  const toggled = useUi((state) => state.sidebarFolded);
+  const narrow = useMediaQuery("(max-width: 1100px)");
+  const folded = narrow !== toggled;
   const counts = useDaemon((state) => state.derived.counts);
   const notSeen = useDaemon(
     (state) =>
@@ -120,14 +127,27 @@ export function Sidebar() {
   const all = useDaemon((state) => chats(state).length);
   return (
     <nav className={`mu-nav app-sidebar ${folded ? "mu-nav--folded" : ""}`} aria-label="Screens">
-      <NavItem screen="needs-you" label="Needs you" icon={WAITING} count={counts.waiting} waiting />
-      <NavItem screen="not-seen" label="Not seen" icon={NEWS} count={notSeen} />
-      <NavItem screen="working" label="Working" icon={WORKING} count={counts.working} />
-      <NavItem screen="all" label="All sessions" icon={ALL} count={all} />
+      <NavItem
+        screen="needs-you"
+        label="Needs you"
+        icon={WAITING}
+        count={counts.waiting}
+        waiting
+        folded={folded}
+      />
+      <NavItem screen="not-seen" label="Not seen" icon={NEWS} count={notSeen} folded={folded} />
+      <NavItem
+        screen="working"
+        label="Working"
+        icon={WORKING}
+        count={counts.working}
+        folded={folded}
+      />
+      <NavItem screen="all" label="All sessions" icon={ALL} count={all} folded={folded} />
       {folded ? null : <Projects />}
       <span className="app-sidebar-gap" />
-      <NavItem screen="tickets" label="Tickets" icon={TICKETS} />
-      <NavItem screen="settings" label="Settings" icon={SETTINGS} />
+      <NavItem screen="tickets" label="Tickets" icon={TICKETS} folded={folded} />
+      <NavItem screen="settings" label="Settings" icon={SETTINGS} folded={folded} />
     </nav>
   );
 }

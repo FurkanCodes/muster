@@ -132,7 +132,7 @@ export default function AddProject() {
         spellCheck={false}
         data-dialog-initial
         value={typed}
-        onChange={(event) => type(event.target.value)}
+        onChange={type}
         error={task.error}
         hint="⇥ fills in the chosen folder. Folders starting with a dot show once you type one."
       >

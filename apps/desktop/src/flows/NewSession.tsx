@@ -206,7 +206,7 @@ export default function NewSession({
           value={prompt}
           disabled={!agent?.takesPrompt}
           data-dialog-initial={agent?.takesPrompt ? true : undefined}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={setPrompt}
         />
       )}
       <div className="ui-flow-columns">
@@ -266,7 +266,7 @@ export default function NewSession({
           autoComplete="off"
           spellCheck={false}
           value={branch}
-          onChange={(event) => setBranch(event.target.value)}
+          onChange={setBranch}
         />
       ) : place === "worktree" ? (
         <div className="mu-field">

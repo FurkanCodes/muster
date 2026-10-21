@@ -43,7 +43,7 @@ function useFlowKeys(app: App): void {
   }
   for (const key of keysOf(preferences, "help"))
     handlers[key.chord] = () => app.actions.openPalette(true, "keys");
-  useKeys(handlers);
+  useKeys(handlers, { beneath: true });
 }
 
 /** A folder dropped on the window is added as a project, while the person can see it. */

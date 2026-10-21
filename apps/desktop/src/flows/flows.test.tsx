@@ -24,7 +24,7 @@ function ui(): App["actions"] {
 
 async function windowOver(bridge = new MockBridge(workingDay())) {
   const rendered = renderApp(bridge);
-  await screen.findByRole("img", { name: /working/ });
+  await screen.findByRole("img", { name: /working, .* waiting on you/ });
   return rendered;
 }
 
@@ -46,17 +46,7 @@ describe("PRD-03 a new session", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "A new worktree" }));
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Branch/ }), "spike/webgl");
     // The daemon refuses the first launch.
-    bridge.world.preferences.agents = [];
-    const start = bridge.command.bind(bridge);
-    let refused = false;
-    bridge.command = async (command) => {
-      if (!refused && typeof command === "object" && "StartSession" in command) {
-        refused = true;
-        bridge.sent.push(command);
-        throw new Error("could not start Claude Code: no such file");
-      }
-      return start(command);
-    };
+    bridge.failNext("StartSession", "could not start Claude Code: no such file");
     await userEvent.click(within(dialog).getByRole("button", { name: "Start Claude Code" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "could not start Claude Code: no such file",
@@ -110,34 +100,29 @@ describe("PRD-03 a new session", () => {
 describe("PRD-09 closing a session", () => {
   it("removes it only once the daemon tells it has exited; a refused stop removes nothing", async () => {
     const { bridge } = await windowOver();
-    bridge.flows.holdExits = true;
+    bridge.hold("StopSession");
     select("all", ulid(103));
     await userEvent.keyboard("x");
     const dialog = await screen.findByRole("dialog", {
       name: "Close Flaky resize test under load?",
     });
     await userEvent.click(within(dialog).getByRole("button", { name: "Close session" }));
-    await waitFor(() => expect(named(bridge, "StopSession")).toHaveLength(1));
+    expect(await within(dialog).findByRole("button", { name: "Closing…" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(named(bridge, "StopSession")).toHaveLength(1);
     expect(named(bridge, "RemoveSession")).toHaveLength(0);
-    act(() => bridge.exitHeld());
+    act(() => bridge.release("StopSession"));
     await waitFor(() => expect(named(bridge, "RemoveSession")).toHaveLength(1));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(bridge.world.sessions.some((session) => session.id === ulid(103))).toBe(false);
 
-    // A session the daemon no longer runs: the stop is refused, and it stays.
+    // The daemon refuses the stop: the session stays, and the dialog says why.
     select("all", ulid(100));
-    bridge.world.sessions = bridge.world.sessions.map((session) =>
-      session.id === ulid(100) ? { ...session, status: { state: "running" } } : session,
-    );
     await userEvent.keyboard("x");
     const again = await screen.findByRole("dialog", { name: /Close Split view.rs/ });
-    bridge.updateSession(ulid(100), { ended_at: null });
-    const stop = bridge.command.bind(bridge);
-    bridge.command = async (command) => {
-      if (typeof command === "object" && "StopSession" in command)
-        throw new Error(`${ulid(100)} is not running`);
-      return stop(command);
-    };
+    bridge.failNext("StopSession", `${ulid(100)} is not running`, "not_found");
     await userEvent.click(within(again).getByRole("button", { name: "Close session" }));
     expect(await within(again).findByRole("alert")).toHaveTextContent("is not running");
     expect(named(bridge, "RemoveSession")).toHaveLength(1);
@@ -147,6 +132,7 @@ describe("PRD-09 closing a session", () => {
 describe("PRD-01 refusals said before asking, in the TUI's words", () => {
   it("says what to select, and why a plain folder has no worktrees", async () => {
     const { bridge } = await windowOver();
+    act(() => ui().show("all"));
     await userEvent.keyboard("x");
     expect(
       await screen.findByText("Select a worktree or an ended session to remove."),

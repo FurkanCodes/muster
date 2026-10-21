@@ -17,3 +17,8 @@
   width: var(--size-dialog-wide);
   gap: var(--space-20);
 }
+.ui-dialog-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}

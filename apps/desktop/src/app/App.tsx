@@ -2,9 +2,11 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { Away, AwayBanner } from "../flows/Away";
+import { SESSION_LISTS } from "../flows/actions";
 import { Flows } from "../flows/Flows";
-import { RoundingUp, Welcome } from "../flows/Welcome";
+import { Welcome } from "../flows/Welcome";
 import type { Bridge } from "../ipc/bridge";
+import { installQueueHistory } from "../screens/queue/history";
 import { createDaemon } from "../state/daemon";
 import { createUi } from "../state/ui";
 import { runClock } from "./clock";
@@ -30,6 +32,7 @@ function useWiring(app: AppValue): void {
   useEffect(() => {
     const keys = installKeys(app);
     const visibility = installVisibility(app);
+    const history = installQueueHistory(app.daemon);
     const revealed = app.daemon.onReveal((session) => {
       app.actions.show("needs-you");
       app.actions.select("needs-you", session);
@@ -47,6 +50,7 @@ function useWiring(app: AppValue): void {
     return () => {
       keys();
       visibility();
+      history();
       revealed();
       clock();
       runClock(false);
@@ -75,12 +79,19 @@ function Screen() {
   const away = useDaemon((state) => state.link.state === "down");
   const empty = useDaemon((state) => Object.keys(state.projects).length === 0);
   const Shown = SCREENS[screen];
-  // Out of reach, the screen stays as it was, still (src/flows: Away);
-  // with nothing yet to show, Kep waits, or welcomes a first project.
+  // Out of reach, the screen stays as it was, still (src/flows: Away), or
+  // Kep waits where nothing was known yet; with no projects, the lists of
+  // sessions welcome a first one.
   return (
     <main className="app-screen" inert={away && loaded ? true : undefined}>
       <Suspense fallback={null}>
-        {away && !loaded ? <Away /> : !loaded ? <RoundingUp /> : empty ? <Welcome /> : <Shown />}
+        {away && !loaded ? (
+          <Away />
+        ) : loaded && empty && SESSION_LISTS.includes(screen) ? (
+          <Welcome />
+        ) : (
+          <Shown />
+        )}
       </Suspense>
     </main>
   );
