@@ -213,6 +213,10 @@ describe("ARC-24 the queue's keys", () => {
     expect(changes).toHaveAttribute("aria-pressed", "false");
     await userEvent.keyboard("d");
     expect(changes).toHaveAttribute("aria-pressed", "true");
+    // The changes have the keys while shown (↑↓ through their files), as in
+    // the TUI: d gives them back to the queue.
+    await userEvent.keyboard("d");
+    expect(changes).toHaveAttribute("aria-pressed", "false");
     // A workspace with no turn kept has none to put back.
     await userEvent.keyboard("jj");
     await userEvent.keyboard("z");

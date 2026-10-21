@@ -11,7 +11,8 @@ import "./dialog.css";
  * button in WebKit unless the person says so) and ⌘⏎ does the acting
  * answer wherever the focus is. The button that has the focus first
  * carries `data-dialog-initial`. While it is open the window's keys are the
- * dialog's, so no screen behind it acts on them.
+ * dialog's, so no screen behind it acts on them, and a key pressed in it
+ * never reaches the window's listener.
  */
 export function Dialog({
   title,
@@ -59,6 +60,10 @@ export function Dialog({
         onClose();
       }}
       onKeyDown={(event) => {
+        // Keys in a modal are its own: the window's listener (app/keys.ts)
+        // never sees them, so it neither acts on them nor clears a note an
+        // answer has just put in the status bar.
+        event.stopPropagation();
         onKeyDown?.(event);
         if (event.defaultPrevented) return;
         const answer =

@@ -1,0 +1,628 @@
+{
+  "actions": [
+    {
+      "group": "Anywhere",
+      "keys": [
+        "q"
+      ],
+      "name": "quit",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "quit the UI (sessions keep running)"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "tab"
+      ],
+      "name": "next_tab",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings",
+        "changes"
+      ],
+      "what": "the next tab"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "shift-tab"
+      ],
+      "name": "previous_tab",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings",
+        "changes"
+      ],
+      "what": "the previous tab"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "1"
+      ],
+      "name": "sessions_tab",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "the Sessions tab"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "2"
+      ],
+      "name": "needs_you_tab",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "the Needs you tab"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "3"
+      ],
+      "name": "tickets_tab",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "the Tickets tab"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "4"
+      ],
+      "name": "settings_tab",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "the Settings tab"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "esc",
+        "backspace"
+      ],
+      "name": "back",
+      "screens": [
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "back to Sessions"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "l"
+      ],
+      "name": "last_alarm",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "the session that needed you last, as notified"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "h",
+        "?"
+      ],
+      "name": "help",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "these keys"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "ctrl-\\"
+      ],
+      "name": "fold_list",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings",
+        "changes",
+        "in_session"
+      ],
+      "what": "fold the list away, or bring it back"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "m"
+      ],
+      "name": "move_panels",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "move the panels with the keys (or drag one by its title)"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "k"
+      ],
+      "name": "move_up",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "move up (as ↑)"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
+        "j"
+      ],
+      "name": "move_down",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings"
+      ],
+      "what": "move down (as ↓)"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "a"
+      ],
+      "name": "add_project",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "add a project"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "w"
+      ],
+      "name": "new_worktree",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "a new worktree for the project"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "n"
+      ],
+      "name": "new_session",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "a new session in the worktree, or a project's checkout"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "i"
+      ],
+      "name": "show_tickets",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "the project's tickets"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "f"
+      ],
+      "name": "full_screen",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "the session full screen"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "d"
+      ],
+      "name": "show_changes",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "what the worktree or session has changed, and its turns"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "T"
+      ],
+      "name": "shell",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "a shell in the workspace, beside the session (again: put it away)"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "s"
+      ],
+      "name": "stop_session",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "stop the session"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "r"
+      ],
+      "name": "restart_session",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "start an ended session again"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "x"
+      ],
+      "name": "close",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "close the session; remove the worktree or the project, after asking"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "R"
+      ],
+      "name": "rename",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "rename the session's chat"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "e"
+      ],
+      "name": "fold",
+      "screens": [
+        "sessions"
+      ],
+      "what": "fold or unfold a project or a worktree (on a session, its worktree)"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "c"
+      ],
+      "name": "checks",
+      "screens": [
+        "sessions"
+      ],
+      "what": "run the project's checks in the worktree"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "v"
+      ],
+      "name": "review",
+      "screens": [
+        "sessions"
+      ],
+      "what": "have Claude Code review the worktree's change"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "t"
+      ],
+      "name": "tidy",
+      "screens": [
+        "sessions"
+      ],
+      "what": "have an agent tidy the worktree's commits"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "u"
+      ],
+      "name": "move_branch",
+      "screens": [
+        "sessions"
+      ],
+      "what": "move the worktree's branch onto its base, after asking"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "o"
+      ],
+      "name": "open_pull_request",
+      "screens": [
+        "sessions"
+      ],
+      "what": "push the branch and open a draft pull request"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "b"
+      ],
+      "name": "pull_request_in_browser",
+      "screens": [
+        "sessions"
+      ],
+      "what": "the branch's pull request in the browser"
+    },
+    {
+      "group": "Tickets",
+      "keys": [
+        "r"
+      ],
+      "name": "refresh_tickets",
+      "screens": [
+        "tickets"
+      ],
+      "what": "fetch the tickets again"
+    },
+    {
+      "group": "Tickets",
+      "keys": [
+        "a"
+      ],
+      "name": "another_agent",
+      "screens": [
+        "tickets"
+      ],
+      "what": "start another agent on it, in a worktree of its own"
+    },
+    {
+      "group": "Tickets",
+      "keys": [
+        "b"
+      ],
+      "name": "ticket_in_browser",
+      "screens": [
+        "tickets"
+      ],
+      "what": "the ticket in the browser"
+    },
+    {
+      "group": "Tickets",
+      "keys": [
+        "x"
+      ],
+      "name": "close_ticket",
+      "screens": [
+        "tickets"
+      ],
+      "what": "close the ticket in its tracker, after asking; then clean up"
+    },
+    {
+      "group": "Settings",
+      "keys": [
+        "r"
+      ],
+      "name": "read_settings",
+      "screens": [
+        "settings"
+      ],
+      "what": "read the settings again, after editing a file by hand"
+    },
+    {
+      "group": "Settings",
+      "keys": [
+        "a"
+      ],
+      "name": "add_plugin",
+      "screens": [
+        "settings"
+      ],
+      "what": "add a plugin from a git repository or a folder, after showing what it runs"
+    },
+    {
+      "group": "Settings",
+      "keys": [
+        "u"
+      ],
+      "name": "update_plugin",
+      "screens": [
+        "settings"
+      ],
+      "what": "update the plugin, after showing what it runs then"
+    },
+    {
+      "group": "Settings",
+      "keys": [
+        "x"
+      ],
+      "name": "remove_plugin",
+      "screens": [
+        "settings"
+      ],
+      "what": "remove the plugin, after asking"
+    },
+    {
+      "group": "In the changes",
+      "keys": [
+        "d",
+        "q"
+      ],
+      "name": "close_changes",
+      "screens": [
+        "changes"
+      ],
+      "what": "back to the list"
+    },
+    {
+      "group": "In the changes",
+      "keys": [
+        "r"
+      ],
+      "name": "changes_again",
+      "screens": [
+        "changes"
+      ],
+      "what": "ask git again"
+    },
+    {
+      "group": "In the changes",
+      "keys": [
+        "z"
+      ],
+      "name": "put_back",
+      "screens": [
+        "changes"
+      ],
+      "what": "on a turn, put the files back as before it, after asking"
+    },
+    {
+      "group": "In the changes",
+      "keys": [
+        "?"
+      ],
+      "name": "changes_help",
+      "screens": [
+        "changes"
+      ],
+      "what": "these keys"
+    },
+    {
+      "group": "In a session",
+      "keys": [
+        "Q",
+        "ctrl-]"
+      ],
+      "name": "leave_session",
+      "screens": [
+        "in_session",
+        "changes"
+      ],
+      "what": "back to the list (or a click on it)"
+    }
+  ],
+  "kept": [
+    {
+      "key": "enter",
+      "used": "⏎, which does what is selected"
+    },
+    {
+      "key": "up",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "down",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "left",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "right",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "pageup",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "pagedown",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "home",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "end",
+      "used": "a key that moves about"
+    },
+    {
+      "key": "ctrl-c",
+      "used": "Ctrl-C, which quits"
+    }
+  ],
+  "screens": [
+    {
+      "id": "sessions",
+      "title": "Sessions"
+    },
+    {
+      "id": "needs_you",
+      "title": "Needs you"
+    },
+    {
+      "id": "tickets",
+      "title": "Tickets"
+    },
+    {
+      "id": "settings",
+      "title": "Settings"
+    },
+    {
+      "id": "changes",
+      "title": "In the changes"
+    },
+    {
+      "id": "in_session",
+      "title": "In a session"
+    }
+  ]
+}
