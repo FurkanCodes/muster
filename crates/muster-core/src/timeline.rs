@@ -22,6 +22,7 @@ pub const MAX_ENTRIES: usize = 100;
 
 /// What made an entry.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EntryKind {
     /// An agent's turn, from when it began working to when it stopped.
@@ -41,6 +42,7 @@ pub enum EntryKind {
 
 /// One entry of a workspace's timeline.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Entry {
     /// Its place in the workspace's timeline, from 1.
     pub number: u64,
@@ -61,6 +63,7 @@ pub struct Entry {
 
 /// A workspace's timeline, as the daemon answers it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Timeline {
     /// Newest first.
     pub entries: Vec<Entry>,
@@ -69,6 +72,7 @@ pub struct Timeline {
 /// What putting the files back from an entry would do, for the person to
 /// say yes to first.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct UndoPlan {
     pub number: u64,
     /// How many later entries' changes go with it.
@@ -80,6 +84,7 @@ pub struct UndoPlan {
 
 /// Moving a workspace's branch back to where it was as an entry began.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct BranchMove {
     pub branch: String,
     /// The commit it would move to, shortened.

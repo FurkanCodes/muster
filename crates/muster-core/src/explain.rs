@@ -15,6 +15,7 @@ pub const EXPLAIN_PROTOCOL: u32 = 30;
 
 /// A session's status and why it has it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Explanation {
     pub session: SessionId,
     pub status: SessionStatus,
@@ -34,6 +35,7 @@ pub struct Explanation {
 
 /// What a session's status machine holds.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct MachineView {
     /// Someone is looking at its terminal, so nothing in it is news.
     pub watched: bool,
@@ -53,6 +55,7 @@ pub struct MachineView {
 
 /// A prompt open on the person: whose, and for what.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct OpenWait {
     pub origin: Origin,
     pub reason: WaitReason,
@@ -60,6 +63,7 @@ pub struct OpenWait {
 
 /// A turn held for its subagents.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct HoldView {
     /// When the main agent ended its turn.
     pub since: Timestamp,
@@ -69,6 +73,7 @@ pub struct HoldView {
 
 /// What a session's machine does on its own, and when.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Deadline {
     pub at: Timestamp,
     pub kind: DeadlineKind,
@@ -76,6 +81,7 @@ pub struct Deadline {
 
 /// What happens at a session machine's deadline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum DeadlineKind {
     /// Still silent since launch, it is taken to be asking the person
@@ -90,6 +96,7 @@ pub enum DeadlineKind {
 
 /// One signal a session's machine received.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SignalSeen {
     pub at: Timestamp,
     /// What it was, for people: `hook: permission requested`, `progress:

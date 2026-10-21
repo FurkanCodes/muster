@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 /// Where a plugin is from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum PluginSource {
     /// One of Muster's own, built into it.

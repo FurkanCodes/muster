@@ -1,0 +1,76 @@
+[package]
+name = "muster-desktop"
+version = "0.4.1"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+license = "MIT"
+repository = "https://github.com/FurkanCodes/muster"
+description = "Muster's desktop app: a client of the daemon, drawn in the system's webview."
+
+# A workspace of its own (`ARC-24`): the webview's crates never reach the
+# core's builds, checks or supply-chain rules, and the core is reached by path.
+[workspace]
+
+[lib]
+name = "muster_desktop"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "muster-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.5", features = [] }
+
+[dependencies]
+muster-client = { path = "../../../crates/muster-client" }
+muster-core = { path = "../../../crates/muster-core", features = ["ts"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.152"
+tauri = { version = "2.12", features = [] }
+thiserror = "2.0.21"
+tokio = { version = "~1.53.2", features = ["macros", "net", "rt-multi-thread", "sync", "time", "process"] }
+tracing = "0.1.44"
+ts-rs = { version = "12.0.1", features = ["serde-json-impl", "no-serde-warnings"] }
+# The embedded WebDriver server the end-to-end tests drive the real app
+# through (`pnpm e2e:app`). Only in builds made for them: never shipped.
+tauri-plugin-wdio-webdriver = { version = "1.5.0", optional = true }
+
+[features]
+e2e = ["dep:tauri-plugin-wdio-webdriver"]
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+# Small, fast and frugal (`ARC-25`): one codegen unit, whole-program
+# optimisation, no unwinding tables, no symbols.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+needless_pass_by_value = "allow"
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+allow_attributes_without_reason = "warn"

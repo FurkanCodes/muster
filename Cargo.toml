@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# The desktop app is a workspace of its own (`ARC-24`): its webview crates
+# never reach the core's builds, checks or supply-chain rules.
+exclude = ["apps"]
 
 [workspace.package]
 version = "0.4.1"
@@ -45,6 +48,7 @@ tempfile = "3.27.0"
 # Property tests of what parses untrusted input, and of the state machines.
 proptest = { version = "1.12", default-features = false, features = ["std"] }
 thiserror = "2.0.21"
+ts-rs = { version = "12.0.1", features = ["serde-json-impl", "no-serde-warnings"] }
 toml = { version = "1.1.6", default-features = false, features = ["std", "parse", "serde"] }
 toml_edit = { version = "0.25.16", default-features = false, features = ["parse", "display"] }
 # The 1.53 line has Tokio's long-term support (to September 2027): fixes

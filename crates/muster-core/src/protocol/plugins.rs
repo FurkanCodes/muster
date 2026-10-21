@@ -15,6 +15,7 @@ use crate::time::Timestamp;
 
 /// What a client asks of the daemon's plugins.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PluginCommand {
     /// Every plugin, the registry read again as the person asked to see
     /// it; answered with [`super::Reply::Plugins`].
@@ -85,6 +86,7 @@ impl PluginCommand {
 
 /// Where a plugin's panel opens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum Beside {
     /// Beside the session, in its workspace: a session's panel, told of
@@ -97,6 +99,7 @@ pub enum Beside {
 
 /// Where a plugin to install or link is.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PluginOrigin {
     /// A git repository, cloned: its address (`https://`, `ssh://`,
     /// `user@host:path`, `file://`, or a repository's folder) and the
@@ -112,6 +115,7 @@ pub enum PluginOrigin {
 
 /// Who changed a plugin, as the client says.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum ChangedBy {
     /// The Settings screen's Plugins section.
@@ -132,6 +136,7 @@ impl ChangedBy {
 
 /// Every plugin, as [`PluginCommand::List`] is answered.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PluginList {
     pub plugins: Vec<PluginInfo>,
     /// The daemon's time, which each [`PluginChange::at`] is read against.
@@ -144,6 +149,7 @@ pub struct PluginList {
 
 /// One plugin, as the daemon has it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PluginInfo {
     pub id: String,
     pub source: PluginSource,
@@ -169,6 +175,7 @@ impl PluginInfo {
 
 /// Why a plugin cannot run (`ARCHITECTURE.md` §7a), said for the person.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PluginProblem {
     /// Its manifest is not the one the person approved.
     #[error(
@@ -193,6 +200,7 @@ pub enum PluginProblem {
 
 /// What a plugin's manifest says it is and runs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PluginDetails {
     pub name: String,
     pub version: String,
@@ -291,6 +299,7 @@ pub fn shown_to(reply: Reply, version: u32) -> Result<Reply, ErrorBody> {
 /// What a plugin's hooks did with a sample event, as
 /// [`PluginCommand::TryHooks`] is answered.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct HooksTried {
     pub id: String,
     pub event: EventKind,
@@ -300,6 +309,7 @@ pub struct HooksTried {
 
 /// What one hook's run came to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct HookRun {
     /// The hook's id.
     pub hook: String,
@@ -313,6 +323,7 @@ pub struct HookRun {
 
 /// How a hook's run ended.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum HookOutcome {
     /// Its program ended with `code`.
@@ -370,6 +381,7 @@ pub fn command_line(arguments: &[String]) -> String {
 
 /// A program a plugin needs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Required {
     pub program: String,
     /// Whether it is on the daemon's `PATH`.
@@ -379,6 +391,7 @@ pub struct Required {
 /// What installing, linking or updating a plugin would do, held by the
 /// daemon under `preview` until it is installed or let go.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PluginPreview {
     /// Its id, for [`PluginCommand::Install`].
     pub preview: String,
@@ -395,6 +408,7 @@ pub struct PluginPreview {
 
 /// What a preview would do once approved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum PreviewKind {
     /// Install a plugin from git.
@@ -407,6 +421,7 @@ pub enum PreviewKind {
 
 /// The person's last change to a plugin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PluginChange {
     pub what: PluginAction,
     pub by: ChangedBy,
@@ -415,6 +430,7 @@ pub struct PluginChange {
 
 /// A change the person made to a plugin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum PluginAction {
     Installed,

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// A branch's pull request (a merge request, on GitLab), as last looked at.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PullRequestStatus {
     pub number: u64,
     /// Its page on the host.
@@ -37,6 +38,7 @@ impl PullRequestStatus {
 
 /// Where a pull request stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum PullRequestState {
     /// Open, and marked as a draft.
@@ -65,6 +67,7 @@ impl PullRequestState {
 
 /// How a pull request's checks stand, all taken together.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum Checks {
     /// Some still run or wait, and none has failed.
@@ -97,6 +100,7 @@ impl Checks {
 
 /// What a pull request's reviews come to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum Review {
     /// A review is asked for, and nobody has approved it yet.

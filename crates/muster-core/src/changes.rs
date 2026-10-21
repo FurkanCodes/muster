@@ -37,6 +37,7 @@ const BINARY_PROBE: usize = 8000;
 
 /// Which part of a workspace's change a file is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum ChangePart {
     /// Not yet committed: staged, unstaged and untracked, against the last
@@ -48,6 +49,7 @@ pub enum ChangePart {
 
 /// How a file changed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeKind {
     Added,
@@ -95,6 +97,7 @@ impl ChangeKind {
 
 /// The lines a change adds and removes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct LineCounts {
     pub added: u64,
     pub removed: u64,
@@ -102,6 +105,7 @@ pub struct LineCounts {
 
 /// One file's change.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct FileChange {
     /// Where it is, from the top of the repository, as git gave it.
     pub path: String,
@@ -117,6 +121,7 @@ pub struct FileChange {
 
 /// A commit on the branch.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Commit {
     /// Its short id.
     pub id: String,
@@ -126,6 +131,7 @@ pub struct Commit {
 
 /// Everything a workspace's work has changed, as git said when asked.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Changes {
     /// What the branch is measured against, such as `origin/main`; `None`
     /// where none can be found, which leaves only what is not committed.
@@ -187,6 +193,7 @@ impl Changes {
 
 /// What a workspace's change comes to, shown on its line in the list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ChangeSummary {
     /// Files changed, committed on the branch or not.
     pub files: u64,
@@ -209,6 +216,7 @@ impl ChangeSummary {
 
 /// One file's diff, as git prints it, cleaned.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct FileDiff {
     pub text: String,
     /// It was longer than [`MAX_DIFF`], and was cut at a line's end.

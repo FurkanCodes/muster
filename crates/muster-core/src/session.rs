@@ -7,6 +7,7 @@ use crate::time::Timestamp;
 /// The status of one session. `muster-state` decides it; the daemon stores and
 /// broadcasts it; clients draw it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum SessionStatus {
     /// Launched and waiting for its first piece of work.
@@ -36,6 +37,7 @@ impl SessionStatus {
 
 /// Why a session needs the person.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum WaitReason {
     /// The agent asked for permission to use a tool.
@@ -54,6 +56,7 @@ pub enum WaitReason {
 
 /// Who inside an agent session raised an event, or is waited on.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Origin {
     /// The main agent, the one the person talks to.
     Main,
@@ -66,6 +69,7 @@ pub enum Origin {
 /// needs: a file's name, never its path; a command's program, never its
 /// arguments, which can carry a secret (`PRD-06`). Shown, never stored.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Activity {
     pub text: String,
     /// When it began.
@@ -76,6 +80,7 @@ pub struct Activity {
 /// (`PRD-12`): every token it sent and got back, cached ones included, and
 /// what it cost where the agent says. Shown, never stored.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Spend {
     pub tokens: u64,
     /// In millionths of a US dollar, where the agent reports a cost.

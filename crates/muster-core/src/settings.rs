@@ -12,6 +12,7 @@ use crate::layout::Layout;
 
 /// A project's settings that the person can change, as they stand.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ProjectSettings {
     /// Where its tickets come from, for the person: `GitHub issues, as its
     /// git remote says`, `Jira at acme.atlassian.net, project APP`, or why
@@ -43,6 +44,7 @@ pub struct ProjectSettings {
 
 /// A setting that is on or off, and where that comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Toggle {
     pub on: bool,
     pub from: SettingSource,
@@ -50,6 +52,7 @@ pub struct Toggle {
 
 /// Where a setting's value comes from.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum SettingSource {
     /// Nothing sets it: Muster's default.
@@ -72,6 +75,7 @@ pub enum SettingSource {
 /// Muster's own trackers as it did (`ARC-09`); one of anyone else's never
 /// reaches it ([`crate::protocol::Reply::for_version`]).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, as = "WrittenTickets"))]
 #[serde(from = "WrittenTickets", into = "WrittenTickets")]
 pub struct TicketsFrom {
     /// The ticket plugin: `github`, `gitlab`, `jira`, `linear`, or
@@ -100,6 +104,7 @@ const OLD_KEYS: [&str; 4] = ["site", "project", "jql", "team"];
 
 /// [`TicketsFrom`] as the wire carries it.
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 struct WrittenTickets {
     tracker: String,
     #[serde(default)]
@@ -153,6 +158,7 @@ pub const TICKETS_FROM_PROTOCOL: u32 = 17;
 
 /// A change the person makes to a project's settings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum SettingChange {
     /// List only the tickets assigned to the person, or every open one.
     OnlyMyTickets(bool),
@@ -173,6 +179,7 @@ pub const MUSTER_PREFIX: (&str, &str) = ("branches", "muster_prefix");
 /// Muster's own settings, the person's for all of Muster rather than a
 /// project's, as they stand. From protocol 23.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Preferences {
     /// Show the agents in the MacBook's notch while no Muster window has
     /// the person's eyes (`[notch] show`).
@@ -235,6 +242,7 @@ fn on() -> bool {
 /// the first prompt at once, then a few words an agent writes. From
 /// protocol 37.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Naming {
     /// Whether an agent names chats (`[names] by_agent`); on unless the
     /// person turns it off.
@@ -290,6 +298,7 @@ impl Default for Preferences {
 
 /// Whose colours the UI draws in. From protocol 35.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum Palette {
     /// Muster's own, in full colour: soft text, one accent, the statuses'
@@ -324,6 +333,7 @@ impl Palette {
 
 /// How many lines a session's line in the lists takes. From protocol 35.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum SessionLines {
     /// Its name on the first, whole, and what it is doing and for how long
@@ -370,6 +380,7 @@ pub const LOOK_SESSION_LINES: (&str, &str) = ("look", "session_lines");
 /// offer it beside Muster's own (`muster_core::config::agents`). Only what
 /// a client shows: never its program's environment. From protocol 29.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct AddedAgent {
     /// What sessions name it by: a harness id, like `claude`.
     pub name: String,
@@ -411,6 +422,7 @@ pub const SIDE_BY_SIDE_CHOICES: [u16; 8] = [0, 80, 90, 100, 110, 120, 140, 160];
 
 /// A change the person makes to Muster's own settings. From protocol 23.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PreferenceChange {
     /// Show the agents in the notch, or leave it alone.
     Notch(bool),

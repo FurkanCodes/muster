@@ -137,6 +137,11 @@ use serde::{Deserialize, Serialize};
 
 mod older;
 pub mod plugins;
+mod terminal;
+
+pub use terminal::{
+    DetachReason, MouseEncoding, MouseTracking, PixelSize, TermSize, TerminalModes,
+};
 
 use crate::changes::{ChangePart, Changes, FileDiff};
 use crate::colours::TerminalColours;
@@ -154,6 +159,7 @@ pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Hello {
     pub min_version: u32,
     pub max_version: u32,
@@ -178,6 +184,7 @@ impl Hello {
 
 /// The daemon accepted the hello.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Welcome {
     /// The protocol both sides will speak.
     pub version: u32,
@@ -187,6 +194,7 @@ pub struct Welcome {
 
 /// The daemon and the client share no protocol version. The connection closes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Incompatible {
     pub min_version: u32,
     pub max_version: u32,
@@ -211,6 +219,7 @@ pub fn negotiate(hello: &Hello) -> Option<u32> {
 
 /// Everything a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ClientFrame {
     /// Must come first, once.
     Hello(Hello),
@@ -242,6 +251,7 @@ pub enum ClientFrame {
     Input {
         session: SessionId,
         #[serde(with = "serde_bytes")]
+        #[cfg_attr(feature = "ts", ts(type = "Array<number>"))]
         data: Vec<u8>,
     },
     /// The client's view of a session's terminal changed size.
@@ -284,6 +294,7 @@ fn watching_by_default() -> bool {
 
 /// Everything the daemon sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum ServerFrame {
     Welcome(Welcome),
     Incompatible(Incompatible),
@@ -307,6 +318,7 @@ pub enum ServerFrame {
         session: SessionId,
         seq: u64,
         #[serde(with = "serde_bytes")]
+        #[cfg_attr(feature = "ts", ts(type = "Array<number>"))]
         data: Vec<u8>,
         reset: bool,
         /// Where the output written while the client was attached begins,
@@ -324,6 +336,7 @@ pub enum ServerFrame {
         session: SessionId,
         seq: u64,
         #[serde(with = "serde_bytes")]
+        #[cfg_attr(feature = "ts", ts(type = "Array<number>"))]
         data: Vec<u8>,
     },
     /// How the session's program wants its keys and pastes encoded. Sent
@@ -345,91 +358,9 @@ pub enum ServerFrame {
     },
 }
 
-/// Input modes a program sets on its terminal, which decide how a client
-/// turns key presses and pastes into bytes.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TerminalModes {
-    /// The kitty keyboard protocol flags in effect; 0 means legacy keys.
-    pub kitty_flags: u8,
-    /// Pastes are wrapped in `ESC [200~` … `ESC [201~`.
-    pub bracketed_paste: bool,
-    /// Cursor keys send `ESC O A` rather than `ESC [ A` (DECCKM).
-    pub application_cursor: bool,
-    /// Which mouse events the program asked to be sent. While it asks for
-    /// none, a client uses the mouse itself, to scroll back.
-    #[serde(default)]
-    pub mouse: MouseTracking,
-    /// How mouse events are encoded for the program.
-    #[serde(default)]
-    pub mouse_encoding: MouseEncoding,
-    /// The program draws on the alternate screen (a full-screen program
-    /// such as vim or less), which keeps no scrollback.
-    #[serde(default)]
-    pub alternate_screen: bool,
-}
-
-/// The mouse events a program asked its terminal to report (xterm's modes
-/// 9, 1000, 1002 and 1003).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MouseTracking {
-    #[default]
-    Off,
-    /// Button presses only.
-    Press,
-    /// Presses and releases, the wheel included.
-    PressRelease,
-    /// Also movement while a button is held.
-    ButtonMotion,
-    /// Also any movement.
-    AnyMotion,
-}
-
-/// How reported mouse events are encoded (xterm's modes 1005 and 1006).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MouseEncoding {
-    /// `ESC [ M` and three bytes.
-    #[default]
-    Default,
-    /// The same, with large coordinates as UTF-8.
-    Utf8,
-    /// `ESC [ < button ; column ; row M` or `m`.
-    Sgr,
-}
-
-/// Why a terminal stream ended.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DetachReason {
-    /// The session's process exited; everything it wrote has been sent.
-    Exited,
-    /// The session is unknown, or its terminal is no longer held.
-    NotRunning,
-}
-
-/// A terminal's size in character cells.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TermSize {
-    pub cols: u16,
-    pub rows: u16,
-}
-
-impl Default for TermSize {
-    fn default() -> Self {
-        Self { cols: 80, rows: 24 }
-    }
-}
-
-/// A terminal's size in pixels.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct PixelSize {
-    pub width: u16,
-    pub height: u16,
-}
-
 /// Something a client asks the daemon to do.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Command {
     /// Check the daemon is answering.
     Ping,
@@ -656,6 +587,7 @@ pub enum Command {
 
 /// A successful answer to a [`Command`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Reply {
     Pong,
     ProjectAdded {
@@ -760,6 +692,7 @@ pub enum Reply {
 /// when the work and the clients behind them end (`ARC-13`, `ARC-14`), so
 /// one that only grows is a leak to look into.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Health {
     /// Every task on the daemon's runtime.
     pub tasks: u64,
@@ -775,6 +708,7 @@ pub struct Health {
 
 /// The daemon's whole state, as a client needs it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Snapshot {
     pub projects: Vec<Project>,
     pub workspaces: Vec<Workspace>,
@@ -804,6 +738,7 @@ pub struct Snapshot {
 /// What the machine and each running session use, measured every couple of
 /// seconds (`PRD-05`).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ResourceReport {
     pub host_memory_used: u64,
     pub host_memory_total: u64,
@@ -812,6 +747,7 @@ pub struct ResourceReport {
 
 /// One session's use: its program and every process it started.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SessionUsage {
     pub session: SessionId,
     pub memory_bytes: u64,
@@ -821,6 +757,7 @@ pub struct SessionUsage {
 
 /// One change to the state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Delta {
     ProjectUpserted(Project),
     /// A project, and with it its workspaces and their sessions, left.
@@ -919,6 +856,7 @@ impl Delta {
 
 /// A failure the client can act on: `code` is for code, `message` for people.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[error("{message} ({code:?})")]
 pub struct ErrorBody {
     pub code: ErrorCode,
@@ -936,6 +874,7 @@ impl ErrorBody {
 
 /// Machine-readable error kinds (`ARC-07`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     /// The request is malformed or names something invalid.

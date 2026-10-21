@@ -11,6 +11,7 @@ pub const TIDY_PROTOCOL: u32 = 27;
 
 /// A tidy an agent was asked for.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Tidy {
     /// How many commits it was asked to tidy.
     pub commits: u64,
@@ -23,6 +24,7 @@ pub struct Tidy {
 
 /// What Muster found once the agent stopped.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum TidyCheck {
     /// The files are as they began, in `commits` commits after the one

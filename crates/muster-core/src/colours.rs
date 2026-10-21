@@ -23,6 +23,7 @@ pub const PALETTE: usize = 16;
 
 /// One colour, each channel in sixteen bits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Rgb {
     pub red: u16,
     pub green: u16,
@@ -65,6 +66,7 @@ fn channel(digits: &[u8]) -> Option<u16> {
 
 /// The colours of the person's terminal, those it said when asked.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TerminalColours {
     /// Its default text colour (OSC 10).
     #[serde(default)]

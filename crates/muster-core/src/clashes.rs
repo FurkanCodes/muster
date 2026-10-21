@@ -22,6 +22,7 @@ pub const MAX_SHOWN: usize = 20;
 /// Another workspace of the project whose work changes files this one's
 /// changes too.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Clash {
     /// The other workspace.
     pub with: WorkspaceId,
@@ -35,6 +36,7 @@ pub struct Clash {
 
 /// A file both workspaces' work changes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ClashFile {
     /// Where it is in the repository, as git names it.
     pub path: String,

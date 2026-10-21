@@ -19,6 +19,7 @@ use crate::{Project, Session, SessionStatus, WaitReason, Workspace};
 
 /// What happened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum EventKind {
     /// An agent's session was started, or started again after it ended.
     #[serde(rename = "session.started")]
@@ -120,6 +121,7 @@ impl fmt::Display for EventKind {
 
 /// An event, as a hook is given it on stdin.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Event {
     pub event: EventKind,
     /// When it happened, in milliseconds since 1970, UTC.
@@ -145,6 +147,7 @@ pub struct Event {
 
 /// The project an event is in.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct EventProject {
     pub id: String,
     pub name: String,
@@ -154,6 +157,7 @@ pub struct EventProject {
 
 /// The workspace an event is in.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct EventWorkspace {
     pub id: String,
     /// Its folder; none for a run's container, whose files are in it only.
@@ -166,6 +170,7 @@ pub struct EventWorkspace {
 
 /// The session an event is of.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct EventSession {
     pub id: String,
     /// Its chat's name, as the UI shows it.
@@ -184,6 +189,7 @@ pub struct EventSession {
 
 /// The pull request from a workspace's branch.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct EventPullRequest {
     pub number: u64,
     pub url: String,
@@ -198,6 +204,7 @@ pub struct EventPullRequest {
 /// Where the work in an event's workspace meets another's: the other,
 /// and how many files both change, never which or what.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct EventClash {
     pub with: EventWorkspace,
     pub files: u64,

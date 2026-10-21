@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 /// to, so only these two shapes are taken: a key is safe in a branch name,
 /// a command line and a terminal.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, type = "string"))]
 #[serde(try_from = "String", into = "String")]
 pub struct TicketKey(String);
 

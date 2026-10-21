@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Where a run is on its way from ticket to merged pull request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum RunStage {
     /// Picked up; waiting for room to run.
@@ -113,6 +114,7 @@ impl RunStage {
 /// edits do not change what the run was asked to do (`PRODUCT.md` §5).
 /// Anyone can write it, so it reaches agents only as data (`PRD-07`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Ticket {
     pub number: u64,
     pub title: String,
@@ -127,6 +129,7 @@ pub struct Ticket {
 
 /// A pull request a run opened.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PullRequest {
     pub number: u64,
     pub url: String,
@@ -134,6 +137,7 @@ pub struct PullRequest {
 
 /// One ticket on its way to a merged pull request.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Run {
     pub id: crate::RunId,
     pub project: crate::ProjectId,
@@ -157,6 +161,7 @@ pub struct Run {
 
 /// One step in a run's timeline, with its reason.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RunTransition {
     pub from: RunStage,
     pub to: RunStage,

@@ -11,6 +11,7 @@ use crate::time::Timestamp;
 
 /// A folder Muster knows about: a git repository, or a plain folder.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Project {
     pub id: ProjectId,
     /// Shown in the UI; defaults to the folder's name.
@@ -22,6 +23,7 @@ pub struct Project {
 
 /// Where a session's code lives.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Workspace {
     pub id: WorkspaceId,
     pub project: ProjectId,
@@ -57,6 +59,7 @@ pub struct Workspace {
 /// name, or `detached at <commit>`; empty in a plain folder, which is not
 /// a git repository.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceKind {
     /// A git worktree Muster created on the host.
@@ -117,6 +120,7 @@ impl WorkspaceKind {
 /// A ticket, as listed for the person to pick from: an issue on GitHub or
 /// GitLab, a Jira work item, a Linear issue.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Issue {
     pub key: TicketKey,
     pub title: String,
@@ -129,6 +133,7 @@ pub struct Issue {
 
 /// One agent process in one workspace.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Session {
     pub id: SessionId,
     pub workspace: WorkspaceId,

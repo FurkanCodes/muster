@@ -148,6 +148,7 @@ pub enum Place {
 
 /// The panels' layout. Every panel is in it once, shown or not.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, type = "string"))]
 #[serde(try_from = "String", into = "String")]
 pub struct Layout {
     root: Node,

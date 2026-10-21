@@ -16,6 +16,12 @@ thiserror.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
 ulid.workspace = true
+# TypeScript bindings of the protocol, for the desktop app (`ARC-24`); off
+# for every other build.
+ts-rs = { workspace = true, optional = true }
+
+[features]
+ts = ["dep:ts-rs"]
 
 [dev-dependencies]
 proptest.workspace = true
