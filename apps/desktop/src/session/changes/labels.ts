@@ -30,7 +30,7 @@ export function entryLabel(timeline: Timeline, entry: Entry): string {
   const kind = entry.kind;
   switch (kind.kind) {
     case "turn":
-      return `${oneLine(kind.agent)} · turn ${turnOf(timeline, entry)}`;
+      return `${oneLine(kind.agent)}, turn ${turnOf(timeline, entry)}`;
     case "between":
       return "Edits between turns";
     case "undo":
@@ -92,20 +92,22 @@ export function wouldConflict(clash: Clash): boolean {
   return clash.conflicts > 0;
 }
 
-/** The files a clash names, a few and the rest counted: `a.rs, b.rs and 3 more`. */
-export function clashFiles(clash: Clash): string {
+/** The files a clash names, a few, and how many more: `a.rs, b.rs` and 3. */
+export function clashFiles(clash: Clash): { named: string; more: number } {
   const conflict = wouldConflict(clash);
   const named = clash.shown
     .filter((file) => file.conflict || !conflict)
     .slice(0, NAMED)
     .map((file) => oneLine(file.path));
   const more = Math.max(0, (conflict ? clash.conflicts : clash.files) - named.length);
-  return `${named.join(", ")}${more ? ` and ${more} more` : ""}`;
+  return { named: named.join(", "), more };
 }
 
-/** What the banner says after the other workspace: the TUI's `what`, in the board's sentence. */
+/** The TUI's `what`, in the board's sentence: what the banner says after the other workspace. */
 export function clashWords(clash: Clash): string {
+  const { named, more } = clashFiles(clash);
+  const files = `${named}${more ? ` and ${more} more` : ""}`;
   return wouldConflict(clash)
-    ? `would conflict in ${clashFiles(clash)}`
-    : `changes them too: ${clashFiles(clash)}`;
+    ? `would conflict in ${files}.`
+    : `both change ${files}. Git could merge them.`;
 }

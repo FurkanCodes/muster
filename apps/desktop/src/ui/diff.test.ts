@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineAt, parseDiff } from "./diff";
+import { isBinary, lineAt, parseDiff } from "./diff";
 
 describe("ARC-24 unified diffs", () => {
   it("numbers both sides, resets at hunks and files, and expands tabs", () => {
@@ -24,5 +24,11 @@ describe("ARC-24 unified diffs", () => {
     expect(lines).toHaveLength(5001);
     expect(lines.at(-1)?.next).toBe(5000);
     expect(elapsed).toBeLessThan(100);
+  });
+  it("tells a binary file from a text diff that mentions one", () => {
+    const binary = "diff --git a/i.png b/i.png\nBinary files a/i.png and b/i.png differ";
+    expect(isBinary(binary, parseDiff(binary))).toBe(true);
+    const text = "@@ -1 +1 @@\n-Binary files a and b differ\n+x";
+    expect(isBinary(text, parseDiff(text))).toBe(false);
   });
 });

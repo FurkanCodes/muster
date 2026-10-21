@@ -130,7 +130,7 @@ export function workingDay(): Scenario {
       changes: { files: 2, added: 12, removed: 3 },
     }),
     workspace(11, 1, "worktree", "feature/desktop-app", "~/.muster/worktrees/muster/desktop", {
-      changes: { files: 3, added: 203, removed: 4 },
+      changes: { files: 3, added: 300, removed: 6 },
       pull_request: {
         number: 91,
         url: "https://github.com/FurkanCodes/muster/pull/91",

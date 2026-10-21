@@ -1,3 +1,7 @@
+/** A line's height in the view, and a hunk head's with its margins (design system: DiffView). */
+export const LINE = 18;
+export const HUNK = 30;
+
 export interface DiffLine {
   kind: "context" | "add" | "del" | "hunk" | "header";
   text: string;
@@ -37,7 +41,7 @@ export function parseDiff(text: string): DiffLine[] {
       before = old++;
       after = next++;
     }
-    const height = kind === "hunk" ? 30 : 18;
+    const height = kind === "hunk" ? HUNK : LINE;
     const line: DiffLine = {
       kind,
       text: (kind === "add" || kind === "del" || kind === "context" ? raw.slice(1) : raw).replace(
@@ -64,4 +68,12 @@ export function lineAt(lines: DiffLine[], offset: number): number {
     else high = mid;
   }
   return low;
+}
+
+/** Whether git said the file is binary and showed no lines for it. */
+export function isBinary(text: string, lines: readonly DiffLine[]): boolean {
+  return (
+    !lines.some((line) => line.kind === "hunk") &&
+    /^(?:Binary files .+ differ|GIT binary patch)$/m.test(text)
+  );
 }

@@ -55,7 +55,7 @@ describe("PRD-14 putting a turn back", () => {
     expect(dialog).toHaveTextContent("The worktree's files go back as they were 10m ago.");
     expect(dialog).toHaveTextContent("What is there now is kept first, so this can be put back");
     expect(dialog).toHaveTextContent(
-      "Goes with itEdits between turns, 4m agoCodex · turn 3, 1m ago",
+      "Goes with itEdits between turns, 4m agoCodex, turn 3, 1m ago",
     );
     expect(dialog).toHaveTextContent(
       "Put back with the branch also moves ⎇ feature/desktop-app back to 1234567, before its 1 commit since.",

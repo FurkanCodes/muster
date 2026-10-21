@@ -1,9 +1,18 @@
 import { useNow } from "../app/clock";
 import { useDaemon } from "../app/context";
 import type { Entry } from "../ipc/generated/Entry";
+import { agentOf } from "../lib/agents";
 import { ago } from "../lib/format";
 import { AgentLogo, DiffStat } from "./status";
 
+const AGENTS = ["claude", "codex", "gemini", "opencode", "copilot"];
+
+/** The harness of an agent the timeline names, where its session has gone. */
+function harnessNamed(agent: string): string {
+  return AGENTS.find((id) => agentOf(id).name === agent) ?? agent;
+}
+
+/** One entry of a workspace's timeline: its number, who, what it changed, and when it ended. */
 export function TurnRow({
   entry,
   label,
@@ -20,6 +29,7 @@ export function TurnRow({
   const now = useNow();
   const session = entry.kind.kind === "turn" ? entry.kind.session : "";
   const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
+  const files = entry.summary?.files ?? 0;
   return (
     <button
       type="button"
@@ -32,10 +42,10 @@ export function TurnRow({
     >
       <span className="mu-turnrow-num">{entry.number}</span>
       {entry.kind.kind === "turn" ? (
-        <AgentLogo harness={harness || entry.kind.agent.toLowerCase()} size="sm" />
+        <AgentLogo harness={harness || harnessNamed(entry.kind.agent)} size="sm" />
       ) : (
-        <span className="mu-logo mu-logo--sm" aria-hidden="true">
-          {entry.kind.kind === "between" ? "✎" : "↺"}
+        <span className="mu-logo mu-logo--sm mu-logo--mark" aria-hidden="true">
+          {entry.kind.kind === "undo" ? "↺" : entry.kind.kind === "moved" ? "⎇" : "✎"}
         </span>
       )}
       <span className="mu-turnrow-text">
@@ -43,9 +53,7 @@ export function TurnRow({
         <span className="mu-meta">
           {entry.summary ? (
             <>
-              <span>
-                {entry.summary.files} {entry.summary.files === 1 ? "file" : "files"}{" "}
-              </span>
+              {files} {files === 1 ? "file" : "files"}{" "}
               <DiffStat added={entry.summary.added} removed={entry.summary.removed} />
             </>
           ) : (

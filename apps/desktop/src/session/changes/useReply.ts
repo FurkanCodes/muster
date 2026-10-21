@@ -8,35 +8,37 @@ export type Answer<T> =
   | { state: "error"; error: string }
   | { state: "ready"; value: T };
 
-/** Latest request wins; hidden windows wait until seen. No polling (ARC-25). */
+/**
+ * The daemon's answer to `command`, asked again whenever `revision` says
+ * so; the latest asked wins. Nothing is asked while the window is hidden,
+ * and a window seen again asks only what it has no answer to (ARC-25).
+ */
 export function useReply(command: Command | null, revision: string): Answer<Reply> {
   const bridge = useBridge();
   const visible = useUi((state) => state.visible);
   const request = useRef(command);
   request.current = command;
-  const key = JSON.stringify(command);
-  const tag = `${key}:${revision}`;
+  const tag = `${JSON.stringify(command)}:${revision}`;
   const [answer, setAnswer] = useState<{ tag: string; answer: Answer<Reply> }>();
+  const asked = useRef<string | null>(null);
   useEffect(() => {
-    if (!visible || !request.current) return;
+    if (!visible || !request.current || asked.current === tag) return;
+    asked.current = tag;
     let current = true;
-    void bridge.command(request.current).then(
-      (value) => {
-        if (current) setAnswer({ tag, answer: { state: "ready", value } });
-      },
-      (error: unknown) => {
-        if (current)
-          setAnswer({
-            tag,
-            answer: {
-              state: "error",
-              error: error instanceof Error ? error.message : String(error),
-            },
-          });
-      },
+    let settled = false;
+    const settle = (result: Answer<Reply>) => {
+      settled = true;
+      if (current) setAnswer({ tag, answer: result });
+    };
+    bridge.command(request.current).then(
+      (value) => settle({ state: "ready", value }),
+      (error: unknown) =>
+        settle({ state: "error", error: error instanceof Error ? error.message : String(error) }),
     );
     return () => {
       current = false;
+      // An answer dropped on the way is asked again next time.
+      if (!settled && asked.current === tag) asked.current = null;
     };
   }, [bridge, visible, tag]);
   return answer?.tag === tag ? answer.answer : { state: "loading" };

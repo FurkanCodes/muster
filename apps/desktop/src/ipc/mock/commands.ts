@@ -3,10 +3,23 @@
 // generated `Reply`). An unknown command is refused, so a test notices.
 
 import { BridgeFailure } from "../bridge";
+import type { ChangeSummary } from "../generated/ChangeSummary";
+import type { Changes } from "../generated/Changes";
 import type { Command } from "../generated/Command";
 import type { Reply } from "../generated/Reply";
 import type { MockBridge } from "./bridge";
 import { handleUndo } from "./undo";
+
+/** `Changes::summary`. */
+function summaryOf(changes: Changes): ChangeSummary | null {
+  const files = [...changes.uncommitted, ...changes.branch];
+  if (files.length === 0) return null;
+  return {
+    files: new Set(files.map((file) => file.path)).size,
+    added: files.reduce((sum, file) => sum + (file.lines?.added ?? 0), 0),
+    removed: files.reduce((sum, file) => sum + (file.lines?.removed ?? 0), 0),
+  };
+}
 
 export function handleCommand(mock: MockBridge, command: Command): Reply | undefined {
   if (command === "Ping") return "Pong";
@@ -43,26 +56,27 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
         "a run's container keeps its own clone; its changes are the run's",
         "bad_request",
       );
-    if ("WorkspaceChanges" in command)
-      return {
-        Changes: mock.world.changes[workspace.id] ?? {
-          base: "main",
-          uncommitted: [],
-          branch: [],
-          commits: [],
-          more_commits: 0,
-        },
+    if ("WorkspaceChanges" in command) {
+      const changes = mock.world.changes[workspace.id] ?? {
+        base: "main",
+        uncommitted: [],
+        branch: [],
+        commits: [],
+        more_commits: 0,
       };
+      // supervisor::changes: the workspace's summary is kept in step with
+      // what a client is told.
+      const summary = summaryOf(changes);
+      if (JSON.stringify(summary) !== JSON.stringify(workspace.changes))
+        queueMicrotask(() => mock.updateWorkspace(workspace.id, { changes: summary }));
+      return { Changes: structuredClone(changes) };
+    }
     if ("Timeline" in command)
       return { Timeline: mock.world.timelines[workspace.id] ?? { entries: [] } };
     if ("FileDiff" in command) {
       const { part, path } = command.FileDiff;
       if (!mock.world.changes[workspace.id]?.[part].some((file) => file.path === path))
-        throw new BridgeFailure(
-          "refused",
-          `${path} is not among the files changed there`,
-          "not_found",
-        );
+        throw new BridgeFailure("refused", `${path} is no longer changed there`, "not_found");
       return {
         FileDiff: mock.world.diffs[`${workspace.id}:${part}:${path}`] ?? { text: "", cut: false },
       };

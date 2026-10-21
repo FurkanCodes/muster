@@ -1,3 +1,6 @@
+// The changes view end to end in WebKit, over the mock daemon: each state
+// the Changes and Put back boards show, and the keys (ARC-24, ARC-25, PRD-14).
+
 import { expect, type Page, test } from "@playwright/test";
 import type { MockBridge } from "../src/ipc/mock/bridge";
 
@@ -7,75 +10,276 @@ declare global {
   }
 }
 const workspace = "01JD0000000000000000000011";
+const other = "01JD0000000000000000000012";
 
-async function open(page: Page) {
+/** Opens the changes of Sketch the Tauri shell, the first session needing you. */
+async function open(page: Page, before?: (page: Page) => Promise<void>) {
   await page.goto("/");
+  await before?.(page);
   await page.getByRole("button", { name: "Changes", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Not committed/ })).toBeVisible();
 }
 
-test("ARC-24 files, branch and turns send the daemon's commands, with keys", async ({ page }) => {
+/**
+ * The agent in the workspace finishes its turn, not yet seen, so nothing
+ * works there and its session stays first under Needs you.
+ */
+async function agentDone(page: Page) {
+  await page.evaluate((workspace) => {
+    for (const session of window.__muster.world.sessions) {
+      if (session.workspace === workspace) {
+        session.status = { state: "finished" };
+        session.unseen = true;
+      } else if (session.status.state === "needs_you") session.status = { state: "running" };
+    }
+  }, workspace);
+}
+
+function sent(page: Page, name: string) {
+  return page.evaluate(
+    (name) =>
+      window.__muster.sent.filter((command) => typeof command !== "string" && name in command),
+    name,
+  );
+}
+
+const statusBar = (page: Page) => page.locator(".mu-statusbar");
+
+test("ARC-24 Not committed: files with kind, path and lines; ⏎ opens the diff; ⎋ back to the list, then the terminal", async ({
+  page,
+}) => {
   await open(page);
-  await page.getByRole("option", { name: "modified: src/link.rs" }).click();
+  await expect(page.getByRole("button", { name: "Changes", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  const files = page.getByRole("listbox", { name: "Files not committed" });
+  await expect(files.getByRole("option")).toHaveText([
+    "Msrc/link.rs+118−4",
+    "?src/main.rs+61",
+    "?Cargo.toml+24",
+  ]);
+  await expect(page.locator(".changes-toolbar .mu-diff")).toHaveText("+203−4in 3 files");
+  await expect(page.getByText("Choose a file to see its diff.")).toBeVisible();
+  await expect(statusBar(page)).toContainText("ask git again");
+  await expect(statusBar(page)).toContainText("back to the terminal");
+
+  await page.keyboard.press("Enter");
   const diff = page.getByRole("region", { name: "Diff" });
-  await expect(diff).toContainText("use muster_client::{Connection, Received};");
-  await expect(diff.locator(".mu-dl--del").first()).toContainText("Connection;");
-  await page.keyboard.press("h");
+  await expect(diff).toBeFocused();
+  await expect(diff.locator(".mu-dl--add").first()).toHaveText(
+    "2+use muster_client::{Connection, Received};",
+  );
+  await expect(diff.locator(".mu-dl--del").first()).toHaveText("2−use muster_client::Connection;");
+  await expect(page.locator(".mu-diffview-head")).toHaveText("Msrc/link.rs+118−4Not committed");
+  await expect(statusBar(page)).toContainText("next and last hunk");
+
+  await page.keyboard.press("Escape");
+  await expect(files.getByRole("option", { name: "modified: src/link.rs" })).toBeFocused();
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
   await expect
-    .poll(() => page.evaluate(() => window.__muster.sent))
-    .toContainEqual({ FileDiff: { workspace, part: "uncommitted", path: "src/main.rs" } });
-  await page.keyboard.press("Tab");
-  await expect(page.getByText("Add the desktop crate")).toBeVisible();
-  await page.keyboard.press("Enter");
-  await expect
-    .poll(() => page.evaluate(() => window.__muster.sent))
-    .toContainEqual({ FileDiff: { workspace, part: "branch", path: "src/link.rs" } });
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("option", { name: /Codex · turn 3/ })).toBeVisible();
-  await expect(page.getByText("Edits between turns")).toBeVisible();
-  await page.keyboard.press("Enter");
-  await expect
-    .poll(() => page.evaluate(() => window.__muster.sent))
-    .toContainEqual({ EntryDiff: { workspace, number: 4 } });
+    .poll(() => sent(page, "FileDiff"))
+    .toEqual([
+      { FileDiff: { workspace, part: "uncommitted", path: "src/link.rs" } },
+      { FileDiff: { workspace, part: "uncommitted", path: "src/main.rs" } },
+    ]);
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("Terminal", { exact: true })).toBeVisible();
 });
 
-for (const command of ["WorkspaceChanges", "Timeline"] as const) {
-  test(`ARC-24 ${command}: loading, refusal, retry and empty`, async ({ page }) => {
-    await page.goto("/");
-    await page.evaluate((command) => window.__muster.held.add(command), command);
-    await page.getByRole("button", { name: "Changes", exact: true }).click();
+test("ARC-24 On the branch: its commits since the base, then its files; ⇥ goes round the views", async ({
+  page,
+}) => {
+  await open(page);
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "On the branch 2" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("heading", { name: "Commits since main · 1" })).toBeVisible();
+  await expect(page.locator(".changes-commits")).toHaveText("a1b2c3d Add the desktop crate");
+  await expect(
+    page.getByRole("heading", { name: "Changed on the branch · 2 files" }),
+  ).toBeVisible();
+  await page.getByRole("option", { name: "modified: Cargo.toml" }).click();
+  await expect(page.locator(".mu-diffview-head")).toHaveText("MCargo.toml+12−2On the branch");
+  await expect
+    .poll(() => sent(page, "FileDiff"))
+    .toEqual([{ FileDiff: { workspace, part: "branch", path: "Cargo.toml" } }]);
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: "Not committed 3" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+test("ARC-24 Turns: each entry with its agent, what it changed and when; ⏎ asks its diff", async ({
+  page,
+}) => {
+  await open(page);
+  await page.getByRole("button", { name: "Turns 4" }).click();
+  await expect(page.getByRole("listbox", { name: "Turns" }).getByRole("option")).toHaveText([
+    "4Codex, turn 33 files +203−41m",
+    "3✎Edits between turns1 file +12−44m",
+    "2Codex, turn 23 files +203−47m",
+    "1Codex, turn 1changed no files10m",
+  ]);
+  await expect(page.getByText("Muster keeps each workspace's newest 100.")).toBeVisible();
+  await expect(statusBar(page)).toContainText("put back");
+  await page.keyboard.press("j");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".mu-diffview-head")).toHaveText("Edits between turns+12−4");
+  await expect
+    .poll(() => sent(page, "EntryDiff"))
+    .toEqual([{ EntryDiff: { workspace, number: 3 } }]);
+});
+
+test("PRD-14 put back: the plan, then the dialog as the board draws it, then Undo with the branch", async ({
+  page,
+}) => {
+  await open(page, agentDone);
+  await page.getByRole("button", { name: "Turns 4" }).click();
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await page.keyboard.press("z");
+  const dialog = page.getByRole("dialog", { name: "Put the files back as before Codex's turn 2?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("The worktree's files go back as they were 10m ago.");
+  await expect(dialog.locator(".mu-details")).toHaveText(
+    "Goes with itEdits between turns, 4m agoCodex, turn 3, 1m agoThe branchPut back with the branch also moves ⎇ feature/desktop-app back to 1234567, before its 1 commit since.CodexStill remembers that turn: tell it what you put back.",
+  );
+  await expect(dialog.getByRole("button")).toHaveText([
+    "Keep it",
+    "Put back the files",
+    "Put back with the branch",
+  ]);
+  await expect(dialog.getByRole("button", { name: "Put back with the branch" })).toBeFocused();
+  // Keys are the dialog's while it is open: ⇥ is not the view's.
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect
+    .poll(() => sent(page, "Undo"))
+    .toEqual([{ Undo: { workspace, number: 2, move_branch: true } }]);
+  await expect(statusBar(page)).toContainText(
+    "The files are as they were before #2, and the branch with them. z on #5 brings them back.",
+  );
+  await expect(page.getByRole("option", { selected: true })).toHaveText(/^5↺Put back as before #2/);
+  await expect(page.getByRole("option", { selected: true })).toBeFocused();
+});
+
+test("PRD-14 put back files only with y; n keeps it, sending nothing", async ({ page }) => {
+  await open(page, agentDone);
+  await page.getByRole("button", { name: "Turns 4" }).click();
+  await page.keyboard.press("z");
+  const dialog = page.getByRole("dialog", { name: "Put the files back as before Codex's turn 3?" });
+  await expect(dialog.getByRole("button")).toHaveText(["Keep it", "Put back the files"]);
+  await page.keyboard.press("n");
+  await expect(dialog).toBeHidden();
+  expect(await sent(page, "Undo")).toEqual([]);
+  await page.getByRole("button", { name: "Put back", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("y");
+  await expect
+    .poll(() => sent(page, "Undo"))
+    .toEqual([{ Undo: { workspace, number: 4, move_branch: false } }]);
+  await expect(statusBar(page)).toContainText(
+    "The files are as they were before #4. z on #5 brings them back.",
+  );
+});
+
+test("PRD-14 the TUI's refusals, said in the status bar: an agent at work, files changed since, no such entry", async ({
+  page,
+}) => {
+  // Sketch the Tauri shell still asks its question: its agent is at work there.
+  await open(page);
+  await page.getByRole("button", { name: "Turns 4" }).click();
+  await page.keyboard.press("z");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("y");
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(statusBar(page).locator(".mu-note--error")).toHaveText(
+    "Sketch the Tauri shell is at work there: put the files back once it has stopped",
+  );
+
+  await agentDone(page);
+  await page.evaluate(() => {
+    window.__muster.errors.Undo = {
+      code: "conflict",
+      message:
+        "the files were not put back: error: Entry 'src/link.rs' not uptodate. Cannot merge.",
+    };
+  });
+  await page.keyboard.press("z");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("y");
+  await expect(statusBar(page).locator(".mu-note--error")).toHaveText(
+    "the files were not put back: error: Entry 'src/link.rs' not uptodate. Cannot merge.",
+  );
+
+  await page.evaluate(() => {
+    window.__muster.errors.UndoPlan = {
+      code: "not_found",
+      message: "there is no entry 4 in this workspace's timeline",
+    };
+  });
+  await page.keyboard.press("z");
+  await expect(statusBar(page).locator(".mu-note--error")).toHaveText(
+    "there is no entry 4 in this workspace's timeline",
+  );
+  await expect(page.getByRole("dialog")).toBeHidden();
+  // z away from Turns says what to do.
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("z");
+  await expect(statusBar(page).locator(".mu-note--error")).toHaveText(
+    "Choose a turn under Turns to put the files back as they were before it.",
+  );
+});
+
+for (const [command, asking, lead, empty] of [
+  ["WorkspaceChanges", "Asking git…", "", "Nothing here is waiting to be committed."],
+  [
+    "Timeline",
+    "Reading the turns…",
+    "The timeline could not be read: ",
+    "None kept yet: each agent's turn here is, from now on.",
+  ],
+] as const) {
+  test(`ARC-24 ${command}: asking, refused, asked again, empty`, async ({ page }) => {
+    await open(page, (page) =>
+      page.evaluate((command) => {
+        window.__muster.held.add(command);
+      }, command),
+    );
     if (command === "Timeline") await page.getByRole("button", { name: /^Turns/ }).click();
-    await expect(
-      page.getByText(command === "Timeline" ? "Reading the turns…" : "Asking git…"),
-    ).toBeVisible();
+    await expect(page.getByText(asking)).toBeVisible();
     await page.evaluate((command) => {
       window.__muster.errors[command] = {
         code: "internal",
-        message: "Git could not read this workspace.",
+        message: "git could not read the worktree",
       };
       window.__muster.release(command);
     }, command);
-    await expect(page.getByRole("alert")).toContainText("Git could not read");
-    await page.evaluate((command) => {
-      delete window.__muster.errors[command];
-      window.__muster.replies[command] =
-        command === "Timeline"
-          ? { Timeline: { entries: [] } }
-          : {
-              Changes: { base: "main", uncommitted: [], branch: [], commits: [], more_commits: 0 },
-            };
-    }, command);
+    await expect(page.getByRole("alert")).toHaveText(
+      `${lead}git could not read the worktreeAsk again`,
+    );
+    await page.evaluate(
+      ({ command, workspace }) => {
+        delete window.__muster.errors[command];
+        window.__muster.world.changes[workspace] = {
+          base: "main",
+          uncommitted: [],
+          branch: [],
+          commits: [],
+          more_commits: 0,
+        };
+        window.__muster.world.timelines[workspace] = { entries: [] };
+      },
+      { command, workspace },
+    );
     await page.keyboard.press("r");
-    await expect(
-      page.getByText(
-        command === "Timeline"
-          ? "None kept yet: each agent's turn here is, from now on."
-          : "Nothing is waiting to be committed.",
-      ),
-    ).toBeVisible();
+    await expect(page.getByText(empty)).toBeVisible();
     if (command === "WorkspaceChanges") {
       await page.keyboard.press("Tab");
       await expect(page.getByText("Nothing has changed here since main.")).toBeVisible();
@@ -83,14 +287,16 @@ for (const command of ["WorkspaceChanges", "Timeline"] as const) {
   });
 }
 
-test("ARC-25 a 5,000-line diff stays bounded and scrolls with End, Home, n and p", async ({
+test("ARC-25 a 5,000-line diff opens at once, draws under 100 lines, and scrolls with End, Home, n and p", async ({
   page,
 }) => {
   await open(page);
   await page.evaluate(() => {
+    const half = (from: number) =>
+      Array.from({ length: 2500 }, (_, n) => `+line ${n + from}`).join("\n");
     window.__muster.replies.FileDiff = {
       FileDiff: {
-        text: `@@ -0,0 +1,2500 @@\n${Array.from({ length: 2500 }, (_, n) => `+line ${n}`).join("\n")}\n@@ -0,0 +2501,2500 @@\n${Array.from({ length: 2500 }, (_, n) => `+line ${n + 2500}`).join("\n")}`,
+        text: `@@ -0,0 +1,2500 @@\n${half(0)}\n@@ -0,0 +2501,2500 @@\n${half(2500)}`,
         cut: false,
       },
     };
@@ -99,9 +305,10 @@ test("ARC-25 a 5,000-line diff stays bounded and scrolls with End, Home, n and p
   await page.getByRole("option", { name: "modified: src/link.rs" }).click();
   const diff = page.getByRole("region", { name: "Diff" });
   await expect(diff.getByText("line 0", { exact: true })).toBeVisible();
-  expect(Date.now() - start).toBeLessThan(2000);
+  const opened = Date.now() - start;
+  test.info().annotations.push({ type: "5,000-line diff opened in", description: `${opened} ms` });
+  expect(opened).toBeLessThan(1500);
   expect(await diff.locator(".mu-dl").count()).toBeLessThan(100);
-  await diff.focus();
   await page.keyboard.press("End");
   await expect(diff.getByText("line 4999", { exact: true })).toBeVisible();
   expect(await diff.locator(".mu-dl").count()).toBeLessThan(100);
@@ -112,67 +319,101 @@ test("ARC-25 a 5,000-line diff stays bounded and scrolls with End, Home, n and p
   await expect(diff.getByText("line 2500", { exact: true })).toBeVisible();
   await page.keyboard.press("p");
   await expect(diff.getByText("line 0", { exact: true })).toBeVisible();
-  await page.keyboard.press("c");
-  await expect(page.getByLabel("Terminal", { exact: true })).toBeVisible();
 });
 
-test("ARC-24 binary, cut and failed diffs say what happened", async ({ page }) => {
+test("ARC-24 binary, empty, cut and refused diffs are said in words", async ({ page }) => {
   await open(page);
   await page.evaluate(() => {
     window.__muster.replies.FileDiff = {
-      FileDiff: { text: "Binary files a/image.png and b/image.png differ", cut: false },
+      FileDiff: {
+        text: "diff --git a/i.png b/i.png\nBinary files a/i.png and b/i.png differ",
+        cut: false,
+      },
     };
   });
   await page.getByRole("option", { name: "modified: src/link.rs" }).click();
-  await expect(page.getByText(/binary —/)).toBeVisible();
+  await expect(page.getByText("binary: git shows no lines for it.")).toBeVisible();
   await page.evaluate(() => {
     window.__muster.replies.FileDiff = { FileDiff: { text: "", cut: true } };
   });
   await page.keyboard.press("r");
   await expect(page.getByText("Git shows no difference in its text.")).toBeVisible();
-  await expect(page.getByText(/cut here:/)).toBeVisible();
+  await expect(page.getByText("… cut here: the rest is longer than Muster shows.")).toBeVisible();
   await page.evaluate(() => {
+    delete window.__muster.replies.FileDiff;
     window.__muster.errors.FileDiff = {
       code: "not_found",
-      message: "src/link.rs is not among the files changed there",
+      message: "src/link.rs is no longer changed there",
     };
   });
   await page.keyboard.press("r");
-  await expect(page.getByRole("alert")).toContainText("not among the files");
+  await expect(page.getByRole("alert")).toHaveText(
+    "src/link.rs is no longer changed there r asks again.",
+  );
 });
 
-test("ARC-24 clashes follow workspace patches and refresh follows the summary", async ({
+test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other work a key away", async ({
   page,
 }) => {
   await open(page);
-  await expect(page.getByText("Overlap", { exact: true })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Overlap" })).toContainText(
-    "changes them too:",
+  const banner = page.locator(".mu-banner");
+  await expect(banner).toHaveText(
+    "!Overlap with ⎇ fix/resize-under-load: both change crates/muster-client/src/connection.rs. Git could merge them.See its changes",
   );
+  await expect(banner).toHaveClass(/mu-banner--overlap/);
+  await expect(statusBar(page)).toContainText("the other work");
   await page.evaluate(
-    (workspace) =>
+    ({ workspace, other }) =>
       window.__muster.updateWorkspace(workspace, {
         clashes: [
           {
-            with: "01JD0000000000000000000012",
+            with: other,
             files: 4,
             conflicts: 3,
             shown: [{ path: "src/link.rs", conflict: true }],
           },
         ],
       }),
+    { workspace, other },
+  );
+  await expect(banner).toHaveText(
+    "!Conflict with ⎇ fix/resize-under-load: would conflict in src/link.rs and 2 more.See its changes",
+  );
+  await expect(banner).not.toHaveClass(/mu-banner--overlap/);
+  await page.evaluate(
+    (workspace) => window.__muster.updateWorkspace(workspace, { clashes: [] }),
     workspace,
   );
-  await expect(page.getByText("Conflict", { exact: true })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Conflict" })).toContainText(
-    "would conflict in src/link.rs and 2 more",
+  await expect(banner).toBeHidden();
+  await page.evaluate(
+    ({ workspace, other }) =>
+      window.__muster.updateWorkspace(workspace, {
+        clashes: [{ with: other, files: 1, conflicts: 0, shown: [{ path: "a", conflict: false }] }],
+      }),
+    { workspace, other },
   );
+  // The other workspace's session, in All sessions (its tree is feature/desktop-sessions').
+  await page.keyboard.press("1");
+  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+});
+
+test("ARC-25 asked again as the workspace moves, without polling", async ({ page }) => {
+  await open(page);
+  await expect(page.getByRole("option", { name: "modified: src/link.rs" })).toBeVisible();
+  await expect.poll(async () => (await sent(page, "Timeline")).length).toBe(1);
+  expect((await sent(page, "WorkspaceChanges")).length).toBe(1);
   await page.evaluate((workspace) => {
     const changes = window.__muster.world.changes[workspace];
     if (changes)
       changes.uncommitted = [{ path: "fresh.rs", from: "old.rs", kind: "renamed", lines: null }];
-    window.__muster.updateWorkspace(workspace, { changes: { files: 1, added: 0, removed: 0 } });
+    window.__muster.updateWorkspace(workspace, {
+      timeline: 5,
+      changes: { files: 3, added: 97, removed: 2 },
+    });
   }, workspace);
-  await expect(page.getByRole("option", { name: "renamed: old.rs → fresh.rs" })).toBeVisible();
-  await expect(page.getByText("binary or too large to count")).toBeVisible();
+  await expect(page.getByRole("option", { name: "renamed: old.rs → fresh.rs" })).toHaveText(
+    "Rold.rs → fresh.rsbinary",
+  );
+  await expect.poll(async () => (await sent(page, "Timeline")).length).toBe(2);
+  expect((await sent(page, "WorkspaceChanges")).length).toBe(2);
 });
