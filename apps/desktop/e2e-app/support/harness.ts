@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { browser } from "@wdio/globals";
+import { targetDir } from "./cargo";
 import { makeSandbox, removeSandbox, type Sandbox, sandboxEnv } from "./sandbox";
 import { frontWindow, theWindow } from "./window";
 
@@ -15,7 +16,7 @@ import { frontWindow, theWindow } from "./window";
 const here = resolve(import.meta.dirname, "..", "..");
 
 /** The app under test, as `pnpm e2e:app` builds it. */
-export const APP = join(here, "src-tauri/target/debug/muster-desktop");
+export const APP = join(targetDir(join(here, "src-tauri")), "debug/muster-desktop");
 
 /** Where a failed test's screenshot and the app's own output go. */
 export const OUTPUT = join(here, "test-results/e2e-app");

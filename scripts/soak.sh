@@ -7,12 +7,16 @@
 #
 #   scripts/soak.sh [minutes] [muster binary]
 #
-# Defaults: 10 minutes, target/release/muster (`cargo build --release`).
+# Defaults: 10 minutes, the release build (`cargo build --release`).
 # It never touches your own daemon: everything is under a temporary folder.
 set -eu
 
 minutes="${1:-10}"
-muster="${2:-target/release/muster}"
+# Where cargo builds: `target`, unless a cargo config of the machine's
+# names another.
+built=$(cd "$(dirname "$0")/.." && cargo metadata --format-version 1 --no-deps |
+    sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
+muster="${2:-$built/release/muster}"
 [ -x "$muster" ] || {
     echo "no $muster; build it with: cargo build --release" >&2
     exit 1
