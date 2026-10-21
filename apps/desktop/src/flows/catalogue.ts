@@ -9,6 +9,7 @@ import { pressKey } from "../app/keys";
 import type { Issue } from "../ipc/generated/Issue";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { Session } from "../ipc/generated/Session";
+import { projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import * as act from "./actions";
 import { type KeyAction, keysOf, labelOf } from "./keymap";
@@ -60,13 +61,30 @@ const SCREENS: readonly [ScreenId, string, string | null][] = [
   ["settings", "Settings", "⌘,"],
 ];
 
-const SETTINGS: readonly [string, string][] = [
-  ["general", "General"],
-  ["notifications", "Notifications"],
-  ["agents", "Agents"],
-  ["naming", "Naming chats"],
-  ["plugins", "Plugins"],
-  ["keys", "Keys"],
+/** Settings' pages, then each setting by its row (src/screens/settings/model.ts) and its name there. */
+const SETTINGS: readonly [row: string, label: string, page: string][] = [
+  ["general", "General", "Settings"],
+  ["notifications", "Notifications", "Settings"],
+  ["agents", "Agents", "Settings"],
+  ["naming", "Naming chats", "Settings"],
+  ["plugins", "Plugins", "Settings"],
+  ["keys", "Keys", "Settings"],
+  ["general/theme", "Theme", "General"],
+  ["general/session_lines", "Lines for each session", "General"],
+  ["general/panels", "Put the panels back as at first, a reset", "General"],
+  ["general/colours", "Colours, in the terminal UI", "General"],
+  ["general/side_by_side", "Session beside the list from", "General"],
+  ["notifications/notifications", "Notifications, on or off", "Notifications"],
+  ["notifications/tell.question", "Questions, told and their sound", "Notifications"],
+  ["notifications/tell.finish", "Finishes, told and their sound", "Notifications"],
+  ["notifications/tell.error", "Errors, told and their sound", "Notifications"],
+  ["notifications/notch", "Agents in the notch", "Notifications"],
+  ["agents/read_again", "Read your agents again", "Agents"],
+  ["naming/names_by_agent", "Chats named by an agent", "Naming chats"],
+  ["naming/named_by", "Named by", "Naming chats"],
+  ["naming/naming_model", "Its model, naming chats", "Naming chats"],
+  ["plugins/add_plugin", "Add a plugin", "Plugins"],
+  ["keys/find", "Find a key, to set it", "Keys"],
 ];
 
 function actionsHere(app: App): PaletteItem[] {
@@ -240,19 +258,35 @@ function tickets(app: App, found: readonly Ticket[]): PaletteItem[] {
   }));
 }
 
-function settings(app: App): PaletteItem[] {
-  return SETTINGS.map(([page, label]) => ({
-    id: `settings:${page}`,
+/** Settings' pages; with something typed, each setting too, and each project's page. */
+function settings(app: App, typed: string): PaletteItem[] {
+  const go = (row: string) => () => {
+    app.actions.show("settings");
+    app.actions.select("settings", row);
+  };
+  const own = SETTINGS.filter(([row]) => typed.trim() !== "" || !row.includes("/")).map(
+    ([row, label, page]) => ({
+      id: `settings:${row}`,
+      group: "Settings",
+      label,
+      keys: null,
+      meta: page,
+      lead: { kind: "none" } as const,
+      run: go(row),
+    }),
+  );
+  if (typed.trim() === "") return own;
+  // Each project's page, under its name.
+  const projects = projectsInOrder(app.daemon.store.getState()).map((project) => ({
+    id: `settings:project:${project.id}`,
     group: "Settings",
-    label,
+    label: project.name,
     keys: null,
     meta: "Settings",
-    lead: { kind: "none" },
-    run: () => {
-      app.actions.show("settings");
-      app.actions.select("settings", page);
-    },
+    lead: { kind: "none" } as const,
+    run: go(`project:${project.id}`),
   }));
+  return [...own, ...projects];
 }
 
 /** What the palette shows for `typed`, each group narrowed and in its order. */
@@ -260,7 +294,11 @@ export function catalogue(app: App, typed: string, found: readonly Ticket[]): Pa
   const here = actionsHere(app);
   const text = (item: PaletteItem) =>
     item.lead.kind === "ticket" ? `${item.lead.key} ${item.label}` : item.label;
-  return [here, anywhere(app, here), sessions(app), tickets(app, found), settings(app)].flatMap(
-    (group) => narrowed(group, typed, text),
-  );
+  return [
+    here,
+    anywhere(app, here),
+    sessions(app),
+    tickets(app, found),
+    settings(app, typed),
+  ].flatMap((group) => narrowed(group, typed, text));
 }

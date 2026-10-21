@@ -152,6 +152,31 @@ describe("ARC-24 the palette's catalogue", () => {
     const typed = catalogue(app, "stop", []).map((item) => item.label);
     expect(typed).toEqual(["Stop the session"]);
   });
+
+  it("lists Settings' pages, and once something is typed each setting and each project's page", async () => {
+    const { app } = renderWithApp(null);
+    await waitFor(() => expect(app.daemon.store.getState().loaded).toBe(true));
+    const untyped = catalogue(app, "", []).filter((item) => item.group === "Settings");
+    expect(untyped.map((item) => item.label)).toEqual([
+      "General",
+      "Notifications",
+      "Agents",
+      "Naming chats",
+      "Plugins",
+      "Keys",
+    ]);
+    const reset = catalogue(app, "reset", []);
+    expect(reset.map((item) => [item.label, item.meta])).toEqual([
+      ["Put the panels back as at first, a reset", "General"],
+    ]);
+    act(() => reset[0]?.run());
+    expect(app.ui.getState().screen).toBe("settings");
+    expect(app.ui.getState().selected.settings).toBe("general/panels");
+    const project = catalogue(app, "muster", []).find((item) => item.id.startsWith("settings:"));
+    expect(project).toMatchObject({ label: "muster", meta: "Settings" });
+    act(() => project?.run());
+    expect(app.ui.getState().selected.settings).toBe(`project:${ulid(1)}`);
+  });
 });
 
 describe("PRD-01 the first run and the daemon out of reach", () => {

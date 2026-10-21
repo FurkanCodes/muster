@@ -112,6 +112,16 @@ test.describe("ARC-24 the command palette", () => {
     }
   });
 
+  test("a setting found by its words opens its page with it selected", async ({ page }) => {
+    await open(page);
+    await page.keyboard.press("Meta+k");
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await palette.getByRole("combobox", { name: "Go to or do" }).fill("reset");
+    await palette.getByRole("option", { name: /^Put the panels back as at first/ }).click();
+    await expect(page.locator(".mu-settings-title")).toHaveText("General");
+    await expect(page.locator('[data-row="general/panels"]')).toHaveClass(/is-selected/);
+  });
+
   test("typing narrows each group, lights the letters, and finds tickets", async ({ page }) => {
     await open(page);
     await page.keyboard.press("Meta+k");
@@ -204,6 +214,8 @@ test.describe("ARC-24 the command palette", () => {
     await page.keyboard.press("Control+e");
     await expect(page.getByRole("textbox", { name: "Session name" })).toBeVisible();
     await page.keyboard.press("Escape");
+    // The status bar says the person's key for every key, not Muster's.
+    await expect(statusBar(page).locator(".mu-hint").last()).toHaveText("?every key");
     await page.keyboard.press("h");
     await expect(page.getByRole("dialog", { name: "Every key" })).toHaveCount(0);
     await page.keyboard.press("?");
