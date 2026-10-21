@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { browser } from "@wdio/globals";
 import { APP, appRuns, OUTPUT, PORT, startHarness, stopHarness } from "./e2e-app/support/harness";
-import { MUSTER } from "./e2e-app/support/sandbox";
+import { endStrayDaemons, MUSTER } from "./e2e-app/support/sandbox";
 import { frontWindow, theWindow, toFront } from "./e2e-app/support/window";
 
 // The real app over a real daemon of its own (ARCHITECTURE.md §5c, §13):
@@ -78,5 +78,6 @@ export const config: WebdriverIO.Config = {
   /** Nothing of this worktree's app outlives the run, however it ended. */
   onComplete() {
     if (appRuns()) execFileSync("pkill", ["-9", "-f", APP], { stdio: "ignore" });
+    endStrayDaemons();
   },
 };
