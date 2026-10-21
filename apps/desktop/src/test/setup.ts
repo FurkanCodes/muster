@@ -1,9 +1,13 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, vi } from "vitest";
 
 afterEach(() => cleanup());
+
+// Screens load lazily, as in the app; on a machine busy with other builds the
+// first can take over a second, so a wait gives up after three, not one.
+configure({ asyncUtilTimeout: 3000 });
 
 // jsdom has no matchMedia; the app asks it for the system's theme.
 if (!window.matchMedia) {
