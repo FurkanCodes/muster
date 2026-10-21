@@ -4,6 +4,7 @@
     "includes": [
       "src/**",
       "e2e/**",
+      "e2e-app/**",
       "*.ts",
       "*.json",
       "!src/ipc/generated",
