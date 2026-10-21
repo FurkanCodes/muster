@@ -9,6 +9,7 @@ import type { Preferences } from "../generated/Preferences";
 import type { Project } from "../generated/Project";
 import type { Session } from "../generated/Session";
 import type { SessionStatus } from "../generated/SessionStatus";
+import type { SessionUsage } from "../generated/SessionUsage";
 import type { Timeline } from "../generated/Timeline";
 import type { UndoPlan } from "../generated/UndoPlan";
 import type { Workspace } from "../generated/Workspace";
@@ -22,19 +23,29 @@ export function ulid(n: number): string {
 const MINUTE = 60_000;
 
 import { NOW } from "./now";
+import { type TicketScenario, ticketScenario } from "./tickets";
 
 export { NOW };
 
-export interface Scenario extends World {
+export interface Scenario extends World, TicketScenario {
   preferences: Preferences;
   plugins: PluginInfo[];
   /** What each session's terminal shows when attached. */
   terminals: Record<string, string>;
-  changes: Record<string, Changes>;
-  diffs: Record<string, FileDiff>;
-  timelines: Record<string, Timeline>;
-  undoPlans: Record<string, UndoPlan>;
-  beforeUndo: Record<string, Changes>;
+  /** Each workspace's timeline, as `Timeline` answers it. */
+  timelines?: Record<string, Timeline>;
+  /** Each timeline entry's diff, as `EntryDiff` answers it. */
+  entryDiffs?: Record<string, Record<number, FileDiff>>;
+  /** What sessions use, as the daemon's measurement says. */
+  usage?: SessionUsage[];
+  /** Each workspace's changes, as `WorkspaceChanges` answers them. */
+  changes?: Record<string, Changes>;
+  /** Each file's diff, as `FileDiff` answers it, by `workspace:part:path`. */
+  diffs?: Record<string, FileDiff>;
+  /** What putting the files back before an entry would do, by `workspace:number`. */
+  undoPlans?: Record<string, UndoPlan>;
+  /** The listing as it was before each entry, for `Undo` to put back, by `workspace:number`. */
+  beforeUndo?: Record<string, Changes>;
 }
 
 function project(n: number, name: string, root: string): Project {
@@ -130,6 +141,7 @@ export function workingDay(): Scenario {
       changes: { files: 2, added: 12, removed: 3 },
     }),
     workspace(11, 1, "worktree", "feature/desktop-app", "~/.muster/worktrees/muster/desktop", {
+      // As its listing below sums: the uncommitted files and the branch's.
       changes: { files: 3, added: 300, removed: 6 },
       pull_request: {
         number: 91,
@@ -240,6 +252,58 @@ export function workingDay(): Scenario {
   const plugins: PluginInfo[] = [
     { id: "github", source: "builtin", enabled: true, problem: null, details: null, changed: null },
   ];
+  // The desktop worktree's timeline, newest first: Codex's third turn there
+  // is the newest, after the person's own edits between its turns.
+  const turn = (number: number, minutesAgo: number, files: number, added: number) => ({
+    number,
+    kind: { kind: "turn" as const, session: ulid(101), agent: "Codex" },
+    started: NOW - (minutesAgo + 3) * MINUTE,
+    ended: NOW - minutesAgo * MINUTE,
+    summary: { files, added, removed: 4 },
+    head_before: null,
+    head_after: null,
+  });
+  const timelines: Record<string, Timeline> = {
+    [ulid(11)]: {
+      entries: [
+        turn(4, 1, 3, 203),
+        {
+          number: 3,
+          kind: { kind: "between" },
+          started: NOW - 20 * MINUTE,
+          ended: NOW - 5 * MINUTE,
+          summary: { files: 1, added: 2, removed: 0 },
+          head_before: null,
+          head_after: null,
+        },
+        turn(2, 25, 2, 40),
+        turn(1, 40, 1, 12),
+      ],
+    },
+  };
+  const diff = (path: string, added: number, removed: number) =>
+    [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      `@@ -1,${removed} +1,${added} @@`,
+      ...Array.from({ length: removed }, () => "-old"),
+      ...Array.from({ length: added }, () => "+new"),
+      "",
+    ].join("\n");
+  const entryDiffs: Record<string, Record<number, FileDiff>> = {
+    [ulid(11)]: {
+      4: {
+        text: [
+          diff("crates/muster-desktop/src/link.rs", 118, 4),
+          diff("crates/muster-desktop/src/main.rs", 61, 0),
+          diff("crates/muster-desktop/Cargo.toml", 24, 0),
+        ].join(""),
+        cut: false,
+      },
+    },
+  };
+  // The desktop worktree's changes, as the Changes board shows them.
   const changes: Record<string, Changes> = {
     [ulid(11)]: {
       base: "main",
@@ -256,7 +320,7 @@ export function workingDay(): Scenario {
       ],
     },
   };
-  const diff: FileDiff = {
+  const link: FileDiff = {
     text: [
       "diff --git a/src/link.rs b/src/link.rs",
       "--- a/src/link.rs",
@@ -273,32 +337,13 @@ export function workingDay(): Scenario {
     cut: false,
   };
   const diffs: Record<string, FileDiff> = {};
-  for (const part of ["uncommitted", "branch"] as const) {
+  for (const part of ["uncommitted", "branch"] as const)
     for (const file of changes[ulid(11)]?.[part] ?? [])
-      diffs[`${ulid(11)}:${part}:${file.path}`] = diff;
-  }
-  const timelines: Record<string, Timeline> = {
-    [ulid(11)]: {
-      entries: [4, 3, 2, 1].map((number) => ({
-        number,
-        kind:
-          number === 3
-            ? { kind: "between" as const }
-            : { kind: "turn" as const, session: ulid(101), agent: "Codex" },
-        started: NOW - (16 - number * 3) * MINUTE,
-        ended: NOW - (13 - number * 3) * MINUTE,
-        summary:
-          number === 1
-            ? null
-            : { files: number === 3 ? 1 : 3, added: number === 3 ? 12 : 203, removed: 4 },
-        head_before: "1234567",
-        head_after: number > 1 ? "a1b2c3d" : "1234567",
-      })),
-    },
-  };
-  for (const entry of timelines[ulid(11)]?.entries ?? [])
-    diffs[`${ulid(11)}:entry:${entry.number}`] = entry.summary ? diff : { text: "", cut: false };
-  const desktop = workspaces.find((workspace) => workspace.id === ulid(11));
+      diffs[`${ulid(11)}:${part}:${file.path}`] = link;
+  const desktopDiffs = entryDiffs[ulid(11)];
+  if (desktopDiffs)
+    for (const entry of timelines[ulid(11)]?.entries ?? []) desktopDiffs[entry.number] ??= link;
+  const desktop = workspaces.find((found) => found.id === ulid(11));
   if (desktop)
     desktop.clashes = [
       {
@@ -308,15 +353,16 @@ export function workingDay(): Scenario {
         shown: [{ path: "crates/muster-client/src/connection.rs", conflict: false }],
       },
     ];
+  // Putting the files back before each entry: the branch has moved one
+  // commit since every entry but the newest.
   const undoPlans: Record<string, UndoPlan> = {};
   const beforeUndo: Record<string, Changes> = {};
-  for (const entry of timelines[ulid(11)]?.entries ?? []) {
+  const entries = timelines[ulid(11)]?.entries ?? [];
+  for (const entry of entries) {
     const key = `${ulid(11)}:${entry.number}`;
     undoPlans[key] = {
       number: entry.number,
-      later: (timelines[ulid(11)]?.entries ?? []).filter(
-        (other) => other.number > entry.number && other.summary,
-      ).length,
+      later: entries.filter((other) => other.number > entry.number && other.summary).length,
       branch:
         entry.number < 4
           ? {
@@ -330,6 +376,10 @@ export function workingDay(): Scenario {
     };
     beforeUndo[key] = { base: "main", uncommitted: [], branch: [], commits: [], more_commits: 0 };
   }
+  // What the asking Codex session uses, as the daemon measures it.
+  const usage: SessionUsage[] = [
+    { session: ulid(101), memory_bytes: 212_000_000, cpu_permille: 30 },
+  ];
   return {
     projects,
     workspaces,
@@ -337,9 +387,12 @@ export function workingDay(): Scenario {
     preferences: defaultPreferences(),
     plugins,
     terminals,
+    ...ticketScenario(projects),
+    timelines,
+    entryDiffs,
+    usage,
     changes,
     diffs,
-    timelines,
     undoPlans,
     beforeUndo,
   };

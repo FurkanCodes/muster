@@ -1,0 +1,75 @@
+/* The queue column (Spec board): 420 wide, from 360 to 560, on the ground,
+   a hairline at its right. */
+.queue-column {
+  flex: 0 1 var(--layout-queue);
+  min-width: var(--layout-queue-min);
+  max-width: var(--layout-queue-max);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-ground);
+  border-right: var(--stroke-hairline) solid var(--line);
+  container-type: inline-size;
+}
+.queue-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+/* The list takes the keys by the window's listener; focused by Tab, it rings
+   inside its edge, as any control does (design system: States). */
+.queue-list:focus-visible {
+  outline: var(--stroke-focus) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--stroke-focus));
+}
+.queue-list > .mu-item,
+.queue-list > .mu-row {
+  flex: none;
+}
+/* QueueRow has no resting look of its own; it takes QueueItem's. */
+.queue-list .mu-row[aria-selected="true"].is-resting {
+  background: var(--surface-tint);
+}
+.queue-name {
+  flex: 1;
+}
+.queue-doing {
+  max-width: 40%;
+}
+.queue-list .mu-question {
+  max-width: calc(100% - var(--layout-indent-queue));
+}
+.queue-away {
+  margin: 0 var(--space-20) var(--space-8);
+}
+/* All clear: title-section, 48 from the top, the working agents below it. */
+.queue-clear {
+  margin: 0 auto;
+  padding: var(--space-48) var(--space-24) var(--space-24);
+}
+.queue-clear-title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.queue-rename {
+  padding: var(--space-8) var(--space-12);
+}
+.queue-none {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+/* As the column narrows, a row gives way: first the pull request's word,
+   then the diff stat (design system: QueueRow). */
+@container (max-width: 400px) {
+  .queue-list .mu-pr > span:not([role="img"]) {
+    display: none;
+  }
+}
+@container (max-width: 372px) {
+  .queue-list .mu-row-line > .mu-diff {
+    display: none;
+  }
+}

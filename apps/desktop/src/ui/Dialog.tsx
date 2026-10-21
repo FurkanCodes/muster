@@ -1,16 +1,22 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef } from "react";
+import { useApp } from "../app/context";
 import "./dialog.css";
 
 /**
  * A question Muster asks before it acts (design system: Dialog). A native
  * modal keeps the focus inside and the window behind it inert. ⏎ does the
- * acting answer, ⎋ the other; ⏎ on a focused answer does that one, so a
- * danger dialog, whose focus starts on the answer that does nothing, never
- * acts on a ⏎ meant for it. Keys pressed in it stay in it. The button that
- * has the focus first carries `data-dialog-initial`.
+ * acting answer and ⎋ the other, but ⏎ on a focused answer does that one,
+ * so a danger dialog, whose focus starts on the answer that does nothing,
+ * never acts on a ⏎ meant for it; ← → go between the answers (⇥ reaches no
+ * button in WebKit unless the person says so) and ⌘⏎ does the acting
+ * answer wherever the focus is. The button that has the focus first
+ * carries `data-dialog-initial`. While it is open the window's keys are the
+ * dialog's, so no screen behind it acts on them, and a key pressed in it
+ * never reaches the window's listener.
  */
 export function Dialog({
   title,
+  meta,
   children,
   actions,
   onClose,
@@ -19,6 +25,8 @@ export function Dialog({
   width = "normal",
 }: {
   title: string;
+  /** A line under the title, as what the question is about. */
+  meta?: ReactNode;
   children?: ReactNode;
   actions: ReactNode;
   onClose: () => void;
@@ -26,18 +34,22 @@ export function Dialog({
   onKeyDown?: (event: KeyboardEvent<HTMLDialogElement>) => void;
   width?: "normal" | "wide";
 }) {
+  const app = useApp();
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
     const dialog = ref.current;
     const previous = document.activeElement;
+    const keysWere = app.ui.getState().keysIn;
+    app.actions.keysTo("dialog");
     dialog?.showModal();
     dialog?.querySelector<HTMLElement>("[data-dialog-initial]")?.focus();
     return () => {
       dialog?.close();
+      if (app.ui.getState().keysIn === "dialog") app.actions.keysTo(keysWere);
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, []);
+  }, [app]);
   return (
     <dialog
       ref={ref}
@@ -53,17 +65,39 @@ export function Dialog({
         // answer has just put in the status bar.
         event.stopPropagation();
         onKeyDown?.(event);
-        if (event.defaultPrevented || event.key !== "Enter") return;
+        if (event.defaultPrevented) return;
         const answer =
-          event.target instanceof HTMLElement && event.target.closest(".mu-dialog-actions button");
-        if (answer) return;
+          event.target instanceof HTMLElement
+            ? event.target.closest<HTMLButtonElement>(".mu-dialog-actions button")
+            : null;
+        if (answer && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+          event.preventDefault();
+          const answers = [
+            ...(answer
+              .closest(".mu-dialog-actions")
+              ?.querySelectorAll<HTMLButtonElement>("button:enabled") ?? []),
+          ];
+          const at = answers.indexOf(answer) + (event.key === "ArrowLeft" ? -1 : 1);
+          answers[Math.max(0, Math.min(answers.length - 1, at))]?.focus();
+          return;
+        }
+        if (event.key !== "Enter" || (answer && !event.metaKey)) return;
         event.preventDefault();
         onAccept();
       }}
     >
-      <h2 className="mu-dialog-title" id={id}>
-        {title}
-      </h2>
+      {meta ? (
+        <div className="ui-dialog-head">
+          <h2 className="mu-dialog-title" id={id}>
+            {title}
+          </h2>
+          <span className="mu-meta">{meta}</span>
+        </div>
+      ) : (
+        <h2 className="mu-dialog-title" id={id}>
+          {title}
+        </h2>
+      )}
       {children}
       <div className="mu-dialog-actions">{actions}</div>
     </dialog>

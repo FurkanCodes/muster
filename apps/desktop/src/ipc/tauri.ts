@@ -44,6 +44,10 @@ export class TauriBridge implements Bridge {
     return call<Reply>("command", { command });
   }
 
+  openUrl(url: string): Promise<void> {
+    return call("open_ticket_url", { url });
+  }
+
   async attach(
     session: SessionId,
     fromSeq: number | null,

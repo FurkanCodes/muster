@@ -25,7 +25,7 @@ function clash(files: [string, boolean][], more = 0): Clash {
 describe("ARC-24 the changes view's words", () => {
   it("names entries as the TUI does, with the board's comma", () => {
     const day = workingDay();
-    const timeline = day.timelines[workspace] ?? { entries: [] };
+    const timeline = day.timelines?.[workspace] ?? { entries: [] };
     const at = (number: number) => timeline.entries.find((entry) => entry.number === number);
     const label = (number: number) => {
       const entry = at(number);
@@ -89,7 +89,7 @@ describe("ARC-24 the changes view's words", () => {
   });
 
   it("sums a listing as the daemon's summary does", () => {
-    const changes = workingDay().changes[workspace];
+    const changes = workingDay().changes?.[workspace];
     if (!changes) throw new Error("no fixture");
     expect(summaryOf(changes)).toEqual({ files: 3, added: 300, removed: 6 });
     expect(

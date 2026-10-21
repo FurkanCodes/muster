@@ -118,12 +118,10 @@ function PlanDialog({
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
-    actions.keysTo("dialog");
     return () => {
       mounted.current = false;
-      actions.keysTo("list");
     };
-  }, [actions]);
+  }, []);
   const entry = timeline.entries.find((found) => found.number === plan.number);
   const canMove = plan.branch !== null && plan.branch.refused === null;
   const later = timeline.entries

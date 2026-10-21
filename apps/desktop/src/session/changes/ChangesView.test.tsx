@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installKeys } from "../../app/keys";
 import type { Command } from "../../ipc/generated/Command";
+import type { FileDiff } from "../../ipc/generated/FileDiff";
 import { MockBridge } from "../../ipc/mock/bridge";
 import { ulid, workingDay } from "../../ipc/mock/scenario";
 import { renderWithApp } from "../../test/render";
@@ -37,6 +38,12 @@ function setup(bridge = new MockBridge(workingDay())) {
   removeKeys = installKeys(result.app);
   act(() => result.app.actions.showPane("changes"));
   return result;
+}
+
+/** What the daemon would answer for src/link.rs, not committed. */
+function linkDiff(bridge: MockBridge, diff: FileDiff) {
+  bridge.world.diffs ??= {};
+  bridge.world.diffs[`${workspace}:uncommitted:src/link.rs`] = diff;
 }
 
 function sent(bridge: MockBridge, name: string): Command[] {
@@ -96,7 +103,7 @@ describe("ARC-24 Not committed", () => {
 
   it("names the folder all the files are in once, above, as the board does", async () => {
     const bridge = new MockBridge(workingDay());
-    const changes = bridge.world.changes[workspace];
+    const changes = bridge.world.changes?.[workspace];
     if (changes)
       changes.uncommitted = changes.uncommitted.map((file) => ({
         ...file,
@@ -114,7 +121,7 @@ describe("ARC-24 Not committed", () => {
 
   it("says a binary file in words", async () => {
     const bridge = new MockBridge(workingDay());
-    const changes = bridge.world.changes[workspace];
+    const changes = bridge.world.changes?.[workspace];
     if (changes)
       changes.uncommitted = [{ path: "logo.png", from: null, kind: "added", lines: null }];
     setup(bridge);
@@ -151,6 +158,7 @@ describe("ARC-24 On the branch", () => {
     ["origin/main", "Nothing has changed here since origin/main."],
   ])("with base %s and no commits says so", async (base, words) => {
     const bridge = new MockBridge(workingDay());
+    bridge.world.changes ??= {};
     bridge.world.changes[workspace] = {
       base,
       uncommitted: [],
@@ -168,7 +176,7 @@ describe("ARC-24 On the branch", () => {
 describe("ARC-24 Turns", () => {
   it("lists each entry with its agent, what it changed and when; ⏎ asks its diff", async () => {
     const bridge = new MockBridge(workingDay());
-    bridge.world.timelines[workspace]?.entries.unshift(
+    bridge.world.timelines?.[workspace]?.entries.unshift(
       {
         number: 6,
         kind: { kind: "moved", onto: "main" },
@@ -196,9 +204,9 @@ describe("ARC-24 Turns", () => {
       expect.stringContaining("6⎇Moved onto mainchanged no files"),
       expect.stringContaining("5↺Put back as before #2changed no files"),
       "4Codex, turn 33 files +203−41m",
-      "3✎Edits between turns1 file +12−44m",
-      "2Codex, turn 23 files +203−47m",
-      "1Codex, turn 1changed no files10m",
+      "3✎Edits between turns1 file +25m",
+      "2Codex, turn 22 files +40−425m",
+      "1Codex, turn 11 file +12−440m",
     ]);
     expect(within(rows[2] as HTMLElement).getByRole("img", { name: "Codex" })).toBeVisible();
     expect(screen.getByText("Muster keeps each workspace's newest 100.")).toBeVisible();
@@ -283,19 +291,19 @@ describe("ARC-24 asking, refused and empty", () => {
     ],
   ])("%s: asking, then refused, then asked again", async (command, asking, lead, empty) => {
     const bridge = new MockBridge(workingDay());
-    bridge.held.add(command);
+    bridge.hold(command);
     setup(bridge);
     if (command === "Timeline")
       await userEvent.click(await screen.findByRole("button", { name: /^Turns/ }));
     expect(await screen.findByText(asking)).toHaveAttribute("role", "status");
     await act(async () => {
-      bridge.errors[command] = { code: "internal", message: "git could not read the worktree" };
+      bridge.failNext(command, "git could not read the worktree", "internal");
       bridge.release(command);
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(
       `${lead}git could not read the worktree`,
     );
-    delete bridge.errors[command];
+    bridge.world.changes ??= {};
     bridge.world.changes[workspace] = {
       base: "main",
       uncommitted: [],
@@ -303,6 +311,7 @@ describe("ARC-24 asking, refused and empty", () => {
       commits: [],
       more_commits: 0,
     };
+    bridge.world.timelines ??= {};
     bridge.world.timelines[workspace] = { entries: [] };
     await userEvent.click(screen.getByRole("button", { name: "Ask again" }));
     expect(await screen.findByText(empty)).toBeVisible();
@@ -349,23 +358,17 @@ describe("ARC-25 asked again only when something moved", () => {
 describe("ARC-24 diffs said in words", () => {
   it("binary, no text, cut and refused", async () => {
     const { bridge } = setup();
-    bridge.replies.FileDiff = {
-      FileDiff: {
-        text: "diff --git a/i.png b/i.png\nBinary files a/i.png and b/i.png differ",
-        cut: false,
-      },
-    };
+    linkDiff(bridge, {
+      text: "diff --git a/i.png b/i.png\nBinary files a/i.png and b/i.png differ",
+      cut: false,
+    });
     await userEvent.click(await screen.findByRole("option", { name: "modified: src/link.rs" }));
     expect(await screen.findByText("binary: git shows no lines for it.")).toBeVisible();
-    bridge.replies.FileDiff = { FileDiff: { text: "", cut: true } };
+    linkDiff(bridge, { text: "", cut: true });
     await userEvent.keyboard("r");
     expect(await screen.findByText("Git shows no difference in its text.")).toBeVisible();
     expect(screen.getByText("… cut here: the rest is longer than Muster shows.")).toBeVisible();
-    delete bridge.replies.FileDiff;
-    bridge.errors.FileDiff = {
-      code: "not_found",
-      message: "src/link.rs is no longer changed there",
-    };
+    bridge.failNext("FileDiff", "src/link.rs is no longer changed there", "not_found");
     await userEvent.keyboard("r");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "src/link.rs is no longer changed there r asks again.",
@@ -374,12 +377,10 @@ describe("ARC-24 diffs said in words", () => {
 
   it("ARC-25 draws fewer than 100 of 5,000 lines, and the last ones once scrolled there", async () => {
     const { bridge, container } = setup();
-    bridge.replies.FileDiff = {
-      FileDiff: {
-        text: `@@ -0,0 +1,5000 @@\n${Array.from({ length: 5000 }, (_, n) => `+line ${n}`).join("\n")}`,
-        cut: false,
-      },
-    };
+    linkDiff(bridge, {
+      text: `@@ -0,0 +1,5000 @@\n${Array.from({ length: 5000 }, (_, n) => `+line ${n}`).join("\n")}`,
+      cut: false,
+    });
     const start = performance.now();
     await userEvent.click(await screen.findByRole("option", { name: "modified: src/link.rs" }));
     const diff = await screen.findByRole("region", { name: "Diff" });

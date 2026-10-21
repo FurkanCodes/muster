@@ -122,18 +122,19 @@ test("ARC-24 Turns: each entry with its agent, what it changed and when; ⏎ ask
   await page.getByRole("button", { name: "Turns 4" }).click();
   await expect(page.getByRole("listbox", { name: "Turns" }).getByRole("option")).toHaveText([
     "4Codex, turn 33 files +203−41m",
-    "3✎Edits between turns1 file +12−44m",
-    "2Codex, turn 23 files +203−47m",
-    "1Codex, turn 1changed no files10m",
+    "3✎Edits between turns1 file +25m",
+    "2Codex, turn 22 files +40−425m",
+    "1Codex, turn 11 file +12−440m",
   ]);
   await expect(page.getByText("Muster keeps each workspace's newest 100.")).toBeVisible();
   await expect(statusBar(page)).toContainText("put back");
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
-  await expect(page.locator(".mu-diffview-head")).toHaveText("Edits between turns+12−4");
+  await expect(page.locator(".mu-diffview-head")).toHaveText("Edits between turns+2");
+  // The queue's This turn asked turn 4's diff for its files; the view asks entry 3's.
   await expect
     .poll(() => sent(page, "EntryDiff"))
-    .toEqual([{ EntryDiff: { workspace, number: 3 } }]);
+    .toContainEqual({ EntryDiff: { workspace, number: 3 } });
 });
 
 test("PRD-14 put back: the plan, then the dialog as the board draws it, then Undo with the branch on b", async ({
@@ -146,9 +147,9 @@ test("PRD-14 put back: the plan, then the dialog as the board draws it, then Und
   await page.keyboard.press("z");
   const dialog = page.getByRole("dialog", { name: "Put the files back as before Codex's turn 2?" });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("The worktree's files go back as they were 10m ago.");
+  await expect(dialog).toContainText("The worktree's files go back as they were 28m ago.");
   await expect(dialog.locator(".mu-details")).toHaveText(
-    "Goes with itEdits between turns, 4m agoCodex, turn 3, 1m agoThe branchPut back with the branch also moves ⎇ feature/desktop-app back to 1234567, before its 1 commit since.CodexStill remembers that turn: tell it what you put back.",
+    "Goes with itEdits between turns, 5m agoCodex, turn 3, 1m agoThe branchPut back with the branch also moves ⎇ feature/desktop-app back to 1234567, before its 1 commit since.CodexStill remembers that turn: tell it what you put back.",
   );
   await expect(dialog.getByRole("button")).toHaveText([
     "Keep it",
@@ -165,8 +166,12 @@ test("PRD-14 put back: the plan, then the dialog as the board draws it, then Und
   await expect(statusBar(page)).toContainText(
     "The files are as they were before #2, and the branch with them. z on #5 brings them back.",
   );
-  await expect(page.getByRole("option", { selected: true })).toHaveText(/^5↺Put back as before #2/);
-  await expect(page.getByRole("option", { selected: true })).toBeFocused();
+  await expect(
+    page.getByRole("listbox", { name: "Turns" }).getByRole("option", { selected: true }),
+  ).toHaveText(/^5↺Put back as before #2/);
+  await expect(
+    page.getByRole("listbox", { name: "Turns" }).getByRole("option", { selected: true }),
+  ).toBeFocused();
 });
 
 test("PRD-14 ⏎ puts back the files only, even where the branch could move too", async ({
@@ -225,11 +230,11 @@ test("PRD-14 the TUI's refusals, said in the status bar: an agent at work, files
 
   await agentDone(page);
   await page.evaluate(() => {
-    window.__muster.errors.Undo = {
-      code: "conflict",
-      message:
-        "the files were not put back: error: Entry 'src/link.rs' not uptodate. Cannot merge.",
-    };
+    window.__muster.failNext(
+      "Undo",
+      "the files were not put back: error: Entry 'src/link.rs' not uptodate. Cannot merge.",
+      "conflict",
+    );
   });
   await page.keyboard.press("z");
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -239,10 +244,11 @@ test("PRD-14 the TUI's refusals, said in the status bar: an agent at work, files
   );
 
   await page.evaluate(() => {
-    window.__muster.errors.UndoPlan = {
-      code: "not_found",
-      message: "there is no entry 4 in this workspace's timeline",
-    };
+    window.__muster.failNext(
+      "UndoPlan",
+      "there is no entry 4 in this workspace's timeline",
+      "not_found",
+    );
   });
   await page.keyboard.press("z");
   await expect(statusBar(page).locator(".mu-note--error")).toHaveText(
@@ -267,26 +273,25 @@ for (const [command, asking, lead, empty] of [
   ],
 ] as const) {
   test(`ARC-24 ${command}: asking, refused, asked again, empty`, async ({ page }) => {
-    await open(page, (page) =>
-      page.evaluate((command) => {
-        window.__muster.held.add(command);
-      }, command),
-    );
+    await open(page, async (page) => {
+      // This turn, under the terminal, has its timeline before the view asks for its own.
+      await expect(page.locator(".mu-turn")).toContainText("Codex, turn 3");
+      await page.evaluate((command) => {
+        window.__muster.hold(command);
+      }, command);
+    });
     if (command === "Timeline") await page.getByRole("button", { name: /^Turns/ }).click();
     await expect(page.getByText(asking)).toBeVisible();
     await page.evaluate((command) => {
-      window.__muster.errors[command] = {
-        code: "internal",
-        message: "git could not read the worktree",
-      };
+      window.__muster.failNext(command, "git could not read the worktree", "internal");
       window.__muster.release(command);
     }, command);
     await expect(page.getByRole("alert")).toHaveText(
       `${lead}git could not read the worktreeAsk again`,
     );
     await page.evaluate(
-      ({ command, workspace }) => {
-        delete window.__muster.errors[command];
+      ({ workspace }) => {
+        window.__muster.world.changes ??= {};
         window.__muster.world.changes[workspace] = {
           base: "main",
           uncommitted: [],
@@ -294,6 +299,7 @@ for (const [command, asking, lead, empty] of [
           commits: [],
           more_commits: 0,
         };
+        window.__muster.world.timelines ??= {};
         window.__muster.world.timelines[workspace] = { entries: [] };
       },
       { command, workspace },
@@ -314,11 +320,10 @@ test("ARC-25 a 5,000-line diff opens at once, draws under 100 lines, and scrolls
   await page.evaluate(() => {
     const half = (from: number) =>
       Array.from({ length: 2500 }, (_, n) => `+line ${n + from}`).join("\n");
-    window.__muster.replies.FileDiff = {
-      FileDiff: {
-        text: `@@ -0,0 +1,2500 @@\n${half(0)}\n@@ -0,0 +2501,2500 @@\n${half(2500)}`,
-        cut: false,
-      },
+    window.__muster.world.diffs ??= {};
+    window.__muster.world.diffs["01JD0000000000000000000011:uncommitted:src/link.rs"] = {
+      text: `@@ -0,0 +1,2500 @@\n${half(0)}\n@@ -0,0 +2501,2500 @@\n${half(2500)}`,
+      cut: false,
     };
   });
   const start = Date.now();
@@ -344,27 +349,26 @@ test("ARC-25 a 5,000-line diff opens at once, draws under 100 lines, and scrolls
 test("ARC-24 binary, empty, cut and refused diffs are said in words", async ({ page }) => {
   await open(page);
   await page.evaluate(() => {
-    window.__muster.replies.FileDiff = {
-      FileDiff: {
-        text: "diff --git a/i.png b/i.png\nBinary files a/i.png and b/i.png differ",
-        cut: false,
-      },
+    window.__muster.world.diffs ??= {};
+    window.__muster.world.diffs["01JD0000000000000000000011:uncommitted:src/link.rs"] = {
+      text: "diff --git a/i.png b/i.png\nBinary files a/i.png and b/i.png differ",
+      cut: false,
     };
   });
   await page.getByRole("option", { name: "modified: src/link.rs" }).click();
   await expect(page.getByText("binary: git shows no lines for it.")).toBeVisible();
   await page.evaluate(() => {
-    window.__muster.replies.FileDiff = { FileDiff: { text: "", cut: true } };
+    window.__muster.world.diffs ??= {};
+    window.__muster.world.diffs["01JD0000000000000000000011:uncommitted:src/link.rs"] = {
+      text: "",
+      cut: true,
+    };
   });
   await page.keyboard.press("r");
   await expect(page.getByText("Git shows no difference in its text.")).toBeVisible();
   await expect(page.getByText("… cut here: the rest is longer than Muster shows.")).toBeVisible();
   await page.evaluate(() => {
-    delete window.__muster.replies.FileDiff;
-    window.__muster.errors.FileDiff = {
-      code: "not_found",
-      message: "src/link.rs is no longer changed there",
-    };
+    window.__muster.failNext("FileDiff", "src/link.rs is no longer changed there", "not_found");
   });
   await page.keyboard.press("r");
   await expect(page.getByRole("alert")).toHaveText(
@@ -420,10 +424,12 @@ test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other w
 test("ARC-25 asked again as the workspace moves, without polling", async ({ page }) => {
   await open(page);
   await expect(page.getByRole("option", { name: "modified: src/link.rs" })).toBeVisible();
-  await expect.poll(async () => (await sent(page, "Timeline")).length).toBe(1);
+  await expect(page.getByRole("button", { name: "Turns 4" })).toBeVisible();
+  // What was asked so far, This turn's timeline among it.
+  const timelines = (await sent(page, "Timeline")).length;
   expect((await sent(page, "WorkspaceChanges")).length).toBe(1);
   await page.evaluate((workspace) => {
-    const changes = window.__muster.world.changes[workspace];
+    const changes = window.__muster.world.changes?.[workspace];
     if (changes)
       changes.uncommitted = [{ path: "fresh.rs", from: "old.rs", kind: "renamed", lines: null }];
     window.__muster.updateWorkspace(workspace, {
@@ -434,6 +440,6 @@ test("ARC-25 asked again as the workspace moves, without polling", async ({ page
   await expect(page.getByRole("option", { name: "renamed: old.rs → fresh.rs" })).toHaveText(
     "Rold.rs → fresh.rsbinary",
   );
-  await expect.poll(async () => (await sent(page, "Timeline")).length).toBe(2);
+  await expect.poll(async () => (await sent(page, "Timeline")).length).toBe(timelines + 1);
   expect((await sent(page, "WorkspaceChanges")).length).toBe(2);
 });

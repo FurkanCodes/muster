@@ -14,6 +14,8 @@ export interface Bridge {
   open(onMessage: (message: StateMessage) => void): Promise<void>;
   /** Sends a command to the daemon. Rejects with a {@link BridgeFailure}. */
   command(command: Command): Promise<Reply>;
+  /** Opens a ticket's HTTP(S) address in the person's browser, only on request. */
+  openUrl(url: string): Promise<void>;
   /** Streams a session's terminal on `onFrame`, from `fromSeq` or all the daemon holds. */
   attach(
     session: SessionId,

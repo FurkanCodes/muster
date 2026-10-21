@@ -23,7 +23,7 @@ export function handleUndo(mock: MockBridge, command: Command): Reply | undefine
       "a run's container keeps its own clone; its changes are the run's",
       "bad_request",
     );
-  const timeline = mock.world.timelines[workspace];
+  const timeline = mock.world.timelines?.[workspace];
   const entry = timeline?.entries.find((entry) => entry.number === number);
   if (!timeline || !entry)
     throw new BridgeFailure(
@@ -32,7 +32,7 @@ export function handleUndo(mock: MockBridge, command: Command): Reply | undefine
       "not_found",
     );
   const key = `${workspace}:${number}`;
-  const plan = mock.world.undoPlans[key] ?? {
+  const plan = mock.world.undoPlans?.[key] ?? {
     number,
     later: timeline.entries.filter((other) => other.number > number && other.summary).length,
     branch: null,
@@ -55,8 +55,12 @@ export function handleUndo(mock: MockBridge, command: Command): Reply | undefine
       `the branch stays where it is: ${plan.branch.refused}`,
       "conflict",
     );
-  const current = mock.world.changes[workspace];
-  const before = mock.world.beforeUndo[key];
+  mock.world.changes ??= {};
+  mock.world.beforeUndo ??= {};
+  const changes = mock.world.changes;
+  const kept = mock.world.beforeUndo;
+  const current = changes[workspace];
+  const before = kept[key];
   if (current && before && JSON.stringify(current) === JSON.stringify(before))
     throw new BridgeFailure(
       "refused",
@@ -64,7 +68,7 @@ export function handleUndo(mock: MockBridge, command: Command): Reply | undefine
       "conflict",
     );
   const recorded = Math.max(...timeline.entries.map((entry) => entry.number), 0) + 1;
-  if (current) mock.world.beforeUndo[`${workspace}:${recorded}`] = structuredClone(current);
+  if (current) kept[`${workspace}:${recorded}`] = structuredClone(current);
   if (before) {
     const restored = structuredClone(before);
     if (!command.Undo.move_branch && current) {
@@ -72,7 +76,7 @@ export function handleUndo(mock: MockBridge, command: Command): Reply | undefine
       restored.branch = current.branch;
       restored.more_commits = current.more_commits;
     }
-    mock.world.changes[workspace] = restored;
+    changes[workspace] = restored;
   }
   timeline.entries.unshift({
     number: recorded,
@@ -84,9 +88,10 @@ export function handleUndo(mock: MockBridge, command: Command): Reply | undefine
     head_after: entry.head_before,
   });
   timeline.entries = timeline.entries.slice(0, 100);
-  mock.world.diffs[`${workspace}:entry:${recorded}`] = mock.world.diffs[
-    `${workspace}:entry:${number}`
-  ] ?? { text: "", cut: false };
+  mock.world.entryDiffs ??= {};
+  mock.world.entryDiffs[workspace] ??= {};
+  const diffs = mock.world.entryDiffs[workspace];
+  diffs[recorded] = diffs[number] ?? { text: "", cut: false };
   mock.updateWorkspace(workspace, { timeline: recorded });
   return {
     Undone: { entry: recorded, moved_branch: command.Undo.move_branch && plan.branch !== null },

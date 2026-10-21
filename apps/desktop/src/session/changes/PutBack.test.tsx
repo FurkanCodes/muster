@@ -34,7 +34,7 @@ function setup(number = 2, configure?: (mock: MockBridge) => void) {
     <PutBack
       workspace={workspace}
       number={number}
-      timeline={bridge.world.timelines[workspace] ?? { entries: [] }}
+      timeline={bridge.world.timelines?.[workspace] ?? { entries: [] }}
       onClose={onClose}
       onDone={onDone}
     />,
@@ -45,17 +45,17 @@ function setup(number = 2, configure?: (mock: MockBridge) => void) {
 
 describe("PRD-14 putting a turn back", () => {
   it("asks the plan before it asks the person, and says what goes back as the board does", async () => {
-    const { bridge } = setup(2, (mock) => mock.held.add("UndoPlan"));
+    const { bridge } = setup(2, (mock) => mock.hold("UndoPlan"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(bridge.sent).toEqual([{ UndoPlan: { workspace, number: 2 } }]);
     await act(async () => bridge.release("UndoPlan"));
     const dialog = await screen.findByRole("dialog", {
       name: "Put the files back as before Codex's turn 2?",
     });
-    expect(dialog).toHaveTextContent("The worktree's files go back as they were 10m ago.");
+    expect(dialog).toHaveTextContent("The worktree's files go back as they were 28m ago.");
     expect(dialog).toHaveTextContent("What is there now is kept first, so this can be put back");
     expect(dialog).toHaveTextContent(
-      "Goes with itEdits between turns, 4m agoCodex, turn 3, 1m ago",
+      "Goes with itEdits between turns, 5m agoCodex, turn 3, 1m ago",
     );
     expect(dialog).toHaveTextContent(
       "Put back with the branch also moves ⎇ feature/desktop-app back to 1234567, before its 1 commit since.",
@@ -87,7 +87,10 @@ describe("PRD-14 putting a turn back", () => {
         text: `The files are as they were before #2${branch ? ", and the branch with them" : ""}. z on #5 brings them back.`,
         error: false,
       });
-      expect(bridge.world.timelines[workspace]?.entries[0]?.kind).toEqual({ kind: "undo", of: 2 });
+      expect(bridge.world.timelines?.[workspace]?.entries[0]?.kind).toEqual({
+        kind: "undo",
+        of: 2,
+      });
     },
   );
 
@@ -112,7 +115,7 @@ describe("PRD-14 putting a turn back", () => {
     "it has moved another way since, and its commits since are pushed",
   ])("says why the branch stays, and b does nothing: %s", async (refusal) => {
     const { bridge } = setup(2, (mock) => {
-      const branch = mock.world.undoPlans[`${workspace}:2`]?.branch;
+      const branch = mock.world.undoPlans?.[`${workspace}:2`]?.branch;
       if (branch) branch.refused = refusal;
     });
     const dialog = await screen.findByRole("dialog");
@@ -135,16 +138,16 @@ describe("PRD-14 putting a turn back", () => {
       error: true,
     });
     expect(onDone).not.toHaveBeenCalled();
-    expect(bridge.world.timelines[workspace]?.entries).toHaveLength(4);
+    expect(bridge.world.timelines?.[workspace]?.entries).toHaveLength(4);
   });
 
   it("files changed since: git's refusal goes to the status bar", async () => {
     const { app, onClose } = setup(2, (mock) => {
-      mock.errors.Undo = {
-        code: "conflict",
-        message:
-          "the files were not put back: error: Entry 'src/link.rs' not uptodate. Cannot merge.",
-      };
+      mock.failNext(
+        "Undo",
+        "the files were not put back: error: Entry 'src/link.rs' not uptodate. Cannot merge.",
+        "conflict",
+      );
     });
     await screen.findByRole("dialog");
     await userEvent.keyboard("y");
@@ -165,7 +168,7 @@ describe("PRD-14 putting a turn back", () => {
   });
 
   it("is busy while the daemon puts the files back: one Undo, no second press", async () => {
-    const { bridge, app, onDone, unmount } = setup(2, (mock) => mock.held.add("Undo"));
+    const { bridge, app, onDone, unmount } = setup(2, (mock) => mock.hold("Undo"));
     await screen.findByRole("dialog");
     await userEvent.keyboard("yyb");
     const busy = screen.getByRole("button", { name: "Putting back…" });
@@ -180,7 +183,7 @@ describe("PRD-14 putting a turn back", () => {
 });
 
 describe("PRD-14 the dialog's words", () => {
-  const timeline = workingDay().timelines[workspace] ?? { entries: [] };
+  const timeline = workingDay().timelines?.[workspace] ?? { entries: [] };
   it("names what the files go back to", () => {
     const at = (number: number) => timeline.entries.find((entry) => entry.number === number);
     expect(beforeWhat(timeline, at(4), 4)).toBe("Codex's turn 3");
