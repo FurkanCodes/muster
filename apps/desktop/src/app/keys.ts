@@ -93,9 +93,9 @@ export function installKeys(app: App): () => void {
     const ui = app.ui.getState();
     if (ui.note?.error) app.actions.clearNote();
 
-    // A dialog or the palette keeps the keys (design system: Dialog):
-    // nothing behind it moves, but ⌘K puts the palette away.
-    if (ui.keysIn === "dialog" || ui.paletteOpen) {
+    // The palette keeps the keys, as a dialog does its own (ui/Dialog.tsx):
+    // nothing behind it moves, but ⌘K puts it away.
+    if (ui.paletteOpen) {
       if (chord === "⌘K" && ui.paletteOpen) {
         event.preventDefault();
         app.actions.openPalette(false);
@@ -115,7 +115,7 @@ export function installKeys(app: App): () => void {
       }
       return;
     }
-    if (editable(event.target)) return;
+    if (ui.keysIn === "dialog" || editable(event.target)) return;
 
     for (let at = stack.length - 1; at >= 0; at -= 1) {
       const handler = stack[at]?.current[chord];

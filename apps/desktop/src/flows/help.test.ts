@@ -28,7 +28,7 @@ describe("ARC-24 every key of the screen in view, as the TUI's help lists them",
   it("shows the person's keys, and leaves out an action they took every key from", () => {
     const preferences = { ...defaultPreferences(), keys: { rename: ["ctrl-e"], close: [] } };
     const queue = helpFor("needs-you", preferences)[0]?.entries ?? [];
-    expect(queue).toContainEqual({ keys: "⌃e", what: "rename the session's chat" });
+    expect(queue).toContainEqual({ keys: "⌃E", what: "rename the session's chat" });
     expect(queue.some((entry) => entry.what === "close the session")).toBe(false);
   });
 });

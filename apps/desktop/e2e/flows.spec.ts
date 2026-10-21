@@ -153,7 +153,7 @@ test.describe("ARC-24 the command palette", () => {
       "Anywhere",
     ]);
     await page.keyboard.type("rename");
-    await expect(help.getByRole("listitem")).toHaveText(["rename the session's chatR"]);
+    await expect(help.getByRole("listitem")).toHaveText(["rename the session's chat⇧R"]);
     await page.keyboard.press("Enter");
     await expect(help).toBeHidden();
     await page.keyboard.press("Meta+3");
@@ -192,7 +192,7 @@ test.describe("ARC-24 the command palette", () => {
     await page.keyboard.press("?");
     const help = page.getByRole("dialog", { name: "Every key" });
     await page.keyboard.type("rename");
-    await expect(help.getByRole("listitem")).toHaveText(["rename the session's chat⌃e"]);
+    await expect(help.getByRole("listitem")).toHaveText(["rename the session's chat⌃E"]);
   });
 });
 
