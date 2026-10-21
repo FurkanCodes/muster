@@ -240,6 +240,36 @@ export function workingDay(): Scenario {
   };
   const plugins: PluginInfo[] = [
     { id: "github", source: "builtin", enabled: true, problem: null, details: null, changed: null },
+    // A plugin with a panel beside a session, as the PluginPanel board shows it.
+    {
+      id: "zoetrope",
+      source: { folder: { path: "~/code/zoetrope" } },
+      enabled: true,
+      problem: null,
+      details: {
+        name: "Zoetrope",
+        version: "0.2.0",
+        description: "A chat's steps as a graph.",
+        muster: "0.4.0",
+        requires: [{ program: "zoetrope", found: true }],
+        how_to_get: null,
+        env: [],
+        secrets: [],
+        panels: [
+          {
+            id: "graph",
+            title: "Session graph",
+            on: "session",
+            command: ["zoetrope", "graph", "{transcript}"],
+            key: "G",
+          },
+        ],
+        tickets: null,
+        hooks: [],
+        sha256: "4f1c0a9e5d7b2c3a8e6f1d0b9c7a5e3f2d1c0b9a8e7f6d5c4b3a2918f7e6d5c4",
+      },
+      changed: null,
+    },
   ];
   // The desktop worktree's timeline, newest first: Codex's third turn there
   // is the newest, after the person's own edits between its turns.

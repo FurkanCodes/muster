@@ -1,14 +1,16 @@
 // The detail pane beside a list (design system: PaneHeader, NeedsYouBanner,
 // Terminal, ThisTurn): which session, where it runs and what it uses, what
 // it waits for while it asks, its live terminal, and what its newest turn
-// changed. The changes branch fills ChangesView; the sessions branch the
-// shell and full screen.
+// changed, the shell and plugins' panels beside the terminal (src/panels).
+// The changes branch fills ChangesView.
 
 import { lazy, Suspense, useState } from "react";
 import { useActions, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { agentOf } from "../lib/agents";
 import { spend } from "../lib/format";
+import { FullScreenButton, ShellButton } from "../panels/PaneActions";
+import { Panels } from "../panels/Panels";
 import { branchOf, projectColour } from "../state/selectors";
 import { Button, IconButton } from "../ui/controls";
 import { AgentLogo, Branch, PullRequest } from "../ui/status";
@@ -18,10 +20,6 @@ import { ThisTurn } from "./ThisTurn";
 import "./session.css";
 
 const ChangesView = lazy(() => import("./changes/ChangesView"));
-// xterm is the heaviest part of the window: loaded once a terminal shows (ARC-25).
-const Terminal = lazy(() =>
-  import("../terminal/Terminal").then((module) => ({ default: module.Terminal })),
-);
 
 /** "212 MB, 3% CPU": what the session's processes use, as last measured. */
 function Usage({ session }: { session: SessionId }) {
@@ -87,16 +85,7 @@ export function SessionPane({
             {title}
           </h2>
           <div className="mu-pane-actions">
-            {/* The shell beside the session and full screen are feature/desktop-sessions'. */}
-            <Button
-              disabled
-              title="Shell in this workspace (T): comes with panels beside the session"
-            >
-              <span className="mu-mono" aria-hidden="true">
-                ❯
-              </span>
-              Shell
-            </Button>
+            <ShellButton session={session} />
             <Button
               icon="changes"
               title="Changes (d)"
@@ -105,12 +94,7 @@ export function SessionPane({
             >
               Changes
             </Button>
-            <IconButton
-              icon="expand"
-              label="Full screen"
-              disabled
-              title="Full screen (f): comes with panels beside the session"
-            />
+            <FullScreenButton session={session} />
             {menu.length ? (
               <IconButton
                 icon="more"
@@ -135,9 +119,7 @@ export function SessionPane({
         <>
           <NeedsYouBanner session={session} />
           <div className="app-pane-terminal session-terminal">
-            <Suspense fallback={null}>
-              <Terminal session={session} />
-            </Suspense>
+            <Panels session={session} />
           </div>
           {workspace ? <ThisTurn key={workspace} workspace={workspace} /> : null}
         </>

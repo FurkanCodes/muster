@@ -84,8 +84,9 @@ function Screen() {
 function Window() {
   useTheme();
   useApp();
+  const fullScreen = useUi((state) => state.fullScreen !== null);
   return (
-    <div className="mu-root app">
+    <div className="mu-root app" data-full-screen={fullScreen}>
       <TitleBar />
       <div className="app-body">
         <Sidebar />

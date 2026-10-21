@@ -7,6 +7,7 @@ import type { Command } from "../generated/Command";
 import type { Reply } from "../generated/Reply";
 import type { MockBridge } from "./bridge";
 import { NOW } from "./now";
+import { sessionsCommand } from "./sessions";
 import { ticketCommand } from "./tickets";
 
 export function handleCommand(mock: MockBridge, command: Command): Reply | undefined {
@@ -77,5 +78,5 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
       );
     return { FileDiff: diff };
   }
-  return ticketCommand(mock, command);
+  return sessionsCommand(mock, command) ?? ticketCommand(mock, command);
 }
