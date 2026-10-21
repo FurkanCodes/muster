@@ -56,6 +56,8 @@ export interface UiState {
   fullScreen: SessionId | null;
   sidebarFolded: boolean;
   theme: Theme;
+  /** The theme the window is drawn in now: the system's, where the theme follows it. */
+  drawnIn: "dark" | "light";
   paletteOpen: boolean;
   /** What the palette shows: everything to go to or do, or every key of the screen (`h`) or of the changes (`?` there). */
   paletteMode: PaletteMode;
@@ -82,6 +84,8 @@ export interface UiActions {
   fillWindow(session: SessionId | null): void;
   foldSidebar(): void;
   setTheme(theme: Theme): void;
+  /** Says which theme the window is drawn in, as the system's changes too. */
+  drawIn(drawnIn: "dark" | "light"): void;
   openPalette(open: boolean, mode?: PaletteMode): void;
   /** Opens a dialog of src/flows over the window, or closes it with null. */
   openFlow(flow: Flow | null): void;
@@ -115,6 +119,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     fullScreen: null,
     sidebarFolded: false,
     theme: storedTheme(),
+    drawnIn: "dark",
     paletteOpen: false,
     paletteMode: "commands",
     flow: null,
@@ -146,6 +151,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
       set({ theme });
       keep(THEME_KEY, theme);
     },
+    drawIn: (drawnIn) => set({ drawnIn }),
     openPalette: (paletteOpen, paletteMode = "commands") =>
       set(paletteOpen ? { paletteOpen, paletteMode, flow: null } : { paletteOpen }),
     openFlow: (flow) => set({ flow, paletteOpen: false }),

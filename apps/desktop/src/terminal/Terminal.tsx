@@ -39,7 +39,7 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   const { ui } = useApp();
   const visible = useUi((state) => state.visible);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
-  const theme = useUi((state) => state.theme);
+  const drawnIn = useUi((state) => state.drawnIn);
   const host = useRef<HTMLElement>(null);
   const term = useRef<XTerm | null>(null);
   // The position after the last byte written, so a reattach asks only for what is new.
@@ -142,11 +142,12 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
     };
   }, [actions, ui, session]);
 
-  // Follows the theme: tokens change with data-theme.
+  // Follows the theme the window is drawn in, the Mac's too where it follows
+  // the Mac: the tokens change with data-theme, set before `drawnIn` is.
   useEffect(() => {
     const element = host.current;
-    if (element && term.current && theme) term.current.options.theme = themeFromTokens(element);
-  }, [theme]);
+    if (element && term.current && drawnIn) term.current.options.theme = themeFromTokens(element);
+  }, [drawnIn]);
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches the terminal through xterm's textarea.
