@@ -131,7 +131,7 @@ test("ARC-24 Turns: each entry with its agent, what it changed and when; ⏎ ask
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
   await expect(page.locator(".mu-diffview-head")).toHaveText("Edits between turns+2");
-  // The queue's This turn asked turn 4's diff for its files; the view asks entry 3's.
+  // The view asks entry 3's diff, as it is chosen.
   await expect
     .poll(() => sent(page, "EntryDiff"))
     .toContainEqual({ EntryDiff: { workspace, number: 3 } });
@@ -274,8 +274,6 @@ for (const [command, asking, lead, empty] of [
 ] as const) {
   test(`ARC-24 ${command}: asking, refused, asked again, empty`, async ({ page }) => {
     await open(page, async (page) => {
-      // This turn, under the terminal, has its timeline before the view asks for its own.
-      await expect(page.locator(".mu-turn")).toContainText("Codex, turn 3");
       await page.evaluate((command) => {
         window.__muster.hold(command);
       }, command);
@@ -418,7 +416,7 @@ test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other w
   );
   // The other workspace's session, in All sessions (its tree is feature/desktop-sessions').
   await page.keyboard.press("1");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
 });
 
 test("ARC-25 asked again as the workspace moves, without polling", async ({ page }) => {

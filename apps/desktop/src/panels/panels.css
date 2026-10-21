@@ -51,13 +51,6 @@
   border-radius: 0;
 }
 
-/* A pane action that is on (the shell beside, the changes shown), as the
-   AllSessions board draws it; the design system has no pressed quiet button. */
-.mu-pane-actions .mu-btn[aria-pressed="true"] {
-  background: var(--surface-raised);
-  color: var(--text);
-}
-
 /* The line between two panels: the gap they keep, lit under the pointer and
    while it is dragged; the pointer says which way it moves. */
 .panels-line {
@@ -107,22 +100,15 @@
 }
 
 /* Full screen (`f`): the session and its panels fill the window; the
-   sidebar, the list and the pane's head, banner and turn step aside. */
-.app[data-full-screen="true"] .app-sidebar,
-.app[data-full-screen="true"] .app-screen > :not(.app-pane),
-.app[data-full-screen="true"] .app-pane > :not(.app-pane-terminal) {
+   sidebar steps aside, the session's head stays at the top. */
+.app[data-full-screen="true"] .app-sidebar {
   display: none;
 }
-.panels-fullscreen-title {
-  min-width: 0;
-  font-weight: 600;
-  color: var(--accent);
+.app[data-full-screen="true"] .app-screen {
+  border-left: 0;
 }
 .app[data-full-screen="true"] .app-pane {
   min-width: 0;
-}
-.app[data-full-screen="true"] .app-pane-terminal {
-  padding: var(--space-12) var(--space-16);
 }
 
 @media (prefers-reduced-motion: reduce) {

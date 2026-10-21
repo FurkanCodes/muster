@@ -1,13 +1,13 @@
-// The pane head's actions for what stands beside the session (design
-// system: PaneHeader): *Shell*, pressed while the workspace's shell is
-// beside it, and full screen, each with its key in its tooltip.
+// The pane head's action for what stands beside the session (design
+// system: PaneHeader): the shell, an icon pressed while the workspace's
+// shell is beside it, with its key in its tooltip. Full screen is in the
+// pane's more menu, on its key.
 
 import { useApp, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { useKeyLabel } from "../keys/useKeymap";
-import { Button, IconButton } from "../ui/controls";
+import { IconButton } from "../ui/controls";
 import { shellBeside, toggleShell } from "./beside";
-import { toggleFullScreen } from "./usePanelKeys";
 
 export function ShellButton({ session }: { session: SessionId }) {
   const app = useApp();
@@ -19,30 +19,14 @@ export function ShellButton({ session }: { session: SessionId }) {
   });
   const key = useKeyLabel("shell");
   return (
-    <Button
+    <IconButton
+      icon="terminal"
+      label="Shell"
       title={open ? `Put the shell away (${key})` : `Shell in this workspace (${key})`}
-      aria-pressed={open}
+      pressed={open}
       onClick={() => {
         if (workspace) void toggleShell(app, workspace, session);
       }}
-    >
-      <span className="mu-mono" aria-hidden="true">
-        ❯
-      </span>
-      Shell
-    </Button>
-  );
-}
-
-export function FullScreenButton({ session }: { session: SessionId }) {
-  const app = useApp();
-  const key = useKeyLabel("full_screen");
-  return (
-    <IconButton
-      icon="expand"
-      label="Full screen"
-      title={`Full screen (${key})`}
-      onClick={() => toggleFullScreen(app, session)}
     />
   );
 }

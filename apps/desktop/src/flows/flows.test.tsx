@@ -105,9 +105,7 @@ describe("PRD-01 refusals said before asking, in the TUI's words", () => {
     expect(await screen.findByText("Select a session to stop.")).toBeVisible();
     await userEvent.keyboard("u");
     expect(
-      await screen.findByText(
-        "Select a worktree, or a session in one, to move its branch onto its base.",
-      ),
+      await screen.findByText("Select a session in a worktree to move its branch onto its base."),
     ).toBeVisible();
     act(() => bridge.drop(["/Users/you/code/labs"]));
     expect(await screen.findByText("Added labs.")).toBeVisible();

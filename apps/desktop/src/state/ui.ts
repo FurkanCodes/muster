@@ -3,12 +3,21 @@
 
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { Flow } from "../flows/types";
-import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { keep, kept } from "./kept";
 
-export type ScreenId = "needs-you" | "not-seen" | "working" | "all" | "tickets" | "settings";
+export type ScreenId = "all" | "needs-you" | "tickets" | "settings";
+
+/** The tabs in the terminal UI's order, as Tab and ⇧Tab go round them (`next_tab`). */
+export const TABS: readonly ScreenId[] = ["all", "needs-you", "tickets", "settings"];
+
+/** The tabs the sidebar's list shows: every session by project, or what needs the person. */
+export type ListId = "all" | "needs-you";
+
+export function isList(screen: ScreenId): screen is ListId {
+  return screen === "all" || screen === "needs-you";
+}
 
 /** Where typed keys go: the list (Muster's keys), a terminal (its program), or a dialog. */
 export type KeysIn = "list" | "terminal" | "dialog";
@@ -34,8 +43,8 @@ export interface Note {
 
 export interface UiState {
   screen: ScreenId;
-  /** The project the queues and tree are narrowed to, if any. */
-  project: ProjectId | null;
+  /** What the sidebar lists: the list shown, or the one shown last beside Tickets and Settings. */
+  list: ListId;
   /** Each screen's selected item (a session, ticket or setting id). */
   selected: Partial<Record<ScreenId, string>>;
   keysIn: KeysIn;
@@ -74,8 +83,9 @@ export interface UiState {
 
 export interface UiActions {
   show(screen: ScreenId): void;
+  /** Goes `by` tabs on round {@link TABS}, as Tab (1) and ⇧Tab (-1) do. */
+  cycle(by: number): void;
   select(screen: ScreenId, id: string | undefined): void;
-  narrow(project: ProjectId | null): void;
   keysTo(keysIn: KeysIn): void;
   showTerminal(session: SessionId | null): void;
   showPane(mode: PaneMode): void;
@@ -106,10 +116,17 @@ function storedTheme(): Theme {
   return value === "light" || value === "system" ? value : "dark";
 }
 
+/** The window on `screen`: the keys Muster's, nothing filling it, the sidebar listing a list shown. */
+function shown(screen: ScreenId): Partial<UiState> {
+  return isList(screen)
+    ? { screen, list: screen, keysIn: "list", fullScreen: null }
+    : { screen, keysIn: "list", fullScreen: null };
+}
+
 export function createUi(): { store: UiStore; actions: UiActions } {
   const store = createStore<UiState>(() => ({
     screen: "needs-you",
-    project: null,
+    list: "needs-you",
     selected: {},
     keysIn: "list",
     terminal: null,
@@ -132,9 +149,13 @@ export function createUi(): { store: UiStore; actions: UiActions } {
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
 
   const actions: UiActions = {
-    show: (screen) => set({ screen, keysIn: "list", fullScreen: null }),
+    show: (screen) => set(shown(screen)),
     select: (screen, id) => set((state) => ({ selected: { ...state.selected, [screen]: id } })),
-    narrow: (project) => set((state) => ({ project: state.project === project ? null : project })),
+    cycle: (by) =>
+      set((state) => {
+        const at = Math.max(0, TABS.indexOf(state.screen));
+        return shown(TABS[(at + by + TABS.length) % TABS.length] ?? state.screen);
+      }),
     keysTo: (keysIn) => set({ keysIn }),
     showTerminal: (terminal) => set({ terminal }),
     showPane: (pane) => set({ pane, changesTurn: null }),

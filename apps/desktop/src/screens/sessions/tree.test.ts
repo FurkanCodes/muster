@@ -1,5 +1,6 @@
-// The All sessions tree's rows, folds, folded marks and narrowing, as
-// `app::fold` and `Model::most_urgent` in the terminal UI (ARC-24, PRD §6).
+// The All list's rows, folds and folded marks, as `app::fold` and
+// `Model::most_urgent` in the terminal UI (ARC-24, PRD §6a): projects and
+// their sessions, a worktree said over its session rather than on a line.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { MockBridge } from "../../ipc/mock/bridge";
@@ -8,23 +9,19 @@ import { createDaemon, type DaemonState } from "../../state/daemon";
 import { readFolds, writeFolds } from "./folds";
 import {
   allRows,
-  foldable,
   keptFolds,
   mostUrgent,
   selectionAfterFold,
   sessionsOn,
   shownRows,
   toggled,
-  underItsChat,
   unfoldedTo,
 } from "./tree";
 
 const muster = ulid(1);
 const lamphaus = ulid(2);
 const kepSite = ulid(3);
-const checkout = ulid(10);
 const desktop = ulid(11);
-const resize = ulid(12);
 const kepSiteMain = ulid(30);
 
 async function stateOf(bridge = new MockBridge(workingDay())): Promise<DaemonState> {
@@ -34,140 +31,129 @@ async function stateOf(bridge = new MockBridge(workingDay())): Promise<DaemonSta
   return daemon.store.getState();
 }
 
-describe("the tree's rows", () => {
-  it("are the model's rows as they come, each with its project and workspace", async () => {
+describe("ARC-24 the All list's rows", () => {
+  it("are the projects and their sessions in the model's order, no worktree's line among them", async () => {
     const state = await stateOf();
-    const rows = allRows(state, null);
-    expect(rows.map((row) => row.id)).toEqual(state.derived.rows.map((row) => row.id));
-    const shell = rows.find((row) => row.id === ulid(102));
-    expect(shell).toEqual({ kind: "session", id: ulid(102), project: muster, workspace: desktop });
+    const rows = allRows(state);
+    expect(rows.some((row) => (row.kind as string) === "workspace")).toBe(false);
     expect(rows[0]).toEqual({ kind: "project", id: muster, project: muster, workspace: null });
+    const sessions = state.derived.rows.filter((row) => row.kind !== "workspace");
+    expect(rows.map((row) => row.id)).toEqual(
+      sessions.map((row) => row.id).filter((id) => id !== ulid(102)),
+    );
+    expect(rows.find((row) => row.id === ulid(101))).toEqual({
+      kind: "session",
+      id: ulid(101),
+      project: muster,
+      workspace: desktop,
+    });
   });
 
-  it("narrow to the project the window is narrowed to", async () => {
-    const state = await stateOf();
-    const rows = allRows(state, lamphaus);
-    expect(new Set(rows.map((row) => row.project))).toEqual(new Set([lamphaus]));
-    expect(rows[0]?.id).toBe(lamphaus);
+  it("leave out a shell its workspace's chat has beside it, and list one with no chat to stand by", async () => {
+    const bridge = new MockBridge(workingDay());
+    expect(allRows(await stateOf(bridge)).map((row) => row.id)).not.toContain(ulid(102));
+    // Its chat closed, the shell is the workspace's only session: it has a line of its own.
+    bridge.world.sessions = bridge.world.sessions.filter((session) => session.id !== ulid(101));
+    const rows = allRows(await stateOf(bridge));
+    expect(rows.find((row) => row.id === ulid(102))).toEqual({
+      kind: "session",
+      id: ulid(102),
+      project: muster,
+      workspace: desktop,
+    });
   });
 
-  it("leave out what a folded project or worktree hides, but the folded line itself", async () => {
-    const state = await stateOf();
-    const rows = allRows(state, null);
-    const shown = shownRows(rows, new Set([desktop, lamphaus]));
-    const ids = shown.map((row) => row.id);
-    expect(ids).toContain(desktop);
-    expect(ids).not.toContain(ulid(101));
-    expect(ids).not.toContain(ulid(102));
+  it("give a worktree no session is in a line of its own, to start one there or remove it", async () => {
+    const bridge = new MockBridge(workingDay());
+    bridge.world.sessions = bridge.world.sessions.filter((session) => session.id !== ulid(201));
+    const rows = allRows(await stateOf(bridge));
+    expect(rows.find((row) => row.id === ulid(22))).toEqual({
+      kind: "workspace",
+      id: ulid(22),
+      project: lamphaus,
+      workspace: ulid(22),
+    });
+    // A project's own checkout never: its line is the project's.
+    expect(rows.find((row) => row.id === kepSiteMain)).toBeUndefined();
+    const folded = shownRows(rows, new Set([lamphaus])).map((row) => row.id);
+    expect(folded).not.toContain(ulid(22));
+  });
+
+  it("leave out what a folded project hides, but the project's line itself", async () => {
+    const rows = allRows(await stateOf());
+    const ids = shownRows(rows, new Set([lamphaus])).map((row) => row.id);
     expect(ids).toContain(lamphaus);
-    expect(ids).not.toContain(ulid(20));
+    expect(ids).not.toContain(ulid(200));
+    expect(ids).toContain(ulid(101));
     expect(ids).toContain(kepSite);
   });
 });
 
-describe("folding", () => {
-  it("folds a project always and a worktree only once a session is in it", async () => {
-    const state = await stateOf();
-    expect(foldable(state, { kind: "project", id: kepSite })).toBe(true);
-    expect(foldable(state, { kind: "workspace", id: kepSiteMain })).toBe(false);
-    expect(foldable(state, { kind: "workspace", id: desktop })).toBe(true);
-    expect(foldable(state, { kind: "session", id: ulid(101) })).toBe(false);
+describe("ARC-24 folding", () => {
+  it("toggles a project's line", () => {
+    const once = toggled(new Set(), muster);
+    expect(once).toEqual(new Set([muster]));
+    expect(toggled(once, muster)).toEqual(new Set());
   });
 
-  it("toggles, and refuses a line with nothing to fold away", async () => {
-    const state = await stateOf();
-    const row = allRows(state, null).find((one) => one.id === kepSiteMain);
-    if (!row) throw new Error("no kep-site checkout");
-    expect(toggled(new Set(), row, false)).toEqual({ folded: new Set(), refused: true });
-    const desktopRow = allRows(state, null).find((one) => one.id === desktop);
-    if (!desktopRow) throw new Error("no desktop worktree");
-    const once = toggled(new Set(), desktopRow, true);
-    expect(once.folded.has(desktop)).toBe(true);
-    expect(toggled(once.folded, desktopRow, true).folded.has(desktop)).toBe(false);
+  it("takes the selection to the project folded when it hid it", async () => {
+    const rows = allRows(await stateOf());
+    const codex = rows.find((row) => row.id === ulid(101));
+    const project = rows.find((row) => row.id === muster);
+    if (!codex || !project) throw new Error("missing rows");
+    expect(selectionAfterFold(muster, codex)).toBe(muster);
+    expect(selectionAfterFold(muster, project)).toBe(muster);
+    expect(selectionAfterFold(lamphaus, codex)).toBe(ulid(101));
   });
 
-  it("takes the selection to the line folded when it hid it", async () => {
-    const rows = allRows(await stateOf(), null);
-    const find = (id: string) => rows.find((row) => row.id === id);
-    const codex = find(ulid(101));
-    const project = find(muster);
-    const worktree = find(desktop);
-    if (!codex || !project || !worktree) throw new Error("missing rows");
-    expect(selectionAfterFold(worktree, codex)).toBe(desktop);
-    expect(selectionAfterFold(project, codex)).toBe(muster);
-    expect(selectionAfterFold(project, worktree)).toBe(muster);
-    expect(selectionAfterFold(find(resize) ?? worktree, codex)).toBe(ulid(101));
-  });
-
-  it("unfolds what hides a line selected for the person", async () => {
-    const rows = allRows(await stateOf(), null);
+  it("unfolds the project that hides a line selected for the person", async () => {
+    const rows = allRows(await stateOf());
     const codex = rows.find((row) => row.id === ulid(101));
     if (!codex) throw new Error("no codex");
-    const folds = new Set([muster, desktop, lamphaus]);
-    expect(unfoldedTo(folds, codex)).toEqual(new Set([lamphaus]));
+    expect(unfoldedTo(new Set([muster, lamphaus]), codex)).toEqual(new Set([lamphaus]));
     const none = new Set([lamphaus]);
     expect(unfoldedTo(none, codex)).toBe(none);
   });
 
-  it("forgets folds of lines gone or with nothing left to hide", async () => {
+  it("forgets the folds of projects gone, and a worktree's kept from before", async () => {
     const state = await stateOf();
-    const kept = new Set([muster, desktop]);
+    const kept = new Set([muster, lamphaus]);
     expect(keptFolds(state, kept)).toBe(kept);
-    expect(keptFolds(state, new Set([muster, kepSiteMain, "gone"]))).toEqual(new Set([muster]));
+    expect(keptFolds(state, new Set([muster, desktop, kepSiteMain, "gone"]))).toEqual(
+      new Set([muster]),
+    );
   });
 });
 
-describe("a folded line's mark", () => {
+describe("ARC-24 a folded project's mark", () => {
   it("is the most urgent of what it hides: asking first, then news, then working", async () => {
     const bridge = new MockBridge(workingDay());
     let state = await stateOf(bridge);
     // muster: Codex asks, two work, one finished unseen.
     expect(mostUrgent(state, { kind: "project", id: muster })?.id).toBe(ulid(101));
-    // fix/resize: one works, one finished unseen: the news first.
-    expect(mostUrgent(state, { kind: "workspace", id: resize })?.id).toBe(ulid(104));
-    // main: one works.
-    expect(mostUrgent(state, { kind: "workspace", id: checkout })?.id).toBe(ulid(100));
-    expect(mostUrgent(state, { kind: "workspace", id: kepSiteMain })).toBeNull();
-    bridge.setStatus(ulid(104), { state: "finished" }, false);
+    expect(mostUrgent(state, { kind: "project", id: kepSite })).toBeNull();
+    bridge.setStatus(ulid(101), { state: "running" }, false);
     state = await stateOf(bridge);
-    expect(mostUrgent(state, { kind: "workspace", id: resize })?.id).toBe(ulid(103));
+    // Then the news not seen before the working.
+    expect(mostUrgent(state, { kind: "project", id: muster })?.id).toBe(ulid(104));
   });
 
   it("counts every session it hides, shells too, as the terminal UI does", async () => {
     const state = await stateOf();
-    expect(sessionsOn(state, { kind: "workspace", id: desktop })).toHaveLength(2);
     expect(sessionsOn(state, { kind: "project", id: muster })).toHaveLength(5);
+    expect(sessionsOn(state, { kind: "session", id: ulid(101) })).toHaveLength(1);
   });
 });
 
-describe("a shell's line", () => {
-  it("stands under its worktree's one chat, and after the chats where several share it", async () => {
-    const bridge = new MockBridge(workingDay());
-    let state = await stateOf(bridge);
-    const shell = state.sessions[ulid(102)];
-    if (!shell) throw new Error("no shell");
-    expect(underItsChat(state, shell)).toBe(true);
-    bridge.world.sessions.push({ ...shell, id: ulid(105), harness: "claude", title: "Another" });
-    state = await stateOf(bridge);
-    expect(underItsChat(state, shell)).toBe(false);
-    const chat = state.sessions[ulid(101)];
-    if (!chat) throw new Error("no chat");
-    expect(underItsChat(state, chat)).toBe(false);
-  });
-});
-
-describe("the folds kept", () => {
+describe("ARC-24 the folds kept", () => {
   beforeEach(() => localStorage.clear());
 
   it("are kept per project across restarts", async () => {
     const state = await stateOf();
     writeFolds(state, new Set([muster, desktop, lamphaus]));
     const kept = JSON.parse(localStorage.getItem("muster.sessions.folds") ?? "{}");
-    expect(kept).toEqual({
-      version: 1,
-      projects: { [muster]: [muster, desktop], [lamphaus]: [lamphaus] },
-    });
-    expect(readFolds()).toEqual(new Set([muster, desktop, lamphaus]));
+    expect(kept).toEqual({ version: 1, projects: { [muster]: [muster], [lamphaus]: [lamphaus] } });
+    expect(readFolds()).toEqual(new Set([muster, lamphaus]));
   });
 
   it("are none where storage holds something else", () => {

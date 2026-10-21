@@ -1,7 +1,7 @@
-// All sessions as a component: a session selected for the person unfolds
-// what hides it, the status bar says each line's keys, a gone line leaves
-// the selection on the one in its place, and the list's keys rename and
-// close as on the queue (ARC-24, PRD §6).
+// The All list as a component: projects and their sessions, a session
+// selected for the person unfolds what hides it, the status bar says each
+// line's keys, a gone line leaves the selection on the one in its place, and
+// the list's keys rename and close as on the queue (ARC-24, PRD §6a).
 
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -13,14 +13,13 @@ import { ulid, workingDay } from "../../ipc/mock/scenario";
 import { renderWithApp } from "../../test/render";
 import AllSessions from "./AllSessions";
 
-const lamphaus = ulid(2);
 const gradle = ulid(200);
 let uninstall = () => {};
 beforeEach(() => localStorage.clear());
 afterEach(() => uninstall());
 
 async function screenShown() {
-  const rendered = renderWithApp(<AllSessions />);
+  const rendered = renderWithApp(<AllSessions active />);
   uninstall = installKeys(rendered.app);
   await screen.findByRole("tree");
   return rendered;
@@ -111,11 +110,38 @@ describe("ARC-24 All sessions", () => {
     expect(await screen.findByRole("dialog", { name: "Close Rows apart?" })).toBeInTheDocument();
   });
 
-  it("narrows to the project the window is narrowed to", async () => {
+  it("lists projects and their sessions only: ← goes from a session to its project, → back", async () => {
     const { app } = await screenShown();
-    act(() => app.actions.narrow(lamphaus));
-    await waitFor(() => expect(screen.queryByRole("treeitem", { name: "muster" })).toBeNull());
-    expect(row("lamphaus")).toBeInTheDocument();
+    expect(screen.queryByRole("treeitem", { name: "feature/desktop-app" })).toBeNull();
+    expect(screen.queryByRole("treeitem", { name: /^Shell: git log/ })).toBeNull();
+    await userEvent.click(row(/^Sketch the Tauri shell/));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(app.ui.getState().selected.all).toBe(ulid(1));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(row("muster")).toHaveAttribute("aria-expanded", "false");
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}");
+    expect(row("muster")).toHaveAttribute("aria-expanded", "true");
+    expect(app.ui.getState().selected.all).toBe(ulid(100));
+  });
+
+  it("starts a session in a project's checkout from the + on its line", async () => {
+    const { app } = await screenShown();
+    await userEvent.click(screen.getByRole("button", { name: "New session in lamphaus" }));
+    expect(app.ui.getState().flow).toEqual({
+      kind: "new-session",
+      project: ulid(2),
+      workspace: ulid(20),
+    });
+  });
+
+  it("takes no keys while Tickets or Settings is shown beside it", async () => {
+    const rendered = renderWithApp(<AllSessions active={false} />);
+    uninstall = installKeys(rendered.app);
+    await screen.findByRole("tree");
+    await waitFor(() => expect(rendered.app.ui.getState().selected.all).toBe(ulid(100)));
+    await userEvent.keyboard("j");
+    expect(rendered.app.ui.getState().selected.all).toBe(ulid(100));
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
   });
 });
 
@@ -128,7 +154,7 @@ describe("ARC-25 a tree of thousands of sessions", () => {
       title: `Session ${n}`,
     }));
     bridge.world.sessions.push(...many);
-    const rendered = renderWithApp(<AllSessions />, bridge);
+    const rendered = renderWithApp(<AllSessions active />, bridge);
     uninstall = installKeys(rendered.app);
     const tree = await screen.findByRole("tree");
     await screen.findByRole("treeitem", { name: /^Session 0,/ });

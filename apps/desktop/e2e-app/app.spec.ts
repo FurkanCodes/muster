@@ -6,7 +6,7 @@ import { appRuns } from "./support/harness";
 import { muster, session, status, until } from "./support/muster";
 import { daemonStarts } from "./support/record";
 import { repository } from "./support/repos";
-import { typeInTerminal, untilFlock } from "./support/window";
+import { terminalText, typeInTerminal, untilFlock } from "./support/window";
 
 // The real app over a real daemon of its own (support/harness.ts makes the
 // sandbox): it starts the daemon, connects, shows a session that asks the
@@ -31,8 +31,13 @@ describe("Muster's window over its own daemon", () => {
     await expect($(`h2=${TITLE}`)).toBeDisplayed();
     await untilFlock(0, 1, 0);
     await expect($('section[aria-label="Terminal"]')).toBeDisplayed();
-    // Its question, as the link reads it off the stand-in's screen.
-    await expect($(".mu-question-ask")).toHaveText("Shall the stand-in go on?");
+    // Its question, in its terminal; its row says it asks.
+    const id = session(TITLE)?.id ?? "";
+    await until(
+      async () => (await terminalText(id)).includes("Shall the stand-in go on?"),
+      "the question in its terminal",
+    );
+    await expect($(`[role="option"][aria-label="${TITLE}"] .queue-ask`)).toBeDisplayed();
   });
 
   it("types into the session's terminal, and what is typed reaches its program", async () => {

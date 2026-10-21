@@ -17,8 +17,8 @@ async function opened(bridge = new MockBridge(workingDay())) {
   return view;
 }
 
-describe("ARC-24 Needs you, as the Triage board draws it", () => {
-  it("lists who asks with their question, then finishes not seen, then agents at work", async () => {
+describe("ARC-24 Needs you, in the sidebar", () => {
+  it("lists who asks with what they ask, then finishes not seen, then agents at work", async () => {
     await opened();
     const labels = within(queue())
       .getAllByRole("presentation")
@@ -35,15 +35,10 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
       "Sign-up page loads the old pricing",
     ]);
     const asking = selected();
-    expect(asking).toHaveClass("mu-item");
-    expect(asking).toHaveTextContent("⎇ feature/desktop-app in muster");
-    // The agent's own last lines, read off its screen (`Derived.questions`).
-    expect(within(asking).getByText("Allow Codex to run this command?")).toHaveClass(
-      "mu-question-ask",
-    );
-    expect(asking).toHaveTextContent("⏎answer");
-    // Only the selected item shows its keys.
-    expect(options()[1]).not.toHaveTextContent("⏎answer");
+    expect(asking).toHaveClass("mu-row", "mu-row--two");
+    expect(within(asking).getByText("wants to run cargo build")).toHaveClass("queue-ask");
+    // In full over its terminal, with its keys in the status bar.
+    expect(asking).not.toHaveTextContent("⏎answer");
     const finish = within(queue()).getByRole("option", { name: "Resize settles once on release" });
     expect(finish).toHaveClass("mu-row", "mu-row--two");
     expect(finish).toHaveTextContent("⎇ fix/resize-under-load+64−22#88approved✓12m");
@@ -51,9 +46,8 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
     const plain = within(queue()).getByRole("option", { name: "Explain the release script" });
     expect(plain).toHaveTextContent("no changes");
     const worker = within(queue()).getByRole("option", { name: "Upgrade AGP to 9.1" });
-    expect(worker).toHaveClass("mu-row");
-    expect(worker).not.toHaveClass("mu-row--two");
-    expect(worker).toHaveTextContent("running ./gradlew assembleDebug8m");
+    expect(worker).toHaveClass("mu-row", "mu-row--two");
+    expect(worker).toHaveTextContent("Upgrade AGP to 9.1running ./gradlew assembleDebug8m");
   });
 
   it("says All clear, with how many work, when nothing asks or waits unseen", async () => {
@@ -83,45 +77,6 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
     bridge.open = async () => {};
     renderApp(bridge);
     return waitFor(() => expect(screen.getByText("Connecting to Muster…")).toBeInTheDocument());
-  });
-});
-
-describe("ARC-24 Not seen and Working are the queue filtered", () => {
-  it("shows finishes not seen on Not seen, and agents at work on two lines on Working", async () => {
-    await opened();
-    await userEvent.click(screen.getByRole("button", { name: /^Not seen/ }));
-    await waitFor(() =>
-      expect(names()).toEqual(["Resize settles once on release", "Explain the release script"]),
-    );
-    expect(screen.getByRole("heading", { name: "Not seen" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Working/ }));
-    await waitFor(() => expect(options()).toHaveLength(4));
-    const worker = within(queue()).getByRole("option", { name: "Upgrade AGP to 9.1" });
-    expect(worker).toHaveClass("mu-row--two");
-    expect(worker).toHaveTextContent("running ./gradlew assembleDebuglamphaus8m");
-    expect(within(queue()).queryByRole("presentation")).not.toBeInTheDocument();
-  });
-
-  it("narrows each to the project chosen, with what each says when empty", async () => {
-    await opened();
-    await userEvent.click(screen.getByRole("button", { name: /^lamphaus/ }));
-    await waitFor(() =>
-      expect(names()).toEqual([
-        "Share the Gradle cache across worktrees",
-        "Explain the release script",
-        "Upgrade AGP to 9.1",
-      ]),
-    );
-    await userEvent.click(screen.getByRole("button", { name: /^lamphaus/ }));
-    await userEvent.click(screen.getByRole("button", { name: /^kep-site/ }));
-    expect(await screen.findByRole("heading", { name: "All clear" })).toBeInTheDocument();
-    expect(
-      screen.getByText("No agent is at work. Muster will show them here when they need you."),
-    ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Not seen/ }));
-    expect(await screen.findByRole("heading", { name: "All seen" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Working/ }));
-    expect(await screen.findByRole("heading", { name: "No agent at work" })).toBeInTheDocument();
   });
 });
 
@@ -189,7 +144,7 @@ describe("ARC-24 the queue's keys", () => {
     expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
   });
 
-  it("l goes to the session that needed the person last, here or on All sessions", async () => {
+  it("l goes to the session that needed the person last, here or on Sessions", async () => {
     const { bridge } = await opened();
     await userEvent.keyboard("l");
     expect(hints()).toContain("No session has needed you since Muster started.");
@@ -199,7 +154,7 @@ describe("ARC-24 the queue's keys", () => {
     act(() => bridge.setStatus(ulid(201), { state: "finished" }));
     await userEvent.keyboard("k");
     await userEvent.keyboard("l");
-    expect(await screen.findByRole("heading", { name: "All sessions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
   });
 
   it("PRD-14 d shows the changes; z puts the newest turn back, never while its agent works", async () => {

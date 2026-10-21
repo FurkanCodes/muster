@@ -9,12 +9,12 @@ import { opened } from "./support/record";
 import { commit, ghCalls, git, read, repository } from "./support/repos";
 import { bareId, goTo, pressOnWindow, theWindow } from "./support/window";
 
-// All sessions and its panels in the real app over a real daemon (PRD §6,
-// PRD-15, ARC-24): the tree and its folds, kept across a crash of the app
-// and a ⌘Q; the shell on T and a plugin's panel on its key, beside the
-// agent and on one line in the tree; the panels dragged, resized and moved
+// Sessions and its panels in the real app over a real daemon (PRD §6a,
+// PRD-15, ARC-24): the All list and its folds, kept across a crash of the
+// app and a ⌘Q; the shell on T and a plugin's panel on its key, beside the
+// agent and on no line of their own; the panels dragged, resized and moved
 // with m, the layout in settings.toml; full screen; and the stages by hand,
-// c, v, o and b, against real git and the stand-in gh.
+// c, v, o and b on a session's worktree, against real git and the stand-in gh.
 
 let repo = "";
 let worktree = "";
@@ -25,6 +25,9 @@ const line = (label: string) => $(`[role="treeitem"][aria-label="${label}"]`);
 const lineLike = (start: string) => $(`[role="treeitem"][aria-label^="${start}"]`);
 const panel = (name: string) => $(`section.mu-panel[aria-label="${name}"]`);
 const statusBar = () => $("footer.mu-statusbar");
+
+/** The session's pane beside the list, its head with it. */
+const pane = (title: string) => $(`section.session-pane[aria-label="${title}"]`);
 
 /** The lines the app keeps folded, as its file holds them. */
 function folds(): string[] {
@@ -72,7 +75,7 @@ async function roomForPanels(): Promise<void> {
   await browser.setWindowRect(40, 40, 1680, 1000);
 }
 
-describe("All sessions and its panels, over the real daemon", () => {
+describe("Sessions and its panels, over the real daemon", () => {
   before(async () => {
     await roomForPanels();
     await until(() => status().running, "the app to start its daemon", 30_000);
@@ -91,14 +94,17 @@ describe("All sessions and its panels, over the real daemon", () => {
     agent = await askingSession("web", TITLE, "Shall I begin?", { branch: "feature/web" });
     worktree = agent.cwd;
     muster("plugin", "link", panelPlugin(), "--yes");
-    await goTo("All sessions");
+    await goTo("Sessions");
   });
 
-  it("ARC-24 lists every project, its worktrees and their sessions as the daemon holds them", async () => {
+  it("ARC-24 lists every project and its sessions as the daemon holds them, each worktree said over its session", async () => {
     await expect(line("web")).toHaveAttribute("aria-level", "1");
-    await expect(line("main")).toHaveAttribute("aria-level", "2");
-    await expect(line("feature/web")).toHaveAttribute("aria-level", "2");
-    await expect(lineLike(`${TITLE},`)).toHaveAttribute("aria-level", "3");
+    await expect(lineLike(`${TITLE},`)).toHaveAttribute("aria-level", "2");
+    // The project's checkout is its line; a worktree with a session in it, said over the session.
+    await expect(line("main")).not.toBeExisting();
+    await expect(line("feature/web")).not.toBeExisting();
+    await lineLike(`${TITLE},`).click();
+    await expect(pane(TITLE)).toHaveText(expect.stringContaining("⎇ feature/web in web"));
     const held = status().projects?.find((project) => project.name === "web");
     expect(held?.workspaces.map((workspace) => workspace.branch).sort()).toEqual([
       "feature/web",
@@ -106,38 +112,36 @@ describe("All sessions and its panels, over the real daemon", () => {
     ]);
   });
 
-  it("ARC-24 a fold is kept across a crash of the app and a ⌘Q; the daemon is never told", async () => {
-    await line("feature/web").click();
+  it("ARC-24 a project's fold is kept across a crash of the app and a ⌘Q; the daemon is never told", async () => {
+    const project = bareId(status().projects?.find((one) => one.name === "web")?.id ?? "");
+    await line("web").click();
     await pressOnWindow("e");
-    await expect(line("feature/web")).toHaveAttribute("aria-expanded", "false");
-    await expect(line("feature/web")).toHaveText(expect.stringContaining("1 folded"));
+    await expect(line("web")).toHaveAttribute("aria-expanded", "false");
+    await expect(line("web")).toHaveText(expect.stringContaining("1 folded"));
     await expect(lineLike(`${TITLE},`)).not.toBeExisting();
     // Kept by the app as it is folded, in a file of its own (src-tauri/src/kept.rs).
-    const workspace = session(TITLE)?.workspace ?? "";
-    await until(() => folds().includes(bareId(workspace)), "the fold to be kept");
+    await until(() => folds().includes(project), "the fold to be kept");
     const pid = status().daemon?.pid;
     // Ended as a crash ends it, with no word to the window.
     await restartApp();
     await theWindow();
     await roomForPanels();
-    await goTo("All sessions");
-    await expect(line("feature/web")).toHaveAttribute("aria-expanded", "false");
-    await line("feature/web").click();
+    await goTo("Sessions");
+    await expect(line("web")).toHaveAttribute("aria-expanded", "false");
+    await line("web").click();
     await pressOnWindow("→");
     await expect(lineLike(`${TITLE},`)).toBeDisplayed();
-    await until(() => !folds().includes(bareId(workspace)), "the unfold to be kept");
+    await until(() => !folds().includes(project), "the unfold to be kept");
 
-    // The project folded, then the app quit as the person quits it.
-    await line("web").click();
+    // Folded again, then the app quit as the person quits it.
     await pressOnWindow("e");
     await expect(line("web")).toHaveAttribute("aria-expanded", "false");
     await until(() => folds().length === 1, "the project's fold to be kept");
     await restartApp({}, "quit");
     await theWindow();
     await roomForPanels();
-    await goTo("All sessions");
+    await goTo("Sessions");
     await expect(line("web")).toHaveAttribute("aria-expanded", "false");
-    await expect(line("feature/web")).not.toBeExisting();
     // The daemon ran on, and its session with it.
     expect(status().daemon?.pid).toBe(pid);
     expect(session(TITLE)?.status).toBe("needs_you");
@@ -146,7 +150,7 @@ describe("All sessions and its panels, over the real daemon", () => {
     await expect(lineLike(`${TITLE},`)).toBeDisplayed();
   });
 
-  it("PRD-15 T opens a real shell beside the agent, on one line under it in the tree", async () => {
+  it("PRD-15 T opens a real shell beside the agent, on no line of its own", async () => {
     await lineLike(`${TITLE},`).click();
     await pressOnWindow("T");
     const shell = await until(
@@ -159,7 +163,8 @@ describe("All sessions and its panels, over the real daemon", () => {
     await browser.keys("Enter");
     await until(() => existsSync(join(worktree, "shell-was-here")), "the shell to run it");
     await pressOnWindow("Q");
-    await expect(lineLike("Shell: ")).toBeDisplayed();
+    await expect(lineLike("Shell: ")).not.toBeExisting();
+    await expect($('button[aria-label="Shell"]')).toHaveAttribute("aria-pressed", "true");
     expect(shell.workspace).toBe(session(TITLE)?.workspace);
   });
 
@@ -175,7 +180,7 @@ describe("All sessions and its panels, over the real daemon", () => {
       "the panel's program to run",
     );
     await expect(panel("Probe panel")).toBeDisplayed();
-    await expect(lineLike("Panel: Probe panel")).toHaveText(expect.stringContaining("G"));
+    await expect(lineLike("Panel: Probe panel")).not.toBeExisting();
     await pressOnWindow("Q");
   });
 
@@ -231,17 +236,18 @@ describe("All sessions and its panels, over the real daemon", () => {
   it("ARC-24 f fills the window with the session and its panels; Esc gives it back", async () => {
     await lineLike(`${TITLE},`).click();
     await pressOnWindow("f");
-    await expect($('nav[aria-label="Screens"]')).not.toBeDisplayed();
+    await expect($('nav[aria-label="Sessions"]')).not.toBeDisplayed();
     await expect($('[role="tree"]')).not.toBeDisplayed();
-    await expect($(".mu-titlebar")).toHaveText(expect.stringContaining(TITLE));
+    // Its head stays at the window's top.
+    await expect($("h2.app-head-title")).toHaveText(TITLE);
     await expect(panel("Shell")).toBeDisplayed();
     await pressOnWindow("Q", "Esc");
-    await expect($('nav[aria-label="Screens"]')).toBeDisplayed();
+    await expect($('nav[aria-label="Sessions"]')).toBeDisplayed();
     await expect($('[role="tree"]')).toBeDisplayed();
   });
 
   it("PRD §5 c runs the project's checks in the worktree, a session opened with the keys", async () => {
-    await line("feature/web").click();
+    await lineLike(`${TITLE},`).click();
     await pressOnWindow("c");
     await until(
       () => sessions().find((one) => one.harness === "checks" && one.branch === "feature/web"),
@@ -254,7 +260,7 @@ describe("All sessions and its panels, over the real daemon", () => {
   });
 
   it("PRD §5 v has Claude Code review the change in plan mode, a session opened with the keys", async () => {
-    await line("feature/web").click();
+    await lineLike(`${TITLE},`).click();
     await pressOnWindow("v");
     const review = await until(
       () => sessions().find((one) => one.harness === "review" && one.branch === "feature/web"),
@@ -268,7 +274,7 @@ describe("All sessions and its panels, over the real daemon", () => {
   });
 
   it("PRD §5 o pushes the branch with git and opens a draft with gh; b opens it in the browser", async () => {
-    await line("feature/web").click();
+    await lineLike(`${TITLE},`).click();
     await pressOnWindow("b");
     await expect(statusBar()).toHaveText(
       expect.stringContaining("No pull request from this branch is known; o opens one."),
@@ -282,21 +288,20 @@ describe("All sessions and its panels, over the real daemon", () => {
       "The web's change",
     );
     expect(ghCalls().some((call) => call.startsWith("pr create --draft"))).toBe(true);
-    await expect(line("feature/web")).toHaveText(expect.stringContaining("#17"));
+    await expect(pane(TITLE)).toHaveText(expect.stringContaining("#17"));
     await pressOnWindow("b");
     await until(() => opened().includes("https://github.com/o/app/pull/17"), "the address opened");
   });
 
-  it("PRD §5 says why where none can be: on a project's line, and the base branch's own", async () => {
+  it("PRD §5 says why where none can be: on a project's line", async () => {
     await line("web").click();
     await pressOnWindow("c");
     await expect(statusBar()).toHaveText(
-      expect.stringContaining("Select a worktree, or a session in one, to run the checks there."),
+      expect.stringContaining("Select a session in a worktree to run the checks there."),
     );
-    await line("main").click();
     await pressOnWindow("o");
     await expect(statusBar()).toHaveText(
-      expect.stringContaining("main is the branch a pull request would merge into"),
+      expect.stringContaining("Select a session in a worktree to open a pull request from it."),
     );
   });
 });

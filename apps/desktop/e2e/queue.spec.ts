@@ -1,8 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { MockBridge } from "../src/ipc/mock/bridge";
 
-// Needs you, Not seen and Working end to end in WebKit, over the mock
-// daemon (window.__muster), in each state the Triage and Working boards draw.
+// Needs you end to end in WebKit, over the mock daemon (window.__muster):
+// the queue in the sidebar, the selected session beside it.
 
 declare global {
   interface Window {
@@ -13,7 +13,6 @@ declare global {
 
 const codex = "01JD0000000000000000000101";
 const gemini = "01JD0000000000000000000200";
-const desktop = "01JD0000000000000000000011";
 
 const queue = (page: Page) => page.getByRole("listbox");
 const option = (page: Page, name: string) => queue(page).getByRole("option", { name, exact: true });
@@ -25,60 +24,49 @@ test.beforeEach(async ({ page }) => {
   await expect(option(page, "Sketch the Tauri shell")).toBeVisible();
 });
 
-test("ARC-24 Needs you lists who asks with their question, then finishes not seen, then agents at work", async ({
+test("ARC-24 Needs you lists who asks with what they ask, then finishes not seen, then agents at work", async ({
   page,
 }) => {
-  await expect(page.getByRole("heading", { name: "Needs you", level: 1 })).toBeVisible();
-  await expect(page.getByText("Oldest first. Opening one clears it.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Needs you/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   const sections = queue(page).locator(".mu-section");
   await expect(sections).toHaveText(["Asking you", "Finished, not seen", "Working"]);
   await expect(queue(page).getByRole("option")).toHaveCount(8);
 
   const asking = option(page, "Sketch the Tauri shell");
   await expect(asking).toHaveAttribute("aria-selected", "true");
-  await expect(asking).toHaveClass(/mu-item/);
-  // The agent's own last lines, read off its screen (`Derived.questions`).
-  await expect(asking.locator(".mu-question-ask")).toHaveText("Allow Codex to run this command?");
-  await expect(asking.locator(".mu-question")).toContainText("$ cargo build -p muster-desktop");
-  await expect(asking).toContainText("⎇ feature/desktop-app in muster");
-  await expect(asking.locator(".mu-hints")).toContainText("answer");
+  await expect(asking).toHaveClass(/mu-row--two/);
+  await expect(asking.locator(".queue-ask")).toHaveText("wants to run cargo build");
 
   const finish = option(page, "Resize settles once on release");
   await expect(finish).toHaveClass(/mu-row--two/);
   await expect(finish).toContainText("⎇ fix/resize-under-load");
-  await expect(finish).toContainText("+64");
   await expect(finish).toContainText("#88");
   await expect(finish.getByRole("img", { name: "not seen" })).toBeVisible();
 
   const worker = option(page, "Upgrade AGP to 9.1");
-  await expect(worker).not.toHaveClass(/mu-row--two/);
+  await expect(worker).toHaveClass(/mu-row--two/);
   await expect(worker).toContainText("running ./gradlew assembleDebug");
 
-  // The pane beside it: the session, its banner, its terminal and its newest turn.
+  // Beside it the session: its head, its banner, its terminal, and nothing under it.
   const pane = page.getByRole("region", { name: "Sketch the Tauri shell", exact: true });
   await expect(pane.getByRole("heading", { name: "Sketch the Tauri shell" })).toBeVisible();
-  await expect(pane).toContainText("182k tokens");
-  await expect(pane).toContainText("212 MB, 3% CPU");
+  await expect(pane).toContainText("⎇ feature/desktop-app in muster");
   await expect(pane.locator(".mu-banner")).toContainText("Needs you: wants to run cargo build");
   await expect(terminal(page)).toBeVisible();
-  const turn = page.getByRole("region", { name: "This turn" });
-  await expect(turn).toContainText("Codex, turn 3, changed 3 files");
-  await expect(turn.locator(".mu-pill")).toHaveText([
-    "link.rs+118−4",
-    "main.rs+61",
-    "Cargo.toml+24",
-  ]);
+  await expect(page.getByRole("region", { name: "This turn" })).toHaveCount(0);
+  // What it runs on and uses, at the status bar's end.
+  await expect(statusBar(page)).toContainText("Codex · 182k tokens · 212 MB, 3% CPU");
   await expect(statusBar(page)).toContainText("answer");
   await expect(statusBar(page)).toContainText("put back");
 });
 
-test("ARC-24 every reason to ask shows in the item and the banner, and the banner goes as it stops asking", async ({
+test("ARC-24 every reason to ask shows in the row and the banner, and the banner goes as it stops asking", async ({
   page,
 }) => {
-  // A screen that shows nothing yet: the item says why the agent waits.
-  await page.evaluate((id) => {
-    window.__muster.world.terminals[id] = "";
-  }, codex);
+  // With nothing from its hooks, the row says why the agent waits.
   const said = {
     permission: "wants your permission",
     question: "asks you something",
@@ -96,7 +84,7 @@ test("ARC-24 every reason to ask shows in the item and the banner, and the banne
       },
       { id: codex, reason },
     );
-    await expect(option(page, "Sketch the Tauri shell").locator(".mu-question")).toHaveText(text);
+    await expect(option(page, "Sketch the Tauri shell").locator(".queue-ask")).toHaveText(text);
     await expect(page.locator(".session-banner")).toContainText(text);
   }
   await page.evaluate(
@@ -146,38 +134,18 @@ test("ARC-24 All clear says how many work, with the agents at work below it", as
   await expect(page.getByText("The session you select shows here, live.")).toBeVisible();
 });
 
-test("ARC-24 Not seen and Working are the queue filtered, and every queue narrows to a project", async ({
-  page,
-}) => {
-  await page.getByRole("button", { name: /^Not seen/ }).click();
-  await expect(page.getByRole("heading", { name: "Not seen", level: 1 })).toBeVisible();
-  await expect(queue(page).getByRole("option")).toHaveText([
-    /Resize settles/,
-    /Explain the release/,
-  ]);
-  await page.getByRole("button", { name: /^Working/ }).click();
-  await expect(page.getByText("Agents at work now, the longest first.")).toBeVisible();
+test("ARC-24 the agents at work follow those waiting, longest first", async ({ page }) => {
   // The longest at work first, as the model orders them (`Derived.working`).
   await expect(queue(page).getByRole("option")).toHaveText([
+    /Sketch the Tauri/,
+    /Share the Gradle/,
+    /Resize settles/,
+    /Explain the release/,
     /Upgrade AGP/,
     /Split view\.rs/,
     /Flaky resize/,
     /Sign-up page/,
   ]);
-  const worker = option(page, "Upgrade AGP to 9.1");
-  await expect(worker).toHaveClass(/mu-row--two/);
-  await expect(worker).toContainText("lamphaus");
-  await page.getByRole("button", { name: /^lamphaus/ }).click();
-  await expect(queue(page).getByRole("option")).toHaveText([/Upgrade AGP/]);
-  await page.getByRole("button", { name: /Needs you/ }).click();
-  await expect(queue(page).getByRole("option")).toHaveCount(3);
-  await page.getByRole("button", { name: /^lamphaus/ }).click();
-  await page.getByRole("button", { name: /^kep-site/ }).click();
-  await expect(page.getByRole("heading", { name: "All clear" })).toBeVisible();
-  await page.getByRole("button", { name: /^Not seen/ }).click();
-  await expect(page.getByRole("heading", { name: "All seen" })).toBeVisible();
-  await page.getByRole("button", { name: /^Working/ }).click();
-  await expect(page.getByRole("heading", { name: "No agent at work" })).toBeVisible();
 });
 
 test("ARC-24 ↑↓ move, ⏎ gives the live terminal the keys, ⇧Q gives them back", async ({ page }) => {
@@ -261,7 +229,7 @@ test("ARC-24 l goes to the session that needed the person last", async ({ page }
   );
   await page.keyboard.press("k");
   await page.keyboard.press("l");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("tree", { name: "Projects and sessions" })).toBeVisible();
 });
 
 test("ARC-24 R renames in place, ⎋ gives up, and the more menu offers the same with its keys", async ({
@@ -284,6 +252,7 @@ test("ARC-24 R renames in place, ⎋ gives up, and the more menu offers the same
   await page.getByRole("button", { name: "More", exact: true }).click();
   const menu = page.getByRole("menu", { name: "A name of my own" });
   await expect(menu.getByRole("menuitem")).toHaveText([
+    "Full screenf",
     "Rename⇧R",
     "Pull request in the browserb",
     "Closex",
@@ -305,8 +274,7 @@ test("ARC-24 b opens the session's pull request in the browser, and says when no
   await expect(statusBar(page)).toContainText(
     "No pull request from this branch is known; o opens one.",
   );
-  // On Not seen and Working too.
-  await page.getByRole("button", { name: /^Working/ }).click();
+  // On an agent at work too.
   await option(page, "Flaky resize test under load").click();
   await page.keyboard.press("b");
   await expect
@@ -347,59 +315,21 @@ test("PRD-09 x asks first, ⎋ keeps it, and Close session stops it and takes it
   ]);
 });
 
-test("ARC-25 This turn says it is reading, what went wrong, and reads again when the timeline grows", async ({
+test("PRD-14 z opens the newest turn's putting back in the changes, never while its agent works; d the changes", async ({
   page,
 }) => {
-  await page.evaluate((id) => {
-    window.__muster.hold({ Timeline: { workspace: id } });
-    window.__muster.updateWorkspace(id, { timeline: 5 });
-  }, desktop);
-  const turn = page.getByRole("region", { name: "This turn" });
-  await expect(turn).toContainText("Reading the timeline…");
-  await page.evaluate((id) => {
-    window.__muster.failNext(
-      { Timeline: { workspace: id } },
-      "the timeline is busy: try again in a moment",
-    );
-    window.__muster.release({ Timeline: { workspace: id } });
-  }, desktop);
-  await expect(turn.getByRole("alert")).toContainText("the timeline is busy");
-  await page.evaluate((id) => {
-    const newest = window.__muster.world.timelines?.[id]?.entries[0];
-    if (newest) newest.summary = null;
-  }, desktop);
-  await turn.getByRole("button", { name: "Try again" }).click();
-  await expect(turn).toContainText("Codex, turn 3, changed no files");
-  await expect(turn.locator(".mu-pill")).toHaveCount(0);
-  await page.evaluate((id) => {
-    const mock = window.__muster;
-    if (mock.world.timelines) mock.world.timelines[id] = { entries: [] };
-    mock.updateWorkspace(id, { timeline: 6 });
-  }, desktop);
-  await expect(turn).toContainText("None kept yet: each agent's turn here is, from now on.");
-});
-
-test("PRD-14 Put back and See the diff open the changes on the turn; Put back waits while the agent works", async ({
-  page,
-}) => {
-  const turn = page.getByRole("region", { name: "This turn" });
   const changes = page.getByRole("button", { name: "Changes", exact: true });
-  await turn.getByRole("button", { name: "Put back" }).click();
-  await expect(changes).toHaveAttribute("aria-pressed", "true");
-  await changes.click();
-  await turn.getByRole("button", { name: "See the diff" }).click();
-  await expect(changes).toHaveAttribute("aria-pressed", "true");
-  await changes.click();
-  await turn.getByRole("button", { name: /link\.rs, its diff/ }).click();
-  await expect(changes).toHaveAttribute("aria-pressed", "true");
-  await changes.click();
   await page.evaluate((id) => window.__muster.setStatus(id, { state: "running" }), codex);
-  const putBack = turn.getByRole("button", { name: "Put back" });
-  await expect(putBack).toBeDisabled();
-  await expect(putBack).toHaveAttribute("title", "Wait for its turn to end");
   await page.keyboard.press("z");
   await expect(statusBar(page)).toContainText("Wait for its turn to end.");
+  await expect(changes).toHaveAttribute("aria-pressed", "false");
   await page.keyboard.press("d");
+  await expect(changes).toHaveAttribute("aria-pressed", "true");
+  await changes.click();
+  await expect(changes).toHaveAttribute("aria-pressed", "false");
+  await page.evaluate((id) => window.__muster.setStatus(id, { state: "finished" }), codex);
+  await option(page, "Sketch the Tauri shell").click();
+  await page.keyboard.press("z");
   await expect(changes).toHaveAttribute("aria-pressed", "true");
 });
 
@@ -415,30 +345,21 @@ test("ARC-24 the queue keeps its last state while the daemon is out of reach", a
   await expect(option(page, "Sketch the Tauri shell")).toHaveAttribute("aria-selected", "true");
 });
 
-test("ARC-24 narrowed to its least, the sidebar folds and the session keeps 520 wide", async ({
-  page,
-}) => {
+test("ARC-24 at its least, the sidebar stays and the session keeps 520 wide", async ({ page }) => {
   await page.setViewportSize({ width: 960, height: 600 });
-  await expect(page.getByText("Projects", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Sessions" })).toBeVisible();
   const pane = page.getByRole("region", { name: "Sketch the Tauri shell", exact: true });
   expect((await pane.boundingBox())?.width).toBeGreaterThanOrEqual(520);
   await expect(page.getByRole("button", { name: "Changes", exact: true })).toBeInViewport();
-  // This turn's head stays one line: its description is cut before its buttons move.
-  const turn = page.getByRole("region", { name: "This turn" });
-  const putBack = await turn.getByRole("button", { name: "Put back" }).boundingBox();
-  const diff = await turn.getByRole("button", { name: "See the diff" }).boundingBox();
-  expect(diff?.y).toBe(putBack?.y);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByText("Projects", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "More", exact: true })).toBeInViewport();
 });
 
-test("ARC-24 the asking session's gemini item shows its own question", async ({ page }) => {
-  const item = option(page, "Share the Gradle cache across worktrees");
-  await expect(item.locator(".mu-question-ask")).toHaveText("Where should the shared cache live?");
-  await expect(item.locator(".mu-question")).toContainText("~/code/lamphaus/.gradle-shared");
-  // What the agent writes as it asks reaches its question.
-  await page.evaluate((id) => window.__muster.output(id, "\r\n    somewhere else"), gemini);
-  await expect(item.locator(".mu-question")).toContainText("somewhere else");
+test("ARC-24 an asking row says what it asks, and leaves Asking you as it stops", async ({
+  page,
+}) => {
+  const row = option(page, "Share the Gradle cache across worktrees");
+  await expect(row.locator(".queue-ask")).toHaveText("asks which cache folder to use");
   await page.evaluate((id) => window.__muster.setStatus(id, { state: "running" }), gemini);
-  await expect(option(page, "Share the Gradle cache across worktrees")).not.toHaveClass(/mu-item/);
+  await expect(row.locator(".queue-ask")).toHaveCount(0);
+  await expect(row).toContainText("asks which cache folder to use");
 });

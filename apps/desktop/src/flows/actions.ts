@@ -13,7 +13,7 @@ import { whenKnown } from "../state/whenKnown";
 import { labelOf } from "./keymap";
 
 /** The screens whose lines are sessions, worktrees and projects. */
-export const SESSION_LISTS: readonly ScreenId[] = ["needs-you", "not-seen", "working", "all"];
+export const SESSION_LISTS: readonly ScreenId[] = ["all", "needs-you"];
 
 /** A session's terminal at the size the pane starts it at; it settles to the pane's own on show. */
 export const START_SIZE = { cols: 100, rows: 30 };
@@ -88,6 +88,15 @@ export function newSession(app: App): void {
   });
 }
 
+/** A project line's `+`: a session in its checkout, or where the person says. */
+export function newSessionIn(app: App, project: string): void {
+  app.actions.openFlow({
+    kind: "new-session",
+    project,
+    workspace: checkoutOf(app, project)?.id ?? null,
+  });
+}
+
 /** `w`: a new worktree for the selected project. */
 export function newWorktree(app: App): void {
   const { project } = here(app);
@@ -146,6 +155,16 @@ export function close(app: App): void {
   app.actions.openFlow({ kind: "remove-worktree", workspace: workspace.id });
 }
 
+/**
+ * The selected session's worktree removed, after asking: from the palette,
+ * as `x` on a session closes the session itself.
+ */
+export function removeWorktree(app: App): void {
+  const { workspace } = here(app);
+  if (workspace?.kind.kind === "worktree")
+    app.actions.openFlow({ kind: "remove-worktree", workspace: workspace.id });
+}
+
 /** `s`: stops the selected session, after asking. */
 export function stop(app: App): void {
   const { session } = here(app);
@@ -181,7 +200,7 @@ export function restart(app: App): void {
 export function handsOn(app: App, what: string): Workspace | null {
   const { workspace, onProject } = here(app);
   if (!workspace || onProject) {
-    complain(app, `Select a worktree, or a session in one, to ${what}.`);
+    complain(app, `Select a session in a worktree to ${what}.`);
     return null;
   }
   if (workspace.kind.kind === "container") {

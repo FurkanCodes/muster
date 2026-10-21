@@ -1,7 +1,7 @@
 /* The window while the daemon is out of reach (design/screens/Away.html). */
 .ui-flow-away {
   flex: none;
-  margin: var(--space-12) var(--space-12) 0;
+  margin: 0 var(--space-12) var(--space-12);
   padding: var(--space-10) var(--space-12);
 }
 .ui-flow-away-mark {
@@ -12,7 +12,7 @@
   min-width: 0;
 }
 /* What it last knew, as it was: still, and dimmed. */
-.app-screen[inert] {
+.app-body[inert] {
   opacity: var(--opacity-disabled);
 }
 .ui-flow-kep {

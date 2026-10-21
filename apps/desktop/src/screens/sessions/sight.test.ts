@@ -34,7 +34,7 @@ describe("ARC-25 the lines of a long tree in sight", () => {
   });
 
   it("estimates a line by its kind, with the space above it", () => {
-    const row = (kind: "project" | "workspace" | "session") => ({
+    const row = (kind: "project" | "session") => ({
       kind,
       id: "a",
       project: "p",

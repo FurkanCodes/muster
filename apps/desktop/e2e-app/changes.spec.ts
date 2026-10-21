@@ -93,7 +93,7 @@ async function newestTurn(): Promise<void> {
 
 /** Shows the changes of the session `title`, from the queue. */
 async function changesOf(title: string): Promise<void> {
-  await goTo("All sessions");
+  await goTo("Sessions");
   await $(`[role="treeitem"][aria-label^="${title},"]`).click();
   const shown = await $('section[aria-label="Changes"]').isExisting();
   if (!shown) await pressOnWindow("d");

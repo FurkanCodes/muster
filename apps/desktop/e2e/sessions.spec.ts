@@ -1,8 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { MockBridge } from "../src/ipc/mock/bridge";
 
-// All sessions, its panels and full screen, end to end over the mock daemon
-// (the AllSessions, Working, FullScreen and PluginPanel boards).
+// The All list in the sidebar, the session beside it, its panels and full
+// screen, end to end over the mock daemon.
 
 declare global {
   interface Window {
@@ -17,9 +17,9 @@ const region = (page: Page, name: string) => page.getByRole("region", { name, ex
 
 async function allSessions(page: Page) {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Needs you" })).toBeVisible();
-  await page.keyboard.press("Meta+2");
-  await expect(page.getByRole("heading", { name: "All sessions" })).toBeVisible();
+  await expect(page.getByRole("listbox", { name: "Needs you sessions" })).toBeVisible();
+  await page.keyboard.press("Meta+1");
+  await expect(page.getByRole("tree", { name: "Projects and sessions" })).toBeVisible();
 }
 
 /** What a session's terminal shows (xterm draws on the GPU). */
@@ -32,37 +32,38 @@ const shown = (page: Page, session: string) =>
     session,
   );
 
-test("ARC-24 the tree: projects, worktrees, sessions, shells beside their chat", async ({
+test("ARC-24 the All list: projects and their sessions, each worktree said over its session", async ({
   page,
 }) => {
   await allSessions(page);
-  const tree = page.getByRole("tree", { name: "Projects, worktrees and sessions" });
+  const tree = page.getByRole("tree", { name: "Projects and sessions" });
   await expect(line(page, "muster")).toHaveAttribute("aria-expanded", "true");
-  await expect(line(page, "muster")).toContainText("~/muster");
-  await expect(line(page, "fix/resize-under-load")).toContainText("+64−22");
-  await expect(line(page, "fix/resize-under-load")).toContainText("overlap");
-  await expect(line(page, "fix/resize-under-load")).toContainText("#88approved");
   await expect(line(page, /^Sketch the Tauri shell/)).toContainText("wants to run cargo build");
-  await expect(line(page, "Shell: git log")).toContainText("└");
+  // No worktree's line, and no shell beside a chat: the chat's head and its shell icon say them.
+  await expect(line(page, "fix/resize-under-load")).toHaveCount(0);
+  await expect(line(page, "Shell: git log")).toHaveCount(0);
   await expect(tree.getByRole("img", { name: "not seen" })).toHaveCount(2);
-  // The first session is selected, its pane beside the tree, live.
+  // The first session is selected, its pane beside the list, live.
   await expect(line(page, /^Split view\.rs/)).toHaveAttribute("aria-selected", "true");
   await expect(
     page.getByRole("heading", { name: "Split view.rs by responsibility" }),
   ).toBeVisible();
   await expect.poll(() => shown(page, id(100))).toContain("Splitting sessions.rs");
   await expect(page.locator(".mu-statusbar")).toContainText("type in it");
+  await line(page, /^Flaky resize/).click();
+  const head = region(page, "Flaky resize test under load");
+  await expect(head).toContainText("⎇ fix/resize-under-load");
+  await expect(head).toContainText("+64−22");
+  await expect(head).toContainText("overlap");
+  await expect(head).toContainText("#88approved");
 });
 
 test("ARC-24 ↑↓ and j k move, ⏎ types in the session, ⇧Q gives the keys back", async ({ page }) => {
   await allSessions(page);
   await page.keyboard.press("ArrowDown");
-  await expect(line(page, "fix/resize-under-load")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("region", { name: "Selected line" })).toContainText(
-    "⎇ fix/resize-under-load",
-  );
-  await page.keyboard.press("j");
   await expect(line(page, /^Flaky resize/)).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("j");
+  await expect(line(page, /^Resize settles/)).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("k");
   await page.keyboard.press("k");
   await expect(line(page, /^Split view\.rs/)).toHaveAttribute("aria-selected", "true");
@@ -74,59 +75,40 @@ test("ARC-24 ↑↓ and j k move, ⏎ types in the session, ⇧Q gives the keys 
   await expect.poll(() => shown(page, id(100))).toContain("hi");
   await page.keyboard.press("Shift+Q");
   await page.keyboard.press("ArrowDown");
-  await expect(line(page, "fix/resize-under-load")).toHaveAttribute("aria-selected", "true");
+  await expect(line(page, /^Flaky resize/)).toHaveAttribute("aria-selected", "true");
 });
 
 test("ARC-24 folds: ← → and e, a click on the triangle, the folded mark, kept across restarts", async ({
   page,
 }) => {
   await allSessions(page);
-  // On a session, ← goes out to its worktree, then folds it.
+  // On a session, ← goes out to its project, then folds it.
   await page.keyboard.press("ArrowLeft");
-  await expect(line(page, "main").first()).toHaveAttribute("aria-selected", "true");
-  await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("ArrowDown");
+  const muster = line(page, "muster");
+  await expect(muster).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("ArrowLeft");
-  const resize = line(page, "fix/resize-under-load");
-  await expect(resize).toHaveAttribute("aria-expanded", "false");
-  // Folded, it says how the most urgent of what it hides stands: the news first.
-  await expect(resize).toContainText("2 folded");
-  await expect(resize.getByRole("img", { name: "finished" })).toBeVisible();
-  await expect(resize.getByRole("img", { name: "not seen" })).toBeVisible();
+  await expect(muster).toHaveAttribute("aria-expanded", "false");
+  // Folded, it says how the most urgent of what it hides stands: asking first.
+  await expect(muster).toContainText("5 folded");
+  await expect(muster.getByRole("img", { name: "needs you" })).toBeVisible();
   await expect(line(page, /^Flaky resize/)).toHaveCount(0);
   await page.keyboard.press("ArrowRight");
-  await expect(resize).toHaveAttribute("aria-expanded", "true");
+  await expect(muster).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("ArrowRight");
-  await expect(line(page, /^Flaky resize/)).toHaveAttribute("aria-selected", "true");
-  // e on a session folds its worktree, which is then selected.
+  await expect(line(page, /^Split view\.rs/)).toHaveAttribute("aria-selected", "true");
+  // e on a session folds its project, which is then selected.
   await page.keyboard.press("e");
-  await expect(resize).toHaveAttribute("aria-selected", "true");
-  await expect(resize).toHaveAttribute("aria-expanded", "false");
-  // A project folds by a click on its triangle: asking first.
+  await expect(muster).toHaveAttribute("aria-selected", "true");
+  await expect(muster).toHaveAttribute("aria-expanded", "false");
+  // A project folds by a click on its triangle.
   await line(page, "lamphaus").locator(".mu-tree-fold").click();
   await expect(line(page, "lamphaus")).toContainText("3 folded");
   await expect(line(page, "lamphaus").getByRole("img", { name: "needs you" })).toBeVisible();
-  // A line with nothing under it does not fold, and says so.
-  // kep-site's checkout, where no session works.
-  await page.locator(`#tree-${id(30)}`).click();
-  await page.keyboard.press("e");
-  await expect(page.locator(".mu-note")).toHaveText("No sessions here to fold away.");
   // The folds are the window's own, kept across a restart.
   await page.reload();
-  await page.keyboard.press("Meta+2");
-  await expect(line(page, "fix/resize-under-load")).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Meta+1");
+  await expect(line(page, "muster")).toHaveAttribute("aria-expanded", "false");
   await expect(line(page, "lamphaus")).toHaveAttribute("aria-expanded", "false");
-});
-
-test("ARC-24 narrowing to a project shows its lines only", async ({ page }) => {
-  await allSessions(page);
-  await page
-    .getByRole("navigation", { name: "Screens" })
-    .getByRole("button", { name: /^lamphaus/ })
-    .click();
-  await expect(line(page, "lamphaus")).toBeVisible();
-  await expect(line(page, "muster")).toHaveCount(0);
-  await expect(line(page, /^Share the Gradle cache/)).toBeVisible();
 });
 
 test("ARC-24 out of reach, and no projects yet", async ({ page }) => {
@@ -168,22 +150,23 @@ test("PRD-15 T opens the shell beside the agent, live and typed in; T puts it aw
   await page.keyboard.press("T");
   await expect(shell).toHaveCount(0);
   await expect(page.locator(".mu-note")).toHaveText("The shell is put away; it runs on.");
-  // In a workspace with none, one is started for it, and shows in the tree.
+  // In a workspace with none, one is started for it, beside its chat and on no line of its own.
   await line(page, /^Flaky resize/).click();
-  await page.keyboard.press("T");
+  await page.getByRole("button", { name: "Shell", exact: true }).click();
   await expect(region(page, "Shell")).toContainText("zsh");
-  await expect(line(page, "Shell: zsh")).toContainText("at its prompt");
+  await expect(line(page, "Shell: zsh")).toHaveCount(0);
   const started = await page.evaluate(() =>
     window.__muster.sent.some(
       (command) => typeof command === "object" && "StartSession" in command,
     ),
   );
   expect(started).toBe(true);
-  // From a worktree's line, the shell opens there and is selected.
+  // From a project's line, the shell opens in its checkout, beside the chat there.
   await page.keyboard.press("Shift+Q");
-  await line(page, "feature/desktop-app").click();
+  await line(page, "muster").click();
   await page.keyboard.press("T");
-  await expect(line(page, "Shell: git log")).toHaveAttribute("aria-selected", "true");
+  await expect(line(page, /^Split view\.rs/)).toHaveAttribute("aria-selected", "true");
+  await expect(region(page, "Shell")).toBeVisible();
 });
 
 test("PRD-15 a plugin's panel opens beside the session on its key, and its x puts it away", async ({
@@ -193,16 +176,15 @@ test("PRD-15 a plugin's panel opens beside the session on its key, and its x put
   await page.keyboard.press("G");
   const graph = region(page, "Session graph");
   await expect(graph).toContainText("graph, from the plugin");
-  await expect(line(page, "Panel: Session graph")).toContainText("G");
+  await expect(line(page, "Panel: Session graph")).toHaveCount(0);
   // Another session of another worktree shows none.
   await line(page, /^Flaky resize/).click();
   await expect(graph).toHaveCount(0);
   await line(page, /^Split view\.rs/).click();
   await graph.getByRole("button", { name: "Put the graph away" }).click();
   await expect(graph).toHaveCount(0);
-  await expect(line(page, "Panel: Session graph")).toHaveCount(0);
-  // A worktree's line has no session to open it beside.
-  await line(page, "main").first().click();
+  // A project's line has no session to open it beside.
+  await line(page, "muster").click();
   await page.keyboard.press("G");
   await expect(page.locator(".mu-note")).toHaveText("Select a session to open graph beside it.");
 });
@@ -292,10 +274,11 @@ test("ARC-24 full screen on f: the session and its panels fill the window; Esc g
   await page.keyboard.press("T");
   await page.keyboard.press("Shift+Q");
   await page.keyboard.press("f");
-  const sidebar = page.getByRole("navigation", { name: "Screens" });
+  const sidebar = page.getByRole("navigation", { name: "Sessions" });
   await expect(sidebar).toBeHidden();
   await expect(page.getByRole("tree")).toBeHidden();
-  const title = page.locator(".mu-titlebar");
+  // Its head stays at the window's top.
+  const title = region(page, "Split view.rs by responsibility");
   await expect(title).toContainText("Split view.rs by responsibility");
   await expect(title).toContainText("⎇ main");
   await expect(region(page, "Claude Code")).toHaveClass(/has-keys/);
@@ -309,13 +292,13 @@ test("ARC-24 full screen on f: the session and its panels fill the window; Esc g
   await page.keyboard.press("Escape");
   await expect(sidebar).toBeVisible();
   await expect(page.getByRole("tree")).toBeVisible();
-  // f again, and the button in the title bar gives the window back.
+  // f again, and the sidebar's button in the head gives the window back.
   await page.keyboard.press("f");
   await page.keyboard.press("Shift+Q");
-  await page.getByRole("button", { name: "Leave full screen" }).click();
+  await page.getByRole("button", { name: "Show the sidebar" }).click();
   await expect(sidebar).toBeVisible();
-  // On a worktree's line there is no session to fill the window with.
-  await line(page, "main").first().click();
+  // On a project's line there is no session to fill the window with.
+  await line(page, "muster").click();
   await page.keyboard.press("f");
   await expect(page.locator(".mu-note")).toHaveText("Select a session to open it full screen.");
 });
@@ -349,17 +332,15 @@ test("PRD §5 by hand: c the checks and v a review open with the keys, o a draft
   page,
 }) => {
   await allSessions(page);
-  await line(page, "muster/issue-219-agp-9-1").click();
+  await line(page, /^Upgrade AGP/).click();
   const bar = page.locator(".mu-statusbar");
-  await expect(bar).toContainText("ccheck");
-  await expect(bar).toContainText("odraft pull request");
   await page.keyboard.press("b");
   await expect(bar).toContainText("No pull request from this branch is known; o opens one.");
   await page.keyboard.press("o");
   await expect(bar).toContainText(
     "Draft pull request #120 is open: https://github.com/o/lamphaus/pull/120",
   );
-  await expect(line(page, "muster/issue-219-agp-9-1")).toContainText("#120");
+  await expect(region(page, "Upgrade AGP to 9.1")).toContainText("#120");
   await page.keyboard.press("b");
   await expect
     .poll(() => page.evaluate(() => window.__muster.openedUrls))
@@ -371,7 +352,7 @@ test("PRD §5 by hand: c the checks and v a review open with the keys, o a draft
   await expect(page.getByRole("heading", { name: "Checks" })).toBeVisible();
   await expect(bar).toContainText("give the keys back");
   await page.keyboard.press("Shift+Q");
-  await line(page, "muster/issue-219-agp-9-1").click();
+  await line(page, /^Upgrade AGP/).click();
   await page.keyboard.press("v");
   await expect(line(page, /^Review/)).toHaveAttribute("aria-selected", "true");
 
@@ -379,9 +360,7 @@ test("PRD §5 by hand: c the checks and v a review open with the keys, o a draft
   await page.keyboard.press("Shift+Q");
   await line(page, "lamphaus").click();
   await page.keyboard.press("c");
-  await expect(bar).toContainText(
-    "Select a worktree, or a session in one, to run the checks there.",
-  );
+  await expect(bar).toContainText("Select a session in a worktree to run the checks there.");
 });
 
 test("PRD §5 the palette offers the stages by hand on a session, as its keys do", async ({
@@ -425,7 +404,7 @@ test("ARC-25 3,000 sessions: a few dozen lines drawn, each where it belongs, the
     mock.world.sessions.push(...many);
     mock.publish({ sessions: many });
   });
-  const tree = page.getByRole("tree", { name: "Projects, worktrees and sessions" });
+  const tree = page.getByRole("tree", { name: "Projects and sessions" });
   await expect(line(page, /^Session 0,/)).toBeVisible();
   const items = tree.getByRole("treeitem");
   expect(await items.count()).toBeLessThan(120);

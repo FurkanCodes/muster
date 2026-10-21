@@ -126,7 +126,6 @@ export function Assign({
         lastProjects: source ? { ...s.lastProjects, [source]: project } : s.lastProjects,
       }));
       const session = reply.IssueStarted.session;
-      actions.narrow(null);
       actions.show("all");
       // Selected once the daemon has told it, which it does after its answer.
       whenKnown(app, "sessions", session, () => {

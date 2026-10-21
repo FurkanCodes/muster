@@ -1,4 +1,4 @@
-// Which lines of the tree are folded: the window's own, kept per project
+// Which projects of the list are folded: the window's own, kept per project
 // (state/kept.ts) so they are folded again after a restart, a ⌘Q or a
 // crash. The daemon is never told, as the terminal UI never tells it.
 
@@ -24,15 +24,11 @@ export function readFolds(): Set<string> {
   }
 }
 
-/** Keeps `folded`, each line under its project. */
+/** Keeps `folded`, each project's under it (a worktree's line, folded once, has none now). */
 export function writeFolds(state: DaemonState, folded: ReadonlySet<string>): void {
   const projects: Record<string, string[]> = {};
   for (const id of folded) {
-    const project = state.projects[id] ? id : state.workspaces[id]?.project;
-    if (!project) continue;
-    const lines = projects[project] ?? [];
-    lines.push(id);
-    projects[project] = lines;
+    if (state.projects[id]) projects[id] = [id];
   }
   keep(KEY, JSON.stringify({ version: 1, projects } satisfies Kept));
 }

@@ -25,7 +25,7 @@ test("the window draws under the app's own security settings", async ({ page }) 
   if (security.freezePrototype) await page.addInitScript(() => Object.freeze(Object.prototype));
 
   await page.goto("/");
-  await expect(page.getByRole("navigation", { name: "Screens" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Sessions" })).toBeVisible();
   await expect(page.getByLabel("Terminal").first()).toBeVisible();
   expect(errors).toEqual([]);
 });

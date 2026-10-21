@@ -1,156 +1,148 @@
-// The screens, and the projects to narrow them by (design system: Sidebar).
+// The sidebar: Kep beside the window's own buttons, and the way to put the
+// sidebar away; a new session, the way to anything by typing and Tickets;
+// the switch between what needs the person and every session, with the
+// list itself under it (the list screens draw it: QueueScreen,
+// AllSessions); Settings at its foot. It is the one list of the window: the
+// session selected in it fills the rest.
 
 import type { ReactNode } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { chats, projectColour, projectsInOrder } from "../state/selectors";
-import type { ScreenId } from "../state/ui";
-import { Spinner } from "../ui/controls";
-import { Icon } from "../ui/Icon";
-import { useMediaQuery } from "../ui/useMediaQuery";
-import { useActions, useDaemon, useUi } from "./context";
+import { newSession } from "../flows/actions";
+import { chats } from "../state/selectors";
+import type { ListId } from "../state/ui";
+import { Kbd } from "../ui/controls";
+import { Icon, type IconName } from "../ui/Icon";
+import { KepFace, type Mood } from "../ui/Kep";
+import { useActions, useApp, useDaemon, useUi } from "./context";
 
-function NavItem({
-  screen,
-  label,
-  icon,
-  count = 0,
-  waiting = false,
-  folded,
-}: {
-  screen: ScreenId;
-  label: string;
-  icon: ReactNode;
-  count?: number;
-  waiting?: boolean;
-  folded: boolean;
-}) {
+function useMood(): Mood {
+  return useDaemon((state): Mood => {
+    if (state.link.state === "down") return "away";
+    if (state.derived.counts.waiting > 0) return "barking";
+    if (state.derived.counts.working > 0 || state.link.state === "connecting") return "watching";
+    return "asleep";
+  });
+}
+
+/** The button that puts the sidebar away, or brings it back from the pane's head. */
+export function SidebarToggle() {
   const actions = useActions();
-  const current = useUi((state) => state.screen === screen);
+  const folded = useUi((state) => state.sidebarFolded);
+  const fullScreen = useUi((state) => state.fullScreen !== null);
+  const hidden = folded || fullScreen;
+  return (
+    <button
+      type="button"
+      className="mu-icon-btn app-sidebar-toggle"
+      aria-label={hidden ? "Show the sidebar" : "Hide the sidebar"}
+      title={`${hidden ? "Show" : "Hide"} the sidebar (⌘\\)`}
+      // Full screen brings the sidebar back as it leaves.
+      onClick={() => (fullScreen ? actions.fillWindow(null) : actions.foldSidebar())}
+    >
+      <Icon name="sidebar" size={16} />
+    </button>
+  );
+}
+
+function SideButton({
+  icon,
+  label,
+  keys,
+  current = false,
+  disabled = false,
+  onClick,
+}: {
+  icon: IconName;
+  label: string;
+  keys?: string;
+  current?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       className="mu-nav-item"
       aria-current={current ? "page" : undefined}
-      title={folded ? label : undefined}
-      aria-label={folded ? label : undefined}
-      onClick={() => actions.show(screen)}
-    >
-      <span className="mu-nav-icon">{icon}</span>
-      {folded ? null : (
-        <>
-          {label}
-          {count > 0 ? (
-            <span className={`mu-nav-count ${waiting ? "mu-nav-count--waiting" : ""}`}>
-              {count}
-            </span>
-          ) : null}
-        </>
-      )}
-    </button>
-  );
-}
-
-/** One project; each reads only its own name, colour and count, as numbers and strings. */
-function ProjectItem({ id }: { id: string }) {
-  const actions = useActions();
-  const narrowed = useUi((state) => state.project === id);
-  const name = useDaemon((state) => state.projects[id]?.name ?? "");
-  const colour = useDaemon((state) => projectColour(state, id));
-  const sessions = useDaemon(
-    (state) =>
-      chats(state).filter((session) => state.workspaces[session.workspace]?.project === id).length,
-  );
-  return (
-    <button
-      type="button"
-      className="mu-nav-item"
-      aria-pressed={narrowed}
-      onClick={() => actions.narrow(id)}
+      disabled={disabled}
+      onClick={onClick}
     >
       <span className="mu-nav-icon">
-        <span className={`mu-swatch mu-p${colour}`} />
+        <Icon name={icon} size={16} />
       </span>
-      <span className="app-sidebar-project">{name}</span>
-      <span className="mu-nav-count">{sessions}</span>
+      {label}
+      {keys ? <Kbd className="app-sidebar-key">{keys}</Kbd> : null}
     </button>
   );
 }
 
-function Projects() {
+function ListSwitch() {
   const actions = useActions();
-  const ids = useDaemon(useShallow((state) => projectsInOrder(state).map((project) => project.id)));
+  const list = useUi((state) => state.list);
+  const waiting = useDaemon((state) => state.derived.counts.waiting);
+  const all = useDaemon((state) => chats(state).length);
+  const segment = (id: ListId, label: string, count: number, tone: string) => (
+    <button
+      type="button"
+      className="mu-seg-item app-lists-item"
+      aria-pressed={list === id}
+      onClick={() => actions.show(id)}
+    >
+      {label}
+      {count > 0 ? <span className={`app-lists-count ${tone}`}>{count}</span> : null}
+    </button>
+  );
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, as Segmented's.
+    <div className="mu-seg app-lists" role="group" aria-label="Sessions listed">
+      {segment("needs-you", "Needs you", waiting, "app-lists-count--waiting")}
+      {segment("all", "All", all, "")}
+    </div>
+  );
+}
+
+export function Sidebar({ children }: { children: ReactNode }) {
+  const app = useApp();
+  const actions = useActions();
+  const mood = useMood();
+  const folded = useUi((state) => state.sidebarFolded);
+  const screen = useUi((state) => state.screen);
   const linked = useDaemon((state) => state.link.state === "up");
   return (
-    <>
-      <div className="mu-nav-label">Projects</div>
-      {ids.map((id) => (
-        <ProjectItem key={id} id={id} />
-      ))}
-      <button
-        type="button"
-        className="mu-nav-item"
+    <nav className="mu-nav app-sidebar" aria-label="Sessions" hidden={folded}>
+      <div className="app-sidebar-top" data-tauri-drag-region>
+        <KepFace mood={mood} />
+        <span className="mu-spacer" data-tauri-drag-region />
+        <SidebarToggle />
+      </div>
+      <SideButton
+        icon="plus"
+        label="New session"
+        keys="⌘N"
         disabled={!linked}
-        onClick={() => actions.openFlow({ kind: "add-project" })}
-      >
-        <span className="mu-nav-icon">
-          <Icon name="plus" />
-        </span>
-        Add a project
-      </button>
-    </>
-  );
-}
-
-const WAITING = <span className="app-nav-waiting">▲</span>;
-const NEWS = <span className="mu-dot" />;
-/** Working's mark spins only while an agent works: an idle window draws nothing (`ARC-25`). */
-function Working({ working }: { working: boolean }) {
-  return (
-    <span className="app-nav-working">
-      <Spinner still={!working} />
-    </span>
-  );
-}
-const ALL = <span>≡</span>;
-const TICKETS = <span>#</span>;
-const SETTINGS = <Icon name="gear" size={16} />;
-
-export function Sidebar() {
-  // Under 1100 wide (sidebar 220, queue 360, detail 520) it folds by itself;
-  // ⌘\ folds and unfolds it at any width (design system: layout).
-  const toggled = useUi((state) => state.sidebarFolded);
-  const narrow = useMediaQuery("(max-width: 1100px)");
-  const folded = narrow !== toggled;
-  const counts = useDaemon((state) => state.derived.counts);
-  const notSeen = useDaemon(
-    (state) =>
-      chats(state).filter((session) => session.unseen && session.status.state !== "needs_you")
-        .length,
-  );
-  const all = useDaemon((state) => chats(state).length);
-  return (
-    <nav className={`mu-nav app-sidebar ${folded ? "mu-nav--folded" : ""}`} aria-label="Screens">
-      <NavItem
-        screen="needs-you"
-        label="Needs you"
-        icon={WAITING}
-        count={counts.waiting}
-        waiting
-        folded={folded}
+        onClick={() => newSession(app)}
       />
-      <NavItem screen="not-seen" label="Not seen" icon={NEWS} count={notSeen} folded={folded} />
-      <NavItem
-        screen="working"
-        label="Working"
-        icon={<Working working={counts.working > 0} />}
-        count={counts.working}
-        folded={folded}
+      <SideButton
+        icon="search"
+        label="Search"
+        keys="⌘K"
+        disabled={!linked}
+        onClick={() => actions.openPalette(true)}
       />
-      <NavItem screen="all" label="All sessions" icon={ALL} count={all} folded={folded} />
-      {folded ? null : <Projects />}
-      <span className="app-sidebar-gap" />
-      <NavItem screen="tickets" label="Tickets" icon={TICKETS} folded={folded} />
-      <NavItem screen="settings" label="Settings" icon={SETTINGS} folded={folded} />
+      <SideButton
+        icon="ticket"
+        label="Tickets"
+        current={screen === "tickets"}
+        onClick={() => actions.show("tickets")}
+      />
+      <ListSwitch />
+      <div className="app-sidebar-list">{children}</div>
+      <SideButton
+        icon="gear"
+        label="Settings"
+        keys="⌘,"
+        current={screen === "settings"}
+        onClick={() => actions.show("settings")}
+      />
     </nav>
   );
 }

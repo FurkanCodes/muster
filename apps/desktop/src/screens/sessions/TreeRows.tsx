@@ -1,20 +1,23 @@
-// The lines of the All sessions tree, as the AllSessions board draws them
-// (design system: SessionTree): a project's, with its swatch and folder; a
-// worktree's, with its branch, what its work comes to, whether it meets
-// other work and its pull request; a session's, as a two-line row (or one,
-// where the person says); and a shell's or a plugin's panel's, on one line
-// beside the chat it serves. Folded, a project's or a worktree's line says
-// how the most urgent of what it hides stands, and how many it hides.
+// The lines of the All list (design system: SessionTree): a project's, with
+// its swatch, and a `+` for a new session in it; a session's, as a two-line
+// row (or one, where the person says); a worktree's, with its branch and
+// what its work comes to, while no session is in it; and a shell's or a
+// plugin's panel's on one line, where its workspace has no chat for it to
+// stand by. Folded,
+// a project's line says how the most urgent of what it hides stands, and how
+// many it hides.
 
 import type { MouseEvent, ReactNode } from "react";
 import { useNow } from "../../app/clock";
-import { useDaemon } from "../../app/context";
+import { useApp, useDaemon } from "../../app/context";
+import { newSessionIn } from "../../flows/actions";
 import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf, projectColour } from "../../state/selectors";
+import { Icon } from "../../ui/Icon";
 import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
-import { foldable, mostUrgent, sessionsOn, type TreeRow, underItsChat } from "./tree";
+import { mostUrgent, sessionsOn, type TreeRow } from "./tree";
 
 /** The row's id in the tree, for `aria-activedescendant`. */
 export function rowId(id: string): string {
@@ -43,7 +46,7 @@ export interface LineProps {
   selected: boolean;
   /** Selected while the keys are elsewhere: the terminal or a dialog. */
   resting: boolean;
-  /** For a project's or a worktree's line, whether it is folded. */
+  /** For a project's line, whether it is folded. */
   folded: boolean;
   onPick: (id: string) => void;
   onFold: (id: string) => void;
@@ -86,15 +89,14 @@ function Standing({ row }: { row: TreeRow }) {
 }
 
 function Fold({ row, folded, onFold }: Pick<LineProps, "row" | "folded" | "onFold">) {
-  const can = useDaemon((state) => foldable(state, row));
   const fold = (event: MouseEvent) => {
     event.stopPropagation();
     onFold(row.id);
   };
   return (
-    // The tree folds by its keys (← → e); this is the pointer's way.
-    <span className="mu-tree-fold" aria-hidden="true" onClick={can || folded ? fold : undefined}>
-      {folded ? "▸" : can ? "▾" : ""}
+    // The list folds by its keys (← → e); this is the pointer's way.
+    <span className="mu-tree-fold" aria-hidden="true" onClick={fold}>
+      {folded ? "▸" : "▾"}
     </span>
   );
 }
@@ -135,64 +137,60 @@ function Line({
 
 export function ProjectLine(props: LineProps) {
   const { row, folded } = props;
+  const app = useApp();
   const name = useDaemon((state) => state.projects[row.id]?.name ?? "");
   const root = useDaemon((state) => state.projects[row.id]?.root ?? "");
   const colour = useDaemon((state) => projectColour(state, row.id));
   return (
-    <Line {...props} expanded={!folded} className="mu-tree-row sessions-project" label={name}>
-      <Fold {...props} />
-      <span className={`mu-swatch mu-p${colour}`} />
-      <span className={`mu-tree-project mu-p${colour}`}>{name}</span>
-      {folded ? (
-        <Standing row={row} />
-      ) : (
-        <span className="mu-tree-end mu-mono mu-cut">{homely(root)}</span>
-      )}
-    </Line>
+    <>
+      <Line {...props} expanded={!folded} className="mu-tree-row sessions-project" label={name}>
+        <Fold {...props} />
+        <span className={`mu-swatch mu-p${colour}`} />
+        <span className="mu-tree-project mu-cut" title={homely(root)}>
+          {name}
+        </span>
+        {folded ? <Standing row={row} /> : null}
+      </Line>
+      <button
+        type="button"
+        className="mu-icon-btn mu-icon-btn--sm sessions-new"
+        aria-label={`New session in ${name}`}
+        title={`New session in ${name}`}
+        tabIndex={-1}
+        onClick={() => newSessionIn(app, row.id)}
+      >
+        <Icon name="plus" size={14} />
+      </button>
+    </>
   );
 }
 
-function WorktreeEnd({ id }: { id: string }) {
-  const added = useDaemon((state) => state.workspaces[id]?.changes?.added ?? 0);
-  const removed = useDaemon((state) => state.workspaces[id]?.changes?.removed ?? 0);
-  const clash = useDaemon((state) => {
-    const clashes = state.workspaces[id]?.clashes ?? [];
-    if (clashes.length === 0) return null;
-    return clashes.some((one) => one.conflicts > 0) ? "conflict" : "overlap";
-  });
-  const pr = useDaemon((state) => state.workspaces[id]?.pull_request ?? null);
-  if (!added && !removed && !clash && !pr) return null;
-  return (
-    <span className="mu-tree-end">
-      {added || removed ? <DiffStat added={added} removed={removed} /> : null}
-      {clash ? <span className={`mu-clash-${clash}`}>{clash}</span> : null}
-      {pr ? <PullRequest pr={pr} /> : null}
-    </span>
-  );
-}
-
+/** A worktree no session is in: its branch, and what its work there comes to. */
 export function WorktreeLine(props: LineProps) {
-  const { row, folded } = props;
+  const { row } = props;
   const branch = useDaemon((state) => {
     const workspace = state.workspaces[row.id];
     return workspace ? branchOf(workspace) : "";
   });
   const inGit = useDaemon((state) => Boolean(state.workspaces[row.id]?.kind.branch));
-  const can = useDaemon((state) => foldable(state, row));
+  const added = useDaemon((state) => state.workspaces[row.id]?.changes?.added ?? 0);
+  const removed = useDaemon((state) => state.workspaces[row.id]?.changes?.removed ?? 0);
+  const pr = useDaemon((state) => state.workspaces[row.id]?.pull_request ?? null);
   return (
     <Line
       {...props}
-      expanded={can ? !folded : undefined}
-      className="mu-tree-row"
+      className="mu-tree-row sessions-worktree"
       label={inGit ? branch : "not a git repository"}
     >
-      <Fold {...props} />
       {inGit ? (
         <span className="mu-branch mu-cut">⎇ {branch}</span>
       ) : (
         <span className="mu-quiet mu-cut">not a git repository</span>
       )}
-      {folded ? <Standing row={row} /> : <WorktreeEnd id={row.id} />}
+      <span className="mu-tree-end">
+        {added || removed ? <DiffStat added={added} removed={removed} /> : "no sessions"}
+        {pr ? <PullRequest pr={pr} words={false} /> : null}
+      </span>
     </Line>
   );
 }
@@ -244,7 +242,7 @@ export function SessionLine(props: LineProps) {
   );
 }
 
-/** A shell's or a plugin's panel's line, beside the chat it serves (`view::sessions::shell_line`). */
+/** A shell's or a plugin's panel's line, where no chat in its workspace has it beside (`view::sessions::shell_line`). */
 export function BesideLine(props: LineProps & { panelKey: string | null }) {
   const session = useDaemon((state) => state.sessions[props.row.id]);
   // A plugin's panel goes by its plugin's name, as the PluginPanel board writes it.
@@ -252,10 +250,6 @@ export function BesideLine(props: LineProps & { panelKey: string | null }) {
     const harness = state.sessions[props.row.id]?.harness ?? "";
     const id = harness.startsWith("plugin:") ? harness.slice(7).split("/")[0] : null;
     return id ? (state.plugins.find((one) => one.id === id)?.details?.name ?? null) : null;
-  });
-  const under = useDaemon((state) => {
-    const stored = state.sessions[props.row.id];
-    return stored ? underItsChat(state, stored) : false;
   });
   if (!session) return null;
   const shell = session.harness === "shell";
@@ -273,9 +267,6 @@ export function BesideLine(props: LineProps & { panelKey: string | null }) {
       className="mu-tree-row mu-tree-shell"
       label={`${shell ? "Shell" : "Panel"}: ${name}${ended ? ", ended" : ""}`}
     >
-      <span className="mu-tree-fold" aria-hidden="true">
-        {under ? "└" : ""}
-      </span>
       <span className={`mu-cut ${ended || waiting ? "" : "sessions-running"}`}>
         {shell ? "❯" : "◇"} {name}
       </span>

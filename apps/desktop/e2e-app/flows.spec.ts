@@ -84,7 +84,9 @@ describe("The flows", () => {
       await until(noDialog, "the dialog to close");
       const added = await until(() => project("lib"), "the project lib");
       expect(added.root).toBe(realpathSync(join(home, "code", "lib")));
-      await expect($('nav[aria-label="Screens"]').$("button*=lib")).toBeDisplayed();
+      await expect(
+        $('//nav[@aria-label="Sessions"]//*[@role="treeitem" and @aria-label="lib"]'),
+      ).toBeDisplayed();
 
       // The same again is refused, in the dialog.
       await pressOnWindow("a");
@@ -111,7 +113,9 @@ describe("The flows", () => {
         app,
       );
       await until(() => project("app"), "the dropped folder to be added");
-      await expect($('nav[aria-label="Screens"]').$("button*=app")).toBeDisplayed();
+      await expect(
+        $('//nav[@aria-label="Sessions"]//*[@role="treeitem" and @aria-label="app"]'),
+      ).toBeDisplayed();
     });
   });
 
@@ -132,7 +136,7 @@ describe("The flows", () => {
       await expect(option(palette(), "Palette agent")).toBeDisplayed();
       await press("Enter");
       await until(noDialog, "the palette to close");
-      expect(await shownScreen()).toBe("All sessions");
+      expect(await shownScreen()).toBe("Sessions");
       await expect(
         $('//*[@role="treeitem"][starts-with(@aria-label, "Palette agent,")]'),
       ).toHaveAttribute("aria-selected", "true");
@@ -169,7 +173,7 @@ describe("The flows", () => {
 
   describe("every key", () => {
     it("h lists the keys of the screen in view, narrows by words, and ⏎ closes it", async () => {
-      await pressOnWindow("⌘1");
+      await pressOnWindow("⌘2");
       await pressOnWindow("h");
       await expect(help()).toBeDisplayed();
       const headings = await help()
@@ -342,7 +346,12 @@ describe("The flows", () => {
 
     it("u asks before moving a branch onto its base, and moves it", async () => {
       commit(app, "main moved on", { "main.txt": "new\n" });
-      await selectRow("fix/login");
+      const tidying = sessionsNow().find(
+        (one) => one.harness === "claude" && one.branch === "fix/login" && one.status === "running",
+      );
+      if (!tidying) throw new Error("no tidying agent");
+      // With a session in it, the worktree has no line of its own: its session stands for it.
+      await selectRow(tidying.title);
       await press("u");
       const move = dialog("Move fix/login onto main?");
       await expect(move).toBeDisplayed();
@@ -350,10 +359,6 @@ describe("The flows", () => {
       await press("Enter");
       await expect(move).toHaveText(expect.stringContaining("is at work there"));
       expect(log(app, "fix/login")).not.toContain("main moved on");
-      const tidying = sessionsNow().find(
-        (one) => one.harness === "claude" && one.branch === "fix/login" && one.status === "running",
-      );
-      if (!tidying) throw new Error("no tidying agent");
       await finish(await until(() => launches(tidying.id)[0], "the tidying agent"));
       await until(() => session(tidying.title)?.status !== "running", "its turn to end");
       await button(move, "Move it").click();
@@ -380,7 +385,7 @@ describe("The flows", () => {
       expect(branches(app)).toContain("spike/webgl");
     });
 
-    it("the palette runs every action it offers: anywhere, and on a project, a worktree and a session", async () => {
+    it("the palette runs every action it offers: anywhere, and on a project, a session and its worktree", async () => {
       /** Picks the palette's item `label` once `typed` finds it. */
       const run = async (typed: string, label: string) => {
         await find(typed);
@@ -391,26 +396,19 @@ describe("The flows", () => {
         await press("Escape");
         await until(noDialog, `${title} to close`);
       };
-      await pressOnWindow("⌘1");
+      await pressOnWindow("⌘2");
       await run("add a project", "Add a project");
       await opens("Add a project");
       await run("new session", "Start a new session");
       await opens("New session");
-      for (const screen of [
-        "Needs you",
-        "Not seen",
-        "Working",
-        "All sessions",
-        "Tickets",
-        "Settings",
-      ] as const) {
+      for (const screen of ["Sessions", "Needs you", "Tickets", "Settings"] as const) {
         await run(`go to ${screen}`, `Go to ${screen}`);
         expect(await shownScreen()).toBe(screen);
       }
       await run("fold the sidebar", "Fold the sidebar away");
-      await expect($('nav[aria-label="Screens"]')).toHaveElementClass("mu-nav--folded");
+      await expect($('nav[aria-label="Sessions"]')).not.toBeDisplayed();
       await run("fold the sidebar", "Fold the sidebar away");
-      await expect($('nav[aria-label="Screens"]')).not.toHaveElementClass("mu-nav--folded");
+      await expect($('nav[aria-label="Sessions"]')).toBeDisplayed();
       await run("every key", "Every key of this screen");
       await expect(help()).toBeDisplayed();
       await press("Escape");
@@ -422,18 +420,21 @@ describe("The flows", () => {
       await selectRow("app");
       await run("stop tracking", "Stop tracking the project");
       await opens("Stop tracking app?");
-      await selectRow("fix/login");
-      await run("tidy", "Tidy the commits");
+      // A worktree's own actions, on the session that stands for it.
+      const inLogin = sessionsNow().find((one) => one.branch === "fix/login");
+      if (!inLogin) throw new Error("no session in fix/login");
+      await selectRow(inLogin.title);
+      await run("tidy the worktree", "Tidy the worktree's commits");
       await opens("Tidy the commits on fix/login?");
-      await selectRow("fix/login");
-      await run("move the branch", "Move the branch onto its base");
+      await selectRow(inLogin.title);
+      await run("branch onto its base", "Move the worktree's branch onto its base");
       await opens("Move fix/login onto main?");
-      await selectRow("fix/login");
+      await selectRow(inLogin.title);
       await run("remove the worktree", "Remove the worktree");
       await opens("Remove ⎇ fix/login?");
       await selectRow("Palette agent");
       await run("rename", "Rename the session");
-      await expect(field($("main"), "Session name")).toBeDisplayed();
+      await expect(field($('nav[aria-label="Sessions"]'), "Session name")).toBeDisplayed();
       await press("Escape");
       await selectRow("Palette agent");
       await run("restart", "Restart the session");

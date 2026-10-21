@@ -1,73 +1,50 @@
 # Window layout
 
-The Needs you window, measured. Every number is a token; the window is built from these regions and nothing else.
+The window, measured: one sidebar holding the list, the selected session beside it. Every number is a token; the window is built from these regions and nothing else.
 
 ```
-┌───────────────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ●  ▲•ᴥ•▲!        ⌕ Go to a session or run a command   ⌘K       ⠹ 3  ▲ 2  ✓ 4  ▮▮▮▮▮▯▯▯ │  layout-titlebar 44
-├──────────────┬─────────────────────────────┬────────────────────────────────────────────┤
-│ ▲ Needs you 2│ Needs you                   │ ◎ Sketch the Tauri shell      ❯ Shell  ⋯   │
-│ • Not seen  3│ Oldest first. Opening one…  │ ⎇ feature/desktop-app in muster   Codex    │
-│ ⠹ Working   3│                             │ ┌────────────────────────────────────────┐ │
-│ ≡ All      11│ Asking you                  │ │                                        │ │
-│              │ ▲ ◎ Sketch the Tauri sh… 1m │ │  terminal (surface-term)               │ │
-│ Projects     │      ⎇ feature/… in muster  │ │                                        │ │
-│ ■ muster    7│      ┌ question preview ──┐ │ │                                        │ │
-│ ■ lamphaus  4│      └────────────────────┘ │ └────────────────────────────────────────┘ │
-│              │      ⏎ answer  d changes    │ ┌ This turn ─────────────────────────────┐ │
-│              │                             │ │ link.rs +118 −4  main.rs +61  …        │ │
-│ # Tickets    │ Finished, not seen          │ └────────────────────────────────────────┘ │
-│ ⚙ Settings   │ ✓ ✻ Resize settles…    12m │                                            │
-├──────────────┴─────────────────────────────┴────────────────────────────────────────────┤
-│ ⏎ answer   d changes   T shell   z put back                         h every key   0.4.1 │  layout-statusbar 28
+┌──────────────────────────┬────────────────────────────────────────────────────────────┐
+│ ● ● ●  ▲•ᴥ•▲!          ◧ │ ◎ Sketch the Tauri shell  ⎇ feature/… in muster +300 −6  ▣ ± ⋯ │  layout-titlebar 44
+│ + New session        ⌘N │ ┌ ▲ Needs you: wants to run cargo build ──── 1m ⏎ answer ┐ │
+│ ⌕ Search             ⌘K │ └─────────────────────────────────────────────────────────┘ │
+│ ▭ Tickets               │                                                            │
+│ [ Needs you 2 │ All 8 ] │   terminal, on the window's own ground (surface-term),     │
+│ Asking you              │   no frame of its own                                      │
+│ ▲ ◎ Sketch the Tau… 1m  │                                                            │
+│     wants to run cargo… │                                                            │
+│ Finished, not seen      │                                                            │
+│ ✓ ✻ Resize settles… 12m │                                                            │
+│ Working                 │                                                            │
+│ ⠹ ◘ Upgrade AGP to… 8m  │                                                            │
+│ ⚙ Settings           ⌘, │                                                            │
+├──────────────────────────┴────────────────────────────────────────────────────────────┤
+│ ⏎ answer  d see changes  z put back      Codex · 182k tokens · 212 MB  ⠿4 ▲2 ✓2 ▮▮▮▯ │  layout-statusbar 28
 └───────────────────────────────────────────────────────────────────────────────────────┘
-   layout-sidebar 220      layout-queue 420              the rest, at least layout-detail-min 520
+   layout-list 288                         the rest, at least layout-detail-min 520
 ```
 
 ## Regions
 
 | Region | Size | Surface | Padding | Holds |
 |---|---|---|---|---|
-| Title bar | `layout-titlebar` 44 high | `surface-rail`, `line` below | left `layout-traffic-lights` 78, right `space-12`, gaps `space-12` | Kep, the command field (up to `size-command` 420), the flock count, the memory meter |
-| Sidebar | `layout-sidebar` 220 wide; folded `layout-sidebar-folded` 52 | `surface-rail`, `line` right | `space-12` top and bottom, `space-8` sides | nav items (`size-control-lg` 32 high, `space-2` apart), the Projects label, Tickets and Settings at the foot |
-| Queue | `layout-queue` 420 wide, dragged between `layout-queue-min` 360 and `layout-queue-max` 560 | `surface-ground`, `line` right | header `space-16` top, `space-20` sides; list `space-8` sides | the screen's title, its line of help, the sections and their items |
-| Detail | the rest, at least `layout-detail-min` 520 | `surface-panel` | header `space-12` top, `space-20` sides; terminal `space-20` sides; This turn `space-12` above, `space-16` below | the pane header, the needs-you banner, the terminal, the This turn strip |
-| Status bar | `layout-statusbar` 28 high | `surface-rail`, `line` above | `space-12` sides, gaps `space-16` | the selected thing's keys, a note, `h` every key, the version |
+| Sidebar | `layout-list` 288 wide; away on ⌘\ | `surface-ground` | top row `layout-titlebar` 44 high, left `layout-traffic-lights` 78; `space-8` sides | Kep and the button that puts it away; New session, Search and Tickets (`size-control-lg` 32 high); the lists' switch; the list; Settings at the foot |
+| Session | the rest, at least `layout-detail-min` 520 | `surface-term`, `line` at its left | head `layout-titlebar` 44 high, `space-20` left, `space-12` right; banner `space-20` left, `space-8` below | its head (logo, name, where it runs, what its work comes to, the shell, changes and more icons), the needs-you banner, the terminal or the changes |
+| Status bar | `layout-statusbar` 28 high | `surface-rail`, `line` above | `space-12` sides, gaps `space-16` | the selected thing's keys, a note, then the session's agent and what it uses, the flock, the memory meter, `h` every key, the version |
+
+*Tickets* and *Settings* take the session's place with their own two columns, the sidebar staying.
 
 ## As the window narrows
 
-The window is never narrower than `layout-window-min-width` (960) or shorter than `layout-window-min-height` (600). As it narrows, in this order:
+The window is never narrower than `layout-window-min-width` (960) or shorter than `layout-window-min-height` (600): the sidebar's 288 leaves the session at least 672, so neither gives way. In the session's head, where it runs is cut first; the icons stay. In the status bar, the session's facts are cut first.
 
-1. The queue gives up its width down to `layout-queue-min` (360).
-2. The sidebar folds to `layout-sidebar-folded` (52): marks and counts only, each item's name in a tooltip. ⌘\ folds and unfolds it at any width.
-3. The detail pane keeps at least `layout-detail-min` (520), about 64 terminal columns.
+With the sidebar away, the head makes room for the window's buttons (`layout-traffic-lights`) and shows the button that brings the sidebar back.
 
-The command field shrinks before anything else in the title bar goes; then Kep goes, then the memory meter.
+## A list row, measured
 
-## A queue item, measured
+Every row of the list, in *Needs you* and in *All*, is a two-line row (`size-row-two`), or one line where the person says: its status mark, its agent's logo, its name over what it is doing (in the waiting colour while it asks), and its age. A finished row not seen says its branch, its diff stat and its pull request under its name. A project's line in *All* is a quiet heading, its swatch and name, its `+` there to the pointer; a worktree with no session in it has one quiet line of its own.
 
-```
- ┌──────────────────────────────────────────────────────┐
- │ 12                                                    │
- │ ▲  8  [◎]  8  Sketch the Tauri shell             1m  │  body-strong; age in meta
- │ 12    18                                              │
- │ ├──── layout-indent-queue 46 ────┤ ⎇ feature/desktop-app in muster      │  meta, code
- │                                  ┌ question preview ┐ │  terminal-compact, surface-term
- │                                  │ 8 / 12 padding   │ │  radius-md, at most 4 lines
- │                                  └──────────────────┘ │
- │                                  ⏎ answer   d changes │  hints, space-12 apart
- │ 12                                                    │
- └──────────────────────────────────────────────────────┘
-   radius-lg, space-8 between its lines, space-4 between items
-```
+## The session, measured
 
-- An item that asks something shows its question, at most four lines of the agent's own text, cut with `…` beyond.
-- A finished item is a two-line row (`size-row-two`): name, then branch, diff stat and pull request.
-- A working item is a one-line row (`size-row`): name, what it is doing, age.
-
-## The detail pane, measured
-
-- **Header:** the agent's logo at `size-logo-lg`, the name in `title-pane`, actions on the right (medium quiet buttons, `space-8` apart). Under it, `space-8` lower, the meta line in `meta`, its parts `space-16` apart.
+- **Head:** the agent's logo, the name in `title-pane` at 14, where it runs in `meta`, then the shell (`terminal`), changes (`changes`) and more icons, `size-control-md`, `space-2` apart, each with its key in its tooltip.
 - **Needs-you banner:** `space-8` by `space-12` padding, `radius-md`, `waiting-soft`. Shown only while the session needs the person.
-- **Terminal:** fills the height left, `radius-lg`, `space-16` padding, framed in `line`, or in `accent` while it has the keys.
-- **This turn:** `space-12` by `space-16` padding, `radius-lg`, `surface-ground` with a `line` frame. Its files are small pills, `space-6` apart.
+- **Terminal:** fills the height left, on the window's own ground, no frame; beside a shell or a plugin's panel, each is a framed panel, the one with the keys framed in `accent`.

@@ -47,12 +47,10 @@ export function useKeyLabel(action: string): string {
   return labelOf(useKeymap(), action);
 }
 
-/** The table's screen for each of the window's lists: the queues are its *Needs you*. */
+/** The table's screen for each of the window's tabs. */
 export const KEY_SCREENS: Readonly<Record<ScreenId, KeyScreen>> = {
-  "needs-you": "needs_you",
-  "not-seen": "needs_you",
-  working: "needs_you",
   all: "sessions",
+  "needs-you": "needs_you",
   tickets: "tickets",
   settings: "settings",
 };
