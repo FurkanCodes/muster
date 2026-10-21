@@ -13,7 +13,7 @@ describe("ARC-24 the mock daemon answers the queue's commands as the daemon does
     });
     await expect(mock.command({ Timeline: { workspace: ulid(999) } })).rejects.toMatchObject({
       code: "not_found",
-      message: `no workspace ${ulid(999)}`,
+      message: `no workspace wsp_${ulid(999)}`,
     });
     await expect(
       mock.command({ EntryDiff: { workspace: ulid(10), number: 99 } }),

@@ -27,7 +27,7 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
   if ("RenameSession" in command) {
     const { session, title } = command.RenameSession;
     if (!mock.world.sessions.some((stored) => stored.id === session))
-      throw new BridgeFailure("refused", `no session ${session}`, "not_found");
+      throw new BridgeFailure("refused", `no session ses_${session}`, "not_found");
     const name = Array.from(title.replace(/\s+/g, " ").trim()).slice(0, 80).join("").trimEnd();
     if (!name)
       throw new BridgeFailure("refused", "a session's name cannot be empty", "bad_request");
@@ -38,9 +38,9 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
   if ("StopSession" in command) {
     const { session } = command.StopSession;
     const stored = mock.world.sessions.find((stored) => stored.id === session);
-    if (!stored) throw new BridgeFailure("refused", `${session} is not running`, "not_found");
+    if (!stored) throw new BridgeFailure("refused", `ses_${session} is not running`, "not_found");
     if (stored.status.state === "exited")
-      throw new BridgeFailure("refused", `${session} has already exited`, "conflict");
+      throw new BridgeFailure("refused", `ses_${session} has already exited`, "conflict");
     // The daemon answers at once and tells the program's exit when it comes.
     queueMicrotask(() => {
       mock.updateSession(session, { ended_at: NOW, activity: null });
@@ -51,7 +51,7 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
   if ("RemoveSession" in command) {
     const id = command.RemoveSession.session;
     const stored = mock.world.sessions.find((stored) => stored.id === id);
-    if (!stored) throw new BridgeFailure("refused", `no session ${id}`, "not_found");
+    if (!stored) throw new BridgeFailure("refused", `no session ses_${id}`, "not_found");
     if (stored.status.state !== "exited")
       throw new BridgeFailure(
         "refused",
@@ -96,7 +96,7 @@ function changesCommand(mock: MockBridge, command: Exclude<Command, string>): Re
   if (!request) return undefined;
   const id = request.workspace;
   const workspace = mock.world.workspaces.find((stored) => stored.id === id);
-  if (!workspace) throw new BridgeFailure("refused", `no workspace ${id}`, "not_found");
+  if (!workspace) throw new BridgeFailure("refused", `no workspace wsp_${id}`, "not_found");
   if (!workspace.kind.branch)
     throw new BridgeFailure(
       "refused",

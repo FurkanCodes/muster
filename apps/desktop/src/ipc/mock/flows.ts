@@ -92,13 +92,13 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
   const id = () => ulid(5000 + ++flows.next);
   const project = (projectId: string) =>
     world.projects.find((p) => p.id === projectId) ??
-    refuse("not_found", `no project ${projectId}`);
+    refuse("not_found", `no project prj_${projectId}`);
   const place = (workspaceId: string) =>
     world.workspaces.find((w) => w.id === workspaceId) ??
-    refuse("not_found", `no workspace ${workspaceId}`);
+    refuse("not_found", `no workspace wsp_${workspaceId}`);
   const session = (sessionId: string) =>
     world.sessions.find((s) => s.id === sessionId) ??
-    refuse("not_found", `no session ${sessionId}`);
+    refuse("not_found", `no session ses_${sessionId}`);
   const runs = (s: Session) => s.ended_at === null;
   const atWork = (workspaceId: string) =>
     world.sessions.find(
