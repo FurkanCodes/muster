@@ -1,13 +1,16 @@
 // The tree itself (design system: SessionTree): the lines drawn, each
-// project's under it and each worktree's sessions under that, in
-// `mu-tree-children` groups, as one ARIA tree whose selection the window's
-// keys move (`aria-activedescendant`).
+// project's under it and each worktree's sessions under that, indented by
+// the design system's `mu-tree-children` guides, as one ARIA tree whose
+// selection the window's keys move (`aria-activedescendant`). However long
+// it is, only the lines in sight are drawn (sight.ts, ARC-25): thousands
+// of sessions scroll as smoothly as ten.
 
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { useDaemon } from "../../app/context";
 import type { SessionActions } from "../../session/useSessionActions";
 import { RenameSession } from "../../session/useSessionActions";
 import { standsBeside } from "../../state/selectors";
+import { drawn, estimate, inSight, placesOf, UNMEASURED } from "./sight";
 import {
   BesideLine,
   type LineProps,
@@ -18,26 +21,22 @@ import {
 } from "./TreeRows";
 import type { TreeRow } from "./tree";
 
-interface Node {
-  row: TreeRow;
-  children: Node[];
+/** A line's level: a project's 1, a worktree's 2, a session's 3. */
+function levelOf(row: TreeRow): number {
+  return row.kind === "project" ? 1 : row.kind === "workspace" ? 2 : 3;
 }
 
-/** The lines drawn, nested: projects, their workspaces, their sessions. */
-function nested(rows: readonly TreeRow[]): Node[] {
-  const projects: Node[] = [];
-  let workspace: Node | null = null;
-  for (const row of rows) {
-    const node = { row, children: [] };
-    if (row.kind === "project") {
-      projects.push(node);
-      workspace = null;
-    } else if (row.kind === "workspace") {
-      projects.at(-1)?.children.push(node);
-      workspace = node;
-    } else workspace?.children.push(node);
+/** `line` under the guides of the lines it is under, one for each level below the first. */
+function indented(level: number, line: ReactNode): ReactNode {
+  let out = line;
+  for (let at = 1; at < level; at += 1) {
+    out = (
+      <div className="mu-tree-children sessions-guide" role="none">
+        {out}
+      </div>
+    );
   }
-  return projects;
+  return out;
 }
 
 function SessionOrBeside({
@@ -72,13 +71,62 @@ export function SessionTree({
   onPick: (id: string) => void;
   onFold: (id: string) => void;
 }) {
-  // Scrolled into view as it is selected.
-  useEffect(() => {
-    if (selected) document.getElementById(rowId(selected))?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+  const list = useRef<HTMLDivElement>(null);
+  const lines = useDaemon((state) => state.preferences?.session_lines ?? "two");
+  // Each line's height as drawn, by its id and what it was drawn as; the rest are estimated.
+  const measured = useRef(new Map<string, number>());
+  const [, remeasured] = useState(0);
+  const [top, setTop] = useState(0);
+  const [height, setHeight] = useState(UNMEASURED);
 
-  const draw = (node: Node, level: number): ReactNode => {
-    const { row } = node;
+  const keyOf = (row: TreeRow, first: boolean) => `${row.id} ${first} ${lines}`;
+  const heights = rows.map(
+    (row, at) => measured.current.get(keyOf(row, at === 0)) ?? estimate(row, at === 0, lines),
+  );
+  const places = placesOf(heights);
+  const [start, end] = drawn(places, top, height);
+
+  // The lines drawn are measured, and drawn again where one was not as estimated.
+  useLayoutEffect(() => {
+    const box = list.current;
+    if (!box) return;
+    let changed = false;
+    for (const node of box.querySelectorAll<HTMLElement>("[data-line]")) {
+      const at = Number(node.dataset.line);
+      const row = rows[at];
+      const tall = node.offsetHeight;
+      if (!row || tall === 0) continue;
+      const key = keyOf(row, at === 0);
+      if (measured.current.get(key) !== tall) {
+        measured.current.set(key, tall);
+        changed = true;
+      }
+    }
+    if (changed) remeasured((count) => count + 1);
+  });
+
+  useLayoutEffect(() => {
+    const box = list.current;
+    if (!box) return;
+    const observer = new ResizeObserver(() => setHeight(box.clientHeight || UNMEASURED));
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+
+  // Scrolled to as it is selected, drawn or not.
+  const at = selected === undefined ? -1 : rows.findIndex((row) => row.id === selected);
+  const [followed, setFollowed] = useState<string | undefined>(undefined);
+  if (selected !== followed) {
+    setFollowed(selected);
+    if (at >= 0) setTop(inSight(top, height, places[at] ?? 0, places[at + 1] ?? 0));
+  }
+  useLayoutEffect(() => {
+    const box = list.current;
+    if (box && Math.abs(box.scrollTop - top) > 1) box.scrollTop = top;
+  }, [top]);
+
+  const draw = (row: TreeRow, index: number): ReactNode => {
+    const level = levelOf(row);
     const props: LineProps = {
       row,
       level,
@@ -94,27 +142,30 @@ export function SessionTree({
     else if (renaming?.renaming === row.id) line = <RenameSession actions={renaming} />;
     else line = <SessionOrBeside props={props} panelKeys={panelKeys} />;
     return (
-      <div key={row.id} className="sessions-node" role="none">
-        {line}
-        {node.children.length ? (
-          // biome-ignore lint/a11y/useSemanticElements: an ARIA tree's group of lines, not a form's fieldset.
-          <div className="mu-tree-children" role="group">
-            {node.children.map((child) => draw(child, level + 1))}
-          </div>
-        ) : null}
+      <div
+        key={row.id}
+        className={`sessions-node ${index === 0 ? "" : row.kind === "project" ? "sessions-node--project" : "sessions-node--under"}`}
+        role="none"
+        data-line={index}
+      >
+        {indented(level, <div className="sessions-line">{line}</div>)}
       </div>
     );
   };
 
   return (
     <div
+      ref={list}
       className="mu-tree sessions-tree"
       role="tree"
       tabIndex={0}
       aria-label="Projects, worktrees and sessions"
-      aria-activedescendant={selected ? rowId(selected) : undefined}
+      aria-activedescendant={at >= start && at < end && selected ? rowId(selected) : undefined}
+      onScroll={(event) => setTop(event.currentTarget.scrollTop)}
     >
-      {nested(rows).map((node) => draw(node, 1))}
+      <div aria-hidden="true" style={{ height: places[start] ?? 0 }} />
+      {rows.slice(start, end).map((row, offset) => draw(row, start + offset))}
+      <div aria-hidden="true" style={{ height: (places.at(-1) ?? 0) - (places[end] ?? 0) }} />
     </div>
   );
 }

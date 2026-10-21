@@ -10,7 +10,11 @@
   background: var(--surface-ground);
   border-right: var(--stroke-hairline) solid var(--line);
 }
+/* Only the lines in sight are drawn (SessionTree.tsx): the tree is a block
+   that scrolls, and each line carries the space above it, inside the guides
+   of the lines it is under, so its height is its place. */
 .sessions-tree {
+  display: block;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -21,14 +25,17 @@
   outline: var(--stroke-focus) solid var(--focus-ring);
   outline-offset: calc(-1 * var(--stroke-focus));
 }
-.sessions-node {
+.sessions-node,
+.sessions-line {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
 }
-/* Projects are space-16 apart. */
-.sessions-tree > .sessions-node + .sessions-node {
-  margin-top: var(--space-16);
+/* Projects are space-16 apart; the lines under them space-2. */
+.sessions-node--project .sessions-line {
+  padding-top: var(--space-16);
+}
+.sessions-node--under .sessions-line {
+  padding-top: var(--space-2);
 }
 .sessions-tree .mu-row,
 .sessions-tree .mu-tree-row {

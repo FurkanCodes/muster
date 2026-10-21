@@ -408,3 +408,56 @@ test("PRD §5 the palette offers the stages by hand on a session, as its keys do
   await palette.getByRole("option", { name: /Run the project's checks/ }).click();
   await expect(page.getByRole("heading", { name: "Checks" })).toBeVisible();
 });
+
+test("ARC-25 3,000 sessions: a few dozen lines drawn, each where it belongs, the wheel and the keys smooth", async ({
+  page,
+}) => {
+  await allSessions(page);
+  await page.evaluate(() => {
+    const mock = window.__muster;
+    const base = mock.world.sessions[0];
+    if (!base) return;
+    const many = Array.from({ length: 3000 }, (_, n) => ({
+      ...base,
+      id: `01JE${String(n).padStart(22, "0")}`,
+      title: `Session ${n}`,
+    }));
+    mock.world.sessions.push(...many);
+    mock.publish({ sessions: many });
+  });
+  const tree = page.getByRole("tree", { name: "Projects, worktrees and sessions" });
+  await expect(line(page, /^Session 0,/)).toBeVisible();
+  const items = tree.getByRole("treeitem");
+  expect(await items.count()).toBeLessThan(120);
+  // The lines drawn follow one another without a gap or an overlap.
+  const gaps = () =>
+    tree.locator("[data-line]").evaluateAll((nodes) =>
+      nodes.slice(1).map((node, at) => {
+        const above = nodes[at]?.getBoundingClientRect();
+        return Math.round(node.getBoundingClientRect().top - (above?.bottom ?? 0));
+      }),
+    );
+  expect(new Set(await gaps())).toEqual(new Set([0]));
+
+  // The wheel to the end: the last lines are drawn there, and only those near.
+  await tree.hover();
+  for (let turn = 0; turn < 40; turn += 1) await page.mouse.wheel(0, 5000);
+  await expect(line(page, /^Session 2999,/)).toBeInViewport();
+  expect(await items.count()).toBeLessThan(120);
+  expect(new Set(await gaps())).toEqual(new Set([0]));
+  await line(page, /^Session 2999,/).click();
+  await page.keyboard.press("k");
+  await expect(line(page, /^Session 2998,/)).toHaveAttribute("aria-selected", "true");
+  await expect(line(page, /^Session 2998,/)).toBeInViewport();
+
+  // One selected for the person far above is scrolled to and drawn.
+  await page.evaluate(
+    (session) =>
+      (
+        window as unknown as { __musterUi: { select(screen: string, id: string): void } }
+      ).__musterUi.select("all", session),
+    id(104),
+  );
+  await expect(line(page, /^Resize settles once on release/)).toBeInViewport();
+  expect(await items.count()).toBeLessThan(120);
+});
