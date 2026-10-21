@@ -2,11 +2,14 @@
 // work, two asking, some finished. The mock daemon starts from it, and tests
 // change it through the mock bridge.
 
+import type { FileDiff } from "../generated/FileDiff";
 import type { PluginInfo } from "../generated/PluginInfo";
 import type { Preferences } from "../generated/Preferences";
 import type { Project } from "../generated/Project";
 import type { Session } from "../generated/Session";
 import type { SessionStatus } from "../generated/SessionStatus";
+import type { SessionUsage } from "../generated/SessionUsage";
+import type { Timeline } from "../generated/Timeline";
 import type { Workspace } from "../generated/Workspace";
 import type { World } from "./model";
 
@@ -27,6 +30,12 @@ export interface Scenario extends World, TicketScenario {
   plugins: PluginInfo[];
   /** What each session's terminal shows when attached. */
   terminals: Record<string, string>;
+  /** Each workspace's timeline, as `Timeline` answers it. */
+  timelines?: Record<string, Timeline>;
+  /** Each timeline entry's diff, as `EntryDiff` answers it. */
+  entryDiffs?: Record<string, Record<number, FileDiff>>;
+  /** What sessions use, as the daemon's measurement says. */
+  usage?: SessionUsage[];
 }
 
 function project(n: number, name: string, root: string): Project {
@@ -232,6 +241,61 @@ export function workingDay(): Scenario {
   const plugins: PluginInfo[] = [
     { id: "github", source: "builtin", enabled: true, problem: null, details: null, changed: null },
   ];
+  // The desktop worktree's timeline, newest first: Codex's third turn there
+  // is the newest, after the person's own edits between its turns.
+  const turn = (number: number, minutesAgo: number, files: number, added: number) => ({
+    number,
+    kind: { kind: "turn" as const, session: ulid(101), agent: "Codex" },
+    started: NOW - (minutesAgo + 3) * MINUTE,
+    ended: NOW - minutesAgo * MINUTE,
+    summary: { files, added, removed: 4 },
+    head_before: null,
+    head_after: null,
+  });
+  const timelines: Record<string, Timeline> = {
+    [ulid(11)]: {
+      entries: [
+        turn(4, 1, 3, 203),
+        {
+          number: 3,
+          kind: { kind: "between" },
+          started: NOW - 20 * MINUTE,
+          ended: NOW - 5 * MINUTE,
+          summary: { files: 1, added: 2, removed: 0 },
+          head_before: null,
+          head_after: null,
+        },
+        turn(2, 25, 2, 40),
+        turn(1, 40, 1, 12),
+      ],
+    },
+  };
+  const diff = (path: string, added: number, removed: number) =>
+    [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      `@@ -1,${removed} +1,${added} @@`,
+      ...Array.from({ length: removed }, () => "-old"),
+      ...Array.from({ length: added }, () => "+new"),
+      "",
+    ].join("\n");
+  const entryDiffs: Record<string, Record<number, FileDiff>> = {
+    [ulid(11)]: {
+      4: {
+        text: [
+          diff("crates/muster-desktop/src/link.rs", 118, 4),
+          diff("crates/muster-desktop/src/main.rs", 61, 0),
+          diff("crates/muster-desktop/Cargo.toml", 24, 0),
+        ].join(""),
+        cut: false,
+      },
+    },
+  };
+  // What the asking Codex session uses, as the daemon measures it.
+  const usage: SessionUsage[] = [
+    { session: ulid(101), memory_bytes: 212_000_000, cpu_permille: 30 },
+  ];
   return {
     projects,
     workspaces,
@@ -240,5 +304,8 @@ export function workingDay(): Scenario {
     plugins,
     terminals,
     ...ticketScenario(projects),
+    timelines,
+    entryDiffs,
+    usage,
   };
 }
