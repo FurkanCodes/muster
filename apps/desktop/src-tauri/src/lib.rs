@@ -4,6 +4,7 @@
 
 mod commands;
 pub mod contract;
+mod ticket_url;
 
 /// Starts the app and blocks until it quits.
 pub fn run() {
@@ -20,6 +21,7 @@ pub fn run() {
             commands::resize,
             commands::watch,
             commands::looking,
+            ticket_url::open_ticket_url,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {
