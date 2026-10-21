@@ -15,6 +15,7 @@ import {
   type,
   typeInTerminal,
   untilFlock,
+  untilRowSays,
 } from "./support/window";
 
 // Needs you, Not seen and Working in the real app over a real daemon
@@ -157,11 +158,11 @@ describe("Needs you, Not seen and Working, over the real daemon", () => {
   it("ARC-24 l goes to the session that came to need the person last", async () => {
     await ask(agents.long, "Shall the long one go on?");
     await untilSession("Long at work", "needs_you");
-    // The window sees it ask before it is answered.
-    await until(
-      async () => (await shownNames()).indexOf("Long at work") === 1,
-      "Long at work to show among who asks",
-    );
+    // The window sees it ask before it is answered: drawn among who asks (an
+    // item, not a row). At work, it was already second in the list, so its
+    // place says nothing; and a window sent the ask and the answer in one
+    // patch never saw it need the person.
+    await expect(option("Long at work")).toHaveElementClass("mu-item");
     await work(agents.long);
     await untilSession("Long at work", "running");
     // At work again since just now: the newest at work, so after the other.
@@ -190,7 +191,11 @@ describe("Needs you, Not seen and Working, over the real daemon", () => {
     expect(launches(id)).toHaveLength(1);
     // Ended, it is no longer in Needs you: All sessions holds it.
     await goTo("All sessions");
-    await $(`[role="treeitem"][id="tree-${bareId(id)}"]`).click();
+    const line = $(`[role="treeitem"][id="tree-${bareId(id)}"]`);
+    // r on a session the window still shows at work says so and starts nothing.
+    await untilRowSays("Asks, renamed", /^(ended|exited)/);
+    await line.click();
+    await expect(line).toHaveAttribute("aria-selected", "true");
     await pressOnWindow("r");
     await until(() => launches(id).length === 2, "the agent to start again");
     await until(() => session("Asks, renamed")?.status !== "exited", "the daemon to run it again");

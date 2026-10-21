@@ -18,6 +18,7 @@ import {
   radio,
   selectRow,
   shownScreen,
+  untilRowSays,
 } from "./support/window";
 
 // The flows over the real daemon (PRODUCT.md §6a, design/screens/Palette,
@@ -309,6 +310,8 @@ describe("The flows", () => {
       await press("s");
       await press("Enter");
       await untilSession(login, "exited");
+      // x asks first while the window still shows it at work.
+      await untilRowSays(login, /^(ended|exited)/);
       await press("x");
       await until(() => !session(login), "the session to be removed");
       expect(await noDialog()).toBe(true);

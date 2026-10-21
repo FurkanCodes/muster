@@ -10,9 +10,11 @@ A test does what the person does (keys, clicks) and asserts what the window show
 | `muster.ts` | `muster(...args)`, `status()`, `session(title)`, `project(name)`, `until(read, what)`, `untilSession(title, "needs_you" \| "running" \| "finished")`, `settingsToml()`, `daemonLog()` |
 | `agents.ts` | `startAgent(project, title, {agent, branch})`, `askingSession(...)`, and for a launch: `ask`, `work`, `finish`, `change(file, text)`, `show(text)`, `title(text)`, `hook(event)` |
 | `repos.ts` | `repository(name)`, `commit`, `write`, `branch`, `branches`, `log`, `changes`, `tickets([...])`, `trackerDown(true)`, `ghCalls()`, `ticketsClosed()` |
-| `window.ts` | `press("d", "⌘K", "⇧Tab", "Enter")`, `pressOnWindow(...)` (no field in focus), `type(selector, text)`, `typeInTerminal(line)`, `terminalText(id)`, `goTo("Tickets")`, `shownScreen()`, `untilFlock(working, waiting, done)` |
+| `window.ts` | `press("d", "⌘K", "⇧Tab", "Enter")`, `pressOnWindow(...)` (no field in focus), `type(selector, text)`, `typeInTerminal(line)`, `terminalText(id)`, `goTo("Tickets")`, `shownScreen()`, `untilFlock(working, waiting, done)`, `untilRowSays(name, /^ended/)` |
 | `record.ts` | `opened()` (web addresses), `heard()` (sounds), `revealed()` (files shown), `daemonStarts()`, `holdDaemon(true)` |
 
 Keys: send a capital as itself (`press("Q")`), never Shift and the letter. Text goes into a field with `type` and into a terminal with `typeInTerminal`: the embedded driver makes keys in the page itself, and xterm would take each letter twice. `muster` prints ids with their kind (`ses_…`); the window knows them bare (`bareId`).
+
+Wait for the window, not only the daemon, before a key: the daemon answers a command, and `muster status` shows its change, before it tells its windows, and a key acts on what the window last knew. `untilRowSays`, `untilFlock` and what the screen shows say the window knows.
 
 A helper only one area needs goes in a file of its own here.
