@@ -2,7 +2,8 @@
 // itself out. The theme is this window's own; the rest are Muster's own
 // settings, which the terminal UI shares.
 
-import { useActions, useDaemon, useUi } from "../../app/context";
+import { useState } from "react";
+import { useActions, useBridge, useDaemon, useUi } from "../../app/context";
 import type { Palette } from "../../ipc/generated/Palette";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import type { SessionLines } from "../../ipc/generated/SessionLines";
@@ -11,6 +12,7 @@ import { chats } from "../../state/selectors";
 import type { Theme } from "../../state/ui";
 import { Segmented } from "../../ui/controls";
 import { Select } from "../../ui/Select";
+import { canAsk } from "./asks";
 import { useSettings } from "./context";
 import { rowKey } from "./model";
 import {
@@ -88,6 +90,21 @@ export function General({ preferences }: { preferences: Preferences }) {
   const version = useDaemon((daemon) => (daemon.link.state === "up" ? daemon.link.version : null));
   const sessions = useDaemon((daemon) => chats(daemon).length);
   const readKey = useKeyLabel("read_settings");
+  const bridge = useBridge();
+  const [restarting, setRestarting] = useState(false);
+  const restart = () => {
+    if (!canAsk(bridge)) return ui.tell("This window cannot restart the daemon.", true);
+    if (restarting) return;
+    setRestarting(true);
+    ui.tell("Restarting the daemon in place…");
+    bridge
+      .restartInPlace()
+      .then(
+        (said) => ui.tell(said || "The daemon restarted in place."),
+        (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+      )
+      .finally(() => setRestarting(false));
+  };
   const row = (name: string) => rowKey("general", name);
   const busy = (name: string) => state.busy.has(row(name));
 
@@ -229,22 +246,31 @@ export function General({ preferences }: { preferences: Preferences }) {
         </SettingRow>
       </Group>
 
-      {version ? (
-        <Group title="Muster">
-          <div className="mu-setting app-setting--still">
-            <SettingText
-              name={`Muster ${version}`}
-              does={
-                <>
-                  Its daemon holds {sessions} {sessions === 1 ? "session" : "sessions"}.{" "}
-                  <code>muster reload</code> moves it onto the Muster installed now, and every
-                  session runs on.
-                </>
-              }
-            />
-          </div>
-        </Group>
-      ) : null}
+      <Group title="Muster">
+        <SettingRow id={row("restart")} act={restart}>
+          <SettingText
+            name={version ? `Muster ${version}` : "Muster"}
+            does={
+              <>
+                Its daemon holds {sessions} {sessions === 1 ? "session" : "sessions"}. Restarting in
+                place moves it onto the Muster installed now, and every session runs on.
+              </>
+            }
+          />
+          <Control>
+            <button
+              type="button"
+              className="mu-btn"
+              title="Restart in place, as muster reload does"
+              disabled={restarting}
+              aria-busy={restarting || undefined}
+              onClick={restart}
+            >
+              {restarting ? "Restarting…" : "Restart in place"}
+            </button>
+          </Control>
+        </SettingRow>
+      </Group>
 
       <Footnote>
         Saved in <code>{preferences.file}</code>, Muster's own settings. Theme is kept by this app

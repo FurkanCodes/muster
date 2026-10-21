@@ -7,6 +7,7 @@ pub mod contract;
 mod e2e;
 mod folders;
 pub mod link;
+mod settings_actions;
 mod sounds;
 mod ticket_url;
 
@@ -56,6 +57,9 @@ pub fn run() {
             ticket_url::open_ticket_url,
             sounds::hear,
             folders::list_folders,
+            settings_actions::restart_in_place,
+            settings_actions::open_notification_settings,
+            settings_actions::edit_settings_file,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

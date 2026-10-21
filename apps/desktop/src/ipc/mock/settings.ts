@@ -73,6 +73,16 @@ export class MockSettings {
   private previews = 0;
   /** An edit by hand to Muster's settings file, read on `ReadPreferences`. */
   private edited: Partial<Preferences> | null = null;
+  /**
+   * Where each agent is installed and its version, as the daemon finds them
+   * (`Command::Agents`), by harness; one not here is not found. Tests change it.
+   */
+  readonly installed: Record<string, { path: string; version: string | null }> = {
+    claude: { path: "/opt/homebrew/bin/claude", version: "2.1.303" },
+    codex: { path: "/opt/homebrew/bin/codex", version: "0.162.1" },
+    gemini: { path: "/Users/you/.npm-global/bin/gemini", version: "0.63.0" },
+    opencode: { path: "/opt/homebrew/bin/opencode", version: "1.4.6" },
+  };
 
   constructor(private readonly mock: MockBridge) {
     const names = new Map(mock.world.projects.map((project) => [project.name, project.id]));
@@ -125,8 +135,27 @@ export class MockSettings {
 
   // The commands.
 
+  /** `Command::Agents`: Muster's own agents, then the person's, each as installed or not found. */
+  private agentsFound(): Reply {
+    const harnesses = [
+      "claude",
+      "codex",
+      "gemini",
+      "opencode",
+      "copilot",
+      ...this.mock.world.preferences.agents.map((agent) => agent.name),
+    ];
+    return {
+      Agents: harnesses.map((harness) => {
+        const found = this.installed[harness];
+        return { harness, path: found?.path ?? null, version: found?.version ?? null };
+      }),
+    };
+  }
+
   handle(command: Exclude<Command, "Ping">): Reply | undefined {
     if (command === "ReadPreferences") return this.readPreferences();
+    if (command === "Agents") return this.agentsFound();
     if (typeof command === "string") return undefined;
     if ("ChangePreference" in command) return this.changePreference(command.ChangePreference);
     if ("ProjectSettings" in command)

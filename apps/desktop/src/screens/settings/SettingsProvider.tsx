@@ -74,6 +74,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [find, setFind] = useState("");
   const [waiting, setWaiting] = useState<SettingsState["waiting"]>(null);
   const [dialog, setDialog] = useState<PluginDialog | null>(null);
+  const [reads, setReads] = useState(0);
   const registry = useRef(new Map<string, RefObject<RowBehaviour>>());
   const focusFollows = useRef(false);
   // The preview waited for: an answer to any other is dropped.
@@ -166,7 +167,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   };
 
   const value: SettingsValue = {
-    state: { rows, selected, busy, projects, drafts, find, waiting, dialog },
+    state: { rows, selected, busy, projects, drafts, find, waiting, dialog, reads },
     meta: { focusFollows, registry },
     actions: {
       select: (key) => {
@@ -238,6 +239,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         ui.tell("Reading the settings again…");
         setProjects(new Map());
         setDrafts(new Map());
+        setReads((count) => count + 1);
         send("ReadPreferences").then(() => ui.tell("Read the settings again."), fail);
       },
       setFind,

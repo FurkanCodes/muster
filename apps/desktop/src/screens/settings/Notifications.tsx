@@ -2,12 +2,13 @@
 // told of what newly needs them while they look away, which kinds, each
 // with its sound, heard as it is chosen; and the agents in the notch.
 
-import { useDaemon } from "../../app/context";
+import { useActions, useBridge, useDaemon } from "../../app/context";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import type { Sound } from "../../ipc/generated/Sound";
 import type { Tell } from "../../ipc/generated/Tell";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
+import { canAsk } from "./asks";
 import { useSettings } from "./context";
 import { useHear } from "./hear";
 import { rowKey } from "./model";
@@ -101,6 +102,15 @@ export function Notifications({ preferences }: { preferences: Preferences }) {
   const notifier = useDaemon((daemon) => daemon.notifier);
   const row = (name: string) => rowKey("notifications", name);
   const told = preferences.notifications;
+  const bridge = useBridge();
+  const ui = useActions();
+  const openSystemSettings = () => {
+    if (!canAsk(bridge)) return ui.tell("This window cannot open System Settings.", true);
+    bridge.openNotificationSettings().then(
+      () => ui.tell("Opened System Settings at Muster's notifications."),
+      (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+    );
+  };
 
   const toggleTold = () =>
     actions.preference(
@@ -142,7 +152,11 @@ export function Notifications({ preferences }: { preferences: Preferences }) {
         {KINDS.map((kind) => (
           <KindRow key={kind.kind} kind={kind} tell={preferences.telling[kind.key]} told={told} />
         ))}
-        <div className="mu-setting app-setting--still">
+        <SettingRow
+          id={row("system_settings")}
+          off={told ? undefined : "Notifications are off above."}
+          act={openSystemSettings}
+        >
           {told ? (
             <SettingText
               name="Allowed in macOS"
@@ -162,9 +176,17 @@ export function Notifications({ preferences }: { preferences: Preferences }) {
               ) : (
                 <span className="mu-quiet">not yet</span>
               )}
+              <button
+                type="button"
+                className="mu-btn mu-btn--quiet"
+                title="System Settings, Notifications, Muster"
+                onClick={openSystemSettings}
+              >
+                Open System Settings
+              </button>
             </Control>
           ) : null}
-        </div>
+        </SettingRow>
       </Group>
 
       <Group title="The notch">

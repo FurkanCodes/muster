@@ -60,6 +60,8 @@ export class MockBridge implements Bridge {
   readonly openedUrls: string[] = [];
   private readonly holds = new Map<string, { promise: Promise<void>; release: () => void }>();
   private readonly failures = new Map<string, BridgeFailure>();
+  /** Every one of Settings' asks of muster and the Mac, in order (`screens/settings/asks.ts`). */
+  readonly asked: string[] = [];
   /** Every sound asked to be heard, in order. */
   readonly heard: string[] = [];
   /** Its settings and plugins, and what tests drive of them. */
@@ -112,7 +114,7 @@ export class MockBridge implements Bridge {
     this.listener = onMessage;
     this.emit({ kind: "link", link: { state: "connecting" } });
     queueMicrotask(() => {
-      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 44 } });
+      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 45 } });
       this.emit({
         kind: "patch",
         patch: this.patch({
@@ -201,6 +203,19 @@ export class MockBridge implements Bridge {
   }
 
   /** Plays a sound by its name, as the app's Rust side would: the mock records it. */
+  async restartInPlace(): Promise<string> {
+    this.asked.push("restart in place");
+    return "The daemon is now muster 0.4.1, its sessions running on.";
+  }
+
+  async openNotificationSettings(): Promise<void> {
+    this.asked.push("notification settings");
+  }
+
+  async editSettingsFile(): Promise<void> {
+    this.asked.push("edit settings.toml");
+  }
+
   async hear(sound: string): Promise<void> {
     this.heard.push(sound);
   }

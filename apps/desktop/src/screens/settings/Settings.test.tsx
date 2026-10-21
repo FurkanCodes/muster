@@ -57,14 +57,14 @@ describe("Settings", () => {
     const { keys } = renderSettings();
     await screen.findByRole("group", { name: "Theme" });
     expect(row("general/theme")).toHaveClass("is-selected");
-    for (let at = 0; at < 5; at += 1) await userEvent.keyboard("{ArrowDown}");
+    for (let at = 0; at < 6; at += 1) await userEvent.keyboard("{ArrowDown}");
     expect(row("notifications/notifications")).toHaveClass("is-selected");
     expect(screen.getByRole("button", { name: "Notifications" })).toHaveAttribute(
       "aria-current",
       "page",
     );
     await userEvent.keyboard("k");
-    expect(row("general/side_by_side")).toHaveClass("is-selected");
+    expect(row("general/restart")).toHaveClass("is-selected");
     keys();
   });
 
