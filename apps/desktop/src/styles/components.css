@@ -14,7 +14,7 @@
 .mu-root *::after {
   box-sizing: border-box;
 }
-.mu-root button {
+.mu-root :where(button) {
   font: inherit;
   color: inherit;
   margin: 0;
