@@ -27,6 +27,12 @@
 .panels--dragging .mu-panel-head {
   cursor: grabbing;
 }
+/* Nothing is chosen as text while a panel or a line is carried. */
+.panels--dragging,
+.panels--dragging * {
+  -webkit-user-select: none;
+  user-select: none;
+}
 /* The title under the pointer lights up: what a press would take hold of. */
 .panels-box .mu-panel-head:hover {
   background: var(--surface-raised);

@@ -7,6 +7,7 @@
 // Each panel is placed by its own rectangle in one box, so moving one never
 // starts its terminal afresh. Where they do not fit, the panel with the
 // keys opens over the rest. Alone, the agent's terminal is drawn as it is.
+// `m` moves them with the keys instead (useArranging).
 
 import { type PointerEvent, useEffect, useRef, useState } from "react";
 import { useApp, useDaemon, useUi } from "../app/context";
@@ -25,6 +26,7 @@ import {
   shareAt,
   solve,
 } from "./solve";
+import { useArranging } from "./useArranging";
 import { useLayout } from "./useLayout";
 import { usePanelKeys } from "./usePanelKeys";
 import "./panels.css";
@@ -113,6 +115,7 @@ export function Panels({ session }: { session: SessionId }) {
   const area = { x: 0, y: 0, width: size.width, height: size.height };
   const solved = laidOut(panels.layout, (panel) => Boolean(sessionOf[panel]), withKeys, area);
   const alone = !shell && !plugin;
+  const arranging = useArranging(panels, solved, withKeys, !alone, PANE);
 
   // A drag lets go on Esc, the layout as it was.
   useEffect(() => {
@@ -186,7 +189,7 @@ export function Panels({ session }: { session: SessionId }) {
     rect
       ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height }
       : { display: "none" as const };
-  const dragging = drag?.kind === "panel" && drag.moved ? drag.panel : null;
+  const dragging = drag?.kind === "panel" && drag.moved ? drag.panel : arranging;
   const lineDragged = drag?.kind === "line" ? lineKey(drag.divider) : null;
 
   return (

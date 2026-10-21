@@ -318,3 +318,28 @@ test("ARC-24 full screen on f: the session and its panels fill the window; Esc g
   await page.keyboard.press("f");
   await expect(page.locator(".mu-note")).toHaveText("Select a session to open it full screen.");
 });
+
+test("ARC-24 m moves the panels with the keys: ⇥ another, the arrows past a neighbour, ⏎ keeps", async ({
+  page,
+}) => {
+  await allSessions(page);
+  await page.keyboard.press("T");
+  await page.keyboard.press("Shift+Q");
+  await page.keyboard.press("G");
+  await expect(region(page, "Session graph")).toBeVisible();
+  await page.keyboard.press("m");
+  await expect(page.locator(".mu-note")).toContainText("Moving the agent");
+  // The agent to the right, past the shell and the graph beside it.
+  await page.keyboard.press("ArrowRight");
+  const agent = await region(page, "Claude Code").boundingBox();
+  const shell = await region(page, "Shell").boundingBox();
+  expect(agent && shell && agent.x > shell.x).toBe(true);
+  // The arrows were the panels', not the tree's.
+  await expect(line(page, /^Split view\.rs/)).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => page.evaluate(() => window.__muster.world.preferences.panels))
+    .toContain("session");
+  const kept = await page.evaluate(() => window.__muster.world.preferences.panels);
+  expect(kept).not.toBe("list | session 60% | (changes / shell / plugin)");
+});

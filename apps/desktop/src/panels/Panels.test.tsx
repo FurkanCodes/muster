@@ -139,6 +139,47 @@ describe("ARC-24 the panels beside the agent", () => {
   });
 });
 
+describe("ARC-24 moving the panels with the keys", () => {
+  it("moves the panel with the keys on m and the arrows, ⏎ keeping the layout", async () => {
+    const { app, bridge } = await pane();
+    await userEvent.keyboard("T");
+    act(() => app.actions.keysTo("list"));
+    await screen.findByRole("region", { name: "Shell" });
+    // With the keys on the list, the agent is picked; ⇥ picks the shell.
+    await userEvent.keyboard("m");
+    expect(app.ui.getState().note?.text).toMatch(/^Moving the agent: the arrows move it/);
+    await userEvent.keyboard("{Tab}");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-orientation", "horizontal");
+    expect(app.ui.getState().selected).toEqual({});
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(bridge.world.preferences.panels).toBe(
+        "list | ((session 60% | (changes / plugin)) / shell)",
+      ),
+    );
+  });
+
+  it("puts the layout back on Esc, and says when nothing stands beside to move", async () => {
+    const { app, bridge } = await pane();
+    await userEvent.keyboard("m");
+    expect(app.ui.getState().note).toEqual({
+      text: "Nothing stands beside the session to move.",
+      error: true,
+    });
+    await userEvent.keyboard("T");
+    act(() => app.actions.keysTo("list"));
+    await screen.findByRole("region", { name: "Shell" });
+    await userEvent.keyboard("m{Tab}{ArrowDown}");
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-orientation", "horizontal");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-orientation", "vertical");
+    expect(
+      bridge.sent.some((command) => typeof command === "object" && "ChangePreference" in command),
+    ).toBe(false);
+  });
+});
+
 describe("ARC-24 full screen", () => {
   it("fills the window with the session on f, with the keys; Esc gives the window back", async () => {
     const { app } = await pane();
