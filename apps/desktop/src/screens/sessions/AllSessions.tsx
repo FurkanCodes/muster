@@ -4,7 +4,9 @@
 // plugins' panels. The keys are the terminal UI's: ↑↓ (k j) move, ← → fold
 // and unfold (or go out and in), `e` folds, ⏎ types in the session or folds
 // the line, `T` a shell, `f` full screen, a plugin's key its panel, `d` the
-// changes, `R` renames, `x` closes, `b` the pull request.
+// changes, `R` renames, `x` closes; on a worktree or a session in one, `c`
+// its checks, `v` a review, `o` a draft pull request and `b` the pull
+// request in the browser (src/session/byHand.ts).
 
 import { useEffect } from "react";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
@@ -14,7 +16,8 @@ import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { agentOf } from "../../lib/agents";
 import { toggleShell } from "../../panels/beside";
 import { usePanelHandlers } from "../../panels/usePanelKeys";
-import type { MenuItem } from "../../session/SessionMenu";
+import * as byHand from "../../session/byHand";
+import { keysOf, type MenuItem } from "../../session/SessionMenu";
 import { SessionPane } from "../../session/SessionPane";
 import { CloseSession, useSessionActions } from "../../session/useSessionActions";
 import { standsBeside } from "../../state/selectors";
@@ -73,6 +76,9 @@ export default function AllSessions() {
   const renameKey = label("rename");
   const closeKey = label("close");
   const pullKey = label("pull_request_in_browser");
+  const checksKey = label("checks");
+  const reviewKey = label("review");
+  const openKey = label("open_pull_request");
 
   /** The workspace a line works in: a session's, a worktree's, a project's own checkout. */
   const workspaceOf = (): string | null => {
@@ -145,12 +151,14 @@ export default function AllSessions() {
     fold: () => {
       if (selected) tree.fold(selected.id);
     },
+    checks: () => byHand.runChecks(app),
+    review: () => byHand.review(app),
+    open_pull_request: () => byHand.openPullRequest(app),
+    pull_request_in_browser: () => byHand.browsePullRequest(app),
     ...(session
       ? {
-          show_changes: () => actions.showPane("changes"),
           rename: tools.rename,
           close: tools.close,
-          pull_request_in_browser: tools.browser,
         }
       : {
           // The pane's own keys answer on a session; on a project or a worktree, the tree's.
@@ -178,6 +186,17 @@ export default function AllSessions() {
         { key: closeKey, does: "close" },
         ...(hasPullRequest ? [{ key: pullKey, does: "pull request" }] : []),
       ]);
+    if (kind === "workspace")
+      return actions.setHints(
+        [
+          { key: "⏎", does: "fold or unfold" },
+          { key: shellKey, does: "shell" },
+          { key: checksKey, does: "check" },
+          { key: reviewKey, does: "review" },
+          { key: openKey, does: "draft pull request" },
+          ...(hasPullRequest ? [{ key: pullKey, does: "pull request" }] : []),
+        ].filter((hint) => hint.key !== "none"),
+      );
     if (kind)
       return actions.setHints([
         { key: "⏎", does: "fold or unfold" },
@@ -197,6 +216,9 @@ export default function AllSessions() {
     renameKey,
     closeKey,
     pullKey,
+    checksKey,
+    reviewKey,
+    openKey,
   ]);
   useEffect(() => () => actions.setHints([]), [actions]);
 
@@ -206,17 +228,24 @@ export default function AllSessions() {
       panelKeys[`plugin:${bound.action.plugin}/${bound.action.panel}`] = label(bound.name);
   }
   const menu: MenuItem[] = [
-    ...(isChat ? [{ key: label("rename"), label: "Rename", does: tools.rename }] : []),
+    ...(isChat ? [{ ...keysOf(map, "rename"), label: "Rename", does: tools.rename }] : []),
+    { ...keysOf(map, "checks"), label: "Run the checks", does: () => byHand.runChecks(app) },
+    { ...keysOf(map, "review"), label: "Review the change", does: () => byHand.review(app) },
+    {
+      ...keysOf(map, "open_pull_request"),
+      label: "Open a draft pull request",
+      does: () => byHand.openPullRequest(app),
+    },
     ...(hasPullRequest
       ? [
           {
-            key: label("pull_request_in_browser"),
+            ...keysOf(map, "pull_request_in_browser"),
             label: "Pull request in the browser",
-            does: tools.browser,
+            does: () => byHand.browsePullRequest(app),
           },
         ]
       : []),
-    { key: label("close"), label: "Close", does: tools.close, danger: true },
+    { ...keysOf(map, "close"), label: "Close", does: tools.close, danger: true },
   ];
 
   return (

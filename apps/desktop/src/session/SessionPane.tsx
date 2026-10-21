@@ -6,8 +6,8 @@
 
 import { lazy, Suspense, useState } from "react";
 import { useActions, useDaemon, useUi } from "../app/context";
-import { useKeys } from "../app/keys";
 import type { SessionId } from "../ipc/generated/SessionId";
+import { KEY_SCREENS, useActionKeys, useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { spend } from "../lib/format";
 import { FullScreenButton, ShellButton } from "../panels/PaneActions";
@@ -77,12 +77,14 @@ export function SessionPane({
   const workspace = useDaemon((state) => state.sessions[session]?.workspace ?? null);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const mode = useUi((state) => state.pane);
+  const screen = useUi((state) => KEY_SCREENS[state.screen]);
+  const changesKey = useKeyLabel("show_changes");
   // The list has the keys in the changes, and the terminal its own again after.
   const changes = () => {
     actions.keysTo("list");
     actions.showPane(mode === "changes" ? "terminal" : "changes");
   };
-  useKeys({ d: changes });
+  useActionKeys(screen, { show_changes: changes });
   return (
     <section className="mu-pane app-pane session-pane" aria-label={title}>
       <div className="mu-pane-head">
@@ -95,7 +97,7 @@ export function SessionPane({
             <ShellButton session={session} />
             <Button
               icon="changes"
-              title="Changes (d)"
+              title={`Changes (${changesKey})`}
               aria-pressed={mode === "changes"}
               onClick={changes}
             >

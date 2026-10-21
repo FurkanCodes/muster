@@ -1,17 +1,20 @@
 // *Needs you*, *Not seen* and *Working* (design system: Queue): the queue
 // column, and beside it the selected session's pane, live. The keys are the
-// terminal UI's: ↑↓ (or k j) move, ⏎ gives the session's terminal the keys
-// and ⇧Q gives them back, `l` goes to the session that needed the person
-// last, `d` its changes, `z` puts its newest turn back, `R` renames it in
-// place, `x` closes it, `b` its pull request.
+// terminal UI's, as the person set them (src/keys): ↑↓ (or k j) move, ⏎
+// gives the session's terminal the keys and ⇧Q gives them back, `l` goes
+// to the session that needed the person last, `d` its changes (the pane's),
+// `z` puts its newest turn back, `R` renames it in place, `x` closes it, `b`
+// its pull request in the browser.
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
-import { type KeyHandlers, useKeys } from "../../app/keys";
+import { useKeys } from "../../app/keys";
 import type { SessionId } from "../../ipc/generated/SessionId";
+import { type Keymap, labelOf } from "../../keys/keymap";
+import { useActionKeys, useBorrowedKeys, useKeymap } from "../../keys/useKeymap";
 import { agentOf } from "../../lib/agents";
-import type { MenuItem } from "../../session/SessionMenu";
+import { keysOf, type MenuItem } from "../../session/SessionMenu";
 import { SessionPane } from "../../session/SessionPane";
 import {
   CloseSession,
@@ -65,20 +68,25 @@ function useShownQueue(area: QueueArea) {
 }
 
 function hintsFor(
+  map: Keymap,
   section: Section | null,
   canPutBack: boolean,
   hasPullRequest: boolean,
 ): readonly Hint[] {
-  if (!section) return [{ key: "l", does: "last needed you" }];
-  return [
-    { key: "⏎", does: section === "asking" ? "answer" : "open" },
-    { key: "d", does: "see changes" },
-    ...(canPutBack ? [{ key: "z", does: "put back" }] : []),
-    { key: "R", does: "rename" },
-    { key: "x", does: "close" },
-    ...(hasPullRequest ? [{ key: "b", does: "pull request" }] : []),
-    { key: "l", does: "last needed you" },
-  ];
+  const key = (action: string) => labelOf(map, action);
+  const hints: Hint[] = section
+    ? [
+        { key: "⏎", does: section === "asking" ? "answer" : "open" },
+        { key: key("show_changes"), does: "see changes" },
+        ...(canPutBack ? [{ key: key("put_back"), does: "put back" }] : []),
+        { key: key("rename"), does: "rename" },
+        { key: key("close"), does: "close" },
+        ...(hasPullRequest ? [{ key: key("pull_request_in_browser"), does: "pull request" }] : []),
+        { key: key("last_alarm"), does: "last needed you" },
+      ]
+    : [{ key: key("last_alarm"), does: "last needed you" }];
+  // A key the person took from its action is no hint.
+  return hints.filter((hint) => hint.key !== "none");
 }
 
 const IN_TERMINAL: readonly Hint[] = [
@@ -141,11 +149,14 @@ export function QueueScreen({ area }: { area: QueueArea }) {
     }
   }, [app, actions, area, keysIn, selected]);
 
+  const map = useKeymap();
   useEffect(() => {
     actions.setHints(
-      keysIn === "terminal" ? IN_TERMINAL : hintsFor(section, newestTurn !== null, hasPullRequest),
+      keysIn === "terminal"
+        ? IN_TERMINAL
+        : hintsFor(map, section, newestTurn !== null, hasPullRequest),
     );
-  }, [actions, keysIn, section, newestTurn, hasPullRequest]);
+  }, [actions, map, keysIn, section, newestTurn, hasPullRequest]);
   useEffect(() => () => actions.setHints([]), [actions]);
 
   const pick = (id: SessionId) => {
@@ -179,29 +190,29 @@ export function QueueScreen({ area }: { area: QueueArea }) {
     actions.select("all", last);
     actions.show("all");
   };
-  const keys: KeyHandlers = {
-    ArrowDown: () => move(1),
-    ArrowUp: () => move(-1),
-    j: () => move(1),
-    k: () => move(-1),
-    Enter: open,
-    d: () => {
-      if (selected) actions.showPane("changes");
-    },
-    z: putBack,
-    R: tools.rename,
-    x: tools.close,
-    b: tools.browser,
-    l: goToLast,
-  };
-  useKeys(keys);
+  useKeys({ ArrowDown: () => move(1), ArrowUp: () => move(-1), Enter: open });
+  // The pane answers `d` (show_changes) and its panels' keys.
+  useActionKeys("needs_you", {
+    move_down: () => move(1),
+    move_up: () => move(-1),
+    rename: tools.rename,
+    close: tools.close,
+    last_alarm: goToLast,
+  });
+  useBorrowedKeys("needs_you", { put_back: putBack, pull_request_in_browser: tools.browser });
 
   const menu: MenuItem[] = [
-    { key: "R", label: "Rename", does: tools.rename },
+    { ...keysOf(map, "rename"), label: "Rename", does: tools.rename },
     ...(hasPullRequest
-      ? [{ key: "b", label: "Pull request in the browser", does: tools.browser }]
+      ? [
+          {
+            ...keysOf(map, "pull_request_in_browser"),
+            label: "Pull request in the browser",
+            does: tools.browser,
+          },
+        ]
       : []),
-    { key: "x", label: "Close", does: tools.close, danger: true },
+    { ...keysOf(map, "close"), label: "Close", does: tools.close, danger: true },
   ];
   const resting = keysIn !== "list";
   const working = sections.filter((one) => one === "working").length;

@@ -242,10 +242,7 @@ test("ARC-24 opening a finish clears its news, and it keeps its place until anot
     )?.id;
     if (id) window.__muster.removeSession(id);
   });
-  await expect(option(page, "Upgrade AGP to 9.1")).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(option(page, "Upgrade AGP to 9.1")).toHaveAttribute("aria-selected", "true");
 });
 
 test("ARC-24 l goes to the session that needed the person last", async ({ page }) => {
@@ -287,7 +284,7 @@ test("ARC-24 R renames in place, ⎋ gives up, and the more menu offers the same
   await page.getByRole("button", { name: "More", exact: true }).click();
   const menu = page.getByRole("menu", { name: "A name of my own" });
   await expect(menu.getByRole("menuitem")).toHaveText([
-    "RenameR",
+    "Rename⇧R",
     "Pull request in the browserb",
     "Closex",
   ]);
@@ -296,16 +293,28 @@ test("ARC-24 R renames in place, ⎋ gives up, and the more menu offers the same
   await expect(name).toBeFocused();
 });
 
-test("ARC-24 b says opening the pull request in the browser is coming, and where it is", async ({
+test("ARC-24 b opens the session's pull request in the browser, and says when none is known", async ({
   page,
 }) => {
   await page.keyboard.press("b");
-  await expect(statusBar(page)).toContainText(
-    "#91 is at https://github.com/FurkanCodes/muster/pull/91",
-  );
+  await expect
+    .poll(() => page.evaluate(() => window.__muster.openedUrls))
+    .toEqual(["https://github.com/FurkanCodes/muster/pull/91"]);
   await page.keyboard.press("j");
   await page.keyboard.press("b");
-  await expect(statusBar(page)).toContainText("No pull request from this branch is known.");
+  await expect(statusBar(page)).toContainText(
+    "No pull request from this branch is known; o opens one.",
+  );
+  // On Not seen and Working too.
+  await page.getByRole("button", { name: /^Working/ }).click();
+  await option(page, "Flaky resize test under load").click();
+  await page.keyboard.press("b");
+  await expect
+    .poll(() => page.evaluate(() => window.__muster.openedUrls))
+    .toEqual([
+      "https://github.com/FurkanCodes/muster/pull/91",
+      "https://github.com/FurkanCodes/muster/pull/88",
+    ]);
 });
 
 test("PRD-09 x asks first, ⎋ keeps it, and Close session stops it and takes it off the list", async ({

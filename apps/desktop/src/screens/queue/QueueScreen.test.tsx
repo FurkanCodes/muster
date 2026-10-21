@@ -311,14 +311,48 @@ describe("ARC-24 renaming, closing and the pull request from the list", () => {
     expect(bridge.sent).not.toContainEqual({ RemoveSession: { session: ulid(101) } });
   });
 
-  it("b says opening the pull request in the browser is coming, and where it is", async () => {
-    await opened();
+  it("b opens the session's pull request in the browser, and says when none is known", async () => {
+    const { bridge } = await opened();
     await userEvent.keyboard("b");
-    expect(hints()).toContain(
-      "Opening pull requests in the browser is coming to the app. #91 is at https://github.com/FurkanCodes/muster/pull/91",
+    await waitFor(() =>
+      expect(bridge.openedUrls).toEqual(["https://github.com/FurkanCodes/muster/pull/91"]),
     );
     await userEvent.keyboard("j");
     await userEvent.keyboard("b");
-    expect(hints()).toContain("No pull request from this branch is known.");
+    expect(hints()).toContain("No pull request from this branch is known; o opens one.");
+    expect(bridge.openedUrls).toHaveLength(1);
+  });
+});
+
+describe("ARC-24 the queue answers the person's keys", () => {
+  it("moves, renames, puts back and opens the pull request on the keys set, and hints them", async () => {
+    const bridge = new MockBridge(workingDay());
+    bridge.world.preferences.keys = {
+      move_down: ["y"],
+      rename: ["E"],
+      pull_request_in_browser: ["g"],
+      put_back: ["u"],
+    };
+    await opened(bridge);
+    await waitFor(() => expect(hints()).toContain("⇧Erename"));
+    expect(hints()).toContain("gpull request");
+    expect(hints()).toContain("uput back");
+    const changes = screen.getByRole("button", { name: "Changes" });
+    await userEvent.keyboard("z");
+    expect(changes).toHaveAttribute("aria-pressed", "false");
+    await userEvent.keyboard("u");
+    expect(changes).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(changes);
+    // Muster's own keys no longer do what the person moved.
+    await userEvent.keyboard("b");
+    expect(bridge.openedUrls).toEqual([]);
+    await userEvent.keyboard("g");
+    await waitFor(() => expect(bridge.openedUrls).toHaveLength(1));
+    await userEvent.keyboard("y");
+    expect(selected()).toHaveAccessibleName("Share the Gradle cache across worktrees");
+    await userEvent.keyboard("R");
+    expect(screen.queryByRole("textbox", { name: "Session name" })).toBeNull();
+    await userEvent.keyboard("E");
+    expect(await screen.findByRole("textbox", { name: "Session name" })).toHaveFocus();
   });
 });

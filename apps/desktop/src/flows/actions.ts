@@ -177,7 +177,7 @@ export function restart(app: App): void {
 }
 
 /** The worktree selected for work by hand, or why there is none. */
-function handsOn(app: App, what: string): Workspace | null {
+export function handsOn(app: App, what: string): Workspace | null {
   const { workspace, onProject } = here(app);
   if (!workspace || onProject) {
     complain(app, `Select a worktree, or a session in one, to ${what}.`);

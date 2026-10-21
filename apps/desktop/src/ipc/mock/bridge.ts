@@ -22,6 +22,7 @@ import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
 import type { Workspace } from "../generated/Workspace";
+import { ByHandWorld } from "./byHand";
 import { handleCommand } from "./commands";
 import { FlowWorld } from "./flows";
 import { expandPath } from "./folders";
@@ -51,6 +52,8 @@ export class MockBridge implements Bridge {
   readonly world: Scenario;
   /** What git and the file system say, for the flows (flows.ts). */
   readonly flows: FlowWorld;
+  /** What the projects' settings and the host say, for the stages by hand (byHand.ts). */
+  readonly byHand = new ByHandWorld();
   private readonly drops = new Set<(paths: string[]) => void>();
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
