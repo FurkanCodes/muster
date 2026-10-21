@@ -202,6 +202,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         // Read or changed just now: the answer is on its way.
         if (read?.state !== "loaded" || busy.has(row)) return;
         hold(row, true);
+        // The choice this change was made from: one made since is the person's, and stays.
+        const from = drafts.get(project);
         send({ ChangeSetting: { project, change } })
           .then(
             (reply) => {
@@ -209,6 +211,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 const settings = reply.ProjectSettings;
                 setProjects((now) => new Map(now).set(project, { state: "loaded", settings }));
                 setDrafts((now) => {
+                  if (now.get(project) !== from) return now;
                   const next = new Map(now);
                   next.delete(project);
                   return next;
