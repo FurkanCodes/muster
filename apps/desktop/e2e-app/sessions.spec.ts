@@ -54,8 +54,19 @@ key = "G"
   return folder;
 }
 
+/**
+ * A window wide enough for the agent and a panel beside it, each at the
+ * least a panel is given (solve.ts `PANEL_LEAST`): narrower, the pane shows
+ * the session alone, as the terminal UI folds a layout its window is too
+ * narrow for.
+ */
+async function roomForPanels(): Promise<void> {
+  await browser.setWindowRect(40, 40, 1680, 1000);
+}
+
 describe("All sessions and its panels, over the real daemon", () => {
   before(async () => {
+    await roomForPanels();
     await until(() => status().running, "the app to start its daemon", 30_000);
     repo = repository("web");
     // The project's checks, which leave a file to say they ran.
@@ -96,6 +107,7 @@ describe("All sessions and its panels, over the real daemon", () => {
     const pid = status().daemon?.pid;
     await restartApp();
     await theWindow();
+    await roomForPanels();
     await goTo("All sessions");
     await expect(line("feature/web")).toHaveAttribute("aria-expanded", "false");
     // The daemon ran on, and its session with it.

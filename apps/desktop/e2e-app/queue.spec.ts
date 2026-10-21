@@ -164,10 +164,10 @@ describe("Needs you, Not seen and Working, over the real daemon", () => {
     );
     await work(agents.long);
     await untilSession("Long at work", "running");
-    await pressOnWindow("l");
-    await untilSelected("Long at work");
     // At work again since just now: the newest at work, so after the other.
     await untilShown(["Asks first", "Lately at work", "Long at work"]);
+    await pressOnWindow("l");
+    await untilSelected("Long at work");
     await pressOnWindow("k", "k");
     await untilSelected("Asks first");
   });
