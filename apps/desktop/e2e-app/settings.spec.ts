@@ -3,7 +3,15 @@ import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { startAgent } from "./support/agents";
 import { sandbox } from "./support/harness";
-import { muster, project, session, settingsToml, status, until } from "./support/muster";
+import {
+  muster,
+  musterVersion,
+  project,
+  session,
+  settingsToml,
+  status,
+  until,
+} from "./support/muster";
 import { heard, opened } from "./support/record";
 import { repository } from "./support/repos";
 import { bareId, pressOnWindow, type } from "./support/window";
@@ -150,7 +158,9 @@ describe("Settings over the real daemon", () => {
     expect(session("Runs across the restart", after)?.status).not.toBe("exited");
     // The window's link, dropped as the daemon moved, is up again (it tries every half second).
     await browser.pause(1500);
-    await expect($("footer.mu-statusbar")).toHaveText(expect.stringContaining("Muster 0.4.1"));
+    await expect($("footer.mu-statusbar")).toHaveText(
+      expect.stringContaining(`Muster ${musterVersion()}`),
+    );
   });
 
   it("Notifications: off and on in [notifications], a sound chosen is played and kept, the notch off", async () => {

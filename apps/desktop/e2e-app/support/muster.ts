@@ -25,6 +25,13 @@ export function muster(...args: string[]): string {
   }
 }
 
+/** The version the sandbox's `muster` says it is: what the window shows it as, never written into a test. */
+export function musterVersion(): string {
+  return muster("--version")
+    .trim()
+    .replace(/^muster /, "");
+}
+
 export interface StatusSession {
   id: string;
   project: string;

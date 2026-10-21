@@ -3,7 +3,15 @@ import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
 import { agentOf, ask, askingSession, show, startAgent, work } from "./support/agents";
 import { keptState, restartApp, sandbox } from "./support/harness";
-import { muster, session, settingsToml, status, until, untilSession } from "./support/muster";
+import {
+  muster,
+  musterVersion,
+  session,
+  settingsToml,
+  status,
+  until,
+  untilSession,
+} from "./support/muster";
 import { daemonStarts, heard, holdDaemon, revealed } from "./support/record";
 import { repository } from "./support/repos";
 import {
@@ -75,7 +83,9 @@ describe("The window as a whole", () => {
 
   it("starts the daemon it finds none of, once, and says the link is up", async () => {
     expect(daemonStarts()).toEqual(["daemon --detach"]);
-    await expect($(".app-statusbar")).toHaveText(expect.stringContaining("Muster 0.4.1"));
+    await expect($(".app-statusbar")).toHaveText(
+      expect.stringContaining(`Muster ${musterVersion()}`),
+    );
     expect(await kep()).toBe("Nothing works or waits");
     await expect($("button.mu-command")).toBeEnabled();
   });
