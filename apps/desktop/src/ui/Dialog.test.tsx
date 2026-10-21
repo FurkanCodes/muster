@@ -56,6 +56,16 @@ describe("ARC-24 Dialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onAccept).not.toHaveBeenCalled();
   });
+  it("⏎ made by a script on a focused answer does that answer too, once", () => {
+    const onClose = vi.fn();
+    const onAccept = vi.fn();
+    renderWithApp(<Close onClose={onClose} onAccept={onAccept} />);
+    // A keydown alone, as the end-to-end tests' driver makes it: no click follows from the browser.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close ticket" }), { key: "Enter" });
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("← → go between the answers and ⌘⏎ does the acting one from any", async () => {
     const onAccept = vi.fn();
     renderWithApp(<Close onAccept={onAccept} />);
