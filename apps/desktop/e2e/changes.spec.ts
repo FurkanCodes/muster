@@ -506,3 +506,18 @@ test("ARC-24 ? lists the keys in the changes, the person's, and ⇧Q goes back t
   await page.keyboard.press("Shift+Q");
   await expect(page.getByLabel("Terminal", { exact: true })).toBeVisible();
 });
+
+test("ARC-24 the changes hold the keys: one they do not answer never reaches the list beneath", async ({
+  page,
+}) => {
+  await open(page);
+  await page.locator("body").focus();
+  // The queue's own keys: x closes the session, R renames it, n starts another, j moves on.
+  for (const key of ["x", "Shift+R", "n"]) await page.keyboard.press(key);
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+  await expect(page.locator('input[name="session-name"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Not committed/ })).toBeVisible();
+  // Its own still answer: d goes back to the terminal.
+  await page.keyboard.press("d");
+  await expect(page.getByRole("button", { name: /^Not committed/ })).toHaveCount(0);
+});

@@ -6,6 +6,7 @@
 
 import { lazy, Suspense, useState } from "react";
 import { useActions, useDaemon, useUi } from "../app/context";
+import { KeysHeld } from "../app/keys";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { KEY_SCREENS, useActionKeys, useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
@@ -122,7 +123,10 @@ export function SessionPane({
       </div>
       {mode === "changes" && workspace ? (
         <Suspense fallback={null}>
-          <ChangesView key={workspace} workspace={workspace} />
+          {/* Once shown, the changes hold the keys: one they do not answer never reaches the list. */}
+          <KeysHeld>
+            <ChangesView key={workspace} workspace={workspace} />
+          </KeysHeld>
         </Suspense>
       ) : (
         <>

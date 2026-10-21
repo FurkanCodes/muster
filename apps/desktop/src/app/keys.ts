@@ -3,7 +3,15 @@
 // they are shown. While a terminal has the keys, every key goes to its
 // program but the one that leaves it (⇧Q) and ⌘ shortcuts.
 
-import { useEffect, useRef } from "react";
+import {
+  createContext,
+  createElement,
+  type ReactNode,
+  use,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { charOfCode } from "../keys/chord";
 import type { App } from "./context";
 
@@ -25,9 +33,36 @@ export function chordOf(
 
 export type KeyHandlers = Readonly<Record<string, (event: KeyboardEvent) => void>>;
 
+/** A part of the window that holds the keys while it is shown ({@link KeysHeld}). */
+type Hold = object;
+
 // The shown screens' keys, newest last. Each entry is a ref, so a screen's
-// handlers are always its latest without registering again on every render.
-const stack: { current: KeyHandlers }[] = [];
+// handlers are always its latest without registering again on every render,
+// and the hold it was added inside, if any.
+const stack: { ref: { current: KeyHandlers }; hold: Hold | null }[] = [];
+
+// The parts holding the keys, newest last: the newest alone answers them.
+const holds: Hold[] = [];
+
+const HoldContext = createContext<Hold | null>(null);
+
+/**
+ * Holds the keys while `children` are shown, as the terminal UI's changes
+ * view does: a key reaches only the keys added inside it, never a list's or
+ * the window's beneath it, whatever order they were added in. ⌘ shortcuts
+ * still reach the window first.
+ */
+export function KeysHeld({ children }: { children: ReactNode }) {
+  const [hold] = useState<Hold>(() => ({}));
+  useEffect(() => {
+    holds.push(hold);
+    return () => {
+      const at = holds.lastIndexOf(hold);
+      if (at >= 0) holds.splice(at, 1);
+    };
+  }, [hold]);
+  return createElement(HoldContext, { value: hold }, children);
+}
 
 /**
  * Adds `handlers` while the calling component is shown; the newest wins.
@@ -37,14 +72,28 @@ const stack: { current: KeyHandlers }[] = [];
 export function useKeys(handlers: KeyHandlers, { beneath = false } = {}): void {
   const ref = useRef(handlers);
   ref.current = handlers;
+  const hold = use(HoldContext);
   useEffect(() => {
-    if (beneath) stack.unshift(ref);
-    else stack.push(ref);
+    const entry = { ref, hold };
+    if (beneath) stack.unshift(entry);
+    else stack.push(entry);
     return () => {
-      const at = stack.lastIndexOf(ref);
+      const at = stack.lastIndexOf(entry);
       if (at >= 0) stack.splice(at, 1);
     };
-  }, [beneath]);
+  }, [beneath, hold]);
+}
+
+/** What answers `chord` now: the newest keys added, inside the part holding the keys if one does. */
+function handlerFor(chord: string): KeyHandlers[string] | undefined {
+  const holding = holds[holds.length - 1] ?? null;
+  for (let at = stack.length - 1; at >= 0; at -= 1) {
+    const entry = stack[at];
+    if (!entry || (holding && entry.hold !== holding)) continue;
+    const handler = entry.ref.current[chord];
+    if (handler) return handler;
+  }
+  return undefined;
 }
 
 function editable(target: EventTarget | null): boolean {
@@ -77,14 +126,10 @@ const GLOBAL: Readonly<Record<string, (app: App) => void>> = {
  * Whether anything did.
  */
 export function pressKey(chord: string): boolean {
-  for (let at = stack.length - 1; at >= 0; at -= 1) {
-    const handler = stack[at]?.current[chord];
-    if (handler) {
-      handler(new KeyboardEvent("keydown", { key: chord }));
-      return true;
-    }
-  }
-  return false;
+  const handler = handlerFor(chord);
+  if (!handler) return false;
+  handler(new KeyboardEvent("keydown", { key: chord }));
+  return true;
 }
 
 export function installKeys(app: App): () => void {
@@ -117,13 +162,10 @@ export function installKeys(app: App): () => void {
     }
     if (ui.keysIn === "dialog" || editable(event.target)) return;
 
-    for (let at = stack.length - 1; at >= 0; at -= 1) {
-      const handler = stack[at]?.current[chord];
-      if (handler) {
-        event.preventDefault();
-        handler(event);
-        return;
-      }
+    const handler = handlerFor(chord);
+    if (handler) {
+      event.preventDefault();
+      handler(event);
     }
   };
   window.addEventListener("keydown", listener);
