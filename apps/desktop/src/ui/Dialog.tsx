@@ -13,7 +13,8 @@ import "./dialog.css";
  * the last field goes round to the first, ⇧⇥ the other way, so the keys
  * never leave it. The button that has the focus first carries
  * `data-dialog-initial`. While it is open the window's keys are the
- * dialog's, so no screen behind it acts on them.
+ * dialog's, so no screen behind it acts on them, and a key pressed in it
+ * never reaches the window's listener.
  */
 const FOCUSABLE =
   "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])";
@@ -81,6 +82,10 @@ export function Dialog({
         onClose();
       }}
       onKeyDown={(event) => {
+        // Keys in a modal are its own: the window's listener (app/keys.ts)
+        // never sees them, so it neither acts on them nor clears a note an
+        // answer has just put in the status bar.
+        event.stopPropagation();
         onKeyDown?.(event);
         if (event.defaultPrevented) return;
         if (event.key === "Tab") {

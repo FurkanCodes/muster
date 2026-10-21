@@ -4,7 +4,8 @@
 // sessions.rs, tidy.rs, stacks.rs, changes.rs), and what git and the file
 // system would say kept in `FlowWorld`. Renaming, stopping and removing a
 // session, removing a worktree and the tickets are answered in commands.ts
-// and tickets.ts.
+// and tickets.ts; what a workspace has changed, in commands.ts from
+// `world.changes`, which this fills in and keeps.
 
 import { agentOf } from "../../lib/agents";
 import { BridgeFailure } from "../bridge";
@@ -25,11 +26,12 @@ export class FlowWorld {
   readonly folders: Record<string, Folder[]> = folderTree();
   /** Folders list_folders cannot read, and why. */
   readonly unreadable: Record<string, string> = {};
-  /** What each workspace has changed, as WorkspaceChanges answers. */
-  readonly changes: Record<string, Changes> = {};
   next = 0;
 
+  /** Fills in what git says of the workspaces the scenario does not describe (`world.changes`). */
   constructor(world: Scenario) {
+    world.changes ??= {};
+    const changes = world.changes;
     const commits = [
       { id: "a1b2c3d", subject: "Settle the resize on release" },
       { id: "b2c3d4e", subject: "Keep the panel width" },
@@ -37,7 +39,7 @@ export class FlowWorld {
     ];
     for (const workspace of world.workspaces) {
       const worktree = workspace.kind.kind === "worktree";
-      this.changes[workspace.id] = {
+      changes[workspace.id] ??= {
         base: "origin/main",
         uncommitted: [],
         commits: worktree ? commits : [],
@@ -46,8 +48,8 @@ export class FlowWorld {
       };
     }
     // One worktree with work not committed, as git would find it.
-    const dirty = this.changes[ulid(22)];
-    if (dirty)
+    const dirty = changes[ulid(22)];
+    if (dirty && dirty.uncommitted.length === 0)
       dirty.uncommitted = [
         "app/build.gradle",
         "gradle.properties",
@@ -55,6 +57,12 @@ export class FlowWorld {
         "README.md",
       ].map((path) => ({ path, from: null, kind: "modified", lines: { added: 3, removed: 1 } }));
   }
+}
+
+/** What git says each workspace has changed, as WorkspaceChanges answers (commands.ts). */
+function changesOf(mock: MockBridge): Record<string, Changes> {
+  mock.world.changes ??= {};
+  return mock.world.changes;
 }
 
 function refuse(code: "bad_request" | "not_found" | "conflict", message: string): never {
@@ -134,7 +142,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     };
     world.projects.push(added);
     world.workspaces.push(checkout);
-    flows.changes[checkout.id] = {
+    changesOf(mock)[checkout.id] = {
       base: "origin/main",
       uncommitted: [],
       commits: [],
@@ -203,7 +211,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       stacked_on: parent ? { branch: parent.kind.branch, at: "d4e5f6a" } : null,
     };
     world.workspaces.push(workspace);
-    flows.changes[made] = {
+    changesOf(mock)[made] = {
       base: "origin/main",
       uncommitted: [],
       commits: [],
@@ -262,25 +270,6 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     return { SessionStarted: { id: found.id } };
   }
 
-  if ("WorkspaceChanges" in command) {
-    const found = place(command.WorkspaceChanges.workspace);
-    if (found.kind.kind === "container")
-      refuse("bad_request", "a run's container keeps its own clone; its changes are the run's");
-    if (!found.kind.branch)
-      refuse(
-        "bad_request",
-        "that is a plain folder, not a git repository: git cannot tell what changed there",
-      );
-    const changes = flows.changes[found.id] ?? {
-      base: "origin/main",
-      uncommitted: [],
-      commits: [],
-      more_commits: 0,
-      branch: [],
-    };
-    return { Changes: changes };
-  }
-
   if ("TidyCommits" in command) {
     const { workspace, harness } = command.TidyCommits;
     if (!takesPrompt(harness) || harness === "review")
@@ -296,7 +285,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     const busy = atWork(workspace);
     if (busy)
       refuse("conflict", `${busy.title} is at work there: tidy the commits once it has stopped`);
-    const changes = flows.changes[workspace];
+    const changes = changesOf(mock)[workspace];
     if (changes?.uncommitted.length)
       refuse(
         "bad_request",
@@ -337,7 +326,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     const busy = atWork(found.id);
     if (busy)
       refuse("conflict", `${busy.title} is at work there: move the branch once it has stopped`);
-    const changes = flows.changes[found.id];
+    const changes = changesOf(mock)[found.id];
     if (changes?.uncommitted.length)
       refuse(
         "conflict",

@@ -638,7 +638,7 @@ test.describe("PRD-09 the session dialogs", () => {
     await stack(true);
     await select(page, "all", id(11));
     await page.keyboard.press("u");
-    const merged = page.getByRole("dialog", { name: "Move feature/desktop-app onto origin/main?" });
+    const merged = page.getByRole("dialog", { name: "Move feature/desktop-app onto main?" });
     await expect(merged).toContainText(
       "The branch it was stacked on, fix/resize-under-load, merged as #88.",
     );

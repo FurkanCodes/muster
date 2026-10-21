@@ -1,0 +1,5 @@
+/* FileRow's path is cut from its start when short of room, so the name stays (design system: FileRow). */
+.ui-file-path {
+  direction: rtl;
+  text-align: left;
+}
