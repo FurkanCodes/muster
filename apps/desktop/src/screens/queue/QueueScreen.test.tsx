@@ -324,6 +324,19 @@ describe("ARC-24 renaming, closing and the pull request from the list", () => {
   });
 });
 
+describe("ARC-24 the changes beside the queue", () => {
+  it("say their own keys while shown, however the session's status moves", async () => {
+    const { bridge } = await opened();
+    await userEvent.keyboard("d");
+    await waitFor(() => expect(hints()).toContain("ask git again"));
+    act(() => bridge.setStatus(ulid(101), { state: "finished" }, true));
+    await waitFor(() => expect(hints()).toContain("ask git again"));
+    expect(hints()).not.toContain("last needed you");
+    await userEvent.keyboard("d");
+    await waitFor(() => expect(hints()).toContain("last needed you"));
+  });
+});
+
 describe("ARC-24 the queue answers the person's keys", () => {
   it("moves, renames, puts back and opens the pull request on the keys set, and hints them", async () => {
     const bridge = new MockBridge(workingDay());

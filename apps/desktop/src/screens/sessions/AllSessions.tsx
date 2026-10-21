@@ -169,7 +169,10 @@ export default function AllSessions() {
   });
 
   const kind = selected?.kind ?? null;
+  // The changes, while shown, say their own keys.
+  const changesShown = useUi((state) => state.pane === "changes") && session !== undefined;
   useEffect(() => {
+    if (changesShown) return;
     if (keysIn === "terminal") return actions.setHints(IN_TERMINAL);
     if (fullScreen)
       return actions.setHints([
@@ -219,6 +222,7 @@ export default function AllSessions() {
     checksKey,
     reviewKey,
     openKey,
+    changesShown,
   ]);
   useEffect(() => () => actions.setHints([]), [actions]);
 

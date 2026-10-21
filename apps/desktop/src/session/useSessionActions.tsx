@@ -156,6 +156,12 @@ export function RenameSession({ actions }: { actions: SessionActions }) {
         });
       }}
       onKeyDown={(event) => {
+        // ⏎ renames whatever made the key, as the shared Dialog takes it.
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.requestSubmit();
+          return;
+        }
         if (event.key !== "Escape") return;
         event.preventDefault();
         event.stopPropagation();

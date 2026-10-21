@@ -150,13 +150,16 @@ export function QueueScreen({ area }: { area: QueueArea }) {
   }, [app, actions, area, keysIn, selected]);
 
   const map = useKeymap();
+  // The changes, while shown, say their own keys.
+  const changesShown = useUi((state) => state.pane === "changes") && selected !== undefined;
   useEffect(() => {
+    if (changesShown) return;
     actions.setHints(
       keysIn === "terminal"
         ? IN_TERMINAL
         : hintsFor(map, section, newestTurn !== null, hasPullRequest),
     );
-  }, [actions, map, keysIn, section, newestTurn, hasPullRequest]);
+  }, [actions, map, keysIn, section, newestTurn, hasPullRequest, changesShown]);
   useEffect(() => () => actions.setHints([]), [actions]);
 
   const pick = (id: SessionId) => {
