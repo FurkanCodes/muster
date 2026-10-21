@@ -1,0 +1,84 @@
+# Muster.app for a release (PRODUCT.md §6a): one universal app, for Apple
+# silicon and Intel Macs, made by the release workflow (release.yml) as a
+# job of dist's `local-artifacts-jobs`. Its archive, checksum and build
+# attestation go to the release beside the `muster` archives, and
+# install.sh and `muster upgrade` install it from there.
+#
+# The app is signed ad hoc, not with a Developer ID: macOS runs it, and a
+# copy fetched by install.sh or `muster upgrade` (curl, reqwest) carries no
+# quarantine, so Gatekeeper never asks. A copy downloaded in a browser does,
+# and is let through once in System Settings › Privacy & Security.
+name: Build Muster.app
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Muster.app (universal)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    defaults:
+      run:
+        working-directory: apps/desktop
+    env:
+      ARCHIVE: muster-app-universal-apple-darwin.tar.gz
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Toolchain, for both Macs
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+        working-directory: .
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      # The app says the version of the release it comes with: the tag's.
+      - name: Build
+        env:
+          TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+        run: |
+          version="${TAG#v}"
+          pnpm tauri build --target universal-apple-darwin --bundles app \
+            --config "{\"version\":\"$version\"}"
+      # Signed ad hoc as a whole, so its resources are sealed and macOS
+      # runs it as one app.
+      - name: Sign ad hoc and pack
+        run: |
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/Muster.app
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          mkdir -p dist-app
+          tar -czf "dist-app/$ARCHIVE" -C "$(dirname "$app")" Muster.app
+          (cd dist-app && shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256")
+      - name: Attest
+        uses: actions/attest@v4
+        with:
+          subject-path: apps/desktop/dist-app/${{ env.ARCHIVE }}
+      # Named `artifacts-*`, so the release's host job publishes it.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: artifacts-build-app
+          path: |
+            apps/desktop/dist-app/${{ env.ARCHIVE }}
+            apps/desktop/dist-app/${{ env.ARCHIVE }}.sha256

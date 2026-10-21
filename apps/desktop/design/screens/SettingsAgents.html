@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, agents</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span>Go to a setting or run a command</span><span class="mu-kbd">⌘K</span></button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done"><span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span><span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span><span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span></div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used"><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span></div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Settings sections" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar); display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Settings</h1><span class="mu-meta">The terminal UI shares them.</span></div>
+<div style="flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-8) var(--space-16)">
+<div class="mu-nav-label" style="padding-top: var(--space-8)">Muster</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>General</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Notifications</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"></span>Agents<span class="mu-nav-count">6</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Naming chats</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Plugins<span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Keys</button>
+<div class="mu-nav-label">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p3"></span></span><span style="color: var(--text)">kep-site</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p4"></span></span><span style="color: var(--text)">kep-api</span></button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0; overflow: auto">
+<div class="mu-settings">
+<div class="mu-settings-head">
+<h2 class="mu-settings-title">Agents</h2>
+<span class="mu-meta">The coding agents Muster can start, with your own sign-ins. Muster hears each the way it allows, without editing its settings.</span>
+</div>
+
+<section class="mu-settings-group" aria-labelledby="g-own">
+<h3 class="mu-settings-group-title" id="g-own">Muster's own</h3>
+<div class="mu-agentrow"><span class="mu-logo mu-logo--lg"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt=""></span><span class="mu-agentrow-text"><span class="mu-agentrow-name"><b>Claude Code</b><span class="mu-plugin-version">2.1.303</span></span><span class="mu-agentrow-facts"><span class="mu-found">✓ <span class="mu-mono">/opt/homebrew/bin/claude</span></span><span><span class="mu-found">✓</span> status from its hooks</span><span><span class="mu-found">✓</span> resumes after a restart</span><span><span class="mu-found">✓</span> names chats</span></span></span></div>
+<div class="mu-agentrow"><span class="mu-logo mu-logo--lg"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt=""></span><span class="mu-agentrow-text"><span class="mu-agentrow-name"><b>Codex</b><span class="mu-plugin-version">0.162.1</span></span><span class="mu-agentrow-facts"><span class="mu-found">✓ <span class="mu-mono">/opt/homebrew/bin/codex</span></span><span>status from its turn notice and window title</span><span><span class="mu-found">✓</span> resumes</span><span><span class="mu-found">✓</span> names chats</span></span></span></div>
+<div class="mu-agentrow"><span class="mu-logo mu-logo--lg"><img src="/_blob/c161e767823acd431b9c967857542c89" alt=""></span><span class="mu-agentrow-text"><span class="mu-agentrow-name"><b>Gemini CLI</b><span class="mu-plugin-version">0.63.0</span></span><span class="mu-agentrow-facts"><span class="mu-found">✓ <span class="mu-mono">~/.npm-global/bin/gemini</span></span><span><span class="mu-found">✓</span> status from its hooks</span><span><span class="mu-found">✓</span> resumes</span><span>✗ names chats, not checked yet</span></span></span></div>
+<div class="mu-agentrow"><span class="mu-logo mu-logo--lg"><img src="/_blob/9022fdb72074cc7ab16a193f7459f5df" alt=""></span><span class="mu-agentrow-text"><span class="mu-agentrow-name"><b>OpenCode</b><span class="mu-plugin-version">1.4.6</span></span><span class="mu-agentrow-facts"><span class="mu-found">✓ <span class="mu-mono">/opt/homebrew/bin/opencode</span></span><span><span class="mu-found">✓</span> status from a plugin of Muster's</span><span><span class="mu-found">✓</span> resumes</span><span>✗ names chats, not checked yet</span></span></span></div>
+<div class="mu-agentrow"><span class="mu-logo mu-logo--lg"><img src="/_blob/0c866c86decd12cba083fe09a20dc74e" alt=""></span><span class="mu-agentrow-text"><span class="mu-agentrow-name"><b>Copilot CLI</b></span><span class="mu-agentrow-facts"><span class="mu-missing">✗ not found</span><span>Install it with <span class="mu-mono" style="color: var(--text)">npm install -g @github/copilot</span>, then read again.</span></span></span></div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="g-yours">
+<h3 class="mu-settings-group-title" id="g-yours">Added by you</h3>
+<div class="mu-agentrow"><span class="mu-logo mu-logo--lg mu-logo--mark" style="font-size: 15px">•</span><span class="mu-agentrow-text"><span class="mu-agentrow-name"><b>Goose</b><span class="mu-label">added by you</span></span><span class="mu-agentrow-facts"><span class="mu-found">✓ <span class="mu-mono">goose session</span></span><span><span class="mu-found">✓</span> takes a first prompt</span><span>status from its window title</span></span><span class="mu-meta" style="color: var(--waiting)"><span class="mu-mono">[agents.goose] resume</span> does not read: it must be a list of words, such as <span class="mu-mono">["--resume"]</span>. Goose is offered nowhere until it reads.</span></span></div>
+<div style="display: flex; gap: var(--space-8); padding: var(--space-8) var(--space-12) 0">
+<button class="mu-btn mu-btn--quiet" title="Open settings.toml in your editor">Edit settings.toml</button>
+<button class="mu-btn mu-btn--quiet" title="Read it again (r)">Read it again</button>
+</div>
+</section>
+
+<p class="mu-footnote" style="margin: 0">Add an agent under <code>[agents.&lt;name&gt;]</code> in <code>~/.config/muster/settings.toml</code>: its program and fixed arguments, how it takes a first prompt, how it carries on after a restart, and its mark's colour. Never in a repository.</p>
+</div>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-note mu-note--error">Goose's settings do not read. Fix the line, then press r.</span>
+<span class="mu-spacer"></span>
+<span class="mu-hint"><span class="mu-kbd">r</span>read again</span>
+<span class="mu-hint"><span class="mu-kbd">h</span>every key</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

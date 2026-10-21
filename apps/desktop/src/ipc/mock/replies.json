@@ -1,0 +1,547 @@
+[
+  {
+    "outcome": {
+      "reply": "Pong"
+    },
+    "save": null,
+    "send": "Ping",
+    "what": "asks whether the daemon answers"
+  },
+  {
+    "outcome": {
+      "reply": {
+        "ProjectAdded": {
+          "id": "$project"
+        }
+      }
+    },
+    "save": "project",
+    "send": {
+      "AddProject": {
+        "name": null,
+        "root": "$repo"
+      }
+    },
+    "what": "adds a repository as a project"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "conflict",
+        "message": "$repo is already a project"
+      }
+    },
+    "save": null,
+    "send": {
+      "AddProject": {
+        "name": null,
+        "root": "$repo"
+      }
+    },
+    "what": "adds the same folder again"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "bad_request",
+        "message": "repos/app is not an absolute path"
+      }
+    },
+    "save": null,
+    "send": {
+      "AddProject": {
+        "name": null,
+        "root": "repos/app"
+      }
+    },
+    "what": "adds a path that is not absolute"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "bad_request",
+        "message": "cannot open $repo/nothing-here: No such file or directory (os error 2)"
+      }
+    },
+    "save": null,
+    "send": {
+      "AddProject": {
+        "name": null,
+        "root": "$repo/nothing-here"
+      }
+    },
+    "what": "adds a folder that is not there"
+  },
+  {
+    "checkout": "$project",
+    "save": "checkout",
+    "what": "finds the project's own checkout"
+  },
+  {
+    "outcome": {
+      "reply": {
+        "Timeline": {
+          "entries": []
+        }
+      }
+    },
+    "save": null,
+    "send": {
+      "Timeline": {
+        "workspace": "$checkout"
+      }
+    },
+    "what": "reads a timeline with nothing kept"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no workspace wsp_$missing"
+      }
+    },
+    "save": null,
+    "send": {
+      "Timeline": {
+        "workspace": "$missing"
+      }
+    },
+    "what": "reads the timeline of a workspace that is not there"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "there is no entry 99 in this workspace's timeline"
+      }
+    },
+    "save": null,
+    "send": {
+      "EntryDiff": {
+        "number": 99,
+        "workspace": "$checkout"
+      }
+    },
+    "what": "reads an entry the timeline does not have"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no workspace wsp_$missing"
+      }
+    },
+    "save": null,
+    "send": {
+      "WorkspaceChanges": {
+        "workspace": "$missing"
+      }
+    },
+    "what": "reads the changes of a workspace that is not there"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "README.md is no longer changed there"
+      }
+    },
+    "save": null,
+    "send": {
+      "FileDiff": {
+        "part": "uncommitted",
+        "path": "README.md",
+        "workspace": "$checkout"
+      }
+    },
+    "what": "reads the diff of a file not changed"
+  },
+  {
+    "outcome": {
+      "reply": {
+        "Agents": [
+          {
+            "harness": "claude",
+            "path": null,
+            "version": null
+          },
+          {
+            "harness": "codex",
+            "path": "$bin/codex",
+            "version": null
+          },
+          {
+            "harness": "gemini",
+            "path": null,
+            "version": null
+          },
+          {
+            "harness": "opencode",
+            "path": null,
+            "version": null
+          },
+          {
+            "harness": "copilot",
+            "path": null,
+            "version": null
+          }
+        ]
+      }
+    },
+    "save": null,
+    "send": "Agents",
+    "what": "asks where each coding agent is installed"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "bad_request",
+        "message": "the project names no checks: add `[checks] commands = [\"…\"]` to muster.toml"
+      }
+    },
+    "save": null,
+    "send": {
+      "CheckWorkspace": {
+        "size": {
+          "cols": 80,
+          "rows": 24
+        },
+        "workspace": "$checkout"
+      }
+    },
+    "what": "runs the checks of a project that names none"
+  },
+  {
+    "outcome": {
+      "reply": {
+        "SessionStarted": {
+          "id": "$session"
+        }
+      }
+    },
+    "save": "session",
+    "send": {
+      "StartSession": {
+        "harness": "shell",
+        "prompt": null,
+        "size": {
+          "cols": 80,
+          "rows": 24
+        },
+        "title": null,
+        "workspace": "$checkout"
+      }
+    },
+    "what": "starts a shell"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no workspace wsp_$missing"
+      }
+    },
+    "save": null,
+    "send": {
+      "StartSession": {
+        "harness": "shell",
+        "prompt": null,
+        "size": {
+          "cols": 80,
+          "rows": 24
+        },
+        "title": null,
+        "workspace": "$missing"
+      }
+    },
+    "what": "starts a session in a workspace that is not there"
+  },
+  {
+    "outcome": {
+      "reply": "Done"
+    },
+    "save": null,
+    "send": {
+      "RenameSession": {
+        "session": "$session",
+        "title": "  A\n name  "
+      }
+    },
+    "what": "renames a session on one line"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "bad_request",
+        "message": "a session's name cannot be empty"
+      }
+    },
+    "save": null,
+    "send": {
+      "RenameSession": {
+        "session": "$session",
+        "title": " "
+      }
+    },
+    "what": "renames a session to nothing"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no session ses_$missing"
+      }
+    },
+    "save": null,
+    "send": {
+      "RenameSession": {
+        "session": "$missing",
+        "title": "Gone"
+      }
+    },
+    "what": "renames a session that is not there"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "conflict",
+        "message": "A name is still running; stop it first"
+      }
+    },
+    "save": null,
+    "send": {
+      "RemoveSession": {
+        "session": "$session"
+      }
+    },
+    "what": "removes a session still running"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "conflict",
+        "message": "stop app's 1 running session(s) first"
+      }
+    },
+    "save": null,
+    "send": {
+      "RemoveProject": {
+        "project": "$project"
+      }
+    },
+    "what": "removes a project with a session running"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "bad_request",
+        "message": "\"bad..name\" is not a valid branch name"
+      }
+    },
+    "save": null,
+    "send": {
+      "CreateWorktree": {
+        "branch": "bad..name",
+        "on": null,
+        "project": "$project"
+      }
+    },
+    "what": "makes a worktree on a branch git would not take"
+  },
+  {
+    "outcome": {
+      "reply": {
+        "WorktreeCreated": {
+          "id": "$worktree"
+        }
+      }
+    },
+    "save": "worktree",
+    "send": {
+      "CreateWorktree": {
+        "branch": "feature",
+        "on": null,
+        "project": "$project"
+      }
+    },
+    "what": "makes a worktree on a new branch"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "conflict",
+        "message": "feature already has a worktree"
+      }
+    },
+    "save": null,
+    "send": {
+      "CreateWorktree": {
+        "branch": "feature",
+        "on": null,
+        "project": "$project"
+      }
+    },
+    "what": "makes a second worktree on the same branch"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no project prj_$missing"
+      }
+    },
+    "save": null,
+    "send": {
+      "CreateWorktree": {
+        "branch": null,
+        "on": null,
+        "project": "$missing"
+      }
+    },
+    "what": "makes a worktree for a project that is not there"
+  },
+  {
+    "outcome": {
+      "reply": "Done"
+    },
+    "save": null,
+    "send": {
+      "StopSession": {
+        "session": "$session"
+      }
+    },
+    "what": "stops the shell"
+  },
+  {
+    "exited": "$session",
+    "what": "waits for the shell to end"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "conflict",
+        "message": "ses_$session has already exited"
+      }
+    },
+    "save": null,
+    "send": {
+      "StopSession": {
+        "session": "$session"
+      }
+    },
+    "what": "stops the shell again"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "ses_$missing is not running"
+      }
+    },
+    "save": null,
+    "send": {
+      "StopSession": {
+        "session": "$missing"
+      }
+    },
+    "what": "stops a session that is not there"
+  },
+  {
+    "outcome": {
+      "reply": "Done"
+    },
+    "save": null,
+    "send": {
+      "RemoveSession": {
+        "session": "$session"
+      }
+    },
+    "what": "removes the shell"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no session ses_$session"
+      }
+    },
+    "save": null,
+    "send": {
+      "RemoveSession": {
+        "session": "$session"
+      }
+    },
+    "what": "removes it again"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "conflict",
+        "message": "app has 1 worktree(s); remove them first"
+      }
+    },
+    "save": null,
+    "send": {
+      "RemoveProject": {
+        "project": "$project"
+      }
+    },
+    "what": "removes a project that has a worktree"
+  },
+  {
+    "outcome": {
+      "reply": "Done"
+    },
+    "save": null,
+    "send": {
+      "RemoveWorktree": {
+        "force": false,
+        "workspace": "$worktree"
+      }
+    },
+    "what": "removes the worktree"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no worktree wsp_$missing"
+      }
+    },
+    "save": null,
+    "send": {
+      "RemoveWorktree": {
+        "force": false,
+        "workspace": "$missing"
+      }
+    },
+    "what": "removes a worktree that is not there"
+  },
+  {
+    "outcome": {
+      "reply": "Done"
+    },
+    "save": null,
+    "send": {
+      "RemoveProject": {
+        "project": "$project"
+      }
+    },
+    "what": "removes the project"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "not_found",
+        "message": "no project prj_$project"
+      }
+    },
+    "save": null,
+    "send": {
+      "RemoveProject": {
+        "project": "$project"
+      }
+    },
+    "what": "removes it again"
+  }
+]

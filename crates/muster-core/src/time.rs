@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// A moment in wall-clock time: milliseconds since the Unix epoch, UTC.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(transparent)]
 pub struct Timestamp(i64);
 

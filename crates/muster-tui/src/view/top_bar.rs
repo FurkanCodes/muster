@@ -148,32 +148,18 @@ fn fleet(app: &App, daemon_version: &str, room: usize) -> Vec<Span<'static>> {
 /// status's look; those of none are left out. With `words`, what each
 /// count is.
 fn counts(app: &App, words: bool) -> Vec<Span<'static>> {
-    let sessions = app.model.sessions();
     // The agents: a shell is the person's own, a panel a plugin's.
-    let count = |wanted: fn(SessionStatus) -> bool| {
-        sessions
-            .iter()
-            .filter(|session| !crate::model::stands_beside(session) && wanted(session.status))
-            .count()
-    };
+    let counts = app.model.counts();
     let groups = [
+        (counts.working, SessionStatus::Running, "working"),
         (
-            count(|status| status == SessionStatus::Running),
-            SessionStatus::Running,
-            "working",
-        ),
-        (
-            count(|status| matches!(status, SessionStatus::NeedsYou { .. })),
+            counts.waiting,
             SessionStatus::NeedsYou {
                 reason: muster_core::WaitReason::Question,
             },
             "waiting",
         ),
-        (
-            count(|status| status == SessionStatus::Finished),
-            SessionStatus::Finished,
-            "done",
-        ),
+        (counts.done, SessionStatus::Finished, "done"),
     ];
     let mut spans = Vec::new();
     for (count, status, word) in groups {

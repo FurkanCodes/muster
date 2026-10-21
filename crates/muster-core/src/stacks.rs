@@ -12,6 +12,7 @@ pub const STACKS_PROTOCOL: u32 = 28;
 
 /// The branch a workspace's branch is stacked on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Stacked {
     /// That branch's name, such as `muster/issue-12-fix-the-login`.
     pub branch: String,

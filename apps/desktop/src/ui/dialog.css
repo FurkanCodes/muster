@@ -1,0 +1,24 @@
+/* The native <dialog> under mu-dialog: the browser's own frame and backdrop give way to the design system's. */
+.ui-dialog {
+  border: 0;
+  color: var(--text);
+  z-index: var(--z-dialog);
+  max-height: calc(100% - var(--space-24));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ui-dialog:not([open]) {
+  display: none;
+}
+.ui-dialog::backdrop {
+  background: var(--scrim);
+}
+.ui-dialog--wide {
+  width: var(--size-dialog-wide);
+  gap: var(--space-20);
+}
+.ui-dialog-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}

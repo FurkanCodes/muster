@@ -53,6 +53,7 @@ pub struct Manifest {
 
 /// A terminal program shown beside a session or a workspace.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Panel {
     /// Its id within the plugin.
     pub id: String,
@@ -68,6 +69,7 @@ pub struct Panel {
 
 /// What a panel is beside.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum PanelOn {
     Session,
@@ -85,6 +87,7 @@ impl PanelOn {
 
 /// A ticket source: one process serving every project's tickets.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TicketSource {
     /// As the Tickets screen names it: `YouTrack`.
     pub name: String,
@@ -99,6 +102,7 @@ pub struct TicketSource {
 
 /// A field of a project's `[tickets]`, for a ticket source.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TicketSetting {
     pub key: String,
     pub label: String,

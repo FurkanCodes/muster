@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, putting a turn back</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="position: relative; height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking" title="Something asks for you">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span>Go to a session or run a command</span><span class="mu-kbd">⌘K</span></button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done"><span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span><span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span><span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span></div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; overflow: hidden">
+<nav class="mu-nav mu-nav--folded" aria-label="Screens, folded" style="flex: none"></nav>
+<section aria-label="Needs you" style="flex: 0 0 var(--layout-queue-min); background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Needs you</h1></div>
+<div class="mu-queue">
+<button class="mu-row mu-row--two" aria-selected="true" style="background: var(--surface-tint)"><span class="mu-mark mu-mark--waiting">▲</span><span class="mu-logo"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span><span class="mu-row-text"><span class="mu-cut" style="font-weight: 600">Sketch the Tauri shell</span><span class="mu-meta mu-cut" style="color: var(--waiting)">wants to run cargo build</span></span><span class="mu-age">1m</span></button>
+</div>
+</section>
+<main class="mu-pane" style="flex: 1; min-width: 0">
+<div class="mu-pane-head">
+<div class="mu-pane-title-row"><span class="mu-logo mu-logo--lg"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span><h2 class="mu-pane-title">Sketch the Tauri shell</h2></div>
+<div class="mu-pane-meta"><span><span class="mu-branch">⎇ feature/desktop-app</span> <span class="mu-where">in <span class="mu-p1">muster</span></span></span></div>
+</div>
+<div style="display: flex; gap: var(--space-12); padding: 0 var(--space-20) var(--space-12)">
+<div class="mu-seg" role="group" aria-label="Which changes"><button class="mu-seg-item" aria-pressed="false">Not committed 3</button><button class="mu-seg-item" aria-pressed="false">On the branch 2</button><button class="mu-seg-item" aria-pressed="true">Turns 4</button></div>
+</div>
+<div style="display: flex; gap: var(--space-12); padding: 0 var(--space-20); height: 520px">
+<div role="listbox" aria-label="Turns" style="flex: 0 0 300px; display: flex; flex-direction: column; gap: var(--space-2)">
+<button class="mu-turnrow" role="option"><span class="mu-turnrow-num">4</span><span class="mu-logo mu-logo--sm"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt=""></span><span class="mu-turnrow-text"><span>Codex, turn 3</span><span class="mu-meta">3 files <span class="mu-add">+203</span> <span class="mu-del">−4</span></span></span><span class="mu-age">1m</span></button>
+<button class="mu-turnrow" role="option"><span class="mu-turnrow-num">3</span><span class="mu-logo mu-logo--sm mu-logo--mark">✎</span><span class="mu-turnrow-text"><span>Your edits between turns</span><span class="mu-meta">1 file <span class="mu-add">+2</span> <span class="mu-del">−2</span></span></span><span class="mu-age">6m</span></button>
+<button class="mu-turnrow" role="option" aria-selected="true"><span class="mu-turnrow-num">2</span><span class="mu-logo mu-logo--sm"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt=""></span><span class="mu-turnrow-text"><span>Codex, turn 2</span><span class="mu-meta">2 files <span class="mu-add">+85</span>, 1 commit</span></span><span class="mu-age">9m</span></button>
+<button class="mu-turnrow" role="option"><span class="mu-turnrow-num">1</span><span class="mu-logo mu-logo--sm"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt=""></span><span class="mu-turnrow-text"><span>Codex, turn 1</span><span class="mu-meta">changed no files</span></span><span class="mu-age">14m</span></button>
+</div>
+<div class="mu-diffview" style="flex: 1"><div class="mu-diffview-head"><span class="mu-mono" style="flex: 1">Codex, turn 2</span><span class="mu-diff"><span class="mu-add">+85</span></span></div><div class="mu-diffview-body"></div></div>
+</div>
+</main>
+</div>
+
+<div class="mu-scrim" style="position: absolute; inset: 0; z-index: var(--z-scrim); display: flex; align-items: flex-start; justify-content: center; padding: 150px var(--space-24) var(--space-24)">
+<div class="mu-dialog" role="dialog" aria-modal="true" aria-labelledby="pb-title" style="width: var(--size-dialog-wide)">
+<h2 class="mu-dialog-title" id="pb-title">Put the files back as before Codex's turn 2?</h2>
+<p class="mu-dialog-text">The worktree's files go back as they were 9 minutes ago. What is there now is kept first, so this can be put back too.</p>
+<dl class="mu-details">
+<dt>Goes with it</dt><dd>Your edits between turns, 6m ago<br>Codex, turn 3, 1m ago</dd>
+<dt>The branch</dt><dd>Has moved since: 1 commit not pushed, <span class="mu-mono">a1b2c3d Add the desktop crate</span>. Put back with the branch to move it back too.</dd>
+<dt>Codex</dt><dd>Still remembers those turns. Tell it what you put back.</dd>
+</dl>
+<div class="mu-dialog-actions">
+<button class="mu-btn mu-btn--secondary mu-btn--lg" title="Keep it (n)">Keep it</button>
+<button class="mu-btn mu-btn--secondary mu-btn--lg" title="Files only (y)">Put back the files</button>
+<button class="mu-btn mu-btn--primary mu-btn--lg" title="Files and branch (b)" style="outline: var(--stroke-focus) solid var(--focus-ring); outline-offset: var(--stroke-focus-offset)">Put back with the branch</button>
+</div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

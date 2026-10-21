@@ -20,3 +20,7 @@ pr-run-mode = "plan"
 # Dependabot may move release.yml's actions/checkout on; dist accepts that
 # rather than failing the release, and `dist generate` rewrites it anyway.
 allow-dirty = ["ci"]
+# Muster.app, built by .github/workflows/build-app.yml beside the binaries
+# and published with them (PRODUCT.md §6a).
+local-artifacts-jobs = ["./build-app"]
+github-custom-job-permissions = { "build-app" = { attestations = "write", contents = "read", id-token = "write" } }

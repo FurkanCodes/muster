@@ -34,8 +34,9 @@ macro_rules! id_type {
     ($(#[$meta:meta])* $name:ident, $prefix:literal) => {
         $(#[$meta])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
         #[serde(transparent)]
-        pub struct $name(Ulid);
+        pub struct $name(#[cfg_attr(feature = "ts", ts(type = "string"))] Ulid);
 
         impl $name {
             /// The prefix used when this ID is printed.

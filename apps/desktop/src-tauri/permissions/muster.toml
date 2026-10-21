@@ -1,0 +1,21 @@
+[[permission]]
+identifier = "allow-muster"
+description = "Muster's own link to its daemon: its state, the daemon's commands, sessions' terminals, trying to reach it now and its log, the terminals' colours, a ticket opened in the browser a sound heard as it is chosen, the window's own state kept (folds, the theme), and, in builds for the end-to-end tests only, a ⌘ key pressed as the person's keyboard does."
+commands.allow = [
+  "link_open",
+  "command",
+  "attach",
+  "detach",
+  "input",
+  "resize",
+  "watch",
+  "looking",
+  "try_now",
+  "colours",
+  "show_daemon_log",
+  "open_ticket_url",
+  "hear",
+  "kept",
+  "keep",
+  "e2e_command_key",
+]

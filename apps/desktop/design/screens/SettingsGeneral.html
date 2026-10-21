@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, general settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span>Go to a setting or run a command</span><span class="mu-kbd">⌘K</span></button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done"><span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span><span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span><span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span></div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used"><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span></div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Settings sections" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar); display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Settings</h1><span class="mu-meta">The terminal UI shares them.</span></div>
+<div style="flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-8) var(--space-16)">
+<div class="mu-nav-label" style="padding-top: var(--space-8)">Muster</div>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"></span>General</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Notifications</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Agents<span class="mu-nav-count">6</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Naming chats</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Plugins<span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Keys</button>
+<div class="mu-nav-label">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p3"></span></span><span style="color: var(--text)">kep-site</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p4"></span></span><span style="color: var(--text)">kep-api</span></button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0; overflow: auto">
+<div class="mu-settings">
+<div class="mu-settings-head">
+<h2 class="mu-settings-title">General</h2>
+<span class="mu-meta">How Muster looks and lays itself out.</span>
+</div>
+
+<section class="mu-settings-group" aria-labelledby="g-look">
+<h3 class="mu-settings-group-title" id="g-look">Look</h3>
+<div class="mu-setting">
+<span class="mu-setting-text"><span class="mu-setting-name">Theme<span class="mu-label">this app</span></span><span class="mu-meta">Dark is Muster's first theme. Terminals keep their own programs' colours either way.</span></span>
+<span class="mu-setting-control"><div class="mu-seg" role="group" aria-label="Theme"><button class="mu-seg-item" aria-pressed="true">Dark</button><button class="mu-seg-item" aria-pressed="false">Light</button><button class="mu-seg-item" aria-pressed="false">Follow the Mac</button></div></span>
+</div>
+<div class="mu-setting">
+<span class="mu-setting-text"><span>Lines for each session</span><span class="mu-meta">Two fit a name with what it is doing under it. One fits twice as many.</span></span>
+<span class="mu-setting-control"><div class="mu-seg" role="group" aria-label="Lines for each session"><button class="mu-seg-item" aria-pressed="true">Two</button><button class="mu-seg-item" aria-pressed="false">One</button></div></span>
+</div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="g-layout">
+<h3 class="mu-settings-group-title" id="g-layout">Layout</h3>
+<div class="mu-setting">
+<span class="mu-setting-text"><span>Panels</span><span class="mu-meta">Now <code>list | session 60% | (changes / shell)</code>. Drag a panel's title to move it, or the line between two to resize them.</span></span>
+<span class="mu-setting-control"><button class="mu-btn mu-btn--quiet">Put back as at first</button></span>
+</div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="g-tui">
+<h3 class="mu-settings-group-title" id="g-tui">Terminal UI only</h3>
+<div class="mu-setting">
+<span class="mu-setting-text"><span>Colours</span><span class="mu-meta">Muster's own are soft and the same in any terminal. The terminal's own sixteen follow its theme.</span></span>
+<span class="mu-setting-control"><button class="mu-select" aria-haspopup="listbox" aria-label="Colours"><span class="mu-select-value">Muster's own</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button></span>
+</div>
+<div class="mu-setting">
+<span class="mu-setting-text"><span>Session beside the list from</span><span class="mu-meta">In a narrower terminal the list takes the window, and a session opens over it.</span></span>
+<span class="mu-setting-control"><button class="mu-select" aria-haspopup="listbox" aria-label="Session beside the list from"><span class="mu-select-value">100 columns</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button></span>
+</div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="g-muster">
+<h3 class="mu-settings-group-title" id="g-muster">Muster</h3>
+<div class="mu-setting" style="cursor: default">
+<span class="mu-setting-text"><span>Muster 0.4.1</span><span class="mu-meta">Its daemon has run 3 days and holds 11 sessions. Restarting in place moves it onto the Muster installed now, and every session runs on.</span></span>
+<span class="mu-setting-control"><button class="mu-btn mu-btn--quiet">Restart in place</button></span>
+</div>
+</section>
+
+<p class="mu-footnote" style="margin: 0">Saved in <code>~/.config/muster/settings.toml</code>, Muster's own settings. Theme is kept by this app alone.</p>
+</div>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-hint"><span class="mu-kbd">↑↓</span>settings</span>
+<span class="mu-hint"><span class="mu-kbd">←→</span>change</span>
+<span class="mu-hint"><span class="mu-kbd">r</span>read the file again</span>
+<span class="mu-spacer"></span>
+<span class="mu-hint"><span class="mu-kbd">h</span>every key</span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

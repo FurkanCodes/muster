@@ -47,6 +47,7 @@ const MOST_MESSAGE: usize = 4_000;
 
 /// The project a request is about.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Project {
     /// Its folder.
     pub root: PathBuf,
@@ -79,6 +80,7 @@ impl Project {
 
 /// What the daemon asks a plugin.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(tag = "method", content = "params", rename_all = "lowercase")]
 pub enum Call {
     /// First, once a process: which Muster asks, and the protocol it
@@ -99,6 +101,7 @@ pub enum Call {
 
 /// A request, as it goes on the wire.
 #[derive(Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 struct Outgoing<'a> {
     jsonrpc: &'static str,
     id: u64,
@@ -135,6 +138,7 @@ pub fn read_request(line: &[u8]) -> Result<Request, (Option<u64>, String)> {
 
 /// What a plugin's error says went wrong, as Muster tells it on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum PluginErrorCode {
     /// No such ticket.
@@ -151,6 +155,7 @@ pub enum PluginErrorCode {
 
 /// Why a plugin could not answer, as it said it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct PluginError {
     pub code: PluginErrorCode,
     pub message: String,
@@ -253,6 +258,7 @@ fn line(message: &impl Serialize) -> String {
 
 /// What `hello` is answered with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct HelloResult {
     /// The protocol the plugin speaks.
     pub protocol: u32,
@@ -260,6 +266,7 @@ pub struct HelloResult {
 
 /// A ticket as a plugin gives it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Ticket {
     /// `42`, or `APP-7`; a number is taken as one written as text.
     pub key: Key,
@@ -275,6 +282,7 @@ pub struct Ticket {
 
 /// A ticket's key as a plugin writes it: text, or a plain number.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(untagged)]
 pub enum Key {
     Text(String),
@@ -301,6 +309,7 @@ impl From<&Issue> for Ticket {
 
 /// What `list` is answered with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Listing {
     /// Where the tickets are, for the person: `GitHub issues`, `YouTrack
     /// (acme.myjetbrains.com)`.
@@ -314,6 +323,7 @@ pub struct Listing {
 
 /// What `view` is answered with.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Viewing {
     pub ticket: Ticket,
     pub body: String,

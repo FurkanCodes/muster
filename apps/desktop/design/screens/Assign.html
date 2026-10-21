@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, assigning an agent</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="position: relative; height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking" title="Something asks for you">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<span>Go to a ticket or run a command</span>
+<span class="mu-kbd">⌘K</span>
+</button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done">
+<span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span>
+<span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span>
+<span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span>
+</div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: hidden">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Tickets" style="flex: 1 0 var(--layout-queue); max-width: var(--layout-queue-max); min-width: 0; display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head">
+<h1 class="mu-queue-title">Tickets</h1>
+<span class="mu-meta">Each project's open tickets, and the agents on them.</span>
+</div>
+<div class="mu-queue" style="flex: 1; overflow: hidden">
+<div class="mu-group">
+<span class="mu-swatch mu-p1"></span>
+<span class="mu-group-name mu-p1">muster</span>
+<span class="mu-group-source">GitHub issues</span>
+</div>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#214</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Desktop app: sessions list and one live terminal</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--waiting">▲</span><span class="mu-logo mu-logo--sm"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span></span></span>
+</span>
+<span class="mu-ticket-end"><span class="mu-pr">#91 <span>draft</span></span></span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#205</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Resize settles once on release</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--done">✓</span><span class="mu-logo mu-logo--sm"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span></span></span>
+</span>
+<span class="mu-ticket-end"><span class="mu-pr">#88 <span class="mu-pr-approved">approved</span></span></span>
+</button>
+<button class="mu-ticket" aria-selected="true" style="background: var(--surface-tint)">
+<span class="mu-ticket-key">#217</span>
+<span class="mu-ticket-text"><span class="mu-ticket-title">Tickets from YouTrack</span></span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#220</span>
+<span class="mu-ticket-text"><span class="mu-ticket-title">Fold the list from the notch</span></span>
+</button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0">
+<div class="mu-pane-head" style="padding-top: var(--space-16)">
+<div class="mu-pane-title-row">
+<span class="mu-mono" style="font-size: 14px; line-height: 22px; color: var(--text-quiet); flex: none">#217</span>
+<h2 class="mu-pane-title mu-pane-title--wrap">Tickets from YouTrack</h2>
+</div>
+<div class="mu-pane-meta">
+<span>GitHub issue in <span class="mu-p1">muster</span></span>
+<span>opened by FurkanCodes</span>
+<span class="mu-labels"><span class="mu-label">plugins</span></span>
+</div>
+</div>
+<div style="padding: var(--space-8) var(--space-20); display: flex; flex-direction: column; gap: var(--space-24)">
+<section style="padding: var(--space-20) var(--space-12); border-radius: var(--radius-lg); border: var(--stroke-hairline) dashed var(--line-strong); display: flex; align-items: center; gap: var(--space-16)">
+<span style="flex: 1; display: flex; flex-direction: column; gap: var(--space-2)"><span style="font-weight: 600">No agent on it yet</span><span class="mu-meta">An agent gets a worktree of its own and the ticket as its first prompt.</span></span>
+<button class="mu-btn mu-btn--primary" title="Assign an agent (⏎)">Assign an agent</button>
+</section>
+<article class="mu-prose" style="padding: 0 var(--space-12)">
+<p>A ticket plugin for YouTrack, like the Jira one: it lists a project's open issues as tickets, keyed as YouTrack keys them.</p>
+<p>It asks for the site and, if you like, a query. The token lives in the Keychain.</p>
+</article>
+</div>
+</main>
+
+</div>
+
+<div class="mu-scrim" style="position: absolute; inset: 0; z-index: var(--z-scrim); display: flex; align-items: flex-start; justify-content: center; padding: 120px var(--space-24) var(--space-24)">
+<div class="mu-dialog" role="dialog" aria-modal="true" aria-labelledby="assign-title" style="width: var(--size-dialog-wide); z-index: var(--z-dialog); gap: var(--space-20)">
+<div style="display: flex; flex-direction: column; gap: var(--space-4)">
+<h2 class="mu-dialog-title" id="assign-title">Assign an agent to #217</h2>
+<span class="mu-meta">Tickets from YouTrack</span>
+</div>
+
+<div class="mu-field">
+<span class="mu-field-label" id="agent-label">Agent</span>
+<div class="mu-choices" role="radiogroup" aria-labelledby="agent-label">
+<button class="mu-choice" role="radio" aria-checked="true"><span class="mu-logo"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt=""></span>Claude Code<span class="mu-choice-note">last chosen</span></button>
+<button class="mu-choice" role="radio" aria-checked="false"><span class="mu-logo"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt=""></span>Codex</button>
+<button class="mu-choice" role="radio" aria-checked="false"><span class="mu-logo"><img src="/_blob/c161e767823acd431b9c967857542c89" alt=""></span>Gemini CLI</button>
+<button class="mu-choice" role="radio" aria-checked="false"><span class="mu-logo"><img src="/_blob/9022fdb72074cc7ab16a193f7459f5df" alt=""></span>OpenCode</button>
+<button class="mu-choice" role="radio" aria-checked="false"><span class="mu-logo"><img src="/_blob/0c866c86decd12cba083fe09a20dc74e" alt=""></span>Copilot CLI</button>
+</div>
+<span class="mu-field-hint">⇥ goes round the agents.</span>
+</div>
+
+<div class="mu-field">
+<label class="mu-field-label" for="base">Made on top of</label>
+<button class="mu-select mu-select--lg" id="base" aria-haspopup="listbox"><span class="mu-select-value"><span class="mu-branch">⎇ main</span><span class="mu-quiet">the base</span></span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+<span class="mu-field-hint">A new worktree on <span class="mu-mono" style="color: var(--text)">muster/issue-217-tickets-from-youtrack</span>. ← → stack it on another worktree's branch instead.</span>
+</div>
+
+<p class="mu-meta" style="margin: 0">Claude Code gets the ticket as its first prompt, marked as a description of the work, never as instructions.</p>
+
+<div class="mu-dialog-actions" style="margin-top: 0">
+<button class="mu-btn mu-btn--secondary mu-btn--lg" title="Cancel (⎋)">Cancel</button>
+<button class="mu-btn mu-btn--primary mu-btn--lg" title="Start Claude Code (⏎)" style="outline: var(--stroke-focus) solid var(--focus-ring); outline-offset: var(--stroke-focus-offset)">Start Claude Code</button>
+</div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

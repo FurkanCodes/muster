@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, keys</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span>Go to a setting or run a command</span><span class="mu-kbd">⌘K</span></button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done"><span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span><span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span><span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span></div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used"><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span></div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Settings sections" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar); display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Settings</h1><span class="mu-meta">The terminal UI shares them.</span></div>
+<div style="flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-8) var(--space-16)">
+<div class="mu-nav-label" style="padding-top: var(--space-8)">Muster</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>General</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Notifications</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Agents<span class="mu-nav-count">6</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Naming chats</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Plugins<span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"></span>Keys</button>
+<div class="mu-nav-label">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span></button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0; overflow: auto">
+<div class="mu-settings" style="gap: var(--space-20)">
+<div class="mu-settings-head" style="flex-direction: row; align-items: flex-start; gap: var(--space-16)">
+<div style="flex: 1; display: flex; flex-direction: column; gap: var(--space-4)">
+<h2 class="mu-settings-title">Keys</h2>
+<span class="mu-meta">Every key Muster answers, by what it does. ⏎ on one waits for the key you press next; ⌫ puts it back.</span>
+</div>
+<button class="mu-btn mu-btn--quiet" title="Put every key back (⇧R)">Put every key back</button>
+</div>
+
+<div style="padding: 0 var(--space-12)"><input class="mu-field-input" aria-label="Find an action or a key" placeholder="Find an action or a key"></div>
+
+<section class="mu-settings-group" aria-labelledby="k-every">
+<h3 class="mu-settings-group-title" id="k-every">Everywhere</h3>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Go to a session or run a command</span><span class="mu-keyrow-keys"><span class="mu-kbd">⌘K</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Every key of this screen</span><span class="mu-keyrow-keys"><span class="mu-kbd">h</span><span class="mu-kbd">?</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Fold the sidebar</span><span class="mu-keyrow-keys"><span class="mu-kbd">⌘\</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Needs you, All sessions, Tickets</span><span class="mu-keyrow-keys"><span class="mu-kbd">⌘1</span><span class="mu-kbd">⌘2</span><span class="mu-kbd">⌘3</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Settings</span><span class="mu-keyrow-keys"><span class="mu-kbd">⌘,</span></span></div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="k-sessions">
+<h3 class="mu-settings-group-title" id="k-sessions">Sessions and Needs you</h3>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Open the session, with the keys</span><span class="mu-keyrow-keys"><span class="mu-kbd">⏎</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">New session</span><span class="mu-keyrow-keys"><span class="mu-kbd">n</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Changes</span><span class="mu-keyrow-keys"><span class="mu-kbd">d</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Shell in its workspace<span class="mu-label">yours</span></span><span class="mu-keyrow-keys"><span class="mu-kbd">s</span><span class="mu-kbd">T</span></span></div>
+<div class="mu-keyrow is-waiting"><span class="mu-keyrow-what">Full screen</span><span class="mu-keyrow-keys"><span class="mu-keyrow-wait">Press a key…</span><span class="mu-meta">⎋ cancels</span></span></div>
+<div class="mu-keyrow-error">d already shows Changes on this screen. Press another key.</div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Rename</span><span class="mu-keyrow-keys"><span class="mu-kbd">R</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Put back a turn</span><span class="mu-keyrow-keys"><span class="mu-kbd">z</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Tidy its commits</span><span class="mu-keyrow-keys"><span class="mu-kbd">t</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Move onto its base</span><span class="mu-keyrow-keys"><span class="mu-kbd">u</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Open its pull request</span><span class="mu-keyrow-keys"><span class="mu-kbd">b</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Go to the one told of last</span><span class="mu-keyrow-keys"><span class="mu-kbd">l</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Close</span><span class="mu-keyrow-keys"><span class="mu-kbd">x</span></span></div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="k-term">
+<h3 class="mu-settings-group-title" id="k-term">Inside a terminal</h3>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Give the keys back to the list</span><span class="mu-keyrow-keys"><span class="mu-kbd">⇧Q</span></span></div>
+<p class="mu-footnote" style="margin: 0">Every other key goes to the program. A key here must use ⌘, ⌃ or ⌥, so the program never loses one it could take as typing.</p>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="k-tickets">
+<h3 class="mu-settings-group-title" id="k-tickets">Tickets</h3>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Open its agent, or assign the first</span><span class="mu-keyrow-keys"><span class="mu-kbd">⏎</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Assign another agent</span><span class="mu-keyrow-keys"><span class="mu-kbd">a</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Close the ticket</span><span class="mu-keyrow-keys"><span class="mu-kbd">x</span></span></div>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Fetch again</span><span class="mu-keyrow-keys"><span class="mu-kbd">r</span></span></div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="k-plugins">
+<h3 class="mu-settings-group-title" id="k-plugins">Plugins' panels</h3>
+<div class="mu-keyrow"><span class="mu-keyrow-what">Session graph: open the graph<span class="mu-label">its suggestion</span></span><span class="mu-keyrow-keys"><span class="mu-kbd">G</span></span></div>
+</section>
+
+<p class="mu-footnote" style="margin: 0">Saved in <code>~/.config/muster/settings.toml</code>, under <code>[keys]</code>. The terminal UI reads the same keys.</p>
+</div>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-note">Press the key for Full screen.</span>
+<span class="mu-hint"><span class="mu-kbd">⎋</span>cancel</span>
+<span class="mu-spacer"></span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

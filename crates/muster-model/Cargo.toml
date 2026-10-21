@@ -1,0 +1,19 @@
+[package]
+name = "muster-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A client's copy of Muster's state, and what it says: what needs the person, in what order"
+
+[dependencies]
+muster-core.workspace = true
+
+[features]
+# Entities to build tests' states from, for the clients' own tests.
+fixtures = []
+
+[lints]
+workspace = true

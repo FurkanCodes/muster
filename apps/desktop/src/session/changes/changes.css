@@ -1,0 +1,98 @@
+/* The Changes board's layout; surfaces and type are the mu-* components' (ARC-24). */
+.changes {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: 0 var(--space-20) var(--space-16);
+}
+.changes-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+}
+.changes-clashes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.changes-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  gap: var(--space-12);
+}
+.changes-list-column {
+  flex: 0 0 280px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.changes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.changes-note {
+  margin: 0;
+  padding: var(--space-12) var(--space-8) 0;
+}
+.changes-note p {
+  margin: 0 0 var(--space-8);
+}
+.changes-folder {
+  color: var(--text);
+}
+.changes-label {
+  margin: 0;
+  padding: var(--space-12) var(--space-8) var(--space-4);
+}
+.changes-label:first-child {
+  padding-top: 0;
+}
+.changes-commits {
+  margin: 0;
+  padding: 0 var(--space-8);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 12px;
+  line-height: 18px;
+}
+.changes-diff-path {
+  flex: 1;
+  min-width: 0;
+}
+.changes-pick {
+  align-items: center;
+  justify-content: center;
+}
+.put-back-line {
+  display: block;
+}
+@media (max-width: 1000px) {
+  .changes-content {
+    flex-direction: column;
+  }
+  .changes-list-column {
+    flex: 0 1 auto;
+    max-height: 40%;
+  }
+}
+/* A list of files draws only the rows in sight, each one height (FileList.tsx's ROW): it scrolls itself. */
+.changes-files {
+  display: block;
+  flex: 1 1 auto;
+  min-height: calc(3 * (var(--size-control-sm) + var(--space-2)));
+  overflow-y: auto;
+}
+.changes-files > .mu-file {
+  height: var(--size-control-sm);
+  margin-bottom: var(--space-2);
+}

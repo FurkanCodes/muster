@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the app's own webview may do: its window, Muster's own commands, the names of the folders the person browses to when adding a project, and Settings' own asks of muster and the Mac. Nothing else reaches the file system, the shell or the network.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-muster",
+    "allow-list-folders",
+    "allow-settings",
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-focus",
+    "core:window:allow-is-visible",
+    "core:window:allow-is-focused"
+  ]
+}

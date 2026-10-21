@@ -11,6 +11,7 @@ use crate::{Session, SessionStatus};
 
 /// What a notification is about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     /// A session asks something of the person: a question, a permission,
@@ -79,6 +80,7 @@ const NAME_MOST: usize = 64;
 
 /// How a notification sounds.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, type = "string"))]
 #[serde(try_from = "String", into = "String")]
 pub enum Sound {
     /// The Mac's own notification sound.
@@ -169,6 +171,7 @@ impl From<Sound> for String {
 
 /// Whether one kind is told, and how it sounds.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Tell {
     pub on: bool,
     #[serde(default)]
@@ -187,6 +190,7 @@ impl Default for Tell {
 /// What the person is told of, each kind on unless they turn it off, with
 /// the Mac's own sound unless they pick another.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Telling {
     #[serde(default)]
     pub questions: Tell,

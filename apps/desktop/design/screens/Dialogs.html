@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, dialogs and menus</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="width: 1440px; height: 1640px; box-sizing: border-box; padding: 56px 28px; display: grid; grid-template-columns: repeat(3, 440px); gap: 48px 32px; justify-content: center; align-content: start; align-items: start; background: var(--surface-rail)">
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Closing a session whose agent is at work (x)</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d1">
+<h2 class="mu-dialog-title" id="d1">Close Flaky resize test under load?</h2>
+<p class="mu-dialog-text">Claude Code is working in it. Closing stops it. Its worktree, branch and transcript stay, so it can be started again.</p>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg" style="outline: var(--stroke-focus) solid var(--focus-ring); outline-offset: var(--stroke-focus-offset)">Keep it</button><button class="mu-btn mu-btn--danger mu-btn--lg">Close session</button></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Closing a ticket, the one change Muster makes in a tracker (x)</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d2">
+<h2 class="mu-dialog-title" id="d2">Close #205 on GitHub?</h2>
+<p class="mu-dialog-text">Everyone watching <span class="mu-mono" style="font-size: 12px">FurkanCodes/muster</span> #205 is told. Muster changes nothing else in the tracker.</p>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg" style="outline: var(--stroke-focus) solid var(--focus-ring); outline-offset: var(--stroke-focus-offset)">Keep it open</button><button class="mu-btn mu-btn--danger mu-btn--lg">Close ticket</button></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Then, offered once the ticket is closed</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d3">
+<h2 class="mu-dialog-title" id="d3">Closed #205. Clean up after it?</h2>
+<dl class="mu-details">
+<dt>Stops</dt><dd>1 agent still at work: Flaky resize test under load</dd>
+<dt>Removes</dt><dd><span class="mu-branch">⎇ fix/resize-under-load</span> and <span class="mu-branch">⎇ muster/issue-205-2</span>, once nothing runs in them</dd>
+<dt>Keeps</dt><dd>both branches</dd>
+</dl>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg">Leave them</button><button class="mu-btn mu-btn--primary mu-btn--lg">Clean up</button></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Tidying a branch's commits (t)</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d4">
+<div style="display: flex; flex-direction: column; gap: var(--space-4)">
+<h2 class="mu-dialog-title" id="d4">Tidy the commits on fix/resize-under-load?</h2>
+<span class="mu-meta">5 commits after <span class="mu-mono">a1b2c3d</span>, none pushed. An agent rewrites them into clear ones; its turn goes in the timeline, so it can be put back.</span>
+</div>
+<div class="mu-choices" role="radiogroup" aria-label="Agent" style="grid-template-columns: repeat(2, minmax(0, 1fr))">
+<button class="mu-choice" role="radio" aria-checked="true"><span class="mu-logo"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt=""></span>Claude Code<span class="mu-choice-note">last</span></button>
+<button class="mu-choice" role="radio" aria-checked="false"><span class="mu-logo"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt=""></span>Codex</button>
+</div>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg">Cancel</button><button class="mu-btn mu-btn--primary mu-btn--lg">Tidy with Claude Code</button></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Moving stacked work onto its base (u)</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d5">
+<h2 class="mu-dialog-title" id="d5">Move muster/issue-220 onto main?</h2>
+<p class="mu-dialog-text">The branch it was stacked on, <span class="mu-branch">fix/resize-under-load</span>, merged as #88. Its 3 commits are replayed on main's newest. What is there is kept first, so the move can be put back.</p>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg">Keep it</button><button class="mu-btn mu-btn--primary mu-btn--lg">Move it</button></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Removing a worktree with changes not committed</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d6">
+<h2 class="mu-dialog-title" id="d6">Remove ⎇ spike/xterm-webgl?</h2>
+<p class="mu-dialog-text">It has 4 files with changes not committed. Removing deletes its folder and those changes. The branch stays.</p>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg" style="outline: var(--stroke-focus) solid var(--focus-ring); outline-offset: var(--stroke-focus-offset)">Keep it</button><button class="mu-btn mu-btn--danger mu-btn--lg">Remove with its changes</button></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Renaming a session (R)</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d7">
+<h2 class="mu-dialog-title" id="d7">Rename the session</h2>
+<div class="mu-field">
+<label class="mu-field-label" for="rn">Name</label>
+<input class="mu-field-input" id="rn" value="Tauri shell, first slice" style="border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent)">
+<span class="mu-field-hint">Up to 80 characters. No agent renames it after you do.</span>
+</div>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg">Cancel</button><button class="mu-btn mu-btn--primary mu-btn--lg">Rename</button></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">A right-click on a queue item</span>
+<div class="mu-menu" role="menu" aria-label="Sketch the Tauri shell" style="width: 280px">
+<div class="mu-menu-label">Sketch the Tauri shell</div>
+<button class="mu-menu-item is-active" role="menuitem">Answer in the terminal<span class="mu-kbd">⏎</span></button>
+<button class="mu-menu-item" role="menuitem">See changes<span class="mu-kbd">d</span></button>
+<button class="mu-menu-item" role="menuitem"><span class="mu-mono mu-quiet" aria-hidden="true">❯</span>Open a shell here<span class="mu-kbd">T</span></button>
+<button class="mu-menu-item" role="menuitem"><span class="mu-mono mu-quiet" aria-hidden="true">◇</span>Session graph<span class="mu-kbd">G</span></button>
+<button class="mu-menu-item" role="menuitem">Open pull request #91<span class="mu-kbd">b</span></button>
+<button class="mu-menu-item" role="menuitem">Tidy commits<span class="mu-kbd">t</span></button>
+<div class="mu-menu-sep" role="separator"></div>
+<button class="mu-menu-item" role="menuitem">Rename<span class="mu-kbd">R</span></button>
+<button class="mu-menu-item mu-menu-item--danger" role="menuitem">Close session<span class="mu-kbd">x</span></button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: var(--space-10)">
+<span class="mu-meta">Restarting the daemon in place, from Settings › General</span>
+<div class="mu-dialog" role="dialog" aria-labelledby="d9">
+<h2 class="mu-dialog-title" id="d9">Restart Muster in place?</h2>
+<p class="mu-dialog-text">The daemon moves onto Muster 0.4.2, installed now, as the same process. All 11 sessions run on, and every window reconnects within a second.</p>
+<div class="mu-dialog-actions"><button class="mu-btn mu-btn--secondary mu-btn--lg">Not now</button><button class="mu-btn mu-btn--primary mu-btn--lg">Restart in place</button></div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

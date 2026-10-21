@@ -17,6 +17,7 @@ pub const MOST_TIMEOUT: u64 = 60;
 
 /// A program run as something happens.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Hook {
     /// Its id within the plugin.
     pub id: String,
@@ -35,6 +36,7 @@ pub struct Hook {
 /// match. A filter tests only the events that carry its value, and a
 /// manifest gives none no event of the hook's carries.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct When {
     /// The projects, by name.
     #[serde(default)]

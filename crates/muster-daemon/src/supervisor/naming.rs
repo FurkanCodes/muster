@@ -172,7 +172,7 @@ impl Supervisor {
     }
 
     /// Muster's runtime directory, where the hooks' socket is.
-    fn runtime_dir(&self) -> std::path::PathBuf {
+    pub(super) fn runtime_dir(&self) -> std::path::PathBuf {
         self.hook_socket
             .parent()
             .map_or_else(std::path::PathBuf::new, std::path::Path::to_path_buf)

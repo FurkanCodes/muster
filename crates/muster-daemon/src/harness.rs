@@ -94,6 +94,17 @@ pub(crate) fn find_with(id: &str, added: &[Arc<AgentDefinition>]) -> Option<Harn
     })
 }
 
+/// The coding agents Muster can start, its own then those the person
+/// `added`: those with a program of their own ([`Harness::program`]).
+pub(crate) fn coding_agents(added: &[Arc<AgentDefinition>]) -> Vec<Harness> {
+    BUILT_IN
+        .into_iter()
+        .map(|kind| Harness { kind })
+        .chain(added.iter().cloned().map(Harness::added))
+        .filter(|harness| harness.program().is_some())
+        .collect()
+}
+
 /// The harness of a session that ran as `id`, to keep it running: as
 /// [`find_with`] finds it, a plugin's panel by its harness alone, and an
 /// agent the settings no longer define by its name alone, which cannot be
@@ -213,6 +224,21 @@ impl Harness {
                 | Kind::Copilot
                 | Kind::Added(_)
         )
+    }
+
+    /// The program it starts, as it is named before `PATH` is searched:
+    /// for Muster's own coding agents and those the person added; `None`
+    /// for a shell, the checks, a review (Claude Code's own) and a panel.
+    pub(crate) fn program(&self) -> Option<&str> {
+        match &self.kind {
+            Kind::Claude => Some("claude"),
+            Kind::Codex => Some("codex"),
+            Kind::Gemini => Some("gemini"),
+            Kind::OpenCode => Some("opencode"),
+            Kind::Copilot => Some("copilot"),
+            Kind::Added(agent) => Some(&agent.program),
+            Kind::Shell | Kind::Review | Kind::Checks | Kind::Panel(_) => None,
+        }
     }
 
     /// Whether it runs the project's checks.

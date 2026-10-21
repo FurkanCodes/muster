@@ -10,10 +10,20 @@
 # in ~/.local/bin (MUSTER_INSTALL_DIR to change that). Where there is no
 # prebuilt binary, it builds that same release from source with cargo
 # instead. Running it again updates Muster.
+#
+# On a Mac it also installs the Muster app, from the same release and
+# checked the same way, in /Applications (or ~/Applications where that
+# cannot be written; MUSTER_APP_DIR for another folder). It asks first, on
+# a terminal; elsewhere it installs it unless told not to: MUSTER_APP=0, or
+# `sh -s -- --no-app` (`--app` to install it without asking). A Muster app
+# already there is updated. The app is signed ad hoc, not by Apple: fetched
+# this way it carries no quarantine, so macOS opens it without asking.
+# MUSTER_DOWNLOADS points the downloads at a stand-in for GitHub's, for tests.
 set -eu
 
 REPO="FurkanCodes/muster"
 INSTALL_DIR="${MUSTER_INSTALL_DIR:-$HOME/.local/bin}"
+APP_ARCHIVE="muster-app-universal-apple-darwin.tar.gz"
 
 say() { printf '%s\n' "$*"; }
 # A step under way: said before it starts, so a slow one is never silent.
@@ -103,7 +113,11 @@ release() {
 # workflow built it, where the GitHub CLI can: proof it was built from this
 # repository, beyond the checksum, which comes from the same release.
 attested() {
-    if [ -n "${MUSTER_SKIP_ATTESTATION:-}" ] || ! command -v gh >/dev/null 2>&1 ||
+    if [ -n "${MUSTER_SKIP_ATTESTATION:-}" ]; then
+        done_ "skipped, as MUSTER_SKIP_ATTESTATION asks"
+        return 0
+    fi
+    if ! command -v gh >/dev/null 2>&1 ||
         ! gh attestation verify --help >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
         done_ "skipped: the GitHub CLI (gh) is not installed, too old, or not signed in"
         return 0
@@ -117,9 +131,9 @@ attested() {
 # setting `installed`; returns 1 if it cannot be downloaded.
 from_release() {
     archive="muster-$1.tar.gz"
-    base="https://github.com/$REPO/releases/download/$2"
+    base="${MUSTER_DOWNLOADS:-https://github.com/$REPO/releases/download}/$2"
     tmp=$(mktemp -d)
-    trap 'rm -rf "$tmp"' EXIT
+    trap 'rm -rf "${tmp:-}" "${app_tmp:-}"' EXIT
     bytes=$(remote_size "$base/$archive")
     say "Downloading $archive${bytes:+ ($(size "$bytes"))} from $base"
     if ! fetch "$base/$archive" "$tmp/$archive"; then
@@ -163,6 +177,102 @@ from_source() {
     installed="${CARGO_HOME:-$HOME/.cargo}/bin/muster"
 }
 
+# Where Muster.app is now, or nothing.
+app_now() {
+    for dir in "${MUSTER_APP_DIR:-}" /Applications "$HOME/Applications"; do
+        if [ -n "$dir" ] && [ -d "$dir/Muster.app" ]; then
+            echo "$dir/Muster.app"
+            return
+        fi
+    done
+}
+
+# The version app $1 says it is.
+app_version() {
+    /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$1/Contents/Info.plist" 2>/dev/null || true
+}
+
+# Sets `app` to 1 to install the Muster app, 0 not to: asked on a Mac
+# (`$1` is what the command line said: 1, 0 or nothing).
+choose_app() {
+    app=0
+    [ "$(uname -s)" = Darwin ] || return 0
+    if [ -n "$1" ]; then
+        app=$1
+    elif [ -n "${MUSTER_APP:-}" ]; then
+        app=$MUSTER_APP
+    elif [ -n "$(app_now)" ]; then
+        # One there already is updated.
+        app=1
+    elif (: </dev/tty) 2>/dev/null; then
+        # Asked on the terminal: the script itself comes down a pipe.
+        printf '%s\n' "What should be installed?" \
+            "  1) Muster in the terminal, and the Muster app (default)" \
+            "  2) Muster in the terminal only" >/dev/tty
+        printf 'Choose [1]: ' >/dev/tty
+        read -r answer </dev/tty || answer=""
+        case "$answer" in
+        2) app=0 ;;
+        *) app=1 ;;
+        esac
+    else
+        app=1
+    fi
+}
+
+# Downloads, checks and installs release $1's Muster app, setting
+# `app_installed`; says so and installs nothing if the release has none.
+install_app() {
+    base="${MUSTER_DOWNLOADS:-https://github.com/$REPO/releases/download}/$1"
+    bytes=$(remote_size "$base/$APP_ARCHIVE")
+    if [ -z "$bytes" ]; then
+        say "Release $1 has no Muster app to download: it comes with a later one."
+        return 0
+    fi
+    app_tmp=$(mktemp -d)
+    trap 'rm -rf "${tmp:-}" "${app_tmp:-}"' EXIT
+    say "Downloading $APP_ARCHIVE ($(size "$bytes")) from $base"
+    fetch "$base/$APP_ARCHIVE" "$app_tmp/$APP_ARCHIVE" ||
+        fail "the Muster app could not be downloaded; Muster in the terminal is installed (MUSTER_APP=0 skips the app)"
+    curl -fsSL "$base/$APP_ARCHIVE.sha256" -o "$app_tmp/$APP_ARCHIVE.sha256" ||
+        fail "the Muster app's checksum could not be downloaded, so the app was not installed"
+    step "Checking its SHA-256"
+    expected=$(cut -d ' ' -f 1 <"$app_tmp/$APP_ARCHIVE.sha256")
+    [ "$(checksum "$app_tmp/$APP_ARCHIVE")" = "$expected" ] ||
+        fail "the Muster app does not match its published checksum, so it was not installed"
+    done_ "matches"
+    step "Checking its build attestation"
+    attested "$app_tmp/$APP_ARCHIVE"
+    step "Unpacking"
+    tar -xzf "$app_tmp/$APP_ARCHIVE" -C "$app_tmp"
+    done_ "done"
+    there=$(app_now)
+    if [ -n "$there" ]; then
+        dest=$(dirname "$there")
+    elif [ -n "${MUSTER_APP_DIR:-}" ]; then
+        dest=$MUSTER_APP_DIR
+    elif [ -w /Applications ]; then
+        dest=/Applications
+    else
+        dest="$HOME/Applications"
+    fi
+    step "Installing it as $dest/Muster.app"
+    mkdir -p "$dest"
+    rm -rf "$dest/.Muster.app.new" "$dest/.Muster.app.old"
+    # Beside the old one first, then swapped: a Muster app open now runs on
+    # from the files it started with.
+    mv "$app_tmp/Muster.app" "$dest/.Muster.app.new"
+    if [ -d "$dest/Muster.app" ]; then
+        mv "$dest/Muster.app" "$dest/.Muster.app.old"
+    fi
+    mv "$dest/.Muster.app.new" "$dest/Muster.app"
+    rm -rf "$dest/.Muster.app.old"
+    # A copy fetched by curl carries no quarantine; this makes sure.
+    xattr -dr com.apple.quarantine "$dest/Muster.app" 2>/dev/null || true
+    done_ "done"
+    app_installed="$dest/Muster.app"
+}
+
 # The version of the muster this install replaces, or nothing.
 current() {
     if [ -x "$INSTALL_DIR/muster" ]; then
@@ -172,12 +282,24 @@ current() {
 
 main() {
     command -v curl >/dev/null 2>&1 || fail "curl is needed"
+    app_flag=""
+    for argument in "$@"; do
+        case "$argument" in
+        --app) app_flag=1 ;;
+        --no-app) app_flag=0 ;;
+        *) fail "unknown option $argument (--app or --no-app)" ;;
+        esac
+    done
     installed=""
+    app_installed=""
     platform=$(target)
     if [ -n "${MUSTER_VERSION:-}" ]; then step "Release asked for"; else step "Finding the latest release"; fi
     version=$(release)
     done_ "${version:-none found}"
     was=$(current)
+    choose_app "$app_flag"
+    app_was=$(app_now)
+    app_was=${app_was:+$(app_version "$app_was")}
     say "Installing Muster ${version:-from source} for $(machine "${platform:-}")${was:+, over muster $was}."
     # A download that fails falls back to building; one that does not match
     # its checksum or its attestation stops everything (`fail`).
@@ -188,12 +310,27 @@ main() {
         say "No prebuilt binary to download; building from source instead."
         from_source "$version"
     fi
+    if [ "$app" = 1 ]; then
+        if [ -n "$version" ]; then
+            install_app "$version"
+        else
+            say "No release to take the Muster app from: Muster in the terminal is installed alone."
+        fi
+    fi
     now=$("$installed" --version | awk '{ print $2 }')
     say ""
     if [ -n "$was" ] && [ "$was" != "$now" ]; then
         say "Muster $now is installed at $installed (it was $was)."
     else
         say "Muster $now is installed at $installed."
+    fi
+    if [ -n "$app_installed" ]; then
+        app_now_version=$(app_version "$app_installed")
+        if [ -n "$app_was" ] && [ "$app_was" != "$app_now_version" ]; then
+            say "The Muster app $app_now_version is at $app_installed (it was $app_was): open it from Launchpad or Spotlight."
+        else
+            say "The Muster app ${app_now_version:+$app_now_version }is at $app_installed: open it from Launchpad or Spotlight."
+        fi
     fi
 
     case ":$PATH:" in
@@ -207,4 +344,4 @@ main() {
     fi
 }
 
-main
+main "$@"

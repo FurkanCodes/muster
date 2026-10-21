@@ -97,6 +97,110 @@ jobs:
         env:
           MUSTER_DOCKER_TESTS: "1"
 
+  # The desktop app (ARCHITECTURE.md §5c, §13): its webview's checks and
+  # tests, the bindings check, and its Rust side, a Cargo workspace of its
+  # own (ARC-24). On a Mac, whose WebKit the window runs in.
+  desktop:
+    name: Desktop app (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/desktop
+    env:
+      # Warnings fail the build, clippy's included (ARC-16).
+      CARGO_BUILD_WARNINGS: deny
+    steps:
+      - uses: actions/checkout@v6
+      - name: Toolchain
+        run: rustup toolchain install
+        working-directory: .
+      # The app's own target, and the core's, where the link's end-to-end
+      # tests build the `muster` they run.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/desktop/src-tauri -> target
+            . -> target
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit and component tests
+        run: pnpm test
+      - name: End to end in WebKit
+        run: |
+          pnpm exec playwright install webkit
+          pnpm e2e
+      # The webview is typed by the daemon's own types (ARC-24): written
+      # afresh, they must be what is committed.
+      - name: Bindings are current
+        run: |
+          pnpm bindings
+          git diff --exit-code -- src/ipc/generated
+          test -z "$(git status --porcelain -- src/ipc/generated)"
+      - name: Rust format
+        run: cargo fmt --check
+        working-directory: apps/desktop/src-tauri
+      - name: Rust lint
+        run: cargo clippy --all-targets --locked
+        working-directory: apps/desktop/src-tauri
+      - name: Rust tests
+        run: cargo test --locked
+        working-directory: apps/desktop/src-tauri
+
+  # The real app over a real daemon of its own (ARCHITECTURE.md §5c, §13):
+  # built with its embedded WebDriver server (`--features e2e`), each spec
+  # file over a sandbox of its own, stand-ins for every agent and for gh.
+  # GitHub's macOS runners have a desktop session for its window. A failed
+  # test leaves a picture of the window, kept as the run's artifact.
+  desktop-real-app:
+    name: Desktop app over a real daemon (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v6
+      - name: Toolchain
+        run: rustup toolchain install
+        working-directory: .
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            apps/desktop/src-tauri -> target
+            . -> target
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Real app end to end
+        run: pnpm e2e:app
+      - name: Pictures of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-real-app-failures
+          path: apps/desktop/test-results/e2e-app
+          if-no-files-found: ignore
+
   dependencies:
     name: Dependencies (licenses, advisories, build scripts)
     runs-on: ubuntu-24.04

@@ -1,0 +1,96 @@
+[package]
+name = "muster-desktop"
+version = "0.4.1"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+license = "MIT"
+repository = "https://github.com/FurkanCodes/muster"
+description = "Muster's desktop app: a client of the daemon, drawn in the system's webview."
+
+# A workspace of its own (`ARC-24`): the webview's crates never reach the
+# core's builds, checks or supply-chain rules, and the core is reached by path.
+[workspace]
+
+[lib]
+name = "muster_desktop"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "muster-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.5", features = [] }
+
+[dependencies]
+muster-client = { path = "../../../crates/muster-client" }
+muster-core = { path = "../../../crates/muster-core", features = ["ts"] }
+muster-model = { path = "../../../crates/muster-model" }
+# The person's uid, which names the daemon's runtime folder where nothing
+# else does (`muster_core::Paths::resolve`), as the `muster` binary reads it.
+nix = { version = "0.31.3", default-features = false, features = ["user"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.152"
+tauri = { version = "2.12", features = [] }
+thiserror = "2.0.21"
+tokio = { version = "~1.53.2", features = ["macros", "net", "rt-multi-thread", "sync", "time", "process"] }
+tracing = "0.1.44"
+ts-rs = { version = "12.0.1", features = ["serde-json-impl", "no-serde-warnings"] }
+# The screens of sessions asking the person, read for their last lines
+# (*Needs you*'s questions), as the terminal UI reads its sessions'.
+vt100 = "0.16.2"
+# The embedded WebDriver server the end-to-end tests drive the real app
+# through (`pnpm e2e:app`). Only in builds made for them: never shipped.
+tauri-plugin-wdio-webdriver = { version = "1.5.0", optional = true }
+# The person's ⌘Q, posted into the app's own queue of events where the
+# Mac's menus take it (`e2e::e2e_command_key`); only in builds for the tests.
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSApplication", "NSEvent", "NSGraphicsContext", "NSResponder"] }
+objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSGeometry", "NSString"] }
+
+[features]
+e2e = ["dep:tauri-plugin-wdio-webdriver", "dep:objc2-app-kit", "dep:objc2-foundation"]
+
+[dev-dependencies]
+# Stopping the daemons the end-to-end tests start, as `muster daemon stop`
+# does (SIGTERM).
+nix = { version = "0.31.3", default-features = false, features = ["user", "signal"] }
+# Paused time, for the link's patches a frame apart.
+tokio = { version = "~1.53.2", features = ["test-util"] }
+muster-model = { path = "../../../crates/muster-model", features = ["fixtures"] }
+tempfile = "3.27.0"
+
+# Small, fast and frugal (`ARC-25`): one codegen unit, whole-program
+# optimisation, no unwinding tables, no symbols.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+# `assert_eq!(list, [])` shows what the list held when it fails;
+# `assert!(list.is_empty())` would not.
+assert_is_empty = "allow"
+needless_pass_by_value = "allow"
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+allow_attributes_without_reason = "warn"
