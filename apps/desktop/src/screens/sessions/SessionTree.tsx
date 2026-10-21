@@ -1,9 +1,7 @@
-// The tree itself (design system: SessionTree): the lines drawn, each
-// project's under it and each worktree's sessions under that, indented by
-// the design system's `mu-tree-children` guides, as one ARIA tree whose
-// selection the window's keys move (`aria-activedescendant`). However long
-// it is, only the lines in sight are drawn (sight.ts, ARC-25): thousands
-// of sessions scroll as smoothly as ten.
+// The list itself (design system: SessionTree): each project's line and its
+// sessions under it, as one ARIA tree whose selection the window's keys move
+// (`aria-activedescendant`). However long it is, only the lines in sight are
+// drawn (sight.ts, ARC-25): thousands of sessions scroll as smoothly as ten.
 
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { useDaemon } from "../../app/context";
@@ -20,24 +18,6 @@ import {
   WorktreeLine,
 } from "./TreeRows";
 import type { TreeRow } from "./tree";
-
-/** A line's level: a project's 1, a worktree's 2, a session's 3. */
-function levelOf(row: TreeRow): number {
-  return row.kind === "project" ? 1 : row.kind === "workspace" ? 2 : 3;
-}
-
-/** `line` under the guides of the lines it is under, one for each level below the first. */
-function indented(level: number, line: ReactNode): ReactNode {
-  let out = line;
-  for (let at = 1; at < level; at += 1) {
-    out = (
-      <div className="mu-tree-children sessions-guide" role="none">
-        {out}
-      </div>
-    );
-  }
-  return out;
-}
 
 function SessionOrBeside({
   props,
@@ -130,10 +110,9 @@ export function SessionTree({
   }, [selected, at, from, to, height]);
 
   const draw = (row: TreeRow, index: number): ReactNode => {
-    const level = levelOf(row);
     const props: LineProps = {
       row,
-      level,
+      level: row.kind === "project" ? 1 : 2,
       selected: row.id === selected,
       resting,
       folded: folded.has(row.id),
@@ -152,7 +131,7 @@ export function SessionTree({
         role="none"
         data-line={index}
       >
-        {indented(level, <div className="sessions-line">{line}</div>)}
+        <div className="sessions-line">{line}</div>
       </div>
     );
   };
@@ -163,7 +142,7 @@ export function SessionTree({
       className="mu-tree sessions-tree"
       role="tree"
       tabIndex={0}
-      aria-label="Projects, worktrees and sessions"
+      aria-label="Projects and sessions"
       aria-activedescendant={at >= start && at < end && selected ? rowId(selected) : undefined}
       // Read as the update is applied: a scroll's update can come after a
       // key's that moved the list since, and must not put it back.

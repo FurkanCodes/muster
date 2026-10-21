@@ -24,35 +24,86 @@ body {
   overflow: hidden;
 }
 
-.app-titlebar {
-  flex: none;
-}
-
 .app-body {
   flex: 1;
   min-height: 0;
   display: flex;
 }
 
+/* The sidebar: the window's buttons over its top row, then its buttons, the
+   lists' switch, the list, and Settings at its foot. */
 .app-sidebar {
   flex: none;
-  overflow-y: auto;
+  width: var(--layout-list);
+  padding-top: 0;
+  background: var(--surface-ground);
+  overflow: hidden;
+}
+.app-sidebar[hidden] {
+  display: none;
+}
+.app-sidebar-top {
+  flex: none;
+  height: var(--layout-titlebar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding-left: calc(var(--layout-traffic-lights) - var(--space-8));
+}
+.app-sidebar-key {
+  margin-left: auto;
+  color: var(--text-quiet);
+  font-size: 11px;
+}
+.app-sidebar .mu-nav-item:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+/* The list takes the sidebar's width: its rows keep their own gutters. */
+.app-sidebar-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 calc(-1 * var(--space-8));
 }
 
-.app-sidebar-project {
-  color: var(--text);
+.app-lists {
+  flex: none;
+  display: flex;
+  margin: var(--space-12) 0 var(--space-4);
 }
-
-.app-nav-waiting {
+.app-lists-item {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+}
+.app-lists-count {
+  color: var(--text-quiet);
+}
+.app-lists-count--waiting {
   color: var(--waiting);
-  font-size: 10px;
+  font-weight: 600;
 }
 
-/* A project narrowing the lists is a filter, not the tab shown: outlined, never filled. */
-.app-sidebar-filter[aria-pressed="true"] {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--accent);
-  color: var(--text);
+/* The status bar's right: the session's facts give way first as the window narrows. */
+.app-statusbar-facts {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.app-statusbar .mu-hint,
+.app-statusbar .mu-meter {
+  flex: none;
+}
+.app-flock {
+  flex: none;
+  font-weight: 400;
+  gap: var(--space-8);
 }
 
 .app-flock-working {
@@ -71,11 +122,62 @@ body {
   font-size: 10px;
 }
 
+/* Beside the sidebar: the session, or a page, on the terminal's own ground. */
 .app-screen {
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
+  background: var(--surface-term);
+  border-left: var(--stroke-hairline) solid var(--line);
+}
+
+/* The row at the window's top beside the sidebar: what is shown, and its buttons. */
+.app-head {
+  flex: none;
+  height: var(--layout-titlebar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: 0 var(--space-12) 0 var(--space-20);
+  position: relative;
+  min-width: 0;
+}
+.app-head-title {
+  margin: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-head-where {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.app-head .mu-pane-actions {
+  gap: var(--space-2);
+}
+/* The sidebar away, the window's buttons sit over the head's start: room for them. */
+.app-head-away {
+  flex: none;
+  margin-left: calc(var(--layout-traffic-lights) - var(--space-20) - var(--space-4));
+}
+
+/* Said to a screen reader, not drawn. */
+.app-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .app-statusbar {
@@ -97,6 +199,7 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  background: transparent;
 }
 
 .app-pane-title--keys {
@@ -107,7 +210,7 @@ body {
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: 0 var(--space-20) var(--space-16);
+  padding: 0 var(--space-8) var(--space-8) var(--space-4);
 }
 
 .app-terminal {
@@ -120,6 +223,13 @@ body {
 
 .app-terminal .xterm {
   height: 100%;
+}
+
+/* Alone, the terminal is the pane: no frame of its own, its text in line with the head's. */
+.panels-alone .app-terminal {
+  border: 0;
+  border-radius: 0;
+  padding-top: var(--space-4);
 }
 
 /* Text that is content can be chosen and copied. */
@@ -182,28 +292,12 @@ html[data-visible="false"] *::after {
   background: var(--surface-lit);
 }
 
-/* Under a narrowed list's title: the project it shows, and ✕ to show every project. */
-.app-narrowed {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-  margin-top: var(--space-6);
-  height: var(--size-badge);
-  padding: 0 var(--space-6);
-  border-radius: var(--radius-xs);
-  border: var(--stroke-hairline) solid var(--accent);
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.app-narrowed:hover {
-  background: var(--surface-raised);
-}
-
 /* While a terminal has the keys the status bar says so in the accent, as its frame is lit. */
 .app-statusbar [data-typing] {
   color: var(--accent);
+}
+
+/* The sidebar put away (⌘\), the screen beside it has no edge to draw. */
+.app-sidebar[hidden] + .app-screen {
+  border-left: 0;
 }

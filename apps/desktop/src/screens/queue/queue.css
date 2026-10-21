@@ -1,18 +1,15 @@
-/* The queue column (Spec board): 420 wide, from 360 to 560, on the ground,
-   a hairline at its right. */
+/* The queue, in the sidebar: as wide as it is. */
 .queue-column {
-  flex: 0 1 var(--layout-queue);
-  min-width: var(--layout-queue-min);
-  max-width: var(--layout-queue-max);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface-ground);
-  border-right: var(--stroke-hairline) solid var(--line);
   container-type: inline-size;
 }
 .queue-list {
   flex: 1;
   min-height: 0;
+  padding: 0 var(--space-8) var(--space-8);
   overflow-y: auto;
   overscroll-behavior: contain;
   outline: none;
@@ -31,19 +28,13 @@
 .queue-list .mu-row[aria-selected="true"].is-resting {
   background: var(--surface-tint);
 }
-.queue-name {
-  flex: 1;
-}
-.queue-doing {
-  max-width: 40%;
-}
 .queue-list .mu-question {
   max-width: calc(100% - var(--layout-indent-queue));
 }
-/* All clear: title-section, 48 from the top, the working agents below it. */
+/* All clear: title-section, 24 from the top, the working agents below it. */
 .queue-clear {
   margin: 0 auto;
-  padding: var(--space-48) var(--space-24) var(--space-24);
+  padding: var(--space-24) var(--space-12) var(--space-12);
 }
 .queue-clear-title {
   font-size: 14px;
@@ -55,8 +46,9 @@
 }
 .queue-none {
   flex: 1;
-  align-items: center;
-  justify-content: center;
+}
+.queue-none-text {
+  margin: auto;
 }
 /* As the column narrows, a row gives way: first the pull request's word,
    then the diff stat (design system: QueueRow). */
@@ -69,4 +61,11 @@
   .queue-list .mu-row-line > .mu-diff {
     display: none;
   }
+}
+/* Asking: its name in weight, what it asks in the waiting colour, as in the All list. */
+.queue-asking {
+  font-weight: 600;
+}
+.queue-ask {
+  color: var(--waiting);
 }

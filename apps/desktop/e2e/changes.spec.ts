@@ -131,7 +131,7 @@ test("ARC-24 Turns: each entry with its agent, what it changed and when; ⏎ ask
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
   await expect(page.locator(".mu-diffview-head")).toHaveText("Edits between turns+2");
-  // The queue's This turn asked turn 4's diff for its files; the view asks entry 3's.
+  // The view asks entry 3's diff, as it is chosen.
   await expect
     .poll(() => sent(page, "EntryDiff"))
     .toContainEqual({ EntryDiff: { workspace, number: 3 } });
@@ -274,8 +274,6 @@ for (const [command, asking, lead, empty] of [
 ] as const) {
   test(`ARC-24 ${command}: asking, refused, asked again, empty`, async ({ page }) => {
     await open(page, async (page) => {
-      // This turn, under the terminal, has its timeline before the view asks for its own.
-      await expect(page.locator(".mu-turn")).toContainText("Codex, turn 3");
       await page.evaluate((command) => {
         window.__muster.hold(command);
       }, command);

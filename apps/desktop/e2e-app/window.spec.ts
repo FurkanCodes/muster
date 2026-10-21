@@ -20,6 +20,7 @@ import {
   goTo,
   press,
   pressOnWindow,
+  row,
   shownScreen,
   terminalText,
   untilFlock,
@@ -27,17 +28,20 @@ import {
 
 // The window as a whole over the real daemon (PRODUCT.md §6a, ARCHITECTURE.md
 // §5c): the link's states and the daemon started by the app, the banner
-// while it is out of reach with its log and Try now, the title bar, the
-// sidebar and the window's keys, the theme and the colours programs are
+// while it is out of reach with its log and Try now, the sidebar and its
+// list, the status bar's flock and meter, the window's keys, the theme and the colours programs are
 // told, a window that cannot be seen streaming nothing and coming back
 // current, a sound heard as it is chosen, and the status bar's notes said to
 // a screen reader.
 
-const kep = async () => (await $(".app-titlebar .mu-kep").getAttribute("aria-label")) ?? "";
+const kep = async () => (await $(".app-sidebar .mu-kep").getAttribute("aria-label")) ?? "";
 const banner = () => $(".ui-flow-away");
 const note = () => $('[data-said="note"]');
-/** Text shown on the screen in view. */
-const inMain = (text: string) => $(`//main//*[contains(text(), "${text}")]`);
+/** Text shown in the sidebar's list. */
+const inList = (text: string) => $(`//nav[@aria-label="Sessions"]//*[contains(text(), "${text}")]`);
+/** The sidebar's way to anything by typing. */
+const search = () =>
+  $('//nav[@aria-label="Sessions"]/button[starts-with(normalize-space(.), "Search")]');
 
 async function openSettings(section: string): Promise<void> {
   await pressOnWindow("⌘,");
@@ -87,10 +91,10 @@ describe("The window as a whole", () => {
       expect.stringContaining(`Muster ${musterVersion()}`),
     );
     expect(await kep()).toBe("Nothing works or waits");
-    await expect($("button.mu-command")).toBeEnabled();
+    await expect(search()).toBeEnabled();
   });
 
-  it("counts the flock and Kep's mood in the title bar as the daemon has them, and the machine's memory", async () => {
+  it("counts the flock and Kep's mood as the daemon has them, and the machine's memory", async () => {
     const asking = await askingSession("app", "Asking agent", "Which way?");
     await untilFlock(0, 1, 0);
     expect(await kep()).toBe("Something asks for you");
@@ -103,7 +107,7 @@ describe("The window as a whole", () => {
     await untilFlock(2, 0, 0);
     expect(await kep()).toBe("Kep is watching the flock");
     // The daemon's report of the machine's memory, as a meter.
-    const meter = await $(".app-titlebar .mu-meter");
+    const meter = await $(".app-statusbar .mu-meter");
     await meter.waitForExist({ timeout: 30_000 });
     expect(await meter.getAttribute("aria-label")).toMatch(/^Memory \d+ percent used$/);
   });
@@ -146,36 +150,24 @@ describe("The window as a whole", () => {
     await pressOnWindow("⌘2");
   });
 
-  it("lists the projects with their sessions, narrows the screens to one, and folds on ⌘\\", async () => {
-    const sidebar = $('nav[aria-label="Screens"]');
-    const appItem = sidebar.$("button*=app");
-    await expect(appItem).toHaveText(expect.stringContaining("2"));
-    await expect(sidebar.$("button*=other")).toBeDisplayed();
-    // Narrowed to the other project, Sessions lists none of app's.
+  it("lists the projects with their sessions under All, and puts the sidebar away on ⌘\\", async () => {
     muster("session", "start", "other", "--harness", "claude", "--title", "Other agent");
     await goTo("Sessions");
-    await expect(inMain("Other agent")).toBeDisplayed();
-    await expect(inMain("Asking agent")).toBeDisplayed();
-    await sidebar.$("button*=other").click();
-    await expect(sidebar.$("button*=other")).toHaveAttribute("aria-pressed", "true");
-    // A filter said on the list it filters, Sessions still the tab shown.
-    await expect($("button=Only other")).toBeDisplayed();
-    expect(await shownScreen()).toBe("Sessions");
-    await expect(inMain("Asking agent")).not.toBeDisplayed();
-    await expect(inMain("Other agent")).toBeDisplayed();
-    await sidebar.$("button*=other").click();
-    await expect(inMain("Asking agent")).toBeDisplayed();
-    // ⌘\ folds the sidebar to its marks, and back.
+    await expect(row("app")).toBeDisplayed();
+    await expect(row("other")).toBeDisplayed();
+    await expect(inList("Other agent")).toBeDisplayed();
+    await expect(inList("Asking agent")).toBeDisplayed();
+    // ⌘\ puts the sidebar away, and back.
+    const sidebar = $('nav[aria-label="Sessions"]');
     await pressOnWindow("⌘\\");
-    await expect(sidebar).toHaveElementClass("mu-nav--folded");
-    await expect(sidebar.$("div*=Projects")).not.toBeDisplayed();
+    await expect(sidebar).not.toBeDisplayed();
     await pressOnWindow("⌘\\");
-    await expect(sidebar).not.toHaveElementClass("mu-nav--folded");
-    // And on the person's fold_list key, the terminal UI's ⌃\\.
+    await expect(sidebar).toBeDisplayed();
+    // And on the person's fold_list key, the terminal UI's ⌃\.
     await pressOnWindow("⌃\\");
-    await expect(sidebar).toHaveElementClass("mu-nav--folded");
+    await expect(sidebar).not.toBeDisplayed();
     await pressOnWindow("⌃\\");
-    await expect(sidebar).not.toHaveElementClass("mu-nav--folded");
+    await expect(sidebar).toBeDisplayed();
   });
 
   it("draws in the theme chosen, says so to a screen reader, and tells programs its colours", async () => {
@@ -299,8 +291,8 @@ describe("The window as a whole", () => {
     await expect(banner()).toBeDisplayed();
     await expect(banner()).toHaveText(expect.stringContaining("Muster's daemon is out of reach."));
     expect(await kep()).toBe("The daemon is out of reach");
-    await expect($("main.app-screen")).toHaveAttribute("inert");
-    await expect($("button.mu-command")).toBeDisabled();
+    await expect($(".app-body")).toHaveAttribute("inert");
+    await expect(search()).toBeDisabled();
     // What it last knew stays as it was.
     expect(await flock()).toBe("0 working, 2 waiting on you, 0 done");
 
@@ -323,8 +315,8 @@ describe("The window as a whole", () => {
     await until(() => status().running, "the daemon to run again", 10_000);
     await expect(banner()).not.toBeExisting();
     expect(status().daemon?.pid).not.toBe(before);
-    await expect($("main.app-screen")).not.toHaveAttribute("inert");
-    await expect($("button.mu-command")).toBeEnabled();
+    await expect($(".app-body")).not.toHaveAttribute("inert");
+    await expect(search()).toBeEnabled();
   });
 
   it("waits for a daemon it cannot start, in place of a screen, then connects as it can", async () => {
@@ -338,6 +330,7 @@ describe("The window as a whole", () => {
     await banner().$("button=Try now").click();
     await until(() => status().running, "the daemon to run", 10_000);
     await expect(banner()).not.toBeExisting();
-    await expect($("nav[aria-label='Screens']").$("button*=app")).toBeDisplayed();
+    await goTo("Sessions");
+    await expect(row("app")).toBeDisplayed();
   });
 });

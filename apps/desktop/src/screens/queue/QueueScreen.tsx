@@ -1,5 +1,7 @@
-// *Needs you* (design system: Queue): the queue column, asking first, then
-// finished not seen, then at work, and beside it the selected session's pane, live. The keys are the
+// *Needs you* (design system: Queue): the queue in the sidebar, asking
+// first, then finished not seen, then at work, and beside it the selected
+// session's pane, live. While Tickets or Settings is shown beside it
+// instead, the queue stays in the sidebar and its keys are theirs. The keys are the
 // terminal UI's, as the person set them (src/keys): ↑↓ (or k j) move, ⏎
 // gives the session's terminal the keys and ⇧Q gives them back, `l` goes
 // to the session that needed the person last, `d` its changes (the pane's),
@@ -10,12 +12,12 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
-import { Narrowed } from "../../app/Narrowed";
+import { Sidebar } from "../../app/Sidebar";
 import type { SessionId } from "../../ipc/generated/SessionId";
 import { type Keymap, labelOf } from "../../keys/keymap";
 import { useActionKeys, useBorrowedKeys, useKeymap } from "../../keys/useKeymap";
 import { keysOf, type MenuItem } from "../../session/SessionMenu";
-import { SessionPane } from "../../session/SessionPane";
+import { SessionPane, SidebarAway } from "../../session/SessionPane";
 import {
   CloseSession,
   RenameSession,
@@ -40,14 +42,12 @@ const SECTIONS: Record<Section, string> = {
 
 /** The list as shown and its selection, holding the selected one's place (`holdPlace`). */
 function useShownQueue() {
-  const project = useUi((state) => state.project);
   const chosen = useUi((state) => state.selected[AREA]);
-  const list = useDaemon(useShallow((state) => queueIds(state, project)));
-  // Kept in its place only while it is not at work again, and in the project shown.
+  const list = useDaemon(useShallow(queueIds));
+  // Kept in its place only while it is not at work again.
   const stays = useDaemon((state) => {
     const session = chosen ? state.sessions[chosen] : undefined;
-    if (!session || session.status.state === "running") return false;
-    return !project || state.workspaces[session.workspace]?.project === project;
+    return Boolean(session && session.status.state !== "running");
   });
   const [held, setHeld] = useState(() => ({
     list,
@@ -91,7 +91,7 @@ const IN_TERMINAL: readonly Hint[] = [
   { key: "⌘\\", does: "fold the sidebar" },
 ];
 
-export function QueueScreen() {
+export function QueueScreen({ active }: { active: boolean }) {
   const app = useApp();
   const actions = useActions();
   const { ids, selected, chosen } = useShownQueue();
@@ -140,7 +140,7 @@ export function QueueScreen() {
     if (!left || !selected) return;
     const session = app.daemon.store.getState().sessions[selected];
     if (session && session.status.state !== "needs_you" && !session.unseen) {
-      const first = queueIds(app.daemon.store.getState(), app.ui.getState().project)[0];
+      const first = queueIds(app.daemon.store.getState())[0];
       actions.select(AREA, first);
     }
   }, [app, actions, keysIn, selected]);
@@ -149,16 +149,20 @@ export function QueueScreen() {
   // The changes, while shown, say their own keys.
   const changesShown = useUi((state) => state.pane === "changes") && selected !== undefined;
   useEffect(() => {
-    if (changesShown) return;
+    if (changesShown || !active) return;
     actions.setHints(
       keysIn === "terminal"
         ? IN_TERMINAL
         : hintsFor(map, section, newestTurn !== null, hasPullRequest),
     );
-  }, [actions, map, keysIn, section, newestTurn, hasPullRequest, changesShown]);
-  useEffect(() => () => actions.setHints([]), [actions]);
+  }, [actions, map, keysIn, section, newestTurn, hasPullRequest, changesShown, active]);
+  useEffect(() => {
+    if (active) return () => actions.setHints([]);
+  }, [actions, active]);
 
   const pick = (id: SessionId) => {
+    // Picked beside Tickets or Settings, it is shown in their place.
+    if (!active) actions.show(AREA);
     actions.select(AREA, id);
     actions.keysTo("list");
   };
@@ -184,20 +188,28 @@ export function QueueScreen() {
     const last = lastNeeded(app.daemon);
     if (!last) return actions.tell("No session has needed you since Muster started.", true);
     if (ids.includes(last)) return pick(last);
-    // Not in this list (seen since, or another project's): where every session is.
+    // Not in this list (seen since): where every session is.
     actions.select("all", last);
     actions.show("all");
   };
-  useKeys({ ArrowDown: () => move(1), ArrowUp: () => move(-1), Enter: open });
+  useKeys(active ? { ArrowDown: () => move(1), ArrowUp: () => move(-1), Enter: open } : {});
   // The pane answers `d` (show_changes) and its panels' keys.
-  useActionKeys("needs_you", {
-    move_down: () => move(1),
-    move_up: () => move(-1),
-    rename: tools.rename,
-    close: tools.close,
-    last_alarm: goToLast,
-  });
-  useBorrowedKeys("needs_you", { put_back: putBack, pull_request_in_browser: tools.browser });
+  useActionKeys(
+    "needs_you",
+    active
+      ? {
+          move_down: () => move(1),
+          move_up: () => move(-1),
+          rename: tools.rename,
+          close: tools.close,
+          last_alarm: goToLast,
+        }
+      : {},
+  );
+  useBorrowedKeys(
+    "needs_you",
+    active ? { put_back: putBack, pull_request_in_browser: tools.browser } : {},
+  );
 
   const menu: MenuItem[] = [
     { ...keysOf(map, "rename"), label: "Rename", does: tools.rename },
@@ -212,51 +224,59 @@ export function QueueScreen() {
       : []),
     { ...keysOf(map, "close"), label: "Close", does: tools.close, danger: true },
   ];
-  const resting = keysIn !== "list";
+  // Selected while the keys are elsewhere: a terminal, a dialog, or Tickets and Settings beside it.
+  const resting = keysIn !== "list" || !active;
   const working = sections.filter((one) => one === "working").length;
   const nothingWaits = working === sections.length;
 
   return (
     <>
-      <section className="queue-column" aria-label={TITLE}>
-        <div className="mu-queue-head">
-          <h1 className="mu-queue-title">{TITLE}</h1>
-          <span className="mu-meta">Oldest first. Opening one clears it.</span>
-          <Narrowed />
-        </div>
-        {!loaded ? (
-          <div className="mu-empty" role="status">
-            <p className="mu-empty-text">
-              {link === "down" ? "Muster's daemon is out of reach." : "Connecting to Muster…"}
-            </p>
-          </div>
-        ) : (
-          <div
-            className="mu-queue queue-list"
-            role="listbox"
-            tabIndex={0}
-            aria-label={`${TITLE} sessions`}
-            aria-activedescendant={selected ? optionId(selected) : undefined}
-          >
-            {nothingWaits ? <AllClear working={working} /> : null}
-            {ids.map((id, index) => {
-              const own = sections[index] ?? "news";
-              const head = own !== sections[index - 1];
-              return (
-                <QueueRowSlot
-                  key={id}
-                  head={head ? SECTIONS[own] : null}
-                  section={own}
-                  renaming={tools.renaming === id ? tools : null}
-                >
-                  <QueueEntry id={id} selected={id === selected} resting={resting} onPick={pick} />
-                </QueueRowSlot>
-              );
-            })}
-          </div>
-        )}
-      </section>
-      {selected ? <SessionPane session={selected} menu={menu} /> : <NoneSelected />}
+      <Sidebar>
+        <section className="queue-column" aria-label={TITLE}>
+          <h1 className="app-hidden">{TITLE}</h1>
+          {!loaded ? (
+            <div className="mu-empty" role="status">
+              <p className="mu-empty-text">
+                {link === "down" ? "Muster's daemon is out of reach." : "Connecting to Muster…"}
+              </p>
+            </div>
+          ) : (
+            <div
+              className="mu-queue queue-list"
+              role="listbox"
+              tabIndex={0}
+              aria-label={`${TITLE} sessions`}
+              aria-activedescendant={selected ? optionId(selected) : undefined}
+            >
+              {nothingWaits ? <AllClear working={working} /> : null}
+              {ids.map((id, index) => {
+                const own = sections[index] ?? "news";
+                const head = own !== sections[index - 1];
+                return (
+                  <QueueRowSlot
+                    key={id}
+                    head={head ? SECTIONS[own] : null}
+                    section={own}
+                    renaming={tools.renaming === id ? tools : null}
+                  >
+                    <QueueEntry
+                      id={id}
+                      selected={id === selected}
+                      resting={resting}
+                      onPick={pick}
+                    />
+                  </QueueRowSlot>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </Sidebar>
+      {active ? (
+        <main className="app-screen">
+          {selected ? <SessionPane session={selected} menu={menu} /> : <NoneSelected />}
+        </main>
+      ) : null}
       <CloseSession actions={tools} />
     </>
   );
@@ -303,7 +323,10 @@ function AllClear({ working }: { working: number }) {
 function NoneSelected() {
   return (
     <section className="mu-pane app-pane session-pane queue-none" aria-label="No session">
-      <p className="mu-meta">The session you select shows here, live.</p>
+      <header className="app-head" data-tauri-drag-region>
+        <SidebarAway />
+      </header>
+      <p className="mu-meta queue-none-text">The session you select shows here, live.</p>
     </section>
   );
 }

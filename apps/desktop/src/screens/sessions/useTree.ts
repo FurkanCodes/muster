@@ -1,9 +1,9 @@
-// The tree's lines and selection: the model's rows narrowed to the project
-// the window is narrowed to, the folds (the window's own, kept per project
-// across restarts), and the line selected (`ui.selected.all`). The selection
-// only ever rests on a line drawn: folding the line it is under takes it
-// there, and one selected for the person (from a ticket, the palette, the
-// notch) unfolds what hides it (`app::fold`).
+// The list's lines and selection: the model's projects and sessions, the
+// folds (the window's own, kept per project across restarts), and the line
+// selected (`ui.selected.all`). The selection only ever rests on a line
+// drawn: folding the project it is under takes it there, and one selected
+// for the person (from a ticket, the palette, the notch) unfolds what hides
+// it (`app::fold`).
 
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -11,7 +11,6 @@ import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { readFolds, writeFolds } from "./folds";
 import {
   allRows,
-  foldable,
   keptFolds,
   selectionAfterFold,
   shownRows,
@@ -33,10 +32,9 @@ function decoded(text: string): TreeRow {
 export function useTree() {
   const app = useApp();
   const actions = useActions();
-  const project = useUi((state) => state.project);
   const chosen = useUi((state) => state.selected.all);
   const loaded = useDaemon((state) => state.loaded);
-  const lines = useDaemon(useShallow((state) => allRows(state, project).map(encoded)));
+  const lines = useDaemon(useShallow((state) => allRows(state).map(encoded)));
   const rows = lines.map(decoded);
   const [folded, setFolded] = useState<ReadonlySet<string>>(readFolds);
   const shown = shownRows(rows, folded);
@@ -82,20 +80,12 @@ export function useTree() {
     rows: shown,
     folded,
     selected,
-    /** Folds or unfolds a project's or a worktree's line; on a session, its worktree's. */
+    /** Folds or unfolds a project's line; on a session, its project's. */
     fold(id: string) {
       const row = rows.find((one) => one.id === id);
       if (!row) return;
-      const line = row.kind === "session" ? rows.find((one) => one.id === row.workspace) : row;
-      if (!line) return;
-      const { folded: next, refused } = toggled(
-        folded,
-        line,
-        foldable(app.daemon.store.getState(), line),
-      );
-      if (refused) return actions.tell("No sessions here to fold away.", true);
-      keep(next);
-      const after = selectionAfterFold(line, selected);
+      keep(toggled(folded, row.project));
+      const after = selectionAfterFold(row.project, selected);
       if (after && after !== selected?.id) actions.select("all", after);
     },
     pick(id: string) {

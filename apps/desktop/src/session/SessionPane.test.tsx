@@ -1,27 +1,40 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { MockBridge } from "../ipc/mock/bridge";
-import { ulid, workingDay } from "../ipc/mock/scenario";
-import { renderWithApp } from "../test/render";
+import { ulid } from "../ipc/mock/scenario";
+import { renderApp, renderWithApp } from "../test/render";
 import { SessionPane } from "./SessionPane";
-import { ThisTurn } from "./ThisTurn";
 
 const codex = ulid(101);
-const desktop = ulid(11);
 
 describe("ARC-24 the session pane", () => {
-  it("says which session, where it runs and what it uses (PRD-12, PRD-05)", async () => {
+  it("says in one row which session, where it runs and what its work there comes to", async () => {
     renderWithApp(<SessionPane session={codex} />);
     expect(
       await screen.findByRole("heading", { name: "Sketch the Tauri shell" }),
     ).toBeInTheDocument();
-    const pane = screen.getByRole("region", { name: "Sketch the Tauri shell" });
-    expect(pane).toHaveTextContent("⎇ feature/desktop-app in muster");
-    expect(pane).toHaveTextContent("Codex");
-    expect(pane).toHaveTextContent("182k tokens");
-    expect(pane).toHaveTextContent("212 MB, 3% CPU");
-    expect(pane).toHaveTextContent("#91");
+    const head = screen.getByRole("region", { name: "Sketch the Tauri shell" });
+    expect(head).toHaveTextContent("⎇ feature/desktop-app in muster");
+    expect(head).toHaveTextContent("+300−6");
+    expect(head).toHaveTextContent("overlap");
+    expect(head).toHaveTextContent("#91");
+  });
+
+  it("PRD-12 says its agent and what it uses at the status bar's end, for the session shown", async () => {
+    renderApp();
+    await screen.findByRole("heading", { name: "Sketch the Tauri shell", level: 2 });
+    expect(screen.getByRole("contentinfo")).toHaveTextContent(
+      "Codex · 182k tokens · 212 MB, 3% CPU",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Tickets" }));
+    await screen.findByRole("heading", { name: "Tickets", level: 1 });
+    expect(screen.getByRole("contentinfo")).not.toHaveTextContent("182k tokens");
+  });
+
+  it("has nothing under the terminal: the turns are in the changes", async () => {
+    renderWithApp(<SessionPane session={codex} />);
+    await screen.findByRole("heading", { name: "Sketch the Tauri shell" });
+    expect(screen.queryByRole("region", { name: "This turn" })).not.toBeInTheDocument();
   });
 
   it("shows the needs-you banner only while the session asks", async () => {
@@ -38,19 +51,16 @@ describe("ARC-24 the session pane", () => {
     );
   });
 
-  it("opens the changes on Changes, and offers the shell and full screen with their keys", async () => {
+  it("offers the shell and the changes as icons, each with its key in its tooltip", async () => {
     const { app } = renderWithApp(<SessionPane session={codex} />);
     await screen.findByRole("heading", { name: "Sketch the Tauri shell" });
-    expect(screen.getByRole("button", { name: "Shell" })).toHaveAttribute(
-      "title",
-      "Shell in this workspace (⇧T)",
-    );
-    expect(screen.getByRole("button", { name: "Full screen" })).toHaveAttribute(
-      "title",
-      "Full screen (f)",
-    );
+    const shell = screen.getByRole("button", { name: "Shell" });
+    expect(shell).toHaveAttribute("title", "Shell in this workspace (⇧T)");
+    expect(shell).toHaveTextContent("");
+    expect(screen.queryByRole("button", { name: "Full screen" })).not.toBeInTheDocument();
     const changes = screen.getByRole("button", { name: "Changes" });
     expect(changes).toHaveAttribute("title", "Changes (d)");
+    expect(changes).toHaveTextContent("");
     await userEvent.click(changes);
     expect(app.ui.getState().pane).toBe("changes");
     expect(changes).toHaveAttribute("aria-pressed", "true");
@@ -58,7 +68,7 @@ describe("ARC-24 the session pane", () => {
     expect(app.ui.getState().pane).toBe("terminal");
   });
 
-  it("offers the list's keys in its more menu, each with its key", async () => {
+  it("offers full screen and the list's keys in its more menu, each with its key", async () => {
     const rename = vi.fn();
     const close = vi.fn();
     renderWithApp(
@@ -73,10 +83,10 @@ describe("ARC-24 the session pane", () => {
     await userEvent.click(await screen.findByRole("button", { name: "More" }));
     const menu = screen.getByRole("menu", { name: "Sketch the Tauri shell" });
     const items = within(menu).getAllByRole("menuitem");
-    expect(items.map((item) => item.textContent)).toEqual(["RenameR", "Closex"]);
+    expect(items.map((item) => item.textContent)).toEqual(["Full screenf", "RenameR", "Closex"]);
     expect(items[0]).toHaveFocus();
     expect(within(menu).getByRole("separator")).toBeInTheDocument();
-    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
     expect(close).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "More" }));
@@ -88,117 +98,13 @@ describe("ARC-24 the session pane", () => {
     expect(screen.getByRole("button", { name: "More" })).toHaveFocus();
   });
 
-  it("has no more menu where the list gives it nothing to offer", async () => {
-    renderWithApp(<SessionPane session={codex} />);
-    await screen.findByRole("heading", { name: "Sketch the Tauri shell" });
-    expect(screen.queryByRole("button", { name: "More" })).not.toBeInTheDocument();
-  });
-});
-
-describe("ARC-25 This turn, read when the timeline changes", () => {
-  it("shows the newest turn and its files, and opens its diff or putting it back (PRD-14)", async () => {
-    const { app } = renderWithApp(<ThisTurn workspace={desktop} />);
-    const turn = await screen.findByRole("region", { name: "This turn" });
-    expect(await within(turn).findByText("Codex, turn 3, changed 3 files")).toBeInTheDocument();
-    expect(turn).toHaveTextContent("+203−4");
-    const pills = await within(turn).findAllByRole("button", { name: /its diff$/ });
-    expect(pills.map((pill) => pill.textContent)).toEqual([
-      "link.rs+118−4",
-      "main.rs+61",
-      "Cargo.toml+24",
-    ]);
-    expect(pills[0]).toHaveAttribute("title", "crates/muster-desktop/src/link.rs");
-    await userEvent.click(within(turn).getByRole("button", { name: "Put back" }));
-    expect(app.ui.getState()).toMatchObject({
-      pane: "changes",
-      changesTurn: { workspace: desktop, number: 4, intent: "put-back" },
-    });
-    await userEvent.click(within(turn).getByRole("button", { name: "See the diff" }));
-    expect(app.ui.getState().changesTurn).toMatchObject({ number: 4, intent: "diff" });
-    await userEvent.click(pills[1] as HTMLElement);
-    expect(app.ui.getState().changesTurn).toMatchObject({ number: 4, intent: "diff" });
-  });
-
-  it("PRD-14 keeps Put back from a turn while an agent works there", async () => {
-    const { bridge } = renderWithApp(<ThisTurn workspace={desktop} />);
-    const putBack = await screen.findByRole("button", { name: "Put back" });
-    expect(putBack).toBeEnabled();
-    act(() => bridge.setStatus(codex, { state: "running" }));
-    expect(putBack).toBeDisabled();
-    expect(putBack).toHaveAttribute("title", "Wait for its turn to end");
-  });
-
-  it("says it is reading, what went wrong, and reads again on Try again", async () => {
-    const bridge = new MockBridge(workingDay());
-    const command = { Timeline: { workspace: desktop } };
-    bridge.hold(command);
-    bridge.failNext(command, "the timeline is busy: try again in a moment");
-    renderWithApp(<ThisTurn workspace={desktop} />, bridge);
-    expect(screen.getByRole("status")).toHaveTextContent("Reading the timeline…");
-    act(() => bridge.release(command));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The timeline could not be read: the timeline is busy: try again in a moment",
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Codex, turn 3, changed 3 files")).toBeInTheDocument();
-  });
-
-  it("says none is kept yet in a workspace with no turns, as the terminal UI does", async () => {
-    renderWithApp(<ThisTurn workspace={ulid(12)} />);
-    expect(
-      await screen.findByText("None kept yet: each agent's turn here is, from now on."),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Put back" })).not.toBeInTheDocument();
-  });
-
-  it("says a turn changed no files, with no pills", async () => {
-    const bridge = new MockBridge(workingDay());
-    const newest = bridge.world.timelines?.[desktop]?.entries[0];
-    if (newest) newest.summary = null;
-    renderWithApp(<ThisTurn workspace={desktop} />, bridge);
-    expect(await screen.findByText("Codex, turn 3, changed no files")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /its diff$/ })).not.toBeInTheDocument();
-  });
-
-  it("reads again when the daemon tells of a newer entry, and asks nothing while hidden", async () => {
-    const { app, bridge } = renderWithApp(<ThisTurn workspace={desktop} />);
-    await screen.findByRole("button", { name: /link\.rs, its diff/ });
-    const timelines = () =>
-      bridge.sent.filter((sent) => typeof sent === "object" && "Timeline" in sent);
-    expect(timelines()).toHaveLength(1);
-    // Hidden and shown again with nothing new: nothing asked again.
-    act(() => app.actions.setVisible(false));
-    act(() => app.actions.setVisible(true));
-    expect(timelines()).toHaveLength(1);
-    // A new entry while hidden is read once the window is seen.
-    act(() => app.actions.setVisible(false));
-    const entries = bridge.world.timelines?.[desktop]?.entries ?? [];
-    const first = entries[0];
-    if (first)
-      entries.unshift({ ...first, number: 5, summary: { files: 1, added: 1, removed: 0 } });
-    act(() => bridge.updateWorkspace(desktop, { timeline: 5 }));
-    await act(async () => {});
-    expect(timelines()).toHaveLength(1);
-    act(() => app.actions.setVisible(true));
-    expect(await screen.findByText("Codex, turn 4, changed 1 file")).toBeInTheDocument();
-    expect(timelines()).toHaveLength(2);
-  });
-
-  it("keeps the turn when its files cannot be read, and says a diff cut short", async () => {
-    const bridge = new MockBridge(workingDay());
-    bridge.failNext({ EntryDiff: { workspace: desktop, number: 4 } }, "the diff is gone");
-    renderWithApp(<ThisTurn workspace={desktop} />, bridge);
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Its files could not be read: the diff is gone",
-    );
-    expect(screen.getByText("Codex, turn 3, changed 3 files")).toBeInTheDocument();
-    const diff = bridge.world.entryDiffs?.[desktop]?.[4];
-    if (diff) diff.cut = true;
-    act(() => bridge.updateWorkspace(desktop, { timeline: 4.5 }));
-    await waitFor(() =>
-      expect(
-        screen.getByText("The diff was cut short; it changed more files than these."),
-      ).toBeInTheDocument(),
-    );
+  it("fills the window from its more menu, and says so there to leave it", async () => {
+    const { app } = renderWithApp(<SessionPane session={codex} />);
+    await userEvent.click(await screen.findByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /^Full screen/ }));
+    expect(app.ui.getState().fullScreen).toBe(codex);
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /^Leave full screen/ }));
+    expect(app.ui.getState().fullScreen).toBeNull();
   });
 });

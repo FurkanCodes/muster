@@ -352,6 +352,8 @@ test.describe("PRD-01 adding a project", () => {
     page,
   }) => {
     await open(page);
+    // Under the list of every session, after the projects.
+    await page.getByRole("button", { name: /^All/ }).click();
     await page.getByRole("button", { name: "Add a project" }).click();
     const dialog = page.getByRole("dialog", { name: "Add a project" });
     const field = dialog.getByRole("combobox", { name: "Folder" });
@@ -413,7 +415,7 @@ test.describe("PRD-01 adding a project", () => {
     expect(await sent(page, "AddProject")).toContainEqual({
       AddProject: { root: "/Users/you/code/lamphaus-api", name: null },
     });
-    await expect(page.getByRole("navigation", { name: "Screens" })).toContainText("lamphaus-api");
+    await expect(page.getByRole("navigation", { name: "Sessions" })).toContainText("lamphaus-api");
   });
 
   test("a folder it cannot read, or one not there, is said, never shown empty", async ({
@@ -483,8 +485,13 @@ test.describe("PRD-09 the session dialogs", () => {
     page,
   }) => {
     await open(page);
-    await select(page, "all", AGP_TREE);
-    await page.keyboard.press("x");
+    // A session stands for its worktree: the palette removes the worktree from it.
+    await select(page, "all", AGP);
+    await page.keyboard.press("Meta+k");
+    await page
+      .getByRole("dialog", { name: "Command palette" })
+      .getByRole("option", { name: /^Remove the worktree/ })
+      .click();
     const dialog = page.getByRole("dialog", { name: "Remove ⎇ muster/issue-219-agp-9-1?" });
     await expect(dialog).toContainText(
       "It has 4 files with changes not committed. Removing deletes its folder and those changes. The branch stays.",
@@ -500,7 +507,12 @@ test.describe("PRD-09 the session dialogs", () => {
       mock.updateSession(agp, { ended_at: 1 });
       mock.setStatus(agp, { state: "exited", success: true });
     }, AGP);
-    await select(page, "all", AGP_TREE);
+    // Its ended session taken off, the worktree has a line of its own, and x removes it.
+    await select(page, "all", AGP);
+    await page.keyboard.press("x");
+    await expect(statusBar(page)).toContainText("Removed the session.");
+    const line = page.getByRole("treeitem", { name: "muster/issue-219-agp-9-1", exact: true });
+    await line.click();
     await page.keyboard.press("x");
     await dialog.getByRole("button", { name: "Remove with its changes" }).click();
     await expect(dialog).toBeHidden();
@@ -523,19 +535,13 @@ test.describe("PRD-09 the session dialogs", () => {
     await expect(dialog.getByRole("alert")).toHaveText(
       "muster has 2 worktree(s); remove them first",
     );
-    await select(page, "all", id(10));
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("x");
-    await expect(statusBar(page)).toContainText(
-      "That is the project's own checkout, which Muster never removes; select the project to stop tracking it.",
-    );
   });
 
   test("t asks which agent tidies, ⇥ going round them; the daemon's refusal stays", async ({
     page,
   }) => {
     await open(page);
-    await select(page, "all", RESIZE);
+    await select(page, "all", FLAKY);
     await page.keyboard.press("t");
     const dialog = page.getByRole("dialog", { name: "Tidy the commits on fix/resize-under-load?" });
     await expect(dialog).toContainText("3 commits since origin/main.");
@@ -558,7 +564,7 @@ test.describe("PRD-09 the session dialogs", () => {
     page,
   }) => {
     await open(page);
-    await select(page, "all", id(21));
+    await select(page, "all", id(200));
     await page.keyboard.press("u");
     const dialog = page.getByRole("dialog", {
       name: "Move muster/issue-212-gradle-cache onto origin/main?",
@@ -606,7 +612,7 @@ test.describe("PRD-09 the session dialogs", () => {
         [RESIZE, id(11), merged] as const,
       );
     await stack(true);
-    await select(page, "all", id(11));
+    await select(page, "all", SKETCH);
     await page.keyboard.press("u");
     const merged = page.getByRole("dialog", { name: "Move feature/desktop-app onto main?" });
     await expect(merged).toContainText(
@@ -626,11 +632,11 @@ test.describe("PRD-09 the session dialogs", () => {
     await select(page, "all", MUSTER);
     await page.keyboard.press("t");
     await expect(statusBar(page)).toContainText(
-      "Select a worktree, or a session in one, to tidy its commits.",
+      "Select a session in a worktree to tidy its commits.",
     );
     await page.keyboard.press("u");
     await expect(statusBar(page)).toContainText(
-      "Select a worktree, or a session in one, to move its branch onto its base.",
+      "Select a session in a worktree to move its branch onto its base.",
     );
     await page.keyboard.press("s");
     await expect(statusBar(page)).toContainText("Select a session to stop.");
@@ -684,8 +690,8 @@ test.describe("PRD-01 the first run and the daemon out of reach", () => {
     await expect(banner).toContainText("Muster's daemon is out of reach.");
     await expect(banner).toContainText("Starting it again and trying every half second");
     await expect(banner).toContainText("What you see is as it was.");
-    await expect(page.locator("main.app-screen")).toHaveAttribute("inert", "");
-    await expect(page.getByRole("button", { name: "Waiting for the daemon" })).toBeDisabled();
+    await expect(page.locator(".app-body")).toHaveAttribute("inert", "");
+    await expect(page.getByRole("button", { name: /^Search/ })).toBeDisabled();
     await page.keyboard.press("n");
     await page.keyboard.press("Meta+k");
     await expect(page.getByRole("dialog")).toHaveCount(0);

@@ -117,28 +117,38 @@ export async function terminalText(session: string): Promise<string> {
   );
 }
 
-/** The sidebar's screens, by the words on them. */
+/** The sidebar's screens, by the words on them: Sessions is the lists' switch's All. */
 export type Screen = "Sessions" | "Needs you" | "Tickets" | "Settings";
+
+const SIDEBAR = '//nav[@aria-label="Sessions"]';
+
+/** The sidebar's button for `screen`: the lists' switch for a list, its own for a page. */
+function sidebarButton(screen: Screen) {
+  if (screen === "Sessions" || screen === "Needs you")
+    return $(
+      `${SIDEBAR}/div[contains(@class, "app-lists")]/button[starts-with(normalize-space(.), "${screen === "Sessions" ? "All" : screen}")]`,
+    );
+  return $(`${SIDEBAR}/button[starts-with(normalize-space(.), "${screen}")]`);
+}
 
 /** Goes to `screen` from the sidebar, as the person clicks it. */
 export async function goTo(screen: Screen): Promise<void> {
-  const item = await $(`nav[aria-label="Screens"]`).$(`button*=${screen}`);
-  await item.click();
-  await browser.waitUntil(async () => (await item.getAttribute("aria-current")) === "page", {
+  await sidebarButton(screen).click();
+  await browser.waitUntil(async () => (await shownScreen()) === screen, {
     timeoutMsg: `${screen} was not shown`,
   });
 }
 
-/** The screen the sidebar says is shown. */
+/** The screen shown: a page the sidebar marks, else the list its switch has on. */
 export async function shownScreen(): Promise<Screen | null> {
-  const current = await $('nav[aria-label="Screens"] [aria-current="page"]');
-  const text = await current.getText();
-  return SCREENS.find((screen) => text.includes(screen)) ?? null;
+  for (const page of ["Tickets", "Settings"] as const)
+    if ((await sidebarButton(page).getAttribute("aria-current")) === "page") return page;
+  for (const list of ["Sessions", "Needs you"] as const)
+    if ((await sidebarButton(list).getAttribute("aria-pressed")) === "true") return list;
+  return null;
 }
 
-const SCREENS: readonly Screen[] = ["Sessions", "Needs you", "Tickets", "Settings"];
-
-/** The flock in the title bar: working, waiting on the person, done. */
+/** The flock at the status bar's end: working, waiting on the person, done. */
 export async function flock(): Promise<string> {
   return (await $(".mu-flock").getAttribute("aria-label")) ?? "";
 }
@@ -245,12 +255,12 @@ export function alertIn(scope: ChainablePromiseElement) {
 }
 
 /**
- * The row on the screen in view named `name`: a project or a branch in All
- * sessions, or a session there or in a queue, by its title.
+ * The row in the sidebar's list named `name`: a project, or a worktree no
+ * session is in, in All, or a session there or in the queue, by its title.
  */
 export function row(name: string) {
   return $(
-    `//main//*[(@role="treeitem" or @role="option") and (@aria-label="${name}" or starts-with(@aria-label, "${name},"))]`,
+    `${SIDEBAR}//*[(@role="treeitem" or @role="option") and (@aria-label="${name}" or starts-with(@aria-label, "${name},"))]`,
   );
 }
 

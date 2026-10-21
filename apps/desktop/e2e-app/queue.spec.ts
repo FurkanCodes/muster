@@ -20,9 +20,9 @@ import {
 
 // Needs you in the real app over a real daemon
 // (PRD-01, ARC-24): the queue's sections in the model's order, the keys on
-// the selected session, its terminal, the banner, This turn from a real
-// turn of a stand-in agent, and what the list does to a session, each
-// checked in the window and in the daemon, on disk and in git.
+// the selected session, its terminal, the banner, a real turn of a stand-in
+// agent in its changes, and what the list does to a session, each checked
+// in the window and in the daemon, on disk and in git.
 
 let repo = "";
 /** The stand-in agents, by what each is for, as each test starts them. */
@@ -106,7 +106,8 @@ describe("Needs you, over the real daemon", () => {
     await untilSelected("Asks first");
     await expect($("h2=Asks first")).toBeDisplayed();
     await expect($(".session-banner")).toHaveText(expect.stringContaining("Needs you:"));
-    await expect($(".mu-question-ask")).toHaveText("May the stand-in run the tests?");
+    // Its row says what it asks, in the waiting colour; the terminal, the question itself.
+    await expect(option("Asks first").$(".queue-ask")).toBeDisplayed();
     const id = session("Asks first")?.id ?? "";
     await until(
       async () => (await terminalText(id)).includes("May the stand-in run the tests?"),
@@ -156,11 +157,11 @@ describe("Needs you, over the real daemon", () => {
   it("ARC-24 l goes to the session that came to need the person last", async () => {
     await ask(agents.long, "Shall the long one go on?");
     await untilSession("Long at work", "needs_you");
-    // The window sees it ask before it is answered: drawn among who asks (an
-    // item, not a row). At work, it was already second in the list, so its
+    // The window sees it ask before it is answered: drawn among who asks,
+    // saying what it asks. At work, it was already second in the list, so its
     // place says nothing; and a window sent the ask and the answer in one
     // patch never saw it need the person.
-    await expect(option("Long at work")).toHaveElementClass("mu-item");
+    await expect(option("Long at work").$(".queue-ask")).toBeExisting();
     await work(agents.long);
     await untilSession("Long at work", "running");
     // At work again since just now: the newest at work, so after the other.
@@ -214,7 +215,7 @@ describe("Needs you, over the real daemon", () => {
     await until(async () => !(await option("To be closed").isExisting()), "the row to go");
   });
 
-  it("PRD-14 This turn shows a real turn's files; See the diff and Put back open the changes", async () => {
+  it("PRD-14 a real turn is among the changes' turns: ⏎ shows its diff, z puts it back", async () => {
     muster("worktree", "add", "app", "--branch", "feature/turn");
     agents.turn = await startAgent("app", "Takes a turn", { branch: "feature/turn" });
     await ask(agents.turn, "Begin?");
@@ -226,20 +227,20 @@ describe("Needs you, over the real daemon", () => {
       "README.md": "changed\n",
     });
     await untilSession("Takes a turn", "finished");
-    const thisTurn = $('section[aria-label="This turn"]');
-    await expect(thisTurn.$('button[aria-label="notes.txt, its diff"]')).toBeDisplayed();
-    await expect(thisTurn.$('button[aria-label="README.md, its diff"]')).toBeDisplayed();
-
-    await thisTurn.$("button=See the diff").click();
+    await pressOnWindow("d");
     const changes = $('section[aria-label="Changes"]');
     await expect(changes).toBeDisplayed();
+    await $("button*=Turns").click();
+    const theTurn = $(
+      '//*[@role="listbox" and @aria-label="Turns"]//*[@role="option" and contains(., "turn 1")]',
+    );
+    await theTurn.click();
+    await pressOnWindow("Enter");
     await expect($('section[aria-label="Diff"]')).toHaveText(
       expect.stringContaining("the turn's words"),
     );
-    await pressOnWindow("d");
-    await expect(changes).not.toBeDisplayed();
 
-    await thisTurn.$("button=Put back").click();
+    await pressOnWindow("z");
     await expect($("dialog")).toHaveText(expect.stringContaining("Put the files back as before"));
     await $("button=Put back the files").click();
     await expect(statusBar()).toHaveText(

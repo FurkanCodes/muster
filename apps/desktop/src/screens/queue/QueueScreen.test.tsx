@@ -17,8 +17,8 @@ async function opened(bridge = new MockBridge(workingDay())) {
   return view;
 }
 
-describe("ARC-24 Needs you, as the Triage board draws it", () => {
-  it("lists who asks with their question, then finishes not seen, then agents at work", async () => {
+describe("ARC-24 Needs you, in the sidebar", () => {
+  it("lists who asks with what they ask, then finishes not seen, then agents at work", async () => {
     await opened();
     const labels = within(queue())
       .getAllByRole("presentation")
@@ -35,15 +35,10 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
       "Sign-up page loads the old pricing",
     ]);
     const asking = selected();
-    expect(asking).toHaveClass("mu-item");
-    expect(asking).toHaveTextContent("⎇ feature/desktop-app in muster");
-    // The agent's own last lines, read off its screen (`Derived.questions`).
-    expect(within(asking).getByText("Allow Codex to run this command?")).toHaveClass(
-      "mu-question-ask",
-    );
-    expect(asking).toHaveTextContent("⏎answer");
-    // Only the selected item shows its keys.
-    expect(options()[1]).not.toHaveTextContent("⏎answer");
+    expect(asking).toHaveClass("mu-row", "mu-row--two");
+    expect(within(asking).getByText("wants to run cargo build")).toHaveClass("queue-ask");
+    // In full over its terminal, with its keys in the status bar.
+    expect(asking).not.toHaveTextContent("⏎answer");
     const finish = within(queue()).getByRole("option", { name: "Resize settles once on release" });
     expect(finish).toHaveClass("mu-row", "mu-row--two");
     expect(finish).toHaveTextContent("⎇ fix/resize-under-load+64−22#88approved✓12m");
@@ -51,9 +46,8 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
     const plain = within(queue()).getByRole("option", { name: "Explain the release script" });
     expect(plain).toHaveTextContent("no changes");
     const worker = within(queue()).getByRole("option", { name: "Upgrade AGP to 9.1" });
-    expect(worker).toHaveClass("mu-row");
-    expect(worker).not.toHaveClass("mu-row--two");
-    expect(worker).toHaveTextContent("running ./gradlew assembleDebug8m");
+    expect(worker).toHaveClass("mu-row", "mu-row--two");
+    expect(worker).toHaveTextContent("Upgrade AGP to 9.1running ./gradlew assembleDebug8m");
   });
 
   it("says All clear, with how many work, when nothing asks or waits unseen", async () => {
@@ -83,50 +77,6 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
     bridge.open = async () => {};
     renderApp(bridge);
     return waitFor(() => expect(screen.getByText("Connecting to Muster…")).toBeInTheDocument());
-  });
-});
-
-describe("ARC-24 narrowing to a project, a filter said where it filters", () => {
-  it("narrows the queue to the project chosen, says so under the title, and shows every project again", async () => {
-    await opened();
-    const lamphaus = screen.getByRole("button", { name: /^lamphaus/ });
-    await userEvent.click(lamphaus);
-    await waitFor(() =>
-      expect(names()).toEqual([
-        "Share the Gradle cache across worktrees",
-        "Explain the release script",
-        "Upgrade AGP to 9.1",
-      ]),
-    );
-    // A filter, not the tab shown: Needs you is still the page.
-    expect(lamphaus).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /Needs you/ })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    const chip = screen.getByRole("button", { name: "Only lamphaus" });
-    await userEvent.click(chip);
-    await waitFor(() => expect(options()).toHaveLength(8));
-    expect(lamphaus).toHaveAttribute("aria-pressed", "false");
-    expect(screen.queryByRole("button", { name: "Only lamphaus" })).not.toBeInTheDocument();
-  });
-
-  it("says All clear in a project where nothing waits", async () => {
-    await opened();
-    await userEvent.click(screen.getByRole("button", { name: /^kep-site/ }));
-    expect(await screen.findByRole("heading", { name: "All clear" })).toBeInTheDocument();
-    expect(
-      screen.getByText("No agent is at work. Muster will show them here when they need you."),
-    ).toBeInTheDocument();
-  });
-
-  it("goes to the project's sessions when chosen on a tab it does not narrow", async () => {
-    await opened();
-    await userEvent.click(screen.getByRole("button", { name: /Tickets/ }));
-    await screen.findByRole("heading", { name: "Tickets", level: 1 });
-    await userEvent.click(screen.getByRole("button", { name: /^lamphaus/ }));
-    expect(await screen.findByRole("heading", { name: "Sessions", level: 1 })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Only lamphaus" })).toBeInTheDocument();
   });
 });
 

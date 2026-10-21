@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { $, expect } from "@wdio/globals";
 import { agentOf, ask, change, finish, startAgent, title, work } from "./support/agents";
 import { sandbox } from "./support/harness";
-import { muster, status, until, untilSession } from "./support/muster";
+import { muster, session, status, until, untilSession } from "./support/muster";
 import { changes, commit, ghCalls, repository, tickets } from "./support/repos";
 import { goTo, pressOnWindow, row, shownScreen, terminalText, untilFlock } from "./support/window";
 
@@ -34,7 +34,14 @@ describe("The real-app harness", () => {
     await ask(claude, "May the stand-in run ls?");
     await untilSession("Claude stand-in", "needs_you");
     await untilFlock(0, 1, 0);
-    await expect($(".mu-question-ask")).toHaveText("May the stand-in run ls?");
+    await until(
+      async () =>
+        (await terminalText(session("Claude stand-in")?.id ?? "")).includes(
+          "May the stand-in run ls?",
+        ),
+      "the question in its terminal",
+    );
+    await expect($('[role="option"][aria-label="Claude stand-in"] .queue-ask')).toBeDisplayed();
     await work(claude);
     await untilSession("Claude stand-in", "running");
     await untilFlock(1, 0, 0);

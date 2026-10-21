@@ -200,7 +200,8 @@ describe("ARC-24 full screen", () => {
 
   it("ends with the session shown, and on going to another screen", async () => {
     const { app, unmount } = await pane();
-    await userEvent.click(screen.getByRole("button", { name: "Full screen" }));
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: /^Full screen/ }));
     expect(app.ui.getState().fullScreen).toBe(codex);
     act(() => app.actions.show("tickets"));
     expect(app.ui.getState().fullScreen).toBeNull();

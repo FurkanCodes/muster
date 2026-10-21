@@ -37,7 +37,7 @@ const WHAT: Record<KeyAction, string> = {
   restart_session: "start an ended session again",
   close: "close the session; remove the worktree or the project, after asking",
   rename: "rename the session's chat",
-  fold: "fold or unfold a project or a worktree (on a session, its worktree)",
+  fold: "fold or unfold a project (on a session, its project)",
   checks: "run the project's checks in the worktree",
   review: "have Claude Code review the worktree's change",
   tidy: "have an agent tidy the worktree's commits",
@@ -100,7 +100,7 @@ const SESSIONS: HelpSectionOf[] = [
       "move_down",
       fixed(
         "⏎",
-        "type in the session beside the list; on a worktree a new session, on a project a new worktree",
+        "type in the session beside the list; on a project fold it, on a worktree with no session start one",
       ),
       "full_screen",
       "fold",

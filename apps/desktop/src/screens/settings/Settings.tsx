@@ -116,7 +116,7 @@ function Sections({ shown }: { shown: Section }) {
   const counts: Partial<Record<Section, number>> = { agents, plugins };
   return (
     <section className="app-settings-sections" aria-label="Settings sections">
-      <div className="mu-queue-head">
+      <div className="mu-queue-head" data-tauri-drag-region>
         <h1 className="mu-queue-title">Settings</h1>
         <span className="mu-meta">The terminal UI shares them.</span>
       </div>

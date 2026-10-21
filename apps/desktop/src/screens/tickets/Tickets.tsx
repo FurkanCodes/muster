@@ -32,7 +32,6 @@ export default function Tickets() {
   const actions = useActions();
   const model = ticketsFor(bridge);
   const visible = useUi((s) => s.visible);
-  const narrowed = useUi((s) => s.project);
   const chosen = useUi((s) => s.selected.tickets);
   const ids = useDaemon(useShallow((s) => projectsInOrder(s).map((p) => p.id)));
   const names = useDaemon(useShallow((s) => projectsInOrder(s).map((p) => p.name)));
@@ -42,8 +41,7 @@ export default function Tickets() {
   const lists = useStore(model.store, (s) => s.lists);
   const changing = useStore(model.store, (s) => s.changing);
   const [dialog, setDialog] = useState<TicketDialog | null>(null);
-  const shownIds = narrowed ? ids.filter((id) => id === narrowed) : ids;
-  const groups = groupProjects(shownIds, lists);
+  const groups = groupProjects(ids, lists);
   const entries: Selection[] = groups.flatMap((projects) => {
     const list = lists[projects[0] ?? ""];
     return list?.state === "loaded"
@@ -81,8 +79,8 @@ export default function Tickets() {
     if (visible) model.forgetFailed();
   }, [model, visible]);
   useEffect(() => {
-    if (visible) for (const id of shownIds) if (!lists[id]) void model.fetch(id);
-  }, [model, visible, shownIds, lists]);
+    if (visible) for (const id of ids) if (!lists[id]) void model.fetch(id);
+  }, [model, visible, ids, lists]);
   useEffect(() => {
     if (selected && chosen !== ticketId(selected.projects[0] ?? "", selected.issue.key))
       actions.select("tickets", ticketId(selected.projects[0] ?? "", selected.issue.key));
@@ -145,7 +143,7 @@ export default function Tickets() {
   };
   const refresh = () => {
     if (visible) {
-      model.refresh(shownIds);
+      model.refresh(ids);
       actions.tell("Fetching the tickets again…");
     }
   };
@@ -166,12 +164,12 @@ export default function Tickets() {
   return (
     <div className="tickets-screen" data-keys={dialog ? "dialog" : "list"}>
       <section className="tickets-list" aria-label="Tickets">
-        <div className="mu-queue-head">
+        <div className="mu-queue-head" data-tauri-drag-region>
           <h1 className="mu-queue-title">Tickets</h1>
           <span className="mu-meta">Each project's open tickets, and the agents on them.</span>
         </div>
         <div className="mu-queue tickets-queue">
-          {!shownIds.length ? (
+          {!ids.length ? (
             <p className="tickets-state mu-meta">
               No projects yet: add one, and its open tickets show here.
             </p>

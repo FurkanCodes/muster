@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { newSession } from "../flows/actions";
 import { charOfCode } from "../keys/chord";
 import type { App } from "./context";
 
@@ -112,6 +113,10 @@ const GLOBAL: Readonly<Record<string, (app: App) => void>> = {
   "⌘K": (app) => {
     if (app.daemon.store.getState().link.state === "up")
       app.actions.openPalette(!app.ui.getState().paletteOpen);
+  },
+  // A new session, as the sidebar's button starts one, from anywhere.
+  "⌘N": (app) => {
+    if (app.daemon.store.getState().link.state === "up") newSession(app);
   },
   // The tabs in the terminal UI's order (Sessions, Needs you, Tickets, Settings).
   "⌘1": (app) => app.actions.show("all"),

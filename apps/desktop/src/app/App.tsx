@@ -1,6 +1,7 @@
-// The window: title bar, sidebar, the screen shown, status bar.
+// The window: the sidebar and its list, the session or the page shown
+// beside it, the status bar.
 
-import { Suspense, useEffect, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { Away, AwayBanner } from "../flows/Away";
 import { SESSION_LISTS } from "../flows/actions";
 import { Flows } from "../flows/Flows";
@@ -10,7 +11,7 @@ import { screenKeys } from "../keys/keymap";
 import { KEY_SCREENS, useKeymap } from "../keys/useKeymap";
 import { installQueueHistory } from "../screens/queue/history";
 import { createDaemon } from "../state/daemon";
-import { createUi, type UiActions } from "../state/ui";
+import { createUi, isList, type UiActions } from "../state/ui";
 import { terminalColours } from "../terminal/colours";
 import { runClock } from "./clock";
 import {
@@ -23,10 +24,8 @@ import {
   useUi,
 } from "./context";
 import { installKeys, useKeys } from "./keys";
-import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
-import { SCREENS } from "./screens";
-import { TitleBar } from "./TitleBar";
+import { LISTS, PAGES } from "./screens";
 import { installVisibility } from "./visibility";
 
 /** The app's stores, made once for the window's life (advanced-init-once). */
@@ -124,27 +123,40 @@ function WindowKeys() {
   return null;
 }
 
-function Screen() {
+/**
+ * The sidebar's list and what is beside it. The list's screen draws both,
+ * the list into the sidebar and its session beside it, and stays drawn
+ * while Tickets or Settings is shown (`active` false: its keys are theirs).
+ */
+function Body() {
   const screen = useUi((state) => state.screen);
+  const list = useUi((state) => state.list);
   const loaded = useDaemon((state) => state.loaded);
   const away = useDaemon((state) => state.link.state === "down");
   const empty = useDaemon((state) => Object.keys(state.projects).length === 0);
-  const Shown = SCREENS[screen];
-  // Out of reach, the screen stays as it was, still (src/flows: Away), or
+  const List = LISTS[list];
+  // Out of reach, the window stays as it was, still (src/flows: Away), or
   // Kep waits where nothing was known yet; with no projects, the lists of
   // sessions welcome a first one.
+  let page: ReactNode = null;
+  if (away && !loaded) page = <Away />;
+  else if (loaded && empty && SESSION_LISTS.includes(screen)) page = <Welcome />;
+  else if (!isList(screen)) {
+    const Shown = PAGES[screen];
+    page = <Shown />;
+  }
   return (
-    <main className="app-screen" inert={away && loaded ? true : undefined}>
+    <div className="app-body" inert={away && loaded ? true : undefined}>
+      {/* Apart, so a page loading for the first time never takes the list away meanwhile. */}
       <Suspense fallback={null}>
-        {away && !loaded ? (
-          <Away />
-        ) : loaded && empty && SESSION_LISTS.includes(screen) ? (
-          <Welcome />
-        ) : (
-          <Shown />
-        )}
+        <List active={page === null} />
       </Suspense>
-    </main>
+      {page ? (
+        <main className="app-screen">
+          <Suspense fallback={null}>{page}</Suspense>
+        </main>
+      ) : null}
+    </div>
   );
 }
 
@@ -154,12 +166,8 @@ function Window() {
   const fullScreen = useUi((state) => state.fullScreen !== null);
   return (
     <div className="mu-root app" data-full-screen={fullScreen}>
-      <TitleBar />
+      <Body />
       <AwayBanner />
-      <div className="app-body">
-        <Sidebar />
-        <Screen />
-      </div>
       <StatusBar />
       <Flows />
       <WindowKeys />

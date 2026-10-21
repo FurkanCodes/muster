@@ -356,7 +356,7 @@ test("ARC-24 Select supports keyboard listbox choice and cancellation", async ({
   await expect(select).toContainText("muster/issue-214-desktop-app");
   await select.click();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(page.getByRole("listbox", { name: "Made on top of" })).toHaveCount(0);
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
 });

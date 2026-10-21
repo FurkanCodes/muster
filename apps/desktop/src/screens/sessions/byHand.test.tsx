@@ -1,4 +1,5 @@
-// The stages by hand from All sessions, as the terminal UI's keys run them:
+// The stages by hand from the All list, on the selected session's worktree,
+// as the terminal UI's keys run them:
 // c the checks and v a review, each a session opened with the keys; o a
 // draft pull request, said in the status bar; b the pull request in the
 // browser; and the TUI's words where none can be (PRD §5 "By hand", ARC-24).
@@ -17,7 +18,7 @@ beforeEach(() => localStorage.clear());
 afterEach(() => uninstall());
 
 async function shown(bridge = new MockBridge(workingDay())) {
-  const rendered = renderWithApp(<AllSessions />, bridge);
+  const rendered = renderWithApp(<AllSessions active />, bridge);
   uninstall = installKeys(rendered.app);
   act(() => rendered.app.actions.show("all"));
   await screen.findByRole("tree");
@@ -45,7 +46,7 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
 
   it("v has Claude Code review the change, opened with the keys", async () => {
     const { app, bridge } = await shown();
-    await userEvent.click(row("fix/resize-under-load"));
+    await userEvent.click(row(/^Resize settles/));
     await userEvent.keyboard("v");
     await waitFor(() => expect(app.ui.getState().keysIn).toBe("terminal"));
     expect(bridge.sent).toContainEqual({
@@ -59,7 +60,7 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
 
   it("o pushes the branch and opens a draft pull request, says so, and b opens it", async () => {
     const { app, bridge } = await shown();
-    await userEvent.click(row("muster/issue-219-agp-9-1"));
+    await userEvent.click(row(/^Upgrade AGP/));
     await userEvent.keyboard("b");
     expect(app.ui.getState().note).toEqual({
       text: "No pull request from this branch is known; o opens one.",
@@ -78,8 +79,8 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
       ),
     );
     expect(bridge.sent).toContainEqual({ OpenPullRequest: { workspace: ulid(22) } });
-    // The worktree's line shows it, and b opens it.
-    expect(row("muster/issue-219-agp-9-1")).toHaveTextContent("#120");
+    // The session's head shows it, and b opens it.
+    expect(screen.getByRole("region", { name: "Upgrade AGP to 9.1" })).toHaveTextContent("#120");
     await userEvent.keyboard("b");
     await waitFor(() =>
       expect(bridge.openedUrls).toEqual(["https://github.com/o/lamphaus/pull/120"]),
@@ -94,15 +95,13 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
     await userEvent.click(row("lamphaus"));
     await userEvent.keyboard("c");
     expect(said()).toEqual({
-      text: "Select a worktree, or a session in one, to run the checks there.",
+      text: "Select a session in a worktree to run the checks there.",
       error: true,
     });
     await userEvent.keyboard("v");
-    expect(said()?.text).toBe("Select a worktree, or a session in one, to review its change.");
+    expect(said()?.text).toBe("Select a session in a worktree to review its change.");
     await userEvent.keyboard("o");
-    expect(said()?.text).toBe(
-      "Select a worktree, or a session in one, to open a pull request from it.",
-    );
+    expect(said()?.text).toBe("Select a session in a worktree to open a pull request from it.");
 
     // The project's own checkout is on the branch a pull request merges into.
     await userEvent.click(row(/^Split view\.rs/));
@@ -126,7 +125,7 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
       "could not push fix/resize-under-load: no remote",
       "bad_request",
     );
-    await userEvent.click(row("fix/resize-under-load"));
+    await userEvent.click(row(/^Flaky resize test/));
     // One is open already: found, not opened again.
     await userEvent.keyboard("o");
     await waitFor(() =>
@@ -134,16 +133,17 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
     );
   });
 
-  it("answers the person's keys, and hints them on a worktree's line", async () => {
+  it("answers the person's keys, and offers them in the session's more menu", async () => {
     const bridge = new MockBridge(workingDay());
     bridge.world.preferences.keys = { checks: ["C"], open_pull_request: ["O"] };
     const { app } = await shown(bridge);
-    await userEvent.click(row("fix/resize-under-load"));
-    await waitFor(() =>
-      expect(app.ui.getState().hints).toContainEqual({ key: "⇧C", does: "check" }),
+    await userEvent.click(row(/^Flaky resize test/));
+    await userEvent.click(await screen.findByRole("button", { name: "More" }));
+    expect(screen.getByRole("menuitem", { name: /^Run the checks/ })).toHaveTextContent("⇧C");
+    expect(screen.getByRole("menuitem", { name: /^Open a draft pull request/ })).toHaveTextContent(
+      "⇧O",
     );
-    expect(app.ui.getState().hints).toContainEqual({ key: "⇧O", does: "draft pull request" });
-    expect(app.ui.getState().hints).toContainEqual({ key: "b", does: "pull request" });
+    await userEvent.keyboard("{Escape}");
     await userEvent.keyboard("c");
     expect(bridge.sent.some((sent) => typeof sent === "object" && "CheckWorkspace" in sent)).toBe(
       false,

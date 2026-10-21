@@ -122,11 +122,28 @@ function actionsHere(app: App): PaletteItem[] {
     add("restart_session", "Restart the session", act.restart);
     add("close", "Remove the session from the list", act.close);
     add("new_session", "Start a new session in its worktree", act.newSession);
-  } else if (onProject && project) {
+  }
+  // A session in a worktree stands for it, as the list gives the worktree no line of its own.
+  if (session && workspace?.kind.kind === "worktree") {
+    if (!act.plain(workspace)) {
+      add("tidy", "Tidy the worktree's commits, with an agent", act.tidy);
+      add("move_branch", "Move the worktree's branch onto its base", act.moveBranch);
+    }
+    items.push({
+      id: "do:remove_worktree",
+      group,
+      label: "Remove the worktree",
+      keys: null,
+      meta: null,
+      lead: { kind: "none" },
+      run: () => act.removeWorktree(app),
+    });
+  }
+  if (!session && onProject && project) {
     add("new_worktree", "Make a new worktree for the project", act.newWorktree);
     add("new_session", "Start a new session in its checkout", act.newSession);
     add("close", "Stop tracking the project", act.close);
-  } else if (workspace) {
+  } else if (!session && workspace) {
     add("new_session", "Start a new session in the worktree", act.newSession);
     if (workspace.kind.kind === "worktree") add("close", "Remove the worktree", act.close);
     if (!act.plain(workspace) && workspace.kind.kind !== "container") {
@@ -269,7 +286,6 @@ function tickets(app: App, found: readonly Ticket[]): PaletteItem[] {
     lead: { kind: "ticket", key: /^\d+$/.test(issue.key) ? `#${issue.key}` : issue.key },
     run: () => {
       app.actions.show("tickets");
-      if (app.ui.getState().project !== project) app.actions.narrow(project);
       app.actions.select("tickets", issue.key);
     },
   }));

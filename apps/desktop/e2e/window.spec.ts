@@ -3,14 +3,16 @@ import { expect, test } from "@playwright/test";
 // The window's frame, against the mock daemon. Each screen's own end-to-end
 // tests sit beside this file, one per branch.
 
-test("the window shows the flock, the screens and the projects", async ({ page }) => {
+test("the window shows the flock, the sidebar and, under All, the projects", async ({ page }) => {
   await page.goto("/");
   await expect(
     page.getByRole("img", { name: "4 working, 2 waiting on you, 2 done" }),
   ).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Screens" })).toBeVisible();
+  const sidebar = page.getByRole("navigation", { name: "Sessions" });
+  await expect(sidebar).toBeVisible();
+  await sidebar.getByRole("button", { name: /^All/ }).click();
   for (const project of ["muster", "lamphaus", "kep-site", "kep-api"]) {
-    await expect(page.getByRole("button", { name: new RegExp(`^${project}`) })).toBeVisible();
+    await expect(sidebar.getByRole("treeitem", { name: project, exact: true })).toBeVisible();
   }
 });
 
@@ -39,13 +41,19 @@ test("the window follows the daemon as a session comes to need you", async ({ pa
   ).toBeVisible();
 });
 
-test("the sidebar folds and unfolds", async ({ page }) => {
+test("the sidebar goes away and comes back, by key or by its button", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Projects")).toBeVisible();
+  const sidebar = page.getByRole("navigation", { name: "Sessions" });
+  await expect(sidebar).toBeVisible();
   await page.keyboard.press("Meta+\\");
-  await expect(page.getByText("Projects")).toBeHidden();
+  await expect(sidebar).toBeHidden();
   await page.keyboard.press("Meta+\\");
-  await expect(page.getByText("Projects")).toBeVisible();
+  await expect(sidebar).toBeVisible();
+  await page.getByRole("button", { name: "Hide the sidebar" }).click();
+  await expect(sidebar).toBeHidden();
+  // The session's head makes room for the window's buttons and brings it back.
+  await page.getByRole("button", { name: "Show the sidebar" }).click();
+  await expect(sidebar).toBeVisible();
 });
 
 test("a session's terminal streams its program's output and takes typing", async ({ page }) => {
