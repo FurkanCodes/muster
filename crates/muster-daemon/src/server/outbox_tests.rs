@@ -24,6 +24,7 @@ fn replay(session: SessionId, seq: u64, len: usize, reset: bool) -> ServerFrame 
         data: vec![b'r'; len],
         reset,
         live_from: None,
+        screen: None,
     }
 }
 
@@ -195,6 +196,7 @@ fn a_stream_that_ends_while_its_client_is_behind_ends_after_a_reset_arc_14() {
                 data: Vec::new(),
                 reset: true,
                 live_from: None,
+                screen: None,
             },
             end.clone(),
         ],
@@ -279,6 +281,7 @@ async fn forward(outbox: Arc<Outbox>, session: SessionId) {
                 data: stream[seq..end].to_vec(),
                 reset,
                 live_from: None,
+                screen: None,
             };
             assert_eq!(outbox.push(session, frame), Ok(Pushed::Queued));
             next = end;

@@ -125,6 +125,7 @@ fn blanks_that_end_a_line_are_left_out() {
         data: b"spaced   \r\nnext\r\n".to_vec(),
         reset: true,
         live_from: None,
+        screen: None,
     });
     let actions = drag(&mut world, (PANE_X, PANE_Y), (PANE_X + 1, PANE_Y + 1));
     assert_eq!(copied(&actions), Some("spaced\nne"));

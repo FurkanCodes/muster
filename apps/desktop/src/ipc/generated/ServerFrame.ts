@@ -21,4 +21,15 @@ export type ServerFrame = { "Welcome": Welcome } | { "Incompatible": Incompatibl
  * `None` in the replay that starts a stream: it is all history.
  * Protocol 33; an older daemon says nothing, read as `None`.
  */
-live_from: number | null, } } | { "Output": { session: SessionId, seq: number, data: Array<number>, } } | { "Modes": { session: SessionId, modes: TerminalModes, } } | { "Detached": { session: SessionId, reason: DetachReason, } } | { "Reveal": { session: SessionId, } };
+live_from: number | null, 
+/**
+ * With `reset`, the program's screen as it stands at the end of
+ * `data`, drawn whole: the main screen or the alternate one, every
+ * cell, the cursor, the colours being drawn in and the input modes,
+ * as escape sequences. `data`, cut from the middle of the output
+ * once the daemon no longer holds its start, cannot draw it on its
+ * own: a client draws this after it, `data` then being history for
+ * its scrollback. It takes no place in the output. Protocol 46; an
+ * older daemon says nothing, read as `None`.
+ */
+screen: Array<number> | null, } } | { "Output": { session: SessionId, seq: number, data: Array<number>, } } | { "Modes": { session: SessionId, modes: TerminalModes, } } | { "Detached": { session: SessionId, reason: DetachReason, } } | { "Reveal": { session: SessionId, } };

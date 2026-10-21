@@ -338,6 +338,7 @@ fn output_is_drawn_and_pastes_follow_the_programs_modes() {
         data: b"$ echo hi\r\nhi\r\n".to_vec(),
         reset: true,
         live_from: None,
+        screen: None,
     });
     world.app.on_frame(ServerFrame::Output {
         session: id,
@@ -845,6 +846,7 @@ fn a_frame_half_drawn_in_the_session_shown_holds_the_drawing() {
         data: b"$ ".to_vec(),
         reset: true,
         live_from: None,
+        screen: None,
     });
     assert!(!world.app.frame_pending());
     world.app.on_frame(ServerFrame::Output {

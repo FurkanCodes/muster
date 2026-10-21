@@ -140,6 +140,12 @@ pub mod frame {
     pub const REPLAY: u8 = 1;
     /// As [`REPLAY`], but the screen must be cleared first.
     pub const REPLAY_RESET: u8 = 2;
+    /// The program's screen as it stands after the [`REPLAY_RESET`] just
+    /// before it, drawn whole over what that drew, whose bytes, cut from
+    /// the middle of the output, cannot draw it (`ServerFrame::Replay::
+    /// screen`); it takes no place in the output, and `seq` is the
+    /// replay's end.
+    pub const SCREEN: u8 = 3;
     /// A [`super::TermEvent`] as JSON; `seq` is 0.
     pub const EVENT: u8 = 9;
 

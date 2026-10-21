@@ -347,6 +347,7 @@ async fn a_session_asking_is_read_for_its_question_while_the_window_is_seen() {
         data: b"Which cache?\r\n> shared\r\n".to_vec(),
         reset: true,
         live_from: None,
+        screen: None,
     });
     tokio::time::advance(PATCH_EVERY).await;
     actor.flush();

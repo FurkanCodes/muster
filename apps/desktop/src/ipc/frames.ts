@@ -7,12 +7,16 @@ import type { TermEvent } from "./generated/desktop/TermEvent";
 export const FRAME_OUTPUT = 0;
 export const FRAME_REPLAY = 1;
 export const FRAME_REPLAY_RESET = 2;
+export const FRAME_SCREEN = 3;
 export const FRAME_EVENT = 9;
 const HEADER = 9;
 
 export type TermFrame =
   | { kind: "output"; seq: number; data: Uint8Array }
   | { kind: "replay"; seq: number; data: Uint8Array; reset: boolean }
+  // The program's screen after the replay before it, drawn whole over what
+  // that drew; it takes no place in the output.
+  | { kind: "screen"; data: Uint8Array }
   | { kind: "event"; event: TermEvent };
 
 const utf8 = new TextDecoder();
@@ -32,6 +36,8 @@ export function decodeFrame(buffer: ArrayBuffer): TermFrame {
     case FRAME_REPLAY:
     case FRAME_REPLAY_RESET:
       return { kind: "replay", seq, data, reset: kind === FRAME_REPLAY_RESET };
+    case FRAME_SCREEN:
+      return { kind: "screen", data };
     case FRAME_EVENT:
       return { kind: "event", event: JSON.parse(utf8.decode(data)) as TermEvent };
     default:

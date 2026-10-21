@@ -48,6 +48,21 @@ impl Ring {
         self.start + self.bytes.len() as u64
     }
 
+    /// The bytes held from `from` to `to`, in two pieces as the ring keeps
+    /// them; only what is held of that span.
+    pub(crate) fn span(&self, from: u64, to: u64) -> (&[u8], &[u8]) {
+        let place = |seq: u64| {
+            usize::try_from(seq.clamp(self.start, self.end()) - self.start).unwrap_or(usize::MAX)
+        };
+        let (from, to) = (place(from), place(to).max(place(from)));
+        let (first, second) = self.bytes.as_slices();
+        let split = first.len();
+        (
+            &first[from.min(split)..to.min(split)],
+            &second[from.saturating_sub(split)..to.saturating_sub(split)],
+        )
+    }
+
     /// Appends output, dropping the oldest bytes beyond the capacity, and
     /// returns the sequence number of `data`'s first byte.
     pub(crate) fn push(&mut self, data: &[u8]) -> u64 {

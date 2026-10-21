@@ -97,9 +97,10 @@ impl App {
                 data,
                 reset,
                 live_from,
+                screen: picture,
             } => {
                 let screen = self.screen(session);
-                screen.replay(seq, &data, reset, live_from);
+                screen.replay(seq, &data, reset, live_from, picture.as_deref());
                 // What the program copied as the person looked on, which
                 // reached this client late.
                 copied = screen

@@ -91,6 +91,13 @@ pub(super) async fn run(
     }
 }
 
+/// Whether `session`'s program runs, so its terminal can be streamed.
+fn runs(model: &Model, session: SessionId) -> bool {
+    model
+        .session(session)
+        .is_some_and(|stored| stored.ended_at.is_none() && !stored.status.is_exited())
+}
+
 async fn sleep_until(at: Option<Instant>) {
     match at {
         Some(at) => tokio::time::sleep_until(at).await,
@@ -211,7 +218,9 @@ impl Actor {
                 watching,
                 sink,
             } => {
-                self.streams.view_attach(session, from_seq, watching, sink);
+                let runs = runs(&self.model, session);
+                self.streams
+                    .view_attach(session, from_seq, watching, sink, runs);
                 self.send_streams();
             }
             Request::Detach { session } => {
@@ -224,7 +233,7 @@ impl Actor {
                 size,
                 pixels,
             } => {
-                self.streams.resized(session, size);
+                self.streams.resized(session, size, pixels);
                 self.send(ClientFrame::Resize {
                     session,
                     size,
@@ -380,11 +389,7 @@ impl Actor {
         let model = &self.model;
         self.streams
             .prune(|session| model.session(session).is_some());
-        self.streams.settle(|session| {
-            model
-                .session(session)
-                .is_some_and(|stored| stored.ended_at.is_none() && !stored.status.is_exited())
-        });
+        self.streams.settle(|session| runs(model, session));
         self.settle_questions();
         self.schedule_flush();
     }

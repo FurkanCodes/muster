@@ -48,6 +48,7 @@ fn replay(session: SessionId, seq: u64, data: &str, reset: bool) -> ServerFrame 
         data: data.as_bytes().to_vec(),
         reset,
         live_from: None,
+        screen: None,
     }
 }
 
@@ -161,7 +162,7 @@ fn the_webview_s_terminal_is_attached_and_streamed_as_raw_frames() {
     let session = SessionId::new();
     let mut streams = connected();
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     assert_eq!(streams.drain(), [attach(session, None, true)]);
 
     streams.on_frame(replay(session, 0, "$ ", false));
@@ -195,7 +196,7 @@ fn the_webview_s_terminal_is_attached_and_streamed_as_raw_frames() {
 fn watching_passes_through_and_detaching_lets_the_stream_go() {
     let session = SessionId::new();
     let mut streams = connected();
-    streams.view_attach(session, None, true, Box::new(Frames::default()));
+    streams.view_attach(session, None, true, Box::new(Frames::default()), true);
     streams.drain();
     streams.view_watch(session, false);
     assert_eq!(
@@ -213,11 +214,91 @@ fn watching_passes_through_and_detaching_lets_the_stream_go() {
 }
 
 #[test]
+fn a_terminal_starting_over_is_handed_the_program_s_screen_after_the_bytes() {
+    let session = SessionId::new();
+    let mut streams = connected();
+    let frames = Frames::default();
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
+    let starting_over = |seq: u64, data: &str| ServerFrame::Replay {
+        session,
+        seq,
+        data: data.as_bytes().to_vec(),
+        reset: true,
+        live_from: None,
+        screen: Some(b"\x1b[Hdrawn".to_vec()),
+    };
+    // A terminal that holds nothing takes it all, the screen after.
+    streams.on_frame(starting_over(40, "cut"));
+    assert_eq!(
+        frames.take(),
+        [
+            (frame::REPLAY, 40, "cut".to_owned()),
+            (frame::SCREEN, 43, "\x1b[Hdrawn".to_owned()),
+        ]
+    );
+    // So does one that starts over.
+    streams.on_frame(starting_over(100, "later"));
+    assert_eq!(
+        frames.take(),
+        [
+            (frame::REPLAY_RESET, 100, "later".to_owned()),
+            (frame::SCREEN, 105, "\x1b[Hdrawn".to_owned()),
+        ]
+    );
+    // One the replay goes on from, asked for all held, has what drew it.
+    streams.ask(&asking(&[session]));
+    streams.on_frame(output(session, 105, "more"));
+    streams.flush_output();
+    let _ = frames.take();
+    streams.on_frame(starting_over(100, "latermore!"));
+    assert_eq!(frames.take(), [(frame::REPLAY, 109, "!".to_owned())]);
+}
+
+#[test]
+fn a_terminal_attached_again_gives_the_daemon_its_size_first_arc_25() {
+    let session = SessionId::new();
+    let mut streams = connected();
+    streams.view_attach(session, None, true, Box::new(Frames::default()), true);
+    let size = TermSize {
+        cols: 120,
+        rows: 40,
+    };
+    streams.resized(session, size, None);
+    streams.on_frame(replay(session, 0, "$ ", false));
+    streams.drain();
+    let resize = ClientFrame::Resize {
+        session,
+        size,
+        pixels: None,
+    };
+    // The window went out of sight: its terminal let go, and the daemon
+    // with it the window's size, so another window's applied meanwhile.
+    streams.view_detach(session);
+    assert_eq!(streams.drain(), [ClientFrame::Detach { session }]);
+    // Back in sight, the program draws for this window again.
+    streams.view_attach(session, Some(2), true, Box::new(Frames::default()), true);
+    assert_eq!(
+        streams.drain(),
+        [resize.clone(), attach(session, Some(2), true)]
+    );
+    // So it does after the daemon comes back.
+    streams.disconnected();
+    streams.connected(2);
+    streams.settle(|_| true);
+    assert_eq!(streams.drain(), [resize, attach(session, None, true)]);
+    // A session whose program has ended is not sized.
+    streams.view_detach(session);
+    streams.drain();
+    streams.view_attach(session, None, true, Box::new(Frames::default()), false);
+    assert_eq!(streams.drain(), [attach(session, None, true)]);
+}
+
+#[test]
 fn a_question_joining_the_terminal_shown_reads_from_the_start_and_the_terminal_carries_on() {
     let session = SessionId::new();
     let mut streams = connected();
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     streams.drain();
     streams.on_frame(replay(session, 0, "Working\r\n", false));
     frames.take();
@@ -258,7 +339,7 @@ fn the_terminal_joining_a_question_streams_from_where_it_is_and_the_question_car
 
     // The webview shows it, holding nothing yet: everything, watched.
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     assert_eq!(streams.drain(), [attach(session, None, true)]);
     streams.on_frame(replay(session, 0, "Which?\r\n", true));
     assert_eq!(frames.take(), [(frame::REPLAY, 0, "Which?\r\n".to_owned())]);
@@ -289,12 +370,12 @@ fn a_terminal_shown_again_streams_from_the_byte_it_lacks() {
     let session = SessionId::new();
     let mut streams = connected();
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     streams.on_frame(replay(session, 0, "abc", false));
     streams.view_detach(session);
     streams.drain();
     // Hidden and seen again: the webview says where its screen is.
-    streams.view_attach(session, Some(3), true, Box::new(frames.clone()));
+    streams.view_attach(session, Some(3), true, Box::new(frames.clone()), true);
     assert_eq!(streams.drain(), [attach(session, Some(3), true)]);
     streams.on_frame(replay(session, 3, "def", false));
     assert_eq!(
@@ -311,7 +392,7 @@ fn after_the_link_is_lost_streams_attach_again_from_the_start_and_screens_start_
     let session = SessionId::new();
     let mut streams = connected();
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     streams.on_frame(replay(session, 0, "before", false));
     streams.drain();
     frames.take();
@@ -338,7 +419,7 @@ fn after_the_link_is_lost_streams_attach_again_from_the_start_and_screens_start_
     // gave it starts over too.
     streams.view_detach(session);
     streams.connected(3);
-    streams.view_attach(session, Some(5), true, Box::new(frames.clone()));
+    streams.view_attach(session, Some(5), true, Box::new(frames.clone()), true);
     assert_eq!(streams.drain()[1], attach(session, None, true));
     streams.on_frame(replay(session, 0, "third", false));
     assert_eq!(
@@ -351,7 +432,7 @@ fn after_the_link_is_lost_streams_attach_again_from_the_start_and_screens_start_
 fn a_session_holding_no_terminal_is_streamed_again_once_it_runs_again() {
     let session = SessionId::new();
     let mut streams = connected();
-    streams.view_attach(session, None, true, Box::new(Frames::default()));
+    streams.view_attach(session, None, true, Box::new(Frames::default()), true);
     streams.drain();
     streams.on_frame(ServerFrame::Detached {
         session,
@@ -370,7 +451,7 @@ fn a_terminal_nobody_reads_is_let_go() {
     let session = SessionId::new();
     let mut streams = connected();
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     streams.drain();
     frames.close();
     streams.on_frame(replay(session, 0, "x", false));
@@ -381,8 +462,8 @@ fn a_terminal_nobody_reads_is_let_go() {
 fn a_loaded_webview_s_terminals_all_go() {
     let (one, two) = (SessionId::new(), SessionId::new());
     let mut streams = connected();
-    streams.view_attach(one, None, true, Box::new(Frames::default()));
-    streams.view_attach(two, None, false, Box::new(Frames::default()));
+    streams.view_attach(one, None, true, Box::new(Frames::default()), true);
+    streams.view_attach(two, None, false, Box::new(Frames::default()), true);
     streams.drain();
     streams.drop_views();
     let mut sent = streams.drain();
@@ -399,7 +480,7 @@ fn a_loaded_webview_s_terminals_all_go() {
 fn a_question_is_read_at_the_size_its_terminal_was_given() {
     let session = SessionId::new();
     let mut streams = connected();
-    streams.resized(session, TermSize { cols: 10, rows: 3 });
+    streams.resized(session, TermSize { cols: 10, rows: 3 }, None);
     streams.ask(&asking(&[session]));
     streams.on_frame(replay(
         session,
@@ -417,7 +498,7 @@ fn a_question_is_read_at_the_size_its_terminal_was_given() {
 fn nothing_is_asked_of_the_daemon_while_out_of_reach() {
     let session = SessionId::new();
     let mut streams = Streams::default();
-    streams.view_attach(session, None, true, Box::new(Frames::default()));
+    streams.view_attach(session, None, true, Box::new(Frames::default()), true);
     streams.ask(&asking(&[session]));
     assert_eq!(streams.drain(), []);
     streams.connected(1);
@@ -430,7 +511,7 @@ fn arc_25_output_is_held_and_handed_on_once_a_frame_in_one_message() {
     let session = SessionId::new();
     let mut streams = connected();
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     streams.on_frame(replay(session, 0, "$ ", false));
     assert_eq!(frames.take(), [(frame::REPLAY, 0, "$ ".to_owned())]);
     for (seq, line) in [(2, "one\r\n"), (7, "two\r\n"), (12, "three\r\n")] {
@@ -453,7 +534,7 @@ fn arc_25_what_is_held_goes_before_a_replay_or_an_event_so_the_order_holds() {
     let session = SessionId::new();
     let mut streams = connected();
     let frames = Frames::default();
-    streams.view_attach(session, None, true, Box::new(frames.clone()));
+    streams.view_attach(session, None, true, Box::new(frames.clone()), true);
     streams.on_frame(replay(session, 0, "$ ", false));
     let _ = frames.take();
     streams.on_frame(output(session, 2, "bye\r\n"));

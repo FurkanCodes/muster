@@ -240,10 +240,18 @@ async fn a_terminal_handed_over_is_adopted_with_its_program_running() {
     let events = Events::default();
     let adopted = adopt(handed.master, handed.terminal, no_colours(), events.sink()).unwrap();
 
-    // Its output so far, numbered as before, and its mode, carried.
+    // Its output so far, numbered as before, its mode and its screen,
+    // carried.
     let attachment = adopted.attach(None).await.unwrap();
     assert!(String::from_utf8_lossy(&attachment.replay.data).contains("armed-5"));
     assert!(attachment.modes.bracketed_paste);
+    let mut client = vt100::Parser::new(24, 80, 0);
+    client.process(
+        &attachment
+            .screen
+            .expect("a replay from nothing starts over"),
+    );
+    assert!(client.screen().contents().contains("armed-5"));
     // The same shell, still running: it remembers what it was told.
     adopted.input(b"echo still-$MARK-$((6*7))\n".to_vec()).await;
     read_until(&adopted, Some(carried_end), "still-kept-42").await;
@@ -274,6 +282,49 @@ async fn re_attaching_from_a_position_replays_only_what_followed() {
     pty.input(b"echo second-$((2+2))\n".to_vec()).await;
     let (text, _) = read_until(&pty, Some(next), "second-4").await;
     assert!(!text.contains("first-2"), "{text:?}");
+}
+
+#[tokio::test]
+async fn a_client_starting_over_is_sent_the_screen_its_bytes_cannot_draw() {
+    let (pty, _) = shell(vec![], vec![]);
+    // A full-screen program's screen, then more output than the ring holds
+    // that draws nothing, so the ring keeps none of what drew the screen.
+    let count = super::ring::RING_CAPACITY / 6 + 1024;
+    let command = format!(
+        "stty -echo; printf '\\033[?1049h\\033[5;10Hmarker'; \
+         awk 'BEGIN {{ for (i = 0; i < {count}; i++) printf \"\\033[s\\033[u\" }}'; \
+         printf '\\033[1;1Hdrawn-%d' $((6*7))\n"
+    );
+    assert!(pty.input(command.into_bytes()).await);
+    let drawn = |data: &[u8]| data.windows(8).any(|bytes| bytes == b"drawn-42");
+    let attachment = timeout(Duration::from_secs(10), async {
+        loop {
+            let attachment = pty.attach(None).await.unwrap();
+            if drawn(&attachment.replay.data) {
+                return attachment;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the program drew its last line");
+    assert!(attachment.replay.reset);
+    let screen = attachment.screen.expect("a replay starting over has it");
+    let size = TermSize::default();
+    let mut client = vt100::Parser::new(size.rows, size.cols, 0);
+    client.process(&attachment.replay.data);
+    assert!(
+        !client.screen().contents().contains("marker"),
+        "the ring's bytes alone lost it"
+    );
+    client.process(&screen);
+    let shown = client.screen();
+    assert!(shown.alternate_screen());
+    assert!(shown.contents().contains("marker"), "{}", shown.contents());
+    assert!(shown.contents().starts_with("drawn-42"));
+    // A client that has all it missed starts over from nothing.
+    let next = attachment.replay.seq + attachment.replay.data.len() as u64;
+    assert!(pty.attach(Some(next)).await.unwrap().screen.is_none());
 }
 
 #[tokio::test]

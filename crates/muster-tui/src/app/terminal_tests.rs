@@ -62,6 +62,7 @@ fn opened(history: &[u8]) -> World {
         data: history.to_vec(),
         reset: true,
         live_from: None,
+        screen: None,
     });
     world
 }
@@ -116,6 +117,7 @@ fn a_copy_in_a_session_s_history_is_never_made_again_on_attaching() {
         data: b"\x1b]52;c;bmV4dC04\x07".to_vec(),
         reset: false,
         live_from: None,
+        screen: None,
     });
     assert_eq!(copies(&actions), NONE);
     assert!(!render(&world.app).contains("copied"));
@@ -134,6 +136,7 @@ fn a_copy_the_client_was_sent_late_as_it_fell_behind_reaches_the_clipboard() {
         data: b"\x1b]52;c;bmV4dC04\x07".to_vec(),
         reset: false,
         live_from: Some(next),
+        screen: None,
     });
     assert_eq!(copies(&actions), ["next-8"]);
     assert!(render(&world.app).contains("The session copied a line."));
