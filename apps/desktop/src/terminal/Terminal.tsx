@@ -8,7 +8,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef } from "react";
-import { useActions, useBridge, useUi } from "../app/context";
+import { useActions, useApp, useBridge, useUi } from "../app/context";
 import type { TermFrame } from "../ipc/frames";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { TerminalModes } from "../ipc/generated/TerminalModes";
@@ -36,6 +36,7 @@ function modeSequences(modes: TerminalModes): string {
 export function Terminal({ session, compact = false }: { session: SessionId; compact?: boolean }) {
   const bridge = useBridge();
   const actions = useActions();
+  const { ui } = useApp();
   const visible = useUi((state) => state.visible);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const theme = useUi((state) => state.theme);
@@ -132,10 +133,14 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
     else term.current?.blur();
   }, [hasKeys]);
 
+  // With panels beside it, the terminal in focus is the one that had it, or
+  // this one where none did; each lets go only of its own.
   useEffect(() => {
-    actions.showTerminal(session);
-    return () => actions.showTerminal(null);
-  }, [actions, session]);
+    if (ui.getState().terminal === null) actions.showTerminal(session);
+    return () => {
+      if (ui.getState().terminal === session) actions.showTerminal(null);
+    };
+  }, [actions, ui, session]);
 
   // Follows the theme: tokens change with data-theme.
   useEffect(() => {

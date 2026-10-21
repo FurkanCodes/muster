@@ -1,10 +1,11 @@
 // The window's top edge: Kep, the way to anything by typing, the flock and
 // the machine's memory (design system: TitleBar).
 
+import { FullScreenTitle, LeaveFullScreen } from "../panels/FullScreenTitle";
 import { Kbd } from "../ui/controls";
 import { Icon } from "../ui/Icon";
 import { KepFace, type Mood } from "../ui/Kep";
-import { useActions, useDaemon } from "./context";
+import { useActions, useDaemon, useUi } from "./context";
 
 function useMood(): Mood {
   return useDaemon((state): Mood => {
@@ -78,23 +79,31 @@ export function TitleBar() {
   const mood = useMood();
   const memory = useMemory();
   const linked = useDaemon((state) => state.link.state === "up");
+  // A session filling the window names itself here (feature/desktop-sessions).
+  const fullScreen = useUi((state) => state.fullScreen);
   return (
     <header className="mu-titlebar app-titlebar" data-tauri-drag-region>
       <KepFace mood={mood} />
-      <span className="mu-spacer" data-tauri-drag-region />
-      <button
-        type="button"
-        className="mu-command"
-        onClick={() => actions.openPalette(true)}
-        disabled={!linked}
-      >
-        <Icon name="search" />
-        <span>Go to a session or run a command</span>
-        <Kbd>⌘K</Kbd>
-      </button>
-      <span className="mu-spacer" data-tauri-drag-region />
+      {fullScreen ? (
+        <FullScreenTitle session={fullScreen} />
+      ) : (
+        <>
+          <span className="mu-spacer" data-tauri-drag-region />
+          <button
+            type="button"
+            className="mu-command"
+            onClick={() => actions.openPalette(true)}
+            disabled={!linked}
+          >
+            <Icon name="search" />
+            <span>Go to a session or run a command</span>
+            <Kbd>⌘K</Kbd>
+          </button>
+          <span className="mu-spacer" data-tauri-drag-region />
+        </>
+      )}
       <Flock />
-      {memory === null ? null : <MemoryMeter percent={memory} />}
+      {fullScreen ? <LeaveFullScreen /> : memory === null ? null : <MemoryMeter percent={memory} />}
     </header>
   );
 }

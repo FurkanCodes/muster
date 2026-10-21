@@ -38,11 +38,17 @@ describe("ARC-24 the session pane", () => {
     );
   });
 
-  it("opens the changes on Changes, and leaves the shell and full screen to their branch", async () => {
+  it("opens the changes on Changes, and offers the shell and full screen with their keys", async () => {
     const { app } = renderWithApp(<SessionPane session={codex} />);
     await screen.findByRole("heading", { name: "Sketch the Tauri shell" });
-    expect(screen.getByRole("button", { name: "Shell" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Full screen" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Shell" })).toHaveAttribute(
+      "title",
+      "Shell in this workspace (⇧T)",
+    );
+    expect(screen.getByRole("button", { name: "Full screen" })).toHaveAttribute(
+      "title",
+      "Full screen (f)",
+    );
     const changes = screen.getByRole("button", { name: "Changes" });
     expect(changes).toHaveAttribute("title", "Changes (d)");
     await userEvent.click(changes);

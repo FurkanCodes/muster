@@ -1,0 +1,133 @@
+/* The panels in the session's pane (design system: Panel). Each is placed by
+   its own rectangle in one box, so a move never starts its terminal afresh.
+   Every value is a token. */
+
+.panels {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.panels-alone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.panels-box {
+  position: absolute;
+  min-width: 0;
+  transition:
+    border-color var(--timing-base) var(--ease-out),
+    box-shadow var(--timing-base) var(--ease-out);
+}
+.panels-box.is-lifted {
+  box-shadow: var(--shadow-drag);
+}
+.panels--dragging,
+.panels--dragging .mu-panel-head {
+  cursor: grabbing;
+}
+/* Nothing is chosen as text while a panel or a line is carried. */
+.panels--dragging,
+.panels--dragging * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* The title under the pointer lights up: what a press would take hold of. */
+.panels-box .mu-panel-head:hover {
+  background: var(--surface-raised);
+}
+.panels-prompt {
+  color: var(--accent);
+}
+.panels-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+/* Inside a panel, the panel is the frame: the terminal draws none of its own. */
+.panels-body .app-terminal {
+  border: 0;
+  border-radius: 0;
+}
+
+/* A pane action that is on (the shell beside, the changes shown), as the
+   AllSessions board draws it; the design system has no pressed quiet button. */
+.mu-pane-actions .mu-btn[aria-pressed="true"] {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+/* The line between two panels: the gap they keep, lit under the pointer and
+   while it is dragged; the pointer says which way it moves. */
+.panels-line {
+  position: absolute;
+  z-index: var(--z-sticky);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+.panels-line--across {
+  cursor: col-resize;
+}
+.panels-line--down {
+  cursor: row-resize;
+}
+.panels-line::after {
+  content: "";
+  border-radius: var(--radius-full);
+  background: transparent;
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.panels-line--across::after {
+  width: var(--stroke-focus);
+  height: 100%;
+}
+.panels-line--down::after {
+  width: 100%;
+  height: var(--stroke-focus);
+}
+.panels-line:hover::after,
+.panels-line.is-dragged::after {
+  background: var(--accent);
+}
+.panels-line:focus-visible {
+  outline-offset: 0;
+}
+
+/* Where a panel carried by its head would land. */
+.panels-landing {
+  position: absolute;
+  z-index: var(--z-sticky);
+  pointer-events: none;
+  border-radius: var(--radius-lg);
+  border: var(--stroke-focus) solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Full screen (`f`): the session and its panels fill the window; the
+   sidebar, the list and the pane's head, banner and turn step aside. */
+.app[data-full-screen="true"] .app-sidebar,
+.app[data-full-screen="true"] .app-screen > :not(.app-pane),
+.app[data-full-screen="true"] .app-pane > :not(.app-pane-terminal) {
+  display: none;
+}
+.panels-fullscreen-title {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--accent);
+}
+.app[data-full-screen="true"] .app-pane {
+  min-width: 0;
+}
+.app[data-full-screen="true"] .app-pane-terminal {
+  padding: var(--space-12) var(--space-16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panels-box,
+  .panels-line::after {
+    transition: none;
+  }
+}
