@@ -400,6 +400,11 @@ test("ARC-24 narrowed to its least, the sidebar folds and the session keeps 520 
   const pane = page.getByRole("region", { name: "Sketch the Tauri shell", exact: true });
   expect((await pane.boundingBox())?.width).toBeGreaterThanOrEqual(520);
   await expect(page.getByRole("button", { name: "Changes", exact: true })).toBeInViewport();
+  // This turn's head stays one line: its description is cut before its buttons move.
+  const turn = page.getByRole("region", { name: "This turn" });
+  const putBack = await turn.getByRole("button", { name: "Put back" }).boundingBox();
+  const diff = await turn.getByRole("button", { name: "See the diff" }).boundingBox();
+  expect(diff?.y).toBe(putBack?.y);
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByText("Projects", { exact: true })).toBeVisible();
 });

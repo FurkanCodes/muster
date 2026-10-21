@@ -35,3 +35,18 @@
 .session-menu hr.mu-menu-sep {
   border: 0;
 }
+/* Narrowed, the turn's description is cut before its buttons move. */
+.session-turn .mu-turn-head {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.session-turn .mu-turn-head > * {
+  flex: none;
+}
+.session-turn .mu-turn-head > .mu-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.session-turn .mu-turn-head > .mu-spacer {
+  flex: 1;
+}
