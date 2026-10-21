@@ -136,7 +136,7 @@ test("ARC-24 Turns: each entry with its agent, what it changed and when; ⏎ ask
     .toEqual([{ EntryDiff: { workspace, number: 3 } }]);
 });
 
-test("PRD-14 put back: the plan, then the dialog as the board draws it, then Undo with the branch", async ({
+test("PRD-14 put back: the plan, then the dialog as the board draws it, then Undo with the branch on b", async ({
   page,
 }) => {
   await open(page, agentDone);
@@ -155,9 +155,9 @@ test("PRD-14 put back: the plan, then the dialog as the board draws it, then Und
     "Put back the files",
     "Put back with the branch",
   ]);
-  await expect(dialog.getByRole("button", { name: "Put back with the branch" })).toBeFocused();
-  // Keys are the dialog's while it is open: ⇥ is not the view's.
-  await page.keyboard.press("Enter");
+  // ⏎ would put back the files only: moving the branch is chosen, on b (PRD-14).
+  await expect(dialog.getByRole("button", { name: "Put back the files" })).toBeFocused();
+  await page.keyboard.press("b");
   await expect(dialog).toBeHidden();
   await expect
     .poll(() => sent(page, "Undo"))
@@ -167,6 +167,26 @@ test("PRD-14 put back: the plan, then the dialog as the board draws it, then Und
   );
   await expect(page.getByRole("option", { selected: true })).toHaveText(/^5↺Put back as before #2/);
   await expect(page.getByRole("option", { selected: true })).toBeFocused();
+});
+
+test("PRD-14 ⏎ puts back the files only, even where the branch could move too", async ({
+  page,
+}) => {
+  await open(page, agentDone);
+  await page.getByRole("button", { name: "Turns 4" }).click();
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await page.keyboard.press("z");
+  const dialog = page.getByRole("dialog", { name: "Put the files back as before Codex's turn 2?" });
+  await expect(dialog.getByRole("button", { name: "Put back with the branch" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeHidden();
+  await expect
+    .poll(() => sent(page, "Undo"))
+    .toEqual([{ Undo: { workspace, number: 2, move_branch: false } }]);
+  await expect(statusBar(page)).toContainText(
+    "The files are as they were before #2. z on #5 brings them back.",
+  );
 });
 
 test("PRD-14 put back files only with y; n keeps it, sending nothing", async ({ page }) => {

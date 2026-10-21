@@ -61,14 +61,19 @@ describe("PRD-14 putting a turn back", () => {
       "Put back with the branch also moves ⎇ feature/desktop-app back to 1234567, before its 1 commit since.",
     );
     expect(dialog).toHaveTextContent("CodexStill remembers that turn: tell it what you put back.");
-    // The board's acting answer, with the focus.
-    expect(screen.getByRole("button", { name: "Put back with the branch" })).toHaveFocus();
+    // The files only is the acting answer, with the focus: the branch is chosen (PRD-14).
+    const files = screen.getByRole("button", { name: "Put back the files" });
+    expect(files).toHaveFocus();
+    expect(files).toHaveClass("mu-btn--primary");
+    expect(screen.getByRole("button", { name: "Put back with the branch" })).toHaveClass(
+      "mu-btn--secondary",
+    );
   });
 
   it.each([
     ["y", false],
     ["b", true],
-    ["{Enter}", true],
+    ["{Enter}", false],
   ])(
     "%s sends Undo (branch=%s), says it back and hands over the new entry",
     async (key, branch) => {

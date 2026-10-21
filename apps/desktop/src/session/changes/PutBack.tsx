@@ -1,7 +1,8 @@
 // Putting a workspace's files back as they were before an entry of its
 // timeline (PRD-14), as the TUI does it (app::timeline): the daemon is
 // asked what that would do (UndoPlan), the person is asked, and Undo is
-// sent with or without the branch. A refusal, of the plan or of the undo,
+// sent with the files only (⏎, y) or with the branch too when the person
+// chooses it (b). A refusal, of the plan or of the undo,
 // is said in the status bar, as the TUI says it.
 
 import { useEffect, useRef, useState } from "react";
@@ -151,7 +152,9 @@ function PlanDialog({
   };
   const answer = (moveBranch: boolean) => {
     const which = moveBranch ? "branch" : "files";
-    const primary = moveBranch === canMove;
+    // The files only is the acting answer, on ⏎ as in the TUI: moving the
+    // branch too is chosen, never the default (PRD-14).
+    const primary = !moveBranch;
     return (
       <Button
         variant={primary ? "primary" : "secondary"}
@@ -177,7 +180,7 @@ function PlanDialog({
       onClose={() => {
         if (!busy) onClose();
       }}
-      onAccept={() => void undo(canMove)}
+      onAccept={() => void undo(false)}
       onKeyDown={(event) => {
         const does = { y: false, b: true } as Record<string, boolean>;
         if (event.key === "n") {
