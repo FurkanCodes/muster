@@ -63,7 +63,7 @@ export class MockBridge implements Bridge {
   /** What git and the file system say, for the flows (flows.ts). */
   readonly flows: FlowWorld;
   /** What the projects' settings and the host say, for the stages by hand (byHand.ts). */
-  readonly byHand = new ByHandWorld();
+  readonly byHand: ByHandWorld;
   private readonly drops = new Set<(paths: string[]) => void>();
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
@@ -94,6 +94,7 @@ export class MockBridge implements Bridge {
   constructor(world: Scenario) {
     this.world = world;
     this.flows = new FlowWorld(world);
+    this.byHand = new ByHandWorld(world.projects.map((project) => project.id));
     for (const session of world.sessions) this.changed.set(session.id, this.tick());
     this.settings = new MockSettings(this);
   }

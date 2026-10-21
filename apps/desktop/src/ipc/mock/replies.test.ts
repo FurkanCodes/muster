@@ -32,6 +32,8 @@ type Step = Sent | Checkout | Exited;
 /** A repository in the mock's file system, as the recording's `$repo`. */
 const REPO = "/Users/you/code/replies/app";
 const MISSING = "01JD0000000000000000000999";
+/** Where the stand-in programs are, as the recording's `$bin`. */
+const BIN = "/Users/you/.local/bin";
 
 /** What the steps made, by name, and the values they stand for. */
 class Names {
@@ -80,8 +82,15 @@ describe("ARC-24 the mock daemon answers as the real one does", () => {
   });
   mock.flows.folders["/Users/you/code/replies"] = [{ name: "app", path: REPO, git: true }];
   mock.flows.folders[REPO] = [];
+  // As the link's test runs the daemon: no agents of the person's, and the
+  // stand-in codex alone on its PATH, which says no version.
+  mock.world.preferences.agents = [];
+  for (const harness of Object.keys(mock.settings.installed))
+    delete mock.settings.installed[harness];
+  mock.settings.installed.codex = { path: `${BIN}/codex`, version: null };
   const names = new Names();
   names.set("repo", REPO);
+  names.set("bin", BIN);
   names.set("missing", MISSING);
 
   for (const step of recorded as Step[]) {

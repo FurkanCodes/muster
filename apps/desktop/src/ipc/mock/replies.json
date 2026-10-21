@@ -159,6 +159,61 @@
   {
     "outcome": {
       "reply": {
+        "Agents": [
+          {
+            "harness": "claude",
+            "path": null,
+            "version": null
+          },
+          {
+            "harness": "codex",
+            "path": "$bin/codex",
+            "version": null
+          },
+          {
+            "harness": "gemini",
+            "path": null,
+            "version": null
+          },
+          {
+            "harness": "opencode",
+            "path": null,
+            "version": null
+          },
+          {
+            "harness": "copilot",
+            "path": null,
+            "version": null
+          }
+        ]
+      }
+    },
+    "save": null,
+    "send": "Agents",
+    "what": "asks where each coding agent is installed"
+  },
+  {
+    "outcome": {
+      "refused": {
+        "code": "bad_request",
+        "message": "the project names no checks: add `[checks] commands = [\"…\"]` to muster.toml"
+      }
+    },
+    "save": null,
+    "send": {
+      "CheckWorkspace": {
+        "size": {
+          "cols": 80,
+          "rows": 24
+        },
+        "workspace": "$checkout"
+      }
+    },
+    "what": "runs the checks of a project that names none"
+  },
+  {
+    "outcome": {
+      "reply": {
         "SessionStarted": {
           "id": "$session"
         }

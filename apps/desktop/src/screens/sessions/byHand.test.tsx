@@ -88,7 +88,7 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
 
   it("says why where none can be: a project's line, the base branch, no checks named, a push refused", async () => {
     const bridge = new MockBridge(workingDay());
-    bridge.byHand.noChecks.add(ulid(1));
+    bridge.byHand.checks.delete(ulid(1));
     const { app } = await shown(bridge);
     const said = () => app.ui.getState().note;
     await userEvent.click(row("lamphaus"));

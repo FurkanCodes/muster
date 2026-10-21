@@ -125,6 +125,12 @@ fn steps() -> Vec<Step> {
             "reads the diff of a file not changed",
             json!({ "FileDiff": { "workspace": "$checkout", "part": "uncommitted", "path": "README.md" } }),
         ),
+        // Muster's own agents only: the stand-in codex, which says no version, and the rest not found.
+        send("asks where each coding agent is installed", json!("Agents")),
+        send(
+            "runs the checks of a project that names none",
+            json!({ "CheckWorkspace": { "workspace": "$checkout", "size": size() } }),
+        ),
         saving(
             "starts a shell",
             json!({ "StartSession": { "workspace": "$checkout", "harness": "shell", "title": null, "size": size(), "prompt": null } }),
@@ -268,6 +274,9 @@ async fn record(sandbox: &Sandbox, repo: &Path) -> Value {
     let mut names = Names(Vec::new());
     names.insert("repo", repo.display().to_string());
     names.insert("missing", MISSING.to_owned());
+    // Where the stand-in programs are, first on the daemon's `PATH`, beside its settings.
+    let bin = sandbox.paths().config_dir.with_file_name("bin");
+    names.insert("bin", bin.display().to_string());
     let mut recorded = Vec::new();
     for step in steps() {
         match step {

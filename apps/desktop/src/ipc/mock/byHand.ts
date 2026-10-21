@@ -13,11 +13,18 @@ import { NOW, ulid } from "./scenario";
 
 /** What the projects' settings and the host say, which tests change. */
 export class ByHandWorld {
-  /** The projects whose settings name no checks. */
-  readonly noChecks = new Set<string>();
+  /**
+   * The projects whose settings name checks: the scenario's; a project
+   * added since has no `[checks]` in a muster.toml of its own.
+   */
+  readonly checks: Set<string>;
   /** The number the next pull request opened gets. */
   nextPullRequest = 120;
   next = 0;
+
+  constructor(projects: readonly string[]) {
+    this.checks = new Set(projects);
+  }
 }
 
 function refuse(code: "bad_request" | "not_found", message: string): never {
@@ -76,7 +83,7 @@ export function byHandCommand(mock: MockBridge, command: Command): Reply | undef
   if ("CheckWorkspace" in command) {
     if (container)
       refuse("bad_request", "checks by hand run in a worktree or the project's checkout");
-    if (mock.byHand.noChecks.has(workspace.project))
+    if (!mock.byHand.checks.has(workspace.project))
       refuse(
         "bad_request",
         'the project names no checks: add `[checks] commands = ["…"]` to muster.toml',
