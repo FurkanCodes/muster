@@ -1,0 +1,14 @@
+.ui-select {
+  position: relative;
+}
+.ui-select > .mu-select {
+  width: 100%;
+}
+.ui-select-menu {
+  position: absolute;
+  inset: 100% 0 auto;
+  z-index: var(--z-menu);
+  max-height: var(--size-dialog);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
