@@ -110,14 +110,19 @@ impl Lanes {
         let mut first = None;
         match &frame {
             ServerFrame::Output { seq, data, .. } | ServerFrame::Replay { seq, data, .. } => {
-                let replay = matches!(frame, ServerFrame::Replay { .. });
+                let (replay, screen) = match &frame {
+                    ServerFrame::Replay { screen, .. } => {
+                        (true, screen.as_ref().map_or(0, Vec::len))
+                    }
+                    _ => (false, 0),
+                };
                 let end = seq + data.len() as u64;
                 if let Some(behind) = lane.behind.as_mut().filter(|_| !replay) {
                     behind.dropped_to = behind.dropped_to.max(end);
                     return Pushed::Behind;
                 }
                 if !(replay && lane.frames.is_empty()) {
-                    cost = data.len();
+                    cost = data.len() + screen;
                 }
                 if lane.bytes + cost > self.budget {
                     let (resume, dropped_to) = lane.drop_waiting(*seq);
@@ -144,6 +149,7 @@ impl Lanes {
                     data: Vec::new(),
                     reset: true,
                     live_from: None,
+                    screen: None,
                 });
             }
             _ => {}

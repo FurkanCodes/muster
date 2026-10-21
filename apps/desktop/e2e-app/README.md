@@ -18,3 +18,5 @@ Keys: send a capital as itself (`press("Q")`), never Shift and the letter. Text 
 Wait for the window, not only the daemon, before a key: the daemon answers a command, and `muster status` shows its change, before it tells its windows, and a key acts on what the window last knew. `untilRowSays`, `untilFlock` and what the screen shows say the window knows.
 
 A helper only one area needs goes in a file of its own here.
+
+`terminal-timing.measure.ts` is not a test: it times a session's terminal in the real app (a key's echo, an agent's streaming redraws, catching up after the window was out of sight) and prints the numbers. Run it on its own, as its header says.

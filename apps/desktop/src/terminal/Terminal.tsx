@@ -119,6 +119,11 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
           xterm.write(frame.data);
           nextSeq.current = frame.seq + frame.data.byteLength;
           break;
+        // After a replay starting over, whose bytes were cut from the
+        // middle of the output: the program's screen, drawn whole.
+        case "screen":
+          xterm.write(frame.data);
+          break;
         case "event":
           if (frame.event.kind === "modes") xterm.write(modeSequences(frame.event.modes));
           break;

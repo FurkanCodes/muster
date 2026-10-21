@@ -49,9 +49,24 @@ impl Screen {
     }
 
     /// The stream (re)starts; `true` if the screen changed.
-    pub(super) fn replay(&mut self, seq: u64, data: &[u8], reset: bool, asked: bool) -> bool {
+    /// A replay, and the program's screen as it stands at its end where it
+    /// starts over (`picture`), drawn after the bytes.
+    pub(super) fn replay(
+        &mut self,
+        seq: u64,
+        data: &[u8],
+        reset: bool,
+        asked: bool,
+        picture: Option<&[u8]>,
+    ) -> bool {
+        let fresh = self.cursor.holds_nothing();
         let piece = self.cursor.replay(seq, data, reset, asked);
-        self.take(&piece)
+        let starts_over = matches!(piece, Piece::Reset { .. }) || fresh;
+        let changed = self.take(&piece);
+        if let (true, Some(picture)) = (starts_over, picture) {
+            self.parser.process(picture);
+        }
+        changed
     }
 
     /// More output; `true` if the screen changed.
@@ -118,7 +133,7 @@ mod tests {
 
     fn screen(text: &str) -> Screen {
         let mut screen = Screen::new(Some(TermSize { cols: 40, rows: 10 }));
-        screen.replay(0, text.as_bytes(), false, false);
+        screen.replay(0, text.as_bytes(), false, false, None);
         screen
     }
 
@@ -163,7 +178,7 @@ mod tests {
     #[test]
     fn a_reset_starts_the_screen_over() {
         let mut screen = screen("old\r\n");
-        assert!(screen.replay(0, b"new\r\n", true, false));
+        assert!(screen.replay(0, b"new\r\n", true, false, None));
         assert_eq!(screen.lines(), ["new"]);
     }
 }

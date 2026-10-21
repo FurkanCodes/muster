@@ -787,6 +787,7 @@ fn server_frames() -> Vec<ServerFrame> {
             data: vec![0xff, 0x1b, b'['],
             reset: true,
             live_from: None,
+            screen: Some(b"\x1b[?1049l\x1b[r\x1b[H\x1b[Jdrawn".to_vec()),
         },
         ServerFrame::Replay {
             session,
@@ -794,6 +795,7 @@ fn server_frames() -> Vec<ServerFrame> {
             data: b"\x1b]52;c;aGk=\x07".to_vec(),
             reset: false,
             live_from: Some(8),
+            screen: None,
         },
         ServerFrame::Output {
             session,
@@ -875,7 +877,8 @@ fn every_change_to_a_plugin_reads_back_as_it_was_sent_arc_09() {
 }
 
 /// A replay from a daemon before protocol 33, which says nothing of what
-/// in it is live, reads as all history (`ARC-09`).
+/// in it is live, reads as all history, and one before 46 with no screen
+/// to draw after it (`ARC-09`).
 #[test]
 fn an_older_daemon_s_replay_reads_as_history_arc_09() {
     #[derive(serde::Serialize)]
@@ -904,6 +907,7 @@ fn an_older_daemon_s_replay_reads_as_history_arc_09() {
         data: b"abc".to_vec(),
         reset: false,
         live_from: None,
+        screen: None,
     };
     assert_eq!(read, expected);
 }

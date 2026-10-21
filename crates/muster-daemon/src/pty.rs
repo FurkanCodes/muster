@@ -3,9 +3,11 @@
 //! Each session's terminal is owned by one task, its actor. A reader thread
 //! feeds it output, which it appends to the ring and broadcasts in one step,
 //! so an attaching client gets the replay and the live stream with no gap and
-//! no overlap. Keystrokes go straight to the actor, never through the
-//! Supervisor. The actor outlives the process, so the last output of an
-//! exited session can still be read, until the Supervisor releases it.
+//! no overlap. It draws the output on the terminal's screen too (see
+//! `screen`), which a client starting over is sent after the ring's bytes.
+//! Keystrokes go straight to the actor, never through the Supervisor. The
+//! actor outlives the process, so the last output of an exited session can
+//! still be read, until the Supervisor releases it.
 //!
 //! The child is started by portable-pty, which makes it a session leader with
 //! the terminal as its controlling terminal and closes every inherited
@@ -17,14 +19,14 @@
 //! An actor can hand its terminal over, for the daemon's restart in place
 //! (`handoff`): it stops its reader between reads, so no byte is taken from
 //! the terminal that the ring does not hold, and gives up the terminal with
-//! its ring, input modes and size; the program runs on, untouched. The next
-//! daemon adopts it into a new actor.
+//! its ring, screen, input modes and size; the program runs on, untouched.
+//! The next daemon adopts it into a new actor.
 
 mod colours;
-mod cursor;
 mod osc;
 mod queries;
 mod ring;
+mod screen;
 
 #[cfg(test)]
 mod props;
@@ -47,10 +49,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::time::Instant;
 
-use self::cursor::CursorTracker;
 use self::osc::{OscScanner, Report};
 use self::queries::{QueryScanner, Reply};
 use self::ring::{RING_CAPACITY, Replay, Ring};
+use self::screen::Screen;
 
 /// After asking a session to stop, how long before it is killed.
 const STOP_GRACE: Duration = Duration::from_secs(3);
@@ -59,6 +61,9 @@ const STOP_GRACE: Duration = Duration::from_secs(3);
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// The most output sent as one chunk.
 const MAX_CHUNK: usize = 8 * 1024;
+/// The most output drawn on the screen at a time while nothing else waits,
+/// so output or a command coming meanwhile waits at most that long.
+const DRAW_SLICE: u64 = 64 * 1024;
 /// Shared live output is only a bridge to the ring. A stalled subscriber
 /// retains at most 256 KiB here, regardless of how long it stalls (ARC-14).
 const LIVE_CHUNKS: usize = 32;
@@ -106,6 +111,9 @@ pub(crate) struct Chunk {
 #[derive(Debug)]
 pub(crate) struct Attachment {
     pub(crate) replay: Replay,
+    /// With a replay that starts over, the screen as it stands at its end,
+    /// drawn whole: the bytes cut from the output's middle cannot draw it.
+    pub(crate) screen: Option<Vec<u8>>,
     /// The input modes in effect at the end of the replay.
     pub(crate) modes: TerminalModes,
     pub(crate) live: Option<broadcast::Receiver<Chunk>>,
@@ -121,6 +129,10 @@ pub(crate) struct Carried {
     #[serde(with = "serde_bytes")]
     pub(crate) ring: Vec<u8>,
     pub(crate) size: TermSize,
+    /// Its screen drawn whole (`Screen::picture`); a daemon before it
+    /// carried none, and the screen is drawn from the ring instead.
+    #[serde(default, with = "serde_bytes")]
+    pub(crate) screen: Option<Vec<u8>>,
     pub(crate) modes: queries::CarriedModes,
     /// It was asked to stop and is within its grace.
     pub(crate) stopping: bool,
@@ -196,6 +208,13 @@ impl PtyHandle {
     /// `CSI O` as they go.
     pub(crate) async fn focus(&self, focused: bool) {
         let _ = self.commands.send(Command::Focus(focused)).await;
+    }
+
+    /// Says it is in focus or not without waiting, for a terminal just
+    /// taken over, whose queue has room; `false` if it had none or the
+    /// terminal is gone.
+    pub(crate) fn focus_now(&self, focused: bool) -> bool {
+        self.commands.try_send(Command::Focus(focused)).is_ok()
     }
 
     /// Resizes without waiting, for a terminal just started, whose queue
@@ -296,6 +315,7 @@ pub(crate) fn spawn(
             pid,
             exited,
             ring: Ring::starting_at(RING_CAPACITY, first_seq),
+            screen: Screen::new(spec.size.cols, spec.size.rows, b""),
             queries: QueryScanner::default(),
             colours,
             size: spec.size,
@@ -315,6 +335,8 @@ pub(crate) fn adopt(
 ) -> std::io::Result<PtyHandle> {
     let mut ring = Ring::starting_at(RING_CAPACITY, carried.seq);
     ring.push(&carried.ring);
+    let drawn = carried.screen.as_deref().unwrap_or(&carried.ring);
+    let screen = Screen::new(carried.size.cols, carried.size.rows, drawn);
     let pid = carried.pid;
     let (exit, exited) = oneshot::channel();
     std::thread::Builder::new()
@@ -328,6 +350,7 @@ pub(crate) fn adopt(
             pid,
             exited,
             ring,
+            screen,
             queries: QueryScanner::adopt(carried.modes),
             colours,
             size: carried.size,
@@ -363,6 +386,7 @@ struct Starting {
     /// Whether its program exited cleanly, once it has.
     exited: oneshot::Receiver<bool>,
     ring: Ring,
+    screen: Screen,
     queries: QueryScanner,
     colours: Colours,
     size: TermSize,
@@ -377,6 +401,7 @@ fn start(
         pid,
         exited,
         ring,
+        screen,
         queries,
         colours,
         size,
@@ -413,13 +438,14 @@ fn start(
     let actor = Actor {
         master: Some(master),
         process_group,
+        drawn_to: ring.end(),
         ring,
+        screen,
         live: Some(broadcast::channel(LIVE_CHUNKS).0),
         input: Some(input),
         osc: OscScanner::default(),
         queries,
         colours,
-        cursor: None,
         focused: None,
         size,
         stopping,
@@ -520,6 +546,13 @@ struct Actor {
     master: Option<OwnedFd>,
     process_group: Option<Pid>,
     ring: Ring,
+    /// What the output draws, at the terminal's size: for clients starting
+    /// over, and for cursor-position answers. Drawn as far as `drawn_to`,
+    /// the rest whenever the actor has nothing else to do, before the
+    /// screen is looked at, and before the ring lets go of any of it, so
+    /// drawing it seldom holds back the output and never misses a byte.
+    screen: Screen,
+    drawn_to: u64,
     /// Dropped once the process has exited, which ends live streams.
     live: Option<broadcast::Sender<Chunk>>,
     input: Option<std::sync::mpsc::Sender<Vec<u8>>>,
@@ -527,8 +560,6 @@ struct Actor {
     queries: QueryScanner,
     /// The person's terminal's colours, for questions about its own.
     colours: Colours,
-    /// A screen for cursor-position answers, built at the first question.
-    cursor: Option<CursorTracker>,
     /// Whether the person's keys are in the terminal, once told.
     focused: Option<bool>,
     size: TermSize,
@@ -552,6 +583,16 @@ impl Actor {
         let (mut output_open, mut exit_status) = (true, None);
         let mut drain_until: Option<Instant> = None;
         loop {
+            // With nothing come for it, the screen catches up, a slice at a
+            // time, once whoever the output woke has had its turn: drawing
+            // first would keep them waiting while more output came.
+            if self.drawn_to < self.ring.end() && output.is_empty() && commands.is_empty() {
+                tokio::task::yield_now().await;
+                if output.is_empty() && commands.is_empty() {
+                    self.draw_to(self.ring.end().min(self.drawn_to + DRAW_SLICE));
+                    continue;
+                }
+            }
             let kill_at = self.kill_at;
             tokio::select! {
                 chunk = output.recv(), if output_open => match chunk {
@@ -642,9 +683,10 @@ impl Actor {
         }
     }
 
-    /// Gives up the terminal with its ring, modes and size.
+    /// Gives up the terminal with its ring, screen, modes and size.
     fn give_up(&mut self) -> Option<Handed> {
         let master = self.master.take()?;
+        self.draw();
         let replay = self.ring.replay_from(None);
         Some(Handed {
             master,
@@ -655,6 +697,7 @@ impl Actor {
                 seq: replay.seq,
                 ring: replay.data,
                 size: self.size,
+                screen: Some(self.screen.picture()),
                 modes: self.queries.carry(),
                 stopping: self.stopping,
             },
@@ -681,6 +724,20 @@ impl Actor {
         }
     }
 
+    /// Draws on the screen what the ring holds that it has not drawn yet.
+    fn draw(&mut self) {
+        self.draw_to(self.ring.end());
+    }
+
+    /// Draws on the screen the output as far as `to`, a place the ring
+    /// holds.
+    fn draw_to(&mut self, to: u64) {
+        let (first, second) = self.ring.span(self.drawn_to, to);
+        self.screen.feed(first);
+        self.screen.feed(second);
+        self.drawn_to = self.drawn_to.max(to);
+    }
+
     fn publish(&mut self, data: &[u8], events: &impl Fn(PtyEvent)) {
         // Every change is reported, in order: a harness's titles are steps
         // ("Working", then "Action Required"), not only a latest state.
@@ -690,8 +747,14 @@ impl Actor {
                 Report::Title(title) => PtyEvent::Title(title),
             });
         }
-        self.answer_queries(data);
+        // In a flood that never lets up, what the ring is to let go of is
+        // drawn first.
+        let undrawn = self.ring.end() - self.drawn_to + data.len() as u64;
+        if let Some(over) = undrawn.checked_sub(RING_CAPACITY as u64) {
+            self.draw_to(self.drawn_to + over);
+        }
         let seq = self.ring.push(data);
+        self.answer_queries(seq, data);
         if let Some(live) = &self.live {
             // No subscribers is fine; the ring holds it.
             let _ = live.send(Chunk {
@@ -702,22 +765,16 @@ impl Actor {
         }
     }
 
-    /// Answers what `data` asks the terminal, in the order it asked. Runs
-    /// before `data` joins the ring, so a new cursor screen is built from
-    /// the output before it.
-    fn answer_queries(&mut self, data: &[u8]) {
-        let mut fed = 0;
+    /// Answers what `data`, just put in the ring at `seq`, asks the
+    /// terminal, in the order it asked; the screen is drawn as far as a
+    /// question about the cursor before it is answered.
+    fn answer_queries(&mut self, seq: u64, data: &[u8]) {
         for reply in self.queries.scan(data).replies {
             let bytes = match reply {
                 Reply::Bytes(bytes) => bytes,
                 Reply::CursorPosition { at } => {
-                    let (size, ring) = (self.size, &self.ring);
-                    let tracker = self.cursor.get_or_insert_with(|| {
-                        CursorTracker::new(size.cols, size.rows, &ring.replay_from(None).data)
-                    });
-                    tracker.feed(&data[fed..at]);
-                    fed = at;
-                    tracker.report()
+                    self.draw_to(seq + at as u64);
+                    self.screen.report()
                 }
                 Reply::Colour { colour, ending } => {
                     // One no UI has said goes unanswered, as a terminal
@@ -738,9 +795,6 @@ impl Actor {
             if let Some(input) = &self.input {
                 let _ = input.send(bytes);
             }
-        }
-        if let Some(tracker) = &mut self.cursor {
-            tracker.feed(&data[fed..]);
         }
     }
 
@@ -767,8 +821,14 @@ impl Actor {
     fn on_command(&mut self, command: Command) {
         match command {
             Command::Attach { from_seq, reply } => {
+                let replay = self.ring.replay_from(from_seq);
+                let screen = replay.reset.then(|| {
+                    self.draw();
+                    self.screen.picture()
+                });
                 let _ = reply.send(Attachment {
-                    replay: self.ring.replay_from(from_seq),
+                    replay,
+                    screen,
                     modes: self.queries.modes(),
                     live: self.live.as_ref().map(broadcast::Sender::subscribe),
                 });
@@ -784,9 +844,9 @@ impl Actor {
                         let _ = rustix::termios::tcsetwinsize(master, winsize(size, pixels));
                     }
                     self.size = size;
-                    if let Some(tracker) = &mut self.cursor {
-                        tracker.resize(size.cols, size.rows);
-                    }
+                    // What came before was drawn for the size it had.
+                    self.draw();
+                    self.screen.resize(size.cols, size.rows);
                 }
             }
             Command::Focus(focused) => {

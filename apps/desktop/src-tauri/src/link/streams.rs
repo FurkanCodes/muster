@@ -15,7 +15,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use muster_core::SessionId;
-use muster_core::protocol::{ClientFrame, DetachReason, ServerFrame, TermSize, TerminalModes};
+use muster_core::protocol::{
+    ClientFrame, DetachReason, PixelSize, ServerFrame, TermSize, TerminalModes,
+};
 
 use super::FrameSink;
 use super::questions::Screen;
@@ -46,6 +48,11 @@ impl Cursor {
     /// A reader that holds the bytes before `next`, if it says so.
     pub(super) fn at(next: Option<u64>) -> Self {
         Self { next, stale: false }
+    }
+
+    /// Whether it holds no bytes yet, so a replay is its start.
+    pub(super) fn holds_nothing(self) -> bool {
+        self.next.is_none()
     }
 
     /// A reader whose bytes came from a connection gone since.
@@ -174,8 +181,10 @@ pub(super) struct Streams {
     /// their sessions, `prune`).
     fed_by: HashMap<SessionId, u64>,
     /// The size the webview last gave each session's terminal, which its
-    /// program draws for: a question's screen is read at it.
-    sizes: HashMap<SessionId, TermSize>,
+    /// program draws for: a question's screen is read at it, and the daemon
+    /// is told it again as the terminal attaches again, a detach having
+    /// let it go (`PRD` §6: the window the person used last sizes it).
+    sizes: HashMap<SessionId, (TermSize, Option<PixelSize>)>,
     /// Frames for the daemon, in order (`drain`).
     outgoing: Vec<ClientFrame>,
     /// A question's lines may have changed since `questions` was last read.
@@ -247,14 +256,32 @@ impl Streams {
         self.held.remove(&session);
     }
 
+    /// Tells the daemon the size the webview shows `session`'s terminal
+    /// at, if it has said one: before an attach, so the program draws for
+    /// this window again once it is back, as the terminal UI's does.
+    fn give_size(&mut self, session: SessionId) {
+        if self.connection.is_none() {
+            return;
+        }
+        if let Some(&(size, pixels)) = self.sizes.get(&session) {
+            self.outgoing.push(ClientFrame::Resize {
+                session,
+                size,
+                pixels,
+            });
+        }
+    }
+
     /// The webview streams `session`'s terminal to `sink`, its screen
-    /// holding the bytes before `from_seq`, if it says so.
+    /// holding the bytes before `from_seq`, if it says so; the program is
+    /// given the window's size first, while it `runs`.
     pub(super) fn view_attach(
         &mut self,
         session: SessionId,
         from_seq: Option<u64>,
         watching: bool,
         sink: Box<dyn FrameSink>,
+        runs: bool,
     ) {
         let mut cursor = Cursor::at(from_seq);
         // Bytes fed by another connection's daemon mean nothing to this one.
@@ -269,6 +296,9 @@ impl Streams {
             held: Vec::new(),
             held_seq: 0,
         });
+        if runs {
+            self.give_size(session);
+        }
         self.attach(session);
     }
 
@@ -318,9 +348,15 @@ impl Streams {
         }
     }
 
-    /// The webview sized `session`'s terminal: its program draws for it.
-    pub(super) fn resized(&mut self, session: SessionId, size: TermSize) {
-        self.sizes.insert(session, size);
+    /// The webview sized `session`'s terminal, in pixels too where it
+    /// says: its program draws for it.
+    pub(super) fn resized(
+        &mut self,
+        session: SessionId,
+        size: TermSize,
+        pixels: Option<PixelSize>,
+    ) {
+        self.sizes.insert(session, (size, pixels));
         if let Some(question) = self
             .held
             .get_mut(&session)
@@ -353,7 +389,8 @@ impl Streams {
             if stream.question.is_some() {
                 continue;
             }
-            stream.question = Some(Screen::new(self.sizes.get(&session).copied()));
+            let size = self.sizes.get(&session).map(|&(size, _)| size);
+            stream.question = Some(Screen::new(size));
             // Read from its start, whatever the webview's terminal holds.
             self.attach(session);
         }
@@ -361,7 +398,7 @@ impl Streams {
 
     /// Attaches again each stream still read but not streamed, whose
     /// session `runs`: after connecting, or once a session that had ended
-    /// runs again.
+    /// runs again. A terminal the webview shows gives its size first.
     pub(super) fn settle(&mut self, runs: impl Fn(SessionId) -> bool) {
         if self.connection.is_none() {
             return;
@@ -373,6 +410,13 @@ impl Streams {
             .map(|(session, _)| *session)
             .collect();
         for session in waiting {
+            if self
+                .held
+                .get(&session)
+                .is_some_and(|stream| stream.view.is_some())
+            {
+                self.give_size(session);
+            }
             self.attach(session);
         }
     }
@@ -403,8 +447,9 @@ impl Streams {
                 seq,
                 data,
                 reset,
+                screen,
                 ..
-            } => self.replay(session, seq, &data, reset),
+            } => self.replay(session, seq, &data, reset, screen.as_deref()),
             ServerFrame::Output { session, seq, data } => self.output(session, seq, &data),
             ServerFrame::Modes { session, modes } => self.modes(session, modes),
             ServerFrame::Detached { session, reason } => self.detached(session, reason),
@@ -412,24 +457,44 @@ impl Streams {
         }
     }
 
-    fn replay(&mut self, session: SessionId, seq: u64, data: &[u8], reset: bool) {
+    /// A replay; one starting over may come with the program's screen as
+    /// it stands at its end (`picture`), which a reader starting over draws
+    /// after the bytes.
+    fn replay(
+        &mut self,
+        session: SessionId,
+        seq: u64,
+        data: &[u8],
+        reset: bool,
+        picture: Option<&[u8]>,
+    ) {
         self.hand_on(session);
         let Some(stream) = self.held.get_mut(&session) else {
             return;
         };
         let asked = std::mem::take(&mut stream.asked);
         if let Some(question) = &mut stream.question {
-            self.changed |= question.replay(seq, data, reset, asked);
+            self.changed |= question.replay(seq, data, reset, asked, picture);
         }
         let Some(view) = &mut stream.view else {
             return;
         };
+        let fresh = view.cursor.holds_nothing();
+        // Drawn by a terminal that takes the replay from its start.
+        let draw = |sink: &dyn FrameSink, end: u64| {
+            picture.is_none_or(|picture| sink.send(frame::encode(frame::SCREEN, end, picture)))
+        };
+        let end = seq + data.len() as u64;
         let sent = match view.cursor.replay(seq, data, reset, asked) {
             Piece::Reset { seq, data } => {
                 view.sink
                     .send(frame::encode(frame::REPLAY_RESET, seq, data))
+                    && draw(view.sink.as_ref(), end)
             }
-            Piece::More { seq, data } => view.sink.send(frame::encode(frame::REPLAY, seq, data)),
+            Piece::More { seq, data } => {
+                view.sink.send(frame::encode(frame::REPLAY, seq, data))
+                    && (!fresh || draw(view.sink.as_ref(), end))
+            }
             Piece::Nothing => true,
         };
         self.fed(session, sent);

@@ -298,6 +298,14 @@ impl Harness {
         self.added_agent().is_some_and(AgentDefinition::can_resume)
     }
 
+    /// Whether its program is told it is in focus and never out of it:
+    /// Claude Code writes its suggestion for the person's next prompt only
+    /// as a turn ends in focus, and the person mostly comes to a chat after
+    /// its turn ended, from another chat, the list or another app.
+    pub(crate) fn stays_in_focus(&self) -> bool {
+        matches!(self.kind, Kind::Claude | Kind::Review)
+    }
+
     /// Whether the program suspends itself on Ctrl+Z and waits to be
     /// continued (see `PtyHandle::resume_if_suspended`). An agent the
     /// person added is taken to, as every coding agent Muster knows does:

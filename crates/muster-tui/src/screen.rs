@@ -115,7 +115,17 @@ impl Screen {
     /// attached again) adds only what is new. Copies count from `live_from`
     /// on, where the output written while the client was attached begins,
     /// in what this screen had not shown; with none, the replay is history.
-    pub(crate) fn replay(&mut self, seq: u64, data: &[u8], reset: bool, live_from: Option<u64>) {
+    /// Starting over, the program's screen as the daemon drew it (`picture`,
+    /// with a reset) is drawn after `data`, which, cut from the middle of
+    /// the output, is then only the scrollback's history.
+    pub(crate) fn replay(
+        &mut self,
+        seq: u64,
+        data: &[u8],
+        reset: bool,
+        live_from: Option<u64>,
+        picture: Option<&[u8]>,
+    ) {
         self.ended = None;
         let end = seq + data.len() as u64;
         // Never a copy again from output already shown.
@@ -133,6 +143,9 @@ impl Screen {
                 let (rows, cols) = self.parser.screen().size();
                 self.parser = parser(rows, cols);
                 self.feed(seq, data, live_from);
+                if let Some(picture) = picture {
+                    self.process(picture, false);
+                }
                 (self.in_frame, self.tail) = (false, Vec::new());
                 self.track_frames(data);
             }
@@ -214,7 +227,7 @@ mod tests {
     #[test]
     fn output_follows_the_replay_and_overlap_is_skipped() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"hello ", true, None);
+        screen.replay(0, b"hello ", true, None, None);
         screen.output(6, b"world");
         screen.output(8, b"rld!");
         assert_eq!(text(&screen).trim(), "hello world!");
@@ -226,7 +239,7 @@ mod tests {
         let mut screen = Screen::new(10, 3);
         #[expect(clippy::format_collect, reason = "test input")]
         let lines: String = (1..=10).map(|n| format!("line{n}\r\n")).collect();
-        screen.replay(0, lines.as_bytes(), true, None);
+        screen.replay(0, lines.as_bytes(), true, None, None);
         assert_eq!(screen.scrolled_back(), 0);
         screen.scroll(2);
         assert_eq!(screen.scrolled_back(), 2);
@@ -247,14 +260,14 @@ mod tests {
     #[test]
     fn a_replay_overlapping_the_screen_adds_only_what_is_new() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"start ", true, None);
+        screen.replay(0, b"start ", true, None, None);
         screen.output(6, b"middle ");
         // Attached again from 6 while the output above was on its way.
-        screen.replay(6, b"middle end", false, None);
+        screen.replay(6, b"middle end", false, None, None);
         assert_eq!(text(&screen).trim(), "start middle end");
         assert_eq!(screen.next_seq(), Some(16));
         // Entirely old: changes nothing.
-        screen.replay(0, b"start", false, None);
+        screen.replay(0, b"start", false, None, None);
         assert_eq!(text(&screen).trim(), "start middle end");
         assert_eq!(screen.next_seq(), Some(16));
     }
@@ -262,12 +275,12 @@ mod tests {
     #[test]
     fn a_reset_or_a_gap_starts_the_screen_over() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"old", true, None);
-        screen.replay(100, b"new", false, None);
+        screen.replay(0, b"old", true, None, None);
+        screen.replay(100, b"new", false, None, None);
         assert_eq!(text(&screen).trim(), "new");
-        screen.replay(103, b"er", false, None);
+        screen.replay(103, b"er", false, None, None);
         assert_eq!(text(&screen).trim(), "newer");
-        screen.replay(105, b"fresh", true, None);
+        screen.replay(105, b"fresh", true, None, None);
         assert_eq!(text(&screen).trim(), "fresh");
     }
 
@@ -284,7 +297,7 @@ mod tests {
     fn a_replay_of_what_was_written_live_copies_only_what_this_screen_has_not_shown() {
         // On attaching: history, so no copy.
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, ONE, true, None);
+        screen.replay(0, ONE, true, None, None);
         assert_eq!(screen.take_copy(), None);
         let shown = ONE.len();
         // Fell behind after attaching: the replay goes on from where the
@@ -293,14 +306,20 @@ mod tests {
         assert_eq!(screen.take_copy().as_deref(), Some("two"));
         let shown = shown + TWO.len();
         let replay = [TWO, SIX].concat();
-        screen.replay(at(shown - TWO.len()), &replay, false, Some(at(ONE.len())));
+        screen.replay(
+            at(shown - TWO.len()),
+            &replay,
+            false,
+            Some(at(ONE.len())),
+            None,
+        );
         assert_eq!(
             screen.take_copy().as_deref(),
             Some("six"),
             "only the new copy"
         );
         // A replay of what is already all shown copies nothing again.
-        screen.replay(0, &[ONE, TWO].concat(), false, Some(0));
+        screen.replay(0, &[ONE, TWO].concat(), false, Some(0), None);
         assert_eq!(screen.take_copy(), None);
     }
 
@@ -309,27 +328,27 @@ mod tests {
         // The whole ring, after falling further behind than it holds: its
         // history before the client attached, then live output.
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"$ ", true, None);
+        screen.replay(0, b"$ ", true, None, None);
         let ring = [ONE, b"$ ", TWO].concat();
-        screen.replay(1000, &ring, true, Some(at(1000 + ONE.len())));
+        screen.replay(1000, &ring, true, Some(at(1000 + ONE.len())), None);
         assert_eq!(screen.take_copy().as_deref(), Some("two"));
         // Starting over again, what this screen had shown copies nothing
         // twice; only what follows it does.
         let more = [ring.as_slice(), SIX].concat();
-        screen.replay(1000, &more, true, Some(at(1000 + ONE.len())));
+        screen.replay(1000, &more, true, Some(at(1000 + ONE.len())), None);
         assert_eq!(screen.take_copy().as_deref(), Some("six"));
         // The same with nothing live in it: history.
-        screen.replay(5000, &ring, true, Some(at(5000 + ring.len())));
+        screen.replay(5000, &ring, true, Some(at(5000 + ring.len())), None);
         assert_eq!(screen.take_copy(), None);
         // Attached again: history, whatever it holds.
-        screen.replay(9000, &ring, true, None);
+        screen.replay(9000, &ring, true, None, None);
         assert_eq!(screen.take_copy(), None);
     }
 
     #[test]
     fn a_frame_in_progress_is_known_until_it_ends_also_when_split() {
         let mut screen = Screen::new(20, 4);
-        screen.replay(0, b"old", true, None);
+        screen.replay(0, b"old", true, None, None);
         let feed = |screen: &mut Screen, data: &[u8]| {
             let seq = screen.next_seq().unwrap();
             screen.output(seq, data);
@@ -350,7 +369,29 @@ mod tests {
         assert_eq!(text(&screen).trim(), "new framexy");
         // A replay that starts over forgets a frame cut off.
         assert!(feed(&mut screen, b"\x1b[?2026h"));
-        screen.replay(0, b"fresh", true, None);
+        screen.replay(0, b"fresh", true, None, None);
         assert!(!screen.in_frame());
+    }
+
+    #[test]
+    fn starting_over_the_program_s_screen_is_drawn_over_the_bytes_cut_partway() {
+        // The program's screen, and the picture the daemon draws of it.
+        let mut program = vt100::Parser::new(4, 20, 0);
+        program.process(b"$ vim\r\n\x1b[?1049h\x1b[2;3Hediting\x1b[1;5H");
+        let mut picture = b"\x1b[?1049h\x1b[r\x1b[?6l".to_vec();
+        picture.extend(program.screen().state_formatted());
+        // What the ring kept: the end of a sequence, a scroll region, lines.
+        let cut = b"0;5Hgone\x1b[1;2r\r\none\r\ntwo\r\nthree";
+        let mut screen = Screen::new(20, 4);
+        screen.replay(500, cut, true, None, Some(&picture));
+        let (shown, drawn) = (screen.screen(), program.screen());
+        assert_eq!(shown.contents(), drawn.contents());
+        assert!(shown.alternate_screen());
+        assert_eq!(shown.cursor_position(), drawn.cursor_position());
+        assert_eq!(
+            screen.next_seq(),
+            Some(500 + cut.len() as u64),
+            "the picture takes no place in the output"
+        );
     }
 }

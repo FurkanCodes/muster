@@ -3,7 +3,9 @@
 //! long out of date; it catches up from the session's ring, no byte of
 //! output shown twice and no gap but one marked `reset`; and its screen
 //! ends as a client's that attaches then. What it was sent late is marked
-//! live, the history it attached to never.
+//! live, the history it attached to never. A client starting over, sent
+//! bytes cut from the middle of the output, is sent the program's screen
+//! after them, which they cannot draw.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -66,6 +68,7 @@ impl Screen {
                 data,
                 reset,
                 live_from,
+                screen,
                 ..
             } => {
                 // History first; then, sent late, what was written live.
@@ -79,6 +82,10 @@ impl Screen {
                     assert_eq!(*seq, next, "a replay goes on from what was shown");
                 }
                 self.show(*seq, data);
+                // Starting over, the program's screen, drawn after.
+                if let (true, Some(screen)) = (*reset, screen) {
+                    self.parser.process(screen);
+                }
             }
             ServerFrame::Output { seq, data, .. } => {
                 assert_eq!(Some(*seq), self.next, "no byte twice, no gap unmarked");
@@ -230,4 +237,87 @@ async fn a_client_that_reads_slowly_catches_up_from_the_ring_arc_14() {
         screen.parser.screen().contents(),
         fresh_screen.parser.screen().contents()
     );
+}
+
+#[tokio::test]
+async fn a_client_starting_over_sees_the_program_s_screen_not_the_output_s_middle() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    connection
+        .command(Command::AddProject { root, name: None })
+        .await
+        .unwrap();
+    let workspace = connection.subscribe().await.unwrap().workspaces[0].id;
+    let Reply::SessionStarted { id: session } = connection
+        .command(Command::StartSession {
+            workspace,
+            harness: "shell".to_owned(),
+            title: None,
+            size: SIZE,
+            prompt: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("no session");
+    };
+    // A full-screen program draws its screen, then writes more than the
+    // ring holds that draws nothing, so the ring keeps none of what drew
+    // it, then its last line.
+    let run = b"stty -echo; printf '\\033[?1049h\\033[5;10Hmarker'; \
+        awk 'BEGIN { for (i = 0; i < 200000; i++) printf \"\\033[s\\033[u\" }'; \
+        printf '\\033[1;1Hdrawn-%d' $((6*7)); sleep 600\n";
+    connection.attach(session, None).await.unwrap();
+    let (mut sender, mut receiver, _) = connection.into_split();
+    let input = ClientFrame::Input {
+        session,
+        data: run.to_vec(),
+    };
+    sender.send(&input).await.unwrap();
+    let mut watching = Screen::new();
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while !watching.tail.contains("drawn-42") {
+            let frame = receiver.next().await.unwrap().expect("the daemon is there");
+            if of_session(&frame, session) {
+                watching.take(&frame);
+            }
+        }
+    })
+    .await
+    .expect("the program drew its last line");
+
+    // A client that opens on it now is sent the ring, cut partway, and
+    // the program's screen.
+    let fresh = daemon.connect().await;
+    let (mut fresh_sender, mut fresh_receiver, _) = fresh.into_split();
+    let attach = ClientFrame::Attach {
+        session,
+        from_seq: None,
+        watching: true,
+    };
+    fresh_sender.send(&attach).await.unwrap();
+    let mut opened = Screen::new();
+    let mut cut = vt100::Parser::new(SIZE.rows, SIZE.cols, 0);
+    while let Some(frame) = next_frame(&mut fresh_receiver, Duration::from_millis(500)).await {
+        if let ServerFrame::Replay { data, reset, .. } = &frame
+            && *reset
+        {
+            cut.process(data);
+        }
+        if of_session(&frame, session) {
+            opened.take(&frame);
+        }
+    }
+    assert_eq!(opened.resets, 1, "it starts over");
+    assert!(
+        !cut.screen().contents().contains("marker"),
+        "the ring's bytes alone lost the program's screen"
+    );
+    let (shown, program) = (opened.parser.screen(), watching.parser.screen());
+    assert!(shown.alternate_screen());
+    assert!(shown.contents().contains("marker"), "{}", shown.contents());
+    assert_eq!(shown.contents(), program.contents());
+    assert_eq!(shown.cursor_position(), program.cursor_position());
 }

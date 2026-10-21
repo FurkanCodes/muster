@@ -128,7 +128,9 @@
 //! `plugins::shown_to`; `PluginCommand::TryHooks`, sent only to a daemon
 //! of 44 or later, answered with `Reply::HooksTried`); version 45 where
 //! each coding agent is installed and its version (`Command::Agents`, sent
-//! only to a daemon of 45 or later, answered with `Reply::Agents`).
+//! only to a daemon of 45 or later, answered with `Reply::Agents`); version
+//! 46 the screen a replay that starts over ends on, drawn whole
+//! (`ServerFrame::Replay::screen`, a field older clients pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -156,7 +158,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 45;
+pub const PROTOCOL_VERSION: u32 = 46;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -332,6 +334,17 @@ pub enum ServerFrame {
         /// Protocol 33; an older daemon says nothing, read as `None`.
         #[serde(default)]
         live_from: Option<u64>,
+        /// With `reset`, the program's screen as it stands at the end of
+        /// `data`, drawn whole: the main screen or the alternate one, every
+        /// cell, the cursor, the colours being drawn in and the input modes,
+        /// as escape sequences. `data`, cut from the middle of the output
+        /// once the daemon no longer holds its start, cannot draw it on its
+        /// own: a client draws this after it, `data` then being history for
+        /// its scrollback. It takes no place in the output. Protocol 46; an
+        /// older daemon says nothing, read as `None`.
+        #[serde(default, with = "serde_bytes")]
+        #[cfg_attr(feature = "ts", ts(type = "Array<number> | null"))]
+        screen: Option<Vec<u8>>,
     },
     /// Terminal output that follows the replay; `seq` is the position of its
     /// first byte in everything the session has written.

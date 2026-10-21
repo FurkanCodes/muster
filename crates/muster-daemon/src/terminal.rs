@@ -36,7 +36,9 @@ enum Ended {
 ///
 /// The first replay is history; each later one says where the output
 /// written since it begins (`live_from`), so a program's copy the client
-/// missed live still reaches it, and one in history never does.
+/// missed live still reaches it, and one in history never does. A replay
+/// that starts over carries the screen as it stands at its end (`screen`),
+/// which its bytes, cut from the middle of the output, cannot draw.
 pub(crate) async fn forward_output(
     session: SessionId,
     mut current: watch::Receiver<Option<PtyHandle>>,
@@ -133,7 +135,7 @@ async fn forward_program(
         let Some(attachment) = pty.attach(*from).await else {
             return Ended::Released;
         };
-        let replay = attachment.replay;
+        let (replay, screen) = (attachment.replay, attachment.screen);
         let mut next = replay.seq + replay.data.len() as u64;
         *from = Some(next);
         let live_from = *history;
@@ -144,6 +146,7 @@ async fn forward_program(
             data: replay.data,
             reset: replay.reset,
             live_from,
+            screen,
         });
         match sent {
             Some(Pushed::Queued) => {}
