@@ -19,6 +19,7 @@ import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
+import type { Workspace } from "../generated/Workspace";
 import { handleCommand } from "./commands";
 import { derive } from "./model";
 import { NOW, type Scenario } from "./scenario";
@@ -32,6 +33,10 @@ export class MockBridge implements Bridge {
   private listener: ((message: StateMessage) => void) | null = null;
   private readonly changed = new Map<SessionId, number>();
   private clock = 0;
+  private lookingNow = false;
+  private readonly watching = new Set<SessionId>();
+  private readonly held = new Map<string, { wait: Promise<void>; release: () => void }>();
+  private readonly failures = new Map<string, string>();
   private readonly terminals = new Map<
     SessionId,
     { onFrame: (frame: TermFrame) => void; seq: number }
@@ -81,7 +86,11 @@ export class MockBridge implements Bridge {
           sessions: [...this.world.sessions],
           preferences: this.world.preferences,
           plugins: this.world.plugins,
-          resources: { host_memory_used: 21e9, host_memory_total: 34e9, sessions: [] },
+          resources: {
+            host_memory_used: 21e9,
+            host_memory_total: 34e9,
+            sessions: this.world.usage ?? [],
+          },
           notifier: false,
         }),
       });
@@ -90,6 +99,14 @@ export class MockBridge implements Bridge {
 
   async command(command: Command): Promise<Reply> {
     this.sent.push(command);
+    const key = JSON.stringify(command);
+    const held = this.held.get(key);
+    if (held) await held.wait;
+    const failure = this.failures.get(key);
+    if (failure) {
+      this.failures.delete(key);
+      throw new BridgeFailure("refused", failure, "Internal");
+    }
     const reply = handleCommand(this, command);
     if (reply === undefined) {
       const name = typeof command === "string" ? command : Object.keys(command)[0];
@@ -101,11 +118,13 @@ export class MockBridge implements Bridge {
   async attach(
     session: SessionId,
     _fromSeq: number | null,
-    _watching: boolean,
+    watching: boolean,
     onFrame: (frame: TermFrame) => void,
   ): Promise<void> {
     const text = encoder.encode(this.world.terminals[session] ?? "");
     this.terminals.set(session, { onFrame, seq: text.byteLength });
+    if (watching) this.watching.add(session);
+    else this.watching.delete(session);
     onFrame(decodeFrame(encodeFrame(FRAME_REPLAY, 0, text)));
     const modes = {
       kind: "modes",
@@ -119,10 +138,12 @@ export class MockBridge implements Bridge {
       },
     };
     onFrame(decodeFrame(encodeFrame(FRAME_EVENT, 0, encoder.encode(JSON.stringify(modes)))));
+    if (watching && this.lookingNow) this.see(session);
   }
 
   async detach(session: SessionId): Promise<void> {
     this.terminals.delete(session);
+    this.watching.delete(session);
   }
 
   /** Echoes what is typed, as a program at its prompt would. */
@@ -131,10 +152,48 @@ export class MockBridge implements Bridge {
   }
 
   async resize(): Promise<void> {}
-  async watch(): Promise<void> {}
-  async looking(): Promise<void> {}
+  async watch(session: SessionId, watching: boolean): Promise<void> {
+    if (!this.terminals.has(session)) return;
+    if (watching) this.watching.add(session);
+    else this.watching.delete(session);
+    if (watching && this.lookingNow && this.terminals.has(session)) this.see(session);
+  }
+  async looking(looking: boolean, _focused: SessionId | null = null): Promise<void> {
+    this.lookingNow = looking;
+    if (looking) for (const id of this.watching) this.see(id);
+  }
+
+  /** Watched while the person looks: its news is seen, as the daemon clears it. */
+  private see(session: SessionId): void {
+    if (!this.world.sessions.find((stored) => stored.id === session)?.unseen) return;
+    this.updateSession(session, { unseen: false });
+    this.emitSession(session);
+  }
 
   // What tests drive.
+
+  /** Holds back the answer to `command` until `release`, to show a screen waiting. */
+  hold(command: Command): void {
+    const key = JSON.stringify(command);
+    if (this.held.has(key)) return;
+    let release = () => {};
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.held.set(key, { wait, release });
+  }
+
+  /** Answers a held command. */
+  release(command: Command): void {
+    const key = JSON.stringify(command);
+    this.held.get(key)?.release();
+    this.held.delete(key);
+  }
+
+  /** Refuses the next `command` with `message`, as a daemon that failed at it would. */
+  failNext(command: Command, message: string): void {
+    this.failures.set(JSON.stringify(command), message);
+  }
 
   /** Writes `text` to a session's terminal, as its program would. */
   output(session: SessionId, text: string): void {
@@ -163,7 +222,17 @@ export class MockBridge implements Bridge {
     if (found) this.emit({ kind: "patch", patch: this.patch({ sessions: [{ ...found }] }) });
   }
 
+  /** Changes a workspace's fields and tells the page, as when a turn is recorded there. */
+  updateWorkspace(id: string, fields: Partial<Workspace>): void {
+    const workspace = this.world.workspaces.find((stored) => stored.id === id);
+    if (!workspace) return;
+    Object.assign(workspace, fields);
+    this.emit({ kind: "patch", patch: this.patch({ workspaces: [{ ...workspace }] }) });
+  }
+
   removeSession(session: SessionId): void {
+    this.terminals.delete(session);
+    this.watching.delete(session);
     this.world.sessions = this.world.sessions.filter((s) => s.id !== session);
     this.changed.delete(session);
     this.emit({
