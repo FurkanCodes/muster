@@ -222,6 +222,9 @@ test("ARC-24 shared tickets ask which project and remember it", async ({ page })
     "kep-api",
   );
   await page.keyboard.press("Enter");
+  // Assigned once the window shows the agent: until the daemon answers, the
+  // dialog, busy, still holds the keys, ⌘3 among them.
+  await expect(page.getByRole("heading", { name: "All sessions", level: 1 })).toBeVisible();
   await expect(dialog).toHaveCount(0);
   await tickets(page);
   await page.keyboard.press("a");
