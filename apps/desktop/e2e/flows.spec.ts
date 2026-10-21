@@ -627,7 +627,8 @@ test.describe("PRD-01 the first run and the daemon out of reach", () => {
     await expect(page.getByRole("heading", { name: "Add a project to start" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Kep, Muster's sheepdog" })).toBeVisible();
     await expect(page.getByText("Or drop a folder on this window.")).toBeVisible();
-    await expect(statusBar(page)).toContainText("aadd a project");
+    // The key, then what it does.
+    await expect(statusBar(page)).toContainText(/\ba\s*add a project/);
     await page.keyboard.press("a");
     await expect(page.getByRole("dialog", { name: "Add a project" })).toBeVisible();
     await page.keyboard.press("Escape");
