@@ -37,7 +37,9 @@ test("ARC-24 Needs you lists who asks with their question, then finishes not see
   const asking = option(page, "Sketch the Tauri shell");
   await expect(asking).toHaveAttribute("aria-selected", "true");
   await expect(asking).toHaveClass(/mu-item/);
-  await expect(asking.locator(".mu-question-ask")).toHaveText("wants to run cargo build");
+  // The agent's own last lines, read off its screen (`Derived.questions`).
+  await expect(asking.locator(".mu-question-ask")).toHaveText("Allow Codex to run this command?");
+  await expect(asking.locator(".mu-question")).toContainText("$ cargo build -p muster-desktop");
   await expect(asking).toContainText("⎇ feature/desktop-app in muster");
   await expect(asking.locator(".mu-hints")).toContainText("answer");
 
@@ -73,6 +75,10 @@ test("ARC-24 Needs you lists who asks with their question, then finishes not see
 test("ARC-24 every reason to ask shows in the item and the banner, and the banner goes as it stops asking", async ({
   page,
 }) => {
+  // A screen that shows nothing yet: the item says why the agent waits.
+  await page.evaluate((id) => {
+    window.__muster.world.terminals[id] = "";
+  }, codex);
   const said = {
     permission: "wants your permission",
     question: "asks you something",
@@ -412,9 +418,12 @@ test("ARC-24 narrowed to its least, the sidebar folds and the session keeps 520 
 });
 
 test("ARC-24 the asking session's gemini item shows its own question", async ({ page }) => {
-  await expect(
-    option(page, "Share the Gradle cache across worktrees").locator(".mu-question"),
-  ).toHaveText("asks which cache folder to use");
+  const item = option(page, "Share the Gradle cache across worktrees");
+  await expect(item.locator(".mu-question-ask")).toHaveText("Where should the shared cache live?");
+  await expect(item.locator(".mu-question")).toContainText("~/code/lamphaus/.gradle-shared");
+  // What the agent writes as it asks reaches its question.
+  await page.evaluate((id) => window.__muster.output(id, "\r\n    somewhere else"), gemini);
+  await expect(item.locator(".mu-question")).toContainText("somewhere else");
   await page.evaluate((id) => window.__muster.setStatus(id, { state: "running" }), gemini);
   await expect(option(page, "Share the Gradle cache across worktrees")).not.toHaveClass(/mu-item/);
 });

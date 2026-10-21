@@ -1,6 +1,7 @@
 // Whether the person can see the window (`ARC-25`): when they cannot,
 // nothing animates (CSS pauses on `data-visible="false"`), the clock stops,
-// terminals detach, and the daemon is told nobody looks, so news stays news.
+// terminals detach, the daemon is told nobody looks, so news stays news, and
+// the Rust side sends nothing until the window is seen again.
 
 import type { App } from "./context";
 
@@ -13,10 +14,10 @@ export function installVisibility(app: App): () => void {
     document.documentElement.dataset.visible = String(visible);
     const looking = visible && focused;
     const terminal = looking ? app.ui.getState().terminal : null;
-    const now = `${looking}:${terminal ?? ""}`;
+    const now = `${visible}:${looking}:${terminal ?? ""}`;
     if (now === told) return;
     told = now;
-    void app.bridge.looking(looking, terminal).catch(() => {
+    void app.bridge.looking(looking, terminal, visible).catch(() => {
       told = "";
     });
   };

@@ -242,13 +242,18 @@ export function workingDay(): Scenario {
       "  $ cargo build -p muster-desktop",
       "",
       "  \x1b[35m› 1. Yes, run it\x1b[0m",
-      "    2. Yes, and don't ask again for cargo build",
-      "    3. No, and tell Codex what to do differently",
+      "    2. No, and tell Codex what to do differently",
     ].join("\r\n"),
     [ulid(100)]:
       "\x1b[32m●\x1b[0m Update(crates/muster-tui/src/view/sessions.rs)\r\n  ⎿  Moved 212 lines to view/rows.rs\r\n\r\n\x1b[33m✻\x1b[0m Splitting sessions.rs…\r\n",
     [ulid(102)]:
       "\x1b[35m❯\x1b[0m git log --oneline -3\r\na1b2c3d Add the desktop crate\r\n\x1b[35m❯\x1b[0m ",
+    // Gemini CLI clears its screen to ask.
+    [ulid(200)]: [
+      "  Where should the shared cache live?",
+      "  \x1b[36m›\x1b[0m ~/.gradle/caches",
+      "    ~/code/lamphaus/.gradle-shared",
+    ].join("\r\n"),
   };
   const plugins: PluginInfo[] = workingDayPlugins();
   // The desktop worktree's timeline, newest first: Codex's third turn there

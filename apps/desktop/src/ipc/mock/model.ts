@@ -23,6 +23,50 @@ export interface World {
   projects: Project[];
   workspaces: Workspace[];
   sessions: Session[];
+  /** What each session's terminal shows, as its program wrote it. */
+  terminals?: Readonly<Record<string, string>>;
+}
+
+/** The lines a question shows, at most (`link/questions.rs`, `LINES`). */
+const QUESTION_LINES = 4;
+
+// Escape sequences: CSI (colours, moves) and OSC (titles), as a screen
+// takes them rather than shows them.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: escape sequences are what it matches.
+const ESCAPES = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it takes out.
+const CONTROLS = /[\x00-\x1f\x7f]/g;
+
+/**
+ * The last lines with anything on them of what a program wrote, as the Rust
+ * side reads its screen for a question (`link/questions.rs`): escape
+ * sequences and control characters out, trailing blanks off, a line
+ * rewritten after a carriage return read as rewritten.
+ */
+export function lastLines(text: string, count = QUESTION_LINES): string[] {
+  return text
+    .replace(ESCAPES, "")
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .split("\r")
+        .reduce((shown, over) => over + shown.slice(over.length), "")
+        .replace(CONTROLS, "")
+        .trimEnd(),
+    )
+    .filter((line) => line.trim() !== "")
+    .slice(-count);
+}
+
+/** Each asking session's question, while the window is seen (`Derived.questions`). */
+function questionsOf(world: World): Derived["questions"] {
+  const questions: Derived["questions"] = {};
+  for (const session of world.sessions) {
+    if (session.status.state !== "needs_you") continue;
+    const lines = lastLines(world.terminals?.[session.id] ?? "");
+    if (lines.length > 0) questions[session.id] = lines;
+  }
+  return questions;
 }
 
 /** A project's workspaces: its checkout first, then worktrees oldest first, then containers. */
@@ -43,7 +87,11 @@ export function listedOf(world: World, workspace: string): Session[] {
   ];
 }
 
-export function derive(world: World, changed: ReadonlyMap<SessionId, number>): Derived {
+export function derive(
+  world: World,
+  changed: ReadonlyMap<SessionId, number>,
+  seen = true,
+): Derived {
   const asking = (session: Session) => session.status.state === "needs_you";
   const needsYou = world.sessions
     .filter(needsAttention)
@@ -74,5 +122,6 @@ export function derive(world: World, changed: ReadonlyMap<SessionId, number>): D
       waiting: chats.filter(asking).length,
       done: chats.filter((session) => session.status.state === "finished").length,
     },
+    questions: seen ? questionsOf(world) : {},
   };
 }

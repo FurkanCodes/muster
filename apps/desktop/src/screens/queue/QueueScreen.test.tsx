@@ -37,7 +37,10 @@ describe("ARC-24 Needs you, as the Triage board draws it", () => {
     const asking = selected();
     expect(asking).toHaveClass("mu-item");
     expect(asking).toHaveTextContent("⎇ feature/desktop-app in muster");
-    expect(within(asking).getByText("wants to run cargo build")).toHaveClass("mu-question-ask");
+    // The agent's own last lines, read off its screen (`Derived.questions`).
+    expect(within(asking).getByText("Allow Codex to run this command?")).toHaveClass(
+      "mu-question-ask",
+    );
     expect(asking).toHaveTextContent("⏎answer");
     // Only the selected item shows its keys.
     expect(options()[1]).not.toHaveTextContent("⏎answer");

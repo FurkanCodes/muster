@@ -26,6 +26,10 @@ tauri-build = { version = "2.5", features = [] }
 [dependencies]
 muster-client = { path = "../../../crates/muster-client" }
 muster-core = { path = "../../../crates/muster-core", features = ["ts"] }
+muster-model = { path = "../../../crates/muster-model" }
+# The person's uid, which names the daemon's runtime folder where nothing
+# else does (`muster_core::Paths::resolve`), as the `muster` binary reads it.
+nix = { version = "0.31.3", default-features = false, features = ["user"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.152"
 tauri = { version = "2.12", features = [] }
@@ -33,6 +37,9 @@ thiserror = "2.0.21"
 tokio = { version = "~1.53.2", features = ["macros", "net", "rt-multi-thread", "sync", "time", "process"] }
 tracing = "0.1.44"
 ts-rs = { version = "12.0.1", features = ["serde-json-impl", "no-serde-warnings"] }
+# The screens of sessions asking the person, read for their last lines
+# (*Needs you*'s questions), as the terminal UI reads its sessions'.
+vt100 = "0.16.2"
 # The embedded WebDriver server the end-to-end tests drive the real app
 # through (`pnpm e2e:app`). Only in builds made for them: never shipped.
 tauri-plugin-wdio-webdriver = { version = "1.5.0", optional = true }
@@ -41,6 +48,12 @@ tauri-plugin-wdio-webdriver = { version = "1.5.0", optional = true }
 e2e = ["dep:tauri-plugin-wdio-webdriver"]
 
 [dev-dependencies]
+# Stopping the daemons the end-to-end tests start, as `muster daemon stop`
+# does (SIGTERM).
+nix = { version = "0.31.3", default-features = false, features = ["user", "signal"] }
+# Paused time, for the link's patches a frame apart.
+tokio = { version = "~1.53.2", features = ["test-util"] }
+muster-model = { path = "../../../crates/muster-model", features = ["fixtures"] }
 tempfile = "3.27.0"
 
 # Small, fast and frugal (`ARC-25`): one codegen unit, whole-program
@@ -68,6 +81,9 @@ pedantic = { level = "warn", priority = -1 }
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+# `assert_eq!(list, [])` shows what the list held when it fails;
+# `assert!(list.is_empty())` would not.
+assert_is_empty = "allow"
 needless_pass_by_value = "allow"
 dbg_macro = "warn"
 todo = "warn"

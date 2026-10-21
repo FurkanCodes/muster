@@ -1384,6 +1384,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "muster-model"
+version = "0.4.1"
+dependencies = [
+ "muster-core",
+]
+
+[[package]]
 name = "muster-notch"
 version = "0.4.1"
 dependencies = [
@@ -1421,6 +1428,7 @@ dependencies = [
  "futures-util",
  "muster-client",
  "muster-core",
+ "muster-model",
  "nix 0.31.3",
  "ratatui",
  "tempfile",

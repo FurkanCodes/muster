@@ -16,6 +16,7 @@ repository = "https://github.com/FurkanCodes/muster"
 [workspace.dependencies]
 muster-core = { path = "crates/muster-core" }
 muster-state = { path = "crates/muster-state" }
+muster-model = { path = "crates/muster-model" }
 muster-daemon = { path = "crates/muster-daemon" }
 muster-tui = { path = "crates/muster-tui" }
 muster-client = { path = "crates/muster-client" }

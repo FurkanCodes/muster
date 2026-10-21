@@ -9,8 +9,10 @@
 //! by `cargo test export_bindings`; `pnpm bindings` runs it and CI checks the
 //! files are current.
 
+use std::collections::BTreeMap;
+
 use muster_core::protocol::plugins::PluginInfo;
-use muster_core::protocol::{ResourceReport, TerminalModes};
+use muster_core::protocol::{DetachReason, ErrorCode, ResourceReport, TerminalModes};
 use muster_core::settings::Preferences;
 use muster_core::{Project, ProjectId, Session, SessionId, Timestamp, Workspace, WorkspaceId};
 use serde::{Deserialize, Serialize};
@@ -98,6 +100,11 @@ pub struct Derived {
     pub rows: Vec<Row>,
     /// The flock, as the title bar counts it.
     pub counts: Counts,
+    /// What each session asking the person shows last: its screen's last
+    /// four lines with anything on them, oldest first, control characters
+    /// taken out. Only while the window is seen, and only for sessions
+    /// asking (status `needs_you`) whose screen has come.
+    pub questions: BTreeMap<SessionId, Vec<String>>,
 }
 
 /// One line of the sessions list.
@@ -110,7 +117,8 @@ pub enum Row {
     Session(SessionId),
 }
 
-/// How many agents work, wait on the person, and finished unseen.
+/// How many agents work, wait on the person and are done, as the terminal
+/// UI's top bar counts them (`muster_model::Counts`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, TS)]
 #[ts(export, export_to = "desktop/")]
 pub struct Counts {
@@ -131,6 +139,18 @@ pub mod frame {
     pub const REPLAY_RESET: u8 = 2;
     /// A [`super::TermEvent`] as JSON; `seq` is 0.
     pub const EVENT: u8 = 9;
+
+    /// The length of a frame's header: its kind and its `seq`.
+    pub const HEADER: usize = 9;
+
+    /// One frame, as the webview reads it (`src/ipc/frames.ts`).
+    pub fn encode(kind: u8, seq: u64, payload: &[u8]) -> Vec<u8> {
+        let mut frame = Vec::with_capacity(HEADER + payload.len());
+        frame.push(kind);
+        frame.extend_from_slice(&seq.to_le_bytes());
+        frame.extend_from_slice(payload);
+        frame
+    }
 }
 
 /// What happens to a stream besides its bytes, sent as a [`frame::EVENT`].
@@ -140,9 +160,11 @@ pub mod frame {
 pub enum TermEvent {
     /// How the program wants its keys and pastes encoded.
     Modes { modes: TerminalModes },
-    /// The stream ended: the program exited and its output is all sent, or
-    /// the session went.
-    Ended { reason: String },
+    /// The stream ended: the program exited and its output is all sent
+    /// (`exited`; a new program in the session streams on, from a reset),
+    /// or the session holds no terminal (`not_running`; the link attaches
+    /// again should it run again).
+    Ended { reason: DetachReason },
 }
 
 /// Why a command from the webview failed.
@@ -155,7 +177,7 @@ pub enum BridgeError {
     Unreachable,
     /// The daemon refused, with its own words and code.
     #[error("{message}")]
-    Refused { code: String, message: String },
+    Refused { code: ErrorCode, message: String },
     /// Something the webview sent did not make sense here.
     #[error("{message}")]
     Invalid { message: String },

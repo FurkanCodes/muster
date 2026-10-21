@@ -83,10 +83,14 @@ export function Hint({ keys, does }: { keys: string; does: string }) {
   );
 }
 
-/** The working spinner: CSS only, so it costs nothing while hidden (`ARC-25`). */
-export function Spinner() {
+/**
+ * The working spinner: CSS only, so it costs nothing while hidden; `still`,
+ * it shows its first step and draws nothing more, for a mark that stands for
+ * work while none is going on (`ARC-25`).
+ */
+export function Spinner({ still = false }: { still?: boolean }) {
   return (
-    <span className="mu-spin" aria-hidden="true">
+    <span className={still ? "mu-spin mu-spin--still" : "mu-spin"} aria-hidden="true">
       <span className="mu-spin-strip">⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏</span>
     </span>
   );
