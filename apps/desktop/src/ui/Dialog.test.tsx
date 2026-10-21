@@ -42,6 +42,20 @@ describe("ARC-24 Dialog", () => {
     expect(screen.getByRole("dialog", { name: "Close #205 on GitHub?" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Keep it open" })).toHaveFocus();
   });
+  it("says what the question is about under its title", () => {
+    render(
+      <Dialog
+        title="Assign an agent to #217"
+        meta="Tickets from YouTrack"
+        onClose={() => {}}
+        onAccept={() => {}}
+        actions={null}
+      />,
+    );
+    expect(screen.getByRole("dialog", { name: "Assign an agent to #217" })).toHaveTextContent(
+      "Tickets from YouTrack",
+    );
+  });
   it("PRD-01 ⏎ on a focused answer does that answer, never the acting one", async () => {
     const onClose = vi.fn();
     const onAccept = vi.fn();
@@ -49,6 +63,16 @@ describe("ARC-24 Dialog", () => {
     await userEvent.keyboard("{Enter}");
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onAccept).not.toHaveBeenCalled();
+  });
+  it("← → go between the answers and ⌘⏎ does the acting one from any", async () => {
+    const onAccept = vi.fn();
+    render(<Close onAccept={onAccept} />);
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("button", { name: "Close ticket" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}{ArrowLeft}");
+    expect(screen.getByRole("button", { name: "Keep it open" })).toHaveFocus();
+    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(onAccept).toHaveBeenCalledTimes(1);
   });
   it("⏎ elsewhere in it does the acting answer and ⎋ the other", () => {
     const onClose = vi.fn();
