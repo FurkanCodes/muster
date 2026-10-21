@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, Needs you</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking" title="Something asks for you">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<span>Go to a session or run a command</span>
+<span class="mu-kbd">⌘K</span>
+</button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done">
+<span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span>
+<span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span>
+<span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span>
+</div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used" title="Memory 62%">
+<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span>
+</div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<div class="mu-nav-label">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span><span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span><span class="mu-nav-count">4</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Needs you" style="flex: 1 0 var(--layout-queue); max-width: var(--layout-queue-max); min-width: 0; display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head">
+<h1 class="mu-queue-title">Needs you</h1>
+<span class="mu-meta">Oldest first. Opening one clears it.</span>
+</div>
+<div class="mu-queue" style="flex: 1; overflow: auto">
+<div class="mu-section mu-section--asking">Asking you</div>
+<button class="mu-item" aria-selected="true">
+<span class="mu-item-head">
+<span class="mu-mark mu-mark--waiting" aria-label="needs you">▲</span>
+<span class="mu-logo"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span>
+<span class="mu-item-name">Sketch the Tauri shell</span>
+<span class="mu-age">1m</span>
+</span>
+<span class="mu-item-under"><span class="mu-branch">⎇ feature/desktop-app</span> <span class="mu-where">in <span class="mu-p1">muster</span></span></span>
+<span class="mu-question"><span class="mu-question-ask">Allow Codex to run this command?</span>
+<span class="mu-term-dim">$</span> cargo build -p muster-desktop</span>
+<span class="mu-item-under mu-hints"><span class="mu-hint"><span class="mu-kbd">⏎</span>answer</span><span class="mu-hint"><span class="mu-kbd">d</span>see changes</span></span>
+</button>
+<button class="mu-item">
+<span class="mu-item-head">
+<span class="mu-mark mu-mark--waiting" aria-label="needs you">▲</span>
+<span class="mu-logo"><img src="/_blob/c161e767823acd431b9c967857542c89" alt="Gemini CLI"></span>
+<span class="mu-item-name">Share the Gradle cache across worktrees</span>
+<span class="mu-age">3m</span>
+</span>
+<span class="mu-item-under mu-cut" style="display: block"><span class="mu-branch">⎇ muster/issue-212-gradle-cache</span> <span class="mu-where">in <span class="mu-p2">lamphaus</span></span></span>
+<span class="mu-question"><span class="mu-question-ask">Where should the shared cache live?</span>
+<span style="color: var(--accent)">›</span> ~/.gradle/caches
+  ~/code/lamphaus/.gradle-shared</span>
+</button>
+
+<div class="mu-section mu-section--news">Finished, not seen</div>
+<button class="mu-row mu-row--two">
+<span class="mu-mark mu-mark--done" aria-label="finished">✓</span>
+<span class="mu-logo"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span>
+<span class="mu-row-text">
+<span class="mu-cut">Resize settles once on release</span>
+<span class="mu-row-line mu-meta"><span class="mu-branch mu-cut">⎇ fix/resize-under-load</span><span class="mu-diff"><span class="mu-add">+64</span><span class="mu-del">−22</span></span><span class="mu-pr">#88 <span class="mu-pr-approved">approved</span><span class="mu-check-passed">✓</span></span></span>
+</span>
+<span class="mu-age">12m<span class="mu-dot" aria-label="not seen"></span></span>
+</button>
+<button class="mu-row mu-row--two">
+<span class="mu-mark mu-mark--done" aria-label="finished">✓</span>
+<span class="mu-logo"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span>
+<span class="mu-row-text">
+<span class="mu-cut">Light mode for the notch</span>
+<span class="mu-row-line mu-meta"><span class="mu-branch mu-cut">⎇ muster/issue-198-light-mode</span><span class="mu-diff"><span class="mu-add">+88</span><span class="mu-del">−12</span></span><span class="mu-pr">#93 <span class="mu-check-running">◌</span></span></span>
+</span>
+<span class="mu-age">40m<span class="mu-dot" aria-label="not seen"></span></span>
+</button>
+<button class="mu-row mu-row--two">
+<span class="mu-mark mu-mark--done" aria-label="finished">✓</span>
+<span class="mu-logo"><img src="/_blob/0c866c86decd12cba083fe09a20dc74e" alt="Copilot CLI"></span>
+<span class="mu-row-text">
+<span class="mu-cut">Explain the release script</span>
+<span class="mu-row-line mu-meta"><span class="mu-branch mu-cut">⎇ main</span><span>no changes</span></span>
+</span>
+<span class="mu-age">1h<span class="mu-dot" aria-label="not seen"></span></span>
+</button>
+
+<div class="mu-section mu-section--working">Working</div>
+<button class="mu-row">
+<span class="mu-mark mu-mark--working" aria-label="working">⠹</span>
+<span class="mu-logo"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span>
+<span class="mu-cut" style="flex: 1">Split view.rs by responsibility</span>
+<span class="mu-meta mu-cut" style="max-width: 40%">editing view/sessions.rs</span>
+<span class="mu-age">4m</span>
+</button>
+<button class="mu-row">
+<span class="mu-mark mu-mark--working" aria-label="working">⠼</span>
+<span class="mu-logo"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span>
+<span class="mu-cut" style="flex: 1">Flaky resize test under load</span>
+<span class="mu-meta mu-cut" style="max-width: 40%">running cargo nextest</span>
+<span class="mu-age">2m</span>
+</button>
+<button class="mu-row">
+<span class="mu-mark mu-mark--working" aria-label="working">⠧</span>
+<span class="mu-logo"><img src="/_blob/9022fdb72074cc7ab16a193f7459f5df" alt="OpenCode"></span>
+<span class="mu-cut" style="flex: 1">Upgrade AGP to 9.1</span>
+<span class="mu-meta mu-cut" style="max-width: 40%">running ./gradlew assembleDebug</span>
+<span class="mu-age">8m</span>
+</button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0">
+<div class="mu-pane-head">
+<div class="mu-pane-title-row">
+<span class="mu-logo mu-logo--lg"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span>
+<h2 class="mu-pane-title" title="Sketch the Tauri shell">Sketch the Tauri shell</h2>
+<div class="mu-pane-actions">
+<button class="mu-btn mu-btn--quiet" title="Shell in this workspace (T)"><span class="mu-mono" aria-hidden="true">❯</span>Shell</button>
+<button class="mu-btn mu-btn--quiet" title="Changes (d)"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 4v8M8 8h8M8 18h8"></path></svg>Changes</button>
+<button class="mu-icon-btn" aria-label="Full screen" title="Full screen (f)"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
+<button class="mu-icon-btn" aria-label="More" title="More"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button>
+</div>
+</div>
+<div class="mu-pane-meta">
+<span><span class="mu-branch">⎇ feature/desktop-app</span> <span class="mu-where">in <span class="mu-p1">muster</span></span></span>
+<span>Codex</span>
+<span>182k tokens</span>
+<span>212 MB, 3% CPU</span>
+<span class="mu-pr">#91 <span>draft</span><span class="mu-check-running">◌</span></span>
+</div>
+</div>
+
+<div class="mu-banner" role="status" style="margin: 0 var(--space-20)">
+<span class="mu-mark mu-mark--waiting" aria-hidden="true">▲</span>
+<span class="mu-banner-text"><span class="mu-banner-lead">Needs you:</span> wants to run <span class="mu-mono" style="font-size: 12px">cargo build -p muster-desktop</span></span>
+<span class="mu-meta">1m 04s</span>
+<span class="mu-hint"><span class="mu-kbd">⏎</span>answer in the terminal</span>
+</div>
+
+<pre class="mu-term" aria-label="Terminal of Sketch the Tauri shell" style="flex: 1; min-height: 0; margin: var(--space-12) var(--space-20) 0"><span class="mu-term-dim">›</span> Sketch the Tauri shell for Muster Desktop: a crate that connects
+  through muster-client and forwards the state to the webview.
+
+<span style="color: var(--done)">•</span> Explored
+  <span class="mu-term-dim">└</span> Read crates/muster-client/src/connection.rs
+    Read crates/muster-notch/src/link.rs
+
+<span style="color: var(--done)">•</span> Added crates/muster-desktop/Cargo.toml <span class="mu-add">(+24)</span>
+<span style="color: var(--done)">•</span> Added crates/muster-desktop/src/main.rs <span class="mu-add">(+61)</span>
+<span style="color: var(--done)">•</span> Edited crates/muster-desktop/src/link.rs <span class="mu-add">(+118</span> <span class="mu-del">−4)</span>
+
+  The link subscribes once, mirrors the snapshot and its deltas,
+  and hands each change to the webview on a Tauri channel.
+  Building it to check it compiles.
+
+  <span style="color: var(--working)">Allow Codex to run this command?</span>
+
+  <span class="mu-term-dim">$</span> cargo build -p muster-desktop
+
+  <span style="color: var(--accent)">› 1. Yes, run it</span>
+    2. Yes, and don't ask again for cargo build
+    3. No, and tell Codex what to do differently</pre>
+
+<section class="mu-turn" aria-label="This turn" style="margin: var(--space-12) var(--space-20) var(--space-16)">
+<div class="mu-turn-head">
+<span class="mu-turn-title">This turn</span>
+<span class="mu-meta">Codex, turn 3, changed 3 files</span>
+<span class="mu-diff"><span class="mu-add">+203</span><span class="mu-del">−4</span></span>
+<span class="mu-spacer"></span>
+<button class="mu-btn mu-btn--quiet mu-btn--sm" title="Put the files back as before this turn (z)">Put back</button>
+<button class="mu-btn mu-btn--quiet mu-btn--sm" title="See the diff (d)">See the diff</button>
+</div>
+<div class="mu-turn-files">
+<button class="mu-pill">link.rs<span class="mu-diff"><span class="mu-add">+118</span><span class="mu-del">−4</span></span></button>
+<button class="mu-pill">main.rs<span class="mu-diff"><span class="mu-add">+61</span></span></button>
+<button class="mu-pill">Cargo.toml<span class="mu-diff"><span class="mu-add">+24</span></span></button>
+</div>
+</section>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-hint"><span class="mu-kbd">⏎</span>answer</span>
+<span class="mu-hint"><span class="mu-kbd">d</span>see changes</span>
+<span class="mu-hint"><span class="mu-kbd">T</span>shell</span>
+<span class="mu-hint"><span class="mu-kbd">z</span>put back</span>
+<span class="mu-hint"><span class="mu-kbd">R</span>rename</span>
+<span class="mu-spacer"></span>
+<span class="mu-hint"><span class="mu-kbd">h</span>every key</span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

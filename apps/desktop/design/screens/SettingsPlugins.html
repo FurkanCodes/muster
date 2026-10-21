@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, plugins</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking" title="Something asks for you">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<span>Go to a setting or run a command</span>
+<span class="mu-kbd">⌘K</span>
+</button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done">
+<span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span>
+<span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span>
+<span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span>
+</div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used" title="Memory 62%">
+<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span>
+</div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Settings sections" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar); display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head">
+<h1 class="mu-queue-title">Settings</h1>
+<span class="mu-meta">The terminal UI shares them.</span>
+</div>
+<div style="flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-8) var(--space-16)">
+<div class="mu-nav-label" style="padding-top: var(--space-8)">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p3"></span></span><span style="color: var(--text)">kep-site</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p4"></span></span><span style="color: var(--text)">kep-api</span></button>
+<div class="mu-nav-label">Muster</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>General</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Notifications</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Agents<span class="mu-nav-count">6</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Naming chats</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"></span>Plugins<span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Keys</button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0; overflow: auto">
+<div style="padding: var(--space-24) var(--space-32) var(--space-32); display: flex; flex-direction: column; gap: var(--space-20)">
+<div style="display: flex; align-items: flex-start; gap: var(--space-16); padding: 0 var(--space-12)">
+<div style="flex: 1; display: flex; flex-direction: column; gap: var(--space-4)">
+<h2 class="mu-settings-title">Plugins</h2>
+<span class="mu-meta">Muster's own and the ones you added. Each runs only what it showed you when you approved it.</span>
+</div>
+<button class="mu-btn mu-btn--quiet" title="Add a plugin (a)"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add a plugin</button>
+</div>
+
+<div style="display: flex; gap: var(--space-24); align-items: flex-start; flex-wrap: wrap">
+<div style="flex: 1 1 340px; max-width: 420px; display: flex; flex-direction: column; gap: var(--space-2)">
+<h3 class="mu-settings-group-title">Muster's own</h3>
+<div class="mu-plugin">
+<button class="mu-plugin-open"><span class="mu-plugin-name">GitHub issues<span class="mu-plugin-version">0.4.1</span><span class="mu-label">built in</span></span><span class="mu-plugin-what">tickets: GitHub, through your gh</span></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="GitHub issues"></button>
+</div>
+<div class="mu-plugin">
+<button class="mu-plugin-open"><span class="mu-plugin-name">GitLab issues<span class="mu-plugin-version">0.4.1</span><span class="mu-label">built in</span></span><span class="mu-plugin-what">tickets: GitLab, through your glab</span></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="GitLab issues"></button>
+</div>
+<div class="mu-plugin">
+<button class="mu-plugin-open"><span class="mu-plugin-name">Jira<span class="mu-plugin-version">0.4.1</span><span class="mu-label">built in</span></span><span class="mu-plugin-what">tickets: Jira Cloud or Data Center</span></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="Jira"></button>
+</div>
+<div class="mu-plugin">
+<button class="mu-plugin-open"><span class="mu-plugin-name">Linear<span class="mu-plugin-version">0.4.1</span><span class="mu-label">built in</span></span><span class="mu-plugin-what">tickets: Linear</span></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="Linear"></button>
+</div>
+<h3 class="mu-settings-group-title" style="padding-top: var(--space-16)">Yours</h3>
+<div class="mu-plugin">
+<button class="mu-plugin-open"><span class="mu-plugin-name">Notify by webhook<span class="mu-plugin-version">0.1.0</span><span class="mu-label">folder</span></span><span class="mu-plugin-what">hooks: needs you, finished, failed</span></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="Notify by webhook"></button>
+</div>
+<div class="mu-plugin">
+<button class="mu-plugin-open"><span class="mu-plugin-name">Session graph<span class="mu-plugin-version">0.1.0</span><span class="mu-label">git</span></span><span class="mu-plugin-what">panel: graph (G)</span></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="Session graph"></button>
+</div>
+<div class="mu-plugin is-selected">
+<button class="mu-plugin-open" aria-current="true"><span class="mu-plugin-name">YouTrack tickets<span class="mu-plugin-version">0.2.0</span><span class="mu-label">git</span></span><span class="mu-plugin-what is-off">Off: changed since you approved it</span></button>
+<button class="mu-switch" role="switch" aria-checked="false" aria-label="YouTrack tickets" title="Approve it again before it can run"></button>
+</div>
+</div>
+
+<section aria-labelledby="yt-h" style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-16); padding: var(--space-20); border-radius: var(--radius-lg); border: var(--stroke-hairline) solid var(--line); background: var(--surface-ground)">
+<div style="display: flex; flex-direction: column; gap: var(--space-4)">
+<h3 id="yt-h" style="margin: 0; display: flex; align-items: center; gap: var(--space-8); font-size: 14px; line-height: 20px; font-weight: 600">YouTrack tickets<span class="mu-plugin-version">0.2.0</span><span class="mu-label">git</span></h3>
+<span class="mu-meta">Lists a YouTrack project's open issues as tickets.</span>
+</div>
+<div class="mu-banner" role="status" style="white-space: normal">
+<span class="mu-mark mu-mark--waiting" aria-hidden="true">▲</span>
+<span style="flex: 1; min-width: 0"><span class="mu-banner-lead">Off:</span> its manifest changed since you approved it. Look over what it runs now, then approve it again.</span>
+</div>
+<div style="display: flex; gap: var(--space-8); flex-wrap: wrap">
+<button class="mu-btn mu-btn--primary" title="Review and approve (⏎)">Review and approve</button>
+<button class="mu-btn mu-btn--quiet" title="Update (u)">Update</button>
+<button class="mu-btn mu-btn--danger" title="Remove (x)">Remove</button>
+</div>
+<dl class="mu-details">
+<dt>From</dt><dd><code>github.com/acme/muster-youtrack</code>, branch <code>main</code>, commit <code>3f9a2c1</code></dd>
+<dt>Brings</dt><dd>tickets: YouTrack, asking for a site, and a query if you like</dd>
+<dt>Runs</dt><dd><code>./youtrack --serve</code>, as a ticket source on a pipe</dd>
+<dt>Needs</dt><dd><code>curl</code> <span class="mu-found">✓ found</span><br><code>jq</code> <span class="mu-missing">✗ not found</span> <span class="mu-quiet">brew install jq</span></dd>
+<dt>Is given</dt><dd><code>YOUTRACK_SITE</code>, and the secret <code>YOUTRACK_TOKEN</code> from your Keychain</dd>
+<dt>Manifest</dt><dd><code>sha256 9c41d07e…b2e8</code><br><span class="mu-quiet">you approved <code>4b1e07c2…19af</code></span></dd>
+<dt>Last change</dt><dd>updated from the command line, 2 days ago</dd>
+</dl>
+</section>
+</div>
+</div>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-hint"><span class="mu-kbd">⏎</span>review and approve</span>
+<span class="mu-hint"><span class="mu-kbd">␣</span>turn on or off</span>
+<span class="mu-hint"><span class="mu-kbd">a</span>add</span>
+<span class="mu-hint"><span class="mu-kbd">u</span>update</span>
+<span class="mu-hint"><span class="mu-kbd">x</span>remove</span>
+<span class="mu-spacer"></span>
+<span class="mu-hint"><span class="mu-kbd">h</span>every key</span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

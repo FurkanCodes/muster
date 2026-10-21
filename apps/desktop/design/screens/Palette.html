@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, command palette</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="position: relative; height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done"><span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span><span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span><span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span></div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; overflow: hidden">
+<nav class="mu-nav" aria-label="Screens" style="flex: 0 0 var(--layout-sidebar)">
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+</nav>
+<section style="flex: 0 0 var(--layout-queue); background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Needs you</h1></div>
+<div class="mu-queue">
+<div class="mu-section mu-section--asking">Asking you</div>
+<button class="mu-row mu-row--two" aria-selected="true"><span class="mu-mark mu-mark--waiting">▲</span><span class="mu-logo"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span><span class="mu-row-text"><span class="mu-cut" style="font-weight: 600">Sketch the Tauri shell</span><span class="mu-meta mu-cut" style="color: var(--waiting)">wants to run cargo build</span></span><span class="mu-age">1m</span></button>
+<button class="mu-row mu-row--two"><span class="mu-mark mu-mark--waiting">▲</span><span class="mu-logo"><img src="/_blob/c161e767823acd431b9c967857542c89" alt="Gemini CLI"></span><span class="mu-row-text"><span class="mu-cut" style="font-weight: 600">Share the Gradle cache across worktrees</span><span class="mu-meta mu-cut" style="color: var(--waiting)">asks which cache folder to use</span></span><span class="mu-age">3m</span></button>
+</div>
+</section>
+<main class="mu-pane" style="flex: 1; padding: var(--space-12) var(--space-20)"><pre class="mu-term" style="height: 100%"></pre></main>
+</div>
+
+<div class="mu-scrim" style="position: absolute; inset: 0; z-index: var(--z-menu); display: flex; align-items: flex-start; justify-content: center; padding: 140px var(--space-24) var(--space-24)">
+<div class="mu-palette" role="dialog" aria-modal="true" aria-label="Command palette">
+<div class="mu-palette-field"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input class="mu-palette-input" aria-label="Go to or do" value="res"></div>
+<div class="mu-palette-list" role="listbox">
+<div class="mu-palette-group">Actions on Sketch the Tauri shell</div>
+<button class="mu-menu-item mu-palette-item is-active" role="option"><mark>Res</mark>tart the session</button>
+<button class="mu-menu-item mu-palette-item" role="option">Put back a turn, <mark>res</mark>toring its files<span class="mu-kbd">z</span></button>
+<div class="mu-palette-group">Sessions</div>
+<button class="mu-menu-item mu-palette-item" role="option"><span class="mu-mark mu-mark--done">✓</span><span class="mu-logo mu-logo--sm"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt=""></span><mark>Res</mark>ize settles once on release<span class="mu-meta" style="margin-left: auto">muster</span></button>
+<button class="mu-menu-item mu-palette-item" role="option"><span class="mu-mark mu-mark--working">⠼</span><span class="mu-logo mu-logo--sm"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt=""></span>Flaky <mark>res</mark>ize test under load<span class="mu-meta" style="margin-left: auto">muster</span></button>
+<div class="mu-palette-group">Tickets</div>
+<button class="mu-menu-item mu-palette-item" role="option"><span class="mu-mono mu-quiet">#205</span><mark>Res</mark>ize settles once on release<span class="mu-meta" style="margin-left: auto">muster</span></button>
+<div class="mu-palette-group">Settings</div>
+<button class="mu-menu-item mu-palette-item" role="option">Put the panels back as at first, a <mark>res</mark>et<span class="mu-meta" style="margin-left: auto">General</span></button>
+<button class="mu-menu-item mu-palette-item" role="option">Put every key back, a <mark>res</mark>et<span class="mu-meta" style="margin-left: auto">Keys</span></button>
+</div>
+<div class="mu-palette-foot"><span class="mu-hint"><span class="mu-kbd">↑↓</span>move</span><span class="mu-hint"><span class="mu-kbd">⏎</span>do it</span><span class="mu-hint"><span class="mu-kbd">⎋</span>close</span><span class="mu-spacer"></span><span class="mu-hint"><span class="mu-kbd">h</span>every key</span></div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

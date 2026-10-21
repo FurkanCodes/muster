@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, Flock</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.m{--ground:#1b1b26;--rail:#15151e;--panel:#1f1f2c;--term:#13131b;--raise:#272735;--lit:#3a3556;--line:#2a2b3a;--line2:#3e4154;--text:#d8dae5;--quiet:#9095aa;--accent:#b8a6f8;--on-accent:#17161f;--working:#f2cc8f;--waiting:#f28b9d;--done:#93d6a3;--news:#8ad1e8;--still:#878ca1;--p1:#8cb3f7;--p2:#86d6cc;--add:#93d6a3;--del:#f28b9d;--tint-wait:rgba(242,139,157,.10);--tint-work:rgba(242,204,143,.10)}
+.m[data-theme="light"]{--ground:#f5f5f8;--rail:#ebebf1;--panel:#fbfbfd;--term:#ffffff;--raise:#e3e3ec;--lit:#dcd5f6;--line:#dfe0e8;--line2:#c9cbd6;--text:#2e3040;--quiet:#5c6075;--accent:#6b4fd8;--on-accent:#ffffff;--working:#8f5a00;--waiting:#c23656;--done:#23874a;--news:#1a7fa3;--still:#6a6e82;--p1:#2f62c9;--p2:#19867b;--add:#23874a;--del:#c23656;--tint-wait:rgba(194,54,86,.08);--tint-work:rgba(168,106,0,.08)}
+.m *{box-sizing:border-box}
+.m button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left}
+.m :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-ligatures:none}
+.num{font-variant-numeric:tabular-nums}
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:4px;border:1px solid var(--line2);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--quiet);background:var(--panel)}
+.chip{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none;line-height:1}
+.tab{height:28px;padding:0 12px;border-radius:7px;display:inline-flex;align-items:center;gap:7px;color:var(--quiet);font-weight:500}
+.tab:hover{background:var(--raise);color:var(--text)}
+.tab[aria-current="page"]{background:var(--accent);color:var(--on-accent)}
+.sub{color:var(--quiet);font-size:12px}
+.cut{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.term{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-ligatures:none;white-space:pre;color:var(--text)}
+.tile{display:flex;flex-direction:column;border-radius:10px;border:1px solid var(--line);background:var(--panel);overflow:hidden;min-width:0}
+.tile:hover{border-color:var(--line2)}
+.tilehead{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.tilefoot{display:flex;align-items:center;gap:10px;padding:7px 12px;font-size:12px;color:var(--quiet);border-top:1px solid var(--line)}
+.seg{height:26px;padding:0 10px;border-radius:6px;display:inline-flex;align-items:center;color:var(--quiet);font-weight:500;font-size:12px}
+.seg[aria-pressed="true"]{background:var(--raise);color:var(--text)}
+</style>
+</helmet>
+<div class="m" data-theme="{{theme}}" style="height: 100vh; min-height: 560px; display: flex; flex-direction: column; background: var(--ground); color: var(--text); font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 13px; line-height: 1.4; overflow: hidden">
+
+<header style="height: 46px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 14px; background: var(--rail); border-bottom: 1px solid var(--line)">
+<div aria-hidden="true" style="display: flex; gap: 8px; width: 58px; flex: none">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--line2)"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--line2)"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--line2)"></span>
+</div>
+<span class="mono" title="Kep is watching the flock" style="color: var(--text); font-size: 13px; letter-spacing: 0.02em; flex: none">▼•ᴥ•▼</span>
+<nav aria-label="Screens" style="display: flex; gap: 2px; flex-wrap: wrap">
+<button class="tab" aria-current="page">Sessions</button>
+<button class="tab">Needs you <span class="num" style="min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--tint-wait); color: var(--waiting); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">2</span></button>
+<button class="tab">Tickets</button>
+<button class="tab">Settings</button>
+</nav>
+<div style="flex: 1"></div>
+<div aria-label="3 working, 2 waiting on you, 4 done" style="display: flex; align-items: center; gap: 14px; font-weight: 500" class="num">
+<span style="color: var(--working); display: inline-flex; gap: 6px; align-items: center"><span class="mono">⠹</span>3</span>
+<span style="color: var(--waiting); display: inline-flex; gap: 6px; align-items: center"><span class="mono" style="font-size: 11px">▲</span>2</span>
+<span style="color: var(--done); display: inline-flex; gap: 6px; align-items: center"><span class="mono">✓</span>4</span>
+</div>
+<button style="height: 30px; width: 260px; padding: 0 8px 0 10px; border-radius: 8px; background: var(--ground); border: 1px solid var(--line); color: var(--quiet); display: flex; align-items: center; gap: 8px">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<span style="flex: 1">Go to a session or run a command</span>
+<span class="kbd">⌘K</span>
+</button>
+</header>
+
+<div style="flex: none; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap">
+<div role="group" aria-label="View" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid var(--line)">
+<button class="seg" aria-pressed="false">List</button>
+<button class="seg" aria-pressed="true">Board</button>
+</div>
+<span class="sub">Asking first, then working, then finished. Click a tile to open it beside the list.</span>
+<div style="flex: 1"></div>
+<button style="height: 28px; padding: 0 12px; border-radius: 7px; background: var(--accent); color: var(--on-accent); font-weight: 600; display: inline-flex; align-items: center; gap: 6px">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>New session</button>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: auto; padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 22px">
+
+<section aria-label="muster" style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--p1)"></span>
+<h2 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--p1)">muster</h2>
+<span class="sub">4 worktrees</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px">
+
+<article class="tile" style="grid-column: span 2; border-color: color-mix(in oklab, var(--waiting) 55%, transparent)">
+<div class="tilehead" style="background: var(--tint-wait)">
+<span class="mono" style="color: var(--waiting); font-size: 10px">▲</span>
+<span class="chip" style="background: rgba(163,163,163,.16); color: #a3a3a3">◎</span>
+<span class="cut" style="flex: 1; font-weight: 600">Sketch the Tauri shell</span>
+<span style="font-size: 12px; color: var(--waiting)">wants to run cargo build</span>
+<span class="sub num">1m</span>
+</div>
+<div class="term" style="flex: 1; padding: 10px 12px; background: var(--term); font-size: 11.5px; line-height: 1.55; overflow: hidden">  The link subscribes once, mirrors the snapshot and its deltas,
+  and hands each change to the webview on a Tauri channel.
+
+  <span style="color: var(--working)">Allow Codex to run this command?</span>
+  <span style="color: var(--quiet)">$</span> cargo build -p muster-desktop
+
+  <span style="color: var(--accent)">› 1. Yes, run it</span>
+    2. Yes, and don't ask again for cargo build</div>
+<div class="tilefoot"><span class="mono cut">⎇ feature/desktop-app</span><span class="num" style="color: var(--add)">+203</span><span class="num" style="color: var(--del)">−4</span><span style="flex: 1"></span><span>#91 draft</span></div>
+</article>
+
+<article class="tile">
+<div class="tilehead">
+<span class="mono" style="color: var(--working)">⠹</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span class="cut" style="flex: 1; font-weight: 600">Split view.rs by responsibility</span>
+<span class="sub num">4m</span>
+</div>
+<div class="term" style="flex: 1; padding: 10px 12px; background: var(--term); font-size: 11px; line-height: 1.55; overflow: hidden; color: var(--quiet)"><span style="color: var(--done)">●</span> <span style="color: var(--text)">Update</span>(view/sessions.rs)
+  ⎿  Moved 212 lines to view/rows.rs
+<span style="color: var(--done)">●</span> <span style="color: var(--text)">Update</span>(view.rs)
+  ⎿  Added 1 line
+<span style="color: var(--working)">✻</span> <span style="color: var(--text)">Editing view/sessions.rs…</span></div>
+<div class="tilefoot"><span class="mono cut">⎇ main</span><span class="num" style="color: var(--add)">+12</span><span class="num" style="color: var(--del)">−3</span></div>
+</article>
+
+<article class="tile">
+<div class="tilehead">
+<span class="mono" style="color: var(--working)">⠼</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span class="cut" style="flex: 1; font-weight: 600">Flaky resize test under load</span>
+<span class="sub num">2m</span>
+</div>
+<div class="term" style="flex: 1; padding: 10px 12px; background: var(--term); font-size: 11px; line-height: 1.55; overflow: hidden; color: var(--quiet)"><span style="color: var(--done)">●</span> <span style="color: var(--text)">Bash</span>(cargo nextest run -p muster)
+  ⎿  Running 312 tests…
+     tui_terminal::resizing <span style="color: var(--working)">SLOW</span> 4.1s
+<span style="color: var(--working)">✻</span> <span style="color: var(--text)">Waiting for the tests…</span></div>
+<div class="tilefoot"><span class="mono cut">⎇ fix/resize-under-load</span><span style="color: var(--working)">overlap</span><span style="flex: 1"></span><span>#88</span><span style="color: var(--done)">✓</span></div>
+</article>
+
+<article class="tile">
+<div class="tilehead">
+<span class="mono" style="color: var(--done)">✓</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span class="cut" style="flex: 1; font-weight: 600">Resize settles once on release</span>
+<span class="sub num" style="display: flex; gap: 6px; align-items: center">12m<span aria-label="not seen" style="width: 6px; height: 6px; border-radius: 50%; background: var(--news)"></span></span>
+</div>
+<div style="flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px">
+<span>Finished. Changed 4 files, <span class="num" style="color: var(--add)">+64</span> <span class="num" style="color: var(--del)">−22</span>.</span>
+<span class="sub">Pull request #88 approved, checks passed.</span>
+</div>
+<div class="tilefoot"><span class="mono cut">⎇ fix/resize-under-load</span></div>
+</article>
+
+</div>
+</section>
+
+<section aria-label="lamphaus" style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--p2)"></span>
+<h2 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--p2)">lamphaus</h2>
+<span class="sub">3 worktrees</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px">
+
+<article class="tile" style="grid-column: span 2; border-color: color-mix(in oklab, var(--waiting) 55%, transparent)">
+<div class="tilehead" style="background: var(--tint-wait)">
+<span class="mono" style="color: var(--waiting); font-size: 10px">▲</span>
+<span class="chip" style="background: rgba(142,117,178,.20); color: #a58fd0">✦</span>
+<span class="cut" style="flex: 1; font-weight: 600">Share the Gradle cache across worktrees</span>
+<span style="font-size: 12px; color: var(--waiting)">asks you a question</span>
+<span class="sub num">3m</span>
+</div>
+<div class="term" style="flex: 1; padding: 10px 12px; background: var(--term); font-size: 11.5px; line-height: 1.55; overflow: hidden">  Each worktree builds its own Gradle cache today, about 2.4 GB
+  apiece. Pointing them at one folder saves the rebuilds.
+
+  Where should the shared cache live?
+  <span style="color: var(--accent)">›</span> ~/.gradle/caches
+    ~/code/lamphaus/.gradle-shared</div>
+<div class="tilefoot"><span class="mono cut">⎇ muster/issue-212-gradle-cache</span><span style="flex: 1"></span><span>#212</span></div>
+</article>
+
+<article class="tile">
+<div class="tilehead">
+<span class="mono" style="color: var(--working)">⠧</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span class="cut" style="flex: 1; font-weight: 600">Upgrade AGP to 9.1</span>
+<span class="sub num">8m</span>
+</div>
+<div class="term" style="flex: 1; padding: 10px 12px; background: var(--term); font-size: 11px; line-height: 1.55; overflow: hidden; color: var(--quiet)"><span style="color: var(--done)">●</span> <span style="color: var(--text)">Bash</span>(./gradlew assembleDebug)
+  ⎿  &gt; Task :app:compileDebugKotlin
+     &gt; Task :app:mergeDebugResources
+<span style="color: var(--working)">✻</span> <span style="color: var(--text)">Building…</span></div>
+<div class="tilefoot"><span class="mono cut">⎇ muster/agp-9-1</span><span class="num" style="color: var(--add)">+41</span><span class="num" style="color: var(--del)">−38</span></div>
+</article>
+
+<article class="tile">
+<div class="tilehead">
+<span class="mono" style="color: var(--done)">✓</span>
+<span class="chip" style="background: rgba(163,163,163,.16); color: #a3a3a3">◎</span>
+<span class="cut" style="flex: 1; font-weight: 600">Explain the release script</span>
+<span class="sub num">1h</span>
+</div>
+<div style="flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px">
+<span>Finished. No files changed.</span>
+</div>
+<div class="tilefoot"><span class="mono cut">⎇ main</span></div>
+</article>
+
+</div>
+</section>
+
+</div>
+
+<footer style="height: 32px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 14px; background: var(--rail); border-top: 1px solid var(--line); font-size: 12px; color: var(--quiet); overflow: hidden">
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">⏎</span>open</span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">←↑↓→</span>move between tiles</span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">v</span>list or board</span>
+<span style="flex: 1"></span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">h</span>every key</span>
+<span class="num">Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

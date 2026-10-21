@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, approving a plugin</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="position: relative; height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; overflow: hidden">
+<nav class="mu-nav" aria-label="Screens" style="flex: 0 0 var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+<section style="flex: 0 0 var(--layout-sidebar); background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Settings</h1></div>
+<div style="display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-8)"><button class="mu-nav-item"><span class="mu-nav-icon"></span>General</button><button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"></span>Plugins</button></div>
+</section>
+<main class="mu-pane" style="flex: 1; padding: var(--space-24) var(--space-32)">
+<h2 class="mu-settings-title" style="padding: 0 var(--space-12) var(--space-16)">Plugins</h2>
+<div style="max-width: 420px">
+<div class="mu-plugin"><span class="mu-plugin-open"><span class="mu-plugin-name">GitHub issues<span class="mu-label">built in</span></span><span class="mu-plugin-what">tickets: GitHub</span></span></div>
+<div class="mu-plugin"><span class="mu-plugin-open"><span class="mu-plugin-name">Session graph<span class="mu-label">git</span></span><span class="mu-plugin-what">panel: graph (G)</span></span></div>
+</div>
+</main>
+</div>
+
+<div class="mu-scrim" style="position: absolute; inset: 0; z-index: var(--z-scrim); display: flex; align-items: flex-start; justify-content: center; padding: 64px var(--space-24) var(--space-24)">
+<div class="mu-dialog" role="dialog" aria-modal="true" aria-labelledby="pa-title" style="width: var(--size-dialog-wide)">
+<div style="display: flex; flex-direction: column; gap: var(--space-4)">
+<h2 class="mu-dialog-title" id="pa-title">Link Notify by webhook?</h2>
+<span class="mu-meta">Posts project, branch, chat and what happened to a webhook when an agent needs you, finishes or fails.</span>
+</div>
+<p class="mu-dialog-text">Everything it will run is below, as its manifest says. Nothing of it runs until you say yes.</p>
+<dl class="mu-details">
+<dt>From</dt><dd>the folder <code>~/muster/examples/plugins/notify-webhook</code>, linked where it is and read from there</dd>
+<dt>Version</dt><dd><code>0.1.0</code>, for Muster <code>0.4.1</code></dd>
+<dt>Hook</dt><dd><code>./notify</code>, when an agent needs you, finishes or fails; at most 15 seconds each time</dd>
+<dt>Is told</dt><dd>names and ids only: never a ticket's text, a prompt, an agent's output or code</dd>
+<dt>Needs</dt><dd><code>curl</code> <span class="mu-found">✓ found</span>, <code>sed</code> <span class="mu-found">✓ found</span></dd>
+<dt>Is given</dt><dd>the secret <code>WEBHOOK_URL</code>, from your Keychain</dd>
+<dt>Manifest</dt><dd><code>sha256 5e0a91c4d27b…88f1</code></dd>
+</dl>
+<div class="mu-banner" style="background: var(--surface-raised)">
+<span class="mu-meta" style="color: var(--text)">A hook only hears. It cannot start, prompt or type into an agent. If its manifest changes, it is turned off until you approve it again.</span>
+</div>
+<div class="mu-dialog-actions">
+<button class="mu-btn mu-btn--secondary mu-btn--lg" title="Cancel (n)">Cancel</button>
+<button class="mu-btn mu-btn--primary mu-btn--lg" title="Link and turn on (y)">Link and turn on</button>
+</div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

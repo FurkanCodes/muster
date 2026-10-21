@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, daemon out of reach</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--away" title="The daemon is out of reach">▼;ᴥ;▼</span>
+<span class="mu-spacer"></span>
+<button class="mu-command" disabled style="opacity: var(--opacity-disabled)"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span>Waiting for the daemon</span></button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="As it was 14 seconds ago: 3 working, 2 waiting, 4 done" style="opacity: var(--opacity-disabled)"><span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠿</span>3</span><span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span><span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span></div>
+</header>
+
+<div class="mu-banner mu-banner--away" role="alert" style="flex: none; margin: var(--space-12) var(--space-12) 0; padding: var(--space-10) var(--space-12)">
+<span class="mu-mark" style="color: var(--working)" aria-hidden="true">!</span>
+<span style="flex: 1; min-width: 0"><span class="mu-banner-lead">Muster's daemon is out of reach.</span> Starting it again and trying every half second, 14s so far. What you see is as it was.</span>
+<button class="mu-btn mu-btn--quiet mu-btn--sm" title="Open daemon.log">Show its log</button>
+<button class="mu-btn mu-btn--quiet mu-btn--sm">Try now</button>
+</div>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto; margin-top: var(--space-12)">
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠿</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+</nav>
+<section aria-label="Needs you, as it was" style="flex: 1 0 var(--layout-queue); max-width: var(--layout-queue-max); background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Needs you</h1><span class="mu-meta">As it was 14 seconds ago.</span></div>
+<div class="mu-queue" style="opacity: var(--opacity-disabled)">
+<div class="mu-section mu-section--asking">Asking you</div>
+<button class="mu-row mu-row--two" disabled><span class="mu-mark mu-mark--waiting">▲</span><span class="mu-logo"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span><span class="mu-row-text"><span class="mu-cut" style="font-weight: 600">Sketch the Tauri shell</span><span class="mu-meta mu-cut">wants to run cargo build</span></span><span class="mu-age">1m</span></button>
+<button class="mu-row mu-row--two" disabled><span class="mu-mark mu-mark--waiting">▲</span><span class="mu-logo"><img src="/_blob/c161e767823acd431b9c967857542c89" alt="Gemini CLI"></span><span class="mu-row-text"><span class="mu-cut" style="font-weight: 600">Share the Gradle cache across worktrees</span><span class="mu-meta mu-cut">asks which cache folder to use</span></span><span class="mu-age">3m</span></button>
+</div>
+</section>
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); display: flex">
+<div class="mu-empty">
+<span class="mu-kep" style="font-size: 28px; line-height: 36px; color: var(--text-quiet)">▼;ᴥ;▼</span>
+<h2 class="mu-empty-title">Waiting for the daemon</h2>
+<p class="mu-empty-text">When it is back, your sessions are back with it: those in containers as they were, the rest through their own agent's resume. Closing this window changes nothing.</p>
+</div>
+</main>
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-note mu-note--error">Out of reach since 14:02:31. Its log is daemon.log in Muster's runtime folder.</span>
+<span class="mu-spacer"></span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

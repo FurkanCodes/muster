@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, Cockpit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.m{--ground:#1b1b26;--rail:#15151e;--panel:#1f1f2c;--term:#13131b;--raise:#272735;--lit:#3a3556;--line:#2a2b3a;--line2:#3e4154;--text:#d8dae5;--quiet:#9095aa;--accent:#b8a6f8;--on-accent:#17161f;--working:#f2cc8f;--waiting:#f28b9d;--done:#93d6a3;--news:#8ad1e8;--still:#878ca1;--p1:#8cb3f7;--p2:#86d6cc;--add:#93d6a3;--del:#f28b9d;--tint-wait:rgba(242,139,157,.10);--tint-work:rgba(242,204,143,.10)}
+.m[data-theme="light"]{--ground:#f5f5f8;--rail:#ebebf1;--panel:#fbfbfd;--term:#ffffff;--raise:#e3e3ec;--lit:#dcd5f6;--line:#dfe0e8;--line2:#c9cbd6;--text:#2e3040;--quiet:#5c6075;--accent:#6b4fd8;--on-accent:#ffffff;--working:#8f5a00;--waiting:#c23656;--done:#23874a;--news:#1a7fa3;--still:#6a6e82;--p1:#2f62c9;--p2:#19867b;--add:#23874a;--del:#c23656;--tint-wait:rgba(194,54,86,.08);--tint-work:rgba(168,106,0,.08)}
+.m *{box-sizing:border-box}
+.m button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left}
+.m :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-ligatures:none}
+.num{font-variant-numeric:tabular-nums}
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:4px;border:1px solid var(--line2);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--quiet);background:var(--panel)}
+.chip{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none;line-height:1}
+.tab{height:28px;padding:0 12px;border-radius:7px;display:inline-flex;align-items:center;gap:7px;color:var(--quiet);font-weight:500}
+.tab:hover{background:var(--raise);color:var(--text)}
+.tab[aria-current="page"]{background:var(--accent);color:var(--on-accent)}
+.row{width:100%;display:flex;align-items:center;gap:8px;border-radius:7px;padding:6px 8px;min-height:30px}
+.row:hover{background:var(--raise)}
+.sub{color:var(--quiet);font-size:12px}
+.cut{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool{height:28px;padding:0 10px;border-radius:7px;display:inline-flex;align-items:center;gap:7px;color:var(--quiet);border:1px solid var(--line)}
+.tool:hover{color:var(--text);background:var(--raise)}
+.term{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-ligatures:none;white-space:pre;color:var(--text)}
+.file{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;font-size:12px}
+.file:hover{background:var(--raise)}
+</style>
+</helmet>
+<div class="m" data-theme="{{theme}}" style="height: 100vh; min-height: 560px; display: flex; flex-direction: column; background: var(--ground); color: var(--text); font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 13px; line-height: 1.4; overflow: hidden">
+
+<header style="height: 46px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 14px; background: var(--rail); border-bottom: 1px solid var(--line)">
+<div aria-hidden="true" style="display: flex; gap: 8px; width: 58px; flex: none">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--line2)"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--line2)"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: var(--line2)"></span>
+</div>
+<span class="mono" title="Kep is watching the flock" style="color: var(--text); font-size: 13px; letter-spacing: 0.02em; flex: none">▼•ᴥ•▼</span>
+<nav aria-label="Screens" style="display: flex; gap: 2px; flex-wrap: wrap">
+<button class="tab" aria-current="page">Sessions</button>
+<button class="tab">Needs you <span class="num" style="min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--tint-wait); color: var(--waiting); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">2</span></button>
+<button class="tab">Tickets</button>
+<button class="tab">Settings</button>
+</nav>
+<div style="flex: 1"></div>
+<div aria-label="3 working, 2 waiting on you, 4 done" style="display: flex; align-items: center; gap: 14px; font-weight: 500" class="num">
+<span style="color: var(--working); display: inline-flex; gap: 6px; align-items: center"><span class="mono">⠹</span>3</span>
+<span style="color: var(--waiting); display: inline-flex; gap: 6px; align-items: center"><span class="mono" style="font-size: 11px">▲</span>2</span>
+<span style="color: var(--done); display: inline-flex; gap: 6px; align-items: center"><span class="mono">✓</span>4</span>
+</div>
+<div aria-label="Memory 62 percent used" title="Memory 62%" style="display: flex; gap: 2px; align-items: center">
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--done)"></span>
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--done)"></span>
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--done)"></span>
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--done)"></span>
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--done)"></span>
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--line2)"></span>
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--line2)"></span>
+<span style="width: 5px; height: 12px; border-radius: 1px; background: var(--line2)"></span>
+</div>
+<button style="height: 30px; width: 260px; padding: 0 8px 0 10px; border-radius: 8px; background: var(--ground); border: 1px solid var(--line); color: var(--quiet); display: flex; align-items: center; gap: 8px">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<span style="flex: 1">Go to a session or run a command</span>
+<span class="kbd">⌘K</span>
+</button>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<aside aria-label="Projects" style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; background: var(--rail); border-right: 1px solid var(--line)">
+<div style="height: 42px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 14px">
+<span style="font-weight: 600; color: var(--accent)">Projects</span>
+<button aria-label="New session" title="New session (n)" style="width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: var(--quiet)">
+<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+</button>
+</div>
+<div style="flex: 1; overflow: auto; padding: 0 6px 12px; display: flex; flex-direction: column; gap: 1px">
+
+<button class="row" aria-expanded="true">
+<span aria-hidden="true" style="color: var(--quiet); width: 10px; font-size: 10px">▾</span>
+<span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--p1); flex: none"></span>
+<span style="font-weight: 600; color: var(--p1)">muster</span>
+<span class="sub mono" style="margin-left: auto; font-size: 11px">~/muster</span>
+</button>
+
+<div style="margin-left: 13px; padding-left: 6px; border-left: 1px solid color-mix(in oklab, var(--p1) 30%, transparent); display: flex; flex-direction: column; gap: 1px">
+<button class="row">
+<span aria-hidden="true" class="mono" style="color: var(--quiet)">⎇</span>
+<span class="mono" style="font-size: 12px">main</span>
+<span class="num" style="margin-left: auto; font-size: 12px; display: flex; gap: 5px"><span style="color: var(--add)">+12</span><span style="color: var(--del)">−3</span></span>
+</button>
+<button class="row" style="padding-left: 22px; align-items: flex-start">
+<span class="mono" aria-label="working" style="color: var(--working); width: 12px; flex: none; padding-top: 1px">⠹</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+<span class="cut">Split view.rs by responsibility</span>
+<span class="sub cut">editing view/sessions.rs</span>
+</span>
+<span class="sub num" style="padding-top: 1px">4m</span>
+</button>
+
+<button class="row">
+<span aria-hidden="true" class="mono" style="color: var(--quiet)">⎇</span>
+<span class="mono cut" style="font-size: 12px">feature/desktop-app</span>
+<span class="num" style="margin-left: auto; font-size: 12px; display: flex; gap: 5px; flex: none"><span style="color: var(--add)">+203</span><span style="color: var(--del)">−4</span><span class="sub">#91 draft</span></span>
+</button>
+<button class="row" aria-current="true" style="padding-left: 22px; align-items: flex-start; background: var(--lit)">
+<span class="mono" aria-label="needs you" style="color: var(--waiting); width: 12px; flex: none; font-size: 10px; padding-top: 3px">▲</span>
+<span class="chip" style="background: rgba(163,163,163,.16); color: #a3a3a3">◎</span>
+<span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+<span class="cut" style="font-weight: 500">Sketch the Tauri shell</span>
+<span class="cut" style="font-size: 12px; color: var(--waiting)">wants to run cargo build</span>
+</span>
+<span class="sub num" style="padding-top: 1px">1m</span>
+</button>
+<button class="row" style="padding-left: 22px; min-height: 26px; padding-top: 3px; padding-bottom: 3px">
+<span class="mono" aria-hidden="true" style="color: var(--quiet); width: 12px; flex: none">└</span>
+<span class="mono" style="color: var(--quiet); width: 18px; text-align: center">❯</span>
+<span class="mono cut" style="font-size: 12px; flex: 1">cargo nextest</span>
+<span class="sub num">32s</span>
+</button>
+
+<button class="row">
+<span aria-hidden="true" class="mono" style="color: var(--quiet)">⎇</span>
+<span class="mono cut" style="font-size: 12px">fix/resize-under-load</span>
+<span style="margin-left: auto; font-size: 12px; display: flex; gap: 6px; flex: none"><span style="color: var(--working)">overlap</span><span class="sub">#88</span><span style="color: var(--done)">✓</span></span>
+</button>
+<button class="row" style="padding-left: 22px; align-items: flex-start">
+<span class="mono" aria-label="working" style="color: var(--working); width: 12px; flex: none; padding-top: 1px">⠼</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+<span class="cut">Flaky resize test under load</span>
+<span class="sub cut">running cargo nextest</span>
+</span>
+<span class="sub num" style="padding-top: 1px">2m</span>
+</button>
+<button class="row" style="padding-left: 22px; align-items: flex-start">
+<span class="mono" aria-label="finished" style="color: var(--done); width: 12px; flex: none; padding-top: 1px">✓</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+<span class="cut">Resize settles once on release</span>
+<span class="sub cut">finished</span>
+</span>
+<span class="sub num" style="padding-top: 1px; display: flex; gap: 5px; align-items: center">12m<span aria-label="not seen" style="width: 6px; height: 6px; border-radius: 50%; background: var(--news)"></span></span>
+</button>
+
+<button class="row" aria-expanded="false">
+<span aria-hidden="true" class="mono" style="color: var(--quiet)">⎇</span>
+<span class="mono cut" style="font-size: 12px">muster/issue-198-light-mode</span>
+<span style="margin-left: auto; font-size: 12px; display: flex; gap: 6px; flex: none; color: var(--quiet)"><span style="color: var(--done)">✓</span>2 folded</span>
+</button>
+</div>
+
+<button class="row" aria-expanded="true" style="margin-top: 8px">
+<span aria-hidden="true" style="color: var(--quiet); width: 10px; font-size: 10px">▾</span>
+<span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 3px; background: var(--p2); flex: none"></span>
+<span style="font-weight: 600; color: var(--p2)">lamphaus</span>
+<span class="sub mono" style="margin-left: auto; font-size: 11px">~/code/lamphaus</span>
+</button>
+<div style="margin-left: 13px; padding-left: 6px; border-left: 1px solid color-mix(in oklab, var(--p2) 30%, transparent); display: flex; flex-direction: column; gap: 1px">
+<button class="row">
+<span aria-hidden="true" class="mono" style="color: var(--quiet)">⎇</span>
+<span class="mono cut" style="font-size: 12px">muster/issue-212-gradle-cache</span>
+</button>
+<button class="row" style="padding-left: 22px; align-items: flex-start">
+<span class="mono" aria-label="needs you" style="color: var(--waiting); width: 12px; flex: none; font-size: 10px; padding-top: 3px">▲</span>
+<span class="chip" style="background: rgba(142,117,178,.20); color: #a58fd0">✦</span>
+<span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+<span class="cut">Share the Gradle cache across worktrees</span>
+<span class="cut" style="font-size: 12px; color: var(--waiting)">asks which cache folder to use</span>
+</span>
+<span class="sub num" style="padding-top: 1px">3m</span>
+</button>
+<button class="row">
+<span aria-hidden="true" class="mono" style="color: var(--quiet)">⎇</span>
+<span class="mono cut" style="font-size: 12px">muster/agp-9-1</span>
+<span class="num" style="margin-left: auto; font-size: 12px; display: flex; gap: 5px; flex: none"><span style="color: var(--add)">+41</span><span style="color: var(--del)">−38</span></span>
+</button>
+<button class="row" style="padding-left: 22px; align-items: flex-start">
+<span class="mono" aria-label="working" style="color: var(--working); width: 12px; flex: none; padding-top: 1px">⠧</span>
+<span class="chip" style="background: rgba(217,119,87,.16); color: #d97757">✻</span>
+<span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+<span class="cut">Upgrade AGP to 9.1</span>
+<span class="sub cut">running ./gradlew assembleDebug</span>
+</span>
+<span class="sub num" style="padding-top: 1px">8m</span>
+</button>
+<button class="row" style="padding-left: 22px; align-items: flex-start">
+<span class="mono" aria-label="finished" style="color: var(--done); width: 12px; flex: none; padding-top: 1px">✓</span>
+<span class="chip" style="background: rgba(163,163,163,.16); color: #a3a3a3">◎</span>
+<span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+<span class="cut">Explain the release script</span>
+<span class="sub cut">finished</span>
+</span>
+<span class="sub num" style="padding-top: 1px">1h</span>
+</button>
+</div>
+
+</div>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; background: var(--ground)">
+<div style="flex: none; padding: 12px 16px 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line)">
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span class="chip" style="width: 24px; height: 24px; font-size: 15px; border-radius: 6px; background: rgba(163,163,163,.16); color: #a3a3a3">◎</span>
+<h1 style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.005em">Sketch the Tauri shell</h1>
+<div style="flex: 1"></div>
+<button class="tool" title="Shell in this workspace (T)"><span class="mono">❯</span>Shell</button>
+<button class="tool" title="Changes (d)">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v8M8 8h8M8 18h8"></path></svg>Changes</button>
+<button class="tool" aria-label="Full screen (f)" title="Full screen (f)" style="padding: 0 8px">
+<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>
+</button>
+</div>
+<div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--quiet)">
+<span><span class="mono" style="color: var(--text)">⎇ feature/desktop-app</span> in <span style="color: var(--p1)">muster</span></span>
+<span>Codex</span>
+<span class="num">182k tokens</span>
+<span class="num">212 MB, 3% CPU</span>
+<span>Pull request #91, draft</span>
+</div>
+</div>
+
+<div style="flex: none; margin: 10px 16px 0; padding: 8px 12px; border-radius: 8px; background: var(--tint-wait); display: flex; align-items: center; gap: 10px; font-size: 13px">
+<span class="mono" style="color: var(--waiting); font-size: 11px">▲</span>
+<span style="flex: 1; min-width: 0" class="cut"><span style="color: var(--waiting); font-weight: 600">Needs you:</span> wants to run <span class="mono" style="font-size: 12px">cargo build -p muster-desktop</span></span>
+<span class="num" style="color: var(--quiet)">1m 04s</span>
+<span style="display: inline-flex; gap: 6px; align-items: center; color: var(--quiet); font-size: 12px"><span class="kbd">⏎</span>answer in the terminal</span>
+</div>
+
+<div style="flex: 1; min-height: 0; margin: 10px 16px 16px; border-radius: 10px; background: var(--term); border: 1px solid var(--line); overflow: hidden; display: flex">
+<div class="term" style="flex: 1; overflow: auto; padding: 16px 18px; font-size: 12.5px; line-height: 1.6"><span style="color: var(--quiet)">›</span> Sketch the Tauri shell for Muster Desktop: a crate that connects
+  through muster-client and forwards the state to the webview.
+
+<span style="color: var(--done)">•</span> Explored
+  <span style="color: var(--quiet)">└</span> Read crates/muster-client/src/connection.rs
+    Read crates/muster-notch/src/link.rs
+    Read ARCHITECTURE.md §5b, §6
+
+<span style="color: var(--done)">•</span> Added crates/muster-desktop/Cargo.toml <span style="color: var(--add)">(+24)</span>
+<span style="color: var(--done)">•</span> Added crates/muster-desktop/src/main.rs <span style="color: var(--add)">(+61)</span>
+<span style="color: var(--done)">•</span> Edited crates/muster-desktop/src/link.rs <span style="color: var(--add)">(+118</span> <span style="color: var(--del)">−4)</span>
+
+  The link subscribes once, mirrors the snapshot and its deltas,
+  and hands each change to the webview on a Tauri channel.
+  Building it to check it compiles.
+
+  <span style="color: var(--working)">Allow Codex to run this command?</span>
+
+  <span style="color: var(--quiet)">$</span> cargo build -p muster-desktop
+
+  <span style="color: var(--accent)">› 1. Yes, run it</span>
+    2. Yes, and don't ask again for cargo build
+    3. No, and tell Codex what to do differently</div>
+</div>
+</main>
+
+<section aria-label="Beside the session" style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line)">
+<div style="flex: 1 1 60%; min-height: 0; overflow: auto; padding: 12px 10px 12px 12px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: baseline; gap: 10px; padding: 0 4px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600">Changes</h2>
+<span class="num" style="font-size: 12px; display: flex; gap: 5px"><span style="color: var(--add)">+203</span><span style="color: var(--del)">−4</span></span>
+<span class="sub">in 3 files</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div class="sub" style="padding: 0 4px 4px; font-weight: 500">Not committed</div>
+<button class="file"><span class="mono" style="color: var(--working); width: 12px">M</span><span class="mono cut" style="flex: 1"><span style="color: var(--quiet)">crates/muster-desktop/src/</span>link.rs</span><span class="num" style="display: flex; gap: 5px"><span style="color: var(--add)">+118</span><span style="color: var(--del)">−4</span></span></button>
+<button class="file"><span class="mono" style="color: var(--done); width: 12px">A</span><span class="mono cut" style="flex: 1"><span style="color: var(--quiet)">crates/muster-desktop/src/</span>main.rs</span><span class="num" style="color: var(--add)">+61</span></button>
+<button class="file"><span class="mono" style="color: var(--done); width: 12px">A</span><span class="mono cut" style="flex: 1"><span style="color: var(--quiet)">crates/muster-desktop/</span>Cargo.toml</span><span class="num" style="color: var(--add)">+24</span></button>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div class="sub" style="padding: 0 4px 4px; font-weight: 500">On the branch since main</div>
+<div class="file"><span class="mono sub" style="font-size: 11px">a1b2c3d</span><span class="cut" style="flex: 1">Add the desktop crate to the workspace</span></div>
+<div class="file"><span class="mono sub" style="font-size: 11px">9f0e4d2</span><span class="cut" style="flex: 1">Name the GUI in PRODUCT.md §6</span></div>
+</div>
+
+<div style="padding: 9px 10px; border-radius: 8px; background: var(--tint-work); font-size: 12px; display: flex; flex-direction: column; gap: 3px">
+<span><span style="color: var(--working); font-weight: 600">Overlap</span> with <span class="mono">⎇ fix/resize-under-load</span></span>
+<span class="sub mono cut">crates/muster-client/src/connection.rs</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div class="sub" style="padding: 0 4px 4px; font-weight: 500">Turns</div>
+<button class="file" style="align-items: flex-start"><span class="chip" style="width: 16px; height: 16px; font-size: 10px; background: rgba(163,163,163,.16); color: #a3a3a3">◎</span><span style="flex: 1; display: flex; flex-direction: column"><span>Codex, turn 3</span><span class="sub">3 files, <span style="color: var(--add)">+203</span> <span style="color: var(--del)">−4</span></span></span><span class="sub num">1m</span></button>
+<button class="file" style="align-items: flex-start"><span class="chip mono" style="width: 16px; height: 16px; font-size: 10px; background: var(--raise); color: var(--quiet)">✎</span><span style="flex: 1; display: flex; flex-direction: column"><span>Your edits between turns</span><span class="sub">1 file, <span style="color: var(--add)">+2</span> <span style="color: var(--del)">−2</span></span></span><span class="sub num">6m</span></button>
+<button class="file" style="align-items: flex-start"><span class="chip" style="width: 16px; height: 16px; font-size: 10px; background: rgba(163,163,163,.16); color: #a3a3a3">◎</span><span style="flex: 1; display: flex; flex-direction: column"><span>Codex, turn 2</span><span class="sub">2 files, <span style="color: var(--add)">+85</span></span></span><span class="sub num">9m</span></button>
+</div>
+</div>
+
+<div style="flex: 1 1 40%; min-height: 160px; display: flex; flex-direction: column; border-top: 1px solid var(--line)">
+<div style="height: 34px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px">
+<span class="mono" style="color: var(--quiet)">❯</span>
+<span style="font-weight: 600">Shell</span>
+<span class="sub mono cut">cargo nextest</span>
+</div>
+<div class="term" style="flex: 1; min-height: 0; overflow: auto; margin: 0 10px 10px; padding: 10px 12px; border-radius: 8px; background: var(--term); border: 1px solid var(--line); font-size: 11.5px; line-height: 1.55"><span style="color: var(--quiet)">~/.muster/worktrees/muster/feature-desktop-app</span>
+<span style="color: var(--accent)">❯</span> cargo nextest run -p muster-client
+    Starting 41 tests across 3 binaries
+        <span style="color: var(--done)">PASS</span> [ 0.012s] connection::hello_says
+        <span style="color: var(--done)">PASS</span> [ 0.031s] transport::frames_cap
+     Summary [ 1.204s] 41 tests run: <span style="color: var(--done)">41 passed</span>
+<span style="color: var(--accent)">❯</span> <span style="background: var(--text)"> </span></div>
+</div>
+</section>
+
+</div>
+
+<footer style="height: 32px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 14px; background: var(--rail); border-top: 1px solid var(--line); font-size: 12px; color: var(--quiet); overflow: hidden">
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">⏎</span>type in session</span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">T</span>shell</span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">d</span>changes</span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">f</span>full screen</span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">R</span>rename</span>
+<span style="flex: 1"></span>
+<span style="display: inline-flex; gap: 6px; align-items: center"><span class="kbd">h</span>every key</span>
+<span class="num">Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

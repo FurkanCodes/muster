@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, Tickets</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking" title="Something asks for you">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<span>Go to a ticket or run a command</span>
+<span class="mu-kbd">⌘K</span>
+</button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done">
+<span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span>
+<span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span>
+<span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span>
+</div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used" title="Memory 62%">
+<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span>
+</div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<div class="mu-nav-label">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span><span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span><span class="mu-nav-count">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p3"></span></span><span style="color: var(--text)">kep-site</span><span class="mu-nav-count">0</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p4"></span></span><span style="color: var(--text)">kep-api</span><span class="mu-nav-count">1</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Tickets" style="flex: 1 0 var(--layout-queue); max-width: var(--layout-queue-max); min-width: 0; display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head">
+<h1 class="mu-queue-title">Tickets</h1>
+<span class="mu-meta">Each project's open tickets, and the agents on them.</span>
+</div>
+<div class="mu-queue" style="flex: 1; overflow: auto">
+
+<div class="mu-group">
+<span class="mu-swatch mu-p1"></span>
+<span class="mu-group-name mu-p1">muster</span>
+<span class="mu-group-source">GitHub issues</span>
+<span class="mu-spacer"></span>
+<div class="mu-seg" role="group" aria-label="Which of muster's tickets"><button class="mu-seg-item" aria-pressed="false">Mine</button><button class="mu-seg-item" aria-pressed="true">All</button></div>
+</div>
+<button class="mu-ticket" aria-selected="true">
+<span class="mu-ticket-key">#214</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Desktop app: sessions list and one live terminal</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--waiting" aria-label="needs you">▲</span><span class="mu-logo mu-logo--sm"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span></span></span>
+</span>
+<span class="mu-ticket-end"><span class="mu-pr">#91 <span>draft</span><span class="mu-check-running">◌</span></span></span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#205</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Resize settles once on release</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--done" aria-label="finished">✓</span><span class="mu-logo mu-logo--sm"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span></span><span class="mu-ticket-agent"><span class="mu-mark mu-mark--working" aria-label="working">⠹</span><span class="mu-logo mu-logo--sm"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span></span></span>
+</span>
+<span class="mu-ticket-end"><span class="mu-pr">#88 <span class="mu-pr-approved">approved</span><span class="mu-check-passed">✓</span></span></span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#198</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Light mode for the notch</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--done" aria-label="finished">✓</span><span class="mu-logo mu-logo--sm"><img src="/_blob/dfc7e764c4e2a273fc135902470acf23" alt="Claude Code"></span></span></span>
+</span>
+<span class="mu-ticket-end"><span class="mu-pr">#93 <span>open</span><span class="mu-check-running">◌</span></span></span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#217</span>
+<span class="mu-ticket-text"><span class="mu-ticket-title">Tickets from YouTrack</span></span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#220</span>
+<span class="mu-ticket-text"><span class="mu-ticket-title">Fold the list from the notch</span></span>
+</button>
+
+<div class="mu-group">
+<span class="mu-swatch mu-p2"></span>
+<span class="mu-group-name mu-p2">lamphaus</span>
+<span class="mu-group-source">GitHub issues, only yours</span>
+<span class="mu-spacer"></span>
+<div class="mu-seg" role="group" aria-label="Which of lamphaus's tickets"><button class="mu-seg-item" aria-pressed="true">Mine</button><button class="mu-seg-item" aria-pressed="false">All</button></div>
+</div>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#212</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Share the Gradle cache across worktrees</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--waiting" aria-label="needs you">▲</span><span class="mu-logo mu-logo--sm"><img src="/_blob/c161e767823acd431b9c967857542c89" alt="Gemini CLI"></span></span></span>
+</span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#219</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Upgrade AGP to 9.1</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--working" aria-label="working">⠧</span><span class="mu-logo mu-logo--sm"><img src="/_blob/9022fdb72074cc7ab16a193f7459f5df" alt="OpenCode"></span></span></span>
+</span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">#224</span>
+<span class="mu-ticket-text"><span class="mu-ticket-title">Crash when rotating on the scanner screen</span></span>
+</button>
+
+<div class="mu-group">
+<span class="mu-swatch mu-p3"></span>
+<span class="mu-group-name"><span class="mu-p3">kep-site</span><span class="mu-quiet">, </span><span class="mu-p4">kep-api</span></span>
+<span class="mu-group-source">Linear KEP</span>
+<span class="mu-spacer"></span>
+<div class="mu-seg" role="group" aria-label="Which of KEP's tickets"><button class="mu-seg-item" aria-pressed="false">Mine</button><button class="mu-seg-item" aria-pressed="true">All</button></div>
+</div>
+<button class="mu-ticket">
+<span class="mu-ticket-key">KEP-31</span>
+<span class="mu-ticket-text">
+<span class="mu-ticket-title">Sign-up page loads the old pricing</span>
+<span class="mu-ticket-agents"><span class="mu-ticket-agent"><span class="mu-mark mu-mark--working" aria-label="working">⠼</span><span class="mu-logo mu-logo--sm"><img src="/_blob/c161e767823acd431b9c967857542c89" alt="Gemini CLI"></span><span class="mu-p4">kep-api</span></span></span>
+</span>
+</button>
+<button class="mu-ticket">
+<span class="mu-ticket-key">KEP-28</span>
+<span class="mu-ticket-text"><span class="mu-ticket-title">Move the docs to the new domain</span></span>
+</button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0">
+<div class="mu-pane-head" style="padding-top: var(--space-16)">
+<div class="mu-pane-title-row" style="align-items: flex-start">
+<span class="mu-mono" style="font-size: 14px; line-height: 22px; color: var(--text-quiet); flex: none">#214</span>
+<h2 class="mu-pane-title mu-pane-title--wrap">Desktop app: sessions list and one live terminal</h2>
+<div class="mu-pane-actions">
+<button class="mu-btn mu-btn--quiet" title="Assign another agent (a)"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Another agent</button>
+<button class="mu-icon-btn" aria-label="Open in the browser" title="Open in the browser (b)"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg></button>
+<button class="mu-icon-btn" aria-label="More" title="More: close the ticket (x)"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button>
+</div>
+</div>
+<div class="mu-pane-meta">
+<span>GitHub issue in <span class="mu-p1">muster</span></span>
+<span>opened by FurkanCodes</span>
+<span class="mu-labels"><span class="mu-label">desktop</span><span class="mu-label">enhancement</span></span>
+</div>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: auto; padding: var(--space-8) var(--space-20) var(--space-24); display: flex; flex-direction: column; gap: var(--space-24)">
+<section aria-labelledby="agents-h" style="display: flex; flex-direction: column; gap: var(--space-4)">
+<div style="display: flex; align-items: baseline; gap: var(--space-10); padding: 0 var(--space-12) var(--space-4)">
+<h3 id="agents-h" style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600">Agents</h3>
+<span class="mu-meta">182k tokens</span>
+</div>
+<button class="mu-row mu-row--two" style="background: var(--surface-ground)">
+<span class="mu-mark mu-mark--waiting" aria-label="needs you">▲</span>
+<span class="mu-logo"><img src="/_blob/a2ffa86bab0a20dd5c4ba0f2660c3fea" alt="Codex"></span>
+<span class="mu-row-text">
+<span class="mu-cut">Codex <span class="mu-quiet">wants to run cargo build</span></span>
+<span class="mu-row-line mu-meta"><span class="mu-branch mu-cut">⎇ muster/issue-214-desktop-app</span><span class="mu-diff"><span class="mu-add">+203</span><span class="mu-del">−4</span></span><span class="mu-pr">#91 <span>draft</span><span class="mu-check-running">◌</span></span><span>182k tokens</span></span>
+</span>
+<span class="mu-age">1m</span>
+</button>
+</section>
+
+<div style="height: 1px; background: var(--line)"></div>
+
+<article class="mu-prose" aria-label="The ticket's text" style="padding: 0 var(--space-12)">
+<p>The first slice of Muster Desktop: a window that lists sessions and shows one live terminal, as another client of the daemon. Nothing about the daemon changes.</p>
+<h3>Done when</h3>
+<ul>
+<li>The window connects through <code>muster-client</code> and shows the Needs you queue.</li>
+<li>Selecting a session streams its terminal into the pane beside the queue, and typing reaches its program.</li>
+<li>Closing the window stops nothing, and opening it again picks up where it was.</li>
+</ul>
+<h3>Not yet</h3>
+<p>Tickets, Settings and the changes pane come after. The terminal UI stays as it is.</p>
+</article>
+</div>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-hint"><span class="mu-kbd">⏎</span>open its agent</span>
+<span class="mu-hint"><span class="mu-kbd">a</span>another agent</span>
+<span class="mu-hint"><span class="mu-kbd">b</span>browser</span>
+<span class="mu-hint"><span class="mu-kbd">x</span>close ticket</span>
+<span class="mu-hint"><span class="mu-kbd">r</span>fetch again</span>
+<span class="mu-spacer"></span>
+<span class="mu-hint"><span class="mu-kbd">h</span>every key</span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

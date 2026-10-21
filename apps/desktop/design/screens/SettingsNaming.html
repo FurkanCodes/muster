@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, naming chats</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><span>Go to a setting or run a command</span><span class="mu-kbd">⌘K</span></button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done"><span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span><span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span><span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span></div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used"><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span></div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Settings sections" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar); display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head"><h1 class="mu-queue-title">Settings</h1><span class="mu-meta">The terminal UI shares them.</span></div>
+<div style="flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-8) var(--space-16)">
+<div class="mu-nav-label" style="padding-top: var(--space-8)">Muster</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>General</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Notifications</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Agents<span class="mu-nav-count">6</span></button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"></span>Naming chats</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Plugins<span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Keys</button>
+<div class="mu-nav-label">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p3"></span></span><span style="color: var(--text)">kep-site</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p4"></span></span><span style="color: var(--text)">kep-api</span></button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0; overflow: auto">
+<div class="mu-settings">
+<div class="mu-settings-head">
+<h2 class="mu-settings-title">Naming chats</h2>
+<span class="mu-meta">A chat is named at once by its first prompt's first line. A few seconds later an agent can name it in two to four words. A name you give it with R is never replaced.</span>
+</div>
+
+<section class="mu-settings-group" aria-labelledby="g-name">
+<h3 class="mu-settings-group-title" id="g-name">Named by an agent</h3>
+<label class="mu-setting">
+<span class="mu-setting-text"><span>Chats named by an agent</span><span class="mu-meta">Asks the agent you pick, with your own sign-in and a little of your plan each time. It sends only the first prompt, with credentials hidden, and keeps nothing in that agent's history.</span></span>
+<span class="mu-setting-control"><button class="mu-switch" role="switch" aria-checked="true" aria-label="Chats named by an agent"></button></span>
+</label>
+<div class="mu-setting mu-setting--sub">
+<span class="mu-setting-text"><span>Named by</span><span class="mu-meta">Each session's own agent, or one you pick of those that can answer one question.</span></span>
+<span class="mu-setting-control"><button class="mu-select" aria-haspopup="listbox" aria-label="Named by" style="width: 220px"><span class="mu-select-value">Each session's own agent</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button></span>
+</div>
+<div class="mu-setting mu-setting--sub">
+<span class="mu-setting-text"><span>Its model</span><span class="mu-meta">One the agent lists, or type one. A small model answers fast and costs little.</span></span>
+<span class="mu-setting-control"><button class="mu-select" aria-haspopup="listbox" aria-label="Its model" style="width: 220px"><span class="mu-select-value mu-mono" style="font-size: 12px">haiku</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button></span>
+</div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="g-ex">
+<h3 class="mu-settings-group-title" id="g-ex">How a name is made</h3>
+<div style="margin: 0 var(--space-12); padding: var(--space-16); border-radius: var(--radius-lg); border: var(--stroke-hairline) solid var(--line); background: var(--surface-ground); display: flex; flex-direction: column; gap: var(--space-12)">
+<dl class="mu-details">
+<dt>The prompt</dt><dd class="mu-mono" style="font-size: 12px">Sketch the Tauri shell for Muster Desktop: a crate that connects through muster-client and forwards the state to the webview.</dd>
+<dt>At once</dt><dd>Sketch the Tauri shell for Muster Desktop: a crate that…</dd>
+<dt>A few seconds later</dt><dd style="font-weight: 600">Sketch the Tauri shell</dd>
+</dl>
+<span class="mu-meta">Where the prompt is only a few words, the start of the agent's first answer goes too, and the chat is named once more as that turn ends.</span>
+</div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="g-can">
+<h3 class="mu-settings-group-title" id="g-can">Can name</h3>
+<p class="mu-footnote" style="margin: 0; color: var(--text)">Claude Code and Codex. Gemini CLI, OpenCode and Copilot CLI are asked once each is checked.</p>
+</section>
+
+<p class="mu-footnote" style="margin: 0">Saved in <code>~/.config/muster/settings.toml</code>, under <code>[names]</code>.</p>
+</div>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-hint"><span class="mu-kbd">↑↓</span>settings</span>
+<span class="mu-hint"><span class="mu-kbd">⏎</span>change</span>
+<span class="mu-spacer"></span>
+<span class="mu-hint"><span class="mu-kbd">h</span>every key</span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>

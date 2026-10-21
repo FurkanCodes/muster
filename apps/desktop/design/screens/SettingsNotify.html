@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Muster Desktop, notification settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/muster/tokens.css">
+<link rel="stylesheet" href="ds/muster/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="mu-root" data-theme="{{theme}}" style="height: 100vh; min-height: 600px; display: flex; flex-direction: column; overflow: hidden">
+
+<header class="mu-titlebar" style="flex: none">
+<div class="mu-traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+<span class="mu-kep mu-kep--barking" title="Something asks for you">▲•ᴥ•▲!</span>
+<span class="mu-spacer"></span>
+<button class="mu-command">
+<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+<span>Go to a setting or run a command</span>
+<span class="mu-kbd">⌘K</span>
+</button>
+<span class="mu-spacer"></span>
+<div class="mu-flock" aria-label="3 working, 2 waiting on you, 4 done">
+<span style="color: var(--working)"><span class="mu-mono" aria-hidden="true">⠹</span>3</span>
+<span style="color: var(--waiting)"><span class="mu-mono" style="font-size: 10px" aria-hidden="true">▲</span>2</span>
+<span style="color: var(--done)"><span class="mu-mono" aria-hidden="true">✓</span>4</span>
+</div>
+<div class="mu-meter" role="img" aria-label="Memory 62 percent used" title="Memory 62%">
+<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span class="is-on"></span><span></span><span></span><span></span>
+</div>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+<nav class="mu-nav" aria-label="Screens" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar)">
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--waiting); font-size: 10px">▲</span>Needs you<span class="mu-nav-count mu-nav-count--waiting">2</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-dot"></span></span>Not seen<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon" style="color: var(--working)">⠹</span>Working<span class="mu-nav-count">3</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon">≡</span>All sessions<span class="mu-nav-count">11</span></button>
+<span style="flex: 1"></span>
+<button class="mu-nav-item"><span class="mu-nav-icon">#</span>Tickets</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"><svg width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"></path></svg></span>Settings</button>
+</nav>
+
+<section aria-label="Settings sections" style="flex: 1 0 var(--layout-sidebar); max-width: var(--layout-sidebar); display: flex; flex-direction: column; background: var(--surface-ground); border-right: var(--stroke-hairline) solid var(--line)">
+<div class="mu-queue-head">
+<h1 class="mu-queue-title">Settings</h1>
+<span class="mu-meta">The terminal UI shares them.</span>
+</div>
+<div style="flex: 1; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-8) var(--space-16)">
+<div class="mu-nav-label" style="padding-top: var(--space-8)">Projects</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p1"></span></span><span style="color: var(--text)">muster</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p2"></span></span><span style="color: var(--text)">lamphaus</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p3"></span></span><span style="color: var(--text)">kep-site</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"><span class="mu-swatch mu-p4"></span></span><span style="color: var(--text)">kep-api</span></button>
+<div class="mu-nav-label">Muster</div>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>General</button>
+<button class="mu-nav-item" aria-current="page"><span class="mu-nav-icon"></span>Notifications</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Agents<span class="mu-nav-count">6</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Naming chats</button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Plugins<span class="mu-nav-count">7</span></button>
+<button class="mu-nav-item"><span class="mu-nav-icon"></span>Keys</button>
+</div>
+</section>
+
+<main class="mu-pane" style="flex: 999 1 var(--layout-detail-min); min-height: 0; overflow: auto">
+<div class="mu-settings">
+<div class="mu-settings-head">
+<h2 class="mu-settings-title">Notifications</h2>
+<span class="mu-meta">When an agent newly needs you while you look away from every Muster window. Once for each wait.</span>
+</div>
+
+<section class="mu-settings-group" aria-labelledby="g-mac">
+<h3 class="mu-settings-group-title" id="g-mac">On this Mac</h3>
+<label class="mu-setting">
+<span class="mu-setting-text"><span>Notifications</span><span class="mu-meta">Sent by Muster's helper, so they come with every window closed. A click opens that session.</span></span>
+<span class="mu-setting-control"><button class="mu-switch" role="switch" aria-checked="true" aria-label="Notifications"></button></span>
+</label>
+<div class="mu-setting mu-setting--sub">
+<span class="mu-setting-text"><span>Questions</span><span class="mu-meta">A question, a permission, a form</span></span>
+<span class="mu-setting-control">
+<button class="mu-select" aria-haspopup="listbox" aria-label="Sound for questions"><span class="mu-select-value">Glass</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="Tell me of questions"></button>
+</span>
+</div>
+<div class="mu-setting mu-setting--sub">
+<span class="mu-setting-text"><span>Finishes</span><span class="mu-meta">Told once a turn has stayed finished a moment</span></span>
+<span class="mu-setting-control">
+<button class="mu-select" aria-haspopup="listbox" aria-label="Sound for finishes"><span class="mu-select-value">The Mac's default</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="Tell me of finishes"></button>
+</span>
+</div>
+<div class="mu-setting mu-setting--sub is-selected">
+<span class="mu-setting-text"><span>Errors</span><span class="mu-meta">A program that ended with an error</span></span>
+<span class="mu-setting-control" style="position: relative">
+<button class="mu-select" aria-haspopup="listbox" aria-expanded="true" aria-label="Sound for errors"><span class="mu-select-value">Basso</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button>
+<button class="mu-switch" role="switch" aria-checked="true" aria-label="Tell me of errors"></button>
+<div class="mu-menu" role="listbox" aria-label="Sounds" style="position: absolute; top: 32px; right: 36px; width: 200px; z-index: var(--z-menu)">
+<button class="mu-menu-item" role="option" aria-selected="false"><span class="mu-option-check"></span>None</button>
+<button class="mu-menu-item" role="option" aria-selected="false"><span class="mu-option-check"></span>The Mac's default</button>
+<div class="mu-menu-sep" role="separator"></div>
+<button class="mu-menu-item" role="option" aria-selected="true"><span class="mu-option-check">✓</span>Basso</button>
+<button class="mu-menu-item is-active" role="option" aria-selected="false"><span class="mu-option-check"></span>Blow</button>
+<button class="mu-menu-item" role="option" aria-selected="false"><span class="mu-option-check"></span>Bottle</button>
+<button class="mu-menu-item" role="option" aria-selected="false"><span class="mu-option-check"></span>Frog</button>
+<button class="mu-menu-item" role="option" aria-selected="false"><span class="mu-option-check"></span>Funk</button>
+<button class="mu-menu-item" role="option" aria-selected="false"><span class="mu-option-check"></span>Glass</button>
+</div>
+</span>
+</div>
+<div class="mu-setting" style="cursor: default">
+<span class="mu-setting-text"><span>Allowed in macOS</span><span class="mu-meta">macOS keeps this choice. Change it in System Settings, Notifications, Muster.</span></span>
+<span class="mu-setting-control"><span class="mu-found" style="font-size: 12px">✓ allowed</span><button class="mu-btn mu-btn--quiet mu-btn--sm">Open System Settings</button></span>
+</div>
+</section>
+
+<section class="mu-settings-group" aria-labelledby="g-notch">
+<h3 class="mu-settings-group-title" id="g-notch">The notch</h3>
+<label class="mu-setting">
+<span class="mu-setting-text"><span>Agents in the notch</span><span class="mu-meta">At the notch while you look away and an agent works or waits. It opens on its own for what is new.</span></span>
+<span class="mu-setting-control"><button class="mu-switch" role="switch" aria-checked="true" aria-label="Agents in the notch"></button></span>
+</label>
+</section>
+
+<p class="mu-footnote" style="margin: 0">Saved in <code>~/.config/muster/settings.toml</code>, Muster's own settings, for this app and the terminal UI alike.</p>
+</div>
+</main>
+
+</div>
+
+<footer class="mu-statusbar" style="flex: none">
+<span class="mu-hint"><span class="mu-kbd">↑↓</span>choose a sound</span>
+<span class="mu-hint"><span class="mu-kbd">⏎</span>keep it</span>
+<span class="mu-hint"><span class="mu-kbd">⎋</span>close</span>
+<span class="mu-note">Playing Blow</span>
+<span class="mu-spacer"></span>
+<span class="mu-hint"><span class="mu-kbd">h</span>every key</span>
+<span>Muster 0.4.1</span>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 'dark' };
+  }
+}
+</script>
+</body>
+</html>
