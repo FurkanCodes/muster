@@ -15,6 +15,7 @@ import type { Command } from "../generated/Command";
 import type { LinkState } from "../generated/desktop/LinkState";
 import type { Patch } from "../generated/desktop/Patch";
 import type { StateMessage } from "../generated/desktop/StateMessage";
+import type { ErrorCode } from "../generated/ErrorCode";
 import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
@@ -22,6 +23,7 @@ import type { SessionStatus } from "../generated/SessionStatus";
 import { handleCommand } from "./commands";
 import { derive } from "./model";
 import { NOW, type Scenario } from "./scenario";
+import { agentsOnTickets } from "./tickets";
 
 const encoder = new TextEncoder();
 
@@ -29,6 +31,9 @@ export class MockBridge implements Bridge {
   readonly world: Scenario;
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
+  readonly openedUrls: string[] = [];
+  private readonly holds = new Map<string, { promise: Promise<void>; release: () => void }>();
+  private readonly failures = new Map<string, BridgeFailure>();
   private listener: ((message: StateMessage) => void) | null = null;
   private readonly changed = new Map<SessionId, number>();
   private clock = 0;
@@ -90,12 +95,32 @@ export class MockBridge implements Bridge {
 
   async command(command: Command): Promise<Reply> {
     this.sent.push(command);
+    const name = typeof command === "string" ? command : (Object.keys(command)[0] ?? "");
+    await this.holds.get(name)?.promise;
+    const failure = this.failures.get(name);
+    if (failure) {
+      this.failures.delete(name);
+      throw failure;
+    }
     const reply = handleCommand(this, command);
     if (reply === undefined) {
       const name = typeof command === "string" ? command : Object.keys(command)[0];
       throw new BridgeFailure("invalid", `The mock daemon does not do ${name} yet`);
     }
     return reply;
+  }
+
+  async openUrl(url: string): Promise<void> {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BridgeFailure("invalid", "This ticket has no web address.");
+    }
+    if (!["http:", "https:"].includes(parsed.protocol))
+      throw new BridgeFailure("invalid", "Only http and https ticket addresses can be opened.");
+    // Browser tests record the explicit request without reaching a real tracker.
+    this.openedUrls.push(parsed.href);
   }
 
   async attach(
@@ -135,6 +160,35 @@ export class MockBridge implements Bridge {
   async looking(): Promise<void> {}
 
   // What tests drive.
+
+  /** Holds the replies to `command` until {@link release}, as a slow tracker would. */
+  hold(command: string): void {
+    let release = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.holds.set(command, { promise, release });
+  }
+
+  release(command: string): void {
+    this.holds.get(command)?.release();
+    this.holds.delete(command);
+  }
+
+  /** Refuses the next `command` as the daemon would, with its message and code. */
+  failNext(command: string, text: string, code: ErrorCode = "internal"): void {
+    this.failures.set(command, new BridgeFailure("refused", text, code));
+  }
+
+  /** Tells the page of changed entities, as a delta would. */
+  publish(parts: Partial<Patch>): void {
+    this.emit({ kind: "patch", patch: this.patch(parts) });
+  }
+
+  /** Puts the agents of the Tickets board on their tickets (`tickets.ts`). */
+  agentsOnTickets(): void {
+    agentsOnTickets(this);
+  }
 
   /** Writes `text` to a session's terminal, as its program would. */
   output(session: SessionId, text: string): void {
