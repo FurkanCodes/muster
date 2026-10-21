@@ -5,6 +5,7 @@
 mod commands;
 pub mod contract;
 pub mod link;
+mod ticket_url;
 
 use muster_core::Paths;
 use tauri::Manager;
@@ -49,6 +50,7 @@ pub fn run() {
             commands::resize,
             commands::watch,
             commands::looking,
+            ticket_url::open_ticket_url,
         ])
         .run(tauri::generate_context!());
     if let Err(error) = result {

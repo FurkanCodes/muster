@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import type { Bridge } from "../ipc/bridge";
+import { installQueueHistory } from "../screens/queue/history";
 import { createDaemon } from "../state/daemon";
 import { createUi } from "../state/ui";
 import { runClock } from "./clock";
@@ -27,6 +28,7 @@ function useWiring(app: AppValue): void {
   useEffect(() => {
     const keys = installKeys(app);
     const visibility = installVisibility(app);
+    const history = installQueueHistory(app.daemon);
     const revealed = app.daemon.onReveal((session) => {
       app.actions.show("needs-you");
       app.actions.select("needs-you", session);
@@ -44,6 +46,7 @@ function useWiring(app: AppValue): void {
     return () => {
       keys();
       visibility();
+      history();
       revealed();
       clock();
       runClock(false);

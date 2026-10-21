@@ -1,18 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { renderWithApp } from "../test/render";
 import { Button } from "./controls";
 import { Dialog } from "./Dialog";
-
-beforeAll(() => {
-  // jsdom has no modal dialogs; WebKit's own is tested end to end (e2e/).
-  HTMLDialogElement.prototype.showModal = function () {
-    this.setAttribute("open", "");
-  };
-  HTMLDialogElement.prototype.close = function () {
-    this.removeAttribute("open");
-  };
-});
 
 function Close({ onClose = vi.fn(), onAccept = vi.fn() }) {
   return (
@@ -38,26 +30,61 @@ function Close({ onClose = vi.fn(), onAccept = vi.fn() }) {
 
 describe("ARC-24 Dialog", () => {
   it("is named by its question and starts on the answer marked first", () => {
-    render(<Close />);
+    renderWithApp(<Close />);
     expect(screen.getByRole("dialog", { name: "Close #205 on GitHub?" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Keep it open" })).toHaveFocus();
+  });
+  it("says what the question is about under its title", () => {
+    renderWithApp(
+      <Dialog
+        title="Assign an agent to #217"
+        meta="Tickets from YouTrack"
+        onClose={() => {}}
+        onAccept={() => {}}
+        actions={null}
+      />,
+    );
+    expect(screen.getByRole("dialog", { name: "Assign an agent to #217" })).toHaveTextContent(
+      "Tickets from YouTrack",
+    );
   });
   it("PRD-01 ⏎ on a focused answer does that answer, never the acting one", async () => {
     const onClose = vi.fn();
     const onAccept = vi.fn();
-    render(<Close onClose={onClose} onAccept={onAccept} />);
+    renderWithApp(<Close onClose={onClose} onAccept={onAccept} />);
     await userEvent.keyboard("{Enter}");
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onAccept).not.toHaveBeenCalled();
   });
+  it("← → go between the answers and ⌘⏎ does the acting one from any", async () => {
+    const onAccept = vi.fn();
+    renderWithApp(<Close onAccept={onAccept} />);
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("button", { name: "Close ticket" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}{ArrowLeft}");
+    expect(screen.getByRole("button", { name: "Keep it open" })).toHaveFocus();
+    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(onAccept).toHaveBeenCalledTimes(1);
+  });
   it("⏎ elsewhere in it does the acting answer and ⎋ the other", () => {
     const onClose = vi.fn();
     const onAccept = vi.fn();
-    render(<Close onClose={onClose} onAccept={onAccept} />);
+    renderWithApp(<Close onClose={onClose} onAccept={onAccept} />);
     const text = screen.getByText("Everyone watching it is told.");
     fireEvent.keyDown(text, { key: "Enter" });
     expect(onAccept).toHaveBeenCalledTimes(1);
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+  it("ARC-24 has the window's keys while open, and gives them back as it closes", () => {
+    function Asked() {
+      const [open, setOpen] = useState(true);
+      return open ? <Close onClose={vi.fn(() => setOpen(false))} /> : null;
+    }
+    const { app } = renderWithApp(<Asked />);
+    expect(app.ui.getState().keysIn).toBe("dialog");
+    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(app.ui.getState().keysIn).toBe("list");
   });
 });
