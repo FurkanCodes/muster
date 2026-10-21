@@ -2,11 +2,14 @@
 // work, two asking, some finished. The mock daemon starts from it, and tests
 // change it through the mock bridge.
 
+import type { Changes } from "../generated/Changes";
+import type { FileDiff } from "../generated/FileDiff";
 import type { PluginInfo } from "../generated/PluginInfo";
 import type { Preferences } from "../generated/Preferences";
 import type { Project } from "../generated/Project";
 import type { Session } from "../generated/Session";
 import type { SessionStatus } from "../generated/SessionStatus";
+import type { Timeline } from "../generated/Timeline";
 import type { Workspace } from "../generated/Workspace";
 import type { World } from "./model";
 
@@ -26,6 +29,9 @@ export interface Scenario extends World {
   plugins: PluginInfo[];
   /** What each session's terminal shows when attached. */
   terminals: Record<string, string>;
+  changes: Record<string, Changes>;
+  diffs: Record<string, FileDiff>;
+  timelines: Record<string, Timeline>;
 }
 
 function project(n: number, name: string, root: string): Project {
@@ -231,5 +237,83 @@ export function workingDay(): Scenario {
   const plugins: PluginInfo[] = [
     { id: "github", source: "builtin", enabled: true, problem: null, details: null, changed: null },
   ];
-  return { projects, workspaces, sessions, preferences: defaultPreferences(), plugins, terminals };
+  const changes: Record<string, Changes> = {
+    [ulid(11)]: {
+      base: "main",
+      more_commits: 0,
+      commits: [{ id: "a1b2c3d", subject: "Add the desktop crate" }],
+      uncommitted: [
+        { path: "src/link.rs", from: null, kind: "modified", lines: { added: 118, removed: 4 } },
+        { path: "src/main.rs", from: null, kind: "untracked", lines: { added: 61, removed: 0 } },
+        { path: "Cargo.toml", from: null, kind: "untracked", lines: { added: 24, removed: 0 } },
+      ],
+      branch: [
+        { path: "src/link.rs", from: null, kind: "added", lines: { added: 85, removed: 0 } },
+        { path: "Cargo.toml", from: null, kind: "modified", lines: { added: 12, removed: 2 } },
+      ],
+    },
+  };
+  const diff: FileDiff = {
+    text: [
+      "diff --git a/src/link.rs b/src/link.rs",
+      "--- a/src/link.rs",
+      "+++ b/src/link.rs",
+      "@@ -1,2 +1,3 @@",
+      " //! The desktop app's link to the daemon.",
+      "-use muster_client::Connection;",
+      "+use muster_client::{Connection, Received};",
+      "+use tauri::ipc::Channel;",
+      "@@ -18,1 +19,1 @@",
+      "-// TODO: deltas",
+      "+// Hand each change to the webview.",
+    ].join("\n"),
+    cut: false,
+  };
+  const diffs: Record<string, FileDiff> = {};
+  for (const part of ["uncommitted", "branch"] as const) {
+    for (const file of changes[ulid(11)]?.[part] ?? [])
+      diffs[`${ulid(11)}:${part}:${file.path}`] = diff;
+  }
+  const timelines: Record<string, Timeline> = {
+    [ulid(11)]: {
+      entries: [4, 3, 2, 1].map((number) => ({
+        number,
+        kind:
+          number === 3
+            ? { kind: "between" as const }
+            : { kind: "turn" as const, session: ulid(101), agent: "Codex" },
+        started: NOW - (16 - number * 3) * MINUTE,
+        ended: NOW - (13 - number * 3) * MINUTE,
+        summary:
+          number === 1
+            ? null
+            : { files: number === 3 ? 1 : 3, added: number === 3 ? 12 : 203, removed: 4 },
+        head_before: "1234567",
+        head_after: number > 1 ? "a1b2c3d" : "1234567",
+      })),
+    },
+  };
+  for (const entry of timelines[ulid(11)]?.entries ?? [])
+    diffs[`${ulid(11)}:entry:${entry.number}`] = entry.summary ? diff : { text: "", cut: false };
+  const desktop = workspaces.find((workspace) => workspace.id === ulid(11));
+  if (desktop)
+    desktop.clashes = [
+      {
+        with: ulid(12),
+        files: 1,
+        conflicts: 0,
+        shown: [{ path: "crates/muster-client/src/connection.rs", conflict: false }],
+      },
+    ];
+  return {
+    projects,
+    workspaces,
+    sessions,
+    preferences: defaultPreferences(),
+    plugins,
+    terminals,
+    changes,
+    diffs,
+    timelines,
+  };
 }

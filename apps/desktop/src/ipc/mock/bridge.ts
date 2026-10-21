@@ -15,10 +15,12 @@ import type { Command } from "../generated/Command";
 import type { LinkState } from "../generated/desktop/LinkState";
 import type { Patch } from "../generated/desktop/Patch";
 import type { StateMessage } from "../generated/desktop/StateMessage";
+import type { ErrorBody } from "../generated/ErrorBody";
 import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
+import type { Workspace } from "../generated/Workspace";
 import { handleCommand } from "./commands";
 import { derive } from "./model";
 import { NOW, type Scenario } from "./scenario";
@@ -29,6 +31,11 @@ export class MockBridge implements Bridge {
   readonly world: Scenario;
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
+  /** Test controls: daemon-shaped replies/errors, and replies held without timers. */
+  readonly replies: Record<string, Reply> = {};
+  readonly errors: Record<string, ErrorBody> = {};
+  readonly held = new Set<string>();
+  private readonly waiting = new Map<string, (() => void)[]>();
   private listener: ((message: StateMessage) => void) | null = null;
   private readonly changed = new Map<SessionId, number>();
   private clock = 0;
@@ -90,6 +97,14 @@ export class MockBridge implements Bridge {
 
   async command(command: Command): Promise<Reply> {
     this.sent.push(command);
+    const name = typeof command === "string" ? command : (Object.keys(command)[0] ?? "unknown");
+    if (this.held.has(name))
+      await new Promise<void>((resolve) => {
+        this.waiting.set(name, [...(this.waiting.get(name) ?? []), resolve]);
+      });
+    const error = this.errors[name];
+    if (error) throw new BridgeFailure("refused", error.message, error.code);
+    if (this.replies[name] !== undefined) return this.replies[name];
     const reply = handleCommand(this, command);
     if (reply === undefined) {
       const name = typeof command === "string" ? command : Object.keys(command)[0];
@@ -135,6 +150,19 @@ export class MockBridge implements Bridge {
   async looking(): Promise<void> {}
 
   // What tests drive.
+
+  release(name: string): void {
+    this.held.delete(name);
+    for (const resolve of this.waiting.get(name) ?? []) resolve();
+    this.waiting.delete(name);
+  }
+
+  updateWorkspace(id: string, fields: Partial<Workspace>): void {
+    const found = this.world.workspaces.find((workspace) => workspace.id === id);
+    if (!found) return;
+    Object.assign(found, fields);
+    this.emit({ kind: "patch", patch: this.patch({ workspaces: [{ ...found }] }) });
+  }
 
   /** Writes `text` to a session's terminal, as its program would. */
   output(session: SessionId, text: string): void {

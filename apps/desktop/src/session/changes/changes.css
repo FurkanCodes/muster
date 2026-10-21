@@ -1,0 +1,67 @@
+/* The Changes board's layout; all surfaces and type belong to mu-* (ARC-24). */
+.changes {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: 0 var(--space-20) var(--space-16);
+}
+.changes-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+}
+.changes-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  gap: var(--space-12);
+}
+.changes-list-column {
+  flex: 0 0 280px;
+  min-width: 0;
+  overflow: auto;
+}
+.changes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.changes-diff {
+  flex: 1;
+  min-width: 0;
+}
+.changes-diff-title {
+  flex: 1;
+  min-width: 0;
+}
+.changes-diff-body .mu-dl {
+  height: 18px;
+}
+.changes-diff-body .mu-dl-hunk {
+  box-sizing: border-box;
+  height: 30px;
+  margin: 0;
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-4);
+}
+.changes-clash-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1000px) {
+  .changes-content {
+    flex-direction: column;
+  }
+  .changes-list-column {
+    flex: 0 1 auto;
+    max-height: 40%;
+  }
+  .changes-toolbar .mu-seg {
+    flex-wrap: wrap;
+  }
+}
