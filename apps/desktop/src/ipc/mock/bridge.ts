@@ -12,6 +12,7 @@ import {
   type TermFrame,
 } from "../frames";
 import type { Command } from "../generated/Command";
+import type { Folders } from "../generated/desktop/Folders";
 import type { LinkState } from "../generated/desktop/LinkState";
 import type { Patch } from "../generated/desktop/Patch";
 import type { StateMessage } from "../generated/desktop/StateMessage";
@@ -20,6 +21,8 @@ import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
 import { handleCommand } from "./commands";
+import { FlowWorld } from "./flows";
+import { expandPath } from "./folders";
 import { derive } from "./model";
 import { NOW, type Scenario } from "./scenario";
 
@@ -27,6 +30,9 @@ const encoder = new TextEncoder();
 
 export class MockBridge implements Bridge {
   readonly world: Scenario;
+  /** What git and the file system say, for the flows (flows.ts). */
+  readonly flows: FlowWorld;
+  private readonly drops = new Set<(paths: string[]) => void>();
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
   private listener: ((message: StateMessage) => void) | null = null;
@@ -39,6 +45,7 @@ export class MockBridge implements Bridge {
 
   constructor(world: Scenario) {
     this.world = world;
+    this.flows = new FlowWorld(world);
     for (const session of world.sessions) this.changed.set(session.id, this.tick());
   }
 
@@ -134,7 +141,45 @@ export class MockBridge implements Bridge {
   async watch(): Promise<void> {}
   async looking(): Promise<void> {}
 
+  async listFolders(typed: string): Promise<Folders> {
+    const path = expandPath(typed);
+    const why = this.flows.unreadable[path];
+    if (why) throw new BridgeFailure("refused", `Cannot read ${path}: ${why}`);
+    const folders = this.flows.folders[path];
+    if (!path.startsWith("/"))
+      throw new BridgeFailure("refused", `Cannot read ${path}: start it with / or ~/`);
+    if (!folders)
+      throw new BridgeFailure(
+        "refused",
+        `Cannot read ${path}: No such file or directory (os error 2)`,
+      );
+    return { path, folders };
+  }
+
+  async onFolderDrop(listener: (paths: string[]) => void): Promise<() => void> {
+    this.drops.add(listener);
+    return () => this.drops.delete(listener);
+  }
+
   // What tests drive.
+
+  /** Drops `paths` on the window, as Finder would. */
+  drop(paths: string[]): void {
+    for (const listener of this.drops) listener(paths);
+  }
+
+  /** Tells the page these entities changed or went, as the daemon's deltas do. */
+  tell(parts: Partial<Patch>): void {
+    this.emit({ kind: "patch", patch: this.patch(parts) });
+  }
+
+  /** The sessions stopped since `flows.holdExits` was set end now, as their programs exit. */
+  exitHeld(): void {
+    for (const session of this.flows.held.splice(0)) {
+      this.updateSession(session, { ended_at: NOW });
+      this.setStatus(session, { state: "exited", success: true });
+    }
+  }
 
   /** Writes `text` to a session's terminal, as its program would. */
   output(session: SessionId, text: string): void {

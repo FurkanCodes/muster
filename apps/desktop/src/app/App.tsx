@@ -1,11 +1,14 @@
 // The window: title bar, sidebar, the screen shown, status bar.
 
 import { Suspense, useEffect, useState } from "react";
+import { Away, AwayBanner } from "../flows/Away";
+import { Flows } from "../flows/Flows";
+import { RoundingUp, Welcome } from "../flows/Welcome";
 import type { Bridge } from "../ipc/bridge";
 import { createDaemon } from "../state/daemon";
 import { createUi } from "../state/ui";
 import { runClock } from "./clock";
-import { AppContext, type App as AppValue, useApp, useUi } from "./context";
+import { AppContext, type App as AppValue, useApp, useDaemon, useUi } from "./context";
 import { installKeys } from "./keys";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
@@ -68,11 +71,16 @@ function useTheme(): void {
 
 function Screen() {
   const screen = useUi((state) => state.screen);
+  const loaded = useDaemon((state) => state.loaded);
+  const away = useDaemon((state) => state.link.state === "down");
+  const empty = useDaemon((state) => Object.keys(state.projects).length === 0);
   const Shown = SCREENS[screen];
+  // Out of reach, the screen stays as it was, still (src/flows: Away);
+  // with nothing yet to show, Kep waits, or welcomes a first project.
   return (
-    <main className="app-screen">
+    <main className="app-screen" inert={away && loaded ? true : undefined}>
       <Suspense fallback={null}>
-        <Shown />
+        {away && !loaded ? <Away /> : !loaded ? <RoundingUp /> : empty ? <Welcome /> : <Shown />}
       </Suspense>
     </main>
   );
@@ -84,11 +92,13 @@ function Window() {
   return (
     <div className="mu-root app">
       <TitleBar />
+      <AwayBanner />
       <div className="app-body">
         <Sidebar />
         <Screen />
       </div>
       <StatusBar />
+      <Flows />
     </div>
   );
 }

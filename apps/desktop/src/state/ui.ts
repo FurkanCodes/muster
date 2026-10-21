@@ -2,6 +2,7 @@
 // never the daemon's. One store, so every screen reads the same answers.
 
 import { createStore, type StoreApi } from "zustand/vanilla";
+import type { Flow } from "../flows/types";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 
@@ -11,6 +12,8 @@ export type ScreenId = "needs-you" | "not-seen" | "working" | "all" | "tickets" 
 export type KeysIn = "list" | "terminal" | "dialog";
 
 export type Theme = "dark" | "light" | "system";
+
+export type PaletteMode = "commands" | "keys";
 
 /** What the session pane shows: the terminal, or the workspace's changes. */
 export type PaneMode = "terminal" | "changes";
@@ -40,6 +43,12 @@ export interface UiState {
   sidebarFolded: boolean;
   theme: Theme;
   paletteOpen: boolean;
+  /** What the palette shows: everything to go to or do, or every key of the screen (`h`). */
+  paletteMode: PaletteMode;
+  /** The dialog open over the window, if any (src/flows). */
+  flow: Flow | null;
+  /** The agent the person started last, offered first next time. */
+  lastAgent: string;
   /** The screen's keys, as the status bar lists them. */
   hints: readonly Hint[];
   note: Note | null;
@@ -56,7 +65,10 @@ export interface UiActions {
   showPane(mode: PaneMode): void;
   foldSidebar(): void;
   setTheme(theme: Theme): void;
-  openPalette(open: boolean): void;
+  openPalette(open: boolean, mode?: PaletteMode): void;
+  /** Opens a dialog of src/flows over the window, or closes it with null. */
+  openFlow(flow: Flow | null): void;
+  choseAgent(agent: string): void;
   setHints(hints: readonly Hint[]): void;
   /** Says what just happened in the status bar; it goes after five seconds, an error at the next key. */
   tell(text: string, error?: boolean): void;
@@ -88,6 +100,9 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     sidebarFolded: false,
     theme: storedTheme(),
     paletteOpen: false,
+    paletteMode: "commands",
+    flow: null,
+    lastAgent: "claude",
     hints: [],
     note: null,
     visible: true,
@@ -111,7 +126,10 @@ export function createUi(): { store: UiStore; actions: UiActions } {
         // Storage refused (a private window): the theme lasts as long as the window.
       }
     },
-    openPalette: (paletteOpen) => set({ paletteOpen }),
+    openPalette: (paletteOpen, paletteMode = "commands") =>
+      set(paletteOpen ? { paletteOpen, paletteMode, flow: null } : { paletteOpen }),
+    openFlow: (flow) => set({ flow, paletteOpen: false }),
+    choseAgent: (lastAgent) => set({ lastAgent }),
     setHints: (hints) => set({ hints }),
     tell: (text, error = false) => {
       clearTimeout(noteTimer);

@@ -49,7 +49,11 @@ function editable(target: EventTarget | null): boolean {
 }
 
 const GLOBAL: Readonly<Record<string, (app: App) => void>> = {
-  "⌘K": (app) => app.actions.openPalette(!app.ui.getState().paletteOpen),
+  // The palette goes to or does what the daemon knows: not while it is out of reach.
+  "⌘K": (app) => {
+    if (app.daemon.store.getState().link.state === "up")
+      app.actions.openPalette(!app.ui.getState().paletteOpen);
+  },
   "⌘1": (app) => app.actions.show("needs-you"),
   "⌘2": (app) => app.actions.show("all"),
   "⌘3": (app) => app.actions.show("tickets"),
@@ -57,12 +61,37 @@ const GLOBAL: Readonly<Record<string, (app: App) => void>> = {
   "⌘\\": (app) => app.actions.foldSidebar(),
 };
 
+/**
+ * Does what `chord` does on the screen shown, as if pressed: the command
+ * palette runs a screen's action this way, through the screen's own keys.
+ * Whether anything did.
+ */
+export function pressKey(chord: string): boolean {
+  for (let at = stack.length - 1; at >= 0; at -= 1) {
+    const handler = stack[at]?.current[chord];
+    if (handler) {
+      handler(new KeyboardEvent("keydown", { key: chord }));
+      return true;
+    }
+  }
+  return false;
+}
+
 export function installKeys(app: App): () => void {
   const listener = (event: KeyboardEvent) => {
     const chord = chordOf(event);
     const ui = app.ui.getState();
     if (ui.note?.error) app.actions.clearNote();
 
+    // A dialog keeps the keys (design system: Dialog): nothing behind it
+    // moves, but ⌘K puts the command palette away.
+    if (document.querySelector("dialog[open]")) {
+      if (chord === "⌘K" && ui.paletteOpen) {
+        event.preventDefault();
+        app.actions.openPalette(false);
+      }
+      return;
+    }
     const global = GLOBAL[chord];
     if (global) {
       event.preventDefault();

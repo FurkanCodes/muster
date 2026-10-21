@@ -7,6 +7,7 @@ import { type Bridge, BridgeFailure } from "./bridge";
 import { decodeFrame, type TermFrame } from "./frames";
 import type { Command } from "./generated/Command";
 import type { BridgeError } from "./generated/desktop/BridgeError";
+import type { Folders } from "./generated/desktop/Folders";
 import type { StateMessage } from "./generated/desktop/StateMessage";
 import type { Reply } from "./generated/Reply";
 import type { SessionId } from "./generated/SessionId";
@@ -79,5 +80,25 @@ export class TauriBridge implements Bridge {
 
   looking(looking: boolean, focused: SessionId | null): Promise<void> {
     return call("looking", { looking, focused });
+  }
+
+  async listFolders(path: string): Promise<Folders> {
+    try {
+      return await invoke<Folders>("list_folders", { path });
+    } catch (error) {
+      // The app's own FolderError: what could not be read, and why.
+      const refused = error as { path?: string; reason?: string } | undefined;
+      throw new BridgeFailure(
+        "refused",
+        refused?.reason ? `Cannot read ${refused.path ?? path}: ${refused.reason}` : String(error),
+      );
+    }
+  }
+
+  async onFolderDrop(listener: (paths: string[]) => void): Promise<() => void> {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    return getCurrentWebview().onDragDropEvent(({ payload }) => {
+      if (payload.type === "drop") listener(payload.paths);
+    });
   }
 }
