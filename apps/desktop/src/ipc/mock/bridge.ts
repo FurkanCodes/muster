@@ -27,6 +27,7 @@ import { FlowWorld } from "./flows";
 import { expandPath } from "./folders";
 import { derive } from "./model";
 import { NOW, type Scenario } from "./scenario";
+import { MockSettings } from "./settings";
 import { agentsOnTickets } from "./tickets";
 
 const encoder = new TextEncoder();
@@ -56,6 +57,10 @@ export class MockBridge implements Bridge {
   readonly openedUrls: string[] = [];
   private readonly holds = new Map<string, { promise: Promise<void>; release: () => void }>();
   private readonly failures = new Map<string, BridgeFailure>();
+  /** Every sound asked to be heard, in order. */
+  readonly heard: string[] = [];
+  /** Its settings and plugins, and what tests drive of them. */
+  readonly settings: MockSettings;
   private listener: ((message: StateMessage) => void) | null = null;
   private readonly changed = new Map<SessionId, number>();
   private clock = 0;
@@ -70,6 +75,7 @@ export class MockBridge implements Bridge {
     this.world = world;
     this.flows = new FlowWorld(world);
     for (const session of world.sessions) this.changed.set(session.id, this.tick());
+    this.settings = new MockSettings(this);
   }
 
   private tick(): number {
@@ -187,6 +193,11 @@ export class MockBridge implements Bridge {
   /** Echoes what is typed, as a program at its prompt would. */
   async input(session: SessionId, text: string): Promise<void> {
     this.output(session, text.replace(/\r/g, "\r\n"));
+  }
+
+  /** Plays a sound by its name, as the app's Rust side would: the mock records it. */
+  async hear(sound: string): Promise<void> {
+    this.heard.push(sound);
   }
 
   async resize(): Promise<void> {}
