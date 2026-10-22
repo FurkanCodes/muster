@@ -170,6 +170,12 @@ impl Supervisor {
             .ok_or_else(|| {
                 ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
             })?;
+        if self.worktree_jobs.is_removing(workspace) {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                "its worktree is being removed",
+            ));
+        }
         if let Some(path) = found.kind.host_path() {
             return Ok(Place::Host(path.to_owned()));
         }

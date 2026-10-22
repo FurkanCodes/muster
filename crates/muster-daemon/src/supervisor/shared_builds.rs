@@ -25,6 +25,12 @@ impl Supervisor {
                 WorkspaceKind::Worktree { path, .. } => path.parent().map(Path::to_path_buf),
                 _ => None,
             })
+            .chain(
+                // Those being made count already, so the builds stay.
+                self.worktree_jobs
+                    .making_paths()
+                    .filter_map(|path| path.parent().map(Path::to_path_buf)),
+            )
             .collect();
         let Ok(mut entries) = tokio::fs::read_dir(&self.worktrees_dir).await else {
             return;

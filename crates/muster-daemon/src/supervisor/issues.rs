@@ -4,16 +4,17 @@
 //! Talking to a tracker takes a while, so it never happens inside the
 //! Supervisor's loop: listing and viewing run on a task of their own and
 //! answer directly; starting work fetches the ticket on its own task, then
-//! hands it back to the Supervisor to create the worktree and the session.
+//! hands it back to the Supervisor to create the worktree, which git makes
+//! off the loop too (`worktrees`), and then the session.
 //! The first agent on a ticket works in its worktree (made, or found as it
 //! is); another works in a worktree of its own, `…-2`, `…-3`.
 
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::tickets::ticket_branch;
-use muster_core::{ProjectId, TicketKey};
+use muster_core::{ProjectId, TicketKey, WorkspaceId};
 use tokio::sync::oneshot;
 
-use super::{Request, Supervisor};
+use super::{Request, Supervisor, worktrees};
 use crate::trackers::{self, IssueDetail, ProjectPlace, ServiceError};
 
 /// A ticket fetched for starting work, on its way back to the Supervisor.
@@ -30,13 +31,19 @@ pub(super) struct FetchedIssue {
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
 
-/// How to start work on a fetched ticket.
-struct IssueStart {
+/// A ticket's agent waiting for its worktree to be made off the loop
+/// (`worktrees::Then`).
+pub(super) struct TicketThen {
+    detail: IssueDetail,
     harness: String,
     size: TermSize,
-    another: bool,
-    on: Option<muster_core::WorkspaceId>,
-    prefixed: bool,
+    reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+}
+
+impl TicketThen {
+    pub(super) fn refuse(self, error: ErrorBody) {
+        refuse(self.reply, error);
+    }
 }
 
 /// Work on a ticket the person asked for (`Command::StartFromIssue`).
@@ -211,58 +218,67 @@ impl Supervisor {
         });
     }
 
-    /// Creates or reuses the ticket's worktree and starts a session in it.
+    /// Starts the ticket's agent in its worktree, found as it is, or made
+    /// first (another agent's always is).
     pub(super) async fn start_fetched_issue(&mut self, fetched: FetchedIssue) {
-        let outcome = match fetched.detail {
-            Ok(detail) => {
-                let FetchedIssue {
-                    project,
-                    harness,
-                    size,
-                    another,
-                    on,
-                    prefixed,
-                    ..
-                } = fetched;
-                let start = IssueStart {
-                    harness,
-                    size,
-                    another,
-                    on,
-                    prefixed,
-                };
-                self.start_issue(project, &detail, start).await
-            }
-            Err(error) => Err(error.body()),
-        };
-        if let Err(error) = &outcome {
-            tracing::info!(command = "start from issue", %error, "command refused");
-        }
-        let _ = fetched.reply.send(outcome);
-    }
-
-    async fn start_issue(
-        &mut self,
-        project: ProjectId,
-        detail: &IssueDetail,
-        IssueStart {
+        let FetchedIssue {
+            project,
             harness,
             size,
             another,
             on,
             prefixed,
-        }: IssueStart,
-    ) -> Result<Reply, ErrorBody> {
+            detail,
+            reply,
+        } = fetched;
+        let detail = match detail {
+            Ok(detail) => detail,
+            Err(error) => return refuse(reply, error.body()),
+        };
         let branch = ticket_branch(&detail.issue.key, &detail.issue.title, prefixed);
         let existing = self.worktree_on(project, &branch).map(|found| found.id);
-        let workspace = match (existing, another) {
-            (Some(existing), false) => existing,
-            (None, false) => self.new_worktree(project, branch, on).await?,
-            (_, true) => {
-                let branch = self.unused_worktree_branch(project, &branch).await?;
-                self.new_worktree(project, branch, on).await?
-            }
+        let ticket = TicketThen {
+            detail,
+            harness,
+            size,
+            reply,
         };
+        let branch = match (existing, another) {
+            (Some(existing), false) => return self.start_ticket_agent(existing, ticket).await,
+            (None, false) => branch,
+            (_, true) => match self.unused_worktree_branch(project, &branch).await {
+                Ok(branch) => branch,
+                Err(error) => return ticket.refuse(error),
+            },
+        };
+        let then = worktrees::Then::Ticket(Box::new(ticket));
+        self.create_worktree(project, Some(branch), on, then).await;
+    }
+
+    /// Starts the ticket's agent in `workspace`, with the ticket as its
+    /// first prompt where it takes one, and answers.
+    pub(super) async fn start_ticket_agent(&mut self, workspace: WorkspaceId, ticket: TicketThen) {
+        let TicketThen {
+            detail,
+            harness,
+            size,
+            reply,
+        } = ticket;
+        match self.ticket_agent(workspace, &detail, harness, size).await {
+            Ok(started) => {
+                let _ = reply.send(Ok(started));
+            }
+            Err(error) => refuse(reply, error),
+        }
+    }
+
+    async fn ticket_agent(
+        &mut self,
+        workspace: WorkspaceId,
+        detail: &IssueDetail,
+        harness: String,
+        size: TermSize,
+    ) -> Result<Reply, ErrorBody> {
         let takes_prompt = self
             .harness(&harness)
             .is_some_and(|found| found.takes_prompt());
@@ -291,18 +307,6 @@ impl Supervisor {
         }
     }
 
-    async fn new_worktree(
-        &mut self,
-        project: ProjectId,
-        branch: String,
-        on: Option<muster_core::WorkspaceId>,
-    ) -> Result<muster_core::WorkspaceId, ErrorBody> {
-        match self.create_worktree(project, Some(branch), on).await? {
-            Reply::WorktreeCreated { id } => Ok(id),
-            other => Err(unexpected(&other)),
-        }
-    }
-
     /// `branch-2`, `-3`… : the first no workspace has and the repository
     /// does not have yet, for another agent's worktree.
     async fn unused_worktree_branch(
@@ -315,9 +319,7 @@ impl Supervisor {
             .ok_or_else(|| no_project(project))?;
         for n in 2..100 {
             let candidate = format!("{branch}-{n}");
-            let in_use = self.state.workspaces.iter().any(|workspace| {
-                workspace.project == project && workspace.kind.branch() == candidate
-            });
+            let in_use = self.branch_taken(project, &candidate);
             let exists = crate::git::branch_exists(&root, &candidate)
                 .await
                 .unwrap_or(true);
@@ -338,6 +340,12 @@ impl Supervisor {
             .find(|candidate| candidate.id == project)
             .map(|found| found.root.clone())
     }
+}
+
+/// Answers a start from a ticket with `error`, logged.
+fn refuse(reply: oneshot::Sender<Result<Reply, ErrorBody>>, error: ErrorBody) {
+    tracing::info!(command = "start from issue", %error, "command refused");
+    let _ = reply.send(Err(error));
 }
 
 fn no_project(project: ProjectId) -> ErrorBody {

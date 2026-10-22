@@ -22,6 +22,7 @@ mod issues;
 mod looking;
 mod names;
 mod naming;
+mod outside_worktrees;
 mod own_settings;
 mod panels;
 mod plugins;
@@ -199,6 +200,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         clashes: clashes::Clashes::default(),
         tidies: tidy::Tidies::default(),
         resumes: recovery::Resumes::default(),
+        worktree_jobs: worktrees::Jobs::default(),
         tasks: settings.tasks,
         places: settings.places,
         secrets: settings.secrets,
@@ -331,6 +333,8 @@ struct Supervisor {
     tidies: tidy::Tidies,
     /// Sessions the last daemon left running, waiting their turn to resume.
     resumes: recovery::Resumes,
+    /// Worktrees git is making or removing off the loop.
+    worktree_jobs: worktrees::Jobs,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
     /// Where the agents keep their records.
@@ -460,6 +464,19 @@ impl Supervisor {
                     move_branch,
                 } => self.undo(workspace, number, move_branch, reply),
                 Command::MoveOnto { workspace } => self.move_onto(workspace, reply).await,
+                // Git makes or removes a worktree off the loop: a large
+                // repository's checkout takes seconds.
+                Command::CreateWorktree {
+                    project,
+                    branch,
+                    on,
+                } => {
+                    let then = worktrees::Then::Reply(reply);
+                    self.create_worktree(project, branch, on, then).await;
+                }
+                Command::RemoveWorktree { workspace, force } => {
+                    self.remove_worktree(workspace, force, reply).await;
+                }
                 Command::Plugin(command) => self.plugin_command(command, reply).await,
                 // These need the runs' credential, fetched off the loop.
                 Command::TakeOverRun { run } => self.take_over_run(run, reply),
@@ -585,6 +602,8 @@ impl Supervisor {
             Request::WorktreesListed { project, listed } => {
                 self.sync_worktrees(project, listed).await;
             }
+            Request::WorktreeMade(made) => self.worktree_made(*made).await,
+            Request::WorktreeRemoved(removed) => self.worktree_removed(*removed).await,
             Request::AddClient(reply) => {
                 // A client that left already drops the guard, which removes it.
                 let _ = reply.send(self.add_client());
@@ -645,14 +664,6 @@ impl Supervisor {
             }
             Command::AddProject { root, name } => self.add_project(root, name).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
-            Command::CreateWorktree {
-                project,
-                branch,
-                on,
-            } => self.create_worktree(project, branch, on).await,
-            Command::RemoveWorktree { workspace, force } => {
-                self.remove_worktree(workspace, force).await
-            }
             Command::StartSession {
                 workspace,
                 harness,
@@ -720,6 +731,8 @@ impl Supervisor {
             | Command::UndoPlan { .. }
             | Command::Undo { .. }
             | Command::MoveOnto { .. }
+            | Command::CreateWorktree { .. }
+            | Command::RemoveWorktree { .. }
             | Command::Plugin(_) => Err(ErrorBody::new(
                 ErrorCode::Internal,
                 "this command is answered off the Supervisor's loop",
