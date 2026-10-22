@@ -7,7 +7,7 @@
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { useActions, useApp, useUi } from "../app/context";
 import { statusKind } from "../lib/status";
-import { Hint, Kbd } from "../ui/controls";
+import { Hint, Kbd, Spacer } from "../ui/controls";
 import { Icon } from "../ui/Icon";
 import { AgentLogo, StatusMark } from "../ui/status";
 import { catalogue, type PaletteItem, type Ticket } from "./catalogue";
@@ -176,7 +176,7 @@ function Commands() {
         <Hint keys="↑↓" does="move" />
         <Hint keys="⏎" does="do it" />
         <Hint keys="⎋" does="close" />
-        <span className="mu-spacer" />
+        <Spacer />
         {help !== "none" ? <Hint keys={help.split(" ")[0] ?? help} does="every key" /> : null}
       </div>
     </dialog>
@@ -226,7 +226,7 @@ function Item({
         role="option"
         aria-selected={lit}
         tabIndex={-1}
-        className={`mu-menu-item mu-palette-item ${lit ? "is-active" : ""}`}
+        className={`mu-palette-item ${lit ? "is-active" : ""}`}
         onPointerMove={lit ? undefined : onPoint}
         onClick={onRun}
       >
@@ -298,7 +298,7 @@ function EveryKey({ changes }: { changes: boolean }) {
             <h3 className="mu-palette-group ui-palette-heading">{section.heading}</h3>
             <ul className="ui-palette-keys">
               {section.entries.map((entry) => (
-                <li key={`${entry.keys} ${entry.what}`} className="mu-menu-item mu-palette-item">
+                <li key={`${entry.keys} ${entry.what}`} className="mu-palette-item">
                   <span className="mu-cut">{entry.what}</span>
                   <Kbd>{entry.keys}</Kbd>
                 </li>
@@ -312,11 +312,7 @@ function EveryKey({ changes }: { changes: boolean }) {
       </div>
       <div className="mu-palette-foot">
         <Hint keys="↑↓" does="scroll" />
-        <span className="mu-hint">
-          <Kbd>⏎</Kbd>
-          <Kbd>⎋</Kbd>
-          close
-        </span>
+        <Hint keys={["⏎", "⎋"]} does="close" />
       </div>
     </dialog>
   );

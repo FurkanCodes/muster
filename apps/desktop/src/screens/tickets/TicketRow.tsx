@@ -74,8 +74,7 @@ export function TicketRow({
 
 export function ProjectName({ id }: { id: string }) {
   const name = useDaemon((s) => s.projects[id]?.name ?? "?");
-  const colour = useDaemon((s) => projectColour(s, id));
-  return <span className={`mu-p${colour}`}>{name}</span>;
+  return <span>{name}</span>;
 }
 
 export function ProjectSwatch({ id }: { id: string }) {

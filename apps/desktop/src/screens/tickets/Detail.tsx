@@ -3,13 +3,23 @@ import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useNow } from "../../app/clock";
 import { useDaemon, useUi } from "../../app/context";
+import { Page } from "../../app/Page";
 import type { Issue } from "../../ipc/generated/Issue";
 import { agentOf } from "../../lib/agents";
 import { ago, spend } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { Button, IconButton } from "../../ui/controls";
+import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { Label, Labels } from "../../ui/Label";
 import { ListItemEnd, ListItemMeta, ListItemText, ListItemTitle, RowButton } from "../../ui/List";
-import { AgentLogo, DiffStat, PullRequest, StatusMark } from "../../ui/status";
+import {
+  AgentLogo,
+  BranchName,
+  DiffStat,
+  ErrorText,
+  PullRequest,
+  StatusMark,
+} from "../../ui/status";
 import { agentsOn, shownKey, worktreesFor } from "./agents";
 import { type TicketsModel, ticketId } from "./data";
 import { ProjectName } from "./TicketRow";
@@ -52,55 +62,49 @@ export function Detail({
   }, [visible, model, project, issue, text]);
   const shown = text?.state === "loaded" ? text.value.issue : issue;
   return (
-    <section className="mu-pane tickets-detail" aria-label={`Ticket ${shownKey(issue.key)}`}>
-      <div className="mu-pane-head tickets-detail-head">
-        <div className="mu-pane-title-row tickets-title-row">
-          <span className="mu-mono mu-quiet">{shownKey(issue.key)}</span>
-          <h2 className="mu-pane-title mu-pane-title--wrap">{ticketText(shown.title)}</h2>
-          <div className="mu-pane-actions">
-            {agents.length ? (
-              <Button
-                icon="plus"
-                onClick={onAssign}
-                title={`Assign another agent (${keys.another})`}
-              >
-                Another agent
-              </Button>
-            ) : null}
-            {/^https?:\/\//i.test(issue.url) ? (
-              <IconButton
-                icon="external"
-                label={`Open in the browser (${keys.browser})`}
-                onClick={onBrowser}
-              />
-            ) : null}
+    <Page label={`Ticket ${shownKey(issue.key)}`} className="tickets-detail">
+      <Heading className="tickets-detail-heading">
+        <HeadingTitle>{ticketText(shown.title)}</HeadingTitle>
+        <HeadingLead>
+          <span className="tickets-detail-facts">
+            <span className="mu-mono">{shownKey(issue.key)}</span>
+            <span>
+              {oneTicketOf(tracker)} in{" "}
+              {projects.map((id, i) => (
+                <span key={id}>
+                  {i ? ", " : ""}
+                  <ProjectName id={id} />
+                </span>
+              ))}
+            </span>
+            {shown.author ? <span>opened by {ticketText(shown.author)}</span> : null}
+            <Labels>
+              {shown.labels.map((label) => (
+                <Label key={label}>{ticketText(label)}</Label>
+              ))}
+            </Labels>
+          </span>
+        </HeadingLead>
+        <HeadingActions>
+          {agents.length ? (
+            <Button icon="plus" onClick={onAssign} title={`Assign another agent (${keys.another})`}>
+              Another agent
+            </Button>
+          ) : null}
+          {/^https?:\/\//i.test(issue.url) ? (
             <IconButton
-              icon="more"
-              label={`More: close the ticket (${keys.close})`}
-              onClick={onClose}
+              icon="external"
+              label={`Open in the browser (${keys.browser})`}
+              onClick={onBrowser}
             />
-          </div>
-        </div>
-        <div className="mu-pane-meta">
-          <span>
-            {oneTicketOf(tracker)} in{" "}
-            {projects.map((id, i) => (
-              <span key={id}>
-                {i ? ", " : ""}
-                <ProjectName id={id} />
-              </span>
-            ))}
-          </span>
-          {shown.author ? <span>opened by {ticketText(shown.author)}</span> : null}
-          <span className="mu-labels">
-            {shown.labels.map((label) => (
-              <span className="mu-label" key={label}>
-                {ticketText(label)}
-              </span>
-            ))}
-          </span>
-        </div>
-      </div>
+          ) : null}
+          <IconButton
+            icon="more"
+            label={`More: close the ticket (${keys.close})`}
+            onClick={onClose}
+          />
+        </HeadingActions>
+      </Heading>
       <div className="tickets-detail-body">
         {agents.length ? (
           <section aria-labelledby="ticket-agents" className="tickets-agents">
@@ -136,14 +140,14 @@ export function Detail({
             <span />
           </div>
         ) : text.state === "failed" ? (
-          <p className="tickets-error" role="alert">
+          <ErrorText>
             Its text could not be fetched: {text.error}. {keys.refresh} tries now.
-          </p>
+          </ErrorText>
         ) : (
           <TicketText body={text.value.body} />
         )}
       </div>
-    </section>
+    </Page>
   );
 }
 
@@ -173,7 +177,7 @@ function AgentRow({
           <span className="mu-quiet">{ticketText(doing(session))}</span>
         </ListItemTitle>
         <ListItemMeta>
-          <span className="mu-branch">⎇ {ticketText(workspace?.kind.branch ?? "")}</span>
+          <BranchName>{ticketText(workspace?.kind.branch ?? "")}</BranchName>
           {shared && workspace ? <ProjectName id={workspace.project} /> : null}
           {workspace?.changes ? (
             <DiffStat added={workspace.changes.added} removed={workspace.changes.removed} />

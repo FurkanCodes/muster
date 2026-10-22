@@ -9,6 +9,7 @@ import type { Tell } from "../../ipc/generated/Tell";
 import { Button } from "../../ui/controls";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
+import { Found } from "../../ui/status";
 import { canAsk } from "./asks";
 import { useSettings } from "./context";
 import { useHear } from "./hear";
@@ -172,11 +173,7 @@ export function Notifications({ preferences }: { preferences: Preferences }) {
           )}
           {told ? (
             <Control>
-              {notifier ? (
-                <span className="mu-found">✓ allowed</span>
-              ) : (
-                <span className="mu-quiet">not yet</span>
-              )}
+              {notifier ? <Found>✓ allowed</Found> : <span className="mu-quiet">not yet</span>}
               <Button title="System Settings, Notifications, Muster" onClick={openSystemSettings}>
                 Open System Settings
               </Button>

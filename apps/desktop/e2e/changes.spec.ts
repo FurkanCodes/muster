@@ -294,9 +294,9 @@ for (const [command, asking, lead, empty] of [
       window.__muster.failNext(command, "git could not read the worktree", "internal");
       window.__muster.release(command);
     }, command);
-    await expect(page.getByRole("alert")).toHaveText(
-      `${lead}git could not read the worktreeAsk again`,
-    );
+    // What went wrong is the alert; the way to ask again stands beside it.
+    await expect(page.getByRole("alert")).toHaveText(`${lead}git could not read the worktree`);
+    await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
     await page.evaluate(
       ({ workspace }) => {
         window.__muster.world.changes ??= {};

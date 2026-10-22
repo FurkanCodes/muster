@@ -35,7 +35,7 @@ function ClashBanner({ clash, index }: { clash: Clash; index: number }) {
   return (
     <Banner tone={conflict ? "waiting" : "overlap"}>
       <BannerText title={`${lead} with ${place}: ${clashWords(clash)}`}>
-        <BannerLead>{lead}</BannerLead> with <span className="mu-branch">{place}</span>:{" "}
+        <BannerLead>{lead}</BannerLead> with {place}:{" "}
         {conflict ? "would conflict in " : "both change "}
         <span className="mu-mono">{named}</span>
         {more ? ` and ${more} more` : ""}

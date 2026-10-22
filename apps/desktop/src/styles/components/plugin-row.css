@@ -40,7 +40,7 @@
   gap: var(--space-8);
   min-width: 0;
 }
-.mu-plugin-version {
+.mu-version {
   font-family: var(--font-mono);
   font-variant-ligatures: none;
   font-size: 12px;

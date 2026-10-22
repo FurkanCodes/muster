@@ -21,6 +21,16 @@ export function fileKind(kind: FileChange["kind"]): readonly [string, string] {
   return KIND[kind];
 }
 
+/** Git's letter for a kind of change, in its colour. */
+export function FileKind({ kind }: { kind: FileChange["kind"] }) {
+  const [letter, tone] = KIND[kind];
+  return (
+    <span className={`mu-file-kind mu-file-kind--${tone} mu-mono`} aria-hidden="true">
+      {letter}
+    </span>
+  );
+}
+
 /** A file's line's id in the window, for its list's `aria-activedescendant`. */
 export function fileLineId(path: string): string {
   return `file-${path}`;

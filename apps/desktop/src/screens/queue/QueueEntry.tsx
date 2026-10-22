@@ -12,7 +12,7 @@ import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
-import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
+import { AgentLogo, BranchName, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
 import { changedInSight, stamp } from "./history";
 import { sectionOf } from "./queue";
 
@@ -60,7 +60,7 @@ function Finished({ session }: { session: Session }) {
       <ListItemText>
         <ListItemTitle title={session.title}>{session.title}</ListItemTitle>
         <ListItemMeta>
-          <span className="mu-branch">⎇ {workspace ? branchOf(workspace) : "no branch"}</span>
+          <BranchName>{workspace ? branchOf(workspace) : "no branch"}</BranchName>
           {changes && (changes.added || changes.removed) ? (
             <DiffStat added={changes.added} removed={changes.removed} />
           ) : (

@@ -9,6 +9,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect } f
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useDaemon } from "../../app/context";
 import { type KeyHandlers, useKeys } from "../../app/keys";
+import { Page } from "../../app/Page";
 import { SidebarAwayRow } from "../../app/Sidebar";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { chordsOf, labelOf } from "../../keys/keymap";
@@ -36,6 +37,7 @@ import { Notifications } from "./Notifications";
 import { PluginDialogs } from "./PluginDialogs";
 import { Plugins } from "./Plugins";
 import { Project } from "./Project";
+import { Page as SettingsPage } from "./Row";
 import { SettingsProvider } from "./SettingsProvider";
 import "./settings.css";
 
@@ -63,9 +65,9 @@ function SettingsScreen() {
     // biome-ignore lint/a11y/noStaticElementInteractions: it only keeps a focused control's ⏎ and space from the screen's own keys.
     <div className="app-settings" data-settings onKeyDown={keepControlKeys}>
       <Sections shown={section} />
-      <div className="mu-pane app-settings-page">
+      <Page label="Settings page" className="app-settings-page">
         <ShownPage section={section} />
-      </div>
+      </Page>
       <PluginDialogs />
     </div>
   );
@@ -167,12 +169,9 @@ function ShownPage({ section }: { section: Section }) {
     const title =
       MUSTER_SECTIONS.find((candidate) => candidate.id === section)?.title ?? "Settings";
     return (
-      <div className="mu-settings" aria-busy="true">
-        <Heading className="app-settings-heading">
-          <HeadingTitle>{title}</HeadingTitle>
-          <HeadingLead>Reading Muster's own settings…</HeadingLead>
-        </Heading>
-      </div>
+      <SettingsPage title={title} lead="Reading Muster's own settings…" busy>
+        {null}
+      </SettingsPage>
     );
   }
   return <MusterPage section={section} preferences={preferences} />;

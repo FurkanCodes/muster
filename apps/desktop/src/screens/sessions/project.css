@@ -69,9 +69,6 @@
   max-width: 240px;
   height: var(--size-control-md);
 }
-.project-error {
-  color: var(--waiting);
-}
 
 .project-where {
   margin-top: var(--space-16);

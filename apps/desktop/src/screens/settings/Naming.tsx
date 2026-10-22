@@ -10,6 +10,7 @@ import { agentOf } from "../../lib/agents";
 import { Detail, DetailList } from "../../ui/DetailList";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
+import { Input } from "../../ui/TextField";
 import { namers, OWN_AGENTS } from "./agentList";
 import { useSettings } from "./context";
 import { rowKey } from "./model";
@@ -43,9 +44,9 @@ function ModelField({
     field.current?.select();
   }, []);
   return (
-    <input
+    <Input
       ref={field}
-      className="mu-field-input app-settings-field app-settings-field--wide"
+      className="app-settings-field app-settings-field--wide"
       aria-label="Its model, typed"
       placeholder="Type a model, then ⏎"
       value={typed}
@@ -254,9 +255,9 @@ export function Naming({ preferences }: { preferences: Preferences }) {
       </Group>
 
       <Group title="Can name">
-        <p className="mu-footnote app-settings-footnote app-settings-footnote--text">
+        <Footnote tone="text">
           {listed(named)}. {listed(unchecked)} are asked once each is checked.
-        </p>
+        </Footnote>
       </Group>
 
       <Footnote>

@@ -13,7 +13,14 @@ import type { Preferences } from "../../ipc/generated/Preferences";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { agentOf } from "../../lib/agents";
 import { Button } from "../../ui/controls";
-import { AgentLogo } from "../../ui/status";
+import { Label } from "../../ui/Label";
+import {
+  AgentLogo,
+  AgentMark,
+  Found as FoundText,
+  Missing,
+  Version as VersionText,
+} from "../../ui/status";
 import { OWN_AGENTS, type OwnAgent } from "./agentList";
 import { type Found, useAgentsFound } from "./agentsFound";
 import { canAsk } from "./asks";
@@ -22,22 +29,27 @@ import { rowKey } from "./model";
 import { Footnote, Group, Page, SettingRow, Unreadable } from "./Row";
 import { oneLine } from "./words";
 
-/** One thing an agent can do with Muster, ✓ or ✗. */
-function Fact({ can, children }: { can: boolean; children: string }) {
+/** A thing that holds or not: ✓ in the finished colour, or a quiet ✗; then what it is. */
+function Check({ holds, children }: { holds: boolean; children: string }) {
   return (
     <span>
-      {can ? (
-        <span className="mu-found" aria-hidden="true">
-          ✓
-        </span>
+      {holds ? (
+        <FoundText>
+          <span aria-hidden="true">✓</span>
+        </FoundText>
       ) : (
         <span className="mu-quiet" aria-hidden="true">
           ✗
         </span>
       )}{" "}
-      {can ? children : `${children}, not checked yet`}
+      {children}
     </span>
   );
+}
+
+/** One thing one of Muster's own agents can do with it, ✓, or ✗ while it is not checked yet. */
+function Fact({ can, children }: { can: boolean; children: string }) {
+  return <Check holds={can}>{can ? children : `${children}, not checked yet`}</Check>;
 }
 
 /** A home folder written `~`, as the board writes a path. */
@@ -73,24 +85,24 @@ function Where({
   if (!path)
     return (
       <>
-        <span className="mu-missing">✗ not found</span>
+        <Missing>✗ not found</Missing>
         {install}
       </>
     );
   return (
-    <span className="mu-found">
+    <FoundText>
       <span aria-hidden="true">✓</span>{" "}
       <span className="mu-mono" title={path}>
         {homely(oneLine(path))}
       </span>
-    </span>
+    </FoundText>
   );
 }
 
 /** The version it says it is, where it said one. */
-function Version({ found, harness }: { found: Found; harness: string }) {
+function AgentVersion({ found, harness }: { found: Found; harness: string }) {
   const version = foundOf(found, harness)?.version;
-  return version ? <span className="mu-plugin-version">{oneLine(version)}</span> : null;
+  return version ? <VersionText>{oneLine(version)}</VersionText> : null;
 }
 
 function OwnRow({ agent, found }: { agent: OwnAgent; found: Found }) {
@@ -100,7 +112,7 @@ function OwnRow({ agent, found }: { agent: OwnAgent; found: Found }) {
       <span className="mu-agentrow-text">
         <span className="mu-agentrow-name">
           <b>{agentOf(agent.id).name}</b>
-          <Version found={found} harness={agent.id} />
+          <AgentVersion found={found} harness={agent.id} />
         </span>
         <span className="mu-agentrow-facts">
           <Where
@@ -124,35 +136,23 @@ function OwnRow({ agent, found }: { agent: OwnAgent; found: Found }) {
 function AddedRow({ agent, found }: { agent: AddedAgent; found: Found }) {
   return (
     <SettingRow id={rowKey("agents", `agent.${agent.name}`)} className="mu-agentrow">
-      <span
-        className="mu-logo mu-logo--lg mu-logo--mark mu-logo--added"
-        role="img"
-        aria-label={oneLine(agent.label)}
-      >
-        {oneLine(agent.mark)}
-      </span>
+      <AgentMark mark={oneLine(agent.mark)} label={oneLine(agent.label)} size="lg" />
       <span className="mu-agentrow-text">
         <span className="mu-agentrow-name">
           <b>{oneLine(agent.label)}</b>
-          <Version found={found} harness={agent.name} />
-          <span className="mu-label">added by you</span>
+          <AgentVersion found={found} harness={agent.name} />
+          <Label>added by you</Label>
         </span>
         <span className="mu-agentrow-facts">
           <span className="mu-mono">{oneLine(agent.name)}</span>
           <Where found={found} harness={agent.name} install={null} />
-          <span>
-            <span className={agent.takes_prompt ? "mu-found" : "mu-quiet"} aria-hidden="true">
-              {agent.takes_prompt ? "✓" : "✗"}
-            </span>{" "}
+          <Check holds={agent.takes_prompt}>
             {agent.takes_prompt ? "takes a first prompt" : "takes no first prompt"}
-          </span>
+          </Check>
           <span>status from its window title</span>
-          <span>
-            <span className={agent.asks ? "mu-found" : "mu-quiet"} aria-hidden="true">
-              {agent.asks ? "✓" : "✗"}
-            </span>{" "}
+          <Check holds={agent.asks}>
             {agent.asks ? "names chats" : "names no chats: its settings say no way to ask it"}
-          </span>
+          </Check>
         </span>
       </span>
     </SettingRow>
@@ -198,10 +198,10 @@ export function Agents({ preferences }: { preferences: Preferences }) {
           <AddedRow key={agent.name} agent={agent} found={found} />
         ))}
         {preferences.agents.length === 0 && !preferences.problem ? (
-          <p className="mu-footnote app-settings-footnote">
+          <Footnote>
             None yet. An agent you add is offered beside Muster's own: for a new session, and for a
             ticket where it takes a first prompt.
-          </p>
+          </Footnote>
         ) : null}
         <SettingRow id={rowKey("agents", "edit")} className="app-settings-buttons" act={edit}>
           <Button title="Open settings.toml in your editor" disabled={opening} onClick={edit}>

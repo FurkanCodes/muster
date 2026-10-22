@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import type { PluginDetails } from "../../ipc/generated/PluginDetails";
 import { Detail, DetailList } from "../../ui/DetailList";
+import { Found, Missing } from "../../ui/status";
 import { missingPrograms, runsOf } from "./pluginWords";
 import { oneLine } from "./words";
 
@@ -61,11 +62,7 @@ export function PluginFacts({
             <span key={required.program}>
               {at > 0 ? <br /> : null}
               <code>{oneLine(required.program)}</code>{" "}
-              {required.found ? (
-                <span className="mu-found">✓ found</span>
-              ) : (
-                <span className="mu-missing">✗ not found</span>
-              )}
+              {required.found ? <Found>✓ found</Found> : <Missing>✗ not found</Missing>}
             </span>
           ))}
           {missing.length > 0 && details.how_to_get ? (

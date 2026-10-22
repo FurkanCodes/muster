@@ -9,6 +9,8 @@ import { AgentChoice } from "../../ui/AgentChoice";
 import { Button } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Select } from "../../ui/Select";
+import { BranchName, ErrorText } from "../../ui/status";
+import { Field } from "../../ui/TextField";
 import { shownKey, ticketBranch, worktreesFor } from "./agents";
 import { message, type TicketsModel } from "./data";
 import { ticketText } from "./TicketText";
@@ -211,8 +213,7 @@ export function Assign({
         </>
       }
     >
-      <div className="mu-field">
-        <span className="mu-field-label">Agent</span>
+      <Field label="Agent" hint="⇥ goes round the agents.">
         <AgentChoice
           agents={agents}
           value={agent}
@@ -221,11 +222,9 @@ export function Assign({
             if (!busy) setAgent(id);
           }}
         />
-        <span className="mu-field-hint">⇥ goes round the agents.</span>
-      </div>
+      </Field>
       {projects.length > 1 ? (
-        <div className="mu-field">
-          <span className="mu-field-label">Project</span>
+        <Field label="Project" hint="↑ ↓ chooses which project it is for.">
           <Select
             label="Project"
             value={project}
@@ -233,12 +232,18 @@ export function Assign({
             disabled={busy}
             onChange={chooseProject}
           />
-          <span className="mu-field-hint">↑ ↓ chooses which project it is for.</span>
-        </div>
+        </Field>
       ) : null}
       {stacking ? (
-        <div className="mu-field">
-          <span className="mu-field-label">Made on top of</span>
+        <Field
+          label="Made on top of"
+          hint={
+            <>
+              A new worktree on <span className="mu-mono">{ticketText(made)}</span>. ← → stack it on
+              another worktree's branch instead.
+            </>
+          }
+        >
           <Select
             label="Made on top of"
             options={choices}
@@ -246,26 +251,18 @@ export function Assign({
             disabled={busy}
             onChange={setOn}
           />
-          <span className="mu-field-hint">
-            A new worktree on <span className="mu-mono">{ticketText(made)}</span>. ← → stack it on
-            another worktree's branch instead.
-          </span>
-        </div>
+        </Field>
       ) : (
         <p className="mu-meta">
           In the ticket's worktree, on{" "}
-          <span className="mu-branch">⎇ {ticketText(existing[0]?.kind.branch ?? "")}</span>.
+          <BranchName>{ticketText(existing[0]?.kind.branch ?? "")}</BranchName>.
         </p>
       )}
       <p className="mu-meta">
         {name} gets the ticket as its first prompt, marked as a description of the work, never as
         instructions.
       </p>
-      {error ? (
-        <p className="tickets-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Dialog>
   );
 }

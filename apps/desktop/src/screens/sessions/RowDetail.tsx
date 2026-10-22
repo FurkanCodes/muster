@@ -5,7 +5,7 @@
 
 import { useDaemon } from "../../app/context";
 import { Page, PageHeader, PageMeta, PageTitle } from "../../app/Page";
-import { branchOf, projectColour } from "../../state/selectors";
+import { branchOf } from "../../state/selectors";
 import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
 import { DiffStat, PullRequest } from "../../ui/status";
 import type { TreeRow } from "./tree";
@@ -16,18 +16,15 @@ function WorktreeHead({ id }: { id: string }) {
     return workspace ? branchOf(workspace) : "";
   });
   const project = useDaemon((state) => state.projects[state.workspaces[id]?.project ?? ""]?.name);
-  const colour = useDaemon((state) => projectColour(state, state.workspaces[id]?.project ?? ""));
   const added = useDaemon((state) => state.workspaces[id]?.changes?.added ?? null);
   const removed = useDaemon((state) => state.workspaces[id]?.changes?.removed ?? 0);
   const files = useDaemon((state) => state.workspaces[id]?.changes?.files ?? 0);
   const pr = useDaemon((state) => state.workspaces[id]?.pull_request ?? null);
   return (
     <>
-      <PageTitle className="mu-branch">⎇ {branch}</PageTitle>
+      <PageTitle>⎇ {branch}</PageTitle>
       <PageMeta>
-        <span className="mu-where">
-          in <span className={`mu-p${colour}`}>{project}</span>
-        </span>
+        <span>in {project}</span>
         {added === null ? null : <DiffStat added={added} removed={removed} files={files} />}
         {pr ? <PullRequest pr={pr} /> : null}
       </PageMeta>

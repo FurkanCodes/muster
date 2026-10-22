@@ -5,7 +5,7 @@
 // needs in the head and the body.
 
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
-import { IconButton } from "./controls";
+import { IconButton, Spacer } from "./controls";
 
 export function Panel({
   label,
@@ -56,7 +56,7 @@ export function PanelClose({
 }) {
   return (
     <>
-      <span className="mu-spacer" />
+      <Spacer />
       <IconButton
         icon="close"
         size="sm"

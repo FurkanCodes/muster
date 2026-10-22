@@ -27,7 +27,7 @@
 @import "../ui/tooltip.css";
 @import "./components/dialog.css";
 @import "./components/ticket-list.css";
-@import "./components/label.css";
+@import "../ui/label.css";
 @import "./components/select.css";
 @import "./components/agent-choice.css";
 @import "./components/settings.css";

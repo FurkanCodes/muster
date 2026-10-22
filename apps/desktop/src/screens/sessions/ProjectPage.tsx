@@ -23,19 +23,23 @@ import { doing, statusKind } from "../../lib/status";
 import type { DaemonState } from "../../state/daemon";
 import { branchOf, projectColour, standsBeside } from "../../state/selectors";
 import { Banner, BannerBody } from "../../ui/Banner";
-import { Button, IconButton } from "../../ui/controls";
+import { Button, IconButton, Spacer } from "../../ui/controls";
 import { ListItemEnd, ListItemMeta, ListItemTitle, RowButton } from "../../ui/List";
 import { Section, SectionTitle } from "../../ui/Section";
 import { Select } from "../../ui/Select";
 import {
   AgentLogo,
+  BranchName,
+  Clash,
   DiffStat,
+  ErrorText,
   MarkSpace,
   NewsDot,
   PullRequest,
   StatusMark,
   Swatch,
 } from "../../ui/status";
+import { Input } from "../../ui/TextField";
 import "./project.css";
 
 const NO_AGENTS: AddedAgent[] = [];
@@ -253,8 +257,9 @@ function Composer({
           />
         )}
         {place === "new" && !plain ? (
-          <input
-            className="mu-field-input mu-mono project-branch"
+          <Input
+            mono
+            className="project-branch"
             aria-label="Branch"
             placeholder="branch, if you like"
             autoComplete="off"
@@ -276,7 +281,7 @@ function Composer({
           disabled={task.busy}
           onChange={setHarness}
         />
-        <span className="mu-spacer" />
+        <Spacer />
         <Button
           variant="primary"
           type="submit"
@@ -291,11 +296,7 @@ function Composer({
           <BannerBody>{warning}</BannerBody>
         </Banner>
       ) : null}
-      {task.error ? (
-        <p className="mu-meta project-error" role="alert">
-          {task.error}
-        </p>
-      ) : null}
+      {task.error ? <ErrorText size="meta">{task.error}</ErrorText> : null}
     </form>
   );
 }
@@ -324,16 +325,19 @@ function PlaceCard({ id, onStart }: { id: WorkspaceId; onStart: (id: WorkspaceId
         .map((row) => row.id),
     ),
   );
-  const where = plain ? "The folder itself" : `⎇ ${branch}`;
   return (
     <li className="project-place">
       <div className="project-place-head">
-        <span className={plain ? "mu-cut" : "mu-branch mu-cut"}>{where}</span>
+        {plain ? (
+          <span className="mu-cut">The folder itself</span>
+        ) : (
+          <BranchName className="mu-cut">{branch}</BranchName>
+        )}
         {kind === "checkout" ? <span className="mu-meta">your checkout</span> : null}
         {added || removed ? <DiffStat added={added} removed={removed} /> : null}
-        {clash ? <span className={`mu-clash-${clash}`}>{clash}</span> : null}
+        {clash ? <Clash kind={clash} /> : null}
         {pr ? <PullRequest pr={pr} /> : null}
-        <span className="mu-spacer" />
+        <Spacer />
         <IconButton
           icon="plus"
           size="sm"

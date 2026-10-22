@@ -15,7 +15,7 @@ import { useKeyLabel } from "../../keys/useKeymap";
 import { ago } from "../../lib/format";
 import { Button } from "../../ui/controls";
 import { Detail, DetailList } from "../../ui/DetailList";
-import { Dialog } from "../../ui/Dialog";
+import { Dialog, DialogText } from "../../ui/Dialog";
 import { entryLabel, oneLine, turnOf } from "./labels";
 
 function failure(error: unknown): string {
@@ -205,12 +205,12 @@ function PlanDialog({
         </>
       }
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         {entry
           ? `The worktree's files go back as they were ${ago(now - entry.started)} ago.`
           : `The worktree's files go back as they were before #${plan.number}.`}{" "}
         What is there now is kept first, so this can be put back too.
-      </p>
+      </DialogText>
       <DetailList>
         {plan.later > 0 ? (
           <Detail name="Goes with it">

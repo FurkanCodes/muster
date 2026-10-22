@@ -11,15 +11,17 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useActions, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
 import type { Command } from "../../ipc/generated/Command";
+import type { FileChange } from "../../ipc/generated/FileChange";
 import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
 import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { splitPath } from "../../lib/format";
 import type { Hint } from "../../state/ui";
 import { Button, Segmented } from "../../ui/controls";
+import { DiffFrame } from "../../ui/DiffView";
 import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
-import { fileKind } from "../../ui/FileRow";
-import { DiffStat } from "../../ui/status";
+import { FileKind } from "../../ui/FileRow";
+import { DiffStat, MarkSpace } from "../../ui/status";
 import { ChangesList, type View } from "./ChangesList";
 import { ClashBanners } from "./ClashBanners";
 import { DiffPanel } from "./DiffPanel";
@@ -279,7 +281,7 @@ function WorkspaceChanges({
             }
           />
         ) : (
-          <div className="mu-diffview ui-diff changes-pick">
+          <DiffFrame className="changes-pick">
             <EmptyState>
               <EmptyStateText>
                 {view === "turns"
@@ -287,7 +289,7 @@ function WorkspaceChanges({
                   : "Choose a file to see its diff."}
               </EmptyStateText>
             </EmptyState>
-          </div>
+          </DiffFrame>
         )}
       </div>
       {undoing !== null ? (
@@ -316,17 +318,14 @@ function FileHead({
   children,
 }: {
   path: string;
-  kind: Parameters<typeof fileKind>[0] | undefined;
+  kind: FileChange["kind"] | undefined;
   part: string;
   children: ReactNode;
 }) {
   const { dir, name } = splitPath(oneLine(path));
-  const [letter, tone] = kind ? fileKind(kind) : ["", "M"];
   return (
     <>
-      <span className={`mu-file-kind mu-file-kind--${tone} mu-mono`} aria-hidden="true">
-        {letter}
-      </span>
+      {kind ? <FileKind kind={kind} /> : <MarkSpace />}
       <span className="mu-mono mu-cut changes-diff-path" title={path}>
         <span className="mu-quiet">{dir}</span>
         {name}

@@ -138,3 +138,24 @@ export function Dialog({
     </dialog>
   );
 }
+
+/** A dialog's running text: what it asks, what follows from it; `busy`, what it is waiting for. */
+export function DialogText({
+  busy = false,
+  className,
+  children,
+}: {
+  busy?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <p
+      className={className ? `mu-dialog-text ${className}` : "mu-dialog-text"}
+      role={busy ? "status" : undefined}
+      aria-busy={busy || undefined}
+    >
+      {children}
+    </p>
+  );
+}

@@ -13,9 +13,10 @@ import { useKeyLabel } from "../../keys/useKeymap";
 import { projectColour } from "../../state/selectors";
 import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { Dialog, DialogText } from "../../ui/Dialog";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
+import { Input } from "../../ui/TextField";
 import { type Draft, useSettings } from "./context";
 import { projectSection, rowKey, type Section } from "./model";
 import { Control, Footnote, Group, openSelect, Page, SettingRow, SettingText } from "./Row";
@@ -76,17 +77,16 @@ function FieldRow({
       level="sub"
       act={() => input.current?.focus()}
     >
-      <label className="mu-setting-text" htmlFor={id}>
-        <span>{oneLine(field.setting.label)}</span>
-        <span className="mu-meta">
-          {field.setting.required ? `${tracker} asks for it.` : "If you like."}
-        </span>
-      </label>
+      <SettingText
+        htmlFor={id}
+        name={oneLine(field.setting.label)}
+        does={field.setting.required ? `${tracker} asks for it.` : "If you like."}
+      />
       <Control>
-        <input
+        <Input
           ref={input}
           id={id}
-          className="mu-field-input app-settings-field"
+          className="app-settings-field"
           value={field.text}
           autoComplete="off"
           spellCheck={false}
@@ -147,10 +147,10 @@ function RemoveProject({ project, name }: { project: ProjectId; name: string }) 
         </Control>
       </SettingRow>
       {blocked ? (
-        <p className="mu-footnote app-settings-footnote app-settings-footnote--warn">
+        <Footnote tone="warn">
           It has {worktreesWord(worktrees)}, so it cannot be removed yet. Remove{" "}
           {worktrees === 1 ? "the worktree" : "them"} first.
-        </p>
+        </Footnote>
       ) : null}
       {asking ? (
         <Dialog
@@ -174,10 +174,10 @@ function RemoveProject({ project, name }: { project: ProjectId; name: string }) 
             </>
           }
         >
-          <p className="mu-dialog-text">
+          <DialogText>
             Muster forgets it and what it knows of it. The folder and its repository stay as they
             are.
-          </p>
+          </DialogText>
         </Dialog>
       ) : null}
     </Group>

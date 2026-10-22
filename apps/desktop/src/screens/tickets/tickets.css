@@ -26,12 +26,6 @@
   min-width: 0;
   min-height: 0;
 }
-.tickets-detail-head {
-  padding-top: var(--space-16);
-}
-.tickets-title-row {
-  align-items: flex-start;
-}
 .tickets-detail-body {
   flex: 1;
   min-height: 0;
@@ -87,10 +81,6 @@
 .tickets-state {
   padding: var(--space-8) var(--space-12);
 }
-.tickets-error {
-  color: var(--waiting);
-  overflow-wrap: anywhere;
-}
 .tickets-loading {
   display: flex;
   flex-direction: column;
@@ -112,14 +102,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tickets-title-row .mu-pane-title {
-  overflow-wrap: anywhere;
-  text-wrap: pretty;
-}
 .tickets-screen .mu-group {
   flex-wrap: wrap;
 }
 .tickets-cleanup .mu-branch {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+/* The ticket's heading: its title, wrapping, then its key and facts, its actions at the end. */
+.tickets-detail-heading {
+  padding: var(--space-16) var(--space-20) var(--space-10);
+}
+.tickets-detail-heading .mu-heading-title {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.tickets-detail-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-16);
 }

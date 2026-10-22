@@ -78,10 +78,11 @@ export function Kbd({ children, className = "" }: { children: ReactNode; classNa
 }
 
 /** A key cap and what it does. */
-export function Hint({ keys, does }: { keys: string; does: string }) {
+/** A key and what it does: `⏎ answer`; several keys that do the same, each in its cap. */
+export function Hint({ keys, does }: { keys: string | readonly string[]; does: string }) {
   return (
     <span className="mu-hint">
-      <Kbd>{keys}</Kbd>
+      {typeof keys === "string" ? <Kbd>{keys}</Kbd> : keys.map((key) => <Kbd key={key}>{key}</Kbd>)}
       {does}
     </span>
   );
@@ -156,5 +157,14 @@ export function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+/** Room taking what is left in a row, pushing what follows to its end; where it `dragsWindow`, the window moves by it. */
+export function Spacer({ dragsWindow = false }: { dragsWindow?: boolean }) {
+  return dragsWindow ? (
+    <span className="mu-spacer" data-tauri-drag-region />
+  ) : (
+    <span className="mu-spacer" />
   );
 }

@@ -12,6 +12,9 @@ import type { HostedRepository } from "../ipc/generated/HostedRepository";
 import { whenKnown } from "../state/whenKnown";
 import { Button } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
+import { FolderOption } from "../ui/FolderOption";
+import { Label } from "../ui/Label";
+import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
 import { said } from "./actions";
 import { folderOf, repositoryName, shownRepositories } from "./repositories";
@@ -164,26 +167,23 @@ export default function CloneProject() {
           className="ui-flow-folders"
         >
           {shown.map((repository, index) => (
-            // biome-ignore lint/a11y/useKeyWithClickEvents: the field keeps the keys; ↑↓ there choose, as a click does here.
-            <div
+            <FolderOption
               key={repository.name}
               id={`${id}-${repository.name}`}
-              role="option"
-              tabIndex={-1}
-              aria-selected={index === at}
-              className="mu-folder ui-flow-repository"
-              onClick={() => setAt(index)}
-              onDoubleClick={() => {
+              selected={index === at}
+              className="ui-flow-repository"
+              onChoose={() => setAt(index)}
+              onOpen={() => {
                 setAt(index);
                 void submit();
               }}
             >
               <span className="mu-mono mu-cut">{repository.name}</span>
-              {repository.private ? <span className="mu-label">private</span> : null}
+              {repository.private ? <Label>private</Label> : null}
               {repository.description ? (
                 <span className="mu-meta mu-cut">{repository.description}</span>
               ) : null}
-            </div>
+            </FolderOption>
           ))}
         </div>
         {listing.state === "asking" ? (
@@ -191,9 +191,7 @@ export default function CloneProject() {
             Asking GitHub…
           </span>
         ) : listing.state === "failed" ? (
-          <span className="mu-meta ui-flow-error" role="alert">
-            {listing.error} ⏎ still clones one typed as owner/name.
-          </span>
+          <ErrorText size="meta">{listing.error} ⏎ still clones one typed as owner/name.</ErrorText>
         ) : shown.length === 0 ? (
           <span className="mu-meta">None of yours matches; ⏎ clones one typed as owner/name.</span>
         ) : null}

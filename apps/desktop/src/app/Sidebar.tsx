@@ -19,7 +19,7 @@ import { useKeymap } from "../keys/useKeymap";
 import { keep, kept } from "../state/kept";
 import { chats } from "../state/selectors";
 import type { ListId } from "../state/ui";
-import { IconButton, Kbd, Segmented } from "../ui/controls";
+import { IconButton, Kbd, Segmented, Spacer } from "../ui/controls";
 import { Icon, type IconName } from "../ui/Icon";
 import { KepFace, type Mood } from "../ui/Kep";
 import { ActionMenu, keysOf } from "../ui/Menu";
@@ -259,7 +259,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
     <nav className="mu-nav app-sidebar" aria-label="Sessions" hidden={folded} style={{ width }}>
       <div className="app-sidebar-top" data-tauri-drag-region>
         <KepFace mood={mood} />
-        <span className="mu-spacer" data-tauri-drag-region />
+        <Spacer dragsWindow />
         <SidebarToggle />
       </div>
       <SideButton

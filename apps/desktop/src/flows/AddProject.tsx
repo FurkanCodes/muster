@@ -9,6 +9,9 @@ import { useActions, useApp } from "../app/context";
 import type { Folders } from "../ipc/generated/desktop/Folders";
 import { Button } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
+import { FolderOption } from "../ui/FolderOption";
+import { Label } from "../ui/Label";
+import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
 import { addProjectAt, said } from "./actions";
 import { root, shown, split, step, up } from "./folders";
@@ -140,20 +143,16 @@ export default function AddProject() {
           className="ui-flow-folders"
         >
           {folders.map((entry, index) => (
-            // biome-ignore lint/a11y/useKeyWithClickEvents: the field keeps the keys; ↑↓ there choose, as a click does here.
-            <div
+            <FolderOption
               key={entry.path}
               id={`${id}-${entry.name}`}
-              role="option"
-              tabIndex={-1}
-              aria-selected={index === at}
-              className="mu-folder"
-              onClick={() => setAt(index)}
-              onDoubleClick={() => type(`${folder}${entry.name}/`)}
+              selected={index === at}
+              onChoose={() => setAt(index)}
+              onOpen={() => type(`${folder}${entry.name}/`)}
             >
               <Name name={entry.name} typed={name} />
-              {entry.git ? <span className="mu-label">git</span> : null}
-            </div>
+              {entry.git ? <Label>git</Label> : null}
+            </FolderOption>
           ))}
         </div>
         {!folder ? (
@@ -163,9 +162,7 @@ export default function AddProject() {
             Reading {folder}…
           </span>
         ) : listing.error ? (
-          <span className="mu-meta ui-flow-error" role="alert">
-            {listing.error}
-          </span>
+          <ErrorText size="meta">{listing.error}</ErrorText>
         ) : folders.length === 0 ? (
           <span className="mu-meta">
             {name ? `No folder in ${folder} holds “${name}”.` : `${folder} holds no folders.`} ⏎

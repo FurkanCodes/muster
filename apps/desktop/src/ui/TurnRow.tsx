@@ -4,7 +4,7 @@ import type { Entry } from "../ipc/generated/Entry";
 import { agentOf } from "../lib/agents";
 import { ago } from "../lib/format";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "./List";
-import { AgentLogo, DiffStat } from "./status";
+import { AgentLogo, AgentMark, DiffStat } from "./status";
 
 const AGENTS = ["claude", "codex", "gemini", "opencode", "copilot"];
 
@@ -47,9 +47,17 @@ export function TurnRow({
       {entry.kind.kind === "turn" ? (
         <AgentLogo harness={harness || harnessNamed(entry.kind.agent)} size="sm" />
       ) : (
-        <span className="mu-logo mu-logo--sm mu-logo--mark" aria-hidden="true">
-          {entry.kind.kind === "undo" ? "↺" : entry.kind.kind === "moved" ? "⎇" : "✎"}
-        </span>
+        <AgentMark
+          mark={entry.kind.kind === "undo" ? "↺" : entry.kind.kind === "moved" ? "⎇" : "✎"}
+          label={
+            entry.kind.kind === "undo"
+              ? "put back"
+              : entry.kind.kind === "moved"
+                ? "moved"
+                : "by hand"
+          }
+          size="sm"
+        />
       )}
       <ListItemText>
         <ListItemTitle>{label}</ListItemTitle>

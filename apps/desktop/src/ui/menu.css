@@ -1,5 +1,6 @@
-/* Menu (ui/Menu.tsx, on Radix's dropdown menu), and the palette's items. */
-.mu-menu {
+/* Menu (ui/Menu.tsx, on Radix's dropdown menu); the palette's lines (flows/Palette.tsx) and a Select's list (ui/Select.tsx) are drawn as it is. */
+.mu-menu,
+.mu-select-menu {
   min-width: var(--size-menu-min);
   display: flex;
   flex-direction: column;
@@ -14,7 +15,9 @@
   line-height: 16px;
   color: var(--text-quiet);
 }
-.mu-menu-item {
+.mu-menu-item,
+.mu-palette-item,
+.mu-select-option {
   width: 100%;
   height: var(--size-control-md);
   display: flex;
@@ -30,22 +33,27 @@
   text-align: left;
   cursor: pointer;
 }
-.mu-menu-item:hover {
+.mu-menu-item:hover,
+.mu-palette-item:hover,
+.mu-select-option:hover {
   background: var(--surface-raised);
 }
 /* The item the pointer or the arrows are on (Radix's highlight), and the palette's own. */
 .mu-menu-item[data-highlighted],
-.mu-menu-item.is-active {
+.mu-palette-item.is-active,
+.mu-select-option.is-active {
   background: var(--surface-lit);
   outline: none;
 }
-.mu-menu-item .mu-kbd {
+.mu-menu-item .mu-kbd,
+.mu-palette-item .mu-kbd {
   margin-left: auto;
 }
 .mu-menu-item--danger {
   color: var(--waiting);
 }
-.mu-menu-sep {
+.mu-menu-sep,
+.mu-select-sep {
   height: var(--stroke-hairline);
   margin: var(--space-4) var(--space-8);
   background: var(--line);
@@ -59,4 +67,8 @@
   position: fixed;
   width: 0;
   height: 0;
+}
+/* A Select's list holds the keys as any list does: its lit option says so, not a ring. */
+.mu-select-menu:focus-visible {
+  outline: none;
 }

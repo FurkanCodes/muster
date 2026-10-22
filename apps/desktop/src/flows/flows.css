@@ -46,9 +46,6 @@
 .ui-flow-quiet {
   font-weight: 400;
 }
-.ui-flow-error {
-  color: var(--waiting);
-}
 .ui-flow-folders {
   display: flex;
   flex-direction: column;

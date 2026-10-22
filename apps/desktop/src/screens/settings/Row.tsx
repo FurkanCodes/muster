@@ -6,6 +6,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
 import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { Label } from "../../ui/Label";
 import { Section, SectionTitle } from "../../ui/Section";
 import { Swatch } from "../../ui/status";
 import { type RowBehaviour, useSettings } from "./context";
@@ -115,17 +116,27 @@ export function SettingText({
   name,
   label,
   does,
+  htmlFor,
 }: {
   name: ReactNode;
   label?: string;
   does?: ReactNode;
+  /** The input it names, where its control is a field: then it is that field's label. */
+  htmlFor?: string;
 }) {
+  if (htmlFor)
+    return (
+      <label className="mu-setting-text" htmlFor={htmlFor}>
+        <span>{name}</span>
+        {does ? <span className="mu-meta">{does}</span> : null}
+      </label>
+    );
   return (
     <span className="mu-setting-text">
       {label ? (
         <span className="mu-setting-name">
           {name}
-          <span className="mu-label">{label}</span>
+          <Label>{label}</Label>
         </span>
       ) : (
         <span>{name}</span>
@@ -154,8 +165,11 @@ export function Page({
   swatch,
   lead,
   aside,
+  busy = false,
   children,
 }: {
+  /** Its settings are being read: what it says is all it has yet. */
+  busy?: boolean;
   title: string;
   /** A project's colour, beside its name. */
   swatch?: number;
@@ -165,7 +179,7 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <div className="mu-settings">
+    <div className="mu-settings" aria-busy={busy || undefined}>
       <Heading className="app-settings-heading">
         <HeadingTitle>
           {swatch ? <Swatch colour={swatch} /> : null}
@@ -179,9 +193,18 @@ export function Page({
   );
 }
 
-/** Where the page's settings are saved. */
-export function Footnote({ children }: { children: ReactNode }) {
-  return <p className="mu-footnote app-settings-footnote">{children}</p>;
+/** A word under a page's settings: where they are saved, what does not read. */
+export function Footnote({
+  tone = "quiet",
+  children,
+}: {
+  /** `warn` where it says what does not read; `text` where it is what the page is about. */
+  tone?: "quiet" | "warn" | "text";
+  children: ReactNode;
+}) {
+  return (
+    <p className={`mu-footnote app-settings-footnote app-settings-footnote--${tone}`}>{children}</p>
+  );
 }
 
 /** Muster's own settings do not read: the rest are its defaults meanwhile. */

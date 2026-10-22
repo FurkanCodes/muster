@@ -9,6 +9,7 @@ import type { FileChange } from "../../ipc/generated/FileChange";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import { Button } from "../../ui/controls";
 import { List } from "../../ui/List";
+import { ErrorText } from "../../ui/status";
 import { TurnRow, turnLineId } from "../../ui/TurnRow";
 import { FileList } from "./FileList";
 import { commonFolder, entryLabel, oneLine } from "./labels";
@@ -36,11 +37,11 @@ function Waiting({
     );
   if (answer.state !== "error") return null;
   return (
-    <div className="changes-note" role="alert">
-      <p className="mu-note--error">
+    <div className="changes-note">
+      <ErrorText>
         {refused}
         {answer.error}
-      </p>
+      </ErrorText>
       <Button size="sm" title="Ask again (r)" onClick={onAgain}>
         Ask again
       </Button>

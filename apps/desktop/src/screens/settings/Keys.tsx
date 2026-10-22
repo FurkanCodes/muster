@@ -13,7 +13,9 @@ import { pressedChord, writtenChord } from "../../keys/chord";
 import { checkKey, isSet, refusalText, warningsOf, warningText } from "../../keys/keymap";
 import { useKeymap } from "../../keys/useKeymap";
 import { Button, Kbd } from "../../ui/controls";
+import { Label } from "../../ui/Label";
 import { Section, SectionTitle } from "../../ui/Section";
+import { Input } from "../../ui/TextField";
 import { useSettings } from "./context";
 import { type KeyEntry, keyEntries, narrowed } from "./keyRows";
 import { rowKey } from "./model";
@@ -61,8 +63,8 @@ function KeyItem({ entry, suggested }: { entry: KeyEntry; suggested: boolean }) 
       >
         <span className="mu-keyrow-what">
           {entry.what}
-          {entry.set ? <span className="mu-label">yours</span> : null}
-          {suggested ? <span className="mu-label">its suggestion</span> : null}
+          {entry.set ? <Label>yours</Label> : null}
+          {suggested ? <Label>its suggestion</Label> : null}
         </span>
         <button
           type="button"
@@ -179,9 +181,9 @@ export function Keys({ preferences }: { preferences: Preferences }) {
         className="app-keys-find"
         act={() => find.current?.focus()}
       >
-        <input
+        <Input
           ref={find}
-          className="mu-field-input app-keys-find-input"
+          className="app-keys-find-input"
           aria-label="Find an action or a key"
           placeholder="Find an action or a key"
           value={state.find}
@@ -235,17 +237,12 @@ export function Keys({ preferences }: { preferences: Preferences }) {
       ) : null}
 
       {warnings.map((warning) => (
-        <p
-          key={warningText(warning)}
-          className="mu-footnote app-settings-footnote app-settings-footnote--warn"
-        >
+        <Footnote key={warningText(warning)} tone="warn">
           {warningText(warning)}.
-        </p>
+        </Footnote>
       ))}
       {map.problem ? (
-        <p className="mu-footnote app-settings-footnote app-settings-footnote--warn">
-          {map.problem}: Muster's own keys hold until it reads.
-        </p>
+        <Footnote tone="warn">{map.problem}: Muster's own keys hold until it reads.</Footnote>
       ) : null}
 
       <Footnote>

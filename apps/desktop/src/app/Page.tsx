@@ -15,6 +15,7 @@
 
 import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { Spacer } from "../ui/controls";
 import { SidebarAway } from "./Sidebar";
 
 export function Page({
@@ -82,7 +83,7 @@ export function PageMeta({
 export function PageActions({ children }: { children: ReactNode }) {
   return (
     <>
-      <span className="mu-spacer" data-tauri-drag-region />
+      <Spacer dragsWindow />
       <div className="mu-pane-actions">{children}</div>
     </>
   );

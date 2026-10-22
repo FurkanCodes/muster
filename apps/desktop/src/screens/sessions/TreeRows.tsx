@@ -15,7 +15,15 @@ import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf, projectColour } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
-import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark, Swatch } from "../../ui/status";
+import {
+  AgentLogo,
+  BranchName,
+  DiffStat,
+  NewsDot,
+  PullRequest,
+  StatusMark,
+  Swatch,
+} from "../../ui/status";
 import { mostUrgent, sessionsOn, type TreeRow } from "./tree";
 
 /** The row's id in the tree, for `aria-activedescendant`. */
@@ -167,7 +175,7 @@ export function WorktreeLine(props: LineProps) {
       label={inGit ? branch : "not a git repository"}
     >
       {inGit ? (
-        <span className="mu-branch mu-cut">⎇ {branch}</span>
+        <BranchName className="mu-cut">{branch}</BranchName>
       ) : (
         <span className="mu-quiet mu-cut">not a git repository</span>
       )}

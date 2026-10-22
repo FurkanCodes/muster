@@ -10,7 +10,7 @@ Dark is the first theme. Light follows the same rules value for value. A session
 
 ## Components
 
-The app's screens compose these and never write a component's class (`ARC-26`); a component's stylesheet sits beside it. The text utilities `mu-meta`, `mu-quiet`, `mu-cut` and `mu-mono` are the one exception.
+The app's screens compose these (`ARC-26`): a component's classes are written only in the file that defines it, and its stylesheet sits beside it; anywhere else it is used as a component. The text utilities `mu-meta`, `mu-quiet`, `mu-cut` and `mu-mono` are the one exception. A screen's own pieces (a ticket's line, a key's row, the tree's lines) are components of their own file, and the same holds for them.
 
 | Component | Parts | Where |
 |---|---|---|
@@ -25,8 +25,13 @@ The app's screens compose these and never write a component's class (`ARC-26`); 
 | DetailList | `DetailList`, `Detail` | `src/ui/DetailList.tsx` |
 | Menu | `ActionMenu` under its button or at a point, its items doing themselves on their keys (Radix) | `src/ui/Menu.tsx` |
 | Tooltip | `Tooltip`; every `IconButton` has one, its label and key (Radix) | `src/ui/Tooltip.tsx` |
-| Controls | `Button`, `IconButton`, `Segmented` (with counts), `Kbd`, `Hint`, `Spinner`, `Switch`, `Select`, `TextField`, `Dialog` (the browser's `<dialog>`) | `src/ui` |
-| Status | `StatusMark`, `MarkSpace`, `NewsDot`, `AgentLogo`, `Badge`, `PullRequest`, `DiffStat`, `Branch`, `Swatch` | `src/ui/status.tsx` |
+| Controls | `Button`, `IconButton`, `Segmented` (with counts), `Kbd`, `Hint` (one key or several), `Spacer`, `Spinner`, `Switch`, `Select` | `src/ui` |
+| Fields | `TextField`, `TextArea`, `Field` (a label over any control, a hint or an error under it), `Input` | `src/ui/TextField.tsx` |
+| Dialog | `Dialog` (the browser's `<dialog>`), `DialogText` | `src/ui/Dialog.tsx` |
+| Label | `Label`, `Labels` | `src/ui/Label.tsx` |
+| Status | `StatusMark`, `MarkSpace`, `NewsDot`, `AgentLogo`, `AgentMark`, `Badge`, `PullRequest`, `DiffStat`, `Branch`, `BranchName`, `Clash`, `Found`, `Missing`, `Version`, `ErrorText`, `Swatch` | `src/ui/status.tsx` |
+| Diff | `DiffView`, `DiffFrame`, `DiffHead`, `DiffWaiting`; `FileRow`, `FileKind`; `TurnRow` | `src/ui` |
+| FolderOption | a folder or repository offered under a typed path | `src/ui/FolderOption.tsx` |
 
 A list the keyboard moves through is a `List`, and has one model: the list holds the focus and names its selected line (`aria-activedescendant`); a line never takes the focus, by key or by pointer. A row with a control in it (a setting's switch, a field) is not a `List`'s line: there the row or its control takes the focus.
 

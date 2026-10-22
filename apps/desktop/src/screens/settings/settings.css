@@ -128,10 +128,6 @@
   height: var(--size-control-md);
 }
 
-.app-settings-untold {
-  color: var(--waiting);
-}
-
 .app-settings-footnote--text {
   color: var(--text);
 }

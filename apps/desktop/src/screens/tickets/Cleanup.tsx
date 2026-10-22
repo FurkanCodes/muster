@@ -5,7 +5,8 @@ import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
 import { Button } from "../../ui/controls";
 import { Detail, DetailList } from "../../ui/DetailList";
-import { Dialog } from "../../ui/Dialog";
+import { Dialog, DialogText } from "../../ui/Dialog";
+import { BranchName, ErrorText } from "../../ui/status";
 import { shownKey } from "./agents";
 import { message, type TicketsModel } from "./data";
 import { ticketText } from "./TicketText";
@@ -122,7 +123,7 @@ export function CloseTicket({
       }
     >
       {phase === "close" ? (
-        <p className="mu-dialog-text">
+        <DialogText>
           Everyone watching{" "}
           {repository ? (
             <>
@@ -130,7 +131,7 @@ export function CloseTicket({
             </>
           ) : null}
           {key} is told. Muster changes nothing else in the tracker.
-        </p>
+        </DialogText>
       ) : (
         <DetailList className="tickets-cleanup">
           {working.length ? (
@@ -143,7 +144,7 @@ export function CloseTicket({
             {worktrees.map((w, i) => (
               <span key={w.id}>
                 {i ? (i === worktrees.length - 1 ? " and " : ", ") : null}
-                <span className="mu-branch">⎇ {ticketText(w.kind.branch)}</span>
+                <BranchName>{ticketText(w.kind.branch)}</BranchName>
               </span>
             ))}
             , once nothing runs in {worktrees.length === 1 ? "it" : "them"}
@@ -157,11 +158,7 @@ export function CloseTicket({
           </Detail>
         </DetailList>
       )}
-      {error ? (
-        <p className="tickets-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Dialog>
   );
 }
@@ -315,16 +312,12 @@ function Cleanup({
         )
       }
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         {dirty
           ? `It has changes not committed. Removing deletes its folder and those changes. The branch stays.`
           : "Stopping its agents. Its worktrees are removed once nothing runs in them. Branches are kept."}
-      </p>
-      {error ? (
-        <p className="tickets-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      </DialogText>
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Dialog>
   );
 }

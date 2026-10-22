@@ -17,7 +17,7 @@ import { toggleFullScreen } from "../panels/usePanelKeys";
 import { branchOf, projectColour } from "../state/selectors";
 import { IconButton } from "../ui/controls";
 import { ActionMenu, keysOf, type MenuItem } from "../ui/Menu";
-import { AgentLogo, Branch, DiffStat, PullRequest } from "../ui/status";
+import { AgentLogo, Branch, Clash, DiffStat, PullRequest } from "../ui/status";
 import { browsePullRequest } from "./byHand";
 import { NeedsYouBanner } from "./NeedsYouBanner";
 import "./session.css";
@@ -91,7 +91,7 @@ function Where({ session, onChanges }: { session: SessionId; onChanges: () => vo
           title={`See where it meets other work (${changesKey})`}
           onClick={onChanges}
         >
-          <span className={`mu-clash-${clash}`}>{clash}</span>
+          <Clash kind={clash} />
         </button>
       ) : null}
       {pr ? (
