@@ -91,7 +91,8 @@ impl Supervisor {
             .workspaces
             .iter()
             .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
-            .count();
+            .count()
+            + self.worktree_jobs.making_in(project);
         if worktrees > 0 {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,

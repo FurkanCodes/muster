@@ -1,26 +1,145 @@
 //! Creating and removing git worktrees (`ARCHITECTURE.md` §5).
 //!
-//! Worktrees go under the worktrees directory, grouped by project. Removing
-//! one deletes its directory but keeps its branch: the work on it is the
-//! person's. Git runs while the Supervisor waits, so a slow checkout delays
-//! other commands and status updates, but never keystrokes.
+//! Worktrees go under the worktrees directory, grouped by project. A new
+//! branch starts from the newest of the branch it will merge into, here or
+//! on the remote, never from whatever the project's checkout has checked
+//! out. Removing one deletes its directory but keeps its branch: the work
+//! on it is the person's.
+//!
+//! The checks run in the Supervisor's loop; git's own work, which takes
+//! seconds in a large repository, runs off it (`ARC-13`) and comes back as
+//! [`Made`] or [`Removed`]. Meanwhile [`Jobs`] holds the branch and the
+//! folder, so nothing else takes them, the sync neither adopts nor forgets
+//! them, and nothing starts in a worktree going.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
+use muster_core::stacks::Stacked;
 use muster_core::{ProjectId, Workspace, WorkspaceId, WorkspaceKind};
+use tokio::sync::oneshot;
 
-use super::{Supervisor, store_closed, store_error};
+use super::{Request, Supervisor, by_hand, issues, store_closed, store_error};
 use crate::git::{self, GitError};
-use crate::worktree_sync::{Listed, ProjectWorktrees};
+
+/// Worktrees git is making or removing off the loop.
+#[derive(Debug, Default)]
+pub(super) struct Jobs {
+    making: Vec<Making>,
+    removing: HashSet<WorkspaceId>,
+}
+
+/// A worktree being made: its project, branch and folder.
+#[derive(Debug)]
+struct Making {
+    project: ProjectId,
+    branch: String,
+    path: PathBuf,
+}
+
+impl Jobs {
+    fn making_branch(&self, project: ProjectId, branch: &str) -> bool {
+        self.making
+            .iter()
+            .any(|making| making.project == project && making.branch == branch)
+    }
+
+    /// How many of `project`'s worktrees are being made.
+    pub(super) fn making_in(&self, project: ProjectId) -> usize {
+        self.making
+            .iter()
+            .filter(|making| making.project == project)
+            .count()
+    }
+
+    /// Whether a worktree is being made at `path`.
+    pub(super) fn is_making(&self, path: &Path) -> bool {
+        self.making.iter().any(|making| making.path == path)
+    }
+
+    /// The folders worktrees are being made in.
+    pub(super) fn making_paths(&self) -> impl Iterator<Item = &Path> {
+        self.making.iter().map(|making| making.path.as_path())
+    }
+
+    /// Whether `workspace`'s worktree is being removed.
+    pub(super) fn is_removing(&self, workspace: WorkspaceId) -> bool {
+        self.removing.contains(&workspace)
+    }
+}
+
+/// What follows a worktree made off the loop.
+pub(super) enum Then {
+    /// Answer the command that asked for it.
+    Reply(oneshot::Sender<Result<Reply, ErrorBody>>),
+    /// Start a ticket's agent in it.
+    Ticket(Box<issues::TicketThen>),
+}
+
+impl Then {
+    fn refuse(self, error: ErrorBody) {
+        match self {
+            Self::Reply(reply) => {
+                tracing::info!(command = "create worktree", %error, "command refused");
+                let _ = reply.send(Err(error));
+            }
+            Self::Ticket(ticket) => ticket.refuse(error),
+        }
+    }
+}
+
+/// A worktree to make, as the checks in the loop left it.
+#[derive(Debug)]
+struct Plan {
+    project: ProjectId,
+    root: PathBuf,
+    /// The project's own settings, for the base its branch starts from.
+    overrides: PathBuf,
+    path: PathBuf,
+    branch: String,
+    /// Whether the branch exists already, to be checked out as it is.
+    exists: bool,
+    stacked_on: Option<Stacked>,
+}
+
+/// A worktree git made off the loop, or could not, on its way back.
+pub(super) struct Made {
+    plan: Plan,
+    /// Its folder by its real path.
+    outcome: Result<PathBuf, ErrorBody>,
+    then: Then,
+}
+
+/// A worktree git removed off the loop, or could not, on its way back.
+pub(super) struct Removed {
+    workspace: WorkspaceId,
+    outcome: Result<(), ErrorBody>,
+    reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+}
 
 impl Supervisor {
+    /// Makes a worktree of `project` on `branch` (a new name if none),
+    /// stacked on `on`'s branch if given; `then` follows once it is made.
     pub(super) async fn create_worktree(
         &mut self,
         project: ProjectId,
         branch: Option<String>,
         on: Option<WorkspaceId>,
-    ) -> Result<Reply, ErrorBody> {
+        then: Then,
+    ) {
+        match self.plan_worktree(project, branch, on).await {
+            Ok(plan) => self.make_worktree(plan, then),
+            Err(error) => then.refuse(error),
+        }
+    }
+
+    async fn plan_worktree(
+        &self,
+        project: ProjectId,
+        branch: Option<String>,
+        on: Option<WorkspaceId>,
+    ) -> Result<Plan, ErrorBody> {
         self.repository_root(project, "worktrees")?;
         let project = self
             .state
@@ -29,15 +148,15 @@ impl Supervisor {
             .find(|candidate| candidate.id == project)
             .cloned()
             .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no project {project}")))?;
+        let overrides = self
+            .config_dir
+            .join("projects")
+            .join(format!("{}.toml", project.id));
         let branch = match branch.map(|name| name.trim().to_owned()) {
             Some(name) if !name.is_empty() => name,
-            _ => {
-                let overrides = self
-                    .config_dir
-                    .join("projects")
-                    .join(format!("{}.toml", project.id));
-                default_branch(crate::config::muster_prefix(project.root.clone(), overrides).await)
-            }
+            _ => default_branch(
+                crate::config::muster_prefix(project.root.clone(), overrides.clone()).await,
+            ),
         };
         if !git::is_valid_branch_name(&project.root, &branch)
             .await
@@ -54,6 +173,12 @@ impl Supervisor {
                 format!("{branch} already has a worktree"),
             ));
         }
+        if self.worktree_jobs.making_branch(project.id, &branch) {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("a worktree for {branch} is being made already"),
+            ));
+        }
 
         let group = self
             .worktrees_dir
@@ -67,8 +192,10 @@ impl Supervisor {
                 format!("cannot create {}: {error}", group.display()),
             )
         })?;
+        // By its real path, as git lists worktrees and the sync finds them.
+        let group = tokio::fs::canonicalize(&group).await.unwrap_or(group);
         self.share_builds_in(&group).await;
-        let path = unused_path(&group, &slug(&branch)).await;
+        let path = unused_path(&group, &slug(&branch), &self.worktree_jobs).await;
         let exists = git::branch_exists(&project.root, &branch)
             .await
             .map_err(git_failure)?;
@@ -76,25 +203,62 @@ impl Supervisor {
             Some(on) => Some(self.stack_on(project.id, on, &branch, exists).await?),
             None => None,
         };
-        let start = stacked_on.as_ref().map(|stacked| stacked.at.as_str());
-        git::add_worktree(&project.root, &path, &branch, !exists, start)
-            .await
-            .map_err(|error| branch_clash(&error, &branch).unwrap_or_else(|| git_failure(error)))?;
-        let path = tokio::fs::canonicalize(&path).await.unwrap_or(path);
+        Ok(Plan {
+            project: project.id,
+            root: project.root,
+            overrides,
+            path,
+            branch,
+            exists,
+            stacked_on,
+        })
+    }
 
+    fn make_worktree(&mut self, plan: Plan, then: Then) {
+        self.worktree_jobs.making.push(Making {
+            project: plan.project,
+            branch: plan.branch.clone(),
+            path: plan.path.clone(),
+        });
+        let requests = self.requests.clone();
+        self.tasks.spawn(async move {
+            let outcome = add(&plan).await;
+            let made = Made {
+                plan,
+                outcome,
+                then,
+            };
+            let _ = requests.send(Request::WorktreeMade(Box::new(made))).await;
+        });
+    }
+
+    /// A worktree git made, or could not: kept, told and followed.
+    pub(super) async fn worktree_made(&mut self, made: Made) {
+        let Made {
+            plan,
+            outcome,
+            then,
+        } = made;
+        self.worktree_jobs
+            .making
+            .retain(|making| making.path != plan.path);
+        let path = match outcome {
+            Ok(path) => path,
+            Err(error) => return then.refuse(error),
+        };
         let workspace = Workspace {
             id: WorkspaceId::new(),
-            project: project.id,
+            project: plan.project,
             kind: WorkspaceKind::Worktree {
                 path: path.clone(),
-                branch,
+                branch: plan.branch,
             },
             created_at: self.clock.now(),
             pull_request: None,
             changes: None,
             timeline: None,
             clashes: Vec::new(),
-            stacked_on,
+            stacked_on: plan.stacked_on,
         };
         let stored = workspace.clone();
         let inserted = self
@@ -105,22 +269,60 @@ impl Supervisor {
             .and_then(|result| result.map_err(store_error));
         if let Err(error) = inserted {
             // Do not leave a worktree nobody knows about.
-            let _ = git::remove_worktree(&project.root, &path, true).await;
-            return Err(error);
+            let root = plan.root;
+            self.tasks.spawn(async move {
+                if let Err(error) = git::remove_worktree(&root, &path, true).await {
+                    tracing::warn!(%error, "could not remove a worktree the store refused");
+                }
+            });
+            return then.refuse(error);
         }
 
         self.state.workspaces.push(workspace.clone());
         let id = workspace.id;
         self.broadcast(Delta::WorkspaceUpserted(workspace));
         self.worktree_created(id);
-        Ok(Reply::WorktreeCreated { id })
+        match then {
+            Then::Reply(reply) => {
+                let _ = reply.send(Ok(Reply::WorktreeCreated { id }));
+            }
+            Then::Ticket(ticket) => self.start_ticket_agent(id, *ticket).await,
+        }
     }
 
     pub(super) async fn remove_worktree(
         &mut self,
         workspace: WorkspaceId,
         force: bool,
-    ) -> Result<Reply, ErrorBody> {
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    ) {
+        let (root, path) = match self.removal(workspace).await {
+            Ok(found) => found,
+            Err(error) => {
+                tracing::info!(command = "remove worktree", %error, "command refused");
+                let _ = reply.send(Err(error));
+                return;
+            }
+        };
+        self.worktree_jobs.removing.insert(workspace);
+        let requests = self.requests.clone();
+        self.tasks.spawn(async move {
+            let outcome = remove(&root, &path, force).await;
+            let removed = Removed {
+                workspace,
+                outcome,
+                reply,
+            };
+            let _ = requests
+                .send(Request::WorktreeRemoved(Box::new(removed)))
+                .await;
+        });
+    }
+
+    /// Where `workspace`'s worktree and its repository are, once what
+    /// ends with it has stopped; refused where it is no worktree, an agent
+    /// works there, or it is going already.
+    async fn removal(&mut self, workspace: WorkspaceId) -> Result<(PathBuf, PathBuf), ErrorBody> {
         let found = self
             .state
             .workspaces
@@ -130,7 +332,7 @@ impl Supervisor {
             .ok_or_else(|| {
                 ErrorBody::new(ErrorCode::NotFound, format!("no worktree {workspace}"))
             })?;
-        let path = match &found.kind {
+        let path = match found.kind {
             WorkspaceKind::Worktree { path, .. } => path,
             WorkspaceKind::Checkout { .. } => {
                 return Err(ErrorBody::new(
@@ -147,6 +349,12 @@ impl Supervisor {
                 ));
             }
         };
+        if self.worktree_jobs.is_removing(workspace) {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!("{} is being removed already", path.display()),
+            ));
+        }
         let root = self
             .state
             .projects
@@ -173,172 +381,38 @@ impl Supervisor {
         for (session, _) in ending {
             self.stop_session(session).await?;
         }
+        Ok((root, path))
+    }
 
-        let removed = if tokio::fs::try_exists(path).await.unwrap_or(true) {
-            git::remove_worktree(&root, path, force).await
-        } else {
-            // Its directory was deleted by hand; git only needs to forget it.
-            git::prune_worktrees(&root).await
+    /// A worktree git removed, or could not: forgotten and answered.
+    pub(super) async fn worktree_removed(&mut self, removed: Removed) {
+        let Removed {
+            workspace,
+            outcome,
+            reply,
+        } = removed;
+        self.worktree_jobs.removing.remove(&workspace);
+        let outcome = match outcome {
+            Ok(()) => self.forget_removed(workspace).await,
+            Err(error) => Err(error),
         };
-        removed.map_err(|error| match &error {
-            GitError::Failed { stderr, .. } if !force && is_dirty(stderr) => ErrorBody::new(
-                ErrorCode::Conflict,
-                format!(
-                    "{} has uncommitted changes; remove it with force to discard them",
-                    path.display()
-                ),
-            ),
-            _ => git_failure(error),
-        })?;
+        if let Err(error) = &outcome {
+            tracing::info!(command = "remove worktree", %error, "command refused");
+        }
+        let _ = reply.send(outcome);
+    }
 
+    async fn forget_removed(&mut self, workspace: WorkspaceId) -> Result<Reply, ErrorBody> {
         let at = self.clock.now();
         self.store
             .call(move |store| store.remove_workspace(workspace, at))
             .await
             .map_err(store_closed)?
             .map_err(store_error)?;
-
         self.drop_workspace(workspace);
         // The project's last worktree there takes the shared builds along.
         self.settle_shared_builds(false).await;
         Ok(Reply::Done)
-    }
-
-    /// Each project's root and where its worktrees are, for the sync.
-    pub(super) fn projects_for_sync(&self) -> Vec<ProjectWorktrees> {
-        self.state
-            .projects
-            .iter()
-            .map(|project| ProjectWorktrees {
-                project: project.id,
-                root: project.root.clone(),
-                known: self
-                    .state
-                    .workspaces
-                    .iter()
-                    .filter(|workspace| workspace.project == project.id)
-                    .filter(|workspace| workspace.kind.is_worktree())
-                    .filter_map(|workspace| workspace.kind.host_path().map(Path::to_owned))
-                    .collect(),
-            })
-            .collect()
-    }
-
-    /// Brings a project's worktrees in line with git's list, which may be a
-    /// moment old: a worktree made outside Muster is adopted if its
-    /// directory is there and no workspace has its path; one removed
-    /// outside Muster is forgotten if its directory is gone and nothing
-    /// runs in it. Checking the directories keeps a stale list from undoing
-    /// what Muster has just done.
-    pub(super) async fn sync_worktrees(&mut self, project: ProjectId, listed: Vec<Listed>) {
-        let Some(root) = self
-            .state
-            .projects
-            .iter()
-            .find(|candidate| candidate.id == project)
-            .map(|found| found.root.clone())
-        else {
-            return;
-        };
-        let present: Vec<PathBuf> = listed
-            .iter()
-            .filter(|entry| !entry.prunable)
-            .map(|entry| entry.path.clone())
-            .collect();
-
-        for entry in listed.into_iter().filter(|entry| !entry.prunable) {
-            let path = tokio::fs::canonicalize(&entry.path)
-                .await
-                .unwrap_or(entry.path);
-            let taken = path == root
-                || self.state.projects.iter().any(|other| other.root == path)
-                || self
-                    .state
-                    .workspaces
-                    .iter()
-                    .any(|workspace| workspace.kind.host_path() == Some(path.as_path()));
-            if taken || !tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_dir()) {
-                continue;
-            }
-            self.adopt_worktree(project, path, entry.branch).await;
-        }
-
-        let gone: Vec<(WorkspaceId, PathBuf)> = self
-            .state
-            .workspaces
-            .iter()
-            .filter(|workspace| workspace.project == project && workspace.kind.is_worktree())
-            .filter_map(|workspace| Some((workspace.id, workspace.kind.host_path()?.to_owned())))
-            .filter(|(_, path)| !present.contains(path))
-            .collect();
-        for (workspace, path) in gone {
-            let exists = tokio::fs::try_exists(&path).await.unwrap_or(true);
-            if exists || self.running_sessions_in(workspace) > 0 {
-                continue;
-            }
-            tracing::info!(%workspace, path = %path.display(), "a worktree was removed outside Muster");
-            self.forget_worktree(workspace).await;
-            // Git still holds the gone worktree's record, which keeps its
-            // branch checked out; its own cleanup lets the branch go.
-            if let Err(error) = git::prune_worktrees(&root).await {
-                tracing::warn!(%error, "could not prune worktrees");
-            }
-        }
-    }
-
-    /// Starts tracking a worktree made outside Muster.
-    async fn adopt_worktree(&mut self, project: ProjectId, path: PathBuf, branch: String) {
-        let workspace = Workspace {
-            id: WorkspaceId::new(),
-            project,
-            kind: WorkspaceKind::Worktree {
-                path: path.clone(),
-                branch: muster_core::text::one_line(&branch),
-            },
-            created_at: self.clock.now(),
-            pull_request: None,
-            changes: None,
-            timeline: None,
-            clashes: Vec::new(),
-            stacked_on: None,
-        };
-        let stored = workspace.clone();
-        match self
-            .store
-            .call(move |store| store.insert_workspace(&stored))
-            .await
-        {
-            Ok(Ok(())) => {
-                tracing::info!(path = %path.display(), "adopted a worktree made outside Muster");
-                let id = workspace.id;
-                self.state.workspaces.push(workspace.clone());
-                self.broadcast(Delta::WorkspaceUpserted(workspace));
-                self.worktree_created(id);
-            }
-            Ok(Err(error)) => tracing::error!(%error, "could not adopt a worktree"),
-            Err(_) => tracing::error!("could not adopt a worktree: the store stopped"),
-        }
-    }
-
-    /// Stops tracking a worktree that is already gone from disk.
-    async fn forget_worktree(&mut self, workspace: WorkspaceId) {
-        let at = self.clock.now();
-        match self
-            .store
-            .call(move |store| store.remove_workspace(workspace, at))
-            .await
-        {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
-                tracing::error!(%error, "could not forget a worktree");
-                return;
-            }
-            Err(_) => {
-                tracing::error!("could not forget a worktree: the store stopped");
-                return;
-            }
-        }
-        self.drop_workspace(workspace);
     }
 
     /// Takes a removed workspace and its sessions out of the state, and
@@ -373,6 +447,122 @@ impl Supervisor {
                 && matches!(&workspace.kind, WorkspaceKind::Worktree { branch: used, .. } if used == branch)
         })
     }
+
+    /// Whether a worktree of `project` is on `branch`, or being made on it.
+    pub(super) fn branch_taken(&self, project: ProjectId, branch: &str) -> bool {
+        self.state
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.project == project && workspace.kind.branch() == branch)
+            || self.worktree_jobs.making_branch(project, branch)
+    }
+}
+
+/// Git's work for `plan`, off the loop: the worktree's folder by its real
+/// path.
+async fn add(plan: &Plan) -> Result<PathBuf, ErrorBody> {
+    let start = match (&plan.stacked_on, plan.exists) {
+        (Some(stacked), _) => Some(stacked.at.clone()),
+        // An existing branch is checked out as it is.
+        (None, true) => None,
+        (None, false) => {
+            let configured = match by_hand::load_settings(plan.root.clone(), plan.overrides.clone())
+                .await
+            {
+                Ok(settings) => settings.base_branch,
+                Err(error) => {
+                    tracing::warn!(%error, "a new worktree starts from the remote's default branch");
+                    None
+                }
+            };
+            start_point(&plan.root, configured.as_deref()).await
+        }
+    };
+    git::add_worktree(
+        &plan.root,
+        &plan.path,
+        &plan.branch,
+        !plan.exists,
+        start.as_deref(),
+    )
+    .await
+    .map_err(|error| branch_clash(&error, &plan.branch).unwrap_or_else(|| git_failure(error)))?;
+    Ok(tokio::fs::canonicalize(&plan.path)
+        .await
+        .unwrap_or_else(|_| plan.path.clone()))
+}
+
+/// Git's work removing the worktree at `path` of the repository at
+/// `root`, off the loop.
+async fn remove(root: &Path, path: &Path, force: bool) -> Result<(), ErrorBody> {
+    let removed = if tokio::fs::try_exists(path).await.unwrap_or(true) {
+        git::remove_worktree(root, path, force).await
+    } else {
+        // Its directory was deleted by hand; git only needs to forget it.
+        git::prune_worktrees(root).await
+    };
+    removed.map_err(|error| match &error {
+        GitError::Failed { stderr, .. } if !force && is_dirty(stderr) => ErrorBody::new(
+            ErrorCode::Conflict,
+            format!(
+                "{} has uncommitted changes; remove it with force to discard them",
+                path.display()
+            ),
+        ),
+        _ => git_failure(error),
+    })
+}
+
+/// The commit a new branch of the repository at `root` starts from: the
+/// newest of the branch it will merge into (`configured`, or the remote's
+/// default), as the repository has it and as the remote last said. Where
+/// the two have parted, the repository's own, which may hold the person's
+/// work not pushed yet. `None`, for git's current commit, where neither is
+/// found.
+pub(super) async fn start_point(root: &Path, configured: Option<&str>) -> Option<String> {
+    let base = by_hand::base_of(root, configured).await;
+    let name = base.strip_prefix("origin/").unwrap_or(&base);
+    let here = commit(root, &format!("refs/heads/{name}")).await;
+    let remote = commit(root, &format!("refs/remotes/origin/{name}")).await;
+    match (here, remote) {
+        (Some(here), Some(remote)) => {
+            let behind = here != remote
+                && git::answer(
+                    root,
+                    &[
+                        "merge-base",
+                        "--is-ancestor",
+                        "--end-of-options",
+                        &here,
+                        &remote,
+                    ],
+                )
+                .await
+                .ok()
+                .flatten()
+                .is_some();
+            Some(if behind { remote } else { here })
+        }
+        (here, remote) => here.or(remote),
+    }
+}
+
+/// The commit `reference` names in the repository at `root`, if it names one.
+async fn commit(root: &Path, reference: &str) -> Option<String> {
+    git::answer(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "--end-of-options",
+            &format!("{reference}^{{commit}}"),
+        ],
+    )
+    .await
+    .ok()
+    .flatten()
+    .filter(|commit| !commit.is_empty())
 }
 
 /// `muster/` and six random characters; without `muster/` unless
@@ -400,11 +590,12 @@ fn slug(name: &str) -> String {
     }
 }
 
-/// `group/name`, or `group/name-2`, `-3`… if that is taken.
-async fn unused_path(group: &Path, name: &str) -> PathBuf {
+/// `group/name`, or `group/name-2`, `-3`… if that is taken on disk or by
+/// a worktree being made.
+async fn unused_path(group: &Path, name: &str, jobs: &Jobs) -> PathBuf {
     let mut path = group.join(name);
     let mut suffix = 2;
-    while tokio::fs::try_exists(&path).await.unwrap_or(true) {
+    while jobs.is_making(&path) || tokio::fs::try_exists(&path).await.unwrap_or(true) {
         path = group.join(format!("{name}-{suffix}"));
         suffix += 1;
     }
@@ -451,49 +642,5 @@ fn git_failure(error: GitError) -> ErrorBody {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn slugs_are_safe_file_names() {
-        assert_eq!(slug("muster/fix-login"), "muster-fix-login");
-        assert_eq!(slug("feature/ünïcode name"), "feature--n-code-name");
-        assert_eq!(slug("../.."), "worktree");
-    }
-
-    #[test]
-    fn a_clashing_branch_name_is_explained() {
-        let error = GitError::Failed {
-            args: "worktree add -b test /w/test".to_owned(),
-            stderr: "fatal: cannot lock ref 'refs/heads/test': 'refs/heads/test/beta38-candidate' \
-                     exists; cannot create 'refs/heads/test'"
-                .to_owned(),
-        };
-        let body = branch_clash(&error, "test").unwrap();
-        assert_eq!(body.code, ErrorCode::Conflict);
-        assert!(
-            body.message
-                .contains("the branch test/beta38-candidate exists"),
-            "{}",
-            body.message
-        );
-        assert!(body.message.contains("such as test-1"), "{}", body.message);
-
-        let other = GitError::Failed {
-            args: String::new(),
-            stderr: "fatal: something else".to_owned(),
-        };
-        assert!(branch_clash(&other, "x").is_none());
-    }
-
-    #[test]
-    fn default_branches_are_namespaced_and_short() {
-        let branch = default_branch(true);
-        assert!(branch.starts_with("muster/"));
-        assert_eq!(branch.len(), "muster/".len() + 6);
-        assert_ne!(branch, default_branch(true));
-        let without = default_branch(false);
-        assert!(without.starts_with("worktree-"), "{without}");
-        assert_eq!(without.len(), "worktree-".len() + 6);
-    }
-}
+#[path = "worktrees_tests.rs"]
+mod tests;

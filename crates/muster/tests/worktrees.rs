@@ -141,6 +141,133 @@ async fn an_existing_branch_is_checked_out_not_recreated() {
 }
 
 #[tokio::test]
+async fn a_new_branch_starts_from_the_base_not_from_the_branch_checked_out() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let main = git(&root, &["rev-parse", "main"]);
+    // The person works on a branch of their own in the checkout.
+    git(&root, &["switch", "--quiet", "-c", "feature/mine"]);
+    std::fs::write(root.join("mine.txt"), "mine\n").unwrap();
+    git(&root, &["add", "mine.txt"]);
+    git(&root, &["commit", "--quiet", "--message", "mine"]);
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let project = add_project(&mut connection, &root).await;
+
+    let id = create(&mut connection, project, Some("fix/login"))
+        .await
+        .unwrap();
+    let (path, _) = worktree(&mut connection, id).await;
+    assert_eq!(git(&path, &["rev-parse", "HEAD"]), main);
+    assert!(!path.join("mine.txt").exists());
+}
+
+/// A stand-in for git, first on the daemon's `PATH`, that holds `git
+/// worktree add` and `git worktree remove` until the test opens their gate
+/// (`<gates>/<add|remove>/open`), saying it has started first; anything
+/// else goes straight to git.
+fn gated_git(sandbox: &Sandbox) -> PathBuf {
+    let gates = sandbox.root().join("gates");
+    for gate in ["add", "remove"] {
+        std::fs::create_dir_all(gates.join(gate)).unwrap();
+    }
+    let real = std::process::Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .unwrap()
+        .stdout;
+    let real = String::from_utf8(real).unwrap().trim().to_owned();
+    let script = format!(
+        "#!/bin/sh\n\
+         if [ \"$1\" = worktree ] && {{ [ \"$2\" = add ] || [ \"$2\" = remove ]; }}; then\n\
+         \x20 touch '{gates}/'\"$2\"/started\n\
+         \x20 while [ ! -e '{gates}/'\"$2\"/open ]; do sleep 0.05; done\n\
+         fi\n\
+         exec '{real}' \"$@\"\n",
+        gates = gates.display(),
+    );
+    let path = sandbox.root().join("bin").join("git");
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    gates
+}
+
+/// Waits until git has started the work behind `gate`.
+async fn started(gates: &std::path::Path, gate: &str) {
+    let flag = gates.join(gate).join("started");
+    until(&format!("git worktree {gate}"), || flag.exists()).await;
+}
+
+/// `future`, which must not wait on git's work.
+async fn at_once<T>(future: impl std::future::Future<Output = T>) -> T {
+    tokio::time::timeout(std::time::Duration::from_secs(5), future)
+        .await
+        .expect("answered while git works")
+}
+
+#[tokio::test]
+async fn the_daemon_answers_while_git_makes_or_removes_a_worktree() {
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let gates = gated_git(&sandbox);
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let project = add_project(&mut connection, &root).await;
+
+    let mut making = daemon.connect().await;
+    let made = tokio::spawn(async move { create(&mut making, project, Some("slow")).await });
+    started(&gates, "add").await;
+    at_once(connection.command(Command::Ping)).await.unwrap();
+    // The branch is taken while it is made.
+    assert_eq!(
+        code(at_once(create(&mut connection, project, Some("slow"))).await),
+        ErrorCode::Conflict
+    );
+    std::fs::write(gates.join("add/open"), "").unwrap();
+    let id = made.await.unwrap().unwrap();
+    let (path, branch) = worktree(&mut connection, id).await;
+    assert_eq!(branch, "slow");
+    assert!(path.join("README.md").exists());
+
+    let mut removing = daemon.connect().await;
+    let removed = tokio::spawn(async move {
+        removing
+            .command(Command::RemoveWorktree {
+                workspace: id,
+                force: false,
+            })
+            .await
+    });
+    started(&gates, "remove").await;
+    at_once(connection.command(Command::Ping)).await.unwrap();
+    // Nothing starts in a worktree going, and it goes once.
+    let shell = Command::StartSession {
+        workspace: id,
+        harness: "shell".to_owned(),
+        title: None,
+        size: muster_core::protocol::TermSize::default(),
+        prompt: None,
+    };
+    assert_eq!(
+        code(at_once(connection.command(shell)).await),
+        ErrorCode::Conflict
+    );
+    let again = Command::RemoveWorktree {
+        workspace: id,
+        force: false,
+    };
+    assert_eq!(
+        code(at_once(connection.command(again)).await),
+        ErrorCode::Conflict
+    );
+    std::fs::write(gates.join("remove/open"), "").unwrap();
+    assert_eq!(removed.await.unwrap().unwrap(), Reply::Done);
+    assert!(!path.exists());
+    let left = connection.subscribe().await.unwrap().workspaces;
+    assert!(left.iter().all(|workspace| workspace.kind.is_checkout()));
+}
+
+#[tokio::test]
 async fn bad_requests_are_refused_with_their_code() {
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");

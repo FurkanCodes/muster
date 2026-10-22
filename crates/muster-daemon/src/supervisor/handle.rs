@@ -115,6 +115,10 @@ pub(super) enum Request {
         project: muster_core::ProjectId,
         listed: Vec<crate::worktree_sync::Listed>,
     },
+    /// A worktree git made off the loop, or could not.
+    WorktreeMade(Box<super::worktrees::Made>),
+    /// A worktree git removed off the loop, or could not.
+    WorktreeRemoved(Box<super::worktrees::Removed>),
     /// The sampler's measurement.
     Resources(ResourceReport),
     /// The sampler asks for the running shells' terminals.
@@ -180,6 +184,8 @@ impl std::fmt::Debug for Request {
             Self::Branches(_) => f.write_str("Branches"),
             Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
             Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
+            Self::WorktreeMade(_) => f.write_str("WorktreeMade"),
+            Self::WorktreeRemoved(_) => f.write_str("WorktreeRemoved"),
             Self::Resources(_) => f.write_str("Resources"),
             Self::SpendTargets(_) => f.write_str("SpendTargets"),
             Self::Spends(spends) => write!(f, "Spends({})", spends.len()),
