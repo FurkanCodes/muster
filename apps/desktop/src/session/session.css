@@ -1,11 +1,20 @@
-/* The session pane: its head at the window's top, the banner under it, then
-   the terminal to the window's bottom. */
+/* The session pane: its head at the window's top, then the terminal to the
+   window's bottom, the banner floating over its top while it asks. */
 .session-pane {
+  position: relative;
   min-width: var(--layout-detail-min);
 }
+/* The banner floats over the terminal's top rather than pushing it down:
+   the terminal keeps its size as its session comes to ask and is answered,
+   so the program is never resized, and redrawn, at the moment it asks. */
 .session-banner {
-  flex: none;
-  margin: 0 var(--space-12) var(--space-8) var(--space-20);
+  position: absolute;
+  top: var(--layout-titlebar);
+  left: var(--space-20);
+  right: var(--space-12);
+  z-index: var(--z-sticky);
+  background: color-mix(in srgb, var(--waiting) 12%, var(--surface-term));
+  box-shadow: var(--shadow-drag);
 }
 .session-terminal {
   padding-bottom: 0;

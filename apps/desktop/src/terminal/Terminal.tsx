@@ -81,21 +81,39 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
       return true;
     });
 
+    // The program is told the size its terminal is drawn at, and only that:
+    // a size measured on a pane laid out with a character cell to measure,
+    // once per change. A pane put out of sight (0 by 0), or a font not yet
+    // measured, says nothing, never xterm's own 80 by 24, which the program
+    // would draw its screen at and leave behind once told the real size.
     let frame = 0;
-    const resize = new ResizeObserver(() => {
+    let told = "";
+    const size = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
+        if (element.clientWidth === 0 || element.clientHeight === 0) return;
+        const wanted = fit.proposeDimensions();
+        if (!wanted || !Number.isFinite(wanted.cols) || !Number.isFinite(wanted.rows)) return;
         fit.fit();
+        const now = `${xterm.cols}x${xterm.rows}`;
+        if (now === told) return;
+        told = now;
         void bridge.resize(session, xterm.cols, xterm.rows).catch(() => {});
       });
-    });
+    };
+    const resize = new ResizeObserver(size);
     resize.observe(element);
+    // The terminal's face loads with the first terminal shown: its cell is
+    // measured again once it has, and the columns that fit with it.
+    const fonts = document.fonts;
+    fonts?.addEventListener?.("loadingdone", size);
     term.current = xterm;
     const unexpose = exposeForTests(session, xterm);
     return () => {
       unexpose();
       cancelAnimationFrame(frame);
       resize.disconnect();
+      fonts?.removeEventListener?.("loadingdone", size);
       typed.dispose();
       xterm.dispose();
       term.current = null;
