@@ -292,6 +292,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       spend: null,
       tidy: null,
       beside: null,
+      started_by: null,
     };
     world.sessions.push(started);
     tell({ sessions: [started] });
@@ -344,6 +345,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       spend: null,
       tidy: { commits: changes.commits.length, from: "a1b2c3d", checked: null },
       beside: null,
+      started_by: null,
     };
     world.sessions.push(started);
     tell({ sessions: [started] });

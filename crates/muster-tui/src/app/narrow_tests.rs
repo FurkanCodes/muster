@@ -183,6 +183,7 @@ fn the_width_is_one_of_muster_s_own_settings() {
         SettingRow::NamingModel,
         SettingRow::Keys,
         SettingRow::SharedBuilds,
+        SettingRow::Delegation,
         SettingRow::Agents,
         SettingRow::Plugins,
         SettingRow::AddPlugin

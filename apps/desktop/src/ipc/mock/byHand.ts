@@ -73,6 +73,7 @@ export function byHandCommand(mock: MockBridge, command: Command): Reply | undef
       spend: null,
       tidy: null,
       beside: null,
+      started_by: null,
     };
     mock.world.sessions.push(started);
     // As the daemon does, the reply comes first and the session after it.

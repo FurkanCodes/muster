@@ -44,6 +44,7 @@ async fn a_turn(sandbox: &Sandbox, root: &Path) {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

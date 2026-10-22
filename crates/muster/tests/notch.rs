@@ -96,6 +96,7 @@ async fn a_session_picked_in_the_notch_is_shown_in_the_window_looked_at_last() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

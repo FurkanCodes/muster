@@ -186,6 +186,7 @@ async fn a_panel_runs_in_its_workspace_told_what_muster_knows_and_is_no_news_prd
         spend: None,
         tidy: None,
         beside: None,
+        started_by: None,
     };
     let mut store = Store::open(&dir.path().join("muster.db"), FixedClock.now()).unwrap();
     store.insert_session(&chat).unwrap();
@@ -273,6 +274,7 @@ async fn worktree(supervisor: &SupervisorHandle) -> WorkspaceId {
             project,
             branch: Some("feature".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

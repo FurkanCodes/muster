@@ -55,6 +55,7 @@ describe("the shell beside the agent", () => {
         title: null,
         size: { cols: 80, rows: 24 },
         prompt: null,
+        started_by: null,
       },
     });
     expect(shell).not.toBeNull();

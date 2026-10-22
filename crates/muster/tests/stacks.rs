@@ -41,6 +41,7 @@ async fn worktree(
             project,
             branch: Some(branch.to_owned()),
             on,
+            named_for: None,
         })
         .await
         .unwrap()

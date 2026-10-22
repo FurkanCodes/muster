@@ -56,6 +56,7 @@ impl Agent {
                 project,
                 branch: Some("work".to_owned()),
                 on: None,
+                named_for: None,
             })
             .await
             .unwrap()
@@ -77,6 +78,7 @@ impl Agent {
                 title: None,
                 size: TermSize::default(),
                 prompt: prompt.map(str::to_owned),
+                started_by: None,
             })
             .await
             .unwrap()

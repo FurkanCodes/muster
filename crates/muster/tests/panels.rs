@@ -104,6 +104,7 @@ async fn chat(connection: &mut Connection, sandbox: &Sandbox) -> (WorkspaceId, S
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -117,6 +118,7 @@ async fn chat(connection: &mut Connection, sandbox: &Sandbox) -> (WorkspaceId, S
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

@@ -142,7 +142,16 @@
 //! was said on a ticket after it was filed (`Reply::IssueViewed::comments`,
 //! a field older clients pass over), and which of it an agent is given
 //! (`Command::StartFromIssue::brief`, sent only to a daemon of 50 or
-//! later).
+//! later); version 51 agents setting agents working through the command
+//! line (`PRD-01`): the session that started one (`Session::started_by`, a
+//! field older clients pass over; `StartSession::started_by`), a worktree's
+//! branch named from a prompt (`CreateWorktree::named_for`), what a
+//! session shows and its agent's last answer, as text (`Command::ReadSession`,
+//! answered with `Reply::SessionText`) and
+//! the limits the person sets (`Preferences::delegation`, a field older
+//! clients pass over; `PreferenceChange::AgentsStartAgents`), each sent
+//! only to a daemon of 51 or later
+//! ([`crate::delegation::DELEGATION_PROTOCOL`]).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -155,23 +164,24 @@ pub mod agents;
 mod older;
 pub mod plugins;
 pub mod repositories;
+mod state;
 mod terminal;
 
+pub use state::{Delta, Health, ResourceReport, SessionUsage, Snapshot};
 pub use terminal::{
     DetachReason, MouseEncoding, MouseTracking, PixelSize, TermSize, TerminalModes,
 };
 
 use crate::changes::{ChangePart, Changes, FileDiff};
 use crate::colours::TerminalColours;
-use crate::entities::{Issue, Project, Session, Workspace};
+use crate::entities::Issue;
 use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
-use crate::session::SessionStatus;
-use crate::settings::{PreferenceChange, Preferences, ProjectSettings, SettingChange};
+use crate::settings::{PreferenceChange, ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 50;
+pub const PROTOCOL_VERSION: u32 = 51;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -414,6 +424,12 @@ pub enum Command {
         /// 28 or later.
         #[serde(default)]
         on: Option<WorkspaceId>,
+        /// With no `branch`, a new branch named from these words (a
+        /// prompt's: `muster/fix-the-login`), `-2`, `-3`… where that is
+        /// taken, never an existing branch. Sent only to a daemon of 51 or
+        /// later.
+        #[serde(default)]
+        named_for: Option<String>,
     },
     /// Remove a worktree's directory. Its branch is kept. A worktree with
     /// uncommitted changes is removed only with `force`; one with running
@@ -423,13 +439,18 @@ pub enum Command {
     StartSession {
         workspace: WorkspaceId,
         /// A harness id: `shell`, `claude`, or an agent the person added
-        /// ([`Preferences::agents`]).
+        /// ([`crate::settings::Preferences::agents`]).
         harness: String,
         title: Option<String>,
         size: TermSize,
         /// A first prompt, for harnesses that take one.
         #[serde(default)]
         prompt: Option<String>,
+        /// The agent's session asking, where an agent runs the command
+        /// line (`PRD-01`): the daemon refuses past the person's limits
+        /// and marks what it starts. Sent only to a daemon of 51 or later.
+        #[serde(default)]
+        started_by: Option<SessionId>,
     },
     /// Stop a running session.
     StopSession { session: SessionId },
@@ -530,6 +551,10 @@ pub enum Command {
     /// signals it last received; answered with [`Reply::Explanation`].
     /// Sent only to a daemon of 30 or later.
     ExplainSession { session: SessionId },
+    /// A session's screen as it stands, or the answer its agent's last
+    /// turn ended with, as text; answered with [`Reply::SessionText`]. Sent
+    /// only to a daemon of 51 or later.
+    ReadSession { session: SessionId, what: Reading },
     /// Show a session in the Muster window the person looked at last
     /// ([`ServerFrame::Reveal`]); refused when no window is open. Sent
     /// only to a daemon of 23 or later.
@@ -743,127 +768,14 @@ pub enum Reply {
     },
     /// What a plugin's hooks did with a sample event. From protocol 44.
     HooksTried(plugins::HooksTried),
+    /// What a session shows or its agent last answered, as text; `None`
+    /// where there is none: a terminal let go of, no turn ended yet, or an
+    /// agent whose hooks do not tell its answer. From protocol 51.
+    SessionText {
+        text: Option<String>,
+    },
     /// The command was carried out and has nothing to report.
     Done,
-}
-
-/// What the daemon holds and has under way: counts that should fall back
-/// when the work and the clients behind them end (`ARC-13`, `ARC-14`), so
-/// one that only grows is a leak to look into.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
-pub struct Health {
-    /// Every task on the daemon's runtime.
-    pub tasks: u64,
-    /// Short-lived work under way, such as a call to a ticket source; a
-    /// client's request for this is one.
-    pub work: u64,
-    /// Clients connected, this one included.
-    pub clients: u64,
-    /// Terminals held: running sessions, and ended ones whose output is
-    /// still readable.
-    pub terminals: u64,
-}
-
-/// The daemon's whole state, as a client needs it.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
-pub struct Snapshot {
-    pub projects: Vec<Project>,
-    pub workspaces: Vec<Workspace>,
-    pub sessions: Vec<Session>,
-    #[serde(default)]
-    pub runs: Vec<crate::Run>,
-    /// The latest measurement, once one has been taken.
-    #[serde(default)]
-    pub resources: Option<ResourceReport>,
-    /// Whether the person is looking at any client's window
-    /// ([`ClientFrame::Looking`]). From protocol 23.
-    #[serde(default)]
-    pub looked_at: bool,
-    /// Muster's own settings. From protocol 23.
-    #[serde(default)]
-    pub preferences: Preferences,
-    /// Whether Muster's helper on a Mac shows notifications of the Mac's
-    /// own now ([`ClientFrame::Notifier`]): the UIs then send their
-    /// terminals none. From protocol 39.
-    #[serde(default)]
-    pub notifier: bool,
-    /// Every plugin. From protocol 41.
-    #[serde(default)]
-    pub plugins: Vec<plugins::PluginInfo>,
-}
-
-/// What the machine and each running session use, measured every couple of
-/// seconds (`PRD-05`).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
-pub struct ResourceReport {
-    pub host_memory_used: u64,
-    pub host_memory_total: u64,
-    pub sessions: Vec<SessionUsage>,
-}
-
-/// One session's use: its program and every process it started.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
-pub struct SessionUsage {
-    pub session: SessionId,
-    pub memory_bytes: u64,
-    /// CPU in thousandths of one core: 1500 is one and a half cores.
-    pub cpu_permille: u32,
-}
-
-/// One change to the state.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
-pub enum Delta {
-    ProjectUpserted(Project),
-    /// A project, and with it its workspaces and their sessions, left.
-    ProjectRemoved {
-        id: ProjectId,
-    },
-    WorkspaceUpserted(Workspace),
-    WorkspaceRemoved {
-        id: WorkspaceId,
-    },
-    SessionUpserted(Session),
-    /// A session was taken off the list.
-    SessionRemoved {
-        id: SessionId,
-    },
-    SessionStatus {
-        session: SessionId,
-        status: SessionStatus,
-        unseen: bool,
-        /// When it came to this status.
-        since: crate::Timestamp,
-    },
-    /// What a session is doing now changed; `None` once it is doing
-    /// nothing to tell.
-    SessionActivity {
-        session: SessionId,
-        activity: Option<crate::session::Activity>,
-    },
-    /// A new measurement; replaces the last.
-    Resources(ResourceReport),
-    /// A run was picked up or changed.
-    RunUpserted(crate::Run),
-    /// The person began or stopped looking at every client's window.
-    /// Sent only to a client of 23 or later.
-    LookedAt {
-        looked_at: bool,
-    },
-    /// Muster's own settings changed. Sent only to a client of 23 or later.
-    Preferences(Preferences),
-    /// Muster's helper shows notifications now, or no longer does. Sent
-    /// only to a client of 39 or later.
-    Notifier {
-        ready: bool,
-    },
-    /// The plugins changed: each, as it is now. Sent only to a client of
-    /// 41 or later.
-    PluginsChanged(Vec<plugins::PluginInfo>),
 }
 
 impl Reply {
@@ -900,17 +812,17 @@ impl Reply {
     }
 }
 
-impl Delta {
-    /// The first protocol that knows this delta: a client that agreed to
-    /// an older one is never sent it (`ARC-09`).
-    pub fn since(&self) -> u32 {
-        match self {
-            Self::LookedAt { .. } | Self::Preferences(_) => crate::settings::NOTCH_PROTOCOL,
-            Self::Notifier { .. } => crate::settings::NOTIFIER_PROTOCOL,
-            Self::PluginsChanged(_) => crate::plugins::PLUGINS_PROTOCOL,
-            _ => FIRST_PROTOCOL_VERSION,
-        }
-    }
+/// What of a session [`Command::ReadSession`] reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum Reading {
+    /// Its screen as it stands, at its program's size, each line's
+    /// trailing blanks and the blank lines under the last taken off.
+    Screen,
+    /// The answer its agent's last turn ended with, as its hooks told it:
+    /// kept while the daemon runs, never stored.
+    LastReply,
 }
 
 /// A failure the client can act on: `code` is for code, `message` for people.

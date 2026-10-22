@@ -53,6 +53,7 @@ async fn started(sandbox: &Sandbox, harness: &str) -> (Daemon, Connection, Sessi
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

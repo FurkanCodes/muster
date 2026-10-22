@@ -76,6 +76,7 @@ fn a_new_session_offers_the_person_s_agents_after_muster_s_own() {
             title: None,
             size: PANE,
             prompt: Some("fix it".to_owned()),
+            started_by: None,
         }
     );
 

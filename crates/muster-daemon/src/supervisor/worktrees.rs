@@ -131,13 +131,36 @@ pub(super) struct Removed {
     reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
 
+/// The branch a worktree is asked for.
+#[derive(Debug)]
+pub(super) enum Branch {
+    /// This one: the branch if it exists, else a new one of the name.
+    Named(String),
+    /// A new branch named from a prompt's words, never one that exists.
+    For(String),
+    /// A new branch of Muster's own name.
+    Any,
+}
+
+impl Branch {
+    /// The branch `CreateWorktree` asks for: its `branch`, else one named
+    /// for `named_for`, else any.
+    pub(super) fn new(branch: Option<String>, named_for: Option<String>) -> Self {
+        match (branch.map(|name| name.trim().to_owned()), named_for) {
+            (Some(name), _) if !name.is_empty() => Self::Named(name),
+            (_, Some(words)) => Self::For(words),
+            _ => Self::Any,
+        }
+    }
+}
+
 impl Supervisor {
-    /// Makes a worktree of `project` on `branch` (a new name if none),
-    /// stacked on `on`'s branch if given; `then` follows once it is made.
+    /// Makes a worktree of `project` on `branch`, stacked on `on`'s branch
+    /// if given; `then` follows once it is made.
     pub(super) async fn create_worktree(
         &mut self,
         project: ProjectId,
-        branch: Option<String>,
+        branch: Branch,
         on: Option<WorkspaceId>,
         then: Then,
     ) {
@@ -154,7 +177,7 @@ impl Supervisor {
     async fn plan_worktree(
         &self,
         project: ProjectId,
-        branch: Option<String>,
+        branch: Branch,
         on: Option<WorkspaceId>,
     ) -> Result<Plan, ErrorBody> {
         self.repository_root(project, "worktrees")?;
@@ -169,11 +192,17 @@ impl Supervisor {
             .config_dir
             .join("projects")
             .join(format!("{}.toml", project.id));
-        let branch = match branch.map(|name| name.trim().to_owned()) {
-            Some(name) if !name.is_empty() => name,
-            _ => default_branch(
-                crate::config::muster_prefix(project.root.clone(), overrides.clone()).await,
-            ),
+        let prefixed = || crate::config::muster_prefix(project.root.clone(), overrides.clone());
+        let branch = match branch {
+            Branch::Named(name) => name,
+            Branch::For(words) => {
+                let prefixed = prefixed().await;
+                match muster_core::delegation::prompt_branch(&words, prefixed) {
+                    Some(name) => self.unused_branch(&project, name).await?,
+                    None => default_branch(prefixed),
+                }
+            }
+            Branch::Any => default_branch(prefixed().await),
         };
         if !git::is_valid_branch_name(&project.root, &branch)
             .await
@@ -616,6 +645,29 @@ async fn commit(root: &Path, reference: &str) -> Option<String> {
     .ok()
     .flatten()
     .filter(|commit| !commit.is_empty())
+}
+
+impl Supervisor {
+    /// `name`, or `name-2`, `-3`… where a branch of that name is there
+    /// already, or a worktree is on it or being made on it.
+    async fn unused_branch(
+        &self,
+        project: &muster_core::Project,
+        name: String,
+    ) -> Result<String, ErrorBody> {
+        let mut branch = name.clone();
+        let mut suffix = 2;
+        while self.worktree_on(project.id, &branch).is_some()
+            || self.worktree_jobs.making_branch(project.id, &branch)
+            || git::branch_exists(&project.root, &branch)
+                .await
+                .map_err(git_failure)?
+        {
+            branch = format!("{name}-{suffix}");
+            suffix += 1;
+        }
+        Ok(branch)
+    }
 }
 
 /// `muster/` and six random characters; without `muster/` unless

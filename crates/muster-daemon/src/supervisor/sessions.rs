@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
+use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reading, Reply, TermSize};
 use muster_core::text::one_line;
 use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start};
@@ -17,6 +17,54 @@ use crate::pty::{self, PtyEvent};
 /// A resumed program that exits sooner than this, unasked, could not
 /// resume; the session starts fresh instead (as Nebula does).
 const RESUME_GRACE: Duration = Duration::from_secs(10);
+
+/// What starting a session asks for, beside where and with what.
+#[derive(Debug, Default)]
+pub(super) struct Asked {
+    pub(super) title: Option<String>,
+    pub(super) prompt: Option<String>,
+    /// The agent's session asking, through the command line (`PRD-01`).
+    pub(super) started_by: Option<SessionId>,
+}
+
+impl Asked {
+    pub(super) fn new(
+        title: Option<String>,
+        prompt: Option<String>,
+        started_by: Option<SessionId>,
+    ) -> Self {
+        Self {
+            title,
+            prompt,
+            started_by,
+        }
+    }
+}
+
+/// The sessions a new one belongs with.
+#[derive(Debug, Default)]
+pub(super) struct Ties {
+    /// The chat a plugin's panel is opened beside.
+    pub(super) beside: Option<SessionId>,
+    /// The agent's session that started it (`PRD-01`).
+    pub(super) started_by: Option<SessionId>,
+}
+
+impl Ties {
+    pub(super) fn beside(beside: Option<SessionId>) -> Self {
+        Self {
+            beside,
+            started_by: None,
+        }
+    }
+
+    fn started_by(started_by: Option<SessionId>) -> Self {
+        Self {
+            beside: None,
+            started_by,
+        }
+    }
+}
 
 /// How a session's program is started.
 #[derive(Debug)]
@@ -36,10 +84,15 @@ impl Supervisor {
         &mut self,
         workspace: WorkspaceId,
         harness: String,
-        title: Option<String>,
         size: TermSize,
-        prompt: Option<String>,
+        asked: Asked,
     ) -> Result<Reply, ErrorBody> {
+        let Asked {
+            title,
+            prompt,
+            started_by,
+        } = asked;
+        let started_by = self.starter(started_by)?;
         let harness = self.known_harness(&harness)?;
         let place = self.place_for(workspace, &harness)?;
         let prompt = prompt.filter(|prompt| !prompt.trim().is_empty());
@@ -65,7 +118,15 @@ impl Supervisor {
         // then by an agent.
         let named_by_prompt = title.is_none().then(|| prompt.clone()).flatten();
         let title = title.or_else(|| prompt.as_deref().and_then(muster_core::names::from_prompt));
-        let id = self.add_session(workspace, &harness, title, start).await?;
+        let id = self
+            .add_session_tied(
+                workspace,
+                &harness,
+                title,
+                start,
+                Ties::started_by(started_by),
+            )
+            .await?;
         if let Err(error) = self.launch(
             id,
             harness.clone(),
@@ -90,6 +151,20 @@ impl Supervisor {
         Ok(Reply::SessionStarted { id })
     }
 
+    /// What `session` shows, or its agent last answered, as text: for
+    /// `muster logs` and `muster wait`.
+    pub(super) async fn read_session(&self, session: SessionId, what: Reading) -> Reply {
+        let live = self.live.get(&session);
+        let text = match what {
+            Reading::LastReply => live.and_then(|live| live.last_reply.clone()),
+            Reading::Screen => match live {
+                Some(live) => live.pty.text().await,
+                None => None,
+            },
+        };
+        Reply::SessionText { text }
+    }
+
     /// Stores a new session in `workspace` and tells clients, before its
     /// program starts (`ARC-10`).
     pub(super) async fn add_session(
@@ -99,20 +174,46 @@ impl Supervisor {
         title: Option<String>,
         start: Start,
     ) -> Result<SessionId, ErrorBody> {
-        self.add_session_beside(workspace, harness, title, start, None)
+        self.add_session_tied(workspace, harness, title, start, Ties::default())
             .await
     }
 
+    /// The session an agent asking to start one runs in, where its limits
+    /// let it (`PRD-01`); `None` for the person. A shell is the person's,
+    /// and a session this daemon does not know (one of another daemon's) is
+    /// no agent of its.
+    fn starter(&self, asking: Option<SessionId>) -> Result<Option<SessionId>, ErrorBody> {
+        let Some(asking) = asking else {
+            return Ok(None);
+        };
+        let Some(session) = self.state.sessions.iter().find(|s| s.id == asking) else {
+            return Ok(None);
+        };
+        if session.kind().is_shell() {
+            return Ok(None);
+        }
+        match self
+            .state
+            .preferences
+            .delegation
+            .refusal(&self.state.sessions, asking)
+        {
+            Some(why) => Err(ErrorBody::new(ErrorCode::Conflict, why)),
+            None => Ok(Some(asking)),
+        }
+    }
+
     /// [`add_session`](Self::add_session), for a plugin's panel opened
-    /// beside the session `beside`.
-    pub(super) async fn add_session_beside(
+    /// beside a session, or an agent's started by another.
+    pub(super) async fn add_session_tied(
         &mut self,
         workspace: WorkspaceId,
         harness: &Harness,
         title: Option<String>,
         start: Start,
-        beside: Option<SessionId>,
+        ties: Ties,
     ) -> Result<SessionId, ErrorBody> {
+        let Ties { beside, started_by } = ties;
         let now = self.clock.now();
         let session = Session {
             id: SessionId::new(),
@@ -136,6 +237,7 @@ impl Supervisor {
             spend: None,
             tidy: None,
             beside,
+            started_by,
         };
         let id = session.id;
         let stored = session.clone();
@@ -322,6 +424,7 @@ impl Supervisor {
                 signals,
                 naming: None,
                 named_by_person,
+                last_reply: None,
             },
         );
         self.carry_watch(session);

@@ -48,6 +48,7 @@ async fn both_change_one_line(sandbox: &Sandbox, root: &Path) {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

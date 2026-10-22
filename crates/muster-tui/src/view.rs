@@ -17,6 +17,7 @@ pub(crate) mod areas;
 mod bottom_bar;
 mod changes;
 mod clashes;
+mod delegation;
 mod dialogs;
 mod drag;
 mod help;

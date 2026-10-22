@@ -36,6 +36,7 @@ async fn start(
             title: None,
             size: TermSize::default(),
             prompt: prompt.map(str::to_owned),
+            started_by: None,
         })
         .await
         .unwrap()

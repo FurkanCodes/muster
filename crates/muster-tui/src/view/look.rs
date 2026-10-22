@@ -74,7 +74,8 @@ pub(crate) fn session_time(app: &App, session: &Session) -> Option<String> {
 
 /// What `session` is doing, for its line: its activity while it works or
 /// waits and its hooks say, or why it ended where the daemon says (a
-/// restart did not resume it), else its status.
+/// restart did not resume it), else its status, and that an agent started
+/// it where one did (`PRD-01`).
 pub(crate) fn doing(session: &Session) -> Cow<'_, str> {
     match (&session.activity, session.status, &session.tidy) {
         (
@@ -88,6 +89,10 @@ pub(crate) fn doing(session: &Session) -> Cow<'_, str> {
             SessionStatus::Running | SessionStatus::Finished | SessionStatus::Fresh,
             Some(tidy),
         ) => Cow::Owned(tidy.words()),
+        _ if session.started_by.is_some() => Cow::Owned(format!(
+            "{}, started by an agent",
+            crate::view::describe(session.status)
+        )),
         _ => Cow::Borrowed(crate::view::describe(session.status)),
     }
 }

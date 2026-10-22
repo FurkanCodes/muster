@@ -58,6 +58,7 @@ fn session(workspace: WorkspaceId) -> Session {
         spend: None,
         tidy: None,
         beside: None,
+        started_by: None,
     }
 }
 

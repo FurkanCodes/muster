@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -134,6 +134,10 @@ const V8: &str = "ALTER TABLE sessions ADD COLUMN beside TEXT;";
 /// whatever its branch is called later. Worktrees made before it have
 /// theirs read once from their branch's name ([`tickets_from_branches`]).
 const V9: &str = "ALTER TABLE workspaces ADD COLUMN ticket TEXT;";
+
+/// The agent's session that started a session through the command line
+/// (`PRD-01`), shown with it and counted against the person's limits.
+const V10: &str = "ALTER TABLE sessions ADD COLUMN started_by TEXT;";
 
 /// The version whose migration fills in worktrees' tickets.
 const TICKETS: u32 = 9;

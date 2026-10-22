@@ -384,6 +384,7 @@ fn a_new_worktree_is_created_and_selected() {
             project: world.project.id,
             branch: Some("fix-login".to_owned()),
             on: None,
+            named_for: None,
         }
     );
     let created = worktree(world.project.id, "fix-login");
@@ -456,6 +457,7 @@ fn a_new_session_starts_claude_with_a_prompt_and_opens_it() {
             title: None,
             size: PANE,
             prompt: Some("fix the login".to_owned()),
+            started_by: None,
         }
     );
     let started = session(world.worktree.id, "Claude Code", 4);

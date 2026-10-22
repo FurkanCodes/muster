@@ -82,6 +82,19 @@ impl Screen {
     }
 }
 
+impl Screen {
+    /// What it shows, as text: each line's trailing blanks and the blank
+    /// lines under the last taken off.
+    pub(crate) fn text(&self) -> String {
+        let contents = self.parser.screen().contents();
+        let mut lines: Vec<&str> = contents.lines().map(str::trim_end).collect();
+        while lines.last().is_some_and(|line| line.is_empty()) {
+            lines.pop();
+        }
+        lines.join("\n")
+    }
+}
+
 fn floor(cols: u16, rows: u16) -> (u16, u16) {
     (cols.max(MIN_SIDE), rows.max(MIN_SIDE))
 }
@@ -157,6 +170,14 @@ mod tests {
     const AGENT: &[u8] = b"\x1b[?2004h\x1b[?1h\x1b[32mdone\x1b[m one\r\n\
         two\r\n\x1b[1m> \x1b[mtyping\x1b[K\r\x1b[2A\x1b[2K\x1b[33mredrawn\x1b[m\r\n\
         \r\n\x1b[1m> \x1b[mtyping more\x1b[?25l";
+
+    #[test]
+    fn its_text_is_what_it_shows_without_trailing_blanks() {
+        let screen = Screen::new(20, 6, b"one  \r\n\x1b[1mtwo\x1b[0m\r\n\r\n");
+        assert_eq!(screen.text(), "one\ntwo");
+        let alternate = Screen::new(20, 6, b"main\x1b[?1049h\x1b[3;1Hfull screen");
+        assert_eq!(alternate.text(), "\n\nfull screen");
+    }
 
     #[test]
     fn the_picture_draws_the_program_s_screen_exactly() {

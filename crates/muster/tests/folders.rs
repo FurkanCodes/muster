@@ -61,6 +61,7 @@ async fn a_plain_folder_is_a_project_until_and_after_it_becomes_a_repository() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

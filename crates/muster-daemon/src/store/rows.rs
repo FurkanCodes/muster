@@ -148,6 +148,7 @@ pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
         .get::<_, Option<i64>>(9)?
         .map_or(created_at, Timestamp::from_millis);
     let beside: Option<String> = row.get(10)?;
+    let started_by: Option<String> = row.get(11)?;
     Ok((|| {
         Ok(Session {
             id: parse_id(&id)?,
@@ -164,6 +165,7 @@ pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
             spend: None,
             tidy: None,
             beside: beside.as_deref().map(parse_id).transpose()?,
+            started_by: started_by.as_deref().map(parse_id).transpose()?,
         })
     })())
 }

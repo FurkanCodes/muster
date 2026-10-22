@@ -28,10 +28,19 @@ const WAITS: Record<WaitReason, string> = {
   action: "wants you to act",
 };
 
-/** What a session is doing, in the words of its second line. */
-export function doing(session: Pick<Session, "status" | "activity">): string {
+/**
+ * What a session is doing, in the words of its second line, and that an
+ * agent started it where one did (PRD-01).
+ */
+export function doing(
+  session: Pick<Session, "status" | "activity"> & Partial<Pick<Session, "started_by">>,
+): string {
   if (session.activity) return session.activity.text;
-  const status = session.status;
+  const word = statusWord(session.status);
+  return session.started_by ? `${word}, started by an agent` : word;
+}
+
+function statusWord(status: Session["status"]): string {
   switch (status.state) {
     case "running":
       return "working";

@@ -46,6 +46,7 @@ async fn create(
             project,
             branch: branch.map(str::to_owned),
             on: None,
+            named_for: None,
         })
         .await
         .map(|reply| match reply {
@@ -293,6 +294,7 @@ async fn the_daemon_answers_while_git_makes_or_removes_a_worktree() {
         title: None,
         size: muster_core::protocol::TermSize::default(),
         prompt: None,
+        started_by: None,
     };
     assert_eq!(
         code(at_once(connection.command(shell)).await),

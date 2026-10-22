@@ -101,6 +101,7 @@ function session(
     spend: null,
     tidy: null,
     beside: null,
+    started_by: null,
     ...extra,
   };
 }
@@ -130,6 +131,7 @@ export function defaultPreferences(): Preferences {
       errors: { on: true, sound: "Basso" },
     },
     shared_builds: true,
+    delegation: { allowed: true, at_once: 4, depth: 2 },
   };
 }
 

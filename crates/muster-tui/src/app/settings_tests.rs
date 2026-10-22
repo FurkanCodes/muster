@@ -104,6 +104,7 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::NamingModel,
             SettingRow::Keys,
             SettingRow::SharedBuilds,
+            SettingRow::Delegation,
             SettingRow::Agents,
             SettingRow::Plugins,
             SettingRow::AddPlugin,
@@ -482,4 +483,37 @@ fn a_daemon_that_shares_no_builds_shows_no_row_for_it() {
     let mut world = world();
     world.app.daemon_protocol = muster_core::settings::SHARED_BUILDS_PROTOCOL - 1;
     assert!(!world.app.setting_rows().contains(&SettingRow::SharedBuilds));
+}
+
+#[test]
+fn prd_01_agents_start_agents_until_turned_off_on_the_settings_screen() {
+    let mut world = world();
+    press(&mut world.app, KeyCode::Char('4'));
+    world.app.settings_selected = Some(SettingRow::Delegation);
+    let screen = render(&world.app);
+    assert!(screen.contains("Agents start agents"), "{screen}");
+    assert!(
+        screen.contains("at most 4"),
+        "its limits are said: {screen}"
+    );
+    let actions = press(&mut world.app, KeyCode::Enter);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            Action::Send(ClientFrame::Command {
+                command: Command::ChangePreference(
+                    muster_core::settings::PreferenceChange::AgentsStartAgents(false)
+                ),
+                ..
+            })
+        )),
+        "{actions:?}"
+    );
+}
+
+#[test]
+fn a_daemon_older_than_delegation_shows_no_row_for_it() {
+    let mut world = world();
+    world.app.daemon_protocol = muster_core::delegation::DELEGATION_PROTOCOL - 1;
+    assert!(!world.app.setting_rows().contains(&SettingRow::Delegation));
 }

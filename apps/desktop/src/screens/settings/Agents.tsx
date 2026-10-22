@@ -6,7 +6,7 @@
 // word.
 
 import { type ReactNode, useState } from "react";
-import { useActions, useBridge } from "../../app/context";
+import { useActions, useBridge, useDaemon } from "../../app/context";
 import type { AddedAgent } from "../../ipc/generated/AddedAgent";
 import type { AgentFound } from "../../ipc/generated/AgentFound";
 import type { Preferences } from "../../ipc/generated/Preferences";
@@ -15,6 +15,7 @@ import { agentOf } from "../../lib/agents";
 import { Button } from "../../ui/controls";
 import { Label } from "../../ui/Label";
 import { Loading } from "../../ui/Loading";
+import { Switch } from "../../ui/Switch";
 import {
   AgentLogo,
   AgentMark,
@@ -26,8 +27,8 @@ import { OWN_AGENTS, type OwnAgent } from "./agentList";
 import { type Found, useAgentsFound } from "./agentsFound";
 import { canAsk } from "./asks";
 import { useSettings } from "./context";
-import { rowKey } from "./model";
-import { Footnote, Group, Page, SettingRow, Unreadable } from "./Row";
+import { DELEGATION_PROTOCOL, rowKey } from "./model";
+import { Control, Footnote, Group, Page, SettingRow, SettingText, Unreadable } from "./Row";
 import { oneLine } from "./words";
 
 /** A thing that holds or not: ✓ in the finished colour, or a quiet ✗; then what it is. */
@@ -220,11 +221,58 @@ export function Agents({ preferences }: { preferences: Preferences }) {
         </SettingRow>
       </Group>
 
+      <Delegation preferences={preferences} />
+
       <Footnote>
         Add an agent under <code>[agents.&lt;name&gt;]</code> in <code>{preferences.file}</code>:
         its program and fixed arguments, how it takes a first prompt, how it carries on after a
         restart, and its mark's colour. Never in a repository.
       </Footnote>
     </Page>
+  );
+}
+
+/** Whether agents may start agents through the command line, and its limits (`PRD-01`). */
+function Delegation({ preferences }: { preferences: Preferences }) {
+  const { state, actions } = useSettings();
+  const known = useDaemon(
+    (daemon) => daemon.link.state === "up" && daemon.link.protocol >= DELEGATION_PROTOCOL,
+  );
+  if (!known) return null;
+  const id = rowKey("agents", "delegation");
+  const { allowed, at_once, depth } = preferences.delegation;
+  const toggle = () =>
+    actions.preference(
+      id,
+      { AgentsStartAgents: !allowed },
+      allowed
+        ? "No agent starts agents: the command line refuses inside an agent's session."
+        : "Agents may start agents through Muster's command line, within your limits.",
+    );
+  return (
+    <Group title="Agents starting agents">
+      <SettingRow id={id} press="acts" act={toggle}>
+        <SettingText
+          name="Agents start agents"
+          does={
+            <>
+              An agent may start agents through Muster's command line (
+              <code>muster claude "…"</code>), as you could, and give them prompts; each one it
+              starts says so. One agent has at most {at_once} it started running at once, {depth}{" "}
+              deep at most: <code>at_once</code> and <code>depth</code> under{" "}
+              <code>[delegation]</code> in <code>{preferences.file}</code>.
+            </>
+          }
+        />
+        <Control>
+          <Switch
+            on={allowed}
+            label="Agents start agents"
+            onChange={toggle}
+            busy={state.busy.has(id)}
+          />
+        </Control>
+      </SettingRow>
+    </Group>
   );
 }

@@ -302,7 +302,8 @@ impl Supervisor {
             },
         };
         let then = worktrees::Then::Ticket(Box::new(ticket));
-        self.create_worktree(project, Some(branch), on, then).await;
+        self.create_worktree(project, worktrees::Branch::Named(branch), on, then)
+            .await;
     }
 
     /// Starts the ticket's agent in `workspace`, with the ticket as its
@@ -348,7 +349,12 @@ impl Supervisor {
         };
         let title = format!("{} {}", detail.issue.key.shown(), detail.issue.title);
         match self
-            .start_session(workspace, harness, Some(title), size, prompt)
+            .start_session(
+                workspace,
+                harness,
+                size,
+                super::sessions::Asked::new(Some(title), prompt, None),
+            )
             .await?
         {
             Reply::SessionStarted { id } => {

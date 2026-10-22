@@ -123,6 +123,25 @@ A change on the *Settings* screen goes into your own settings for the project (`
 
 The mouse works too. The wheel scrolls back through a session's output, or reaches the program if it handles the mouse itself, as Claude Code does. In the list it moves the selection, or scrolls the preview (as do `PgUp`/`PgDn`, with `End` back to the newest output); a click selects a line, and a click on the session beside it gives it the keys. To select text in your terminal while Muster has the mouse, hold Option (iTerm2, Terminal.app) or Shift (most others) as you drag.
 
+Start agents straight from your shell. Each one gets its own worktree, with a branch named from its prompt, and runs in the background, so you can start the next one at once:
+
+```bash
+cd ~/code/app
+muster claude "Fix the login redirect"
+muster codex "Add tests for the session list"
+```
+
+Then see them, wait for them and read what they did. `wait` says by its exit status how each one ended: 0 finished, 3 needs you, 124 out of time.
+
+```bash
+muster ls
+muster wait a1b2c3 && muster logs --reply a1b2c3
+muster prompt a1b2c3 "Now run the tests"
+muster attach a1b2c3
+```
+
+An agent can start agents the same way, within limits you set on the Settings screen. Each one it starts says so.
+
 The same things work from scripts:
 
 ```bash
@@ -183,7 +202,7 @@ When a session's status looks wrong, ask why it has it: whom it waits on and for
 muster session explain <session-id>
 ```
 
-For your own scripts, `muster status`, `muster session list` and `muster issue list` take `--json` and print one JSON document instead of words. Each starts with `"format": 1`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
+For your own scripts, `muster status`, `muster ls`, `muster session list` and `muster issue list` take `--json` and print one JSON document instead of words. Each starts with `"format": 1`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
 
 ```bash
 muster session list --json | jq -r '.sessions[] | select(.status == "needs_you") | .title'

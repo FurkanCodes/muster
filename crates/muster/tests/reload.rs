@@ -48,6 +48,7 @@ async fn worktree(connection: &mut Connection, sandbox: &Sandbox) -> WorkspaceId
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -65,6 +66,7 @@ async fn start(connection: &mut Connection, workspace: WorkspaceId, harness: &st
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

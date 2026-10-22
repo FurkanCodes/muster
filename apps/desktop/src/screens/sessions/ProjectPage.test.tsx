@@ -48,7 +48,7 @@ describe("PRD §6a a project's page", () => {
     await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
     await waitFor(() =>
       expect(bridge.sent).toContainEqual({
-        CreateWorktree: { project: ulid(1), branch: null, on: null },
+        CreateWorktree: { project: ulid(1), branch: null, on: null, named_for: null },
       }),
     );
     await waitFor(() =>

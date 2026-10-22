@@ -48,6 +48,7 @@ function started(
     tidy: null,
     unseen: false,
     status: { state: "fresh" },
+    started_by: null,
     ...fields,
   });
   // The program at its prompt: a shell's names it, a panel draws itself.

@@ -12,6 +12,7 @@ pub mod clashes;
 pub mod colours;
 pub mod config;
 pub mod credentials;
+pub mod delegation;
 pub mod entities;
 pub mod explain;
 pub mod frame;

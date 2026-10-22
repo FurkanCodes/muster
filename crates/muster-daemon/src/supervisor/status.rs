@@ -38,6 +38,9 @@ impl Supervisor {
         }
         if let Some(answer) = harness.answer(&delivery.body) {
             self.name_after_turn(session, &answer);
+            if let Some(live) = self.live.get_mut(&session) {
+                live.last_reply = Some(answer);
+            }
         }
         if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
             if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {

@@ -54,6 +54,9 @@ pub struct Options {
     /// (`com.googlecode.iterm2`), brought to the front when the person
     /// picks a session in the notch.
     pub terminal_app: Option<String>,
+    /// The session to open, with the keys in it, once the state shows it
+    /// (`muster attach`).
+    pub open: Option<muster_core::SessionId>,
 }
 
 impl std::fmt::Debug for Options {
@@ -66,6 +69,7 @@ impl std::fmt::Debug for Options {
             .field("motion", &self.motion)
             .field("starts_notch", &self.start_notch.is_some())
             .field("terminal_app", &self.terminal_app)
+            .field("open", &self.open)
             .finish()
     }
 }
@@ -109,6 +113,9 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     app.motion = options.motion;
     app.graphics = crate::view::logos::Graphics::detect(|name| std::env::var(name).ok());
     app.welcome = true;
+    if let Some(session) = options.open {
+        app.open_at_start(session);
+    }
     let outside = Outside::take(&mut options);
     app.notch_here = outside.start_notch.is_some();
 

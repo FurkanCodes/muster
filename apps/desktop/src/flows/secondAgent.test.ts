@@ -21,6 +21,7 @@ function session(id: string, harness: string, title: string, status: SessionStat
     spend: null,
     tidy: null,
     beside: null,
+    started_by: null,
   } satisfies Session;
 }
 

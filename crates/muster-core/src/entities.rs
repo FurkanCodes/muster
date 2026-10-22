@@ -258,6 +258,10 @@ pub struct Session {
     /// panel opened on its workspace. From protocol 43.
     #[serde(default)]
     pub beside: Option<SessionId>,
+    /// The agent's session that started it, through Muster's command line
+    /// (`PRD-01`); `None` for one the person started. From protocol 51.
+    #[serde(default)]
+    pub started_by: Option<SessionId>,
 }
 
 impl Session {

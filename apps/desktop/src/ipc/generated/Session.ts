@@ -49,4 +49,9 @@ tidy: Tidy | null,
  * beside and told of; `None` for every other session, and for a
  * panel opened on its workspace. From protocol 43.
  */
-beside: SessionId | null, };
+beside: SessionId | null, 
+/**
+ * The agent's session that started it, through Muster's command line
+ * (`PRD-01`); `None` for one the person started. From protocol 51.
+ */
+started_by: SessionId | null, };
