@@ -400,6 +400,41 @@ fn a_new_worktree_is_created_and_selected() {
 }
 
 #[test]
+fn a_new_session_where_an_agent_works_says_so_but_a_shell_does_not() {
+    let mut world = world();
+    world.app.selected = Some(Row::Worktree(world.worktree.id));
+    press(&mut world.app, KeyCode::Char('n'));
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("Shell already works here: two agents in one place")
+            && screen.contains("keeps their work apart."),
+        "{screen}"
+    );
+    // A shell beside it changes nothing of the agent's.
+    while !matches!(
+        world.app.mode,
+        Mode::Dialog(Dialog::NewSession {
+            harness: HarnessChoice::Shell,
+            ..
+        })
+    ) {
+        press(&mut world.app, KeyCode::Tab);
+    }
+    assert!(!render(&world.app).contains("already works here"));
+    press(&mut world.app, KeyCode::Esc);
+
+    // Once its agent has ended, nothing is said.
+    world.app.on_frame(ServerFrame::Delta(Delta::SessionStatus {
+        session: world.session.id,
+        status: SessionStatus::Exited { success: true },
+        unseen: false,
+        since: muster_core::Timestamp::from_millis(10),
+    }));
+    press(&mut world.app, KeyCode::Char('n'));
+    assert!(!render(&world.app).contains("already works here"));
+}
+
+#[test]
 fn a_new_session_starts_claude_with_a_prompt_and_opens_it() {
     let mut world = world();
     world.app.selected = Some(Row::Worktree(world.worktree.id));

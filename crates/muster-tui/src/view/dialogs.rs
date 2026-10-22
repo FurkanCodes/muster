@@ -341,7 +341,15 @@ fn new_session<'a>(
     for option in HarnessChoice::all(app.added_agents()) {
         run.push(harness_option(&option, harness));
     }
-    let mut lines = vec![Line::from(format!("In {place}")).dim(), Line::from(run)];
+    let mut lines = vec![Line::from(format!("In {place}")).dim()];
+    // Another agent where one already works changes the same files.
+    let warning = (*harness != HarnessChoice::Shell)
+        .then(|| app.model.second_agent_warning(workspace))
+        .flatten();
+    if let Some(warning) = warning {
+        lines.push(Line::from(warning).yellow());
+    }
+    lines.push(Line::from(run));
     let input = harness.takes_prompt().then(|| {
         lines.push(Line::from("First prompt (optional):"));
         prompt

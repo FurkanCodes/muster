@@ -21,6 +21,7 @@ import { Select } from "../ui/Select";
 import { TextArea, TextField } from "../ui/TextField";
 import { START_SIZE } from "./actions";
 import { offered, stepAgent } from "./agents";
+import { secondAgentWarning } from "./secondAgent";
 import type { Flow } from "./types";
 import { useTask } from "./useTask";
 import "./flows.css";
@@ -88,6 +89,17 @@ export default function NewSession({
 
   // A plain folder has no worktrees: a session there starts in the folder itself.
   const place: Where = plain ? "checkout" : where === "worktree" && !worktree ? "new" : where;
+  // Another agent where one already works changes the same files.
+  const target = making
+    ? null
+    : place === "checkout"
+      ? checkout?.id
+      : place === "worktree"
+        ? worktree
+        : null;
+  const warning = useDaemon((state) =>
+    target && harness !== "shell" ? secondAgentWarning(state.sessions, target) : null,
+  );
   const close = () => {
     if (!task.busy) actions.openFlow(null);
   };
@@ -262,7 +274,9 @@ export default function NewSession({
             </>
           }
           hint={
-            making ? "Checked out if it exists; made from the checkout's newest if not." : undefined
+            making
+              ? "Checked out if it exists; else made from the newest of the branch it merges into."
+              : undefined
           }
           mono
           placeholder="muster/ and six letters, if left empty"
@@ -283,6 +297,11 @@ export default function NewSession({
           <AgentChoice agents={agents} value={harness} last={last} onChange={setHarness} />
         </div>
       )}
+      {warning ? (
+        <div className="mu-banner mu-banner--overlap ui-flow-banner" role="status">
+          <span className="mu-banner-text">{warning}</span>
+        </div>
+      ) : null}
       {task.error ? (
         <p className="mu-dialog-text ui-flow-error" role="alert">
           {task.error}
