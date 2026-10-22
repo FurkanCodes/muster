@@ -88,7 +88,8 @@ Every interactive element has the same vocabulary:
 | Hover | fill `surface-raised` (a primary button: `accent-hover`) over `timing-fast` |
 | Pressed | fill one step further (`accent-pressed`, `surface-tint`) |
 | Focus, a control | a `stroke-focus` ring in `focus-ring` on the control's own edge (inset, so it follows the radius and never spills); a primary button and a switch ring just outside; keyboard only (`:focus-visible`) |
-| Focus, a line of a list | no ring: the line takes `surface-lit`, as a click would. A list itself never rings; its selected line, lit rather than tinted, says it has the keys |
+| Focus, a line of a list | no ring, and no focus: the list holds the focus and names its selected line (`aria-activedescendant`); a click on a line gives the focus to the list, so the browser's focus and the list's selection never part. A list itself never rings; its selected line, lit rather than tinted, says it has the keys |
+| Focus, a menu's item | fill `surface-lit`: a menu's focus is its cursor. A menu gives the focus back to what had it when it is done with (⎋, an item chosen), and leaves it where a click put it when the click closed it |
 | Selected, list has the keys | fill `surface-lit` |
 | Selected, keys elsewhere | fill `surface-tint` |
 | Has the keys (a terminal, a panel, a field) | frame in `keys` |
@@ -120,3 +121,11 @@ Muster is driven from the keyboard first. Every action has a key, and every key 
 - Show keys with the **Kbd** component, in hints (`⏎ answer`), menus (right-aligned) and tooltips ("Full screen (f)"). Keys are shown where they are asked for, not everywhere: a sidebar button's key appears while the pointer or the keys are on it.
 - The status bar lists the selected thing's first three actions with their keys and ends with `h` for every key; the rest are in every key and the palette.
 - In a terminal every key goes to the program, except the few that leave it, change screen or fold the sidebar.
+
+## Pointer
+
+The pointer reaches as far as the keys, and works as a Mac app's does.
+
+- A right-click on a session's line selects it and opens its menu, the one under ⋯, at the pointer, kept inside the window. A right-click on another line (a project, a worktree) selects it.
+- The window opens no browser menu (Reload, Inspect): only over text one can copy (a field, a terminal, a ticket's text, a diff) or with text chosen.
+- Facts in a head are ways on where there is one: the branch goes to its project's page, a diff stat and an overlap to the changes, a pull request to the browser. They stay quiet until the pointer is on them (`surface-raised`), and their tooltips name their keys.

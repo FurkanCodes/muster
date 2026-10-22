@@ -192,6 +192,31 @@ body {
   overflow: hidden;
   white-space: nowrap;
 }
+/* The head's facts are ways on (SessionPane: Where): quiet until the pointer is on one. */
+.app-head-where {
+  gap: var(--space-2) var(--space-4);
+}
+.app-head-link {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: var(--size-control-sm);
+  padding: 0 var(--space-6);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.app-head-link:hover {
+  background: var(--surface-raised);
+}
+.app-head-link:disabled {
+  cursor: default;
+  background: transparent;
+}
 .app-head .mu-pane-actions {
   gap: var(--space-2);
 }

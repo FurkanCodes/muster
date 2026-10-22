@@ -45,6 +45,7 @@
 :where(
   .mu-btn,
   .mu-icon-btn,
+  .app-head-link,
   .mu-seg-item,
   .mu-nav-item,
   .mu-pill,
@@ -59,28 +60,18 @@
   outline: var(--stroke-focus) solid var(--focus-ring);
   outline-offset: var(--stroke-focus);
 }
-:where(
-  .mu-item,
-  .mu-row,
-  .mu-tree-row,
-  .mu-file,
-  .mu-ticket,
-  .mu-folder,
-  .mu-turnrow,
-  .mu-menu-item
-):focus-visible {
+.mu-item:focus-visible,
+.mu-row:focus-visible,
+.mu-tree-row:focus-visible,
+.mu-file:focus-visible,
+.mu-ticket:focus-visible,
+.mu-folder:focus-visible,
+.mu-turnrow:focus-visible,
+.mu-menu-item:focus-visible {
   outline: none;
 }
-:where(
-  .mu-item,
-  .mu-row,
-  .mu-tree-row,
-  .mu-file,
-  .mu-ticket,
-  .mu-folder,
-  .mu-turnrow,
-  .mu-menu-item
-):focus-visible:not([aria-selected="true"]) {
+/* A menu's focus is its cursor: the item the arrows are on is lit. */
+.mu-menu-item:focus-visible {
   background: var(--surface-lit);
 }
 

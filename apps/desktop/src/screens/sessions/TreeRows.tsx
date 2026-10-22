@@ -14,6 +14,7 @@ import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf, projectColour } from "../../state/selectors";
+import { focusListOf } from "../../ui/listPointer";
 import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
 import { mostUrgent, sessionsOn, type TreeRow } from "./tree";
 
@@ -126,6 +127,7 @@ function Line({
       aria-expanded={expanded}
       aria-label={label}
       className={`${className} ${selected && resting ? "is-resting" : ""}`}
+      onMouseDown={focusListOf}
       onClick={() => onPick(row.id)}
     >
       {children}

@@ -6,7 +6,7 @@
 // AllSessions); Settings at its foot. It is the one list of the window: the
 // session or project selected in it fills the rest.
 
-import { type ReactNode, useState } from "react";
+import { type MouseEvent, type ReactNode, useState } from "react";
 import { addProject, cloneProject, newSession } from "../flows/actions";
 import { useKeymap } from "../keys/useKeymap";
 import { keysOf, SessionMenu } from "../session/SessionMenu";
@@ -137,8 +137,31 @@ function ProjectsHead({ linked }: { linked: boolean }) {
   );
 }
 
+/**
+ * A right-click on a line of the list selects it, as a click does, and opens
+ * its menu where the pointer is: a session's is the one under its ⋯.
+ */
+function useLineMenu(): (event: MouseEvent<HTMLElement>) => void {
+  const app = useApp();
+  return (event) => {
+    const line = (event.target as Element).closest<HTMLElement>(
+      '[role="option"], [role="treeitem"]',
+    );
+    if (!line) return;
+    event.preventDefault();
+    // The list has the keys, as after a click: the menu gives them back to it.
+    line.closest<HTMLElement>('[role="listbox"], [role="tree"]')?.focus({ preventScroll: true });
+    line.click();
+    const ui = app.ui.getState();
+    const id = ui.selected[ui.screen];
+    if (id && app.daemon.store.getState().sessions[id])
+      app.actions.openMenuAt({ session: id, x: event.clientX, y: event.clientY });
+  };
+}
+
 export function Sidebar({ children }: { children: ReactNode }) {
   const app = useApp();
+  const lineMenu = useLineMenu();
   const actions = useActions();
   const mood = useMood();
   const folded = useUi((state) => state.sidebarFolded);
@@ -173,7 +196,10 @@ export function Sidebar({ children }: { children: ReactNode }) {
       />
       <ListSwitch />
       <ProjectsHead linked={linked} />
-      <div className="app-sidebar-list">{children}</div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the right-click is the pointer's way to a line's menu; ⋯ and ⌘K are the keys'. */}
+      <div className="app-sidebar-list" onContextMenu={lineMenu}>
+        {children}
+      </div>
       <SideButton
         icon="gear"
         label="Settings"

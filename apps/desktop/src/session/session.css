@@ -16,6 +16,12 @@
   right: var(--space-12);
   z-index: var(--z-menu);
 }
+/* At the pointer: placed by SessionMenu, over everything in the window. */
+.session-menu--at {
+  position: fixed;
+  right: auto;
+  z-index: var(--z-menu);
+}
 .session-menu hr.mu-menu-sep {
   border: 0;
 }

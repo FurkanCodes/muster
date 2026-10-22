@@ -85,6 +85,8 @@ export interface UiState {
   note: Note | null;
   /** Whether the person can see the window: animations and streams stop when not. */
   visible: boolean;
+  /** A session's menu asked for by a right-click on its line, opened where the pointer is. */
+  menuAt: { session: SessionId; x: number; y: number } | null;
 }
 
 export interface UiActions {
@@ -115,6 +117,8 @@ export interface UiActions {
   tell(text: string, error?: boolean): void;
   clearNote(): void;
   setVisible(visible: boolean): void;
+  /** Opens `session`'s menu at a point of the window (a right-click on its line), or closes it with null. */
+  openMenuAt(menu: UiState["menuAt"]): void;
 }
 
 export type UiStore = StoreApi<UiState>;
@@ -126,11 +130,11 @@ function storedTheme(): Theme {
   return value === "light" || value === "system" ? value : "dark";
 }
 
-/** The window on `screen`: the keys Muster's, nothing filling it, the sidebar listing a list shown. */
+/** The window on `screen`: the keys Muster's, nothing filling it, no menu open, the sidebar listing a list shown. */
 function shown(screen: ScreenId): Partial<UiState> {
   return isList(screen)
-    ? { screen, list: screen, keysIn: "list", fullScreen: null }
-    : { screen, keysIn: "list", fullScreen: null };
+    ? { screen, list: screen, keysIn: "list", fullScreen: null, menuAt: null }
+    : { screen, keysIn: "list", fullScreen: null, menuAt: null };
 }
 
 export function createUi(): { store: UiStore; actions: UiActions } {
@@ -155,6 +159,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     hints: [],
     note: null,
     visible: true,
+    menuAt: null,
   }));
   const set = store.setState;
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -206,6 +211,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
       set({ note: null });
     },
     setVisible: (visible) => set({ visible }),
+    openMenuAt: (menuAt) => set({ menuAt }),
   };
   return { store, actions };
 }
