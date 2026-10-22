@@ -263,7 +263,7 @@ export function General({ preferences }: { preferences: Preferences }) {
           <SettingRow id={row("shared_builds")} press="acts" act={toggleSharedBuilds}>
             <SettingText
               name="Shared Rust builds"
-              does="The worktrees Muster makes for a project build into one folder beside them, so a Rust project's dependencies are built and kept once, not again in every worktree. Your repository and your own checkout are never touched, and two worktrees building at once take turns. Turned off, each builds on its own again and the shared builds are deleted."
+              does="The worktrees Muster makes for a project build into one folder beside them, so a Rust project's dependencies are built and kept once, not again in every worktree. Your repository and your own checkout are never touched. Builds share one lock: agents building in two worktrees at once take turns, one waiting while the other builds. Turned off, each builds on its own again and the shared builds are deleted."
             />
             <Control>
               <Switch
