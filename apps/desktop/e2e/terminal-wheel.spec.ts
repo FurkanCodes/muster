@@ -22,18 +22,18 @@ const typedTo = (page: Page, session: string) =>
     session,
   );
 
-/** The terminal's grid on the page: where its cells are, and how tall each is. */
-async function grid(page: Page) {
+/** `session`'s terminal's grid on the page: where its cells are, and how tall each is. */
+async function grid(page: Page, session: string) {
   const screen = page.locator(".xterm-screen").first();
   const box = await screen.boundingBox();
   if (!box) throw new Error("the terminal is not drawn");
-  const { cols, rows } = await page.evaluate(() => {
-    const xterms = (
+  // Its own: other sessions' terminals are kept, out of the page.
+  const { cols, rows } = await page.evaluate((id) => {
+    const xterm = (
       window as unknown as { __musterXterms: Record<string, { cols: number; rows: number }> }
-    ).__musterXterms;
-    const [xterm] = Object.values(xterms);
+    ).__musterXterms[id];
     return { cols: xterm?.cols ?? 0, rows: xterm?.rows ?? 0 };
-  });
+  }, session);
   return { box, cols, rows, cell: { width: box.width / cols, height: box.height / rows } };
 }
 
@@ -67,7 +67,7 @@ test("ARC-24 a program that takes the mouse is sent every line a trackpad goes, 
       alternate_screen: true,
     });
   }, id);
-  const { box, cell } = await grid(page);
+  const { box, cell } = await grid(page, id);
   // Over the cell in column 11, row 6.
   await page.mouse.move(box.x + cell.width * 10.5, box.y + cell.height * 5.5);
   const before = (await typedTo(page, id)).length;
@@ -92,7 +92,7 @@ test("ARC-24 a program that does not take the mouse is sent nothing by the wheel
 }) => {
   const id = await openSession(page, "Sketch the Tauri shell");
   const before = (await typedTo(page, id)).length;
-  const { box, cell } = await grid(page);
+  const { box, cell } = await grid(page, id);
   await page.mouse.move(box.x + cell.width * 4, box.y + cell.height * 4);
   for (let step = 0; step < 10; step += 1) await page.mouse.wheel(0, -cell.height);
   await page.waitForTimeout(200);

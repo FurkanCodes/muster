@@ -14,10 +14,14 @@ export function exposeForTests(session: string, xterm: Terminal): () => void {
     __musterBackgrounds?: Shown;
     // The terminal itself, for tests that time what it draws.
     __musterXterms?: Record<string, Terminal>;
+    // How many xterms each session's terminal was given, for tests that count them.
+    __musterXtermsMade?: Record<string, number>;
   };
   holder.__musterTerminals ??= {};
   holder.__musterBackgrounds ??= {};
   holder.__musterXterms ??= {};
+  holder.__musterXtermsMade ??= {};
+  holder.__musterXtermsMade[session] = (holder.__musterXtermsMade[session] ?? 0) + 1;
   holder.__musterXterms[session] = xterm;
   holder.__musterBackgrounds[session] = () => xterm.options.theme?.background ?? "";
   holder.__musterTerminals[session] = () => {

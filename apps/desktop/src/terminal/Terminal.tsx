@@ -1,19 +1,26 @@
 // A session's live terminal: xterm.js on the GPU, fed the daemon's bytes as
-// they come (`ARC-25`). It attaches while it is on screen and the window is
-// seen, and detaches otherwise, picking up from the last byte it had. Keys
-// go to the program while it has them; ⇧Q and ⌘ shortcuts stay Muster's.
+// they come (`ARC-25`). The xterm is the session's kept one (kept.ts), put
+// in this pane while it shows and taken out as it goes, so moving the
+// session's terminal never makes it afresh nor replays its output. It
+// attaches while it is on screen and the window is seen, and detaches
+// otherwise, picking up from the last byte it had. Keys go to the program
+// while it has them; ⇧Q and ⌘ shortcuts stay Muster's.
 
-import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { useActions, useApp, useBridge, useUi } from "../app/context";
-import type { TermFrame } from "../ipc/frames";
 import type { SessionId } from "../ipc/generated/SessionId";
-import type { TerminalModes } from "../ipc/generated/TerminalModes";
-import { exposeForTests } from "./testing";
-import { WheelLines, wheelReport } from "./wheel";
+import { type KeptTerminal, keptTerminals } from "./kept";
+
+/**
+ * One showing of a session's kept terminal in this pane: a new one each
+ * time it is taken, so what follows a showing (its fit, its stream) is
+ * that showing's alone, never one gone or another session's.
+ */
+interface Showing {
+  readonly terminal: KeptTerminal;
+  readonly session: SessionId;
+}
 
 /** The colours of the theme in use, read from the design tokens. */
 function themeFromTokens(element: Element) {
@@ -28,105 +35,62 @@ function themeFromTokens(element: Element) {
   };
 }
 
-/** The modes a program set, written to xterm itself so its keys and pastes match. */
-function modeSequences(modes: TerminalModes): string {
-  const set = (on: boolean, mode: number) => `\x1b[?${mode}${on ? "h" : "l"}`;
-  return set(modes.application_cursor, 1) + set(modes.bracketed_paste, 2004);
-}
-
 export function Terminal({ session, compact = false }: { session: SessionId; compact?: boolean }) {
+  const app = useApp();
   const bridge = useBridge();
   const actions = useActions();
-  const { ui } = useApp();
+  const { ui } = app;
   const visible = useUi((state) => state.visible);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const drawnIn = useUi((state) => state.drawnIn);
   const host = useRef<HTMLElement>(null);
-  const term = useRef<XTerm | null>(null);
-  // The position after the last byte written, so a reattach asks only for what is new.
-  const nextSeq = useRef<number | null>(null);
-  // The modes the program set, as the daemon last said: whether it takes the mouse.
-  const modes = useRef<TerminalModes | null>(null);
-  // Fitted to its pane at least once: only then is it fed. Bytes written to
-  // xterm's own 80 by 24 and fitted after are wrapped again by xterm, and the
-  // program's screen drawn into it is scrambled for good.
-  const [fitted, setFitted] = useState(false);
+  const [showing, setShowing] = useState<Showing | null>(null);
+  // The showing in this pane now, as the effects that follow it check: a
+  // render's own may be gone already.
+  const current = useRef<Showing | null>(null);
+  // The showing fitted to this pane at least once: only then is it fed.
+  // Bytes written to xterm's own 80 by 24 and fitted after are wrapped
+  // again by xterm, and the program's screen drawn into it is scrambled.
+  const [fitted, setFitted] = useState<Showing | null>(null);
+  const kept = showing?.terminal ?? null;
 
-  // One xterm for the component's life.
+  // The session's kept terminal, in this pane while it shows.
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const xterm = new XTerm({
-      fontFamily: '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace',
-      fontSize: compact ? 12 : 13,
-      lineHeight: compact ? 1.5 : 1.54,
-      cursorBlink: false,
-      scrollback: 5000,
-      allowProposedApi: false,
-      macOptionIsMeta: false,
-      theme: themeFromTokens(element),
-    });
-    const fit = new FitAddon();
-    xterm.loadAddon(fit);
-    xterm.open(element);
-    // Out of Tab's way: Tab goes round the tabs, as in the terminal UI, and
-    // a terminal takes the keys only on ⏎ or a click, never by Tab.
-    xterm.textarea?.setAttribute("tabindex", "-1");
-    try {
-      const webgl = new WebglAddon();
-      // Lost after a sleep or under memory pressure: fall back to the DOM renderer.
-      webgl.onContextLoss(() => webgl.dispose());
-      xterm.loadAddon(webgl);
-    } catch {
-      // No WebGL here: xterm draws with the DOM.
-    }
-    const typed = xterm.onData((text) => void bridge.input(session, text).catch(() => {}));
-    xterm.attachCustomKeyEventHandler((event) => {
-      // ⌘ shortcuts and ⇧Q (leave the terminal) are Muster's, never the program's.
-      if (event.metaKey) return false;
-      if (event.type === "keydown" && event.shiftKey && event.key === "Q") return false;
-      return true;
-    });
-    // A program that takes the mouse is sent the wheel's every line, where
-    // the pointer is (`wheel.ts`); otherwise xterm scrolls its own lines,
-    // or on the alternate screen sends arrow keys.
-    const wheelLines = new WheelLines();
-    xterm.attachCustomWheelEventHandler((event) => {
-      const now = modes.current;
-      if (!now || now.mouse === "off" || event.shiftKey) return true;
-      const screen = xterm.element?.querySelector(".xterm-screen")?.getBoundingClientRect();
-      if (!screen || screen.width === 0 || screen.height === 0) return true;
-      event.preventDefault();
-      const lines = wheelLines.take(event, {
-        cellHeight: screen.height / xterm.rows,
-        rows: xterm.rows,
-      });
-      if (lines === 0) return false;
-      const cell = (at: number, size: number, count: number) =>
-        Math.min(count - 1, Math.max(0, Math.floor((at / size) * count)));
-      const column = cell(event.clientX - screen.left, screen.width, xterm.cols);
-      const row = cell(event.clientY - screen.top, screen.height, xterm.rows);
-      const report = wheelReport(lines < 0, event, column, row, now);
-      if (report) void bridge.input(session, report.repeat(Math.abs(lines))).catch(() => {});
-      return false;
-    });
+    const keeper = keptTerminals(app);
+    const lease = keeper.take(session);
+    const terminal = lease.item;
+    const xterm = terminal.xterm;
+    const shown: Showing = { terminal, session };
+    current.current = shown;
+    terminal.showIn(element, compact, themeFromTokens(element));
+    // Seen or not before it may draw on the GPU, so a hidden window makes no context.
+    terminal.gpu.see(ui.getState().visible);
 
     // The program is told the size its terminal is drawn at, and only that:
     // a size measured on a pane laid out with a character cell to measure,
     // once per change. A pane put out of sight (0 by 0), or a font not yet
     // measured, says nothing, never xterm's own 80 by 24, which the program
     // would draw its screen at and leave behind once told the real size.
+    // Out of sight, the pane's terminal also streams nothing and holds no
+    // GPU context (`ARC-25`): a panel the layout has no room for is laid
+    // out at 0 by 0. Both come back with its next size.
     let frame = 0;
-    let told = "";
     const measure = () => {
-      if (element.clientWidth === 0 || element.clientHeight === 0) return;
-      const wanted = fit.proposeDimensions();
+      if (element.clientWidth === 0 || element.clientHeight === 0) {
+        terminal.gpu.want(false);
+        setFitted(null);
+        return;
+      }
+      const wanted = terminal.fit.proposeDimensions();
       if (!wanted || !Number.isFinite(wanted.cols) || !Number.isFinite(wanted.rows)) return;
-      fit.fit();
-      setFitted(true);
+      terminal.fit.fit();
+      terminal.gpu.want(true);
+      setFitted(shown);
       const now = `${xterm.cols}x${xterm.rows}`;
-      if (now === told) return;
-      told = now;
+      if (now === terminal.told) return;
+      terminal.told = now;
       void bridge.resize(session, xterm.cols, xterm.rows).catch(() => {});
     };
     const size = () => {
@@ -141,62 +105,46 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
     // measured again once it has, and the columns that fit with it.
     const fonts = document.fonts;
     fonts?.addEventListener?.("loadingdone", size);
-    term.current = xterm;
-    const unexpose = exposeForTests(session, xterm);
+    setShowing(shown);
     return () => {
-      unexpose();
+      if (current.current === shown) current.current = null;
       cancelAnimationFrame(frame);
       resize.disconnect();
       fonts?.removeEventListener?.("loadingdone", size);
-      typed.dispose();
-      xterm.dispose();
-      term.current = null;
-      nextSeq.current = null;
-      modes.current = null;
-      setFitted(false);
+      terminal.putAway();
+      keeper.give(lease);
+      setShowing(null);
+      setFitted(null);
     };
-  }, [bridge, session, compact]);
+  }, [app, bridge, ui, session, compact]);
 
-  // Streams while the window is seen, once fitted; detaches while it is not (`ARC-25`).
+  // Streams while the window is seen, once fitted; detaches while it is not
+  // (`ARC-25`). A frame of a stream let go never reaches the terminal.
+  // Only the showing in the pane now, of this session, once fitted: a
+  // render's showing may be another session's, gone in this same commit.
   useEffect(() => {
-    if (!visible || !fitted) return;
-    const onFrame = (frame: TermFrame) => {
-      const xterm = term.current;
-      if (!xterm) return;
-      switch (frame.kind) {
-        case "replay":
-          if (frame.reset || nextSeq.current === null) xterm.reset();
-          xterm.write(frame.data);
-          nextSeq.current = frame.seq + frame.data.byteLength;
-          break;
-        case "output":
-          xterm.write(frame.data);
-          nextSeq.current = frame.seq + frame.data.byteLength;
-          break;
-        // After a replay starting over, whose bytes were cut from the
-        // middle of the output: the program's screen, drawn whole.
-        case "screen":
-          xterm.write(frame.data);
-          break;
-        case "event":
-          if (frame.event.kind === "modes") {
-            modes.current = frame.event.modes;
-            xterm.write(modeSequences(frame.event.modes));
-          }
-          break;
-      }
-    };
-    void bridge.attach(session, nextSeq.current, true, onFrame).catch(() => {});
+    if (!showing || fitted !== showing || !visible) return;
+    if (current.current !== showing || showing.session !== session) return;
+    const terminal = showing.terminal;
+    const feed = terminal.startFeed();
+    void bridge.attach(session, terminal.nextSeq, true, feed.onFrame).catch(() => {});
     return () => {
+      terminal.stopFeed(feed);
       void bridge.detach(session).catch(() => {});
     };
-  }, [bridge, session, visible, fitted]);
+  }, [bridge, session, showing, fitted, visible]);
+
+  // A lost WebGL context is made again only while the window is seen.
+  useEffect(() => {
+    kept?.gpu.see(visible);
+  }, [kept, visible]);
 
   // The terminal takes the keys when told to, and tells the daemon it is in focus.
   useEffect(() => {
-    if (hasKeys) term.current?.focus();
-    else term.current?.blur();
-  }, [hasKeys]);
+    if (!kept) return;
+    if (hasKeys) kept.xterm.focus();
+    else kept.xterm.blur();
+  }, [kept, hasKeys]);
 
   // With panels beside it, the terminal in focus is the one that had it, or
   // this one where none did; each lets go only of its own.
@@ -211,8 +159,8 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   // the Mac: the tokens change with data-theme, set before `drawnIn` is.
   useEffect(() => {
     const element = host.current;
-    if (element && term.current && drawnIn) term.current.options.theme = themeFromTokens(element);
-  }, [drawnIn]);
+    if (element && kept && drawnIn) kept.xterm.options.theme = themeFromTokens(element);
+  }, [kept, drawnIn]);
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches the terminal through xterm's textarea.
