@@ -1,5 +1,5 @@
 // The lines of the All list (design system: SessionTree): a project's, with
-// its swatch, and a `+` for a new session in it; a session's, as a two-line
+// its swatch, which opens its page, where work starts; a session's, as a two-line
 // row (or one, where the person says); a worktree's, with its branch and
 // what its work comes to, while no session is in it; and a shell's or a
 // plugin's panel's on one line, where its workspace has no chat for it to
@@ -9,13 +9,11 @@
 
 import type { MouseEvent, ReactNode } from "react";
 import { useNow } from "../../app/clock";
-import { useApp, useDaemon } from "../../app/context";
-import { newSessionIn } from "../../flows/actions";
+import { useDaemon } from "../../app/context";
 import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf, projectColour } from "../../state/selectors";
-import { Icon } from "../../ui/Icon";
 import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
 import { mostUrgent, sessionsOn, type TreeRow } from "./tree";
 
@@ -137,31 +135,18 @@ function Line({
 
 export function ProjectLine(props: LineProps) {
   const { row, folded } = props;
-  const app = useApp();
   const name = useDaemon((state) => state.projects[row.id]?.name ?? "");
   const root = useDaemon((state) => state.projects[row.id]?.root ?? "");
   const colour = useDaemon((state) => projectColour(state, row.id));
   return (
-    <>
-      <Line {...props} expanded={!folded} className="mu-tree-row sessions-project" label={name}>
-        <Fold {...props} />
-        <span className={`mu-swatch mu-p${colour}`} />
-        <span className="mu-tree-project mu-cut" title={homely(root)}>
-          {name}
-        </span>
-        {folded ? <Standing row={row} /> : null}
-      </Line>
-      <button
-        type="button"
-        className="mu-icon-btn mu-icon-btn--sm sessions-new"
-        aria-label={`New session in ${name}`}
-        title={`New session in ${name}`}
-        tabIndex={-1}
-        onClick={() => newSessionIn(app, row.id)}
-      >
-        <Icon name="plus" size={14} />
-      </button>
-    </>
+    <Line {...props} expanded={!folded} className="mu-tree-row sessions-project" label={name}>
+      <Fold {...props} />
+      <span className={`mu-swatch mu-p${colour}`} />
+      <span className="mu-tree-project mu-cut" title={homely(root)}>
+        {name}
+      </span>
+      {folded ? <Standing row={row} /> : null}
+    </Line>
   );
 }
 

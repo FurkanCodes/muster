@@ -13,13 +13,15 @@ import { type KeyAction, keysOf } from "./keymap";
 // reach its field. The dialogs load when first asked.
 import Palette from "./Palette";
 
-const NewSession = lazy(() => import("./NewSession"));
+const NewWorktree = lazy(() => import("./NewWorktree"));
+const CloneProject = lazy(() => import("./CloneProject"));
 const AddProject = lazy(() => import("./AddProject"));
 const Questions = lazy(() => import("./Questions"));
 
 /** The flows' keys, and the screens each works on. */
 const BOUND: readonly [KeyAction, (app: App) => void, readonly ScreenId[]][] = [
   ["add_project", act.addProject, act.SESSION_LISTS],
+  ["clone_project", act.cloneProject, act.SESSION_LISTS],
   ["new_session", act.newSession, act.SESSION_LISTS],
   ["new_worktree", act.newWorktree, act.SESSION_LISTS],
   ["close", act.close, act.SESSION_LISTS],
@@ -113,8 +115,10 @@ export function Flows() {
         <Palette />
       ) : flow?.kind === "add-project" ? (
         <AddProject />
-      ) : flow?.kind === "new-session" || flow?.kind === "new-worktree" ? (
-        <NewSession flow={flow} />
+      ) : flow?.kind === "clone-project" ? (
+        <CloneProject />
+      ) : flow?.kind === "new-worktree" ? (
+        <NewWorktree flow={flow} />
       ) : flow ? (
         <Questions flow={flow} />
       ) : null}

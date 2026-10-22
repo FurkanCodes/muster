@@ -166,6 +166,7 @@ pub(crate) async fn setup() -> Setup {
         places: crate::spend::Places::default(),
         secrets: Arc::new(crate::secrets::Kept::default()),
         hooks: crate::plugins::hooks::Hooks::idle(),
+        repositories: Arc::new(crate::repositories::Gh),
     })
     .await
     .unwrap();

@@ -19,7 +19,8 @@ import {
 } from "./support/window";
 
 // Needs you in the real app over a real daemon
-// (PRD-01, ARC-24): the queue's sections in the model's order, the keys on
+// (PRD-01, ARC-24): the queue by project in the model's order, never the
+// agents at work, the keys on
 // the selected session, its terminal, the banner, a real turn of a stand-in
 // agent in its changes, and what the list does to a session, each checked
 // in the window and in the daemon, on disk and in git.
@@ -93,11 +94,11 @@ describe("Needs you, over the real daemon", () => {
     await untilSession("Done unseen", "finished");
   });
 
-  it("PRD-01 lists who asks, then what finished unseen, then the agents at work, the longest first", async () => {
-    await untilShown(["Asks first", "Done unseen", "Long at work", "Lately at work"]);
+  it("PRD-01 lists by project; under each, who asks, then what finished unseen; never the agents at work", async () => {
+    await untilShown(["Asks first", "Done unseen"]);
     const heads: string[] = [];
-    for (const head of await $$(".queue-list .mu-section")) heads.push(await head.getText());
-    expect(heads).toEqual(["Asking you", "Finished, not seen", "Working"]);
+    for (const head of await $$(".queue-list .queue-project")) heads.push(await head.getText());
+    expect(heads).toEqual(["app"]);
     expect(session("Done unseen")?.unseen).toBe(true);
     await untilFlock(2, 1, 1);
   });
@@ -120,10 +121,10 @@ describe("Needs you, over the real daemon", () => {
     await untilSelected("Done unseen");
     await until(() => session("Done unseen")?.unseen === false, "the news to be seen");
     // It keeps its place until another is chosen.
-    await untilShown(["Asks first", "Done unseen", "Long at work", "Lately at work"]);
+    await untilShown(["Asks first", "Done unseen"]);
     await pressOnWindow("k");
     await untilSelected("Asks first");
-    await untilShown(["Asks first", "Long at work", "Lately at work"]);
+    await untilShown(["Asks first"]);
   });
 
   it("PRD-01 what finished while the person looked elsewhere waits in Needs you until it is shown", async () => {
@@ -132,7 +133,7 @@ describe("Needs you, over the real daemon", () => {
     await finish(agents.later);
     await untilSession("Finished later", "finished");
     await until(() => session("Finished later")?.unseen, "the daemon to keep it as news");
-    await untilShown(["Asks first", "Finished later", "Long at work", "Lately at work"]);
+    await untilShown(["Asks first", "Finished later"]);
     await pressOnWindow("j");
     await untilSelected("Finished later");
     await until(() => session("Finished later")?.unseen === false, "its news to be seen");
@@ -158,17 +159,19 @@ describe("Needs you, over the real daemon", () => {
     await ask(agents.long, "Shall the long one go on?");
     await untilSession("Long at work", "needs_you");
     // The window sees it ask before it is answered: drawn among who asks,
-    // saying what it asks. At work, it was already second in the list, so its
-    // place says nothing; and a window sent the ask and the answer in one
-    // patch never saw it need the person.
+    // saying what it asks; a window sent the ask and the answer in one patch
+    // never saw it need the person.
     await expect(option("Long at work").$(".queue-ask")).toBeExisting();
     await work(agents.long);
     await untilSession("Long at work", "running");
-    // At work again since just now: the newest at work, so after the other.
-    await untilShown(["Asks first", "Lately at work", "Long at work"]);
+    // At work again, it needs nobody: it leaves Needs you.
+    await untilShown(["Asks first"]);
+    // l still goes to it, where it is listed: Sessions.
     await pressOnWindow("l");
-    await untilSelected("Long at work");
-    await pressOnWindow("k", "k");
+    await expect(
+      $('//*[@role="treeitem"][@aria-selected="true"][starts-with(@aria-label, "Long at work")]'),
+    ).toBeExisting();
+    await goTo("Needs you");
     await untilSelected("Asks first");
   });
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { derive } from "../../ipc/mock/model";
 import { ulid, workingDay } from "../../ipc/mock/scenario";
 import { createDaemon, type DaemonState } from "../../state/daemon";
-import { holdPlace, queueIds, sectionOf } from "./queue";
+import { byProject, holdPlace, projectOfSession, queueIds, sectionOf } from "./queue";
 
 function stateOf(world = workingDay()): DaemonState {
   return {
@@ -16,19 +16,10 @@ function stateOf(world = workingDay()): DaemonState {
 }
 
 describe("ARC-24 the queue's lists, in the model's order", () => {
-  it("lists Needs you as the model orders it, then the agents at work, the longest first", () => {
+  it("lists Needs you as the model orders it: what asks, then what finished unseen", () => {
     const state = stateOf();
     expect(state.derived.needs_you).toEqual([ulid(101), ulid(200), ulid(104), ulid(202)]);
-    expect(queueIds(state)).toEqual([
-      ulid(101),
-      ulid(200),
-      ulid(104),
-      ulid(202),
-      ulid(201),
-      ulid(100),
-      ulid(103),
-      ulid(400),
-    ]);
+    expect(queueIds(state)).toEqual(state.derived.needs_you);
   });
 
   it("never orders the queue itself, whatever the times say", () => {
@@ -37,17 +28,13 @@ describe("ARC-24 the queue's lists, in the model's order", () => {
       ...state,
       derived: { ...state.derived, needs_you: [ulid(202), ulid(104), ulid(200), ulid(101)] },
     };
-    expect(queueIds(reversed).slice(0, 4)).toEqual(reversed.derived.needs_you);
-    const working = [ulid(400), ulid(100), ulid(201), ulid(103)];
-    expect(queueIds({ ...state, derived: { ...state.derived, working } }).slice(4)).toEqual(
-      working,
-    );
+    expect(queueIds(reversed)).toEqual(reversed.derived.needs_you);
   });
 
-  it("lists the agents at work after those waiting, never a shell", () => {
+  it("lists neither the agents at work, who need nobody yet, nor a shell", () => {
     const state = stateOf();
-    expect(queueIds(state).slice(4)).toEqual([ulid(201), ulid(100), ulid(103), ulid(400)]);
-    expect(queueIds(state)).not.toContain(ulid(102));
+    for (const id of [ulid(201), ulid(100), ulid(103), ulid(400), ulid(102)])
+      expect(queueIds(state)).not.toContain(id);
   });
 
   it("puts each session in its section by how it stands", () => {
@@ -58,6 +45,22 @@ describe("ARC-24 the queue's lists, in the model's order", () => {
     expect(sections).toContainEqual(["Sketch the Tauri shell", "asking"]);
     expect(sections).toContainEqual(["Resize settles once on release", "news"]);
     expect(sections).toContainEqual(["Upgrade AGP to 9.1", "working"]);
+  });
+});
+
+describe("the queue by project, as the All list groups sessions", () => {
+  it("lists each project once, the one with the most urgent first, its sessions in the queue's order", () => {
+    const state = stateOf();
+    const ids = queueIds(state);
+    const projectOf = (id: string) => projectOfSession(state, id);
+    const groups = byProject(ids, projectOf);
+    expect(groups[0]?.project).toBe(projectOf(ids[0] ?? ""));
+    expect(new Set(groups.map((group) => group.project)).size).toBe(groups.length);
+    for (const group of groups) {
+      expect(group.ids.every((id) => projectOf(id) === group.project)).toBe(true);
+      expect(group.ids).toEqual(ids.filter((id) => projectOf(id) === group.project));
+    }
+    expect(groups.flatMap((group) => group.ids).toSorted()).toEqual(ids.toSorted());
   });
 });
 

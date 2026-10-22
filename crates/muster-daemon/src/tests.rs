@@ -61,6 +61,7 @@ async fn start_in(delta_capacity: usize, config_dir: PathBuf) -> SupervisorHandl
         places: crate::spend::Places::default(),
         secrets: Arc::new(crate::secrets::Kept::default()),
         hooks: crate::plugins::hooks::Hooks::idle(),
+        repositories: Arc::new(crate::repositories::Gh),
     })
     .await
     .unwrap()
@@ -380,6 +381,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         places: crate::spend::Places::default(),
         secrets: Arc::new(crate::secrets::Kept::default()),
         hooks: crate::plugins::hooks::Hooks::idle(),
+        repositories: Arc::new(crate::repositories::Gh),
     })
     .await
     .unwrap();

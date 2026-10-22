@@ -17,7 +17,8 @@ const running = () =>
 test("ARC-25 with no agent at work, nothing in the window moves", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("img", { name: /4 working/ })).toBeVisible();
-  // The working rows' marks spin while their agents work.
+  // The working rows' marks spin while their agents work: All lists them.
+  await page.getByRole("button", { name: /^All/ }).click();
   await expect.poll(() => page.evaluate(running)).toBeGreaterThan(0);
   await page.evaluate(() => {
     for (const n of [100, 103, 201, 400]) {

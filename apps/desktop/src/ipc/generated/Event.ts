@@ -20,7 +20,8 @@ at: Timestamp,
  */
 sample?: boolean, project: EventProject | null, workspace: EventWorkspace | null, session?: EventSession | null, 
 /**
- * The ticket the workspace's branch is for, by its key: `42`,
+ * The ticket the workspace was made for, else the one its branch's
+ * name says (`Workspace::ticket_or_branch`), by its key: `42`,
  * `APP-7`.
  */
 ticket?: string | null, pull_request?: EventPullRequest | null, clash?: EventClash | null, };

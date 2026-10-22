@@ -12,6 +12,7 @@ import { keymapFor } from "../keys/useKeymap";
 export type KeyAction =
   | "help"
   | "add_project"
+  | "clone_project"
   | "new_worktree"
   | "new_session"
   | "show_tickets"

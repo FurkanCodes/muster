@@ -135,7 +135,10 @@
 //! (`Preferences::shared_builds`, a field older clients pass over;
 //! `PreferenceChange::SharedBuilds`, sent only to a daemon of 47 or
 //! later); version 48 the ticket a worktree was made for
-//! (`Workspace::ticket`, a field older clients pass over).
+//! (`Workspace::ticket`, a field older clients pass over); version 49
+//! cloning a project from GitHub (`Command::ListRepositories` and
+//! `Command::CloneProject`, sent only to a daemon of 49 or later, answered
+//! with `Reply::Repositories` and `Reply::ProjectAdded`).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -147,6 +150,7 @@ use serde::{Deserialize, Serialize};
 pub mod agents;
 mod older;
 pub mod plugins;
+pub mod repositories;
 mod terminal;
 
 pub use terminal::{
@@ -163,7 +167,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 48;
+pub const PROTOCOL_VERSION: u32 = 49;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -546,6 +550,16 @@ pub enum Command {
     /// anything else. Answered with [`Reply::Agents`]. Sent only to a
     /// daemon of 45 or later ([`agents::AGENTS_FOUND_PROTOCOL`]).
     Agents,
+    /// The repositories the person can reach on GitHub, through their own
+    /// `gh`, to clone one as a project. Answered with
+    /// [`Reply::Repositories`]. Sent only to a daemon of 49 or later
+    /// ([`repositories::REPOSITORIES_PROTOCOL`]).
+    ListRepositories,
+    /// Clone `repository` (`owner/name`, or its github.com address) into a
+    /// folder of its name in `into`, through the person's own `gh`, and add
+    /// it as a project. Answered with [`Reply::ProjectAdded`] once cloned.
+    /// Sent only to a daemon of 49 or later.
+    CloneProject { repository: String, into: PathBuf },
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with
@@ -675,6 +689,9 @@ pub enum Reply {
     /// Where each coding agent is installed, and its version. From
     /// protocol 45.
     Agents(Vec<agents::AgentFound>),
+    /// The repositories the person can reach on GitHub, the most recently
+    /// pushed first. From protocol 49.
+    Repositories(Vec<repositories::HostedRepository>),
     /// What a workspace's work has changed.
     Changes(Changes),
     /// One changed file's diff.

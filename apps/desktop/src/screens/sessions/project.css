@@ -1,0 +1,142 @@
+/* A project's page, beside the list: its head, the box that starts work,
+   and where its work is. Every value is a token. */
+.project-page {
+  flex: 1;
+  min-width: 0;
+}
+.project-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-8) var(--space-20) var(--space-24);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.project-body > * {
+  width: 100%;
+  max-width: var(--layout-measure);
+}
+
+/* The box: the prompt, then where, which agent and Start under it. */
+.project-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  border: var(--stroke-hairline) solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  transition: border-color var(--timing-fast) var(--ease-out);
+}
+.project-composer:focus-within {
+  border-color: var(--accent);
+}
+.project-prompt {
+  width: 100%;
+  min-height: 72px;
+  padding: var(--space-4) var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  resize: vertical;
+  outline: none;
+}
+.project-prompt::placeholder {
+  color: var(--text-quiet);
+}
+.project-prompt:disabled {
+  cursor: not-allowed;
+}
+.project-composer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+.project-composer-row .ui-select {
+  min-width: 180px;
+}
+/* The new worktree's branch, if the person names one: muster/ and six letters if not. */
+.project-branch {
+  width: auto;
+  flex: 1 1 160px;
+  min-width: 120px;
+  max-width: 240px;
+  height: var(--size-control-md);
+}
+.project-banner .mu-banner-text {
+  white-space: normal;
+}
+.project-error {
+  color: var(--waiting);
+}
+
+.project-head-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-4);
+}
+.project-heading {
+  margin-top: var(--space-12);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--text-quiet);
+}
+.project-places,
+.project-sessions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.project-places {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* A place: its branch and what its work comes to, then its sessions. */
+.project-place {
+  padding: var(--space-8) var(--space-8) var(--space-4);
+  border: var(--stroke-hairline) solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+}
+.project-place-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  min-height: var(--size-control-md);
+  padding: 0 var(--space-4) 0 var(--space-12);
+  font-size: 13px;
+  line-height: 18px;
+}
+.project-place-head .mu-icon-btn {
+  opacity: 0.6;
+}
+.project-place:hover .project-place-head .mu-icon-btn,
+.project-place-head .mu-icon-btn:focus-visible {
+  opacity: 1;
+}
+.project-place-empty {
+  padding: var(--space-4) var(--space-12) var(--space-6);
+}
+.project-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+}
+.project-session-name {
+  flex: none;
+  max-width: 50%;
+}
+.project-session .mu-meta {
+  flex: 1;
+  min-width: 0;
+}

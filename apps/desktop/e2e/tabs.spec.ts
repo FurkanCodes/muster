@@ -50,7 +50,7 @@ test("ARC-24 the status bar says a terminal has the keys while it does, and not 
   // Back with Muster, Tab is a tab again, and ↓ moves the list, not the agent.
   await page.keyboard.press("ArrowDown");
   await expect(
-    page.getByRole("option", { name: "Share the Gradle cache across worktrees" }),
+    page.getByRole("option", { name: "Resize settles once on release" }),
   ).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Tab");
   await expect(h1(page, "Tickets")).toBeVisible();

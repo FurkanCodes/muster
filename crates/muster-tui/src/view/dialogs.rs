@@ -9,6 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use muster_core::text::one_line;
 use muster_core::{ProjectId, TicketKey, WorkspaceId};
 
+use crate::app::cloning::{CLONE_ROWS, CloneChoice};
 use crate::app::tickets_from::Field;
 use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
 use crate::input::LineInput;
@@ -124,15 +125,20 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
 /// What `dialog` shows, `inner_width` columns wide.
 fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
     match dialog {
-        Dialog::AddProject { path, picker } => Shape {
-            below: picker_lines(picker, path.text(), usize::from(inner_width)),
-            hint: "↑↓ choose   ⇥ open   ⇧⇥ up   ⏎ add   esc cancel",
+        Dialog::AddProject {
+            path,
+            picker,
+            clone,
+        } => add_project(path, picker, clone.as_deref(), inner_width),
+        Dialog::CloneProject(choice) => Shape {
+            below: repository_lines(choice, usize::from(inner_width)),
+            hint: "↑↓ choose   ⏎ choose where   esc cancel",
             ..Shape::new(
-                " Add a project ",
+                " Clone from GitHub ",
                 vec![Line::from(
-                    "Folder to add (a git repository, or any folder):",
+                    "Your repositories on GitHub, or one by its name (owner/name):",
                 )],
-                Some(path),
+                Some(&choice.typed),
             )
         },
         Dialog::NewWorktree { branch, .. } => Shape::new(
@@ -504,6 +510,85 @@ fn tickets_from<'a>(
 /// The folder picker's lines: the folders shown for `typed`, the chosen one
 /// marked, at most [`PICKER_ROWS`] of them, and where they are among all;
 /// always as many lines, so the dialog keeps its place as the person types.
+/// The folder to add as a project, or to clone `clone` into.
+fn add_project<'a>(
+    path: &'a LineInput,
+    picker: &FolderPicker,
+    clone: Option<&str>,
+    inner_width: u16,
+) -> Shape<'a> {
+    let (title, said, hint) = match clone {
+        None => (
+            " Add a project ",
+            "Folder to add (a git repository, or any folder):".to_owned(),
+            "↑↓ choose   ⇥ open   ⇧⇥ up   ⏎ add   esc cancel",
+        ),
+        Some(name) => (
+            " Clone from GitHub ",
+            format!(
+                "Folder to clone {name} into (as {}/ there):",
+                muster_core::protocol::repositories::folder_of(name)
+            ),
+            "↑↓ choose   ⇥ open   ⇧⇥ up   ⏎ clone here   esc cancel",
+        ),
+    };
+    Shape {
+        below: picker_lines(picker, path.text(), usize::from(inner_width)),
+        hint,
+        ..Shape::new(title, vec![Line::from(said)], Some(path))
+    }
+}
+
+/// The repositories offered, the chosen one lit, and why ⏎ did nothing.
+fn repository_lines(choice: &CloneChoice, columns: usize) -> Vec<Line<'static>> {
+    let mut lines = match &choice.listed {
+        None => vec![Line::from("Asking GitHub…").dim()],
+        Some(Err(reason)) => vec![
+            Line::from(super::shorten(&format!("GitHub: {reason}"), columns)).red(),
+            Line::from("⏎ still clones one typed as owner/name.").dim(),
+        ],
+        Some(Ok(_)) => {
+            let shown = choice.shown();
+            if shown.is_empty() {
+                vec![Line::from("None of yours matches; ⏎ clones one typed as owner/name.").dim()]
+            } else {
+                shown
+                    .iter()
+                    .enumerate()
+                    .skip(choice.offset)
+                    .take(CLONE_ROWS)
+                    .map(|(at, repository)| {
+                        let chosen = choice.selected == Some(at);
+                        let mark = if repository.private { "  private" } else { "" };
+                        let name = super::shorten(&repository.name, columns.saturating_sub(2));
+                        let room = columns.saturating_sub(4 + name.chars().count() + mark.len());
+                        let about = repository
+                            .description
+                            .as_deref()
+                            .map(|text| super::shorten(&format!("  {text}"), room))
+                            .unwrap_or_default();
+                        Line::from(vec![
+                            Span::raw(if chosen { "› " } else { "  " }),
+                            if chosen {
+                                Span::from(name).reversed()
+                            } else {
+                                Span::raw(name)
+                            },
+                            Span::from(mark).dim(),
+                            Span::from(about).dim(),
+                        ])
+                    })
+                    .collect()
+            }
+        }
+    };
+    lines.resize(CLONE_ROWS + 1, Line::from(""));
+    if let Some(refused) = &choice.refused {
+        lines.push(Line::from(refused.clone()).red());
+    }
+    lines
+}
+
 fn picker_lines(picker: &FolderPicker, typed: &str, columns: usize) -> Vec<Line<'static>> {
     let mut lines = folder_lines(picker, typed, columns);
     lines.resize(PICKER_ROWS + 1, Line::from(""));

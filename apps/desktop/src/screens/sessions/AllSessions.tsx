@@ -13,7 +13,7 @@ import { useEffect } from "react";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
 import { Sidebar } from "../../app/Sidebar";
-import { addProject, newSession } from "../../flows/actions";
+import { newSession } from "../../flows/actions";
 import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { toggleShell } from "../../panels/beside";
@@ -24,7 +24,7 @@ import { SessionPane, SidebarAway } from "../../session/SessionPane";
 import { CloseSession, useSessionActions } from "../../session/useSessionActions";
 import { standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
-import { Icon } from "../../ui/Icon";
+import { ProjectPage } from "./ProjectPage";
 import { RowDetail } from "./RowDetail";
 import { SessionTree } from "./SessionTree";
 import { useTree } from "./useTree";
@@ -70,6 +70,7 @@ export default function AllSessions({ active }: { active: boolean }) {
   const renameKey = label("rename");
   const closeKey = label("close");
   const pullKey = label("pull_request_in_browser");
+  const startKey = label("new_session");
 
   /** The workspace a line works in: a session's, or a project's own checkout. */
   const workspaceOf = (): string | null => {
@@ -197,12 +198,13 @@ export default function AllSessions({ active }: { active: boolean }) {
       ]);
     if (kind === "workspace")
       return actions.setHints([
-        { key: "⏎", does: "new session" },
+        { key: "⏎", does: "start work here" },
         { key: shellKey, does: "shell" },
         { key: closeKey, does: "remove" },
       ]);
     if (kind)
       return actions.setHints([
+        { key: startKey, does: "start work" },
         { key: "⏎", does: "fold or unfold" },
         { key: shellKey, does: "shell" },
       ]);
@@ -220,6 +222,7 @@ export default function AllSessions({ active }: { active: boolean }) {
     renameKey,
     closeKey,
     pullKey,
+    startKey,
     changesShown,
     active,
   ]);
@@ -283,23 +286,14 @@ export default function AllSessions({ active }: { active: boolean }) {
               onFold={tree.fold}
             />
           )}
-          <button
-            type="button"
-            className="mu-nav-item sessions-add"
-            disabled={link !== "up"}
-            onClick={() => addProject(app)}
-          >
-            <span className="mu-nav-icon">
-              <Icon name="plus" size={16} />
-            </span>
-            Add a project
-          </button>
         </section>
       </Sidebar>
       {active ? (
         <main className="app-screen">
           {session ? (
             <SessionPane session={session} menu={menu} />
+          ) : selected?.kind === "project" ? (
+            <ProjectPage key={selected.id} project={selected.id} />
           ) : selected ? (
             <RowDetail row={selected} shellKey={shellKey} />
           ) : (

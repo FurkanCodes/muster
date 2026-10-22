@@ -3,6 +3,7 @@
 
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { Flow } from "../flows/types";
+import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { keep, kept } from "./kept";
@@ -59,6 +60,11 @@ export interface UiState {
     intent: "diff" | "put-back";
     request: number;
   } | null;
+  /**
+   * Work asked to start in a project: its page shown with its box ready,
+   * starting where `place` says (a workspace), or in a new worktree.
+   */
+  compose: { project: ProjectId; place: WorkspaceId | null; request: number } | null;
   /** The shell put beside the session (`T`); it runs on when put away. */
   shell: SessionId | null;
   /** The session filling the window (`f`), its panels with it. */
@@ -90,6 +96,10 @@ export interface UiActions {
   showTerminal(session: SessionId | null): void;
   showPane(mode: PaneMode): void;
   showTurn(workspace: WorkspaceId, number: number, intent: "diff" | "put-back"): void;
+  /** Shows `project`'s page with its box ready to start work, in `place` or a new worktree. */
+  compose(project: ProjectId, place: WorkspaceId | null): void;
+  /** The page has made its box ready: the request is done, so showing the page again leaves the keys with the list. */
+  composed(): void;
   showShell(shell: SessionId | null): void;
   fillWindow(session: SessionId | null): void;
   foldSidebar(): void;
@@ -132,6 +142,7 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     terminal: null,
     pane: "terminal",
     changesTurn: null,
+    compose: null,
     shell: null,
     fullScreen: null,
     sidebarFolded: false,
@@ -165,6 +176,13 @@ export function createUi(): { store: UiStore; actions: UiActions } {
         keysIn: "list",
         changesTurn: { workspace, number, intent, request: (state.changesTurn?.request ?? 0) + 1 },
       })),
+    compose: (project, place) =>
+      set((state) => ({
+        ...shown("all"),
+        selected: { ...state.selected, all: project },
+        compose: { project, place, request: (state.compose?.request ?? 0) + 1 },
+      })),
+    composed: () => set({ compose: null }),
     showShell: (shell) => set({ shell }),
     fillWindow: (fullScreen) => set({ fullScreen }),
     foldSidebar: () => set((state) => ({ sidebarFolded: !state.sidebarFolded })),

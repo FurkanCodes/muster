@@ -1,9 +1,11 @@
-//! Picking the folder to add as a project. The dialog's path field is also
-//! a folder browser: below it are the folders in the folder typed so far,
-//! narrowed by what follows its last `/`, with git repositories marked.
+//! Picking the folder to add as a project, or to clone one from GitHub
+//! into (`cloning`). The dialog's path field is also a folder browser:
+//! below it are the folders in the folder typed so far, narrowed by what
+//! follows its last `/`, with git repositories marked.
 //!
 //! ↑↓ choose one, ⇥ opens it, ⇧⇥ goes up a folder, and ⏎ adds the chosen
-//! folder, or the typed path when none is chosen. Typing a name chooses the
+//! folder, or the typed path when none is chosen; cloning, clones the
+//! repository into a folder of its name there. Typing a name chooses the
 //! first folder it matches. Folders are listed by the runtime, on a blocking
 //! thread (`Action::ListFolders`), and come back through
 //! [`App::on_folders`].
@@ -110,7 +112,13 @@ impl App {
     /// `a`: the dialog, on the folder `muster` was started in, listed.
     pub(super) fn open_add_project(&mut self) -> Vec<Action> {
         let path = LineInput::with(&as_folder(&self.cwd));
-        self.picker_shows(path, FolderPicker::default())
+        self.picker_shows(path, FolderPicker::default(), None)
+    }
+
+    /// Where to clone `name`: the same dialog, on the same folder.
+    pub(super) fn open_clone_into(&mut self, name: String) -> Vec<Action> {
+        let path = LineInput::with(&as_folder(&self.cwd));
+        self.picker_shows(path, FolderPicker::default(), Some(name))
     }
 
     /// A key in the dialog.
@@ -118,6 +126,7 @@ impl App {
         &mut self,
         mut path: LineInput,
         mut picker: FolderPicker,
+        clone: Option<String>,
         key: &KeyEvent,
     ) -> Vec<Action> {
         let count = match picker.shown(path.text()) {
@@ -155,7 +164,17 @@ impl App {
                         None => resolve_path(typed, &self.cwd),
                     };
                     self.mode = Mode::Browse;
-                    let command = Command::AddProject { root, name: None };
+                    let Some(repository) = clone else {
+                        let command = Command::AddProject { root, name: None };
+                        return vec![self.command(command, Then::SelectProject)];
+                    };
+                    // Cloned into a folder of its name there; that takes as
+                    // long as the repository is big.
+                    self.say(format!("Cloning {repository}…"));
+                    let command = Command::CloneProject {
+                        repository,
+                        into: root,
+                    };
                     return vec![self.command(command, Then::SelectProject)];
                 }
                 Edit::Cancel => {
@@ -166,7 +185,7 @@ impl App {
                 Edit::Ignored => {}
             },
         }
-        self.picker_shows(path, picker)
+        self.picker_shows(path, picker, clone)
     }
 
     /// Pasted text goes into the path, as typing does.
@@ -174,11 +193,12 @@ impl App {
         &mut self,
         mut path: LineInput,
         mut picker: FolderPicker,
+        clone: Option<String>,
         text: &str,
     ) -> Vec<Action> {
         path.paste(text);
         picker.typed(path.text());
-        self.picker_shows(path, picker)
+        self.picker_shows(path, picker, clone)
     }
 
     /// The folders listed in `dir`, for the dialog if it still shows them.
@@ -201,7 +221,12 @@ impl App {
 
     /// Shows the dialog, asking for the typed folder's folders if they are
     /// not the ones listed.
-    fn picker_shows(&mut self, path: LineInput, mut picker: FolderPicker) -> Vec<Action> {
+    fn picker_shows(
+        &mut self,
+        path: LineInput,
+        mut picker: FolderPicker,
+        clone: Option<String>,
+    ) -> Vec<Action> {
         let dir = normalize(&resolve_path(split(path.text()).0, &self.cwd));
         let mut actions = Vec::new();
         if picker
@@ -212,7 +237,11 @@ impl App {
             picker.listing = Some((dir.clone(), Listing::Loading));
             actions.push(Action::ListFolders(dir));
         }
-        self.mode = Mode::Dialog(Dialog::AddProject { path, picker });
+        self.mode = Mode::Dialog(Dialog::AddProject {
+            path,
+            picker,
+            clone,
+        });
         actions
     }
 }

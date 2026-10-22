@@ -95,7 +95,7 @@ impl From<GitHubError> for ServiceError {
                 Self::NotSignedIn(message)
             }
             GitHubError::Failed(_) => Self::Refused(message),
-            GitHubError::Missing | GitHubError::Spawn(_) | GitHubError::TimedOut => {
+            GitHubError::Missing | GitHubError::Spawn(_) | GitHubError::TimedOut(_) => {
                 Self::Unavailable(message)
             }
             GitHubError::Unreadable(_) => Self::Unreadable(message),

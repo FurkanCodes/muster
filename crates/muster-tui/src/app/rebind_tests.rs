@@ -133,10 +133,10 @@ fn backspace_puts_an_action_s_keys_back_and_shift_r_every_key() {
 #[test]
 fn the_hints_the_help_and_the_menu_show_the_keys_as_set() {
     let mut world = world();
-    kept(&mut world, &[("rename", &["F2"]), ("full_screen", &["g"])]);
+    kept(&mut world, &[("rename", &["F2"]), ("full_screen", &["y"])]);
     world.app.selected = Some(Row::Session(world.session.id));
     let screen = render(&world.app);
-    assert!(screen.contains("g full screen"), "{screen}");
+    assert!(screen.contains("y full screen"), "{screen}");
     let items: Vec<String> = world
         .app
         .actions_here()

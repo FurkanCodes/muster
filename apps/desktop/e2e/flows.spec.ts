@@ -225,44 +225,53 @@ test.describe("ARC-24 the command palette", () => {
   });
 });
 
-test.describe("PRD-03 a new session", () => {
-  test("n on an asking session starts in its worktree, the last agent first, a prompt naming it", async ({
+/** The project page's box, as `n` or a project's line shows it. */
+const startBox = (page: Page, project: string) =>
+  page
+    .getByRole("region", { name: project, exact: true })
+    .getByRole("form", { name: "Start work" });
+
+/** Chooses `option` in the box's select named `label`. */
+async function choose(page: Page, box: ReturnType<typeof startBox>, label: string, option: RegExp) {
+  await box.getByRole("button", { name: label, exact: true }).click();
+  await page.getByRole("listbox", { name: label }).getByRole("option", { name: option }).click();
+}
+
+test.describe("PRD-03 work starts on the project's page", () => {
+  test("n on an asking session opens it ready in its worktree, the last agent first, a prompt naming it", async ({
     page,
   }) => {
     await open(page);
     await select(page, "needs-you", SKETCH);
     await page.keyboard.press("n");
-    const dialog = page.getByRole("dialog", { name: "New session" });
-    await expect(dialog).toBeVisible();
-    const prompt = dialog.getByRole("textbox", { name: "First prompt" });
+    const box = startBox(page, "muster");
+    const prompt = box.getByRole("textbox", { name: "First prompt" });
     await expect(prompt).toBeFocused();
-    await expect(dialog.getByRole("button", { name: "Project" })).toContainText("muster");
-    await expect(dialog.getByRole("button", { name: "A worktree" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    await expect(dialog.getByRole("button", { name: "Worktree", exact: true })).toContainText(
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(box.getByRole("button", { name: "Where", exact: true })).toContainText(
       "⎇ feature/desktop-app",
     );
-    const agents = dialog.getByRole("radio");
-    await expect(agents.first()).toHaveAccessibleName(/Claude Code/);
-    await expect(agents.first()).toHaveAttribute("aria-checked", "true");
+    await box.getByRole("button", { name: "Agent", exact: true }).click();
+    const agents = page.getByRole("listbox", { name: "Agent" }).getByRole("option");
+    await expect(agents.first()).toContainText("Claude Code");
     await expect(agents.first()).toContainText("last chosen");
     await expect(agents.last()).toContainText("A shell");
+    await page.keyboard.press("Escape");
     await prompt.fill("Add a Not seen filter\nto the sidebar");
     await page.keyboard.press("Meta+Enter");
-    await expect(dialog).toBeHidden();
-    expect(await sent(page, "StartSession")).toEqual([
-      {
-        StartSession: {
-          workspace: id(11),
-          harness: "claude",
-          title: null,
-          size: { cols: 100, rows: 30 },
-          prompt: "Add a Not seen filter\nto the sidebar",
+    await expect
+      .poll(() => sent(page, "StartSession"))
+      .toEqual([
+        {
+          StartSession: {
+            workspace: id(11),
+            harness: "claude",
+            title: null,
+            size: { cols: 100, rows: 30 },
+            prompt: "Add a Not seen filter\nto the sidebar",
+          },
         },
-      },
-    ]);
+      ]);
     await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
   });
 
@@ -271,50 +280,41 @@ test.describe("PRD-03 a new session", () => {
   }) => {
     await open(page);
     await page.keyboard.press("n");
-    const dialog = page.getByRole("dialog", { name: "New session" });
-    await dialog.getByRole("button", { name: "A new worktree" }).click();
-    await dialog.getByRole("textbox", { name: /Branch/ }).fill("spike/xterm-webgl");
-    await dialog.getByRole("radio", { name: /A shell/ }).click();
-    await expect(dialog.getByRole("textbox", { name: "First prompt" })).toBeDisabled();
-    await dialog.getByRole("button", { name: "Start a shell" }).click();
-    await expect(dialog).toBeHidden();
-    const made = (await sent(page, "CreateWorktree")) as { CreateWorktree: unknown }[];
-    expect(made).toEqual([
-      { CreateWorktree: { project: MUSTER, branch: "spike/xterm-webgl", on: null } },
-    ]);
-    const started = (await sent(page, "StartSession")) as {
-      StartSession: { harness: string; prompt: unknown };
-    }[];
-    expect(started[0]?.StartSession).toMatchObject({ harness: "shell", prompt: null });
+    const box = startBox(page, "muster");
+    await choose(page, box, "Where", /A new worktree/);
+    await box.getByRole("textbox", { name: "Branch" }).fill("spike/xterm-webgl");
+    await choose(page, box, "Agent", /A shell/);
+    await expect(box.getByRole("textbox", { name: "First prompt" })).toBeDisabled();
+    await box.getByRole("button", { name: "Start a shell" }).click();
+    await expect
+      .poll(() => sent(page, "CreateWorktree"))
+      .toEqual([{ CreateWorktree: { project: MUSTER, branch: "spike/xterm-webgl", on: null } }]);
+    await expect
+      .poll(async () => {
+        const started = (await sent(page, "StartSession")) as {
+          StartSession: { harness: string; prompt: unknown };
+        }[];
+        return started[0]?.StartSession;
+      })
+      .toMatchObject({ harness: "shell", prompt: null });
     // The shell is the one chosen last now. ⇧Q leaves its terminal, which has the keys.
     await page.keyboard.press("Shift+Q");
     await page.keyboard.press("n");
     await expect(
-      page.getByRole("dialog", { name: "New session" }).getByRole("radio").first(),
-    ).toHaveAccessibleName(/A shell/);
+      startBox(page, "muster").getByRole("button", { name: "Agent", exact: true }),
+    ).toContainText("A shell");
   });
 
-  test("the daemon's refusal stays in the dialog, and ←→ go round the agents", async ({ page }) => {
+  test("the daemon's refusal stays in the box, and nothing starts", async ({ page }) => {
     await open(page);
     await page.keyboard.press("n");
-    const dialog = page.getByRole("dialog", { name: "New session" });
-    await dialog.getByRole("button", { name: "A new worktree" }).click();
-    await dialog.getByRole("textbox", { name: /Branch/ }).fill("not a branch");
-    await dialog.getByRole("radio", { name: /Claude Code/ }).focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(dialog.getByRole("radio", { name: /Codex/ })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    await expect(dialog.getByRole("button", { name: "Start Codex" })).toBeVisible();
-    await page.keyboard.press("ArrowLeft");
-    await page.keyboard.press("ArrowLeft");
-    await expect(dialog.getByRole("radio", { name: /A shell/ })).toBeFocused();
-    await dialog.getByRole("button", { name: "Start a shell" }).click();
-    await expect(dialog.getByRole("alert")).toHaveText('"not a branch" is not a valid branch name');
+    const box = startBox(page, "muster");
+    await choose(page, box, "Where", /A new worktree/);
+    await box.getByRole("textbox", { name: "Branch" }).fill("not a branch");
+    await choose(page, box, "Agent", /A shell/);
+    await box.getByRole("button", { name: "Start a shell" }).click();
+    await expect(box.getByRole("alert")).toHaveText('"not a branch" is not a valid branch name');
     expect(await sent(page, "StartSession")).toEqual([]);
-    await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
   });
 
   test("w makes a worktree; on a plain folder w says why not and n starts in the folder", async ({
@@ -341,9 +341,9 @@ test.describe("PRD-03 a new session", () => {
       "labs is a plain folder, not a git repository, so it has no worktrees: press n for a session in it.",
     );
     await page.keyboard.press("n");
-    const session = page.getByRole("dialog", { name: "New session" });
-    await expect(session.getByText("In the folder itself, as it is no repository")).toBeVisible();
-    await expect(session.getByRole("textbox", { name: /Branch/ })).toHaveCount(0);
+    const box = startBox(page, "labs");
+    await expect(box.getByText("In the folder itself, as it is no repository")).toBeVisible();
+    await expect(box.getByRole("textbox", { name: "Branch" })).toHaveCount(0);
   });
 });
 
@@ -352,9 +352,12 @@ test.describe("PRD-01 adding a project", () => {
     page,
   }) => {
     await open(page);
-    // Under the list of every session, after the projects.
-    await page.getByRole("button", { name: /^All/ }).click();
+    // The Projects + offers a folder; with no Mac panel here, the folder browser asks.
     await page.getByRole("button", { name: "Add a project" }).click();
+    await page
+      .getByRole("menu", { name: "Add a project" })
+      .getByRole("menuitem", { name: /Open a folder/ })
+      .click();
     const dialog = page.getByRole("dialog", { name: "Add a project" });
     const field = dialog.getByRole("combobox", { name: "Folder" });
     await expect(field).toBeFocused();
@@ -704,6 +707,8 @@ test.describe("PRD-01 the first run and the daemon out of reach", () => {
     });
     await expect(page.getByRole("alert")).toHaveCount(0);
     await page.keyboard.press("n");
-    await expect(page.getByRole("dialog", { name: "New session" })).toBeVisible();
+    await expect(
+      startBox(page, "muster").getByRole("textbox", { name: "First prompt" }),
+    ).toBeFocused();
   });
 });

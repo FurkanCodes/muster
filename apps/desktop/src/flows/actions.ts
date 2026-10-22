@@ -8,6 +8,7 @@ import type { App } from "../app/context";
 import type { Project } from "../ipc/generated/Project";
 import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
+import { projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import { whenKnown } from "../state/whenKnown";
 import { labelOf } from "./keymap";
@@ -66,35 +67,52 @@ function checkoutOf(app: App, project: string): Workspace | null {
   );
 }
 
-/** `a`: the folder browser. */
+/**
+ * `a`: the Mac's own folder panel, the project added as it is chosen;
+ * where the app has none (its tests' build, the mock), the folder browser.
+ */
 export function addProject(app: App): void {
-  app.actions.openFlow({ kind: "add-project" });
+  const browse = () => app.actions.openFlow({ kind: "add-project" });
+  app.bridge.pickFolder().then((picked) => {
+    if (picked.kind === "unavailable") return browse();
+    if (picked.kind === "chosen")
+      addProjectAt(app, picked.path).catch((error: unknown) => complain(app, said(error)));
+  }, browse);
 }
 
-/** `n`: a session in the selected worktree, a project's checkout, or where the person says. */
+/** The first protocol whose daemon clones from GitHub (`REPOSITORIES_PROTOCOL`). */
+export const REPOSITORIES_PROTOCOL = 49;
+
+/** `g`: a project cloned from GitHub, into a folder the person chooses. */
+export function cloneProject(app: App): void {
+  const link = app.daemon.store.getState().link;
+  if (link.state === "up" && link.protocol < REPOSITORIES_PROTOCOL) {
+    complain(
+      app,
+      "The daemon runs an older muster that cannot clone from GitHub: Settings' Restart in place moves it onto this one, every session running on.",
+    );
+    return;
+  }
+  app.actions.openFlow({ kind: "clone-project" });
+}
+
+/**
+ * `n` (and ⌘N): the selected project's page with its box ready to start
+ * work, in the session's or worktree's place where one is selected, else in
+ * a new worktree; the first project's where none is selected (Tickets,
+ * Settings). Work starts in one place only: the project's page.
+ */
 export function newSession(app: App): void {
-  const { workspace, project, onProject } = here(app);
-  if (Object.keys(app.daemon.store.getState().projects).length === 0) {
+  const state = app.daemon.store.getState();
+  const { workspace, project } = here(app);
+  const into = project ?? projectsInOrder(state)[0];
+  if (!into) {
     complain(app, `Add a project first: press ${key(app, "add_project")}.`);
     return;
   }
-  const into = onProject && project ? checkoutOf(app, project.id) : workspace;
-  // A run's container is the run's own; the dialog starts elsewhere.
-  const usable = into && into.kind.kind !== "container" ? into : null;
-  app.actions.openFlow({
-    kind: "new-session",
-    project: project?.id ?? null,
-    workspace: usable?.id ?? null,
-  });
-}
-
-/** A project line's `+`: a session in its checkout, or where the person says. */
-export function newSessionIn(app: App, project: string): void {
-  app.actions.openFlow({
-    kind: "new-session",
-    project,
-    workspace: checkoutOf(app, project)?.id ?? null,
-  });
+  // A run's container is the run's own: work starts elsewhere.
+  const place = workspace && workspace.kind.kind !== "container" ? workspace.id : null;
+  app.actions.compose(into.id, place);
 }
 
 /** `w`: a new worktree for the selected project. */

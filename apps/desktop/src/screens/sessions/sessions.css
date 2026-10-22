@@ -30,25 +30,16 @@
 .sessions-node--project .sessions-line {
   padding-top: var(--space-16);
 }
-/* A project's line is the heading of its sessions: quiet, its + there to the pointer. */
+/* A project's line heads its sessions: its swatch and name in weight, in
+   the text's colour, as a place one goes to (its page). */
 .sessions-project {
-  color: var(--text-quiet);
-  font-size: 12px;
-  line-height: 16px;
-  padding-right: var(--space-32);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+  min-height: var(--size-control-md);
 }
 .sessions-project .mu-tree-project {
   font-weight: 600;
-}
-.sessions-new {
-  position: absolute;
-  right: var(--space-4);
-  bottom: 2px;
-  opacity: 0;
-}
-.sessions-line:hover .sessions-new,
-.sessions-new:focus-visible {
-  opacity: 1;
 }
 .sessions-node--under .sessions-line {
   padding-top: var(--space-2);
@@ -92,12 +83,6 @@
 }
 .sessions-detail-empty {
   margin: auto;
-}
-/* Under the list, quiet: the way to a project of its own. */
-.sessions-add {
-  flex: none;
-  width: auto;
-  margin: var(--space-4) var(--space-8) var(--space-8);
 }
 /* A worktree no session is in: one quiet line, in line with the sessions' names. */
 .sessions-worktree {

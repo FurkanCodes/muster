@@ -87,6 +87,22 @@ body {
   color: var(--waiting);
   font-weight: 600;
 }
+/* The projects' heading over the list, its + always there: the way to add one. */
+.app-projects-head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: var(--space-8) 0 0;
+  padding: 0 0 0 var(--space-4);
+}
+.app-projects-title {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--text-quiet);
+}
 
 /* The status bar's right: the session's facts give way first as the window narrows. */
 .app-statusbar-facts {

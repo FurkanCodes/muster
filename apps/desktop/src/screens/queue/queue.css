@@ -69,3 +69,32 @@
 .queue-ask {
   color: var(--waiting);
 }
+/* A project's heading over its sessions, as its line in the All list: its
+   swatch and name in weight, a click from its page. */
+.queue-project {
+  padding-top: var(--space-16);
+}
+.queue-project:first-child {
+  padding-top: var(--space-4);
+}
+.queue-project-name {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--size-control-md);
+  padding: 0 var(--space-12);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.queue-project-name:hover {
+  background: var(--surface-raised);
+}

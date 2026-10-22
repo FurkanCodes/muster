@@ -200,6 +200,15 @@ function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
       lead: { kind: "none" },
       run: () => act.addProject(app),
     },
+    {
+      id: "do:clone_project",
+      group,
+      label: "Clone a project from GitHub",
+      keys: labelOf(prefs, "clone_project"),
+      meta: null,
+      lead: { kind: "none" },
+      run: () => act.cloneProject(app),
+    },
   ];
   if (!taken.some((item) => item.id === "do:new_session"))
     items.push({

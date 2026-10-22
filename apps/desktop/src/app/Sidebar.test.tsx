@@ -1,17 +1,18 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ulid } from "../ipc/mock/scenario";
 import { renderApp } from "../test/render";
 
 // The one sidebar (PRD §6a): a new session, the palette and Tickets, the
-// switch between what needs the person and every session with the list
-// itself under it, and Settings at its foot.
+// switch between what needs the person and every session, the projects'
+// heading with the way to add one, the list itself under it, and Settings
+// at its foot.
 
 const sidebar = () => screen.findByRole("navigation", { name: "Sessions" });
 
 describe("ARC-24 the sidebar", () => {
-  it("has a new session, the palette and Tickets, the lists' switch, and Settings at its foot", async () => {
+  it("has a new session, the palette and Tickets, the lists' switch, a way to add a project, and Settings at its foot", async () => {
     renderApp();
     const nav = await sidebar();
     await within(nav).findByRole("option", { name: "Sketch the Tauri shell" });
@@ -26,6 +27,7 @@ describe("ARC-24 the sidebar", () => {
       "Tickets",
       "Needs you",
       "All",
+      "Add a project",
       "Settings",
     ]);
   });
@@ -67,10 +69,49 @@ describe("ARC-24 the sidebar", () => {
     expect(screen.queryByRole("heading", { name: "Tickets", level: 1 })).toBeNull();
   });
 
-  it("starts a new session from its button, where the selected session works", async () => {
+  it("New session opens the selected session's project page, its box ready", async () => {
     renderApp();
     await screen.findByRole("option", { name: "Sketch the Tauri shell" });
     await userEvent.click(screen.getByRole("button", { name: /^New session/ }));
-    expect(await screen.findByRole("dialog", { name: /New session/ })).toBeInTheDocument();
+    const page = await screen.findByRole("region", { name: "muster" });
+    expect(within(page).getByRole("textbox", { name: "First prompt" })).toHaveFocus();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("adds a project from the Mac's own folder panel, the folder browser standing in where there is none", async () => {
+    const { bridge } = renderApp();
+    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
+    // The Projects + offers a folder of the Mac's, or a clone from GitHub.
+    const add = async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Add a project" }));
+      const menu = screen.getByRole("menu", { name: "Add a project" });
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Open a folder…a", "Clone from GitHub…g"]);
+      await userEvent.click(within(menu).getByRole("menuitem", { name: /Open a folder/ }));
+    };
+
+    bridge.picked = { kind: "cancelled" };
+    await add();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      bridge.sent.some((command) => typeof command === "object" && "AddProject" in command),
+    ).toBe(false);
+
+    bridge.picked = { kind: "chosen", path: "/Users/you/code/labs" };
+    await add();
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual({
+        AddProject: { root: "/Users/you/code/labs", name: null },
+      }),
+    );
+    expect(await screen.findByRole("region", { name: "labs" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    bridge.picked = { kind: "unavailable" };
+    await add();
+    expect(await screen.findByRole("dialog", { name: "Add a project" })).toBeInTheDocument();
   });
 });

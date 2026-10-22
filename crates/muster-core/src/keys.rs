@@ -143,6 +143,7 @@ actions! {
     MoveUp "move_up" LISTS, ["k"], "move up (as ↑)";
     MoveDown "move_down" LISTS, ["j"], "move down (as ↓)";
     AddProject "add_project" SESSION_LISTS, ["a"], "add a project";
+    CloneProject "clone_project" SESSION_LISTS, ["g"], "clone a project from GitHub, into a folder you choose";
     NewWorktree "new_worktree" SESSION_LISTS, ["w"], "a new worktree for the project";
     NewSession "new_session" SESSION_LISTS, ["n"], "a new session in the worktree, or a project's checkout";
     ShowTickets "show_tickets" SESSION_LISTS, ["i"], "the project's tickets";

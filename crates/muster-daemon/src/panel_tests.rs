@@ -73,6 +73,7 @@ pub(crate) async fn spawn_with(
         },
         secrets,
         hooks: crate::plugins::hooks::Hooks::idle(),
+        repositories: Arc::new(crate::repositories::Gh),
     })
     .await
     .unwrap()

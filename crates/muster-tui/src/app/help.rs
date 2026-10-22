@@ -85,6 +85,7 @@ const SESSIONS: &[Section] = &[
             D(Does::FullScreen),
             D(Does::Fold),
             D(Does::AddProject),
+            D(Does::CloneProject),
             D(Does::NewWorktree),
             D(Does::NewSession),
             D(Does::ShowTickets),

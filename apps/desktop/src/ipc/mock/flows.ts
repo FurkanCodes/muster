@@ -13,6 +13,7 @@ import type { Changes } from "../generated/Changes";
 import type { Command } from "../generated/Command";
 import type { Folder } from "../generated/desktop/Folder";
 import type { Patch } from "../generated/desktop/Patch";
+import type { HostedRepository } from "../generated/HostedRepository";
 import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { Workspace } from "../generated/Workspace";
@@ -26,6 +27,16 @@ export class FlowWorld {
   readonly folders: Record<string, Folder[]> = folderTree();
   /** Folders list_folders cannot read, and why. */
   readonly unreadable: Record<string, string> = {};
+  /** The repositories on GitHub the person can reach, as `ListRepositories` answers. */
+  repositories: HostedRepository[] = [
+    {
+      name: "FurkanCodes/muster",
+      description: "A cockpit for agents working on your tickets",
+      private: false,
+    },
+    { name: "you/lamphaus", description: "The lamp app, for Android", private: true },
+    { name: "you/dotfiles", description: null, private: false },
+  ];
   next = 0;
 
   /** Fills in what git says of the workspaces the scenario does not describe (`world.changes`). */
@@ -152,6 +163,29 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
     };
     tell({ projects: [added], workspaces: [checkout] });
     return { ProjectAdded: { id: added.id } };
+  }
+
+  if ("CloneProject" in command) {
+    // As the daemon's repository_name: owner/name, or its github.com address.
+    const named =
+      /^(?:https?:\/\/github\.com\/|git@github\.com:)?([A-Za-z0-9_][\w.-]*)\/([A-Za-z0-9_][\w.-]*?)(?:\.git)?\/?$/.exec(
+        command.CloneProject.repository.trim(),
+      );
+    if (!named)
+      refuse(
+        "bad_request",
+        `"${command.CloneProject.repository}" is no GitHub repository: write it as owner/name`,
+      );
+    const into = command.CloneProject.into.replace(/(.)\/+$/, "$1");
+    const inside = flows.folders[into];
+    if (!inside) refuse("bad_request", `${into} is no folder to clone into`);
+    const folder = named?.[2] ?? "";
+    const root = `${into}/${folder}`;
+    if (inside?.some((f) => f.name === folder))
+      refuse("conflict", `${root} is there already: add it as a folder, or clone into another`);
+    inside?.push({ name: folder, path: root, git: true });
+    flows.folders[root] = [];
+    return flowCommand(mock, { AddProject: { root, name: null } });
   }
 
   if ("RemoveProject" in command) {

@@ -216,6 +216,18 @@
     {
       "group": "Sessions and Needs you",
       "keys": [
+        "g"
+      ],
+      "name": "clone_project",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "clone a project from GitHub, into a folder you choose"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
         "w"
       ],
       "name": "new_worktree",

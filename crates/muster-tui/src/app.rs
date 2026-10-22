@@ -5,6 +5,7 @@
 mod actions;
 mod alarm;
 mod changes;
+pub(crate) mod cloning;
 pub(crate) mod drag;
 mod events;
 mod fold;
@@ -231,7 +232,13 @@ pub(crate) enum Dialog {
     AddProject {
         path: LineInput,
         picker: FolderPicker,
+        /// The GitHub repository to clone into the folder chosen, rather
+        /// than a folder to add as it is.
+        clone: Option<String>,
     },
+    /// A GitHub repository to clone as a project: those the person can
+    /// reach, narrowed by what they type, or one they name.
+    CloneProject(cloning::CloneChoice),
     NewWorktree {
         project: ProjectId,
         branch: LineInput,
@@ -387,6 +394,8 @@ enum Then {
     PanelsKept,
     /// Offer the models the agent lists, in the dialog open for it.
     Models(String),
+    /// Offer the repositories GitHub lists, in the dialog open for them.
+    Repositories,
     /// Show the shell started beside the session, with the keys.
     OpenShell,
     /// Show the workspace's changes in the pane.

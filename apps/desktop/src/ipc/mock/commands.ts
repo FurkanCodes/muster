@@ -17,6 +17,7 @@ import { handleUndo } from "./undo";
 
 export function handleCommand(mock: MockBridge, command: Command): Reply | undefined {
   if (command === "Ping") return "Pong";
+  if (command === "ListRepositories") return { Repositories: mock.flows.repositories };
   const sessions = sessionsCommand(mock, command);
   if (sessions !== undefined) return sessions;
   const settings = mock.settings.handle(command);

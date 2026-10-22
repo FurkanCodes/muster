@@ -86,6 +86,7 @@ exec /bin/sh
 
 /// Stands in for the GitHub CLI: answers `issue list` and `issue view N`
 /// from fixture files, records `issue close N` for an issue it has, keeps one pull request (#17) once one is created,
+/// lists the repositories in `repos.json`, clones any but `o/missing` as a repository of one commit,
 /// with what it is told about it, and records every call. While the `GH_SLOW`
 /// flag file exists it takes two seconds to answer, like a slow network.
 const FAKE_GH: &str = r#"#!/bin/sh
@@ -111,6 +112,12 @@ case "$1 $2" in
   "pr view")
     if [ -f "$dir/pr-state" ]; then printf '{"state":"%s"}' "$(cat "$dir/pr-state")"
     else echo '{"state":"OPEN"}'; fi ;;
+  "api user/repos"*) if [ -f "$dir/repos.json" ]; then cat "$dir/repos.json"; else echo "[]"; fi ;;
+  "repo clone")
+    if [ "$3" = "o/missing" ]; then
+      echo "GraphQL: Could not resolve to a Repository with the name 'o/missing'." >&2; exit 1; fi
+    mkdir -p "$4" && cd "$4" && git init -q -b main && echo "$3" > README.md \
+      && git add README.md && git commit -q -m first ;;
   *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 "#;

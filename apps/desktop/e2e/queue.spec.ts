@@ -24,16 +24,16 @@ test.beforeEach(async ({ page }) => {
   await expect(option(page, "Sketch the Tauri shell")).toBeVisible();
 });
 
-test("ARC-24 Needs you lists who asks with what they ask, then finishes not seen, then agents at work", async ({
+test("ARC-24 Needs you lists by project; under each, who asks with what they ask, then finishes not seen; never the agents at work", async ({
   page,
 }) => {
   await expect(page.getByRole("button", { name: /^Needs you/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  const sections = queue(page).locator(".mu-section");
-  await expect(sections).toHaveText(["Asking you", "Finished, not seen", "Working"]);
-  await expect(queue(page).getByRole("option")).toHaveCount(8);
+  const projects = queue(page).locator(".queue-project");
+  await expect(projects).toHaveText(["muster", "lamphaus"]);
+  await expect(queue(page).getByRole("option")).toHaveCount(4);
 
   const asking = option(page, "Sketch the Tauri shell");
   await expect(asking).toHaveAttribute("aria-selected", "true");
@@ -46,9 +46,8 @@ test("ARC-24 Needs you lists who asks with what they ask, then finishes not seen
   await expect(finish).toContainText("#88");
   await expect(finish.getByRole("img", { name: "not seen" })).toBeVisible();
 
-  const worker = option(page, "Upgrade AGP to 9.1");
-  await expect(worker).toHaveClass(/mu-row--two/);
-  await expect(worker).toContainText("running ./gradlew assembleDebug");
+  // At work, it needs nobody yet: All lists it.
+  await expect(option(page, "Upgrade AGP to 9.1")).toHaveCount(0);
 
   // Beside it the session: its head, its banner, its terminal, and nothing under it.
   const pane = page.getByRole("region", { name: "Sketch the Tauri shell", exact: true });
@@ -110,7 +109,9 @@ test("ARC-24 a session that newly asks flashes once; what was there as the windo
   await expect(option(page, "Upgrade AGP to 9.1")).toHaveClass(/mu-flash--waiting/);
 });
 
-test("ARC-24 All clear says how many work, with the agents at work below it", async ({ page }) => {
+test("ARC-24 All clear says how many work; the one selected stays until another is", async ({
+  page,
+}) => {
   await page.evaluate(() => {
     const mock = window.__muster;
     for (const session of [...mock.world.sessions]) {
@@ -122,7 +123,7 @@ test("ARC-24 All clear says how many work, with the agents at work below it", as
   await expect(
     page.getByText("6 agents at work. Muster will show them here when they need you."),
   ).toBeVisible();
-  await expect(queue(page).locator(".mu-section")).toHaveText(["Working"]);
+  await expect(queue(page).getByRole("option")).toHaveText([/Sketch the Tauri/]);
   await page.evaluate(() => {
     const mock = window.__muster;
     for (const session of [...mock.world.sessions]) mock.removeSession(session.id);
@@ -134,29 +135,24 @@ test("ARC-24 All clear says how many work, with the agents at work below it", as
   await expect(page.getByText("The session you select shows here, live.")).toBeVisible();
 });
 
-test("ARC-24 the agents at work follow those waiting, longest first", async ({ page }) => {
-  // The longest at work first, as the model orders them (`Derived.working`).
+test("ARC-24 by project, the most urgent first; under each, what asks, then what finished unseen", async ({
+  page,
+}) => {
   await expect(queue(page).getByRole("option")).toHaveText([
     /Sketch the Tauri/,
-    /Share the Gradle/,
     /Resize settles/,
+    /Share the Gradle/,
     /Explain the release/,
-    /Upgrade AGP/,
-    /Split view\.rs/,
-    /Flaky resize/,
-    /Sign-up page/,
   ]);
 });
 
 test("ARC-24 ↑↓ move, ⏎ gives the live terminal the keys, ⇧Q gives them back", async ({ page }) => {
   await page.keyboard.press("ArrowDown");
-  await expect(option(page, "Share the Gradle cache across worktrees")).toHaveAttribute(
+  await expect(option(page, "Resize settles once on release")).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await expect(
-    page.getByRole("heading", { name: "Share the Gradle cache across worktrees" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resize settles once on release" })).toBeVisible();
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("Enter");
   await expect(terminal(page)).toHaveClass(/has-keys/);
@@ -173,6 +169,7 @@ test("ARC-24 ↑↓ move, ⏎ gives the live terminal the keys, ⇧Q gives them 
   await expect(option(page, "Sketch the Tauri shell")).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Shift+Q");
   await expect(terminal(page)).not.toHaveClass(/has-keys/);
+  // The finish opened on the way down was seen, and has left the queue.
   await page.keyboard.press("j");
   await expect(option(page, "Share the Gradle cache across worktrees")).toHaveAttribute(
     "aria-selected",
@@ -201,16 +198,19 @@ test("ARC-24 opening a finish clears its news, and it keeps its place until anot
     "true",
   );
   await page.keyboard.press("ArrowDown");
-  await expect(option(page, "Explain the release script")).toHaveAttribute("aria-selected", "true");
+  await expect(option(page, "Share the Gradle cache across worktrees")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(option(page, "Resize settles once on release")).toHaveCount(0);
   // One that leaves gives its place to the next.
   await page.evaluate(() => {
     const id = window.__muster.world.sessions.find(
-      (s) => s.title === "Explain the release script",
+      (s) => s.title === "Share the Gradle cache across worktrees",
     )?.id;
     if (id) window.__muster.removeSession(id);
   });
-  await expect(option(page, "Upgrade AGP to 9.1")).toHaveAttribute("aria-selected", "true");
+  await expect(option(page, "Explain the release script")).toHaveAttribute("aria-selected", "true");
 });
 
 test("ARC-24 l goes to the session that needed the person last", async ({ page }) => {
@@ -269,13 +269,13 @@ test("ARC-24 b opens the session's pull request in the browser, and says when no
   await expect
     .poll(() => page.evaluate(() => window.__muster.openedUrls))
     .toEqual(["https://github.com/FurkanCodes/muster/pull/91"]);
-  await page.keyboard.press("j");
+  await option(page, "Explain the release script").click();
   await page.keyboard.press("b");
   await expect(statusBar(page)).toContainText(
     "No pull request from this branch is known; o opens one.",
   );
-  // On an agent at work too.
-  await option(page, "Flaky resize test under load").click();
+  // On a finish too.
+  await option(page, "Resize settles once on release").click();
   await page.keyboard.press("b");
   await expect
     .poll(() => page.evaluate(() => window.__muster.openedUrls))
@@ -354,12 +354,12 @@ test("ARC-24 at its least, the sidebar stays and the session keeps 520 wide", as
   await expect(page.getByRole("button", { name: "More", exact: true })).toBeInViewport();
 });
 
-test("ARC-24 an asking row says what it asks, and leaves Asking you as it stops", async ({
+test("ARC-24 an asking row says what it asks, and leaves Needs you as it stops", async ({
   page,
 }) => {
   const row = option(page, "Share the Gradle cache across worktrees");
   await expect(row.locator(".queue-ask")).toHaveText("asks which cache folder to use");
   await page.evaluate((id) => window.__muster.setStatus(id, { state: "running" }), gemini);
-  await expect(row.locator(".queue-ask")).toHaveCount(0);
-  await expect(row).toContainText("asks which cache folder to use");
+  // At work again, it needs nobody: All lists it.
+  await expect(row).toHaveCount(0);
 });

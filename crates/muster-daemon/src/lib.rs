@@ -24,6 +24,7 @@ mod oauth;
 mod plugin_run;
 mod plugins;
 mod pty;
+mod repositories;
 mod resources;
 mod runs;
 mod secrets;
@@ -468,6 +469,7 @@ async fn start_supervisor(
         places: spend::Places::from_env(),
         secrets: Arc::new(secrets::Keychain::default()),
         hooks: started.hooks,
+        repositories: Arc::new(crate::repositories::Gh),
     })
     .await?)
 }
