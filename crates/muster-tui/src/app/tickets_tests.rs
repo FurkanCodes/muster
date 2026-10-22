@@ -243,6 +243,47 @@ fn a_long_conversation_pages_down_and_back_with_page_keys() {
 }
 
 #[test]
+fn the_wheel_over_a_ticket_scrolls_its_details_and_over_the_list_moves_the_selection() {
+    use crossterm::event::MouseEventKind::{ScrollDown, ScrollUp};
+
+    use super::pointer_tests::mouse;
+    let mut world = on_tickets();
+    world.app.ticket_texts.insert(
+        (world.project.id, key(42)),
+        TicketText::Loaded {
+            body: "It fails.".to_owned(),
+            comments: (1..=30)
+                .map(|n| muster_core::IssueComment {
+                    author: Some(format!("person{n}")),
+                    at: None,
+                    body: format!("comment {n}"),
+                })
+                .collect(),
+        },
+    );
+    let selected = world.app.tickets_selected.clone();
+    world.app.on_mouse(mouse(ScrollDown, 60, 10));
+    assert_eq!(world.app.ticket_scrolled(), 3);
+    assert_eq!(world.app.tickets_selected, selected, "the selection stays");
+    for _ in 0..100 {
+        world.app.on_mouse(mouse(ScrollDown, 60, 10));
+    }
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("comment 30") && screen.contains("PgUp back"),
+        "never past the end: {screen}"
+    );
+    for _ in 0..100 {
+        world.app.on_mouse(mouse(ScrollUp, 60, 10));
+    }
+    assert_eq!(world.app.ticket_scrolled(), 0);
+    assert!(render(&world.app).contains("It fails."));
+    // Over the list, the wheel goes on to the next line.
+    world.app.on_mouse(mouse(ScrollDown, 5, 5));
+    assert_ne!(world.app.tickets_selected, selected);
+}
+
+#[test]
 fn a_ticket_with_no_web_address_is_shown_without_one_and_offers_no_browser() {
     // As a plugin may list its tickets: in a file, say, with no page.
     let mut world = world();
