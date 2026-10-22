@@ -282,15 +282,22 @@ impl App {
     /// Pages the selected line's details down (`by` 1) or up (-1), a
     /// page a line short of the pane, never past their end.
     fn page_ticket(&mut self, by: isize) {
+        let (_, height) = self.ticket_pane();
+        let page = isize::try_from(height.saturating_sub(1).max(1)).unwrap_or(1);
+        self.scroll_ticket(by * page);
+    }
+
+    /// Scrolls the selected line's details `lines` down (up where
+    /// negative), never past their end: the wheel over the pane.
+    pub(super) fn scroll_ticket(&mut self, lines: isize) {
         let Some(row) = self.tickets_selected.clone() else {
             return;
         };
         let (width, height) = self.ticket_pane();
         let last = crate::view::ticket_details_height(self, width).saturating_sub(height);
-        let page = isize::try_from(height.saturating_sub(1).max(1)).unwrap_or(1);
         let at = self
             .ticket_scrolled()
-            .saturating_add_signed(by * page)
+            .saturating_add_signed(lines)
             .min(last);
         self.ticket_scroll = Some((row, at));
     }

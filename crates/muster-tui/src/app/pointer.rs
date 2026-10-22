@@ -6,7 +6,8 @@
 //! pointer is, since the session has the keys. A click on the list beside
 //! it, or on the top bar over it full screen, gives the list the keys
 //! back. In the list, the wheel moves the selection or scrolls the
-//! preview, and a click selects, or opens the session shown.
+//! preview (a session's output, or a ticket's details), and a click
+//! selects, or opens the session shown.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::SessionId;
@@ -191,6 +192,8 @@ impl App {
                 let up = event.kind == MouseEventKind::ScrollUp;
                 if areas.list.contains(at) {
                     self.move_selection(if up { -1 } else { 1 });
+                } else if areas.preview.contains(at) && self.view == View::Tickets {
+                    self.scroll_ticket(if up { -WHEEL_LINES } else { WHEEL_LINES });
                 } else if areas.preview.contains(at)
                     && let Some(session) = self.focused_session()
                 {
