@@ -2,7 +2,8 @@
 // and only then: given back, it lets go of its WebGL context at once (lost
 // on purpose, not left for the collector), so the window holds one for
 // each terminal on screen, as WebKit limits them. A context lost (after a
-// sleep, under memory pressure) or one that could not be had is tried
+// sleep, under memory pressure; xterm reports it once its own wait for the
+// context to come back has run out) or one that could not be had is tried
 // again on the next frame, a few times a showing; after that xterm draws
 // with the DOM, says so once, and the next showing tries afresh. Frames,
 // not timers (`ARC-25`), and only while the terminal is shown and the
