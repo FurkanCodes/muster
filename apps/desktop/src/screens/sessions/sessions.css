@@ -16,9 +16,9 @@
   overscroll-behavior: contain;
   outline: none;
 }
+/* The list says it has the keys by its selected line, lit rather than tinted. */
 .sessions-tree:focus-visible {
-  outline: var(--stroke-focus) solid var(--focus-ring);
-  outline-offset: calc(-1 * var(--stroke-focus));
+  outline: none;
 }
 .sessions-node,
 .sessions-line {
@@ -30,16 +30,20 @@
 .sessions-node--project .sessions-line {
   padding-top: var(--space-16);
 }
-/* A project's line heads its sessions: its swatch and name in weight, in
-   the text's colour, as a place one goes to (its page). */
+/* A project's line heads its sessions: its swatch and name, quiet, so the
+   sessions under it lead; a place one goes to (its page). */
 .sessions-project {
+  color: var(--text-quiet);
+  font-size: 12px;
+  line-height: 16px;
+  min-height: var(--size-control-sm);
+}
+.sessions-project:hover,
+.sessions-project[aria-selected="true"] {
   color: var(--text);
-  font-size: 13px;
-  line-height: 18px;
-  min-height: var(--size-control-md);
 }
 .sessions-project .mu-tree-project {
-  font-weight: 600;
+  font-weight: 500;
 }
 .sessions-node--under .sessions-line {
   padding-top: var(--space-2);
@@ -60,10 +64,10 @@
   width: auto;
 }
 .sessions-asking {
-  font-weight: 600;
+  font-weight: 500;
 }
 .sessions-waiting {
-  color: var(--waiting);
+  color: var(--text-quiet);
 }
 .sessions-running {
   color: var(--text);

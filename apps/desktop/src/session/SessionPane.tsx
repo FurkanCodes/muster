@@ -17,6 +17,7 @@ import { toggleFullScreen } from "../panels/usePanelKeys";
 import { branchOf, projectColour } from "../state/selectors";
 import { IconButton } from "../ui/controls";
 import { AgentLogo, Branch, DiffStat, PullRequest } from "../ui/status";
+import { browsePullRequest } from "./byHand";
 import { NeedsYouBanner } from "./NeedsYouBanner";
 import { keysOf, type MenuItem, SessionMenu } from "./SessionMenu";
 import "./session.css";
@@ -33,8 +34,20 @@ export function SidebarAway() {
   ) : null;
 }
 
-/** "⎇ feature/x in muster +120 −30 overlap #88": where it runs, and what its work there comes to. */
-function Where({ session }: { session: SessionId }) {
+/**
+ * "⎇ feature/x in muster +120 −30 overlap #88": where it runs, and what its
+ * work there comes to, each a way on: the branch to its project's page, what
+ * the work comes to and where it meets other work to its changes, the pull
+ * request to the browser.
+ */
+function Where({ session, onChanges }: { session: SessionId; onChanges: () => void }) {
+  const app = useApp();
+  const actions = useActions();
+  const changesKey = useKeyLabel("show_changes");
+  const browserKey = useKeyLabel("pull_request_in_browser");
+  const projectId = useDaemon(
+    (state) => state.workspaces[state.sessions[session]?.workspace ?? ""]?.project ?? null,
+  );
   const workspaceId = useDaemon((state) => state.sessions[session]?.workspace ?? "");
   const branch = useDaemon((state) => {
     const workspace = state.workspaces[workspaceId];
@@ -58,10 +71,49 @@ function Where({ session }: { session: SessionId }) {
   const pr = useDaemon((state) => state.workspaces[workspaceId]?.pull_request ?? null);
   return (
     <span className="mu-pane-meta app-head-where">
-      <Branch branch={branch} project={project} colour={colour} />
-      {added || removed ? <DiffStat added={added} removed={removed} /> : null}
-      {clash ? <span className={`mu-clash-${clash}`}>{clash}</span> : null}
-      {pr ? <PullRequest pr={pr} /> : null}
+      <button
+        type="button"
+        className="app-head-link"
+        title={project ? `${project}'s page` : undefined}
+        disabled={!projectId}
+        onClick={() => {
+          if (!projectId) return;
+          actions.select("all", projectId);
+          actions.show("all");
+        }}
+      >
+        <Branch branch={branch} project={project} colour={colour} />
+      </button>
+      {added || removed ? (
+        <button
+          type="button"
+          className="app-head-link"
+          title={`See what changed (${changesKey})`}
+          onClick={onChanges}
+        >
+          <DiffStat added={added} removed={removed} />
+        </button>
+      ) : null}
+      {clash ? (
+        <button
+          type="button"
+          className="app-head-link"
+          title={`See where it meets other work (${changesKey})`}
+          onClick={onChanges}
+        >
+          <span className={`mu-clash-${clash}`}>{clash}</span>
+        </button>
+      ) : null}
+      {pr ? (
+        <button
+          type="button"
+          className="app-head-link"
+          title={`#${pr.number} in the browser (${browserKey})`}
+          onClick={() => browsePullRequest(app)}
+        >
+          <PullRequest pr={pr} />
+        </button>
+      ) : null}
     </span>
   );
 }
@@ -78,6 +130,12 @@ export function SessionPane({
   const actions = useActions();
   const map = useKeymap();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Asked for by a right-click on this session's line in the list.
+  const menuAt = useUi((state) => (state.menuAt?.session === session ? state.menuAt : null));
+  const closeMenu = () => {
+    setMenuOpen(false);
+    if (menuAt) actions.openMenuAt(null);
+  };
   const fullScreen = useUi((state) => state.fullScreen === session);
   const title = useDaemon((state) => state.sessions[session]?.title ?? "");
   const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
@@ -108,7 +166,7 @@ export function SessionPane({
         <h2 className={`app-head-title ${hasKeys ? "app-pane-title--keys" : ""}`} title={title}>
           {title}
         </h2>
-        <Where session={session} />
+        <Where session={session} onChanges={changes} />
         <span className="mu-spacer" data-tauri-drag-region />
         <div className="mu-pane-actions">
           <ShellButton session={session} />
@@ -127,8 +185,13 @@ export function SessionPane({
             onClick={() => setMenuOpen(!menuOpen)}
           />
         </div>
-        {menuOpen ? (
-          <SessionMenu label={title} items={items} onClose={() => setMenuOpen(false)} />
+        {menuOpen || menuAt ? (
+          <SessionMenu
+            label={title}
+            items={items}
+            onClose={closeMenu}
+            at={menuOpen ? undefined : (menuAt ?? undefined)}
+          />
         ) : null}
       </header>
       {mode === "changes" && workspace ? (

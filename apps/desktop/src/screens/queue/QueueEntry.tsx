@@ -12,6 +12,7 @@ import type { SessionId } from "../../ipc/generated/SessionId";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf } from "../../state/selectors";
+import { focusListOf } from "../../ui/listPointer";
 import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
 import { changedInSight, stamp } from "./history";
 import { sectionOf } from "./queue";
@@ -136,6 +137,7 @@ export function QueueEntry({
       aria-selected={selected}
       aria-label={session.title}
       className={`mu-row mu-row--two ${resting ? "is-resting" : ""} ${flash}`}
+      onMouseDown={focusListOf}
       onClick={() => onPick(id)}
     >
       <Content session={session} />

@@ -14,11 +14,10 @@
   overscroll-behavior: contain;
   outline: none;
 }
-/* The list takes the keys by the window's listener; focused by Tab, it rings
-   inside its edge, as any control does (design system: States). */
+/* The list takes the keys by the window's listener; it says so by its
+   selected line, lit rather than tinted (design system: States). */
 .queue-list:focus-visible {
-  outline: var(--stroke-focus) solid var(--focus-ring);
-  outline-offset: calc(-1 * var(--stroke-focus));
+  outline: none;
 }
 .queue-list > .mu-item,
 .queue-list > .mu-row {
@@ -64,10 +63,10 @@
 }
 /* Asking: its name in weight, what it asks in the waiting colour, as in the All list. */
 .queue-asking {
-  font-weight: 600;
+  font-weight: 500;
 }
 .queue-ask {
-  color: var(--waiting);
+  color: var(--text-quiet);
 }
 /* A project's heading over its sessions, as its line in the All list: its
    swatch and name in weight, a click from its page. */
@@ -82,19 +81,20 @@
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  min-height: var(--size-control-md);
+  min-height: var(--size-control-sm);
   padding: 0 var(--space-12);
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text);
+  color: var(--text-quiet);
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 600;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 .queue-project-name:hover {
   background: var(--surface-raised);
+  color: var(--text);
 }

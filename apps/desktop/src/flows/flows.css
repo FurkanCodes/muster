@@ -63,12 +63,9 @@
 }
 
 /* The palette's field is where typing goes from the start: no ring around
-   it, as the board draws it, but its line turns accent while it has the keys. */
+   it; the caret says it has the keys. */
 .ui-palette .mu-palette-input:focus-visible {
   outline: none;
-}
-.ui-palette .mu-palette-field:focus-within {
-  border-bottom-color: var(--accent);
 }
 .ui-palette .mu-palette-list {
   overscroll-behavior: contain;

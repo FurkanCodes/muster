@@ -16,19 +16,12 @@ const LABELS: Record<StatusKind, string> = {
   fresh: "starting",
 };
 
-const MARKS: Record<Exclude<StatusKind, "working">, string> = {
-  waiting: "▲",
-  done: "✓",
-  error: "✗",
-  ended: "○",
-  fresh: "○",
-};
-
+/** A status as a shape the stylesheet draws (a dot, a ring), the spinner while it works. */
 export function StatusMark({ kind }: { kind: StatusKind }) {
   const tone = kind === "fresh" ? "ended" : kind;
   return (
     <span className={`mu-mark mu-mark--${tone}`} role="img" aria-label={LABELS[kind]}>
-      {kind === "working" ? <Spinner /> : MARKS[kind]}
+      {kind === "working" ? <Spinner /> : null}
     </span>
   );
 }

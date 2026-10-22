@@ -1,8 +1,10 @@
 // The pane header's more menu (design system: Menu): what can be done with
 // the session, each with its key. ↑↓ move, ⏎ does it, ⎋ closes, and an
 // item's own key does it at once. While it is open its keys are its own.
+// Asked for by a right-click on the session's line, it opens where the
+// pointer is, kept inside the window.
 
-import { type KeyboardEvent, useEffect, useRef } from "react";
+import { type KeyboardEvent, useEffect, useLayoutEffect, useRef } from "react";
 import { chordOf } from "../app/keys";
 import { domChord } from "../keys/chord";
 import { chordsOf, type Keymap, labelOf } from "../keys/keymap";
@@ -24,25 +26,48 @@ export function keysOf(map: Keymap, action: string): Pick<MenuItem, "key" | "cho
   return { key: labelOf(map, action), chords: chordsOf(map, action).map(domChord) };
 }
 
+/** Room kept between a menu opened at the pointer and the window's edges. */
+const EDGE = 8;
+
 export function SessionMenu({
   label,
   items,
   onClose,
+  at,
 }: {
   label: string;
   items: readonly MenuItem[];
   onClose: () => void;
+  /** Where in the window to open it (a right-click); under its button where not given. */
+  at?: { x: number; y: number };
 }) {
   const menu = useRef<HTMLDivElement>(null);
+  // At the pointer, moved back inside the window where it would run past an edge.
+  useLayoutEffect(() => {
+    const element = menu.current;
+    if (!at || !element) return;
+    const { width, height } = element.getBoundingClientRect();
+    const left = Math.max(EDGE, Math.min(at.x, window.innerWidth - width - EDGE));
+    const top = Math.max(EDGE, Math.min(at.y, window.innerHeight - height - EDGE));
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+  }, [at]);
+  // What had the focus before it, given it back as the menu is done with
+  // (⎋, or an item chosen), not merely as it goes: one closed by a click
+  // elsewhere leaves the focus where the click put it, and a mount React
+  // runs twice in development never pulls the focus out of the menu.
+  const opener = useRef<Element | null>(null);
   useEffect(() => {
-    const opener = document.activeElement;
+    opener.current ??= document.activeElement;
     menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-    return () => {
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
-    };
   }, []);
-  const choose = (item: MenuItem) => {
+  const done = () => {
     onClose();
+    const back = opener.current;
+    if (back instanceof HTMLElement && back.isConnected) back.focus();
+  };
+  const choose = (item: MenuItem) => {
+    done();
     item.does();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -53,7 +78,7 @@ export function SessionMenu({
     const at = entries.indexOf(document.activeElement as HTMLElement);
     if (event.key === "Escape") {
       event.preventDefault();
-      onClose();
+      done();
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const by = event.key === "ArrowDown" ? 1 : entries.length - 1;
@@ -88,7 +113,7 @@ export function SessionMenu({
       ref={menu}
       role="menu"
       aria-label={label}
-      className="mu-menu session-menu"
+      className={`mu-menu session-menu ${at ? "session-menu--at" : ""}`}
       tabIndex={-1}
       onKeyDown={onKeyDown}
       onBlur={(event) => {

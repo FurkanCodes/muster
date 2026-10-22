@@ -81,6 +81,8 @@ export class MockBridge implements Bridge {
   logsShown = 0;
   /** Every sound asked to be heard, in order. */
   readonly heard: string[] = [];
+  /** The sizes each terminal was told, in order, as the daemon would hear them. */
+  readonly sized: { session: SessionId; cols: number; rows: number }[] = [];
   /** Its settings and plugins, and what tests drive of them. */
   readonly settings: MockSettings;
   private listener: ((message: StateMessage) => void) | null = null;
@@ -280,7 +282,9 @@ export class MockBridge implements Bridge {
     this.heard.push(sound);
   }
 
-  async resize(): Promise<void> {}
+  async resize(session: SessionId, cols: number, rows: number): Promise<void> {
+    this.sized.push({ session, cols, rows });
+  }
   async watch(session: SessionId, watching: boolean): Promise<void> {
     if (!this.terminals.has(session)) return;
     if (watching) this.watching.add(session);

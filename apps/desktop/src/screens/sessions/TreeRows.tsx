@@ -14,6 +14,7 @@ import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf, projectColour } from "../../state/selectors";
+import { focusListOf } from "../../ui/listPointer";
 import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
 import { mostUrgent, sessionsOn, type TreeRow } from "./tree";
 
@@ -93,7 +94,7 @@ function Fold({ row, folded, onFold }: Pick<LineProps, "row" | "folded" | "onFol
   };
   return (
     // The list folds by its keys (← → e); this is the pointer's way.
-    <span className="mu-tree-fold" aria-hidden="true" onClick={fold}>
+    <span className={`mu-tree-fold${folded ? " is-folded" : ""}`} aria-hidden="true" onClick={fold}>
       {folded ? "▸" : "▾"}
     </span>
   );
@@ -126,6 +127,7 @@ function Line({
       aria-expanded={expanded}
       aria-label={label}
       className={`${className} ${selected && resting ? "is-resting" : ""}`}
+      onMouseDown={focusListOf}
       onClick={() => onPick(row.id)}
     >
       {children}

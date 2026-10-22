@@ -9,6 +9,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect } f
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useDaemon } from "../../app/context";
 import { type KeyHandlers, useKeys } from "../../app/keys";
+import { SidebarAwayRow } from "../../app/Sidebar";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { chordsOf, labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
@@ -116,6 +117,7 @@ function Sections({ shown }: { shown: Section }) {
   const counts: Partial<Record<Section, number>> = { agents, plugins };
   return (
     <section className="app-settings-sections" aria-label="Settings sections">
+      <SidebarAwayRow />
       <div className="mu-queue-head" data-tauri-drag-region>
         <h1 className="mu-queue-title">Settings</h1>
         <span className="mu-meta">The terminal UI shares them.</span>

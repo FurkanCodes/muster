@@ -37,40 +37,42 @@
   line-height: 16px;
   color: var(--text-quiet);
 }
-.mu-p1 {
-  color: var(--project-1);
-}
-.mu-p2 {
-  color: var(--project-2);
-}
-.mu-p3 {
-  color: var(--project-3);
-}
-.mu-p4 {
-  color: var(--project-4);
-}
-.mu-p5 {
-  color: var(--project-5);
-}
-.mu-p6 {
-  color: var(--project-6);
-}
 
+/* Focus, one rule (README: States). A control rings on its own edge, in the
+   keys' blue, following its radius, so a ring never spills past its parent
+   or runs into a neighbour. A line of a list has no ring: the keyboard's
+   place in a list is its fill, the same fill a click gives. */
 :where(
   .mu-btn,
   .mu-icon-btn,
+  .app-head-link,
   .mu-seg-item,
   .mu-nav-item,
-  .mu-item,
-  .mu-row,
-  .mu-file,
   .mu-pill,
-  .mu-switch,
-  .mu-menu-item,
-  .mu-command
+  .mu-command,
+  .mu-choice,
+  .mu-select
 ):focus-visible {
   outline: var(--stroke-focus) solid var(--focus-ring);
-  outline-offset: var(--stroke-focus-offset);
+  outline-offset: calc(-1 * var(--stroke-focus));
+}
+.mu-switch:focus-visible {
+  outline: var(--stroke-focus) solid var(--focus-ring);
+  outline-offset: var(--stroke-focus);
+}
+.mu-item:focus-visible,
+.mu-row:focus-visible,
+.mu-tree-row:focus-visible,
+.mu-file:focus-visible,
+.mu-ticket:focus-visible,
+.mu-folder:focus-visible,
+.mu-turnrow:focus-visible,
+.mu-menu-item:focus-visible {
+  outline: none;
+}
+/* A menu's focus is its cursor: the item the arrows are on is lit. */
+.mu-menu-item:focus-visible {
+  background: var(--surface-lit);
 }
 
 /* Button */
@@ -115,7 +117,9 @@
 .mu-btn--primary {
   background: var(--accent);
   color: var(--on-accent);
-  font-weight: 600;
+}
+.mu-btn--primary:focus-visible {
+  outline-offset: var(--stroke-focus);
 }
 .mu-btn--primary:hover {
   background: var(--accent-hover);
@@ -126,22 +130,19 @@
 .mu-btn--secondary {
   background: var(--surface-raised);
   color: var(--text);
-  border-color: var(--line);
 }
 .mu-btn--secondary:hover {
-  border-color: var(--line-strong);
+  background: var(--surface-lit);
 }
 .mu-btn--secondary:active {
   background: var(--surface-tint);
 }
 .mu-btn--quiet {
   color: var(--text-quiet);
-  border-color: var(--line);
 }
 .mu-btn--quiet:hover {
   color: var(--text);
   background: var(--surface-raised);
-  border-color: var(--line-strong);
 }
 .mu-btn--quiet:active {
   background: var(--surface-tint);
@@ -149,7 +150,6 @@
 .mu-btn--danger {
   background: var(--waiting-soft);
   color: var(--waiting);
-  font-weight: 600;
 }
 .mu-btn--danger:hover {
   border-color: var(--waiting);
@@ -215,14 +215,21 @@
   height: var(--size-kbd);
   padding: 0 var(--space-4);
   border-radius: var(--radius-xs);
-  border: var(--stroke-hairline) solid var(--line-strong);
-  background: var(--surface-panel);
+  background: var(--surface-raised);
   color: var(--text-quiet);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;
+  letter-spacing: 0.02em;
   white-space: nowrap;
+}
+/* On a primary button the key is part of its label. */
+.mu-btn--primary .mu-kbd {
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  padding: 0;
 }
 .mu-hint {
   display: inline-flex;
@@ -246,7 +253,7 @@
   gap: var(--space-2);
   padding: var(--space-2);
   border-radius: var(--radius-md);
-  border: var(--stroke-hairline) solid var(--line);
+  background: var(--surface-tint);
 }
 .mu-seg-item {
   height: var(--size-control-sm);
@@ -264,7 +271,7 @@
   color: var(--text);
 }
 .mu-seg-item[aria-pressed="true"] {
-  background: var(--surface-raised);
+  background: var(--surface-lit);
   color: var(--text);
 }
 
@@ -300,14 +307,14 @@
   font-weight: 500;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  color: var(--text);
+  color: var(--text-quiet);
   flex: none;
 }
 .mu-kep--barking {
   color: var(--waiting);
 }
 .mu-kep--glad {
-  color: var(--done);
+  color: var(--text);
 }
 .mu-kep--asleep,
 .mu-kep--away {
@@ -367,7 +374,7 @@
   background: var(--line-strong);
 }
 .mu-meter > span.is-on {
-  background: var(--done);
+  background: var(--text-quiet);
 }
 .mu-meter--busy > span.is-on {
   background: var(--working);
@@ -424,7 +431,7 @@
   color: var(--text);
 }
 .mu-nav-item[aria-current="page"] {
-  background: var(--surface-lit);
+  background: var(--surface-tint);
   color: var(--text);
 }
 .mu-nav-icon {
@@ -445,12 +452,11 @@
 }
 .mu-nav-count--waiting {
   color: var(--waiting);
-  font-weight: 600;
 }
 .mu-swatch {
   width: var(--size-swatch);
   height: var(--size-swatch);
-  border-radius: 3px;
+  border-radius: var(--radius-full);
   flex: none;
   display: inline-block;
 }
@@ -498,29 +504,41 @@
 /* Status marks */
 .mu-mark {
   width: var(--size-mark);
+  height: 16px;
   flex: none;
   display: inline-flex;
+  align-items: center;
   justify-content: center;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
+}
+.mu-mark::before {
+  content: "";
+  display: block;
+  box-sizing: border-box;
+  width: var(--size-dot);
+  height: var(--size-dot);
+  border-radius: var(--radius-full);
+}
+.mu-mark--working::before {
+  display: none;
 }
 .mu-mark--working {
-  color: var(--working);
+  color: var(--text-quiet);
 }
-.mu-mark--waiting {
-  color: var(--waiting);
-  font-size: 10px;
+/* Needs you: the one filled mark with a halo, the loudest thing in a list. */
+.mu-mark--waiting::before {
+  width: 8px;
+  height: 8px;
+  background: var(--waiting);
+  box-shadow: 0 0 0 3px var(--waiting-soft);
 }
-.mu-mark--done {
-  color: var(--done);
+.mu-mark--done::before {
+  background: var(--done);
 }
-.mu-mark--error {
-  color: var(--waiting);
+.mu-mark--error::before {
+  border: 1.5px solid var(--waiting);
 }
-.mu-mark--ended {
-  color: var(--still);
+.mu-mark--ended::before {
+  border: 1.5px solid var(--still);
 }
 .mu-dot {
   width: var(--size-dot);
@@ -597,15 +615,15 @@
   color: var(--text-quiet);
   font-size: 11px;
   line-height: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .mu-badge--waiting {
   background: var(--waiting-soft);
   color: var(--waiting);
 }
 .mu-badge--news {
-  background: var(--news-soft);
-  color: var(--news);
+  background: var(--surface-raised);
+  color: var(--text);
 }
 .mu-pr {
   display: inline-flex;
@@ -623,7 +641,7 @@
   color: var(--waiting);
 }
 .mu-pr-review {
-  color: var(--working);
+  color: var(--text-quiet);
 }
 .mu-pr-merged {
   color: var(--merged);
@@ -638,7 +656,7 @@
   color: var(--waiting);
 }
 .mu-check-running {
-  color: var(--working);
+  color: var(--text-quiet);
 }
 
 /* Diff stat and branch */
@@ -658,11 +676,9 @@
   color: var(--diff-del);
 }
 .mu-branch {
-  font-family: var(--font-mono);
-  font-variant-ligatures: none;
   font-size: 12px;
   line-height: 16px;
-  color: var(--text);
+  color: var(--text-quiet);
   white-space: nowrap;
 }
 .mu-where {
@@ -709,14 +725,8 @@
 .mu-section:first-child {
   padding-top: var(--space-8);
 }
-.mu-section--asking {
-  color: var(--waiting);
-}
-.mu-section--news {
-  color: var(--news);
-}
-.mu-section--working {
-  color: var(--working);
+.mu-section {
+  color: var(--text-quiet);
 }
 .mu-item {
   width: 100%;
@@ -750,7 +760,7 @@
 .mu-item-name {
   flex: 1;
   min-width: 0;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -776,7 +786,7 @@
   color: var(--text);
 }
 .mu-question-ask {
-  color: var(--working);
+  color: var(--waiting);
 }
 .mu-row {
   width: 100%;
@@ -907,7 +917,7 @@
 }
 .mu-banner-lead {
   color: var(--waiting);
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 .mu-banner-text {
@@ -942,7 +952,7 @@
   transition: border-color var(--timing-base) var(--ease-out);
 }
 .mu-term.has-keys {
-  border-color: var(--accent);
+  border-color: var(--keys);
 }
 .mu-term--compact {
   padding: var(--space-10) var(--space-12);
@@ -958,7 +968,7 @@
   color: var(--surface-term);
 }
 .mu-term-select {
-  background: var(--surface-lit);
+  background: var(--text-selection);
 }
 
 /* This turn */
@@ -968,7 +978,6 @@
   gap: var(--space-10);
   padding: var(--space-12) var(--space-16);
   border-radius: var(--radius-lg);
-  border: var(--stroke-hairline) solid var(--line);
   background: var(--surface-ground);
 }
 .mu-turn-head {
@@ -1037,7 +1046,7 @@
   text-align: center;
 }
 .mu-file-kind--M {
-  color: var(--working);
+  color: var(--text-quiet);
 }
 .mu-file-kind--A {
   color: var(--done);
@@ -1046,7 +1055,7 @@
   color: var(--waiting);
 }
 .mu-file-kind--R {
-  color: var(--news);
+  color: var(--text-quiet);
 }
 .mu-file-kind--U {
   color: var(--text-quiet);
@@ -1081,8 +1090,8 @@
   width: 100%;
   padding: 0 var(--space-10);
   border-radius: var(--radius-md);
-  border: var(--stroke-hairline) solid var(--line-control);
-  background: var(--surface-ground);
+  border: var(--stroke-hairline) solid var(--line-strong);
+  background: var(--surface-term);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -1097,8 +1106,8 @@
 }
 .mu-field-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--keys);
+  box-shadow: 0 0 0 1px var(--keys);
 }
 .mu-field-input--area {
   height: auto;
@@ -1203,7 +1212,9 @@
   text-align: left;
   cursor: pointer;
 }
-.mu-menu-item:hover,
+.mu-menu-item:hover {
+  background: var(--surface-raised);
+}
 .mu-menu-item.is-active {
   background: var(--surface-lit);
 }
@@ -1263,9 +1274,9 @@
   padding-top: var(--space-8);
 }
 .mu-group-name {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 600;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
   white-space: nowrap;
 }
 .mu-group-source {
@@ -1301,8 +1312,6 @@
 .mu-ticket-key {
   flex: none;
   width: var(--size-ticket-key);
-  font-family: var(--font-mono);
-  font-variant-ligatures: none;
   font-size: 12px;
   line-height: 18px;
   color: var(--text-quiet);
@@ -1353,7 +1362,7 @@
   height: var(--size-badge);
   padding: 0 var(--space-6);
   border-radius: var(--radius-xs);
-  border: var(--stroke-hairline) solid var(--line-strong);
+  background: var(--surface-raised);
   color: var(--text-quiet);
   font-size: 11px;
   line-height: 14px;
@@ -1375,8 +1384,8 @@
   gap: var(--space-8);
   padding: 0 var(--space-8) 0 var(--space-10);
   border-radius: var(--radius-md);
-  border: var(--stroke-hairline) solid var(--line-control);
-  background: var(--surface-ground);
+  border: var(--stroke-hairline) solid var(--line-strong);
+  background: var(--surface-term);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -1389,12 +1398,8 @@
   border-color: var(--text-quiet);
 }
 .mu-select[aria-expanded="true"] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
-.mu-select:focus-visible {
-  outline: var(--stroke-focus) solid var(--focus-ring);
-  outline-offset: var(--stroke-focus-offset);
+  border-color: var(--keys);
+  box-shadow: 0 0 0 1px var(--keys);
 }
 .mu-select:disabled {
   opacity: var(--opacity-disabled);
@@ -1424,7 +1429,7 @@
   flex: none;
   display: inline-flex;
   justify-content: center;
-  color: var(--accent);
+  color: var(--text);
 }
 
 /* Agent choice */
@@ -1456,13 +1461,8 @@
   background: var(--surface-raised);
 }
 .mu-choice[aria-checked="true"] {
-  border-color: var(--accent);
+  border-color: var(--text-quiet);
   background: var(--surface-lit);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-.mu-choice:focus-visible {
-  outline: var(--stroke-focus) solid var(--focus-ring);
-  outline-offset: var(--stroke-focus-offset);
 }
 .mu-choice-note {
   margin-left: auto;
@@ -1573,9 +1573,10 @@
   cursor: pointer;
 }
 .mu-plugin-open:focus-visible {
-  outline: var(--stroke-focus) solid var(--focus-ring);
-  outline-offset: var(--space-4);
-  border-radius: var(--radius-xs);
+  outline: none;
+}
+.mu-plugin:has(.mu-plugin-open:focus-visible) {
+  background: var(--surface-lit);
 }
 .mu-plugin-name {
   display: flex;
@@ -1599,7 +1600,7 @@
   text-overflow: ellipsis;
 }
 .mu-plugin-what.is-off {
-  color: var(--waiting);
+  color: var(--text-quiet);
 }
 .mu-plugin .mu-switch {
   margin-top: 1px;
@@ -1703,15 +1704,22 @@
 .mu-tree-row[aria-selected="true"] {
   background: var(--surface-lit);
 }
+/* The fold shows while the pointer is on its line, or while it is folded. */
 .mu-tree-fold {
   width: var(--size-mark);
   flex: none;
   text-align: center;
   font-size: 10px;
   color: var(--text-quiet);
+  opacity: 0;
+  transition: opacity var(--timing-fast) var(--ease-out);
+}
+.mu-tree-row:hover .mu-tree-fold,
+.mu-tree-fold.is-folded {
+  opacity: 1;
 }
 .mu-tree-project {
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 .mu-tree-end {
@@ -1728,9 +1736,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-left: calc(var(--space-8) + var(--size-mark) / 2);
-  padding-left: var(--space-8);
-  border-left: var(--stroke-hairline) solid var(--line);
 }
 .mu-tree-shell {
   min-height: var(--size-control-sm);
@@ -1766,7 +1771,7 @@
   transition: border-color var(--timing-base) var(--ease-out);
 }
 .mu-panel.has-keys {
-  border-color: var(--accent);
+  border-color: var(--keys);
 }
 .mu-panel-head {
   height: var(--size-control-lg);
@@ -1788,7 +1793,7 @@
   white-space: nowrap;
 }
 .mu-panel.has-keys .mu-panel-title {
-  color: var(--accent);
+  color: var(--keys);
 }
 .mu-panel-body {
   flex: 1;
@@ -1874,7 +1879,7 @@
 .mu-dl-hunk {
   margin: var(--space-6) 0 var(--space-2);
   padding: var(--space-2) var(--space-12);
-  color: var(--news);
+  color: var(--text-quiet);
   background: var(--surface-raised);
   white-space: pre;
 }
@@ -1975,7 +1980,7 @@
 }
 .mu-palette-item mark {
   background: transparent;
-  color: var(--accent);
+  color: var(--text);
   font-weight: 600;
 }
 .mu-palette-foot {
@@ -2002,7 +2007,7 @@
 }
 .mu-keyrow.is-waiting {
   background: var(--surface-lit);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  box-shadow: inset 0 0 0 1px var(--keys);
 }
 .mu-keyrow-what {
   flex: 1;
@@ -2018,7 +2023,7 @@
   gap: var(--space-4);
 }
 .mu-keyrow-wait {
-  color: var(--accent);
+  color: var(--keys);
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
@@ -2090,8 +2095,8 @@
 }
 .mu-folder mark {
   background: transparent;
-  color: var(--accent);
-  font-weight: 500;
+  color: var(--text);
+  font-weight: 600;
 }
 .mu-folder .mu-label {
   margin-left: auto;
@@ -2111,9 +2116,9 @@
 }
 .mu-empty-title {
   margin: 0;
-  font-size: 18px;
-  line-height: 24px;
-  font-weight: 600;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 .mu-empty-text {

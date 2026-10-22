@@ -94,6 +94,49 @@ function useTheme(): void {
   }, [theme, bridge, actions]);
 }
 
+/** Where the browser's own menu still serves on a right-click: text one can copy or type in. */
+const TEXT_MENU =
+  'input, textarea, [contenteditable="true"], .xterm, .mu-prose, .mu-panel-body, .mu-diffview-body, .mu-question';
+
+/**
+ * A right-click in the window opens no browser menu (Reload, Inspect): it is
+ * an app, and its lines open their own (the sidebar's list). Over text, or
+ * with text chosen, the browser's menu stays, for Copy and Paste.
+ */
+function useNoBrowserMenu(): void {
+  useEffect(() => {
+    const onMenu = (event: MouseEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      const chosen = window.getSelection()?.toString() ?? "";
+      if (chosen === "" && !target?.closest(TEXT_MENU)) event.preventDefault();
+    };
+    document.addEventListener("contextmenu", onMenu);
+    return () => document.removeEventListener("contextmenu", onMenu);
+  }, []);
+}
+
+/**
+ * In the Mac's full screen the window's own buttons go away, so their room
+ * goes too: the sidebar's top and the way back to it start at the window's
+ * edge. Full screen is the window covering the whole screen, the menu bar's
+ * place too, which a window merely made as large as it can be never does.
+ */
+function useWindowFull(): void {
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    const root = document.documentElement;
+    const tell = () => {
+      const full = window.outerWidth >= screen.width && window.outerHeight >= screen.height;
+      if (full) root.dataset.windowFull = "";
+      else delete root.dataset.windowFull;
+    };
+    tell();
+    window.addEventListener("resize", tell);
+    return () => window.removeEventListener("resize", tell);
+  }, []);
+}
+
 /** What the tab keys do, as the terminal UI's: Tab and ⇧Tab go round, 1–4 go to one. */
 const TAB_KEYS: Readonly<Record<string, (actions: UiActions) => void>> = {
   next_tab: (actions) => actions.cycle(1),
@@ -162,6 +205,8 @@ function Body() {
 
 function Window() {
   useTheme();
+  useNoBrowserMenu();
+  useWindowFull();
   useApp();
   const fullScreen = useUi((state) => state.fullScreen !== null);
   return (

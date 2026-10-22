@@ -23,37 +23,41 @@ Muster speaks plainly about what happened, in the words the person would use.
 
 ## Colour
 
-Use the surfaces as a ladder, darkest outside to the work in the middle: `surface-rail` frames the window (title bar, sidebar, status bar), `surface-ground` holds the queue, `surface-panel` holds the detail pane, and `surface-term` is reserved for a program's own text. Show depth by shade, not by shadow.
+The interface is grey, and colour is news. The neutrals are one warm grey (near hue 70, almost no chroma), stepped by lightness only; nothing is tinted toward blue or purple. Calm is the point: the sidebar recedes, the work leads, and a colour on screen means something happened.
+
+Three grounds and no more: `surface-rail` and `surface-ground` (the same grey) frame the window, the sidebar and the status bar; `surface-term` is the darker work area beside them, a session's terminal and every page that takes its place; `surface-panel` is for what floats or is typed into (menus, dialogs, the palette, a composer). Show depth by shade, not by shadow.
 
 - Set text in `text`; set what says less in `text-quiet`. Both pass 4.5:1 on every surface in both themes, `surface-lit` included. Never use a status or project colour for running text.
-- Show selection with `surface-lit` while the list has the keys and `surface-tint` while the keys are elsewhere, so the person always sees where typing goes. Hover is `surface-raised`.
-- Spend `accent` on what has the keys and nothing else: the primary button, the terminal's frame while it is typed in, the focus ring (`focus-ring`), the current tab. Text on an accent fill is `on-accent`.
-- Each status has a colour, a mark and a word, and never relies on the colour alone:
+- Show selection with `surface-lit` while the list has the keys and `surface-tint` while the keys are elsewhere, so the person always sees where typing goes. Hover is `surface-raised`. Selection is always grey: no colour ever fills a row.
+- `accent` is the grey at its lightest (darkest in Light): the primary button and a switch that is on, and nothing else. Text on it is `on-accent`. One primary button per view at most.
+- `keys` is the Mac's blue and says where the keys are, and nothing else: the focus ring (`focus-ring`), a field or select being typed in, a terminal or panel that has the keys, a line being dragged, the status bar's "Typing in…". Chosen text is `text-selection`, the same blue, faint.
+- Each status has a mark and a word, and never relies on the colour alone. Only three statuses take a colour:
 
 | Status | Colour | Mark | Word |
 |---|---|---|---|
-| Working | `working` | ⠋ spinner | "editing view.rs", "running cargo nextest" |
-| Needs you | `waiting` | ▲ | "wants to run…", "asks…" |
-| Finished | `done` | ✓ | "finished" |
-| Not seen | `news` | • dot | the *Not seen* section |
-| Error | `waiting` | ✗ | "exited with an error" |
-| Ended | `still` | ○ | "ended" |
+| Working | `text-quiet` | turning ring | "editing view.rs", "running cargo nextest" |
+| Needs you | `waiting` | filled dot with a halo | "wants to run…", "asks…" |
+| Finished | `done` | filled dot | "finished" |
+| Not seen | `news` | small dot at the line's end | the *Not seen* section |
+| Error | `waiting` | ring | "exited with an error" |
+| Ended | `still` | ring | "ended" |
 
-- Put a status colour's soft partner (`waiting-soft`, `working-soft`, `done-soft`, `news-soft`) behind text in that status colour, never behind `text`.
-- Diffs read `diff-add` and `diff-del`; their lines' backgrounds are `diff-add-soft` and `diff-del-soft`.
-- Give each project a colour by its place in the list, `project-1` to `project-6`, then round again. Use it for the project's name and swatch only; it never fills a row.
+- What a session asks or does is said in `text-quiet`; its mark carries the colour. Section headings are `text-quiet` too.
+- Put a status colour's soft partner (`waiting-soft`, `done-soft`, `news-soft`) behind text in that status colour, never behind `text`; the Needs you banner is the one fill a status gets.
+- Diffs read `diff-add` and `diff-del`; their lines' backgrounds are `diff-add-soft` and `diff-del-soft`. A changed (`M`) or renamed file is `text-quiet`: only added and deleted are coloured.
+- Give each project a colour by its place in the list, `project-1` to `project-6`, then round again. It belongs to the project's swatch, a round dot, and nothing else: the name is `text`.
 - The `agent-*` colours are the agents' own and belong to their marks only, where a logo is not drawn.
-- Overlaps and conflicts between workspaces borrow the statuses: an overlap is `working`, a conflict is `waiting`. A merged pull request is `merged`.
+- An overlap between workspaces is `working`, a conflict is `waiting`, a merged pull request `merged`, changes asked for `waiting`, approved `done`; every other pull request word and a running check are `text-quiet`.
 
 ## Type
 
 Two families: **Instrument Sans** for the interface and **JetBrains Mono** for anything a program wrote or a person would type. Both load from Google Fonts with system fallbacks (`font-sans`, `font-mono`).
 
 - Set interface text in the Interface styles: `title-window` for a screen's title, `title-pane` for the selected session's name, `title-section` for dialogs and panel titles, `body` for everything else, `label` for controls, `meta` for what is said under a name, `caption` only inside counts.
-- Use `body-strong` for a session that asks the person something; nothing else in a list is bold.
+- Weights are 400 and 500. A session that asks the person something is 500, as are names in the queue and project headings; 600 is kept for titles (`title-window`, `title-pane`, `title-section`).
 - Set running text someone wrote, such as a ticket's body, in `prose` (14px on 22), within `layout-measure`. It is the one place the interface reads like a page.
 - Ticket text, labels and authors come from trackers anyone can write to. Show them as plain text in `text` and `text-quiet`: never in a tracker's own colours, and never as links Muster did not make.
-- Set branches, paths and commands in `code`, terminals in `terminal`, previews of a program's output in `terminal-compact`. Never set labels, counts or times in mono.
+- Mono is for what a program wrote or a person would type at one: terminals in `terminal`, previews of a program's output in `terminal-compact`, file paths, diffs and commands in `code`. A branch, a ticket's key and a key cap are names, set in the interface's face. Never set labels, counts or times in mono, and never switch faces in the middle of a line for a name.
 - Turn on tabular figures (`font-variant-numeric: tabular-nums`) wherever a number can change in place: counts, ages, diff stats, token use.
 - Keep running text, as a ticket's body, to `layout-measure`.
 - The scale steps by about 1.125 from `meta` (12px) to `title-window` (18px). Nothing in the interface is smaller than 11px.
@@ -70,9 +74,9 @@ Lay everything out on the 4px grid in `spacing`. Token names are their pixel val
 
 ## Shape
 
-- Radii grow with the size of the thing: `radius-xs` for key caps and logos, `radius-sm` for small controls, `radius-md` for controls and rows, `radius-lg` for queue items and terminals, `radius-xl` for what floats. Counts, dots and switches are round (`radius-full`).
-- A nested shape takes its parent's radius less the gap between them: a menu (`radius-xl`, 12px) with a `space-4` inset gives its items `radius-md` (8px).
-- Every border is `stroke-hairline` in `line`. Use `line-strong` for key caps and hovered quiet buttons, `line-control` where the border alone identifies a control (text fields, an unchecked switch).
+- Two radii: 6px for everything in the window (`radius-sm`, `radius-md` and `radius-lg` are all 6px) and 10px (`radius-xl`) for what floats. `radius-xs` (4px) is for key caps, labels and logos. Counts, dots, swatches and switches are round (`radius-full`).
+- Structure is felt, not seen. Group with space and a quiet heading, part groups with one hairline at most; never box a group that is not a thing in itself. A box is for what can be typed into (a field, a composer) or what floats. No dashed borders.
+- Every border is `stroke-hairline` in `line`. Fields and selects are framed in `line-strong` on `surface-term`. Key caps and labels have no frame: a `surface-raised` fill.
 - Only floating things cast a shadow: `shadow-popover` for menus and the command palette, `shadow-dialog` for dialogs over `scrim`, `shadow-drag` for something being dragged.
 
 ## States
@@ -83,10 +87,12 @@ Every interactive element has the same vocabulary:
 |---|---|
 | Hover | fill `surface-raised` (a primary button: `accent-hover`) over `timing-fast` |
 | Pressed | fill one step further (`accent-pressed`, `surface-tint`) |
-| Focus | a `stroke-focus` ring in `focus-ring`, `stroke-focus-offset` away; keyboard only (`:focus-visible`) |
+| Focus, a control | a `stroke-focus` ring in `focus-ring` on the control's own edge (inset, so it follows the radius and never spills); a primary button and a switch ring just outside; keyboard only (`:focus-visible`) |
+| Focus, a line of a list | no ring, and no focus: the list holds the focus and names its selected line (`aria-activedescendant`); a click on a line gives the focus to the list, so the browser's focus and the list's selection never part. A list itself never rings; its selected line, lit rather than tinted, says it has the keys |
+| Focus, a menu's item | fill `surface-lit`: a menu's focus is its cursor. A menu gives the focus back to what had it when it is done with (⎋, an item chosen), and leaves it where a click put it when the click closed it |
 | Selected, list has the keys | fill `surface-lit` |
 | Selected, keys elsewhere | fill `surface-tint` |
-| Has the keys (a terminal, a panel) | frame in `accent` |
+| Has the keys (a terminal, a panel, a field) | frame in `keys` |
 | Disabled | `opacity-disabled`, no hover, and a tooltip saying why |
 | Busy | the spinner in place of the icon, the label saying what is happening ("Starting…"), no second press |
 | Error | `waiting` border or text, with words saying what to do |
@@ -102,16 +108,24 @@ Motion shows what changed, in 120 to 240ms, easing out (`ease-out`) with no boun
 
 ## Iconography
 
-- **Status marks** are glyphs set in `font-mono` in their status colour: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ (working, stepping), ▲ (needs you), ✓ (finished), ✗ (error), ○ (ended), and the `news` dot. ⎇ marks a branch, ❯ a shell.
+- **Status marks** are shapes the stylesheet draws, not glyphs, each with its word as its label: a ring turning in eight steps (working), a filled dot with a soft halo (needs you), a filled dot (finished), a ring (error, ended), and the small `news` dot. The flock in the status bar uses the same marks. ⎇ marks a branch, ❯ a shell.
 - **Agents** are shown by their own logos (the *Agents* assets) at `size-logo-sm`, `size-logo` or `size-logo-lg`. Where a logo cannot be drawn, show the agent's mark in its `agent-*` colour: ✻ Claude Code, ◎ Codex, ✦ Gemini CLI, ▣ OpenCode, ◉ Copilot CLI, • an agent the person added.
 - **Interface icons** are line icons at `size-icon` (14px) in buttons and `size-icon-lg` (16px) alone, `stroke-icon` wide, in `currentColor`. Use Lucide's set. An icon-only button always has an `aria-label` and a tooltip with its key.
-- **Kep**, Muster's sheepdog, sits in the title bar and says how the flock stands, in `font-mono`: `▼•ᴥ•▼` watching while something works, `▲•ᴥ•▲!` barking while something asks (in `waiting`), `▼^ᴥ^▼` glad for three seconds after a finish (in `done`), `▼-ᴥ-▼ᶻ` asleep while nothing works or waits, `▼;ᴥ;▼` while the daemon is out of reach. Kep is the first thing to go when the title bar runs short of room. Large, on the welcome and on screens with nothing on them yet, Kep is the *Kep* asset: the terminal UI's own 24 by 18 pixel portrait, drawn at `size-kep` with its pixels kept square.
+- **Kep**, Muster's sheepdog, sits in the title bar and says how the flock stands, in `font-mono`: in `text-quiet`: `▼•ᴥ•▼` watching while something works, `▲•ᴥ•▲!` barking while something asks (in `waiting`, Kep's one colour), `▼^ᴥ^▼` glad for three seconds after a finish (in `text`), `▼-ᴥ-▼ᶻ` asleep while nothing works or waits, `▼;ᴥ;▼` while the daemon is out of reach. Kep is the first thing to go when the title bar runs short of room. Large, on the welcome and on screens with nothing on them yet, Kep is the *Kep* asset: the terminal UI's own 24 by 18 pixel portrait, drawn at `size-kep` with its pixels kept square.
 - No emoji anywhere.
 
 ## Keys
 
 Muster is driven from the keyboard first. Every action has a key, and every key can be changed in Settings › Keys.
 
-- Show keys with the **Kbd** component, in hints (`⏎ answer`), menus (right-aligned) and tooltips ("Full screen (f)").
-- The status bar lists the selected thing's actions with their keys and ends with `h` for every key.
+- Show keys with the **Kbd** component, in hints (`⏎ answer`), menus (right-aligned) and tooltips ("Full screen (f)"). Keys are shown where they are asked for, not everywhere: a sidebar button's key appears while the pointer or the keys are on it.
+- The status bar lists the selected thing's first three actions with their keys and ends with `h` for every key; the rest are in every key and the palette.
 - In a terminal every key goes to the program, except the few that leave it, change screen or fold the sidebar.
+
+## Pointer
+
+The pointer reaches as far as the keys, and works as a Mac app's does.
+
+- A right-click on a session's line selects it and opens its menu, the one under ⋯, at the pointer, kept inside the window. A right-click on another line (a project, a worktree) selects it.
+- The window opens no browser menu (Reload, Inspect): only over text one can copy (a field, a terminal, a ticket's text, a diff) or with text chosen.
+- Facts in a head are ways on where there is one: the branch goes to its project's page, a diff stat and an overlap to the changes, a pull request to the browser. They stay quiet until the pointer is on them (`surface-raised`), and their tooltips name their keys.

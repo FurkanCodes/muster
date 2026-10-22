@@ -50,10 +50,18 @@ body {
   gap: var(--space-8);
   padding-left: calc(var(--layout-traffic-lights) - var(--space-8));
 }
+/* A button's key shows while the pointer or the keys are on it, else it waits
+   in the tooltip and the palette: the sidebar is not a cheat sheet. */
 .app-sidebar-key {
   margin-left: auto;
   color: var(--text-quiet);
   font-size: 11px;
+  opacity: 0;
+  transition: opacity var(--timing-fast) var(--ease-out);
+}
+.mu-nav-item:hover .app-sidebar-key,
+.mu-nav-item:focus-visible .app-sidebar-key {
+  opacity: 1;
 }
 .app-sidebar .mu-nav-item:disabled {
   opacity: var(--opacity-disabled);
@@ -85,7 +93,6 @@ body {
 }
 .app-lists-count--waiting {
   color: var(--waiting);
-  font-weight: 600;
 }
 /* The projects' heading over the list, its + always there: the way to add one. */
 .app-projects-head {
@@ -100,7 +107,7 @@ body {
 .app-projects-title {
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-quiet);
 }
 
@@ -116,26 +123,34 @@ body {
 .app-statusbar .mu-meter {
   flex: none;
 }
+/* The selected thing's first three keys, no more: the rest are a key away (every key). */
+.app-statusbar > .mu-hint:nth-child(n + 5):not(.mu-spacer ~ .mu-hint) {
+  display: none;
+}
 .app-flock {
   flex: none;
   font-weight: 400;
   gap: var(--space-8);
 }
 
-.app-flock-working {
-  color: var(--working);
+/* The flock in the quiet text, each count after its status's mark. */
+.app-flock > span {
+  gap: var(--space-4);
 }
-
-.app-flock-waiting {
-  color: var(--waiting);
+.app-flock-mark {
+  width: var(--size-dot);
+  height: var(--size-dot);
+  border-radius: var(--radius-full);
+  box-sizing: border-box;
 }
-
-.app-flock-done {
-  color: var(--done);
+.app-flock-working .app-flock-mark {
+  border: 1.5px solid var(--text-quiet);
 }
-
-.app-flock-triangle {
-  font-size: 10px;
+.app-flock-waiting .app-flock-mark {
+  background: var(--waiting);
+}
+.app-flock-done .app-flock-mark {
+  background: var(--done);
 }
 
 /* Beside the sidebar: the session, or a page, on the terminal's own ground. */
@@ -176,6 +191,84 @@ body {
   flex-wrap: nowrap;
   overflow: hidden;
   white-space: nowrap;
+}
+/* The Mac's full screen has no window buttons to make room for (App: useWindowFull). */
+html[data-window-full] {
+  --layout-traffic-lights: var(--space-24);
+}
+
+/* Over Tickets and Settings while the sidebar is away: the window's buttons' row, and the way back. */
+.app-away-row {
+  flex: none;
+  height: var(--layout-titlebar);
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--layout-traffic-lights) - var(--space-8));
+}
+
+/* The sidebar's right edge, dragged to make it wider or narrower (Sidebar: SidebarEdge). */
+.app-sidebar {
+  position: relative;
+}
+.app-sidebar-edge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  width: var(--space-6);
+  cursor: col-resize;
+  touch-action: none;
+}
+.app-sidebar-edge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--stroke-focus);
+  background: transparent;
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.app-sidebar-edge:hover::after {
+  background: var(--keys);
+  transition-delay: 120ms;
+}
+.app-sidebar-edge.is-dragged::after {
+  background: var(--keys);
+  transition-delay: 0ms;
+}
+/* While it is dragged the pointer says so everywhere, and nothing is chosen as text. */
+html[data-resizing] * {
+  cursor: col-resize !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* The head's facts are ways on (SessionPane: Where): quiet until the pointer is on one. */
+.app-head-where {
+  gap: var(--space-2) var(--space-4);
+}
+.app-head-link {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: var(--size-control-sm);
+  padding: 0 var(--space-6);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.app-head-link:hover {
+  background: var(--surface-raised);
+}
+.app-head-link:disabled {
+  cursor: default;
+  background: transparent;
 }
 .app-head .mu-pane-actions {
   gap: var(--space-2);
@@ -219,7 +312,7 @@ body {
 }
 
 .app-pane-title--keys {
-  color: var(--accent);
+  color: var(--keys);
 }
 
 .app-pane-terminal {
@@ -260,20 +353,24 @@ textarea {
   user-select: text;
 }
 
-/* The working spinner, stepped by CSS alone: a strip of the ten frames slid
-   one character at a time, so no script wakes for it. */
+/* The working spinner, turned by CSS alone in eight steps, so no script
+   wakes for it and the compositor alone moves it: a ring with one quarter lit. */
 .mu-spin {
-  display: inline-block;
-  width: 1ch;
-  overflow: hidden;
-  vertical-align: bottom;
-  font-family: var(--font-mono);
+  display: inline-flex;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  vertical-align: -1px;
 }
 
 .mu-spin-strip {
-  display: inline-block;
-  white-space: nowrap;
-  animation: mu-spin 1s steps(10) infinite;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  animation: mu-spin 0.8s steps(8) infinite;
 }
 
 .mu-spin--still .mu-spin-strip {
@@ -282,7 +379,7 @@ textarea {
 
 @keyframes mu-spin {
   to {
-    transform: translateX(-10ch);
+    transform: rotate(360deg);
   }
 }
 
@@ -301,16 +398,16 @@ html[data-visible="false"] *::after {
 
 :focus-visible {
   outline: var(--stroke-focus) solid var(--focus-ring);
-  outline-offset: var(--stroke-focus-offset);
+  outline-offset: calc(-1 * var(--stroke-focus));
 }
 
 ::selection {
-  background: var(--surface-lit);
+  background: var(--text-selection);
 }
 
-/* While a terminal has the keys the status bar says so in the accent, as its frame is lit. */
+/* While a terminal has the keys the status bar says so in the keys' blue. */
 .app-statusbar [data-typing] {
-  color: var(--accent);
+  color: var(--keys);
 }
 
 /* The sidebar put away (⌘\), the screen beside it has no edge to draw. */

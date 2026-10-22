@@ -27,7 +27,7 @@ The window, measured: one sidebar holding the list, the selected session beside 
 
 | Region | Size | Surface | Padding | Holds |
 |---|---|---|---|---|
-| Sidebar | `layout-list` 288 wide; away on ⌘\ | `surface-ground` | top row `layout-titlebar` 44 high, left `layout-traffic-lights` 78; `space-8` sides | Kep and the button that puts it away; New session, Search and Tickets (`size-control-lg` 32 high); the lists' switch; the list; Settings at the foot |
+| Sidebar | `layout-list` 288 wide, dragged at its right edge from 220 to 420 and kept (a double-click puts back 288); away on ⌘\, the way back on every screen | `surface-ground` | top row `layout-titlebar` 44 high, left `layout-traffic-lights` 78; `space-8` sides | Kep and the button that puts it away; New session, Search and Tickets (`size-control-lg` 32 high); the lists' switch; the list; Settings at the foot |
 | Session | the rest, at least `layout-detail-min` 520 | `surface-term`, `line` at its left | head `layout-titlebar` 44 high, `space-20` left, `space-12` right; banner `space-20` left, `space-8` below | its head (logo, name, where it runs, what its work comes to, the shell, changes and more icons), the needs-you banner, the terminal or the changes |
 | Status bar | `layout-statusbar` 28 high | `surface-rail`, `line` above | `space-12` sides, gaps `space-16` | the selected thing's keys, a note, then the session's agent and what it uses, the flock, the memory meter, `h` every key, the version |
 
@@ -35,7 +35,7 @@ The window, measured: one sidebar holding the list, the selected session beside 
 
 ## As the window narrows
 
-The window is never narrower than `layout-window-min-width` (960) or shorter than `layout-window-min-height` (600): the sidebar's 288 leaves the session at least 672, so neither gives way. In the session's head, where it runs is cut first; the icons stay. In the status bar, the session's facts are cut first.
+The window is never narrower than `layout-window-min-width` (960) or shorter than `layout-window-min-height` (600): the sidebar's 288 leaves the session at least 672, and at its widest, 420, still 540, so neither gives way. In the Mac's full screen the window's buttons are gone, and `layout-traffic-lights` is 24: what made room for them starts at the window's edge. In the session's head, where it runs is cut first; the icons stay. In the status bar, the session's facts are cut first.
 
 With the sidebar away, the head makes room for the window's buttons (`layout-traffic-lights`) and shows the button that brings the sidebar back.
 

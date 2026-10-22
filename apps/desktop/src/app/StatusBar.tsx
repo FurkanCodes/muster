@@ -60,21 +60,15 @@ function Flock() {
       aria-label={`${counts.working} working, ${counts.waiting} waiting on you, ${counts.done} done`}
     >
       <span className="app-flock-working">
-        <span className="mu-mono" aria-hidden="true">
-          ⠿
-        </span>
+        <span className="app-flock-mark" aria-hidden="true" />
         {counts.working}
       </span>
       <span className="app-flock-waiting">
-        <span className="mu-mono app-flock-triangle" aria-hidden="true">
-          ▲
-        </span>
+        <span className="app-flock-mark" aria-hidden="true" />
         {counts.waiting}
       </span>
       <span className="app-flock-done">
-        <span className="mu-mono" aria-hidden="true">
-          ✓
-        </span>
+        <span className="app-flock-mark" aria-hidden="true" />
         {counts.done}
       </span>
     </span>
