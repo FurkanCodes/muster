@@ -30,6 +30,18 @@ Compile wide, test narrow: clippy over the whole workspace catches a changed int
 - **The whole suite** (`cargo nextest run --workspace`) only for a protocol version change (`ARC-09`), a dependency or toolchain update, a release, or when asked.
 - **Before a release only,** as CI does not run them: `pnpm e2e:app` (the real app, on a Mac) and the real-Docker suite (`MUSTER_DOCKER_TESTS=1 cargo test -p muster-daemon`).
 - **Don't repeat work:** a test that passed is not run again unless its code changed since; after a failure, rerun only the failing test until it passes, then the step's set once.
+- **Compile first:** `cargo check -p <crate>` before a test run, so a compile error never costs a test build.
+- **Keep a failure whole:** never cut test, build or clippy output with `| tail`, `| grep` or `> /dev/null`; when a run fails, read its first failure in full before running anything again.
+- Claude Code asks the person before a whole-suite run (`.claude/settings.json`, `scripts/hooks/whole-suite.py`).
+
+## Working efficiently
+
+Measured on this repository's own agent sessions (`scripts/agent-sessions.py`, 2026-10-22); rerun it to see what a change to this file did.
+
+- **Read code with the agent's own read and search tools** (CodeGraph's `codegraph_explore` where `.codegraph/` exists), not `cat`, `sed`, `grep` or `find` in a shell: a shell call costs seconds before it starts, a read a few hundredths of one. Say so in a subagent's brief too.
+- **Read `ARCHITECTURE.md` and `PRODUCT.md` by section** (search for the rule ID or heading, then read those lines), never whole: they are 200 KB and 50 KB.
+- **Wait in the background:** a build, a CI run or a daemon is waited on by a background command or a watcher, never a foreground `sleep`; every loop that waits has a limit.
+- **Subagents for wide reading or research only,** never for a lookup of a known file or symbol; they cost many times the tokens of doing it directly.
 
 ## Desktop app (`apps/desktop`)
 
