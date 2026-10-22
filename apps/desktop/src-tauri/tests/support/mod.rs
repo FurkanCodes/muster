@@ -36,7 +36,20 @@ pub(crate) fn muster() -> &'static Path {
             .status()
             .expect("cargo runs");
         assert!(status.success(), "building muster failed");
-        root.join("target/debug/muster")
+        // Where cargo builds: `target`, unless a cargo config of the
+        // machine's names a folder every checkout shares.
+        let metadata = Command::new(env!("CARGO"))
+            .args(["metadata", "--format-version", "1", "--no-deps"])
+            .current_dir(&root)
+            .output()
+            .expect("cargo runs");
+        let metadata: serde_json::Value =
+            serde_json::from_slice(&metadata.stdout).expect("cargo says where it builds");
+        let built = metadata["target_directory"]
+            .as_str()
+            .expect("cargo names its build folder");
+        Path::new(built)
+            .join("debug/muster")
             .canonicalize()
             .expect("muster was built")
     })

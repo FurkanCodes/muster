@@ -26,7 +26,7 @@ import {
   type SettingsValue,
 } from "./context";
 import { keyEntries, narrowed } from "./keyRows";
-import { keptRow, movedRow, rowKey, rowName, settingRows } from "./model";
+import { keptRow, movedRow, rowKey, rowName, SHARED_BUILDS_PROTOCOL, settingRows } from "./model";
 import { isFolder, pluginOrder } from "./pluginWords";
 import { chosenTracker, fieldsFor, offeredTrackers } from "./trackers";
 import { oneLine, problemText } from "./words";
@@ -90,6 +90,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
   const added = useDaemon((state) => state.preferences?.agents ?? NO_AGENTS);
   const plugins = useDaemon((state) => state.plugins);
+  const sharedBuilds = useDaemon(
+    (state) => state.link.state === "up" && state.link.protocol >= SHARED_BUILDS_PROTOCOL,
+  );
   const map = useKeymap();
   const [projects, setProjects] = useState<ReadonlyMap<ProjectId, Read>>(() => new Map());
   const [drafts, setDrafts] = useState<ReadonlyMap<ProjectId, Draft>>(() => new Map());
@@ -121,6 +124,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       };
     }),
     keys: narrowed(keyEntries(map), find).map((entry) => entry.name),
+    sharedBuilds,
   });
   const selected = keptRow(rows, wanted);
 

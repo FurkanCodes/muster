@@ -55,6 +55,9 @@ pub struct MusterConfig {
     /// Which kinds the person is told of, and how each sounds (the rest of
     /// `[notifications]`).
     pub telling: Telling,
+    /// Whether a Rust project's worktrees build into one folder
+    /// (`[worktrees] shared_builds`).
+    pub shared_builds: bool,
     /// The plugins the person installed, linked or turned off
     /// (`[plugins.<id>]`), by id.
     pub plugins: Vec<PluginEntry>,
@@ -77,6 +80,7 @@ impl Default for MusterConfig {
             keys: BTreeMap::new(),
             notifications: true,
             telling: Telling::default(),
+            shared_builds: true,
             plugins: Vec::new(),
             warnings: Vec::new(),
         }
@@ -102,6 +106,8 @@ struct File {
     keys: BTreeMap<String, OneOrMore>,
     #[serde(default)]
     notifications: Notifications,
+    #[serde(default)]
+    worktrees: Worktrees,
     /// Read by [`registry::parse`], which names the key that is wrong.
     plugins: Option<toml::Value>,
 }
@@ -162,6 +168,12 @@ struct Names {
 #[serde(deny_unknown_fields)]
 struct Notch {
     show: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Worktrees {
+    shared_builds: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -261,6 +273,10 @@ impl MusterConfig {
             keys,
             notifications: read.notifications.show.unwrap_or(default.notifications),
             telling,
+            shared_builds: read
+                .worktrees
+                .shared_builds
+                .unwrap_or(default.shared_builds),
             plugins,
             warnings,
         })

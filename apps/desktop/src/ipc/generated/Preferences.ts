@@ -76,4 +76,11 @@ notifications: boolean,
  * (`[notifications]` `questions`, `finishes`, `errors` and their
  * `_sound`s). From protocol 40.
  */
-telling: Telling, };
+telling: Telling, 
+/**
+ * Whether the worktrees Muster makes for a Rust project build into
+ * one folder of the project's, so its dependencies are built and kept
+ * once rather than once a worktree (`[worktrees] shared_builds`); on
+ * unless the person turns it off. From protocol 47.
+ */
+shared_builds: boolean, };

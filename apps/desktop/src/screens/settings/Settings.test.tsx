@@ -57,7 +57,7 @@ describe("Settings", () => {
     const { keys } = renderSettings();
     await screen.findByRole("group", { name: "Theme" });
     expect(row("general/theme")).toHaveClass("is-selected");
-    for (let at = 0; at < 6; at += 1) await userEvent.keyboard("{ArrowDown}");
+    for (let at = 0; at < 7; at += 1) await userEvent.keyboard("{ArrowDown}");
     expect(row("notifications/notifications")).toHaveClass("is-selected");
     expect(screen.getByRole("button", { name: "Notifications" })).toHaveAttribute(
       "aria-current",
@@ -106,6 +106,18 @@ describe("Settings", () => {
         text: "~/.config/muster/settings.toml cannot be written: read-only",
         error: true,
       }),
+    );
+    keys();
+  });
+
+  it("turns the shared Rust builds off with ⏎", async () => {
+    const { app, bridge, keys } = renderSettings();
+    await screen.findByRole("group", { name: "Theme" });
+    expect(screen.getByRole("switch", { name: "Shared Rust builds" })).toBeChecked();
+    act(() => app.actions.select("settings", "general/shared_builds"));
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual({ ChangePreference: { SharedBuilds: false } }),
     );
     keys();
   });

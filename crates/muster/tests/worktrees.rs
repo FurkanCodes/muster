@@ -351,3 +351,96 @@ fn the_command_line_manages_worktrees_and_sessions() {
     }
     assert!(run(&["status"]).1.contains("0 worktrees"));
 }
+
+/// Waits until `done` holds, for what the daemon finishes off its loop.
+async fn until(what: &str, done: impl Fn() -> bool) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !done() {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("waited 10 s for {what}"));
+}
+
+#[tokio::test]
+async fn a_project_s_worktrees_build_into_one_folder_beside_them_until_turned_off() {
+    use muster_core::settings::PreferenceChange;
+
+    let sandbox = Sandbox::new();
+    let root = sandbox.repository("app");
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let project = add_project(&mut connection, &root).await;
+    let id = create(&mut connection, project, Some("feature"))
+        .await
+        .unwrap();
+    let (path, _) = worktree(&mut connection, id).await;
+    let group = path.parent().unwrap().to_owned();
+    let config = group.join(".cargo/config.toml");
+    let builds = group.join(".target");
+
+    // Cargo builds the worktree into the folder beside it; the repository
+    // and its own checkout are not touched.
+    assert!(
+        std::fs::read_to_string(&config)
+            .unwrap()
+            .starts_with("# Written by Muster")
+    );
+    assert!(!root.join(".cargo").exists() && !path.join(".cargo").exists());
+    std::fs::write(
+        path.join("Cargo.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(path.join("src")).unwrap();
+    std::fs::write(path.join("src/main.rs"), "fn main() {}\n").unwrap();
+    let metadata = std::process::Command::new("cargo")
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(&path)
+        .env_remove("CARGO_TARGET_DIR")
+        .output()
+        .unwrap();
+    assert!(metadata.status.success(), "{metadata:?}");
+    let told: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
+    let built = std::fs::canonicalize(&group).unwrap().join(".target");
+    assert_eq!(told["target_directory"], built.to_string_lossy().as_ref());
+
+    // Turned off, each worktree builds into its own again, and the shared
+    // builds go; turned on, the config is back.
+    std::fs::create_dir_all(builds.join("debug")).unwrap();
+    let off = PreferenceChange::SharedBuilds(false);
+    connection
+        .command(Command::ChangePreference(off))
+        .await
+        .unwrap();
+    assert!(!config.exists());
+    until("the shared builds to go", || {
+        std::fs::read_dir(&group).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".target")
+        })
+    })
+    .await;
+    let on = PreferenceChange::SharedBuilds(true);
+    connection
+        .command(Command::ChangePreference(on))
+        .await
+        .unwrap();
+    assert!(config.exists());
+
+    // The project's last worktree there takes them along.
+    std::fs::remove_file(path.join("Cargo.toml")).unwrap();
+    std::fs::remove_dir_all(path.join("src")).unwrap();
+    connection
+        .command(Command::RemoveWorktree {
+            workspace: id,
+            force: true,
+        })
+        .await
+        .unwrap();
+    assert!(!config.exists() && !group.join(".cargo").exists());
+}

@@ -32,6 +32,7 @@ mod reload;
 mod runs;
 mod sessions;
 mod settings;
+mod shared_builds;
 mod shell_names;
 mod sizing;
 mod spend;
@@ -208,16 +209,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         reopening: HashSet::new(),
         events: events::Events::new(settings.hooks),
     };
-    supervisor.start_plugins().await;
-    supervisor.ensure_checkouts().await;
-    // Running sessions handed over keep running: taken over before any is
-    // taken to have died with the last daemon.
-    supervisor.adopt_sessions(settings.adopted);
-    // Runs first: a session in a run's container needs its run.
-    supervisor.resume_runs(stored_runs).await;
-    supervisor.recover_sessions().await;
-    supervisor.drop_stale_container_workspaces().await;
-    supervisor.remove_ended_runs_containers();
+    supervisor.start_up(settings.adopted, stored_runs).await;
     #[expect(
         clippy::disallowed_methods,
         reason = "ARC-13: the Supervisor keeps its own queue open, so it runs as long as the daemon"
@@ -362,6 +354,27 @@ struct Supervisor {
 }
 
 impl Supervisor {
+    /// Takes over from the daemon before, as it starts: its plugins, the
+    /// projects' checkouts and worktrees' shared builds, the sessions handed
+    /// over, the runs, and the sessions it left running.
+    async fn start_up(
+        &mut self,
+        adopted: Vec<crate::handoff::HandedSession>,
+        stored_runs: Vec<crate::store::StoredRun>,
+    ) {
+        self.start_plugins().await;
+        self.ensure_checkouts().await;
+        self.settle_shared_builds(true).await;
+        // Running sessions handed over keep running: taken over before any
+        // is taken to have died with the last daemon.
+        self.adopt_sessions(adopted);
+        // Runs first: a session in a run's container needs its run.
+        self.resume_runs(stored_runs).await;
+        self.recover_sessions().await;
+        self.drop_stale_container_workspaces().await;
+        self.remove_ended_runs_containers();
+    }
+
     async fn run(mut self, mut queues: Queues) {
         loop {
             let deadline = self.next_deadline();
@@ -620,8 +633,16 @@ impl Supervisor {
             Command::Health => Ok(Reply::Health(self.health())),
             Command::ExplainSession { session } => self.explain_session(session),
             Command::Reveal { session } => self.reveal(session),
-            Command::ChangePreference(change) => self.change_preference(&change),
-            Command::ReadPreferences => Ok(self.read_preferences()),
+            Command::ChangePreference(change) => {
+                let changed = self.change_preference(&change);
+                self.settle_shared_builds(false).await;
+                changed
+            }
+            Command::ReadPreferences => {
+                let read = self.read_preferences();
+                self.settle_shared_builds(false).await;
+                Ok(read)
+            }
             Command::AddProject { root, name } => self.add_project(root, name).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
             Command::CreateWorktree {

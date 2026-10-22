@@ -21,7 +21,8 @@ use muster_core::ProjectId;
 use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
 use muster_core::settings::{
-    AGENTS_PROTOCOL, MUSTER_PREFIX_PROTOCOL, ProjectSettings, SettingChange,
+    AGENTS_PROTOCOL, MUSTER_PREFIX_PROTOCOL, PreferenceChange, ProjectSettings,
+    SHARED_BUILDS_PROTOCOL, SettingChange,
 };
 
 use super::{Action, App, Mode, PluginKey, Then, View};
@@ -56,6 +57,8 @@ pub(crate) enum SettingRow {
     NamingModel,
     /// The keys, Muster's and the person's.
     Keys,
+    /// Whether a project's worktrees build into one folder.
+    SharedBuilds,
     /// Whether the person is told of what newly needs them.
     Notifications,
     /// Whether a kind of notification is told, and how it sounds.
@@ -88,6 +91,7 @@ impl SettingRow {
             | Self::NamedBy
             | Self::NamingModel
             | Self::Keys
+            | Self::SharedBuilds
             | Self::Notifications
             | Self::Tell(_)
             | Self::Agents
@@ -145,6 +149,7 @@ impl App {
             (self.naming_known(), SettingRow::NamedBy),
             (self.naming_known(), SettingRow::NamingModel),
             (self.keys_known(), SettingRow::Keys),
+            (self.shared_builds_known(), SettingRow::SharedBuilds),
             (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
         ];
         if self.model.loaded() && own.iter().any(|(known, _)| *known) {
@@ -155,6 +160,26 @@ impl App {
             rows.extend(self.plugin_rows());
         }
         rows
+    }
+
+    /// Whether the daemon can have a project's worktrees build into one
+    /// folder.
+    pub(crate) fn shared_builds_known(&self) -> bool {
+        self.daemon_protocol >= SHARED_BUILDS_PROTOCOL
+    }
+
+    /// ⏎ on *Shared Rust builds*: on, or off.
+    fn toggle_shared_builds(&mut self) -> Vec<Action> {
+        let on = !self.model.preferences().shared_builds;
+        let said = if on {
+            "A project's worktrees build into one folder beside them."
+        } else {
+            "Each worktree builds into its own folder again; the shared builds are deleted."
+        };
+        vec![self.command(
+            Command::ChangePreference(PreferenceChange::SharedBuilds(on)),
+            Then::Say(said),
+        )]
     }
 
     /// A key on the Settings screen; the rest are inert here.
@@ -173,6 +198,7 @@ impl App {
                 Some(SettingRow::NamedBy) => return self.next_namer(),
                 Some(SettingRow::NamingModel) => return self.choose_naming_model(),
                 Some(SettingRow::Keys) => return self.open_rebinding(),
+                Some(SettingRow::SharedBuilds) => return self.toggle_shared_builds(),
                 Some(SettingRow::Notifications) => return self.toggle_notifications(),
                 Some(SettingRow::Tell(kind)) => return self.toggle_tell(kind),
                 Some(SettingRow::Plugin(plugin)) => return self.toggle_plugin(plugin),

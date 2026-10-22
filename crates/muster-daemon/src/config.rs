@@ -11,8 +11,8 @@ use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::plugins::PluginEntry;
 use muster_core::settings::{
     KEYS, LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH,
-    NOTIFICATIONS, ONLY_MINE, PANELS, PreferenceChange, Preferences, SIDE_BY_SIDE, SettingChange,
-    SettingSource, TRACKER, TicketsFrom,
+    NOTIFICATIONS, ONLY_MINE, PANELS, PreferenceChange, Preferences, SHARED_BUILDS, SIDE_BY_SIDE,
+    SettingChange, SettingSource, TRACKER, TicketsFrom,
 };
 
 /// The repository's settings file.
@@ -162,6 +162,7 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             keys: config.keys,
             notifications: config.notifications,
             telling: config.telling,
+            shared_builds: config.shared_builds,
         },
         agents: config.agents,
         warnings: config.warnings,
@@ -238,6 +239,10 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
         PreferenceChange::AllKeysBack => edit::remove_table_in(text.as_deref(), KEYS),
         PreferenceChange::Notifications(on) => {
             let (table, key) = NOTIFICATIONS;
+            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+        }
+        PreferenceChange::SharedBuilds(on) => {
+            let (table, key) = SHARED_BUILDS;
             edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
         }
         PreferenceChange::Tell { kind, tell } => {

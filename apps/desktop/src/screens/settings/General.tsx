@@ -12,9 +12,10 @@ import { chats } from "../../state/selectors";
 import type { Theme } from "../../state/ui";
 import { Segmented } from "../../ui/controls";
 import { Select } from "../../ui/Select";
+import { Switch } from "../../ui/Switch";
 import { canAsk } from "./asks";
 import { useSettings } from "./context";
-import { rowKey } from "./model";
+import { rowKey, SHARED_BUILDS_PROTOCOL } from "./model";
 import {
   Control,
   Footnote,
@@ -89,6 +90,9 @@ export function General({ preferences }: { preferences: Preferences }) {
   const theme = useUi((window) => window.theme);
   const version = useDaemon((daemon) => (daemon.link.state === "up" ? daemon.link.version : null));
   const sessions = useDaemon((daemon) => chats(daemon).length);
+  const sharedBuilds = useDaemon(
+    (daemon) => daemon.link.state === "up" && daemon.link.protocol >= SHARED_BUILDS_PROTOCOL,
+  );
   const readKey = useKeyLabel("read_settings");
   const bridge = useBridge();
   const [restarting, setRestarting] = useState(false);
@@ -124,6 +128,14 @@ export function General({ preferences }: { preferences: Preferences }) {
       actions.preference(row("side_by_side"), { SideBySideFrom: columns }, sideBySideSaid(columns));
     }
   };
+  const toggleSharedBuilds = () =>
+    actions.preference(
+      row("shared_builds"),
+      { SharedBuilds: !preferences.shared_builds },
+      preferences.shared_builds
+        ? "Each worktree builds into its own folder again; the shared builds are deleted."
+        : "A project's worktrees build into one folder beside them.",
+    );
   const putPanelsBack = () => {
     if (preferences.panels === FIRST_LAYOUT && !preferences.list_folded) {
       ui.tell("The panels are where they were at first.");
@@ -245,6 +257,25 @@ export function General({ preferences }: { preferences: Preferences }) {
           </Control>
         </SettingRow>
       </Group>
+
+      {sharedBuilds ? (
+        <Group title="Worktrees">
+          <SettingRow id={row("shared_builds")} press="acts" act={toggleSharedBuilds}>
+            <SettingText
+              name="Shared Rust builds"
+              does="The worktrees Muster makes for a project build into one folder beside them, so a Rust project's dependencies are built and kept once, not again in every worktree. Your repository and your own checkout are never touched, and two worktrees building at once take turns. Turned off, each builds on its own again and the shared builds are deleted."
+            />
+            <Control>
+              <Switch
+                on={preferences.shared_builds}
+                label="Shared Rust builds"
+                onChange={toggleSharedBuilds}
+                busy={busy("shared_builds")}
+              />
+            </Control>
+          </SettingRow>
+        </Group>
+      ) : null}
 
       <Group title="Muster">
         <SettingRow id={row("restart")} act={restart}>

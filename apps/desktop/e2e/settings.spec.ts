@@ -67,7 +67,14 @@ test.describe("General", () => {
   test("shows Muster's look and layout, as its board does", async ({ page }) => {
     await openSettings(page);
     await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
-    for (const name of ["theme", "session_lines", "panels", "colours", "side_by_side"]) {
+    for (const name of [
+      "theme",
+      "session_lines",
+      "panels",
+      "colours",
+      "side_by_side",
+      "shared_builds",
+    ]) {
       await expect(row(page, `general/${name}`)).toBeVisible();
     }
     await expect(page.getByText("list | session 60% | (changes / shell / plugin)")).toBeVisible();

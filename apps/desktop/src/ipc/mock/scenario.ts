@@ -127,6 +127,7 @@ export function defaultPreferences(): Preferences {
       finishes: { on: true, sound: "default" },
       errors: { on: true, sound: "Basso" },
     },
+    shared_builds: true,
   };
 }
 

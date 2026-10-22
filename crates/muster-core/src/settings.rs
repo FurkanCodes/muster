@@ -232,6 +232,12 @@ pub struct Preferences {
     /// `_sound`s). From protocol 40.
     #[serde(default)]
     pub telling: crate::telling::Telling,
+    /// Whether the worktrees Muster makes for a Rust project build into
+    /// one folder of the project's, so its dependencies are built and kept
+    /// once rather than once a worktree (`[worktrees] shared_builds`); on
+    /// unless the person turns it off. From protocol 47.
+    #[serde(default = "on")]
+    pub shared_builds: bool,
 }
 
 fn on() -> bool {
@@ -292,6 +298,7 @@ impl Default for Preferences {
             keys: std::collections::BTreeMap::new(),
             notifications: true,
             telling: crate::telling::Telling::default(),
+            shared_builds: true,
         }
     }
 }
@@ -462,7 +469,17 @@ pub enum PreferenceChange {
         kind: crate::telling::Kind,
         tell: crate::telling::Tell,
     },
+    /// Have the worktrees of a Rust project build into one folder, or each
+    /// into its own. From protocol 47.
+    SharedBuilds(bool),
 }
+
+/// The first protocol whose daemon keeps [`Preferences::shared_builds`]
+/// and takes [`PreferenceChange::SharedBuilds`] (`ARC-09`).
+pub const SHARED_BUILDS_PROTOCOL: u32 = 47;
+
+/// Where sharing builds is written: `[worktrees] shared_builds`.
+pub const SHARED_BUILDS: (&str, &str) = ("worktrees", "shared_builds");
 
 /// The first protocol whose daemon keeps [`Preferences::notifications`]
 /// and whether Muster's helper shows notifications, and takes

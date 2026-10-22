@@ -10,7 +10,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{list_block, look, panel, plugins, shorten, telling};
+use super::{list_block, look, naming, panel, plugins, shared_builds, shorten, telling};
 use crate::app::{App, SettingRow, Settings};
 
 /// What the only-my-tickets setting is called in the list.
@@ -32,12 +32,6 @@ const COLOURS: &str = "Colours";
 const SESSION_LINES: &str = "Lines for each session";
 /// What the setting of where the panels are is called.
 const PANELS: &str = "Panels";
-/// What the setting of naming chats by an agent is called.
-const NAMES_BY_AGENT: &str = "Chats named by an agent";
-/// What the setting of the agent that names chats is called.
-const NAMED_BY: &str = "Named by";
-/// What the setting of the model it names them with is called.
-const NAMING_MODEL: &str = "Its model";
 /// What the setting of the keys is called.
 const KEYS: &str = "Keys";
 /// What the setting of notifications is called.
@@ -92,10 +86,15 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
         SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
         SettingRow::Panels => labelled(PANELS, panels_value(app), width),
-        SettingRow::NamesByAgent => labelled(NAMES_BY_AGENT, by_agent_value(app), width),
-        SettingRow::NamedBy => labelled(NAMED_BY, Span::from(app.namer_label()), width),
-        SettingRow::NamingModel => labelled(NAMING_MODEL, naming_model_value(app), width),
+        SettingRow::NamesByAgent => {
+            labelled(naming::NAMES_BY_AGENT, naming::by_agent_value(app), width)
+        }
+        SettingRow::NamedBy => labelled(naming::NAMED_BY, Span::from(app.namer_label()), width),
+        SettingRow::NamingModel => labelled(naming::NAMING_MODEL, naming::model_value(app), width),
         SettingRow::Keys => labelled(KEYS, keys_value(app), width),
+        SettingRow::SharedBuilds => {
+            labelled(shared_builds::LABEL, shared_builds::value(app), width)
+        }
         SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
         SettingRow::Tell(kind) => labelled(&telling::label(kind), telling::value(app, kind), width),
         SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
@@ -265,10 +264,11 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Panels) => panels_text(app),
         Some(SettingRow::Keys) => keys_text(app),
+        Some(SettingRow::SharedBuilds) => shared_builds::text(app),
         Some(SettingRow::Notifications) => notifications_text(app),
         Some(SettingRow::Tell(kind)) => telling::text(app, kind),
         Some(SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel) => {
-            naming_text(app)
+            naming::text(app)
         }
         Some(SettingRow::Muster | SettingRow::Agents | SettingRow::Notch) => agents_text(app),
         Some(row @ (SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin)) => {
@@ -287,10 +287,11 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::SessionLines => session_lines_text(app),
                 SettingRow::Panels => panels_text(app),
                 SettingRow::Keys => keys_text(app),
+                SettingRow::SharedBuilds => shared_builds::text(app),
                 SettingRow::Notifications => notifications_text(app),
                 SettingRow::Tell(kind) => telling::text(app, kind),
                 SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
-                    naming_text(app)
+                    naming::text(app)
                 }
                 SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
                     plugins::details(app, row)
@@ -602,71 +603,6 @@ fn keys_text(app: &App) -> Text<'static> {
     Text::from(lines)
 }
 
-/// Whether an agent names chats.
-fn by_agent_value(app: &App) -> Span<'static> {
-    if app.model.preferences().naming.by_agent {
-        Span::from("on").green().bold()
-    } else {
-        Span::from("off").dim()
-    }
-}
-
-/// The model chats are named with: the one picked, or the agent's own.
-fn naming_model_value(app: &App) -> Span<'static> {
-    let naming = &app.model.preferences().naming;
-    match (&naming.agent, &naming.model) {
-        (_, Some(model)) => Span::from(model.clone()),
-        (Some(_), None) => Span::from("its own choice").dim(),
-        (None, None) => Span::from("each agent's own").dim(),
-    }
-}
-
-/// What naming chats by an agent does and costs, said beside it.
-fn naming_text(app: &App) -> Text<'static> {
-    let naming = &app.model.preferences().naming;
-    let asked = match &naming.agent {
-        None => "each chat's own agent".to_owned(),
-        Some(_) => app.namer_label(),
-    };
-    let can: Vec<String> = app
-        .namers()
-        .into_iter()
-        .filter_map(|(id, label)| id.map(|_| label))
-        .collect();
-    Text::from(vec![
-        Line::from(vec![
-            Span::from(format!("{NAMES_BY_AGENT}  ")).bold(),
-            by_agent_value(app),
-        ]),
-        Line::from(
-            "A new chat is named at once by the first line of its first prompt. A few seconds \
-             later Muster asks an agent for a name of two to four words.",
-        ),
-        Line::from(""),
-        Line::from(format!(
-            "It asks {asked} with your own sign-in, so it uses a little of your plan. It sends \
-             only the chat's first prompt (and, where that is a few words, the start of its \
-             first answer), credentials hidden, with no tools, none of your project's files or \
-             instructions, and nothing kept in the agent's history."
-        )),
-        Line::from("A name you give a chat (R) is never replaced.").dim(),
-        Line::from(""),
-        detail("Named by", app.namer_label()),
-        detail("Its model", naming_model_value(app).content.into_owned()),
-        detail("Can name", can.join(", ")),
-        detail(
-            "Saved in",
-            app.model.preferences().file.display().to_string(),
-        ),
-        Line::from(""),
-        Line::from(
-            "An agent you added names chats once its settings say how to ask it one question \
-             (ask = [\"-p\", \"{prompt}\"]).",
-        )
-        .dim(),
-    ])
-}
-
 /// Where the panels are: as at first, or moved, and the list folded.
 fn panels_value(app: &App) -> Span<'static> {
     let moved = *app.panels() != muster_core::layout::Layout::default();
@@ -932,6 +868,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
         Some(SettingRow::NamedBy) => hints.push("⏎ next agent"),
         Some(SettingRow::NamingModel) => hints.push("⏎ choose"),
         Some(SettingRow::Keys) => hints.push("⏎ set them"),
+        Some(SettingRow::SharedBuilds) => hints.push(shared_builds::hint(app)),
         Some(SettingRow::Notifications) => {
             hints.push(if app.model.preferences().notifications {
                 "⏎ turn off"

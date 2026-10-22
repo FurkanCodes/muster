@@ -135,7 +135,7 @@ export class MockBridge implements Bridge {
     this.listener = onMessage;
     this.emit({ kind: "link", link: { state: "connecting" } });
     queueMicrotask(() => {
-      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 45 } });
+      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 47 } });
       this.emit({
         kind: "patch",
         patch: this.patch({
