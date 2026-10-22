@@ -26,7 +26,7 @@ use support::{Daemon, Sandbox, expect_event, read_terminal};
 
 /// A daemon with one project and one worktree.
 struct Setup {
-    _sandbox: Sandbox,
+    sandbox: Sandbox,
     daemon: Daemon,
     workspace: WorkspaceId,
     path: PathBuf,
@@ -63,7 +63,7 @@ async fn setup() -> Setup {
         .map(|found| found.kind.host_path().unwrap().to_owned())
         .unwrap();
     Setup {
-        _sandbox: sandbox,
+        sandbox,
         daemon,
         workspace,
         path,
@@ -504,9 +504,7 @@ async fn sessions_running_when_the_daemon_stopped_are_recorded_as_exited() {
     let session = start(&mut connection, setup.workspace).await;
     drop(connection);
     let Setup {
-        _sandbox: sandbox,
-        daemon,
-        ..
+        sandbox, daemon, ..
     } = setup;
     assert!(daemon.stop().success());
 
@@ -547,4 +545,61 @@ async fn input_modes_reach_the_client() {
     })
     .await;
     assert_eq!(changed.kitty_flags, 1);
+}
+
+#[tokio::test]
+async fn an_agent_cannot_set_agents_working_but_the_person_s_shell_can_prd_01() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let shell = start(&mut connection, setup.workspace).await;
+    let Reply::SessionStarted { id: agent } = connection
+        .command(Command::StartSession {
+            workspace: setup.workspace,
+            harness: "claude".to_owned(),
+            title: None,
+            size: TermSize::default(),
+            prompt: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected SessionStarted");
+    };
+    // The command line run inside a session of Muster's, as its program would.
+    let inside = |session: String, args: &[&str]| {
+        let output = setup
+            .sandbox
+            .command()
+            .env("MUSTER_SESSION", session)
+            .args(args)
+            .output()
+            .unwrap();
+        (
+            output.status.success(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    };
+    let start_one = ["session", "start", "work", "--harness", "shell"];
+
+    for args in [
+        &start_one[..],
+        &["session", "restart", &shell.to_string()],
+        &["issue", "start", "app", "42"],
+        &["review", "work"],
+    ] {
+        let (ok, stderr) = inside(agent.to_string(), args);
+        assert!(!ok, "{args:?} ran inside an agent");
+        assert!(
+            stderr.contains("agents do not set agents working"),
+            "{args:?}: {stderr}"
+        );
+    }
+    // Reading is no starting.
+    assert!(inside(agent.to_string(), &["session", "list"]).0);
+
+    let (ok, stderr) = inside(shell.to_string(), &start_one);
+    assert!(ok, "the person's shell: {stderr}");
+    // A session this daemon does not know: one of another daemon's.
+    let (ok, stderr) = inside(SessionId::new().to_string(), &start_one);
+    assert!(ok, "another daemon's session: {stderr}");
 }

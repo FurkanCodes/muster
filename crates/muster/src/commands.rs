@@ -387,6 +387,7 @@ pub(crate) async fn start_session(
 ) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
+    no_agent_starts_one(&snapshot, "start sessions")?;
     let workspace = find_worktree(&snapshot, worktree)?.id;
     let reply = connection
         .command(Command::StartSession {
@@ -416,8 +417,9 @@ pub(crate) async fn stop_session(socket: &Path, session: &str) -> Outcome {
 
 pub(crate) async fn restart_session(socket: &Path, session: &str) -> Outcome {
     let session: SessionId = session.parse()?;
-    connect(socket)
-        .await?
+    let mut connection = connect(socket).await?;
+    no_agent_starts_one(&connection.subscribe().await?, "start sessions again")?;
+    connection
         .command(Command::RestartSession {
             session,
             size: TermSize::default(),
@@ -631,6 +633,7 @@ pub(crate) async fn start_issue(
 ) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
+    no_agent_starts_one(&snapshot, "start agents on tickets")?;
     let project = find_project(&snapshot, project)?.id;
     let reply = connection
         .command(Command::StartFromIssue {
@@ -647,6 +650,38 @@ pub(crate) async fn start_issue(
     };
     println!("Started {session} for {} in {workspace}.", key.shown());
     Ok(())
+}
+
+/// Refuses to set an agent working from inside one of this daemon's
+/// sessions that is no shell (`PRD-01`): an agent there could run the
+/// command as well as the person, and nothing starts on its own. The
+/// person's own shell in Muster may, as may a session of another daemon
+/// (one under test), which this one does not know. A guard against an
+/// agent's ordinary use, as `muster plugin`'s is, not a wall: a program
+/// running as the person can do what the person can.
+pub(crate) fn no_agent_starts_one(snapshot: &Snapshot, what: &str) -> Result<(), String> {
+    let Some(inside) = std::env::var("MUSTER_SESSION")
+        .ok()
+        .filter(|session| !session.is_empty())
+    else {
+        return Ok(());
+    };
+    let Some(session) = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.id.to_string() == inside)
+    else {
+        return Ok(());
+    };
+    if session.kind().is_shell() {
+        return Ok(());
+    }
+    Err(format!(
+        "this runs inside {}, a session in Muster, where an agent could run it as well, and \
+         agents do not set agents working: {what} in Muster's window, in a shell Muster \
+         opened, or in a terminal of your own",
+        shown(&session.title)
+    ))
 }
 
 /// A project by id, name or path.
@@ -862,6 +897,7 @@ async fn run_checks(socket: &Path, worktree: &str) -> Result<bool, Box<dyn std::
 pub(crate) async fn review(socket: &Path, worktree: &str) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
+    no_agent_starts_one(&snapshot, "start reviews")?;
     let workspace = find_worktree(&snapshot, worktree)?;
     let (id, branch) = (workspace.id, workspace.kind.branch().to_owned());
     let reply = connection

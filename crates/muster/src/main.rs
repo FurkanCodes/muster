@@ -292,8 +292,9 @@ enum WorktreeCommand {
     /// Create a worktree for PROJECT (its name, id or path).
     Add {
         project: String,
-        /// The branch to check out, created from the project's current
-        /// commit if it does not exist. Defaults to `muster/<random>`.
+        /// The branch to check out, created from the newest of the branch
+        /// it will merge into if it does not exist. Defaults to
+        /// `muster/<random>`.
         #[arg(long)]
         branch: Option<String>,
     },
