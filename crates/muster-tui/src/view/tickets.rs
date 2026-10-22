@@ -180,9 +180,28 @@ pub(crate) fn details_height(app: &App, width: usize) -> usize {
     wrapped_height(&details_text(app, width), width)
 }
 
+/// Where each part of the selected ticket starts in its details, wrapped
+/// at `width`: its text, then each comment; none where it has no comments.
+pub(crate) fn part_lines(app: &App, width: usize) -> Vec<usize> {
+    let Some(TicketRow::Ticket(project, key)) = &app.tickets_selected else {
+        return Vec::new();
+    };
+    let mut parts = Vec::new();
+    let text = ticket_text(app, *project, key, width, &mut parts);
+    parts
+        .into_iter()
+        .map(|at| {
+            let before = Text::from(text.lines[..at.min(text.lines.len())].to_vec());
+            wrapped_height(&before, width)
+        })
+        .collect()
+}
+
 fn details_text(app: &App, width: usize) -> Text<'static> {
     match &app.tickets_selected {
-        Some(TicketRow::Ticket(project, key)) => ticket_text(app, *project, key, width),
+        Some(TicketRow::Ticket(project, key)) => {
+            ticket_text(app, *project, key, width, &mut Vec::new())
+        }
         Some(TicketRow::Project(project)) => project_text(app, *project, width),
         None => Text::from("Select a ticket to see it here.").dim(),
     }
@@ -304,6 +323,7 @@ fn ticket_text(
     project: muster_core::ProjectId,
     key: &muster_core::TicketKey,
     width: usize,
+    parts: &mut Vec<usize>,
 ) -> Text<'static> {
     let Some(ticket) = app.ticket(project, key) else {
         return Text::default();
@@ -410,12 +430,22 @@ fn ticket_text(
         }
         Some(TicketText::Loaded { body, comments }) => {
             let theme = super::theme::of(app);
+            // With comments, its text is a part to give the agent or not,
+            // as each comment is.
+            let choosing = (!comments.is_empty()).then(|| Choosing {
+                brief: app.ticket_brief(project, key),
+                here: app.ticket_part(),
+            });
+            if let Some(choosing) = &choosing {
+                parts.push(lines.len());
+                lines.push(choosing.head(app, 0, vec![Span::from("Its text").bold()]));
+            }
             if body.trim().is_empty() {
                 lines.push(Line::from("(No description.)").dim());
             } else {
                 lines.extend(markdown::lines(body, &theme));
             }
-            conversation(app, comments, width, &mut lines);
+            conversation(app, comments, width, choosing.as_ref(), &mut lines, parts);
         }
     }
     Text::from(lines)
@@ -423,11 +453,40 @@ fn ticket_text(
 
 /// What was said on a ticket after it was filed, oldest first: each
 /// comment under who wrote it and when, its text drawn as the ticket's is.
+/// What of a ticket the person gives an agent, and the part the keys are on.
+struct Choosing {
+    brief: muster_core::TicketBrief,
+    here: usize,
+}
+
+impl Choosing {
+    /// Part `at`'s heading: whether the agent is given it, then `said`;
+    /// tinted where the keys are.
+    fn head(&self, app: &App, at: usize, said: Vec<Span<'static>>) -> Line<'static> {
+        let theme = super::theme::of(app);
+        let mark = if self.brief.gives(at) {
+            Span::styled("☑ ", Style::default().fg(theme.done))
+        } else {
+            Span::styled("☐ ", theme.quiet)
+        };
+        let mut spans = vec![mark];
+        spans.extend(said);
+        let line = Line::from(spans);
+        if at == self.here {
+            line.style(look::selected_style(app, false))
+        } else {
+            line
+        }
+    }
+}
+
 fn conversation(
     app: &App,
     comments: &[muster_core::IssueComment],
     width: usize,
+    choosing: Option<&Choosing>,
     lines: &mut Vec<Line<'static>>,
+    parts: &mut Vec<usize>,
 ) {
     if comments.is_empty() {
         return;
@@ -444,7 +503,7 @@ fn conversation(
         Span::styled(heading, theme.quiet),
         Span::styled("─".repeat(rest), Style::default().fg(theme.line)),
     ]));
-    for comment in comments {
+    for (at, comment) in comments.iter().enumerate() {
         lines.push(Line::from(""));
         let mut said = vec![
             Span::from(
@@ -462,7 +521,13 @@ fn conversation(
                 theme.quiet,
             ));
         }
-        lines.push(Line::from(said));
+        match choosing {
+            Some(choosing) => {
+                parts.push(lines.len());
+                lines.push(choosing.head(app, at + 1, said));
+            }
+            None => lines.push(Line::from(said)),
+        }
         lines.extend(markdown::lines(&comment.body, &theme));
     }
 }
@@ -486,6 +551,13 @@ pub(super) fn hints(app: &App) -> Vec<String> {
             hints.extend(hint(app, Does::TicketInBrowser, "browser"));
         }
         hints.extend(hint(app, Does::CloseTicket, "close"));
+        if matches!(
+            app.ticket_texts.get(&(*project, key.clone())),
+            Some(TicketText::Loaded { comments, .. }) if !comments.is_empty()
+        ) {
+            hints.extend(hint(app, Does::NextPart, "next part"));
+            hints.extend(hint(app, Does::ChoosePart, "give it or not"));
+        }
     }
     hints.extend(hint(app, Does::RefreshTickets, "refresh"));
     hints

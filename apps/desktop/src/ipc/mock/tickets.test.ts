@@ -42,6 +42,7 @@ describe("ARC-24 the mock daemon answers about tickets as supervisor/issues.rs d
           size: { rows: 24, cols: 80 },
           another,
           on: null,
+          brief: null,
         },
       });
     await start(false);

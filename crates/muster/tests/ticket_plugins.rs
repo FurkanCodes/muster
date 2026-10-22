@@ -363,6 +363,7 @@ async fn its_tickets_are_listed_viewed_started_and_closed(
             size: TermSize::default(),
             another: false,
             on: None,
+            brief: None,
         })
         .await
         .unwrap()

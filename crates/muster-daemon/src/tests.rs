@@ -220,6 +220,7 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
                 size: TermSize::default(),
                 another: false,
                 on: None,
+                brief: None,
             },
             "notes is a plain folder, not a git repository; worktrees for tickets need one",
         ),

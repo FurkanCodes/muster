@@ -269,6 +269,73 @@ fn a_ticket_with_no_web_address_is_shown_without_one_and_offers_no_browser() {
 }
 
 #[test]
+fn the_parts_chosen_with_the_keys_are_what_the_agent_is_given_prd_07() {
+    let mut world = on_tickets();
+    world.app.ticket_texts.insert(
+        (world.project.id, key(42)),
+        TicketText::Loaded {
+            body: "It fails.".to_owned(),
+            comments: vec![
+                muster_core::IssueComment {
+                    author: Some("mira".to_owned()),
+                    at: None,
+                    body: "Fixed in #43.".to_owned(),
+                },
+                muster_core::IssueComment {
+                    author: Some("sam".to_owned()),
+                    at: None,
+                    body: "It is back on Safari.".to_owned(),
+                },
+            ],
+        },
+    );
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("☑ Its text") && screen.contains("☐ mira") && screen.contains("☐ sam"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("] next part") && screen.contains("space give it or not"),
+        "{screen}"
+    );
+    // Its text alone cannot be taken away.
+    press(&mut world.app, KeyCode::Char(' '));
+    assert!(render(&world.app).contains("The agent needs the ticket's text or a comment"));
+    // ] to each follow-up, space to give it; [ back to the text, space to leave it out.
+    for code in [']', ' ', ']', ' ', '[', '[', ' '] {
+        press(&mut world.app, KeyCode::Char(code));
+    }
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("☐ Its text") && screen.contains("☑ mira") && screen.contains("☑ sam"),
+        "{screen}"
+    );
+    assert!(press(&mut world.app, KeyCode::Enter).is_empty());
+    assert!(
+        render(&world.app).contains("with 2 comments on the ticket as its first"),
+        "{}",
+        render(&world.app)
+    );
+    let actions = press(&mut world.app, KeyCode::Enter);
+    let (_, started) = command(&actions);
+    assert_eq!(
+        started,
+        Command::StartFromIssue {
+            project: world.project.id,
+            key: key(42),
+            harness: "claude".to_owned(),
+            size: PANE,
+            another: false,
+            on: None,
+            brief: Some(muster_core::TicketBrief {
+                text: false,
+                comments: vec![0, 1],
+            }),
+        }
+    );
+}
+
+#[test]
 fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
     let mut world = on_tickets();
     // ⏎ asks which agent, Claude Code first; ⏎ again starts it.
@@ -284,6 +351,7 @@ fn enter_starts_the_first_agent_then_opens_it_and_a_starts_another() {
             size: PANE,
             another: false,
             on: None,
+            brief: None,
         }
     );
     let (workspace, agent) = agent_for_42(&world, "muster/issue-42-fix-the-login-redirect", 10);
@@ -373,6 +441,7 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
             size: PANE,
             another: false,
             on: None,
+            brief: None,
         }]
     );
     assert!(render(&world.app).contains("Starting Codex on #42…"));

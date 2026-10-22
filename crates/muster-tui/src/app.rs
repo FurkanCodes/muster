@@ -457,6 +457,11 @@ pub(crate) struct App {
     /// How far the selected ticket's details are paged down, and for which
     /// line: another line selected shows its own from the top.
     pub(crate) ticket_scroll: Option<(TicketRow, usize)>,
+    /// The part of the selected ticket the keys are on (`]`, `[`), for
+    /// which line, as `ticket_scroll`.
+    pub(crate) ticket_part: Option<(TicketRow, usize)>,
+    /// What of each ticket an agent is given, as the person chose (`space`).
+    pub(crate) ticket_briefs: HashMap<(ProjectId, TicketKey), muster_core::TicketBrief>,
     /// Tickets' text, fetched as each is first shown.
     pub(crate) ticket_texts: HashMap<(ProjectId, TicketKey), TicketText>,
     /// Each project's settings, as last read; read again each time the
@@ -613,6 +618,8 @@ impl App {
             tickets_selected: None,
             tickets_offset: 0,
             ticket_scroll: None,
+            ticket_part: None,
+            ticket_briefs: HashMap::new(),
             ticket_texts: HashMap::new(),
             settings: HashMap::new(),
             settings_selected: None,

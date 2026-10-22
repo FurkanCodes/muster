@@ -575,6 +575,7 @@ fn commands() -> Vec<Command> {
             size: size(),
             another: true,
             on: Some(workspace),
+            brief: None,
         },
     ];
     all.extend(plugin_samples::commands());

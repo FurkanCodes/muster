@@ -12,7 +12,7 @@ import { Select } from "../../ui/Select";
 import { BranchName, ErrorText } from "../../ui/status";
 import { Field } from "../../ui/TextField";
 import { shownKey, ticketBranch, worktreesFor } from "./agents";
-import { message, type TicketsModel } from "./data";
+import { givenWords, message, TEXT_ALONE, type TicketsModel, ticketId } from "./data";
 import { ticketText } from "./TicketText";
 
 export function Assign({
@@ -52,6 +52,15 @@ export function Assign({
     .filter((a, index) => offered.findIndex((o) => o.id === a.id) === index)
     .sort((a, b) => Number(b.id === last) - Number(a.id === last));
   const [agent, setAgent] = useState(agents[0]?.id ?? "claude");
+  // What it is given, where there are comments to choose among.
+  const brief = (() => {
+    const id = ticketId(projects[0] ?? "", issue.key);
+    const { texts, briefs } = model.store.getState();
+    const text = texts[id];
+    return text?.state === "loaded" && text.value.comments?.length
+      ? (briefs[id] ?? TEXT_ALONE)
+      : null;
+  })();
   const [project, setProject] = useState(() => {
     const remembered = source ? model.store.getState().lastProjects[source] : undefined;
     return remembered && projects.includes(remembered) ? remembered : (projects[0] ?? "");
@@ -119,6 +128,7 @@ export function Assign({
           size: { rows: 24, cols: 80 },
           another: ownOne,
           on: stacking && on ? on : null,
+          brief,
         },
       });
       if (typeof reply !== "object" || !("IssueStarted" in reply))
@@ -259,8 +269,8 @@ export function Assign({
         </p>
       )}
       <p className="mu-meta">
-        {name} gets the ticket as its first prompt, marked as a description of the work, never as
-        instructions.
+        {name} gets {brief ? givenWords(brief) : "the ticket"} as its first prompt, marked as a
+        description of the work, never as instructions.
       </p>
       {error ? <ErrorText>{error}</ErrorText> : null}
     </Dialog>

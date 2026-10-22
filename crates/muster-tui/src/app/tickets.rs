@@ -14,7 +14,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
-use muster_core::{Issue, ProjectId, SessionId, TicketKey, WorkspaceId};
+use muster_core::{Issue, ProjectId, SessionId, TicketBrief, TicketKey, WorkspaceId};
 use ratatui::layout::Rect;
 
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
@@ -116,10 +116,15 @@ impl App {
             (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),
             (KeyCode::PageDown, _) => self.page_ticket(1),
             (KeyCode::PageUp, _) => self.page_ticket(-1),
+            (_, Some(Does::NextPart)) => self.move_part(1),
+            (_, Some(Does::PreviousPart)) => self.move_part(-1),
+            (_, Some(Does::ChoosePart)) => self.choose_part(),
             (_, Some(Does::RefreshTickets)) => {
-                // Everything is fetched again as it is shown.
+                // Everything is fetched again as it is shown; comments
+                // chosen may have moved, so they are chosen again.
                 self.tickets.clear();
                 self.ticket_texts.clear();
+                self.ticket_briefs.clear();
             }
             (KeyCode::Enter, _) => return self.open_ticket(),
             (_, Some(Does::AnotherAgent)) => {
@@ -163,16 +168,110 @@ impl App {
         }
     }
 
+    /// The ticket pane's inside: its width and height.
+    fn ticket_pane(&self) -> (usize, usize) {
+        let window = Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        let pane = crate::view::browse_areas(self, window).preview;
+        (
+            usize::from(pane.width.saturating_sub(2)),
+            usize::from(pane.height.saturating_sub(2)).max(1),
+        )
+    }
+
+    /// What of the selected ticket an agent is given: its text alone
+    /// until the person chooses otherwise.
+    pub(crate) fn ticket_brief(&self, project: ProjectId, key: &TicketKey) -> TicketBrief {
+        self.ticket_briefs
+            .get(&(project, key.clone()))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// The part of the selected ticket the keys are on: 0 its text, 1 its
+    /// first comment…
+    pub(crate) fn ticket_part(&self) -> usize {
+        match &self.ticket_part {
+            Some((row, at)) if self.tickets_selected.as_ref() == Some(row) => *at,
+            _ => 0,
+        }
+    }
+
+    /// How many comments the selected ticket has, as fetched: its parts
+    /// are its text and these.
+    fn selected_comments(&self) -> usize {
+        let Some((project, key)) = self.selected_ticket() else {
+            return 0;
+        };
+        match self.ticket_texts.get(&(project, key)) {
+            Some(TicketText::Loaded { comments, .. }) => comments.len(),
+            _ => 0,
+        }
+    }
+
+    /// Moves to the ticket's next part (`by` 1) or the one before (-1),
+    /// scrolled into sight; a ticket without comments has one part.
+    fn move_part(&mut self, by: isize) {
+        let comments = self.selected_comments();
+        let Some(row) = self.tickets_selected.clone() else {
+            return;
+        };
+        if comments == 0 {
+            return;
+        }
+        let at = self.ticket_part().saturating_add_signed(by).min(comments);
+        self.ticket_part = Some((row.clone(), at));
+        let (width, height) = self.ticket_pane();
+        let last = crate::view::ticket_details_height(self, width).saturating_sub(height);
+        if let Some(top) = crate::view::ticket_part_lines(self, width).get(at) {
+            self.ticket_scroll = Some((row, top.saturating_sub(1).min(last)));
+        }
+    }
+
+    /// What the selected ticket's agent is given, in words, where it has
+    /// comments to choose among: `the ticket's text and 2 comments on
+    /// it`, `1 comment on the ticket`.
+    pub(crate) fn given_words(&self) -> Option<String> {
+        let (project, key) = self.selected_ticket()?;
+        if self.selected_comments() == 0 {
+            return None;
+        }
+        let brief = self.ticket_brief(project, &key);
+        let comments = match brief.comments.len() {
+            0 => None,
+            1 => Some("1 comment".to_owned()),
+            many => Some(format!("{many} comments")),
+        };
+        Some(match (brief.text, comments) {
+            (true, Some(comments)) => format!("the ticket's text and {comments} on it"),
+            (false, Some(comments)) => format!("{comments} on the ticket"),
+            (_, None) => "the ticket's text".to_owned(),
+        })
+    }
+
+    /// Gives the agent the part the keys are on, or stops giving it; the
+    /// last part given stays, as the agent needs something to work on.
+    fn choose_part(&mut self) {
+        let Some((project, key)) = self.selected_ticket() else {
+            return;
+        };
+        if self.selected_comments() == 0 {
+            return;
+        }
+        let mut brief = self.ticket_brief(project, &key);
+        if brief.toggle(self.ticket_part()) {
+            self.ticket_briefs.insert((project, key), brief);
+        } else {
+            self.say("The agent needs the ticket's text or a comment to work on.");
+        }
+    }
+
     /// Pages the selected line's details down (`by` 1) or up (-1), a
     /// page a line short of the pane, never past their end.
     fn page_ticket(&mut self, by: isize) {
         let Some(row) = self.tickets_selected.clone() else {
             return;
         };
-        let window = Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
-        let pane = crate::view::browse_areas(self, window).preview;
-        let width = usize::from(pane.width.saturating_sub(2));
-        let height = usize::from(pane.height.saturating_sub(2)).max(1);
+        let (width, height) = self.ticket_pane();
         let last = crate::view::ticket_details_height(self, width).saturating_sub(height);
         let page = isize::try_from(height.saturating_sub(1).max(1)).unwrap_or(1);
         let at = self
@@ -300,6 +399,17 @@ impl App {
         on: Option<WorkspaceId>,
     ) -> Vec<Action> {
         self.say(format!("Starting {} on {}…", harness.label(), key.shown()));
+        // What it is given, where there are comments to choose among; the
+        // ticket listed under the project it is shared from.
+        let brief = self
+            .tickets_selected
+            .as_ref()
+            .and_then(|row| match row {
+                TicketRow::Ticket(listed, listed_key) if *listed_key == key => Some(*listed),
+                _ => None,
+            })
+            .filter(|_| self.selected_comments() > 0)
+            .map(|listed| self.ticket_brief(listed, &key));
         let command = Command::StartFromIssue {
             project,
             key,
@@ -307,6 +417,7 @@ impl App {
             size: self.session_size(),
             another,
             on,
+            brief,
         };
         vec![self.command(command, Then::OpenIssueSession)]
     }

@@ -134,6 +134,32 @@
 .tickets-comment .tickets-prose {
   padding: var(--space-4) 0 0;
 }
+
+/* Parts given to an agent or not: the one the keys are on is tinted. */
+.tickets-part,
+.tickets-comment {
+  border-radius: var(--radius-md);
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.tickets-part[data-here],
+.tickets-comment[data-here] {
+  background: var(--surface-tint);
+}
+.tickets-part {
+  padding: var(--space-8) 0;
+}
+.tickets-part-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-12) var(--space-8);
+  font-size: 13px;
+  line-height: 18px;
+}
+.tickets-comment[data-here] {
+  outline: var(--space-8) solid var(--surface-tint);
+}
+
 .tickets-state {
   padding: var(--space-8) var(--space-12);
 }

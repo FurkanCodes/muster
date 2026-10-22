@@ -223,6 +223,7 @@ test("PRD-01 Assign board: Tab chooses agent, arrows choose base, Enter starts o
       size: { rows: 24, cols: 80 },
       another: false,
       on: id(11),
+      brief: null,
     },
   });
   await tickets(page);
@@ -474,6 +475,8 @@ test("PRD-01 another agent starts in its own worktree on the chosen branch", asy
       size: { rows: 24, cols: 80 },
       another: true,
       on: id(11),
+      // #214 has comments: what its agent is given goes with it, its text alone unless chosen.
+      brief: { text: true, comments: [] },
     },
   });
   expect(

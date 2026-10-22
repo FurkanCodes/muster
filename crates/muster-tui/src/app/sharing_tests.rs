@@ -189,6 +189,7 @@ fn an_agent_on_a_shared_ticket_starts_in_the_project_chosen_offered_first_next_t
             size: PANE,
             another: false,
             on: None,
+            brief: None,
         }]
     );
 

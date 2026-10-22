@@ -165,6 +165,9 @@ actions! {
     AnotherAgent "another_agent" &[Screen::Tickets], ["a"], "start another agent on it, in a worktree of its own";
     TicketInBrowser "ticket_in_browser" &[Screen::Tickets], ["b"], "the ticket in the browser";
     CloseTicket "close_ticket" &[Screen::Tickets], ["x"], "close the ticket in its tracker, after asking; then clean up";
+    NextPart "next_part" &[Screen::Tickets], ["]"], "the ticket's next part: its text, then each comment";
+    PreviousPart "previous_part" &[Screen::Tickets], ["["], "the ticket's previous part";
+    ChoosePart "choose_part" &[Screen::Tickets], ["space"], "give the agent this part of the ticket, or not";
     ReadSettings "read_settings" &[Screen::Settings], ["r"], "read the settings again, after editing a file by hand";
     AddPlugin "add_plugin" &[Screen::Settings], ["a"], "add a plugin from a git repository or a folder, after showing what it runs";
     UpdatePlugin "update_plugin" &[Screen::Settings], ["u"], "update the plugin, after showing what it runs then";

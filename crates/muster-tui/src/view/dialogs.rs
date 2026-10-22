@@ -409,10 +409,11 @@ fn assign_agent(
     for option in HarnessChoice::agents(app.added_agents()) {
         run.push(harness_option(&option, harness));
     }
+    let given = app.given_words().unwrap_or_else(|| "the ticket".to_owned());
     let place = if app.starts_another(into, key, another) {
-        "In a worktree of its own, with the ticket as its first prompt."
+        format!("In a worktree of its own, with {given} as its first prompt.")
     } else {
-        "In the ticket's worktree, with the ticket as its first prompt."
+        format!("In the ticket's worktree, with {given} as its first prompt.")
     };
     lines.extend([Line::from(""), Line::from(run)]);
     if stacking {

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useNow } from "../../app/clock";
-import { useDaemon, useUi } from "../../app/context";
+import { useActions, useDaemon, useUi } from "../../app/context";
 import { Page } from "../../app/Page";
 import type { Issue } from "../../ipc/generated/Issue";
 import { agentOf } from "../../lib/agents";
@@ -22,8 +22,8 @@ import {
   StatusMark,
 } from "../../ui/status";
 import { agentsOn, shownKey, worktreesFor } from "./agents";
-import { Conversation } from "./Conversation";
-import { type TicketsModel, ticketId } from "./data";
+import { type Choosing, Conversation, TextPart } from "./Conversation";
+import { TEXT_ALONE, type TicketsModel, ticketId } from "./data";
 import { ProjectName } from "./TicketRow";
 import { TicketText, ticketText } from "./TicketText";
 import { oneTicketOf } from "./words";
@@ -50,7 +50,11 @@ export function Detail({
   keys: { another: string; browser: string; close: string; refresh: string };
 }) {
   const project = projects[0] ?? "";
-  const text = useStore(model.store, (s) => s.texts[ticketId(project, issue.key)]);
+  const id = ticketId(project, issue.key);
+  const text = useStore(model.store, (s) => s.texts[id]);
+  const brief = useStore(model.store, (s) => s.briefs[id]) ?? TEXT_ALONE;
+  const here = useStore(model.store, (s) => s.parts[id]) ?? 0;
+  const actions = useActions();
   const visible = useUi((s) => s.visible);
   const worktrees = useDaemon(
     useShallow((s) => worktreesFor(Object.values(s.workspaces), projects, issue.key)),
@@ -141,13 +145,44 @@ export function Detail({
             Its text could not be fetched: {text.error}. {keys.refresh} tries now.
           </ErrorText>
         ) : (
-          <>
-            <TicketText body={text.value.body} />
-            <Conversation comments={text.value.comments ?? []} />
-          </>
+          <Parts
+            body={text.value.body}
+            comments={text.value.comments ?? []}
+            choosing={{
+              brief,
+              here,
+              onChoose: (at) => {
+                model.reach(id, at);
+                if (!model.choose(id, at))
+                  actions.tell("The agent needs the ticket's text or a comment to work on.", true);
+              },
+              onReach: (at) => model.reach(id, at),
+            }}
+          />
         )}
       </div>
     </Page>
+  );
+}
+
+/** Its text and what was said on it; parts to give an agent where there are comments. */
+function Parts({
+  body,
+  comments,
+  choosing,
+}: {
+  body: string;
+  comments: NonNullable<Parameters<typeof Conversation>[0]["comments"]>;
+  choosing: Choosing;
+}) {
+  if (!comments.length) return <TicketText body={body} />;
+  return (
+    <>
+      <TextPart choosing={choosing}>
+        <TicketText body={body} />
+      </TextPart>
+      <Conversation comments={comments} choosing={choosing} />
+    </>
   );
 }
 

@@ -326,6 +326,7 @@ async fn a_ticket_is_handed_to_an_agent_from_the_person_s_settings_as_its_first_
             size: TermSize::default(),
             another: false,
             on: None,
+            brief: None,
         })
         .await
         .unwrap()

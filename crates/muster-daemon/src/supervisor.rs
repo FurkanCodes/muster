@@ -514,6 +514,7 @@ impl Supervisor {
                     size,
                     another,
                     on,
+                    brief,
                 } => self.fetch_issue(
                     issues::TicketStart {
                         project,
@@ -522,6 +523,7 @@ impl Supervisor {
                         size,
                         another,
                         on,
+                        brief: brief.unwrap_or_default(),
                     },
                     reply,
                 ),

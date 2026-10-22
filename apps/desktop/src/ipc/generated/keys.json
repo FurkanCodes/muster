@@ -467,6 +467,39 @@
       "what": "close the ticket in its tracker, after asking; then clean up"
     },
     {
+      "group": "Tickets",
+      "keys": [
+        "]"
+      ],
+      "name": "next_part",
+      "screens": [
+        "tickets"
+      ],
+      "what": "the ticket's next part: its text, then each comment"
+    },
+    {
+      "group": "Tickets",
+      "keys": [
+        "["
+      ],
+      "name": "previous_part",
+      "screens": [
+        "tickets"
+      ],
+      "what": "the ticket's previous part"
+    },
+    {
+      "group": "Tickets",
+      "keys": [
+        "space"
+      ],
+      "name": "choose_part",
+      "screens": [
+        "tickets"
+      ],
+      "what": "give the agent this part of the ticket, or not"
+    },
+    {
       "group": "Settings",
       "keys": [
         "r"

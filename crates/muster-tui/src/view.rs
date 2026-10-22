@@ -51,7 +51,9 @@ use preview::draw_preview;
 use sessions::{draw_needs_you, draw_sessions};
 pub(crate) use sessions::{fold_column, list_width};
 use terminal::{draw_session, draw_terminal};
-pub(crate) use tickets::details_height as ticket_details_height;
+pub(crate) use tickets::{
+    details_height as ticket_details_height, part_lines as ticket_part_lines,
+};
 
 /// The terminal area a session gets when it fills the screen: everything
 /// but the top bar.

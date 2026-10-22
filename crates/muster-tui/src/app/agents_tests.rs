@@ -120,6 +120,7 @@ fn a_ticket_is_offered_the_person_s_agents_that_take_its_prompt() {
             size: PANE,
             another: false,
             on: None,
+            brief: None,
         }]
     );
 
