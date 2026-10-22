@@ -19,7 +19,7 @@ import { ErrorText } from "../../ui/status";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { partId } from "./Conversation";
 import { Detail } from "./Detail";
-import { groupProjects, message, ticketId, ticketsFor } from "./data";
+import { groupProjects, message, ticketId, ticketSources, ticketsFor } from "./data";
 import { ProjectName, ProjectSwatch, TicketRow } from "./TicketRow";
 import "./tickets.css";
 
@@ -96,6 +96,11 @@ export default function Tickets() {
   useEffect(() => {
     model.prune(ids);
   }, [model, ids]);
+  const loaded = useDaemon((s) => s.loaded);
+  const sources = useDaemon((s) => ticketSources(s.plugins));
+  useEffect(() => {
+    if (loaded) model.follow(sources, ids);
+  }, [model, loaded, sources, ids]);
   useEffect(() => {
     if (visible) model.forgetFailed();
   }, [model, visible]);

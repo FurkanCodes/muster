@@ -14,10 +14,30 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
+use muster_core::protocol::plugins::PluginInfo;
 use muster_core::{Issue, ProjectId, SessionId, TicketBrief, TicketKey, WorkspaceId};
 use ratatui::layout::Rect;
 
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
+
+/// What of the daemon's `plugins` decides where tickets come from: each
+/// ticket plugin, whether it is on, whether it can run, and the manifest
+/// approved. One turned off, broken, added or gone changes it (`PRD-15`).
+pub(super) fn ticket_sources(plugins: &[PluginInfo]) -> Vec<(String, bool, bool, String)> {
+    plugins
+        .iter()
+        .filter_map(|plugin| {
+            let details = plugin.details.as_ref()?;
+            details.tickets.as_ref()?;
+            Some((
+                plugin.id.clone(),
+                plugin.enabled,
+                plugin.problem.is_none(),
+                details.sha256.clone(),
+            ))
+        })
+        .collect()
+}
 
 /// One line of the tickets list.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -119,13 +139,7 @@ impl App {
             (_, Some(Does::NextPart)) => self.move_part(1),
             (_, Some(Does::PreviousPart)) => self.move_part(-1),
             (_, Some(Does::ChoosePart)) => self.choose_part(),
-            (_, Some(Does::RefreshTickets)) => {
-                // Everything is fetched again as it is shown; comments
-                // chosen may have moved, so they are chosen again.
-                self.tickets.clear();
-                self.ticket_texts.clear();
-                self.ticket_briefs.clear();
-            }
+            (_, Some(Does::RefreshTickets)) => self.forget_tickets(),
             (KeyCode::Enter, _) => return self.open_ticket(),
             (_, Some(Does::AnotherAgent)) => {
                 if let Some((project, key)) = self.selected_ticket() {
@@ -507,6 +521,14 @@ impl App {
             .retain(|_, tickets| !matches!(tickets, Tickets::Failed(_)));
         self.ticket_texts
             .retain(|_, text| !matches!(text, TicketText::Failed(_)));
+    }
+
+    /// Forgets every ticket and text, so each is fetched again as it is
+    /// shown; comments chosen may have moved, so they are chosen again.
+    pub(super) fn forget_tickets(&mut self) {
+        self.tickets.clear();
+        self.ticket_texts.clear();
+        self.ticket_briefs.clear();
     }
 
     /// Asks for the tickets of projects shown without them, and for the

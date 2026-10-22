@@ -178,6 +178,55 @@ fn the_daemon_runs_muster_s_own_plugin_once_and_stops_it_with_itself() {
     assert!(!alive(running[0]), "the plugin outlived the daemon");
 }
 
+#[tokio::test]
+async fn muster_s_own_github_plugin_turned_off_gives_no_tickets_until_turned_on_prd_15() {
+    let sandbox = Sandbox::new();
+    let root = with_an_issue(&sandbox);
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let Reply::ProjectAdded { id: project } = connection
+        .command(Command::AddProject { root, name: None })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    let (tracker, issues) = listed(&mut connection, project).await;
+    assert_eq!(
+        (tracker.as_str(), keys(&issues)),
+        ("GitHub issues", vec!["42".to_owned()])
+    );
+
+    // Turned off, as the Settings screen's Plugins section does: the project
+    // has no tickets, and says why.
+    ok(&sandbox, &["plugin", "disable", "github"]);
+    let (code, message) = refusal(
+        connection
+            .command(Command::ListIssues { project })
+            .await
+            .unwrap_err(),
+    );
+    assert_eq!(code, ErrorCode::BadRequest, "{message}");
+    assert!(
+        message.contains("the GitHub issues plugin, which is turned off")
+            && message.contains("muster plugin enable github"),
+        "{message}"
+    );
+    let viewed = connection
+        .command(Command::ViewIssue {
+            project,
+            key: TicketKey::number(42),
+        })
+        .await;
+    assert!(viewed.is_err(), "{viewed:?}");
+
+    // Turned on again, its tickets are back.
+    ok(&sandbox, &["plugin", "enable", "github", "--yes"]);
+    let (_, issues) = listed(&mut connection, project).await;
+    assert_eq!(keys(&issues), ["42"]);
+    daemon.stop();
+}
+
 /// `muster <args>`, which must succeed; what it printed.
 fn ok(sandbox: &Sandbox, args: &[&str]) -> String {
     let output = sandbox.run(args);

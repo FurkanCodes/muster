@@ -238,6 +238,23 @@ export class MockSettings {
     return this.mock.world.projects.find((found) => found.id === project)?.name ?? project;
   }
 
+  /**
+   * Why `project`'s tickets cannot be listed as its tracker's plugin stands,
+   * or null where they can (`TicketPlugin::runnable`).
+   */
+  ticketsRefused(project: string): string | null {
+    const record = this.projects.get(project);
+    const tracker = record?.tickets?.tracker ?? record?.remote;
+    const plugin = this.mock.world.plugins.find((found) => found.id === tracker);
+    if (!plugin) return null;
+    const why = !plugin.enabled
+      ? `is turned off: turn it on on the Settings screen's Plugins section, or with \`muster plugin enable ${plugin.id}\``
+      : plugin.problem
+        ? `cannot run: ${problemWords(plugin.problem)}`
+        : null;
+    return why && `its tickets come from the ${this.trackerName(plugin.id)} plugin, which ${why}`;
+  }
+
   /** The tracker named as the daemon names it: its plugin's name, else its id. */
   private trackerName(tracker: string): string {
     return (
