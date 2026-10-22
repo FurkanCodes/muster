@@ -9,6 +9,7 @@ import {
   FRAME_EVENT,
   FRAME_OUTPUT,
   FRAME_REPLAY,
+  FRAME_REPLAY_RESET,
   type TermFrame,
 } from "../frames";
 import type { Command } from "../generated/Command";
@@ -80,6 +81,13 @@ export class MockBridge implements Bridge {
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
   readonly openedUrls: string[] = [];
+  /** Every attach the page asked for, in order: tests look here. */
+  readonly attaches: { session: SessionId; fromSeq: number | null }[] = [];
+  /** The streams the page let go of, by session, for `lateFrame`. */
+  private readonly letGo = new Map<
+    SessionId,
+    { onFrame: (frame: TermFrame) => void; seq: number }
+  >();
   /** Everything typed into a terminal, in order: tests look here. */
   readonly typed: { session: SessionId; text: string }[] = [];
   /** The modes each session's program set, where one set others (`setModes`). */
@@ -243,24 +251,48 @@ export class MockBridge implements Bridge {
     this.openedUrls.push(parsed.href);
   }
 
+  /**
+   * Streams a session's terminal from `fromSeq`, as the daemon does: what
+   * came after it, or everything held, starting over, for a place it does
+   * not hold. Its first frames come before the answer, as they may.
+   */
   async attach(
     session: SessionId,
-    _fromSeq: number | null,
+    fromSeq: number | null,
     watching: boolean,
     onFrame: (frame: TermFrame) => void,
   ): Promise<void> {
     const text = encoder.encode(this.world.terminals[session] ?? "");
     this.terminals.set(session, { onFrame, seq: text.byteLength });
+    this.attaches.push({ session, fromSeq });
     if (watching) this.watching.add(session);
     else this.watching.delete(session);
-    onFrame(decodeFrame(encodeFrame(FRAME_REPLAY, 0, text)));
+    if (fromSeq !== null && fromSeq <= text.byteLength)
+      onFrame(decodeFrame(encodeFrame(FRAME_REPLAY, fromSeq, text.subarray(fromSeq))));
+    else if (fromSeq !== null) onFrame(decodeFrame(encodeFrame(FRAME_REPLAY_RESET, 0, text)));
+    else onFrame(decodeFrame(encodeFrame(FRAME_REPLAY, 0, text)));
     this.tellModes(session);
     if (watching && this.lookingNow) this.see(session);
   }
 
   async detach(session: SessionId): Promise<void> {
+    const terminal = this.terminals.get(session);
+    if (terminal) this.letGo.set(session, terminal);
     this.terminals.delete(session);
     this.watching.delete(session);
+  }
+
+  /** Whether a session's terminal is streamed to the page now. */
+  attached(session: SessionId): boolean {
+    return this.terminals.has(session);
+  }
+
+  /** Sends a frame on the stream the page last let go of, as one in flight would come late. */
+  lateFrame(session: SessionId, text: string): void {
+    const terminal = this.letGo.get(session);
+    if (!terminal) throw new Error(`no stream of ${session} was let go of`);
+    const bytes = encoder.encode(text);
+    terminal.onFrame(decodeFrame(encodeFrame(FRAME_OUTPUT, terminal.seq, bytes)));
   }
 
   /** Echoes what is typed, as a program at its prompt would; one that took the mouse does not. */
