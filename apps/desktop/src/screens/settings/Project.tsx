@@ -14,6 +14,7 @@ import { projectColour } from "../../state/selectors";
 import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
 import { Dialog, DialogText } from "../../ui/Dialog";
+import { Loading } from "../../ui/Loading";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
 import { Input } from "../../ui/TextField";
@@ -418,9 +419,7 @@ export function Project({ project }: { project: ProjectId }) {
       {settings ? (
         <Loaded project={project} name={name} settings={settings} />
       ) : read?.state === "failed" ? null : (
-        <p className="app-settings-loading" aria-busy="true">
-          Reading its settings…
-        </p>
+        <Loading label="Reading its settings" />
       )}
       <RemoveProject project={project} name={name} />
       <Footnote>

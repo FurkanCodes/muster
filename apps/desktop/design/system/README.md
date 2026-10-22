@@ -23,9 +23,11 @@ The app's screens compose these (`ARC-26`): a component's classes are written on
 | Banner | `Banner` (`waiting`, `overlap`, `away`, `note`: the tone draws the mark), `BannerLead`, `BannerText` (one line), `BannerBody` (wraps) | `src/ui/Banner.tsx` |
 | EmptyState | `EmptyState`, `EmptyStateTitle`, `EmptyStateText`, `EmptyStateActions` | `src/ui/EmptyState.tsx` |
 | DetailList | `DetailList`, `Detail` | `src/ui/DetailList.tsx` |
+| Loading | `Loading` (a spinner and what is fetched, a block centred in its place or a line), `LoadingBar` (a thin bar along the top of what is shown while it is fetched again): every wait for the daemon or the network says so this way, never in words of its own | `src/ui/Loading.tsx` |
+| Select | `Select`, a field (boxed) or `variant="quiet"` in a toolbar, an option's `mark` (an agent's logo) in its button too; its list drawn as a menu is, on Radix's popover, in the dialog it is in | `src/ui/Select.tsx` |
 | Menu | `ActionMenu` under its button or at a point, its items doing themselves on their keys (Radix) | `src/ui/Menu.tsx` |
 | Tooltip | `Tooltip`; every `IconButton` has one, its label and key (Radix) | `src/ui/Tooltip.tsx` |
-| Controls | `Button`, `IconButton`, `Segmented` (with counts), `Kbd`, `Hint` (one key or several), `Spacer`, `Spinner`, `Switch`, `Select` | `src/ui` |
+| Controls | `Button`, `IconButton`, `Segmented` (with counts), `Kbd`, `Hint` (one key or several), `Spacer`, `Spinner`, `Switch` | `src/ui` |
 | Fields | `TextField`, `TextArea`, `Field` (a label over any control, a hint or an error under it), `Input` | `src/ui/TextField.tsx` |
 | Dialog | `Dialog` (the browser's `<dialog>`), `DialogText` | `src/ui/Dialog.tsx` |
 | Label | `Label`, `Labels` | `src/ui/Label.tsx` |

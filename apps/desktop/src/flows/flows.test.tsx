@@ -110,8 +110,8 @@ describe("PRD-03 work starts on the project's page", () => {
       "Gemini CLI",
       "OpenCode",
       "Copilot CLI",
-      "Goose",
-      "A shell",
+      "•Goose",
+      "❯A shell",
     ]);
     await userEvent.click(screen.getByRole("option", { name: /Goose/ }));
     expect(within(box).getByRole("textbox", { name: "First prompt" })).toBeDisabled();

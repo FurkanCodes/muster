@@ -14,6 +14,7 @@ import { Button, Segmented, Spacer } from "../../ui/controls";
 import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
 import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { List } from "../../ui/List";
+import { Loading, LoadingBar } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { Detail } from "./Detail";
@@ -203,7 +204,14 @@ export default function Tickets() {
               const project = projects[0] ?? "";
               const list = lists[project];
               return (
-                <section key={project} aria-label={`${groupName(projects)}'s tickets`}>
+                <section
+                  key={project}
+                  className="tickets-project"
+                  aria-label={`${groupName(projects)}'s tickets`}
+                >
+                  {list?.state === "loaded" && list.refreshing ? (
+                    <LoadingBar label={`Fetching ${groupName(projects)}'s tickets again`} />
+                  ) : null}
                   <div className="mu-group">
                     <ProjectSwatch id={project} />
                     <span className="mu-group-name">
@@ -216,7 +224,7 @@ export default function Tickets() {
                     </span>
                     <span className="mu-group-source">
                       {list?.state === "loaded"
-                        ? `${list.value.tracker}${list.value.mine ? ", only yours" : ""}${list.refreshing ? " · fetching…" : ""}`
+                        ? `${list.value.tracker}${list.value.mine ? ", only yours" : ""}`
                         : ""}
                     </span>
                     <Spacer />
@@ -236,9 +244,7 @@ export default function Tickets() {
                     ) : null}
                   </div>
                   {!list || list.state === "loading" ? (
-                    <p className="tickets-state mu-meta" role="status">
-                      Fetching its tickets…
-                    </p>
+                    <Loading label="Fetching its tickets" layout="inline" />
                   ) : list.state === "failed" ? (
                     <div className="tickets-state">
                       <ErrorText>Its tickets could not be fetched: {list.error}</ErrorText>

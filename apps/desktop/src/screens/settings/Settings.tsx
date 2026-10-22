@@ -17,6 +17,7 @@ import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { projectColour, projectsInOrder } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
 import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { Loading } from "../../ui/Loading";
 import { NavCount, NavItem, NavLabel } from "../../ui/Nav";
 import { Swatch } from "../../ui/status";
 import { Agents } from "./Agents";
@@ -169,8 +170,8 @@ function ShownPage({ section }: { section: Section }) {
     const title =
       MUSTER_SECTIONS.find((candidate) => candidate.id === section)?.title ?? "Settings";
     return (
-      <SettingsPage title={title} lead="Reading Muster's own settings…" busy>
-        {null}
+      <SettingsPage title={title} lead={null} busy>
+        <Loading label="Reading Muster's own settings" />
       </SettingsPage>
     );
   }

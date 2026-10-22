@@ -305,7 +305,7 @@ describe("ARC-24 asking, refused and empty", () => {
     setup(bridge);
     if (command === "Timeline")
       await userEvent.click(await screen.findByRole("button", { name: /^Turns/ }));
-    expect(await screen.findByText(asking)).toHaveAttribute("role", "status");
+    expect(await screen.findByRole("status", { name: asking })).toHaveTextContent(asking);
     await act(async () => {
       bridge.failNext(command, "git could not read the worktree", "internal");
       bridge.release(command);

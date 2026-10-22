@@ -8,8 +8,9 @@ import { useState } from "react";
 import { useActions, useBridge } from "../../app/context";
 import type { PluginPreview } from "../../ipc/generated/PluginPreview";
 import { Banner, BannerBody } from "../../ui/Banner";
-import { Button, Spinner } from "../../ui/controls";
+import { Button } from "../../ui/controls";
 import { Dialog, DialogText } from "../../ui/Dialog";
+import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { TextField } from "../../ui/TextField";
 import { type PluginDialog, useSettings } from "./context";
@@ -84,9 +85,7 @@ function Fetching({ dialog }: { dialog: Extract<PluginDialog, { step: "fetching"
         </Button>
       }
     >
-      <DialogText busy>
-        <Spinner /> Fetching {dialog.what}…
-      </DialogText>
+      <Loading label={`Fetching ${dialog.what}`} layout="inline" />
       <DialogText className="mu-quiet">
         Nothing of it runs: Muster reads what it would run, and shows you before anything is added.
         git may take up to three minutes.

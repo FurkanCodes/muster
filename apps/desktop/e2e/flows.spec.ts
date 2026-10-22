@@ -346,7 +346,7 @@ test.describe("PRD-03 work starts on the project's page", () => {
     );
     await page.keyboard.press("n");
     const box = startBox(page, "labs");
-    await expect(box.getByText("In the folder itself, as it is no repository")).toBeVisible();
+    await expect(box.getByText("In the folder itself", { exact: true })).toBeVisible();
     await expect(box.getByRole("textbox", { name: "Branch" })).toHaveCount(0);
   });
 });

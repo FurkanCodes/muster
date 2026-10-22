@@ -9,6 +9,7 @@ import type { FileChange } from "../../ipc/generated/FileChange";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import { Button } from "../../ui/controls";
 import { List } from "../../ui/List";
+import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { TurnRow, turnLineId } from "../../ui/TurnRow";
 import { FileList } from "./FileList";
@@ -29,12 +30,7 @@ function Waiting({
   refused?: string;
   onAgain(): void;
 }) {
-  if (answer.state === "loading")
-    return (
-      <p className="mu-meta changes-note" role="status">
-        {asking}
-      </p>
-    );
+  if (answer.state === "loading") return <Loading label={asking} />;
   if (answer.state !== "error") return null;
   return (
     <div className="changes-note">
@@ -124,7 +120,7 @@ export function ChangesList({
       return (
         <Waiting
           answer={timeline}
-          asking="Reading the turns…"
+          asking="Reading the turns"
           refused="The timeline could not be read: "
           onAgain={onAgain}
         />
@@ -160,7 +156,7 @@ export function ChangesList({
     );
   }
   if (listing.state !== "ready")
-    return <Waiting answer={listing} asking="Asking git…" onAgain={onAgain} />;
+    return <Waiting answer={listing} asking="Asking git" onAgain={onAgain} />;
   const changes = listing.value;
   const base = changes.base ?? "its base";
   if (view === "uncommitted")

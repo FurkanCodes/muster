@@ -9,6 +9,7 @@ import { useActions, useApp, useUi } from "../app/context";
 import { statusKind } from "../lib/status";
 import { Hint, Kbd, Spacer } from "../ui/controls";
 import { Icon } from "../ui/Icon";
+import { Loading } from "../ui/Loading";
 import { AgentLogo, StatusMark } from "../ui/status";
 import { catalogue, type PaletteItem, type Ticket } from "./catalogue";
 import { helpFor } from "./help";
@@ -166,11 +167,7 @@ function Commands() {
             No action, session, ticket or setting holds “{typed.trim()}”.
           </p>
         ) : null}
-        {asking ? (
-          <p className="mu-meta ui-palette-none" role="status">
-            Asking for the tickets…
-          </p>
-        ) : null}
+        {asking ? <Loading label="Asking for the tickets" layout="inline" /> : null}
       </div>
       <div className="mu-palette-foot">
         <Hint keys="↑↓" does="move" />

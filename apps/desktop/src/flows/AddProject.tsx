@@ -11,6 +11,7 @@ import { Button } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
 import { FolderOption } from "../ui/FolderOption";
 import { Label } from "../ui/Label";
+import { Loading } from "../ui/Loading";
 import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
 import { addProjectAt, said } from "./actions";
@@ -158,9 +159,7 @@ export default function AddProject() {
         {!folder ? (
           <span className="mu-meta">Start the path with / or ~/.</span>
         ) : !listing ? (
-          <span className="mu-meta" role="status">
-            Reading {folder}…
-          </span>
+          <Loading label={`Reading ${folder}`} layout="inline" />
         ) : listing.error ? (
           <ErrorText size="meta">{listing.error}</ErrorText>
         ) : folders.length === 0 ? (

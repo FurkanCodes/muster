@@ -14,6 +14,7 @@ import { Button } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
 import { FolderOption } from "../ui/FolderOption";
 import { Label } from "../ui/Label";
+import { Loading } from "../ui/Loading";
 import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
 import { said } from "./actions";
@@ -187,9 +188,7 @@ export default function CloneProject() {
           ))}
         </div>
         {listing.state === "asking" ? (
-          <span className="mu-meta" role="status">
-            Asking GitHub…
-          </span>
+          <Loading label="Asking GitHub" layout="inline" />
         ) : listing.state === "failed" ? (
           <ErrorText size="meta">{listing.error} ⏎ still clones one typed as owner/name.</ErrorText>
         ) : shown.length === 0 ? (

@@ -12,6 +12,7 @@ import { Button, IconButton } from "../../ui/controls";
 import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { Label, Labels } from "../../ui/Label";
 import { ListItemEnd, ListItemMeta, ListItemText, ListItemTitle, RowButton } from "../../ui/List";
+import { Loading } from "../../ui/Loading";
 import {
   AgentLogo,
   BranchName,
@@ -133,12 +134,7 @@ export function Detail({
         )}
         <div className="tickets-rule" />
         {!text || text.state === "loading" ? (
-          <div role="status" aria-label="Fetching its text…" className="tickets-loading">
-            <span className="mu-meta">Fetching its text…</span>
-            <span />
-            <span />
-            <span />
-          </div>
+          <Loading label="Fetching its text" />
         ) : text.state === "failed" ? (
           <ErrorText>
             Its text could not be fetched: {text.error}. {keys.refresh} tries now.

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Command } from "../../ipc/generated/Command";
 import { DiffFrame, DiffHead, DiffView, DiffWaiting } from "../../ui/DiffView";
+import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { useReply } from "./useReply";
 
@@ -37,9 +38,7 @@ export function DiffPanel({
       <DiffHead>{head}</DiffHead>
       <DiffWaiting>
         {answer.state === "loading" ? (
-          <p className="mu-quiet" role="status">
-            Asking git…
-          </p>
+          <Loading label="Asking git" />
         ) : (
           <ErrorText>
             {answer.state === "error" ? answer.error : "The daemon did not send a diff."} r asks

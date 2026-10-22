@@ -103,11 +103,6 @@
   box-shadow: inset 0 0 0 1px var(--keys);
 }
 
-.app-settings-loading {
-  padding: 0 var(--space-12);
-  color: var(--text-quiet);
-}
-
 .app-settings-example {
   margin: 0 var(--space-12);
   padding: var(--space-16);

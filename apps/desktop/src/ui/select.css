@@ -1,14 +1,28 @@
 .ui-select {
-  position: relative;
+  min-width: 0;
 }
 .ui-select > .mu-select {
   width: 100%;
 }
+/* A toolbar's: as wide as what it shows. */
+.ui-select--quiet > .mu-select {
+  width: auto;
+  max-width: 100%;
+}
+/* Its list, where Radix puts it: at least as wide as its button, never past the window. */
 .ui-select-menu {
-  position: absolute;
-  inset: 100% 0 auto;
   z-index: var(--z-menu);
-  max-height: var(--size-dialog);
+  min-width: max(var(--size-menu-min), var(--radix-popover-trigger-width));
+  max-width: min(420px, var(--radix-popover-content-available-width));
+  max-height: min(var(--size-dialog), var(--radix-popover-content-available-height));
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.ui-select-note {
+  margin-left: auto;
+  padding-left: var(--space-12);
+  flex: none;
+}
+.ui-select-mark {
+  display: contents;
 }

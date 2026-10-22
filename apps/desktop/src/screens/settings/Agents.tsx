@@ -14,6 +14,7 @@ import { useKeyLabel } from "../../keys/useKeymap";
 import { agentOf } from "../../lib/agents";
 import { Button } from "../../ui/controls";
 import { Label } from "../../ui/Label";
+import { Loading } from "../../ui/Loading";
 import {
   AgentLogo,
   AgentMark,
@@ -72,7 +73,7 @@ function Where({
   harness: string;
   install: ReactNode;
 }): ReactNode {
-  if (found.state === "asking") return <span className="mu-quiet">looking for it…</span>;
+  if (found.state === "asking") return <Loading label="Looking for it" layout="inline" />;
   if (found.state === "not-known")
     return (
       <span className="mu-quiet">
