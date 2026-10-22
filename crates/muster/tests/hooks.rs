@@ -410,12 +410,11 @@ async fn muster_plugin_hook_tries_a_plugin_s_hooks_on_a_sample_and_says_what_eac
     let folder = recorder(&sandbox);
 
     let tried = ok(&sandbox, &["hook", "recorder", "session.needs_you"]);
-    // Every hook that runs for it, its filters aside.
+    // Every hook that runs for it, its filters aside, and after how long
+    // where that is a millisecond or more, as a quick one is not.
     for hook in ["all", "away", "looking"] {
         assert!(
-            tried.contains(&format!(
-                "{hook} for a sample session.needs_you: exited 0 after"
-            )),
+            tried.contains(&format!("{hook} for a sample session.needs_you: exited 0")),
             "{tried}"
         );
     }
@@ -428,7 +427,7 @@ async fn muster_plugin_hook_tries_a_plugin_s_hooks_on_a_sample_and_says_what_eac
     assert!(!failed.status.success());
     let words = said(&failed);
     assert!(
-        words.contains("say for a sample clash.found: exited 3 after"),
+        words.contains("say for a sample clash.found: exited 3"),
         "{words}"
     );
     // Its stdout and stderr, read together, in the order they came.
