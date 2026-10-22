@@ -22,6 +22,7 @@ import {
   StatusMark,
 } from "../../ui/status";
 import { agentsOn, shownKey, worktreesFor } from "./agents";
+import { Conversation } from "./Conversation";
 import { type TicketsModel, ticketId } from "./data";
 import { ProjectName } from "./TicketRow";
 import { TicketText, ticketText } from "./TicketText";
@@ -140,7 +141,10 @@ export function Detail({
             Its text could not be fetched: {text.error}. {keys.refresh} tries now.
           </ErrorText>
         ) : (
-          <TicketText body={text.value.body} />
+          <>
+            <TicketText body={text.value.body} />
+            <Conversation comments={text.value.comments ?? []} />
+          </>
         )}
       </div>
     </Page>

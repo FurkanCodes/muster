@@ -63,6 +63,7 @@ impl TicketSource for Repository {
             Ok(IssueDetail {
                 issue: issue(key.as_number().unwrap_or_default()),
                 body: "After signing in, users land on /404.".to_owned(),
+                comments: Vec::new(),
                 noun: crate::trackers::Noun::own("github"),
             })
         })

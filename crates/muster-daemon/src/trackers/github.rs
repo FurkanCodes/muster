@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use muster_core::plugins::own;
 use muster_core::text::{multi_line, one_line};
-use muster_core::{Issue, TicketKey};
+use muster_core::time::parse_rfc3339;
+use muster_core::{Issue, IssueComment, TicketKey};
 use serde::Deserialize;
 
 use super::{BoxFuture, IssueDetail, ServiceError, TicketSource};
@@ -35,6 +36,24 @@ struct GhIssue {
     author: Option<GhAuthor>,
     #[serde(default)]
     body: Option<String>,
+    /// What was said on it, oldest first: only `view` asks for them.
+    #[serde(default)]
+    comments: Vec<GhComment>,
+}
+
+/// `gh`'s JSON for a comment on an issue.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhComment {
+    #[serde(default)]
+    author: Option<GhAuthor>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: Option<String>,
+    /// Hidden on GitHub as spam, off-topic or outdated: left out here too.
+    #[serde(default)]
+    is_minimized: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +83,16 @@ impl GhIssue {
                 author: self.author.map(|author| one_line(&author.login)),
             },
             body: multi_line(&self.body.unwrap_or_default()),
+            comments: self
+                .comments
+                .into_iter()
+                .filter(|comment| !comment.is_minimized && !comment.body.trim().is_empty())
+                .map(|comment| IssueComment {
+                    author: comment.author.map(|author| one_line(&author.login)),
+                    at: comment.created_at.as_deref().and_then(parse_rfc3339),
+                    body: multi_line(&comment.body),
+                })
+                .collect(),
             noun: super::Noun::own(own::GITHUB),
         }
     }
@@ -127,7 +156,7 @@ impl TicketSource for GitHubIssues {
                     "view",
                     &number,
                     "--json",
-                    "number,title,url,labels,author,body",
+                    "number,title,url,labels,author,body,comments",
                 ],
                 None,
             )
@@ -159,7 +188,28 @@ mod tests {
         assert_eq!(detail.issue.labels, ["bug"]);
         assert_eq!(detail.issue.author.as_deref(), Some("furkan"));
         assert_eq!(detail.body, "");
+        assert!(detail.comments.is_empty());
         assert_eq!(detail.noun.tracker, "GitHub");
+    }
+
+    // Shaped like gh 2.83's `issue view --json …,comments`.
+    #[test]
+    fn its_comments_are_read_oldest_first_hidden_ones_left_out() {
+        let json = r#"{"number":42,"title":"t","url":"u","body":"b","comments":[
+            {"id":"IC_1","author":{"login":"octocat"},"authorAssociation":"MEMBER","body":"Seen on **main**.\r\nToo.","createdAt":"2026-10-22T09:30:00Z","isMinimized":false,"url":"u#1"},
+            {"id":"IC_2","author":{"login":"spammer"},"body":"buy now","createdAt":"2026-10-22T09:31:00Z","isMinimized":true,"minimizedReason":"SPAM"},
+            {"id":"IC_3","author":null,"body":"From a deleted account\u001b[2J","createdAt":"not a time"}]}"#;
+        let detail = serde_json::from_str::<GhIssue>(json).unwrap().into_detail();
+        assert_eq!(detail.comments.len(), 2);
+        assert_eq!(detail.comments[0].author.as_deref(), Some("octocat"));
+        assert_eq!(
+            detail.comments[0].at,
+            Some(muster_core::Timestamp::from_millis(1_792_661_400_000))
+        );
+        assert_eq!(detail.comments[0].body, "Seen on **main**.\nToo.");
+        assert_eq!(detail.comments[1].author, None);
+        assert_eq!(detail.comments[1].at, None);
+        assert_eq!(detail.comments[1].body, "From a deleted account[2J");
     }
 
     #[test]

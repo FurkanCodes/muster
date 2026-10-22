@@ -53,6 +53,8 @@ fn on_gitlab(sandbox: &Sandbox) -> PathBuf {
     let mut detail = issue.clone();
     detail["description"] = serde_json::Value::from("After signing in, users land on /404.");
     std::fs::write(glab.join("issue-12.json"), detail.to_string()).unwrap();
+    // Its notes refused: the issue is read, and worked on, without them.
+    std::fs::write(glab.join("notes-12.fail"), "").unwrap();
     root
 }
 
@@ -93,6 +95,11 @@ fn a_gitlab_project_s_tickets_come_through_glab() {
         "{calls}"
     );
     assert!(calls.contains("issue view 12 --output json"), "{calls}");
+    // Its notes asked for beside it, through GitLab's API.
+    assert!(
+        calls.contains("api projects/:fullpath/issues/12/notes?sort=asc"),
+        "{calls}"
+    );
     assert!(
         !std::fs::read_to_string(sandbox.fake_gh().join("calls"))
             .unwrap_or_default()

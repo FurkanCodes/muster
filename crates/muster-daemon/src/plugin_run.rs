@@ -16,8 +16,8 @@ use std::time::Duration;
 use muster_core::config::Tickets;
 use muster_core::plugins::own;
 use muster_core::ticket_protocol::{
-    self, Call, HelloResult, Listing, MOST_LINE, PROTOCOL, PluginError, PluginErrorCode, Project,
-    Request, Ticket, Viewing,
+    self, Call, Comment, HelloResult, Listing, MOST_LINE, PROTOCOL, PluginError, PluginErrorCode,
+    Project, Request, Ticket, Viewing,
 };
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::task::JoinSet;
@@ -175,6 +175,7 @@ async fn answer(sources: Arc<Sources>, Request { id, call }: Request) -> String 
                 let viewing = Viewing {
                     ticket: Ticket::from(&detail.issue),
                     body: detail.body,
+                    comments: detail.comments.iter().map(Comment::from).collect(),
                 };
                 Ok(ticket_protocol::result_line(id, &viewing))
             }

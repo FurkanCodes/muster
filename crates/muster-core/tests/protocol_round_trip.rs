@@ -581,6 +581,14 @@ fn commands() -> Vec<Command> {
     all
 }
 
+fn comment() -> muster_core::IssueComment {
+    muster_core::IssueComment {
+        author: Some("octocat".to_owned()),
+        at: Some(muster_core::Timestamp::from_millis(1_792_661_400_000)),
+        body: "Seen on **main** too.".to_owned(),
+    }
+}
+
 fn replies() -> Vec<Reply> {
     let mut all = vec![
         Reply::Pong,
@@ -606,6 +614,7 @@ fn replies() -> Vec<Reply> {
         Reply::IssueViewed {
             issue: issue(),
             body: "It fails.".to_owned(),
+            comments: vec![comment()],
         },
         Reply::RunStarted { id: RunId::new() },
         Reply::RunHistory {

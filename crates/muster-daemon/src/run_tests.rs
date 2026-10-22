@@ -49,6 +49,7 @@ impl TicketSource for OneIssue {
                 Ok(IssueDetail {
                     issue: issue(),
                     body: "Users land on /404.".to_owned(),
+                    comments: Vec::new(),
                     noun: crate::trackers::Noun::own("github"),
                 })
             } else {

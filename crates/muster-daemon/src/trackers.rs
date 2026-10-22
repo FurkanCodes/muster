@@ -21,7 +21,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 use muster_core::plugins::own;
-use muster_core::{Issue, TicketKey};
+use muster_core::{Issue, IssueComment, TicketKey};
 
 pub(crate) use crate::service::{BoxFuture, ProjectPlace, ServiceError};
 
@@ -33,6 +33,9 @@ const MAX_BODY: usize = 20_000;
 pub(crate) struct IssueDetail {
     pub(crate) issue: Issue,
     pub(crate) body: String,
+    /// What was said on it after it was filed, oldest first; none where
+    /// its tracker gives none.
+    pub(crate) comments: Vec<IssueComment>,
     /// How it is named.
     pub(crate) noun: Noun,
 }
@@ -128,6 +131,13 @@ impl TicketSource for Hidden {
                 tracing::info!(%key, hidden, "hid credentials in a ticket's text");
             }
             detail.body = body;
+            for comment in &mut detail.comments {
+                let (body, hidden) = muster_core::credentials::hide(&comment.body);
+                if hidden > 0 {
+                    tracing::info!(%key, hidden, "hid credentials in a comment on a ticket");
+                }
+                comment.body = body;
+            }
             Ok(detail)
         })
     }
@@ -212,6 +222,7 @@ mod tests {
                 author: None,
             },
             body: body.to_owned(),
+            comments: Vec::new(),
             noun: Noun::own(tracker),
         }
     }

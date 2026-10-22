@@ -257,6 +257,7 @@ fn project_name(app: &App, project: ProjectId) -> String {
 /// The selected setting: what it does, where its value comes from and
 /// where a change goes; or the selected project's settings as a whole.
 pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let width = usize::from(area.width.saturating_sub(2));
     let text = match app.settings_selected {
         Some(SettingRow::Muster | SettingRow::Notch) if app.notch_known() => notch_text(app),
         Some(SettingRow::SideBySide) => side_by_side_text(app),
@@ -314,7 +315,9 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 ))
                 .dim(),
             ]),
-            None | Some(Settings::Loading) => Text::from("Reading its settings…").dim(),
+            None | Some(Settings::Loading) => {
+                Text::from(super::loading::rule(app, "Loading settings", width))
+            }
         },
         None => Text::from("Select a setting to see it here.").dim(),
     };

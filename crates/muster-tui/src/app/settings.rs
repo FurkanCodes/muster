@@ -226,7 +226,6 @@ impl App {
                 // Read again as they are shown, edits by hand included:
                 // Muster's own too, where the daemon reads them on asking.
                 self.settings.clear();
-                self.say("Reading the settings again…");
                 if self.daemon_protocol >= AGENTS_PROTOCOL {
                     let read = self.command(
                         Command::ReadPreferences,

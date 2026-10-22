@@ -432,6 +432,7 @@ impl TicketSource for PluginTickets {
             Ok(IssueDetail {
                 issue: viewed.issue,
                 body: viewed.body,
+                comments: viewed.comments,
                 noun: self.process.spec().noun.clone(),
             })
         })

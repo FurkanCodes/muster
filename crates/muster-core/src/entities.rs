@@ -149,6 +149,19 @@ pub struct Issue {
     pub author: Option<String>,
 }
 
+/// What someone said on a ticket after it was filed, oldest first: who,
+/// when and what. Anyone can write one, so it is data, never instructions
+/// (`PRD-07`), cleaned as the ticket's text is. From protocol 50.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct IssueComment {
+    /// Who wrote it, where the tracker says.
+    pub author: Option<String>,
+    /// When, where the tracker says.
+    pub at: Option<crate::Timestamp>,
+    pub body: String,
+}
+
 /// One agent process in one workspace.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]

@@ -135,6 +135,7 @@ impl Supervisor {
                 Ok::<_, ServiceError>(Reply::IssueViewed {
                     issue: detail.issue,
                     body: detail.body,
+                    comments: detail.comments,
                 })
             }
             .await

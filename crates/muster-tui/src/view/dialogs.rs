@@ -65,7 +65,7 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
         return;
     }
     if let Dialog::Plugin(plugin) = dialog {
-        super::plugin_dialog::draw_plugin_dialog(frame, plugin, area);
+        super::plugin_dialog::draw_plugin_dialog(frame, app, plugin, area);
         return;
     }
     let width = area.width.saturating_sub(4).min(72);
@@ -129,9 +129,9 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
             path,
             picker,
             clone,
-        } => add_project(path, picker, clone.as_deref(), inner_width),
+        } => add_project(app, path, picker, clone.as_deref(), inner_width),
         Dialog::CloneProject(choice) => Shape {
-            below: repository_lines(choice, usize::from(inner_width)),
+            below: repository_lines(app, choice, usize::from(inner_width)),
             hint: "↑↓ choose   ⏎ choose where   esc cancel",
             ..Shape::new(
                 " Clone from GitHub ",
@@ -220,7 +220,7 @@ fn naming_model<'a>(
         .find(|(id, _)| id.as_deref() == Some(agent))
         .map_or_else(|| agent.to_owned(), |(_, label)| label);
     let offered = match listed {
-        None => Line::from(format!("Asking {label} for its models…")).dim(),
+        None => super::loading::rule(app, "Loading models", 40),
         Some(Ok(models)) if models.is_empty() => {
             Line::from(format!("{label} lists none: type one it knows.")).dim()
         }
@@ -512,6 +512,7 @@ fn tickets_from<'a>(
 /// always as many lines, so the dialog keeps its place as the person types.
 /// The folder to add as a project, or to clone `clone` into.
 fn add_project<'a>(
+    app: &App,
     path: &'a LineInput,
     picker: &FolderPicker,
     clone: Option<&str>,
@@ -533,16 +534,16 @@ fn add_project<'a>(
         ),
     };
     Shape {
-        below: picker_lines(picker, path.text(), usize::from(inner_width)),
+        below: picker_lines(app, picker, path.text(), usize::from(inner_width)),
         hint,
         ..Shape::new(title, vec![Line::from(said)], Some(path))
     }
 }
 
 /// The repositories offered, the chosen one lit, and why ⏎ did nothing.
-fn repository_lines(choice: &CloneChoice, columns: usize) -> Vec<Line<'static>> {
+fn repository_lines(app: &App, choice: &CloneChoice, columns: usize) -> Vec<Line<'static>> {
     let mut lines = match &choice.listed {
-        None => vec![Line::from("Asking GitHub…").dim()],
+        None => vec![super::loading::rule(app, "Loading repositories", columns)],
         Some(Err(reason)) => vec![
             Line::from(super::shorten(&format!("GitHub: {reason}"), columns)).red(),
             Line::from("⏎ still clones one typed as owner/name.").dim(),
@@ -589,15 +590,25 @@ fn repository_lines(choice: &CloneChoice, columns: usize) -> Vec<Line<'static>> 
     lines
 }
 
-fn picker_lines(picker: &FolderPicker, typed: &str, columns: usize) -> Vec<Line<'static>> {
-    let mut lines = folder_lines(picker, typed, columns);
+fn picker_lines(
+    app: &App,
+    picker: &FolderPicker,
+    typed: &str,
+    columns: usize,
+) -> Vec<Line<'static>> {
+    let mut lines = folder_lines(app, picker, typed, columns);
     lines.resize(PICKER_ROWS + 1, Line::from(""));
     lines
 }
 
-fn folder_lines(picker: &FolderPicker, typed: &str, columns: usize) -> Vec<Line<'static>> {
+fn folder_lines(
+    app: &App,
+    picker: &FolderPicker,
+    typed: &str,
+    columns: usize,
+) -> Vec<Line<'static>> {
     let folders = match picker.shown(typed) {
-        Shown::Loading => return vec![Line::from("Listing…").dim()],
+        Shown::Loading => return vec![super::loading::rule(app, "Loading folder", columns)],
         Shown::Failed(reason) => {
             return vec![
                 Line::from(super::shorten(&format!("This folder: {reason}"), columns)).dim(),

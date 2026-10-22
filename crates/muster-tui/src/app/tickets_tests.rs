@@ -12,7 +12,7 @@ use muster_core::{
 };
 
 use super::tests::{PANE, World, command, press, render, world};
-use super::{Action, Dialog, HarnessChoice, Mode, TicketRow, View};
+use super::{Action, Dialog, HarnessChoice, Mode, TicketRow, TicketText, View};
 use crate::model::tests::session;
 
 pub(super) fn key(number: u64) -> TicketKey {
@@ -56,7 +56,12 @@ pub(super) fn on_tickets() -> World {
             project: world.project.id
         }
     );
-    assert!(render(&world.app).contains("app  fetching…"));
+    // Its heading's rest is the wait.
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("app ─") && screen.contains(" Loading tickets "),
+        "{screen}"
+    );
     reply(
         &mut world,
         req_id,
@@ -90,6 +95,7 @@ pub(super) fn on_tickets() -> World {
         Ok(Reply::IssueViewed {
             issue: issue(42, "Fix the login redirect"),
             body: "After signing in, users land on /404.".to_owned(),
+            comments: Vec::new(),
         }),
     );
     world
@@ -152,6 +158,88 @@ fn a_project_s_tickets_are_listed_and_the_selected_one_shown_with_its_text() {
     press(&mut world.app, KeyCode::Down);
     let actions = press(&mut world.app, KeyCode::Up);
     assert!(commands(&actions).is_empty(), "{actions:?}");
+}
+
+#[test]
+fn a_ticket_s_text_reads_as_markdown_and_what_was_said_after_under_it() {
+    let mut world = on_tickets();
+    world.app.now = Some(Timestamp::from_millis(1_792_668_600_000));
+    world.app.ticket_texts.insert(
+        (world.project.id, key(42)),
+        TicketText::Loaded {
+            body: "## Steps\n- **open** [the page](https://x.y/login)\n- `sign in`".to_owned(),
+            comments: vec![
+                muster_core::IssueComment {
+                    author: Some("octocat".to_owned()),
+                    at: Some(Timestamp::from_millis(1_792_661_400_000)),
+                    body: "Seen on *main* too.".to_owned(),
+                },
+                muster_core::IssueComment {
+                    author: None,
+                    at: None,
+                    body: "> Seen on main too.\n\nFixed by #43.".to_owned(),
+                },
+            ],
+        },
+    );
+    let screen = render(&world.app);
+    for shown in [
+        "Steps",
+        "  • open the page (https://x.y/login)",
+        "  • sign in",
+        "── 2 comments ─",
+        "octocat · 2h00m ago",
+        "Seen on main too.",
+        "someone",
+        "▎ Seen on main too.",
+        "Fixed by #43.",
+    ] {
+        assert!(screen.contains(shown), "{shown:?} in\n{screen}");
+    }
+    assert!(
+        !screen.contains("**open**") && !screen.contains("## Steps"),
+        "{screen}"
+    );
+}
+
+#[test]
+fn a_long_conversation_pages_down_and_back_with_page_keys() {
+    let mut world = on_tickets();
+    world.app.ticket_texts.insert(
+        (world.project.id, key(42)),
+        TicketText::Loaded {
+            body: "It fails.".to_owned(),
+            comments: (1..=30)
+                .map(|n| muster_core::IssueComment {
+                    author: Some(format!("person{n}")),
+                    at: None,
+                    body: format!("comment {n}"),
+                })
+                .collect(),
+        },
+    );
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("PgDn more") && !screen.contains("comment 30"),
+        "{screen}"
+    );
+    for _ in 0..10 {
+        press(&mut world.app, KeyCode::PageDown);
+    }
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("comment 30") && screen.contains("PgUp back"),
+        "{screen}"
+    );
+    assert!(!screen.contains("It fails."), "{screen}");
+    // Another ticket is shown from its top.
+    press(&mut world.app, KeyCode::Down);
+    assert_eq!(world.app.ticket_scrolled(), 0);
+    press(&mut world.app, KeyCode::Up);
+    for _ in 0..10 {
+        press(&mut world.app, KeyCode::PageUp);
+    }
+    assert!(render(&world.app).contains("It fails."));
 }
 
 #[test]

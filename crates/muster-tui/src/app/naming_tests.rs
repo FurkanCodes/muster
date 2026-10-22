@@ -131,7 +131,7 @@ fn the_model_is_picked_among_those_the_agent_offers_or_typed() {
             agent: "claude".to_owned()
         }
     );
-    assert!(render(&world.app).contains("Asking Claude Code for its models"));
+    assert!(render(&world.app).contains("Loading models"));
     world.app.on_frame(ServerFrame::Reply {
         req_id,
         outcome: Ok(Reply::Models(vec!["haiku".to_owned(), "sonnet".to_owned()])),

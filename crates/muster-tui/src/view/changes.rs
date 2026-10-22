@@ -58,6 +58,11 @@ fn row_line(
     let line = match row {
         ChangeRow::Heading(text) => return Line::from(format!(" {text}")).bold(),
         ChangeRow::Note(text) => return Line::from(format!(" {}", one_line(text))).dim(),
+        ChangeRow::Loading(text) => {
+            let mut line = super::loading::rule(app, text, width.saturating_sub(1));
+            line.spans.insert(0, Span::raw(" "));
+            return line;
+        }
         ChangeRow::Error(text) => return Line::from(format!(" {}", one_line(text))).red(),
         ChangeRow::Clash(clash) => return super::clashes::pane_line(app, clash, width),
         ChangeRow::Commit(commit) => {
@@ -232,7 +237,15 @@ fn draw_diff(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, diff: &DiffPa
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let lines: Vec<Line<'static>> = match &diff.text {
-        None => vec![Line::from(" Asking git…").dim()],
+        None => {
+            let mut line = super::loading::rule(
+                app,
+                "Loading diff",
+                usize::from(inner.width).saturating_sub(2),
+            );
+            line.spans.insert(0, Span::raw(" "));
+            vec![line]
+        }
         Some(Err(error)) => vec![Line::from(format!(" {}", one_line(error))).red()],
         Some(Ok(found)) if found.text.is_empty() => {
             vec![Line::from(" Git shows no difference in its text.").dim()]

@@ -15,6 +15,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
 use muster_core::{Issue, ProjectId, SessionId, TicketKey, WorkspaceId};
+use ratatui::layout::Rect;
 
 use super::{Action, App, Confirmed, Dialog, HarnessChoice, Mode, Then, View};
 
@@ -43,11 +44,15 @@ pub(crate) enum Tickets {
     Failed(String),
 }
 
-/// A ticket's text, fetched when it is first shown.
+/// A ticket's text and what was said on it, fetched when it is first shown.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum TicketText {
     Loading,
-    Loaded(String),
+    Loaded {
+        body: String,
+        /// Oldest first.
+        comments: Vec<muster_core::IssueComment>,
+    },
     Failed(String),
 }
 
@@ -109,11 +114,12 @@ impl App {
         match (key.code, does) {
             (KeyCode::Up, _) | (_, Some(Does::MoveUp)) => self.move_selection(-1),
             (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),
+            (KeyCode::PageDown, _) => self.page_ticket(1),
+            (KeyCode::PageUp, _) => self.page_ticket(-1),
             (_, Some(Does::RefreshTickets)) => {
                 // Everything is fetched again as it is shown.
                 self.tickets.clear();
                 self.ticket_texts.clear();
-                self.say("Fetching the tickets again…");
             }
             (KeyCode::Enter, _) => return self.open_ticket(),
             (_, Some(Does::AnotherAgent)) => {
@@ -147,6 +153,33 @@ impl App {
             _ => {}
         }
         self.settle()
+    }
+
+    /// How far the selected line's details are paged down.
+    pub(crate) fn ticket_scrolled(&self) -> usize {
+        match &self.ticket_scroll {
+            Some((row, by)) if self.tickets_selected.as_ref() == Some(row) => *by,
+            _ => 0,
+        }
+    }
+
+    /// Pages the selected line's details down (`by` 1) or up (-1), a
+    /// page a line short of the pane, never past their end.
+    fn page_ticket(&mut self, by: isize) {
+        let Some(row) = self.tickets_selected.clone() else {
+            return;
+        };
+        let window = Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
+        let pane = crate::view::browse_areas(self, window).preview;
+        let width = usize::from(pane.width.saturating_sub(2));
+        let height = usize::from(pane.height.saturating_sub(2)).max(1);
+        let last = crate::view::ticket_details_height(self, width).saturating_sub(height);
+        let page = isize::try_from(height.saturating_sub(1).max(1)).unwrap_or(1);
+        let at = self
+            .ticket_scrolled()
+            .saturating_add_signed(by * page)
+            .min(last);
+        self.ticket_scroll = Some((row, at));
     }
 
     /// ⏎ on a ticket: its agent's terminal (the latest still running, else
