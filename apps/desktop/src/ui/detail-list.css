@@ -1,0 +1,28 @@
+/* DetailList (ui/DetailList.tsx): facts as name and value. */
+.mu-details {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-8) var(--space-16);
+  font-size: 13px;
+  line-height: 18px;
+}
+.mu-details dt {
+  color: var(--text-quiet);
+}
+.mu-details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mu-details code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+}
+.mu-found {
+  color: var(--done);
+}
+.mu-missing {
+  color: var(--waiting);
+}

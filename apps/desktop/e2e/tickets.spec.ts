@@ -8,7 +8,7 @@ declare global {
 }
 const id = (n: number) => `01JD${String(n).padStart(22, "0")}`;
 const ticket = (page: Page, key: string) =>
-  page.getByRole("button", { name: new RegExp(`^${key} `) });
+  page.getByRole("option", { name: new RegExp(`^${key} `) });
 /** The window over the Tickets board's day: its agents on their tickets. */
 async function start(page: Page) {
   await page.goto("/");
@@ -25,7 +25,7 @@ test("ARC-24 the Tickets board: groups, agents, pull request, author, labels and
 }) => {
   await start(page);
   await tickets(page);
-  await expect(ticket(page, "#214")).toHaveAttribute("aria-current", "true");
+  await expect(ticket(page, "#214")).toHaveAttribute("aria-selected", "true");
   await expect(ticket(page, "#214").getByRole("img", { name: "needs you" })).toBeVisible();
   await expect(ticket(page, "#214")).toContainText("#91");
   await expect(page.getByText("182k tokens", { exact: true })).toHaveCount(2);
@@ -37,12 +37,12 @@ test("ARC-24 the Tickets board: groups, agents, pull request, author, labels and
     page.locator(".mu-group-name").filter({ hasText: "kep-site, kep-api" }),
   ).toBeVisible();
   await page.keyboard.press("ArrowDown");
-  await expect(ticket(page, "#205")).toHaveAttribute("aria-current", "true");
+  await expect(ticket(page, "#205")).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Needs you", exact: true })).toBeVisible();
   await page.keyboard.press("Meta+3");
-  await expect(ticket(page, "#214")).toHaveAttribute("aria-current", "true");
+  await expect(ticket(page, "#214")).toHaveAttribute("aria-selected", "true");
 });
 
 test("ARC-25 loading lists and text, tracker failure and r to fetch again", async ({ page }) => {

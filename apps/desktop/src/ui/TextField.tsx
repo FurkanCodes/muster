@@ -7,6 +7,7 @@
 import {
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type TextareaHTMLAttributes,
   useId,
 } from "react";
@@ -23,27 +24,49 @@ interface Said {
   mono?: boolean;
 }
 
-function Field({
+/**
+ * A label over a control, and a hint or what went wrong under it. With an
+ * `id` the label is the input's own; without one it names a control that
+ * carries its own label (a Select, the agents' choice).
+ */
+export function Field({
   id,
   label,
   hint,
   error,
   children,
-}: Pick<Said, "label" | "hint" | "error"> & { id: string; children: ReactNode }) {
+}: Pick<Said, "label" | "hint" | "error"> & { id?: string; children: ReactNode }) {
   const said = error || hint;
   return (
     <div className={`mu-field ${error ? "has-error" : ""}`}>
-      <label className="mu-field-label" htmlFor={id}>
-        {label}
-      </label>
+      {id ? (
+        <label className="mu-field-label" htmlFor={id}>
+          {label}
+        </label>
+      ) : (
+        <span className="mu-field-label">{label}</span>
+      )}
       {children}
       {said ? (
-        <span id={`${id}-hint`} className="mu-field-hint" role={error ? "alert" : undefined}>
+        <span
+          id={id ? `${id}-hint` : undefined}
+          className="mu-field-hint"
+          role={error ? "alert" : undefined}
+        >
           {said}
         </span>
       ) : null}
     </div>
   );
+}
+
+/** An input on its own, drawn as a field's (its label is elsewhere, or its placeholder says it). */
+export function Input({
+  mono,
+  className,
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement> & { mono?: boolean; ref?: Ref<HTMLInputElement> }) {
+  return <input {...rest} className={`${inputClass(false, mono)} ${className ?? ""}`} />;
 }
 
 const inputClass = (area: boolean, mono: boolean | undefined) =>

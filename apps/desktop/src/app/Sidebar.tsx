@@ -16,13 +16,14 @@ import {
 } from "react";
 import { addProject, cloneProject, newSession } from "../flows/actions";
 import { useKeymap } from "../keys/useKeymap";
-import { keysOf, SessionMenu } from "../session/SessionMenu";
 import { keep, kept } from "../state/kept";
 import { chats } from "../state/selectors";
 import type { ListId } from "../state/ui";
-import { IconButton, Kbd } from "../ui/controls";
+import { IconButton, Kbd, Segmented, Spacer } from "../ui/controls";
 import { Icon, type IconName } from "../ui/Icon";
 import { KepFace, type Mood } from "../ui/Kep";
+import { ActionMenu, keysOf } from "../ui/Menu";
+import { NavItem } from "../ui/Nav";
 import { useActions, useApp, useDaemon, useUi } from "./context";
 
 function useMood(): Mood {
@@ -41,17 +42,25 @@ export function SidebarToggle() {
   const fullScreen = useUi((state) => state.fullScreen !== null);
   const hidden = folded || fullScreen;
   return (
-    <button
-      type="button"
-      className="mu-icon-btn app-sidebar-toggle"
-      aria-label={hidden ? "Show the sidebar" : "Hide the sidebar"}
+    <IconButton
+      icon="sidebar"
+      className="app-sidebar-toggle"
+      label={hidden ? "Show the sidebar" : "Hide the sidebar"}
       title={`${hidden ? "Show" : "Hide"} the sidebar (⌘\\)`}
       // Full screen brings the sidebar back as it leaves.
       onClick={() => (fullScreen ? actions.fillWindow(null) : actions.foldSidebar())}
-    >
-      <Icon name="sidebar" size={16} />
-    </button>
+    />
   );
+}
+
+/** The window's own buttons sit over the pane's head while the sidebar is away: room for them, and the way back. */
+export function SidebarAway() {
+  const away = useUi((state) => state.sidebarFolded || state.fullScreen !== null);
+  return away ? (
+    <span className="app-head-away">
+      <SidebarToggle />
+    </span>
+  ) : null;
 }
 
 /**
@@ -83,19 +92,15 @@ function SideButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className="mu-nav-item"
-      aria-current={current ? "page" : undefined}
+    <NavItem
+      icon={<Icon name={icon} size={16} />}
+      current={current}
       disabled={disabled}
       onClick={onClick}
     >
-      <span className="mu-nav-icon">
-        <Icon name={icon} size={16} />
-      </span>
       {label}
       {keys ? <Kbd className="app-sidebar-key">{keys}</Kbd> : null}
-    </button>
+    </NavItem>
   );
 }
 
@@ -104,23 +109,17 @@ function ListSwitch() {
   const list = useUi((state) => state.list);
   const waiting = useDaemon((state) => state.derived.counts.waiting);
   const all = useDaemon((state) => chats(state).length);
-  const segment = (id: ListId, label: string, count: number, tone: string) => (
-    <button
-      type="button"
-      className="mu-seg-item app-lists-item"
-      aria-pressed={list === id}
-      onClick={() => actions.show(id)}
-    >
-      {label}
-      {count > 0 ? <span className={`app-lists-count ${tone}`}>{count}</span> : null}
-    </button>
-  );
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, as Segmented's.
-    <div className="mu-seg app-lists" role="group" aria-label="Sessions listed">
-      {segment("needs-you", "Needs you", waiting, "app-lists-count--waiting")}
-      {segment("all", "All", all, "")}
-    </div>
+    <Segmented<ListId>
+      label="Sessions listed"
+      className="app-lists"
+      segments={[
+        { value: "needs-you", label: "Needs you", count: waiting, tone: "waiting" },
+        { value: "all", label: "All", count: all },
+      ]}
+      value={list}
+      onChange={(id) => actions.show(id)}
+    />
   );
 }
 
@@ -128,32 +127,21 @@ function ListSwitch() {
 function ProjectsHead({ linked }: { linked: boolean }) {
   const app = useApp();
   const map = useKeymap();
-  const [open, setOpen] = useState(false);
   return (
     <div className="app-projects-head">
       <span className="app-projects-title">Projects</span>
-      <IconButton
-        icon="plus"
-        size="sm"
+      <ActionMenu
         label="Add a project"
-        pressed={open}
-        disabled={!linked}
-        onClick={() => setOpen(!open)}
+        items={[
+          { ...keysOf(map, "add_project"), label: "Open a folder…", does: () => addProject(app) },
+          {
+            ...keysOf(map, "clone_project"),
+            label: "Clone from GitHub…",
+            does: () => cloneProject(app),
+          },
+        ]}
+        trigger={<IconButton icon="plus" size="sm" label="Add a project" disabled={!linked} />}
       />
-      {open ? (
-        <SessionMenu
-          label="Add a project"
-          items={[
-            { ...keysOf(map, "add_project"), label: "Open a folder…", does: () => addProject(app) },
-            {
-              ...keysOf(map, "clone_project"),
-              label: "Clone from GitHub…",
-              does: () => cloneProject(app),
-            },
-          ]}
-          onClose={() => setOpen(false)}
-        />
-      ) : null}
     </div>
   );
 }
@@ -271,7 +259,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
     <nav className="mu-nav app-sidebar" aria-label="Sessions" hidden={folded} style={{ width }}>
       <div className="app-sidebar-top" data-tauri-drag-region>
         <KepFace mood={mood} />
-        <span className="mu-spacer" data-tauri-drag-region />
+        <Spacer dragsWindow />
         <SidebarToggle />
       </div>
       <SideButton

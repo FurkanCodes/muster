@@ -12,6 +12,7 @@ import type { AddedAgent } from "../ipc/generated/AddedAgent";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { whenKnown } from "../state/whenKnown";
 import { AgentChoice } from "../ui/AgentChoice";
+import { DialogText } from "../ui/Dialog";
 import { Ask } from "./Ask";
 import { START_SIZE } from "./actions";
 import { offered, stepAgent } from "./agents";
@@ -153,7 +154,7 @@ export function Move({ workspace }: { workspace: WorkspaceId }) {
       task={task}
       onAct={move}
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         {parent?.merged
           ? `The branch it was stacked on, ${parent.branch}, merged${parent.number ? ` as #${parent.number}` : ""}. `
           : parent
@@ -161,7 +162,7 @@ export function Move({ workspace }: { workspace: WorkspaceId }) {
             : null}
         Its {commits} are replayed on {onto}'s newest; if one would conflict, nothing changes. What
         is there is kept first, so the move can be put back.
-      </p>
+      </DialogText>
     </Ask>
   );
 }

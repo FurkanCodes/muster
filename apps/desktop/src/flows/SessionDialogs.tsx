@@ -11,6 +11,7 @@ import { BridgeFailure } from "../ipc/bridge";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import { DialogText } from "../ui/Dialog";
 import { Ask } from "./Ask";
 import { count, useChanges } from "./changes";
 import { labelOf } from "./keymap";
@@ -29,10 +30,10 @@ export function Stop({ session }: { session: SessionId }) {
     });
   return (
     <Ask title={`Stop ${title}?`} act="Stop session" acting="Stopping…" task={task} onAct={stop}>
-      <p className="mu-dialog-text">
+      <DialogText>
         Its program is told to stop. It stays on the list with its worktree, branch and transcript
         {restart === "none" ? "." : `, and ${restart} starts it again.`}
-      </p>
+      </DialogText>
     </Ask>
   );
 }
@@ -74,11 +75,11 @@ export function RemoveWorktree({ workspace }: { workspace: WorkspaceId }) {
       task={task}
       onAct={remove}
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         {force
           ? `It has ${files > 0 ? count(files, "file") : "files"} with changes not committed. Removing deletes its folder and those changes. The branch stays.`
           : "Removing deletes its folder. The branch stays."}
-      </p>
+      </DialogText>
     </Ask>
   );
 }
@@ -102,10 +103,10 @@ export function RemoveProject({ project }: { project: ProjectId }) {
       task={task}
       onAct={remove}
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         Muster forgets it and its ended sessions; nothing in its folder is touched. It can be added
         again.
-      </p>
+      </DialogText>
     </Ask>
   );
 }

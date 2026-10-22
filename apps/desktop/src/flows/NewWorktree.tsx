@@ -13,7 +13,8 @@ import { whenKnown } from "../state/whenKnown";
 import { Button } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
 import { Select } from "../ui/Select";
-import { TextField } from "../ui/TextField";
+import { ErrorText } from "../ui/status";
+import { Field, TextField } from "../ui/TextField";
 import { makeWorktree } from "./start";
 import type { Flow } from "./types";
 import { useTask } from "./useTask";
@@ -70,8 +71,7 @@ export default function NewWorktree({ flow }: { flow: Extract<Flow, { kind: "new
         </>
       }
     >
-      <div className="mu-field">
-        <span className="mu-field-label">Project</span>
+      <Field label="Project">
         <Select
           label="Project"
           options={projects}
@@ -79,7 +79,7 @@ export default function NewWorktree({ flow }: { flow: Extract<Flow, { kind: "new
           disabled={task.busy}
           onChange={setProject}
         />
-      </div>
+      </Field>
       <TextField
         label={
           <>
@@ -94,11 +94,7 @@ export default function NewWorktree({ flow }: { flow: Extract<Flow, { kind: "new
         value={branch}
         onChange={setBranch}
       />
-      {task.error ? (
-        <p className="mu-dialog-text ui-flow-error" role="alert">
-          {task.error}
-        </p>
-      ) : null}
+      {task.error ? <ErrorText>{task.error}</ErrorText> : null}
     </Dialog>
   );
 }

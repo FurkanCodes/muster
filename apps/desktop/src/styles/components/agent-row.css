@@ -1,0 +1,32 @@
+/* Agent row */
+.mu-agentrow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-12);
+  padding: var(--space-12);
+  border-radius: var(--radius-md);
+}
+.mu-agentrow:hover {
+  background: var(--surface-raised);
+}
+.mu-agentrow-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.mu-agentrow-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+.mu-agentrow-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-12);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}

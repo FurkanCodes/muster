@@ -1,0 +1,65 @@
+/* Panels beside the terminal */
+.mu-panels {
+  display: flex;
+  gap: var(--space-8);
+  min-height: 0;
+  min-width: 0;
+}
+.mu-panels--column {
+  flex-direction: column;
+}
+.mu-panel {
+  flex: 1 1 0;
+  min-width: var(--layout-panel-min);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: var(--stroke-hairline) solid var(--line);
+  background: var(--surface-term);
+  overflow: hidden;
+  transition: border-color var(--timing-base) var(--ease-out);
+}
+.mu-panel.has-keys {
+  border-color: var(--keys);
+}
+.mu-panel-head {
+  height: var(--size-control-lg);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-4) 0 var(--space-12);
+  border-bottom: var(--stroke-hairline) solid var(--line);
+  background: var(--surface-panel);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+  cursor: grab;
+}
+.mu-panel-title {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.mu-panel.has-keys .mu-panel-title {
+  color: var(--keys);
+}
+.mu-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-10) var(--space-12);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre;
+  color: var(--text);
+}
+.mu-panel-body--terminal {
+  padding: var(--space-12) var(--space-16);
+  font-size: 13px;
+  line-height: 20px;
+}

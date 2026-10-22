@@ -10,6 +10,7 @@ import { installKeys } from "../app/keys";
 import { ulid } from "../ipc/mock/scenario";
 import { SessionPane } from "../session/SessionPane";
 import { renderWithApp } from "../test/render";
+import { tooltipOf } from "../test/tooltip";
 
 const codex = ulid(101);
 const gitLog = ulid(102);
@@ -75,8 +76,7 @@ describe("ARC-24 the panels beside the agent", () => {
     await userEvent.keyboard("G");
     const graph = await screen.findByRole("region", { name: "Session graph" });
     expect(graph).toHaveTextContent("graph, from the plugin");
-    expect(within(graph).getByRole("button", { name: "Put the graph away" })).toHaveAttribute(
-      "title",
+    expect(await tooltipOf(within(graph).getByRole("button", { name: "Put the graph away" }))).toBe(
       "Put it away (⇧G)",
     );
     await userEvent.keyboard("G");

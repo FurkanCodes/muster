@@ -3,7 +3,12 @@
 // row, which the whole of is the target of its control, selected with the
 // keys or a press, and answering ⏎, space and ← → while selected.
 
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
+import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { Label } from "../../ui/Label";
+import { Section, SectionTitle } from "../../ui/Section";
+import { Swatch } from "../../ui/status";
 import { type RowBehaviour, useSettings } from "./context";
 import { sentence } from "./words";
 
@@ -111,17 +116,27 @@ export function SettingText({
   name,
   label,
   does,
+  htmlFor,
 }: {
   name: ReactNode;
   label?: string;
   does?: ReactNode;
+  /** The input it names, where its control is a field: then it is that field's label. */
+  htmlFor?: string;
 }) {
+  if (htmlFor)
+    return (
+      <label className="mu-setting-text" htmlFor={htmlFor}>
+        <span>{name}</span>
+        {does ? <span className="mu-meta">{does}</span> : null}
+      </label>
+    );
   return (
     <span className="mu-setting-text">
       {label ? (
         <span className="mu-setting-name">
           {name}
-          <span className="mu-label">{label}</span>
+          <Label>{label}</Label>
         </span>
       ) : (
         <span>{name}</span>
@@ -135,15 +150,13 @@ export function Control({ children }: { children: ReactNode }) {
   return <span className="mu-setting-control">{children}</span>;
 }
 
+/** A page's settings under one heading. */
 export function Group({ title, children }: { title: string; children: ReactNode }) {
-  const id = useId();
   return (
-    <section className="mu-settings-group" aria-labelledby={id}>
-      <h3 className="mu-settings-group-title" id={id}>
-        {title}
-      </h3>
+    <Section>
+      <SectionTitle>{title}</SectionTitle>
       {children}
-    </section>
+    </Section>
   );
 }
 
@@ -152,8 +165,11 @@ export function Page({
   swatch,
   lead,
   aside,
+  busy = false,
   children,
 }: {
+  /** Its settings are being read: what it says is all it has yet. */
+  busy?: boolean;
   title: string;
   /** A project's colour, beside its name. */
   swatch?: number;
@@ -163,39 +179,42 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <div className="mu-settings">
-      <div className={`mu-settings-head ${aside ? "app-settings-head--aside" : ""}`}>
-        <div className="app-settings-head-text">
-          <h2 className="mu-settings-title">
-            {swatch ? <span className={`mu-swatch mu-p${swatch}`} /> : null}
-            {title}
-          </h2>
-          <span className="mu-meta">{lead}</span>
-        </div>
-        {aside}
-      </div>
+    <div className="mu-settings" aria-busy={busy || undefined}>
+      <Heading className="app-settings-heading">
+        <HeadingTitle>
+          {swatch ? <Swatch colour={swatch} /> : null}
+          {title}
+        </HeadingTitle>
+        <HeadingLead>{lead}</HeadingLead>
+        {aside ? <HeadingActions>{aside}</HeadingActions> : null}
+      </Heading>
       {children}
     </div>
   );
 }
 
-/** Where the page's settings are saved. */
-export function Footnote({ children }: { children: ReactNode }) {
-  return <p className="mu-footnote app-settings-footnote">{children}</p>;
+/** A word under a page's settings: where they are saved, what does not read. */
+export function Footnote({
+  tone = "quiet",
+  children,
+}: {
+  /** `warn` where it says what does not read; `text` where it is what the page is about. */
+  tone?: "quiet" | "warn" | "text";
+  children: ReactNode;
+}) {
+  return (
+    <p className={`mu-footnote app-settings-footnote app-settings-footnote--${tone}`}>{children}</p>
+  );
 }
 
 /** Muster's own settings do not read: the rest are its defaults meanwhile. */
 export function Unreadable({ problem, readKey }: { problem: string; readKey: string }) {
   return (
-    <div className="mu-banner app-settings-banner" role="status">
-      <span className="mu-mark mu-mark--waiting" aria-hidden="true">
-        ▲
-      </span>
-      <span className="app-settings-banner-text">
-        <span className="mu-banner-lead">Muster's own settings do not read:</span>{" "}
-        {sentence(problem)}. Until they do, Muster's defaults hold. Fix the file, then press{" "}
-        {readKey}.
-      </span>
-    </div>
+    <Banner className="app-settings-banner">
+      <BannerBody>
+        <BannerLead>Muster's own settings do not read:</BannerLead> {sentence(problem)}. Until they
+        do, Muster's defaults hold. Fix the file, then press {readKey}.
+      </BannerBody>
+    </Banner>
   );
 }

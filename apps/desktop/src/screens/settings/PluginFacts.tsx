@@ -5,6 +5,8 @@
 
 import type { ReactNode } from "react";
 import type { PluginDetails } from "../../ipc/generated/PluginDetails";
+import { Detail, DetailList } from "../../ui/DetailList";
+import { Found, Missing } from "../../ui/status";
 import { missingPrograms, runsOf } from "./pluginWords";
 import { oneLine } from "./words";
 
@@ -43,63 +45,45 @@ export function PluginFacts({
 }) {
   const missing = missingPrograms(details);
   return (
-    <dl className="mu-details">
-      <dt>From</dt>
-      <dd>{from}</dd>
-      <dt>Version</dt>
-      <dd>
+    <DetailList>
+      <Detail name="From">{from}</Detail>
+      <Detail name="Version">
         <code>{oneLine(details.version)}</code>, for Muster <code>{oneLine(details.muster)}</code>{" "}
         or later
-      </dd>
+      </Detail>
       {runsOf(details).map((runs) => (
         <RunsFact key={`${runs.what}-${runs.command}`} what={runs.what}>
           <code>{runs.command}</code>, {runs.how}
         </RunsFact>
       ))}
       {details.requires.length > 0 ? (
-        <>
-          <dt>Needs</dt>
-          <dd>
-            {details.requires.map((required, at) => (
-              <span key={required.program}>
-                {at > 0 ? <br /> : null}
-                <code>{oneLine(required.program)}</code>{" "}
-                {required.found ? (
-                  <span className="mu-found">✓ found</span>
-                ) : (
-                  <span className="mu-missing">✗ not found</span>
-                )}
-              </span>
-            ))}
-            {missing.length > 0 && details.how_to_get ? (
-              <>
-                <br />
-                <span className="mu-quiet">{oneLine(details.how_to_get)}</span>
-              </>
-            ) : null}
-          </dd>
-        </>
+        <Detail name="Needs">
+          {details.requires.map((required, at) => (
+            <span key={required.program}>
+              {at > 0 ? <br /> : null}
+              <code>{oneLine(required.program)}</code>{" "}
+              {required.found ? <Found>✓ found</Found> : <Missing>✗ not found</Missing>}
+            </span>
+          ))}
+          {missing.length > 0 && details.how_to_get ? (
+            <>
+              <br />
+              <span className="mu-quiet">{oneLine(details.how_to_get)}</span>
+            </>
+          ) : null}
+        </Detail>
       ) : null}
       {details.env.length > 0 || details.secrets.length > 0 ? (
-        <>
-          <dt>Is given</dt>
-          <dd>{given(details)}</dd>
-        </>
+        <Detail name="Is given">{given(details)}</Detail>
       ) : null}
-      <dt>Manifest</dt>
-      <dd>
+      <Detail name="Manifest">
         <code>sha256 {details.sha256}</code>
-      </dd>
+      </Detail>
       {children}
-    </dl>
+    </DetailList>
   );
 }
 
 function RunsFact({ what, children }: { what: string; children: ReactNode }) {
-  return (
-    <>
-      <dt>{what}</dt>
-      <dd>{children}</dd>
-    </>
-  );
+  return <Detail name={what}>{children}</Detail>;
 }

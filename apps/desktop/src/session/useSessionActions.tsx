@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { type App, useApp, useDaemon } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { Button } from "../ui/controls";
-import { Dialog } from "../ui/Dialog";
+import { Dialog, DialogText } from "../ui/Dialog";
 import { TextField } from "../ui/TextField";
 import { browsePullRequest } from "./byHand";
 
@@ -123,9 +123,9 @@ export function CloseSession({ actions }: { actions: SessionActions }) {
         </>
       }
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         Its agent stops and it leaves the list. Its worktree and branch stay as they are.
-      </p>
+      </DialogText>
     </Dialog>
   );
 }

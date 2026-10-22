@@ -7,7 +7,8 @@
 
 import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FileChange } from "../../ipc/generated/FileChange";
-import { FileRow } from "../../ui/FileRow";
+import { FileRow, fileLineId } from "../../ui/FileRow";
+import { List } from "../../ui/List";
 
 /** One row and the space under it, in pixels: FileRow's `size-control-sm` and `space-2` (changes.css). */
 export const ROW = 26;
@@ -30,7 +31,7 @@ export function FileList({
   label,
   rows,
   selected,
-  onSelect,
+  resting,
   onOpen,
   onDrawn,
 }: {
@@ -40,7 +41,8 @@ export function FileList({
   /** The list: the keys move through it, and it scrolls. */
   rows: RefObject<HTMLDivElement | null>;
   selected: string | null;
-  onSelect(path: string): void;
+  /** The diff has the keys: the selected file is tinted, not lit. */
+  resting: boolean;
   onOpen(path: string): void;
   /** Called once the rows in sight are drawn, after each change. */
   onDrawn?(): void;
@@ -71,11 +73,14 @@ export function FileList({
   const start = Math.max(0, Math.floor(top / ROW) - OVERSCAN);
   const end = Math.min(files.length, Math.ceil((top + height) / ROW) + OVERSCAN);
   return (
-    <div
+    <List
       ref={rows}
-      role="listbox"
-      aria-label={label}
+      label={label}
       className="changes-list changes-files"
+      activeId={selected === null ? undefined : fileLineId(selected)}
+      resting={resting}
+      // It keeps its selected file in sight itself, drawn or not.
+      sight="list"
       // Read as the update is applied: a scroll's update can come after a
       // key's that moved the list since, and must not put it back.
       onScroll={() => setTop((was) => rows.current?.scrollTop ?? was)}
@@ -87,11 +92,10 @@ export function FileList({
           file={file}
           folder={folder}
           selected={selected === file.path}
-          onSelect={() => onSelect(file.path)}
           onOpen={() => onOpen(file.path)}
         />
       ))}
       <div aria-hidden="true" style={{ height: (files.length - end) * ROW }} />
-    </div>
+    </List>
   );
 }

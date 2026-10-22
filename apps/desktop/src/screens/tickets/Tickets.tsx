@@ -3,13 +3,18 @@ import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
+import { Page } from "../../app/Page";
 import { SidebarAwayRow } from "../../app/Sidebar";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
 import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { projectsInOrder } from "../../state/selectors";
-import { Button, Segmented } from "../../ui/controls";
+import { Button, Segmented, Spacer } from "../../ui/controls";
+import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
+import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { List } from "../../ui/List";
+import { ErrorText } from "../../ui/status";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { Detail } from "./Detail";
 import { groupProjects, message, ticketId, ticketsFor } from "./data";
@@ -26,6 +31,11 @@ type Selection = { issue: Issue; projects: string[]; tracker: string; source: st
 type TicketDialog =
   | { kind: "assign"; selected: Selection; another: boolean }
   | { kind: "close"; selected: Selection; worktrees: Workspace[] };
+
+/** A ticket's line's id in the window, for its list's `aria-activedescendant`. */
+function lineIdOf(project: string, key: Issue["key"]): string {
+  return `ticket-${ticketId(project, key)}`;
+}
 
 export default function Tickets() {
   const bridge = useBridge();
@@ -162,15 +172,28 @@ export default function Tickets() {
     ticket_in_browser: browser,
     close_ticket: close,
   });
+  // Each project's tickets are a list of their own: the keys moving the
+  // selection into another project's list take the focus there with it.
+  const selectedLine = selected ? lineIdOf(selected.projects[0] ?? "", selected.issue.key) : null;
+  useEffect(() => {
+    if (!selectedLine) return;
+    const focused = document.activeElement;
+    const into = document.getElementById(selectedLine)?.closest<HTMLElement>('[role="listbox"]');
+    if (into && focused !== into && focused?.closest(".tickets-list")) {
+      into.focus({ preventScroll: true });
+    }
+  }, [selectedLine]);
   return (
     <div className="tickets-screen" data-keys={dialog ? "dialog" : "list"}>
       <section className="tickets-list" aria-label="Tickets">
         <SidebarAwayRow />
-        <div className="mu-queue-head" data-tauri-drag-region>
-          <h1 className="mu-queue-title">Tickets</h1>
-          <span className="mu-meta">Each project's open tickets, and the agents on them.</span>
+        <div className="app-column-heading" data-tauri-drag-region>
+          <Heading>
+            <HeadingTitle level={1}>Tickets</HeadingTitle>
+            <HeadingLead>Each project's open tickets, and the agents on them.</HeadingLead>
+          </Heading>
         </div>
-        <div className="mu-queue tickets-queue">
+        <div className="tickets-queue">
           {!ids.length ? (
             <p className="tickets-state mu-meta">
               No projects yet: add one, and its open tickets show here.
@@ -196,7 +219,7 @@ export default function Tickets() {
                         ? `${list.value.tracker}${list.value.mine ? ", only yours" : ""}`
                         : ""}
                     </span>
-                    <span className="mu-spacer" />
+                    <Spacer />
                     {list?.state === "loaded" ? (
                       <Segmented
                         label={`Which of ${groupName(projects)}'s tickets`}
@@ -218,9 +241,7 @@ export default function Tickets() {
                     </p>
                   ) : list.state === "failed" ? (
                     <div className="tickets-state">
-                      <p className="tickets-error" role="alert">
-                        Its tickets could not be fetched: {list.error}
-                      </p>
+                      <ErrorText>Its tickets could not be fetched: {list.error}</ErrorText>
                       <Button onClick={refresh}>Try again ({keys.refresh})</Button>
                     </div>
                   ) : !list.value.issues.length ? (
@@ -228,17 +249,29 @@ export default function Tickets() {
                       {list.value.mine ? "none of yours open" : "no open tickets"}
                     </p>
                   ) : (
-                    list.value.issues.map((issue) => (
-                      <TicketRow
-                        key={issue.key}
-                        issue={issue}
-                        projects={projects}
-                        selected={
-                          selected?.projects[0] === project && selected.issue.key === issue.key
-                        }
-                        onSelect={() => actions.select("tickets", ticketId(project, issue.key))}
-                      />
-                    ))
+                    <List
+                      label={`${groupName(projects)}'s tickets`}
+                      activeId={
+                        selected?.projects[0] === project
+                          ? lineIdOf(project, selected.issue.key)
+                          : undefined
+                      }
+                      resting={dialog !== null}
+                      className="tickets-group"
+                    >
+                      {list.value.issues.map((issue) => (
+                        <TicketRow
+                          key={issue.key}
+                          lineId={lineIdOf(project, issue.key)}
+                          issue={issue}
+                          projects={projects}
+                          selected={
+                            selected?.projects[0] === project && selected.issue.key === issue.key
+                          }
+                          onSelect={() => actions.select("tickets", ticketId(project, issue.key))}
+                        />
+                      ))}
+                    </List>
                   )}
                 </section>
               );
@@ -259,11 +292,11 @@ export default function Tickets() {
           keys={keys}
         />
       ) : (
-        <section className="mu-pane tickets-detail">
-          <div className="mu-empty">
-            <p className="mu-empty-text">Select a ticket to see it here.</p>
-          </div>
-        </section>
+        <Page label="No ticket" className="tickets-detail">
+          <EmptyState>
+            <EmptyStateText>Select a ticket to see it here.</EmptyStateText>
+          </EmptyState>
+        </Page>
       )}
       <Suspense fallback={null}>
         {dialog?.kind === "assign" ? (

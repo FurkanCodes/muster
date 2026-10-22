@@ -11,14 +11,17 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useActions, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
 import type { Command } from "../../ipc/generated/Command";
+import type { FileChange } from "../../ipc/generated/FileChange";
 import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
 import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { splitPath } from "../../lib/format";
 import type { Hint } from "../../state/ui";
 import { Button, Segmented } from "../../ui/controls";
-import { fileKind } from "../../ui/FileRow";
-import { DiffStat } from "../../ui/status";
+import { DiffFrame } from "../../ui/DiffView";
+import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
+import { FileKind } from "../../ui/FileRow";
+import { DiffStat, MarkSpace } from "../../ui/status";
 import { ChangesList, type View } from "./ChangesList";
 import { ClashBanners } from "./ClashBanners";
 import { DiffPanel } from "./DiffPanel";
@@ -74,7 +77,7 @@ function WorkspaceChanges({
   const rows = useRef<HTMLDivElement>(null);
   /** The entry an undo just made, to select and focus once the timeline lists it. */
   const newEntry = useRef<string | null>(null);
-  /** The selected row takes the focus once it is drawn: a long list draws only what is in sight. */
+  /** The list takes the focus once it is drawn, where the keys moved through it. */
   const focusing = useRef(false);
   // Moving to where the selection already is draws again, so the row takes the focus all the same.
   const [, setFollow] = useState(0);
@@ -96,14 +99,12 @@ function WorkspaceChanges({
     view === "turns" ? kept.entries.find((found) => String(found.number) === shown) : undefined;
   const file = files.find((found) => found.path === shown);
 
-  /** Gives the selected row the focus, where it is wanted and drawn. */
+  /** Gives the list the focus, where it is wanted: it names its selected line, which keeps itself in sight. */
   const focusWanted = () => {
-    if (!focusing.current) return;
-    const row = rows.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!row) return;
+    const list = rows.current;
+    if (!focusing.current || !list) return;
     focusing.current = false;
-    row.focus({ preventScroll: true });
-    row.scrollIntoView({ block: "nearest" });
+    list.focus({ preventScroll: true });
   };
   useEffect(() => {
     const made = newEntry.current;
@@ -243,12 +244,7 @@ function WorkspaceChanges({
             timeline={timeline}
             rows={rows}
             selected={selected}
-            onSelect={(id) => {
-              // The dialog hands the focus back to the row it left; the new entry stays selected.
-              if (newEntry.current !== null) return;
-              setSelection(id);
-              setKeysInDiff(false);
-            }}
+            resting={keysInDiff}
             onOpen={open}
             onAgain={askAgain}
             onDrawn={focusWanted}
@@ -285,13 +281,15 @@ function WorkspaceChanges({
             }
           />
         ) : (
-          <div className="mu-diffview ui-diff changes-pick">
-            <p className="mu-empty-text">
-              {view === "turns"
-                ? "Choose a turn to see what it changed."
-                : "Choose a file to see its diff."}
-            </p>
-          </div>
+          <DiffFrame className="changes-pick">
+            <EmptyState>
+              <EmptyStateText>
+                {view === "turns"
+                  ? "Choose a turn to see what it changed."
+                  : "Choose a file to see its diff."}
+              </EmptyStateText>
+            </EmptyState>
+          </DiffFrame>
         )}
       </div>
       {undoing !== null ? (
@@ -320,17 +318,14 @@ function FileHead({
   children,
 }: {
   path: string;
-  kind: Parameters<typeof fileKind>[0] | undefined;
+  kind: FileChange["kind"] | undefined;
   part: string;
   children: ReactNode;
 }) {
   const { dir, name } = splitPath(oneLine(path));
-  const [letter, tone] = kind ? fileKind(kind) : ["", "M"];
   return (
     <>
-      <span className={`mu-file-kind mu-file-kind--${tone} mu-mono`} aria-hidden="true">
-        {letter}
-      </span>
+      {kind ? <FileKind kind={kind} /> : <MarkSpace />}
       <span className="mu-mono mu-cut changes-diff-path" title={path}>
         <span className="mu-quiet">{dir}</span>
         {name}

@@ -1,0 +1,63 @@
+/* Plugin row */
+.mu-plugin {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-10);
+  min-height: var(--size-row-two);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-md);
+  transition: background-color var(--timing-base) var(--ease-out);
+}
+.mu-plugin:hover {
+  background: var(--surface-raised);
+}
+.mu-plugin.is-selected {
+  background: var(--surface-lit);
+}
+.mu-plugin-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mu-plugin-open:focus-visible {
+  outline: none;
+}
+.mu-plugin:has(.mu-plugin-open:focus-visible) {
+  background: var(--surface-lit);
+}
+.mu-plugin-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.mu-version {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-plugin-what {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-plugin-what.is-off {
+  color: var(--text-quiet);
+}
+.mu-plugin .mu-switch {
+  margin-top: 1px;
+}

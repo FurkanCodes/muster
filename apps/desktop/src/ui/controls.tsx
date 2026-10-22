@@ -4,6 +4,7 @@
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
+import { Tooltip } from "./Tooltip";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "quiet" | "danger";
@@ -47,25 +48,28 @@ type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   pressed?: boolean;
 };
 
+/** A button that is only its icon: its label is its name, and its tooltip (`title`, else the label) says it with its key. */
 export function IconButton({
   icon,
   label,
   size = "md",
   pressed,
   className = "",
+  title,
   ...rest
 }: IconButtonProps) {
   return (
-    <button
-      type="button"
-      className={`mu-icon-btn ${size === "sm" ? "mu-icon-btn--sm" : ""} ${className}`}
-      aria-label={label}
-      title={label}
-      aria-pressed={pressed}
-      {...rest}
-    >
-      <Icon name={icon} size={size === "sm" ? 14 : 16} />
-    </button>
+    <Tooltip content={title ?? label}>
+      <button
+        type="button"
+        className={`mu-icon-btn ${size === "sm" ? "mu-icon-btn--sm" : ""} ${className}`}
+        aria-label={label}
+        aria-pressed={pressed}
+        {...rest}
+      >
+        <Icon name={icon} size={size === "sm" ? 14 : 16} />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -74,10 +78,11 @@ export function Kbd({ children, className = "" }: { children: ReactNode; classNa
 }
 
 /** A key cap and what it does. */
-export function Hint({ keys, does }: { keys: string; does: string }) {
+/** A key and what it does: `⏎ answer`; several keys that do the same, each in its cap. */
+export function Hint({ keys, does }: { keys: string | readonly string[]; does: string }) {
   return (
     <span className="mu-hint">
-      <Kbd>{keys}</Kbd>
+      {typeof keys === "string" ? <Kbd>{keys}</Kbd> : keys.map((key) => <Kbd key={key}>{key}</Kbd>)}
       {does}
     </span>
   );
@@ -99,6 +104,10 @@ export function Spinner({ still = false }: { still?: boolean }) {
 export interface Segment<T extends string> {
   value: T;
   label: string;
+  /** How many it holds, after its label; none where there are none. */
+  count?: number;
+  /** The count's tone: `waiting` where they wait on the person. */
+  tone?: "waiting";
 }
 
 export function Segmented<T extends string>({
@@ -107,9 +116,12 @@ export function Segmented<T extends string>({
   value,
   onChange,
   busy = false,
+  className,
 }: {
   label: string;
   segments: readonly Segment<T>[];
+  /** Where it sits, for its place's own layout (the sidebar's lists' switch fills its width). */
+  className?: string;
   value: T;
   onChange: (value: T) => void;
   /** A change is on its way: no second press until it is answered. */
@@ -117,7 +129,12 @@ export function Segmented<T extends string>({
 }) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, not a form; a fieldset would bring a legend and form semantics.
-    <div className="mu-seg" role="group" aria-label={label} aria-busy={busy || undefined}>
+    <div
+      className={className ? `mu-seg ${className}` : "mu-seg"}
+      role="group"
+      aria-label={label}
+      aria-busy={busy || undefined}
+    >
       {segments.map((segment) => (
         <button
           key={segment.value}
@@ -128,8 +145,26 @@ export function Segmented<T extends string>({
           onClick={() => onChange(segment.value)}
         >
           {segment.label}
+          {segment.count ? (
+            <span
+              className={
+                segment.tone ? `mu-seg-count mu-seg-count--${segment.tone}` : "mu-seg-count"
+              }
+            >
+              {segment.count}
+            </span>
+          ) : null}
         </button>
       ))}
     </div>
+  );
+}
+
+/** Room taking what is left in a row, pushing what follows to its end; where it `dragsWindow`, the window moves by it. */
+export function Spacer({ dragsWindow = false }: { dragsWindow?: boolean }) {
+  return dragsWindow ? (
+    <span className="mu-spacer" data-tauri-drag-region />
+  ) : (
+    <span className="mu-spacer" />
   );
 }

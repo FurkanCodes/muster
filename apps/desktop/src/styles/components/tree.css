@@ -1,0 +1,30 @@
+/* Session tree (All sessions): what its lines have beyond a List's (ui/list.css). */
+/* The fold shows while the pointer is on its line, or while it is folded. */
+.mu-tree-fold {
+  width: var(--size-mark);
+  flex: none;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-quiet);
+  opacity: 0;
+  transition: opacity var(--timing-fast) var(--ease-out);
+}
+.mu-list-item:hover .mu-tree-fold,
+.mu-tree-fold.is-folded {
+  opacity: 1;
+}
+.mu-tree-project {
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* A shell's line: a command, quiet and in mono, lower than a chat's. */
+.mu-tree-shell {
+  min-height: var(--size-control-sm);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}

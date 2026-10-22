@@ -5,10 +5,10 @@
 // asks; then its live terminal, with the shell and plugins' panels beside
 // it (src/panels), or the workspace's changes in its place.
 
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 import { useActions, useApp, useDaemon, useUi } from "../app/context";
 import { KeysHeld } from "../app/keys";
-import { SidebarToggle } from "../app/Sidebar";
+import { Page, PageActions, PageHeader, PageMeta, PageTitle } from "../app/Page";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { KEY_SCREENS, useActionKeys, useKeyLabel, useKeymap } from "../keys/useKeymap";
 import { ShellButton } from "../panels/PaneActions";
@@ -16,23 +16,13 @@ import { Panels } from "../panels/Panels";
 import { toggleFullScreen } from "../panels/usePanelKeys";
 import { branchOf, projectColour } from "../state/selectors";
 import { IconButton } from "../ui/controls";
-import { AgentLogo, Branch, DiffStat, PullRequest } from "../ui/status";
+import { ActionMenu, keysOf, type MenuItem } from "../ui/Menu";
+import { AgentLogo, Branch, Clash, DiffStat, PullRequest } from "../ui/status";
 import { browsePullRequest } from "./byHand";
 import { NeedsYouBanner } from "./NeedsYouBanner";
-import { keysOf, type MenuItem, SessionMenu } from "./SessionMenu";
 import "./session.css";
 
 const ChangesView = lazy(() => import("./changes/ChangesView"));
-
-/** The window's own buttons sit over the pane's head while the sidebar is away: room for them, and the way back. */
-export function SidebarAway() {
-  const away = useUi((state) => state.sidebarFolded || state.fullScreen !== null);
-  return away ? (
-    <span className="app-head-away">
-      <SidebarToggle />
-    </span>
-  ) : null;
-}
 
 /**
  * "⎇ feature/x in muster +120 −30 overlap #88": where it runs, and what its
@@ -70,7 +60,7 @@ function Where({ session, onChanges }: { session: SessionId; onChanges: () => vo
   });
   const pr = useDaemon((state) => state.workspaces[workspaceId]?.pull_request ?? null);
   return (
-    <span className="mu-pane-meta app-head-where">
+    <PageMeta>
       <button
         type="button"
         className="app-head-link"
@@ -101,7 +91,7 @@ function Where({ session, onChanges }: { session: SessionId; onChanges: () => vo
           title={`See where it meets other work (${changesKey})`}
           onClick={onChanges}
         >
-          <span className={`mu-clash-${clash}`}>{clash}</span>
+          <Clash kind={clash} />
         </button>
       ) : null}
       {pr ? (
@@ -114,7 +104,7 @@ function Where({ session, onChanges }: { session: SessionId; onChanges: () => vo
           <PullRequest pr={pr} />
         </button>
       ) : null}
-    </span>
+    </PageMeta>
   );
 }
 
@@ -129,13 +119,8 @@ export function SessionPane({
   const app = useApp();
   const actions = useActions();
   const map = useKeymap();
-  const [menuOpen, setMenuOpen] = useState(false);
   // Asked for by a right-click on this session's line in the list.
   const menuAt = useUi((state) => (state.menuAt?.session === session ? state.menuAt : null));
-  const closeMenu = () => {
-    setMenuOpen(false);
-    if (menuAt) actions.openMenuAt(null);
-  };
   const fullScreen = useUi((state) => state.fullScreen === session);
   const title = useDaemon((state) => state.sessions[session]?.title ?? "");
   const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
@@ -159,16 +144,14 @@ export function SessionPane({
     ...menu,
   ];
   return (
-    <section className="mu-pane app-pane session-pane" aria-label={title}>
-      <header className="app-head" data-tauri-drag-region>
-        <SidebarAway />
+    <Page label={title} className="session-pane">
+      <PageHeader>
         <AgentLogo harness={harness} />
-        <h2 className={`app-head-title ${hasKeys ? "app-pane-title--keys" : ""}`} title={title}>
+        <PageTitle title={title} className={hasKeys ? "app-pane-title--keys" : undefined}>
           {title}
-        </h2>
+        </PageTitle>
         <Where session={session} onChanges={changes} />
-        <span className="mu-spacer" data-tauri-drag-region />
-        <div className="mu-pane-actions">
+        <PageActions>
           <ShellButton session={session} />
           <IconButton
             icon="changes"
@@ -177,23 +160,21 @@ export function SessionPane({
             pressed={mode === "changes"}
             onClick={changes}
           />
-          <IconButton
-            icon="more"
-            label="More"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(!menuOpen)}
-          />
-        </div>
-        {menuOpen || menuAt ? (
-          <SessionMenu
+          <ActionMenu
             label={title}
             items={items}
-            onClose={closeMenu}
-            at={menuOpen ? undefined : (menuAt ?? undefined)}
+            trigger={<IconButton icon="more" label="More" />}
+          />
+        </PageActions>
+        {menuAt ? (
+          <ActionMenu
+            label={title}
+            items={items}
+            at={menuAt}
+            onClose={() => actions.openMenuAt(null)}
           />
         ) : null}
-      </header>
+      </PageHeader>
       {mode === "changes" && workspace ? (
         <Suspense fallback={null}>
           {/* Once shown, the changes hold the keys: one they do not answer never reaches the list. */}
@@ -209,6 +190,6 @@ export function SessionPane({
           </div>
         </>
       )}
-    </section>
+    </Page>
   );
 }

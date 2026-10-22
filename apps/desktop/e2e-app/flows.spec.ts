@@ -163,10 +163,10 @@ describe("The flows", () => {
     it("goes to a setting's page and to a project's page", async () => {
       await find("naming");
       await option(palette(), "Naming chats").click();
-      await expect($(".mu-settings-title")).toHaveText("Naming chats");
+      await expect($(".app-settings-page h2")).toHaveText("Naming chats");
       await find("app");
       await option(palette(), "app").click();
-      await expect($(".mu-settings-title")).toHaveText("app");
+      await expect($(".app-settings-page h2")).toHaveText("app");
     });
 
     it("says what it found nothing for", async () => {

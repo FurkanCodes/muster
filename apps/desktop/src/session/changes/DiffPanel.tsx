@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Command } from "../../ipc/generated/Command";
-import { DiffView } from "../../ui/DiffView";
+import { DiffFrame, DiffHead, DiffView, DiffWaiting } from "../../ui/DiffView";
+import { ErrorText } from "../../ui/status";
 import { useReply } from "./useReply";
 
 /** The diff of the file or entry opened, as the daemon answers `command` (FileDiff, EntryDiff). */
@@ -32,20 +33,20 @@ export function DiffPanel({
       />
     );
   return (
-    <div className="mu-diffview ui-diff">
-      <div className="mu-diffview-head">{head}</div>
-      <div className="mu-diffview-body ui-diff-body">
+    <DiffFrame>
+      <DiffHead>{head}</DiffHead>
+      <DiffWaiting>
         {answer.state === "loading" ? (
           <p className="mu-quiet" role="status">
             Asking git…
           </p>
         ) : (
-          <p className="mu-note--error" role="alert">
+          <ErrorText>
             {answer.state === "error" ? answer.error : "The daemon did not send a diff."} r asks
             again.
-          </p>
+          </ErrorText>
         )}
-      </div>
-    </div>
+      </DiffWaiting>
+    </DiffFrame>
   );
 }

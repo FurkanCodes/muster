@@ -7,6 +7,10 @@
 import { useNow } from "../app/clock";
 import { useActions, useBridge, useDaemon } from "../app/context";
 import { ago } from "../lib/format";
+import { Banner, BannerBody, BannerLead } from "../ui/Banner";
+import { Button } from "../ui/controls";
+import { EmptyState, EmptyStateText, EmptyStateTitle } from "../ui/EmptyState";
+import { KepFace } from "../ui/Kep";
 import "./away.css";
 
 function useAway(): { since: number; reason: string } | null {
@@ -31,27 +35,19 @@ export function AwayBanner() {
     void bridge.tryNow().catch(() => {});
   };
   return (
-    <div className="mu-banner mu-banner--away ui-flow-away" role="alert">
-      <span className="mu-mark ui-flow-away-mark" aria-hidden="true">
-        !
-      </span>
-      <span className="ui-flow-away-text">
-        <span className="mu-banner-lead">Muster's daemon is out of reach.</span> Starting it again
-        and trying every half second, {ago(now - away.since)} so far. What you see is as it was.
+    <Banner tone="away" role="alert" className="ui-flow-away">
+      <BannerBody>
+        <BannerLead>Muster's daemon is out of reach.</BannerLead> Starting it again and trying every
+        half second, {ago(now - away.since)} so far. What you see is as it was.
         {away.reason ? <span className="mu-quiet"> {away.reason}</span> : null}
-      </span>
-      <button
-        type="button"
-        className="mu-btn mu-btn--quiet mu-btn--sm"
-        title="Open daemon.log"
-        onClick={showLog}
-      >
+      </BannerBody>
+      <Button variant="quiet" size="sm" title="Open daemon.log" onClick={showLog}>
         Show its log
-      </button>
-      <button type="button" className="mu-btn mu-btn--quiet mu-btn--sm" onClick={tryNow}>
+      </Button>
+      <Button variant="quiet" size="sm" onClick={tryNow}>
         Try now
-      </button>
-    </div>
+      </Button>
+    </Banner>
   );
 }
 
@@ -60,21 +56,19 @@ export function Away() {
   const away = useAway();
   const at = away ? new Date(away.since).toLocaleTimeString([], { hour12: false }) : null;
   return (
-    <div className="mu-empty">
-      <span className="mu-kep mu-kep--away ui-flow-kep" role="img" aria-label="Kep, away">
-        ▼;ᴥ;▼
-      </span>
-      <h2 className="mu-empty-title">Waiting for the daemon</h2>
-      <p className="mu-empty-text">
+    <EmptyState>
+      <KepFace mood="away" size="large" />
+      <EmptyStateTitle>Waiting for the daemon</EmptyStateTitle>
+      <EmptyStateText>
         When it is back, your sessions are back with it: those in containers as they were, the rest
         through their own agent's resume. Closing this window changes nothing.
-      </p>
+      </EmptyStateText>
       {away ? (
         <p className="mu-meta ui-flow-said">
           {away.reason ? `${away.reason.replace(/\.$/, "")}. ` : null}Out of reach since {at}. Its
           log is daemon.log in Muster's runtime folder.
         </p>
       ) : null}
-    </div>
+    </EmptyState>
   );
 }

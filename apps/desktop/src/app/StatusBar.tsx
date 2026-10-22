@@ -13,7 +13,7 @@ import { agentOf } from "../lib/agents";
 import { spend } from "../lib/format";
 import { standsBeside } from "../state/selectors";
 import { isList } from "../state/ui";
-import { Hint } from "../ui/controls";
+import { Hint, Spacer } from "../ui/controls";
 import { useDaemon, useUi } from "./context";
 
 /** What the status bar says while a terminal has the keys, or null while Muster has them. */
@@ -124,7 +124,7 @@ export function StatusBar() {
       {hints.map((hint) => (
         <Hint key={hint.key} keys={hint.key} does={hint.does} />
       ))}
-      <span className="mu-spacer" />
+      <Spacer />
       {session ? <SessionFacts session={session} /> : null}
       <Flock />
       <MemoryMeter />

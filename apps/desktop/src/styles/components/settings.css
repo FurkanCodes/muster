@@ -1,0 +1,40 @@
+/* Settings pages */
+.mu-settings {
+  width: 100%;
+  max-width: var(--layout-settings);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+  padding: var(--space-24) var(--space-32) var(--space-32);
+}
+.mu-setting-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+.mu-setting-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.mu-setting--sub {
+  padding-left: calc(var(--space-12) + var(--space-24));
+}
+.mu-setting.is-selected {
+  background: var(--surface-lit);
+}
+.mu-footnote {
+  padding: 0 var(--space-12);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-footnote code,
+.mu-setting code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  color: var(--text);
+}

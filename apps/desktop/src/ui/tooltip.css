@@ -1,0 +1,12 @@
+/* Tooltip (ui/Tooltip.tsx): a small floating word, over everything. */
+.mu-tooltip {
+  z-index: var(--z-tooltip);
+  max-width: 280px;
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-popover);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 16px;
+}

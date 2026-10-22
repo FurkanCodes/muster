@@ -1,0 +1,35 @@
+/* Segmented control */
+.mu-seg {
+  display: inline-flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-tint);
+}
+.mu-seg-item {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-10);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-quiet);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.mu-seg-item:hover {
+  color: var(--text);
+}
+.mu-seg-item[aria-pressed="true"] {
+  background: var(--surface-lit);
+  color: var(--text);
+}
+/* A segment's count, after its label; in the waiting colour where they wait on the person. */
+.mu-seg-count {
+  margin-left: var(--space-6);
+  color: var(--text-quiet);
+}
+.mu-seg-count--waiting {
+  color: var(--waiting);
+}

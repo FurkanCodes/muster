@@ -7,8 +7,10 @@
 import { useState } from "react";
 import { useActions, useBridge } from "../../app/context";
 import type { PluginPreview } from "../../ipc/generated/PluginPreview";
+import { Banner, BannerBody } from "../../ui/Banner";
 import { Button, Spinner } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { Dialog, DialogText } from "../../ui/Dialog";
+import { ErrorText } from "../../ui/status";
 import { TextField } from "../../ui/TextField";
 import { type PluginDialog, useSettings } from "./context";
 import { PluginFacts } from "./PluginFacts";
@@ -54,10 +56,10 @@ function AddPlugin({ dialog }: { dialog: Extract<PluginDialog, { step: "add" }> 
         placeholder={folder ? "None: a folder is read as it is" : "Empty for its default branch"}
         disabled={folder}
       />
-      <p className="mu-dialog-text">
+      <DialogText>
         Nothing of it runs yet: Muster fetches it, reads what it would run, and shows you before
         anything is added.
-      </p>
+      </DialogText>
     </Dialog>
   );
 }
@@ -82,13 +84,13 @@ function Fetching({ dialog }: { dialog: Extract<PluginDialog, { step: "fetching"
         </Button>
       }
     >
-      <p className="mu-dialog-text" role="status" aria-busy="true">
+      <DialogText busy>
         <Spinner /> Fetching {dialog.what}…
-      </p>
-      <p className="mu-dialog-text mu-quiet">
+      </DialogText>
+      <DialogText className="mu-quiet">
         Nothing of it runs: Muster reads what it would run, and shows you before anything is added.
         git may take up to three minutes.
-      </p>
+      </DialogText>
     </Dialog>
   );
 }
@@ -182,9 +184,9 @@ function Approve({ preview }: { preview: PluginPreview }) {
         </>
       }
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         Everything it will run is below, as its manifest says. Nothing of it runs until you say yes.
-      </p>
+      </DialogText>
       <PluginFacts details={details} from={from(preview)}>
         {was ? (
           <>
@@ -194,18 +196,18 @@ function Approve({ preview }: { preview: PluginPreview }) {
         ) : null}
       </PluginFacts>
       {missing.length > 0 ? (
-        <p className="mu-dialog-text app-settings-untold">
+        <DialogText className="app-settings-untold">
           It needs programs that are not on PATH: it can be {done}, but they are yours to get.
-        </p>
+        </DialogText>
       ) : null}
-      <div className="mu-banner app-settings-note">
-        <span className="mu-meta app-settings-note-text">
+      <Banner tone="note">
+        <BannerBody>
           {details.hooks.length > 0
             ? "A hook only hears. It cannot start, prompt or type into an agent. "
             : ""}
           If its manifest changes, it is turned off until you approve it again. {after}
-        </span>
-      </div>
+        </BannerBody>
+      </Banner>
     </Dialog>
   );
 }
@@ -224,11 +226,9 @@ function Failed({ dialog }: { dialog: Extract<PluginDialog, { step: "failed" }> 
         </Button>
       }
     >
-      <p className="mu-dialog-text">It could not be fetched:</p>
-      <p className="mu-dialog-text app-settings-untold" role="alert">
-        {oneLine(dialog.message)}
-      </p>
-      <p className="mu-dialog-text mu-quiet">Nothing was changed.</p>
+      <DialogText>It could not be fetched:</DialogText>
+      <ErrorText>{oneLine(dialog.message)}</ErrorText>
+      <DialogText className="mu-quiet">Nothing was changed.</DialogText>
     </Dialog>
   );
 }
@@ -268,7 +268,7 @@ function Remove({ dialog }: { dialog: Extract<PluginDialog, { step: "remove" }> 
         </>
       }
     >
-      <p className="mu-dialog-text">{dialog.question}</p>
+      <DialogText>{dialog.question}</DialogText>
     </Dialog>
   );
 }

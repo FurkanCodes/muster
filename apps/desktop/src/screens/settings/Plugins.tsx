@@ -9,13 +9,18 @@ import { useNow } from "../../app/clock";
 import { useDaemon } from "../../app/context";
 import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import { useKeyLabel, useKeymap } from "../../keys/useKeymap";
+import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
+import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { Label } from "../../ui/Label";
+import { Section, SectionTitle } from "../../ui/Section";
 import { Switch } from "../../ui/Switch";
+import { Version } from "../../ui/status";
 import { useSettings } from "./context";
 import { rowKey, rowName } from "./model";
 import { PluginFacts } from "./PluginFacts";
 import { brings, pluginName, pluginOrder, runs, sourceText, wantsApproval } from "./pluginWords";
-import { SettingRow, Unreadable } from "./Row";
+import { Footnote, SettingRow, Unreadable } from "./Row";
 import {
   capital,
   changeWords,
@@ -63,10 +68,8 @@ function PluginItem({ id }: { id: string }) {
       >
         <span className="mu-plugin-name">
           {name}
-          {plugin.details ? (
-            <span className="mu-plugin-version">{oneLine(plugin.details.version)}</span>
-          ) : null}
-          <span className="mu-label">{sourceWord(plugin.source)}</span>
+          {plugin.details ? <Version>{oneLine(plugin.details.version)}</Version> : null}
+          <Label>{sourceWord(plugin.source)}</Label>
         </span>
         <span className={`mu-plugin-what ${plugin.problem ? "is-off" : ""}`}>
           {busy ? "…" : what}
@@ -150,22 +153,19 @@ function Details({ id }: { id: string }) {
       <div className="app-plugin-details-head">
         <h3 id="plugin-details-title" className="app-plugin-details-title">
           {name}
-          {details ? <span className="mu-plugin-version">{oneLine(details.version)}</span> : null}
-          <span className="mu-label">{sourceWord(plugin.source)}</span>
+          {details ? <Version>{oneLine(details.version)}</Version> : null}
+          <Label>{sourceWord(plugin.source)}</Label>
         </h3>
         {details?.description ? (
           <span className="mu-meta">{oneLine(details.description)}</span>
         ) : null}
       </div>
       {plugin.problem ? (
-        <div className="mu-banner app-plugin-banner" role="status">
-          <span className="mu-mark mu-mark--waiting" aria-hidden="true">
-            ▲
-          </span>
-          <span className="app-settings-banner-text">
-            <span className="mu-banner-lead">{state}</span> {sentence(problemText(plugin.problem))}.
-          </span>
-        </div>
+        <Banner>
+          <BannerBody>
+            <BannerLead>{state}</BannerLead> {sentence(problemText(plugin.problem))}.
+          </BannerBody>
+        </Banner>
       ) : (
         <span className="mu-meta">{runs(plugin) ? "On: it runs." : "Off."}</span>
       )}
@@ -218,44 +218,48 @@ export function Plugins() {
   const shown = selected.startsWith("plugin.") ? selected.slice("plugin.".length) : null;
   return (
     <div className="app-plugins">
-      <div className="mu-settings-head app-settings-head--aside">
-        <div className="app-settings-head-text">
-          <h2 className="mu-settings-title">Plugins</h2>
-          <span className="mu-meta">
-            Muster's own and the ones you added. Each runs only what it showed you when you approved
-            it.
-          </span>
-        </div>
-        <Button
-          variant="quiet"
-          icon="plus"
-          title={`Add a plugin (${add})`}
-          onClick={actions.addPlugin}
-        >
-          Add a plugin
-        </Button>
-      </div>
+      <Heading className="app-settings-heading">
+        <HeadingTitle>Plugins</HeadingTitle>
+        <HeadingLead>
+          Muster's own and the ones you added. Each runs only what it showed you when you approved
+          it.
+        </HeadingLead>
+        <HeadingActions>
+          <Button
+            variant="quiet"
+            icon="plus"
+            title={`Add a plugin (${add})`}
+            onClick={actions.addPlugin}
+          >
+            Add a plugin
+          </Button>
+        </HeadingActions>
+      </Heading>
       {problem ? <Unreadable problem={problem} readKey={readKey} /> : null}
       <div className="app-plugins-body">
         <div className="app-plugins-list">
-          <h3 className="mu-settings-group-title">Muster's own</h3>
-          {own.map((id) => (
-            <PluginItem key={id} id={id} />
-          ))}
-          <h3 className="mu-settings-group-title app-plugins-yours">Yours</h3>
-          {theirs.length === 0 ? (
-            <p className="mu-footnote app-settings-footnote">None yet.</p>
-          ) : (
-            theirs.map((id) => <PluginItem key={id} id={id} />)
-          )}
-          <AddItem />
+          <Section>
+            <SectionTitle>Muster's own</SectionTitle>
+            {own.map((id) => (
+              <PluginItem key={id} id={id} />
+            ))}
+          </Section>
+          <Section className="app-plugins-yours">
+            <SectionTitle>Yours</SectionTitle>
+            {theirs.length === 0 ? (
+              <Footnote>None yet.</Footnote>
+            ) : (
+              theirs.map((id) => <PluginItem key={id} id={id} />)
+            )}
+            <AddItem />
+          </Section>
         </div>
         {shown ? <Details id={shown} /> : <About />}
       </div>
-      <p className="mu-footnote app-settings-footnote">
+      <Footnote>
         Muster keeps them in its own settings, <code>[plugins.&lt;id&gt;]</code>, and marks here a
         change made with <code>muster plugin</code>.
-      </p>
+      </Footnote>
     </div>
   );
 }

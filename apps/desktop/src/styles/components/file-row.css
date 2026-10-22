@@ -1,0 +1,41 @@
+/* What a changed file's line has beyond a List's (ui/list.css): lower, its path in mono. */
+.mu-file {
+  min-height: var(--size-control-sm);
+  padding: var(--space-4) var(--space-8);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 16px;
+}
+.mu-file-kind {
+  width: var(--size-mark);
+  flex: none;
+  text-align: center;
+}
+.mu-file-kind--M {
+  color: var(--text-quiet);
+}
+.mu-file-kind--A {
+  color: var(--done);
+}
+.mu-file-kind--D {
+  color: var(--waiting);
+}
+.mu-file-kind--R {
+  color: var(--text-quiet);
+}
+.mu-file-kind--U {
+  color: var(--text-quiet);
+}
+.mu-file-path {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: ltr;
+}
+.mu-file-dir {
+  color: var(--text-quiet);
+}

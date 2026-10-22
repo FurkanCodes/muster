@@ -108,7 +108,9 @@ test.describe("ARC-24 the command palette", () => {
         .locator("xpath=following-sibling::*[1]")
         .waitFor();
       await palette.getByRole("option", { name: new RegExp(`^${title}`) }).click();
-      await expect(page.locator(".mu-settings-title")).toHaveText(title);
+      await expect(
+        page.locator(".app-settings-page").getByRole("heading", { level: 2 }),
+      ).toHaveText(title);
     }
   });
 
@@ -118,7 +120,9 @@ test.describe("ARC-24 the command palette", () => {
     const palette = page.getByRole("dialog", { name: "Command palette" });
     await palette.getByRole("combobox", { name: "Go to or do" }).fill("reset");
     await palette.getByRole("option", { name: /^Put the panels back as at first/ }).click();
-    await expect(page.locator(".mu-settings-title")).toHaveText("General");
+    await expect(page.locator(".app-settings-page").getByRole("heading", { level: 2 })).toHaveText(
+      "General",
+    );
     await expect(page.locator('[data-row="general/panels"]')).toHaveClass(/is-selected/);
   });
 

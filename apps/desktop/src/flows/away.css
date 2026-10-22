@@ -4,20 +4,9 @@
   margin: 0 var(--space-12) var(--space-12);
   padding: var(--space-10) var(--space-12);
 }
-.ui-flow-away-mark {
-  color: var(--working);
-}
-.ui-flow-away-text {
-  flex: 1;
-  min-width: 0;
-}
 /* What it last knew, as it was: still, and dimmed. */
 .app-body[inert] {
   opacity: var(--opacity-disabled);
-}
-.ui-flow-kep {
-  font-size: 28px;
-  line-height: 36px;
 }
 .ui-flow-said {
   margin: 0;

@@ -10,7 +10,7 @@ import type { SessionLines } from "../../ipc/generated/SessionLines";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { chats } from "../../state/selectors";
 import type { Theme } from "../../state/ui";
-import { Segmented } from "../../ui/controls";
+import { Button, Segmented } from "../../ui/controls";
 import { Select } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
 import { canAsk } from "./asks";
@@ -201,14 +201,9 @@ export function General({ preferences }: { preferences: Preferences }) {
             }
           />
           <Control>
-            <button
-              type="button"
-              className="mu-btn mu-btn--quiet"
-              aria-busy={busy("panels") || undefined}
-              onClick={putPanelsBack}
-            >
+            <Button busy={busy("panels")} onClick={putPanelsBack}>
               Put back as at first
-            </button>
+            </Button>
           </Control>
         </SettingRow>
       </Group>
@@ -289,16 +284,14 @@ export function General({ preferences }: { preferences: Preferences }) {
             }
           />
           <Control>
-            <button
-              type="button"
-              className="mu-btn"
+            <Button
               title="Restart in place, as muster reload does"
               disabled={restarting}
-              aria-busy={restarting || undefined}
+              busy={restarting}
               onClick={restart}
             >
               {restarting ? "Restarting…" : "Restart in place"}
-            </button>
+            </Button>
           </Control>
         </SettingRow>
       </Group>

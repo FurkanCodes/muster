@@ -1,0 +1,14 @@
+/* Turn row: what a turn's line has beyond a List's (ui/list.css): its number, from the top. */
+.mu-turnrow {
+  align-items: flex-start;
+  padding: var(--space-6) var(--space-8);
+}
+.mu-turnrow-num {
+  width: 20px;
+  flex: none;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-quiet);
+}

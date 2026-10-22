@@ -1,0 +1,39 @@
+/* Agent choice */
+.mu-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: var(--space-8);
+}
+.mu-choice {
+  height: var(--size-choice);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-10);
+  border-radius: var(--radius-md);
+  border: var(--stroke-hairline) solid var(--line);
+  background: var(--surface-ground);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--timing-fast) var(--ease-out),
+    background-color var(--timing-fast) var(--ease-out);
+}
+.mu-choice:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-raised);
+}
+.mu-choice[aria-checked="true"] {
+  border-color: var(--text-quiet);
+  background: var(--surface-lit);
+}
+.mu-choice-note {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-quiet);
+  white-space: nowrap;
+}

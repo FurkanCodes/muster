@@ -4,7 +4,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithApp } from "../test/render";
 import { Button } from "./controls";
-import { Dialog } from "./Dialog";
+import { Dialog, DialogText } from "./Dialog";
 
 function Close({ onClose = vi.fn(), onAccept = vi.fn() }) {
   return (
@@ -23,7 +23,7 @@ function Close({ onClose = vi.fn(), onAccept = vi.fn() }) {
         </>
       }
     >
-      <p className="mu-dialog-text">Everyone watching it is told.</p>
+      <DialogText>Everyone watching it is told.</DialogText>
     </Dialog>
   );
 }

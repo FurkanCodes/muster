@@ -13,7 +13,7 @@ import { agentOf } from "../lib/agents";
 import { doing, statusKind } from "../lib/status";
 import { branchOf } from "../state/selectors";
 import { Panel, PanelClose, PanelHead, PanelTitle } from "../ui/Panel";
-import { AgentLogo, StatusMark } from "../ui/status";
+import { AgentLogo, BranchName, StatusMark } from "../ui/status";
 import { putPanelAway, putShellAway } from "./beside";
 import type { Divider } from "./solve";
 
@@ -118,7 +118,7 @@ export function ShellPanel({
         </span>
         <PanelTitle>Shell</PanelTitle>
         <span className="mu-cut">{program}</span>
-        {elsewhere ? <span className="mu-branch mu-cut">⎇ {elsewhere}</span> : null}
+        {elsewhere ? <BranchName className="mu-cut">{elsewhere}</BranchName> : null}
         <PanelClose
           label="Put the shell away"
           keyHint={key}

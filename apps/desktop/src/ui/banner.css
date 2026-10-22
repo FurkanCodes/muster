@@ -1,0 +1,70 @@
+/* Banner (ui/Banner.tsx): a strip saying what to know now; its tone draws its mark. */
+.mu-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-md);
+  background: var(--waiting-soft);
+  font-size: 13px;
+  line-height: 18px;
+  min-width: 0;
+}
+.mu-banner-lead {
+  color: var(--waiting);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mu-banner-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* What it says at length wraps; what it says on one line is cut (BannerText). */
+.mu-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+/* The tone's mark: drawn here, never a glyph a screen puts in. */
+.mu-banner-mark {
+  width: var(--size-mark);
+  flex: none;
+  display: inline-flex;
+  justify-content: center;
+}
+.mu-banner-mark::before {
+  content: "";
+  box-sizing: border-box;
+  width: var(--size-dot);
+  height: var(--size-dot);
+  border-radius: var(--radius-full);
+}
+.mu-banner--waiting .mu-banner-mark::before {
+  width: 8px;
+  height: 8px;
+  background: var(--waiting);
+  box-shadow: 0 0 0 3px var(--waiting-soft);
+}
+.mu-banner--overlap .mu-banner-mark::before {
+  background: var(--working);
+}
+.mu-banner--away .mu-banner-mark::before {
+  border: 1.5px solid var(--working);
+}
+.mu-banner--note {
+  background: var(--surface-raised);
+}
+.mu-banner--overlap {
+  background: var(--working-soft);
+}
+.mu-banner--overlap .mu-banner-lead {
+  color: var(--working);
+}
+.mu-banner--away {
+  background: var(--working-soft);
+}
+.mu-banner--away .mu-banner-lead {
+  color: var(--working);
+}

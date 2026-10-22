@@ -1,0 +1,40 @@
+/* Kbd and hints */
+.mu-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--size-kbd);
+  height: var(--size-kbd);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--surface-raised);
+  color: var(--text-quiet);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+/* On a primary button the key is part of its label. */
+.mu-btn--primary .mu-kbd {
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  padding: 0;
+}
+.mu-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--text-quiet);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.mu-hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-12);
+}

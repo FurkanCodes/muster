@@ -10,14 +10,11 @@
    of the lines it is under, so its height is its place. */
 .sessions-tree {
   display: block;
+  padding: var(--space-4) var(--space-8) var(--space-16);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  outline: none;
-}
-/* The list says it has the keys by its selected line, lit rather than tinted. */
-.sessions-tree:focus-visible {
   outline: none;
 }
 .sessions-node,
@@ -48,26 +45,17 @@
 .sessions-node--under .sessions-line {
   padding-top: var(--space-2);
 }
-.sessions-tree .mu-row,
-.sessions-tree .mu-tree-row {
+.sessions-tree .mu-list-item {
   flex: none;
 }
 .sessions-tree .mu-tree-fold {
   cursor: pointer;
 }
-/* Selected while the keys are elsewhere: tinted, not lit (README: States). */
-.sessions-tree .mu-row[aria-selected="true"].is-resting,
-.sessions-tree .mu-tree-row[aria-selected="true"].is-resting {
-  background: var(--surface-tint);
-}
-.sessions-tree .mu-tree-end .mu-mark {
+.sessions-tree .mu-list-item-end .mu-mark {
   width: auto;
 }
 .sessions-asking {
   font-weight: 500;
-}
-.sessions-waiting {
-  color: var(--text-quiet);
 }
 .sessions-running {
   color: var(--text);

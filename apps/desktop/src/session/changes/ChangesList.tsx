@@ -8,7 +8,9 @@ import type { Changes } from "../../ipc/generated/Changes";
 import type { FileChange } from "../../ipc/generated/FileChange";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import { Button } from "../../ui/controls";
-import { TurnRow } from "../../ui/TurnRow";
+import { List } from "../../ui/List";
+import { ErrorText } from "../../ui/status";
+import { TurnRow, turnLineId } from "../../ui/TurnRow";
 import { FileList } from "./FileList";
 import { commonFolder, entryLabel, oneLine } from "./labels";
 import type { Answer } from "./useReply";
@@ -35,11 +37,11 @@ function Waiting({
     );
   if (answer.state !== "error") return null;
   return (
-    <div className="changes-note" role="alert">
-      <p className="mu-note--error">
+    <div className="changes-note">
+      <ErrorText>
         {refused}
         {answer.error}
-      </p>
+      </ErrorText>
       <Button size="sm" title="Ask again (r)" onClick={onAgain}>
         Ask again
       </Button>
@@ -57,7 +59,7 @@ function Files({
   label,
   rows,
   selected,
-  onSelect,
+  resting,
   onOpen,
   onDrawn,
 }: {
@@ -65,7 +67,7 @@ function Files({
   label: string;
   rows: RefObject<HTMLDivElement | null>;
   selected: string | null;
-  onSelect(path: string): void;
+  resting: boolean;
   onOpen(path: string): void;
   onDrawn(): void;
 }) {
@@ -78,7 +80,7 @@ function Files({
         label={label}
         rows={rows}
         selected={selected}
-        onSelect={onSelect}
+        resting={resting}
         onOpen={onOpen}
         onDrawn={onDrawn}
       />
@@ -100,7 +102,7 @@ export function ChangesList({
   timeline,
   rows,
   selected,
-  onSelect,
+  resting,
   onOpen,
   onAgain,
   onDrawn,
@@ -110,7 +112,8 @@ export function ChangesList({
   timeline: Answer<Timeline>;
   rows: RefObject<HTMLDivElement | null>;
   selected: string | null;
-  onSelect(id: string): void;
+  /** The diff has the keys: the selected line is tinted, not lit. */
+  resting: boolean;
   onOpen(id: string): void;
   onAgain(): void;
   /** Called once a long list of files has drawn the rows in sight. */
@@ -135,18 +138,23 @@ export function ChangesList({
       );
     return (
       <>
-        <div ref={rows} role="listbox" aria-label="Turns" className="changes-list">
+        <List
+          ref={rows}
+          label="Turns"
+          className="changes-list"
+          activeId={selected === null ? undefined : turnLineId(selected)}
+          resting={resting}
+        >
           {kept.entries.map((entry) => (
             <TurnRow
               key={entry.number}
               entry={entry}
               label={entryLabel(kept, entry)}
               selected={selected === String(entry.number)}
-              onSelect={() => onSelect(String(entry.number))}
               onOpen={() => onOpen(String(entry.number))}
             />
           ))}
-        </div>
+        </List>
         <p className="mu-meta changes-note">Muster keeps each workspace's newest 100.</p>
       </>
     );
@@ -164,7 +172,7 @@ export function ChangesList({
         label="Files not committed"
         rows={rows}
         selected={selected}
-        onSelect={onSelect}
+        resting={resting}
         onOpen={onOpen}
         onDrawn={onDrawn}
       />
@@ -201,7 +209,7 @@ export function ChangesList({
         label="Files on the branch"
         rows={rows}
         selected={selected}
-        onSelect={onSelect}
+        resting={resting}
         onOpen={onOpen}
         onDrawn={onDrawn}
       />

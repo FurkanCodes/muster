@@ -8,6 +8,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { useActions } from "../app/context";
 import { Button } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
+import { ErrorText } from "../ui/status";
 import type { useTask } from "./useTask";
 import "./flows.css";
 
@@ -75,11 +76,7 @@ export function Ask({
       }
     >
       {children}
-      {task.error ? (
-        <p className="mu-dialog-text ui-flow-error" role="alert">
-          {task.error}
-        </p>
-      ) : null}
+      {task.error ? <ErrorText>{task.error}</ErrorText> : null}
     </Dialog>
   );
 }

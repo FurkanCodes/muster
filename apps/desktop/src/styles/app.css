@@ -81,18 +81,12 @@ body {
   display: flex;
   margin: var(--space-12) 0 var(--space-4);
 }
-.app-lists-item {
+/* The lists' switch fills the sidebar's width, its two halves alike. */
+.app-lists .mu-seg-item {
   flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-6);
-}
-.app-lists-count {
-  color: var(--text-quiet);
-}
-.app-lists-count--waiting {
-  color: var(--waiting);
 }
 /* The projects' heading over the list, its + always there: the way to add one. */
 .app-projects-head {
@@ -197,6 +191,16 @@ html[data-window-full] {
   --layout-traffic-lights: var(--space-24);
 }
 
+/* A column's own heading at its top (Tickets, Settings): its title and what it is. */
+.app-column-heading {
+  padding: var(--space-16) var(--space-20) var(--space-8);
+}
+
+/* A pane with nothing selected says so in its middle (app/Page: NothingSelected). */
+.app-page-none {
+  margin: auto;
+}
+
 /* Over Tickets and Settings while the sidebar is away: the window's buttons' row, and the way back. */
 .app-away-row {
   flex: none;
@@ -295,12 +299,6 @@ html[data-resizing] * {
 /* The notes' live region with nothing to say: no room, no gap after it. */
 .app-statusbar-said:empty {
   margin-right: calc(-1 * var(--space-16));
-}
-
-.app-placeholder {
-  flex: 1;
-  display: flex;
-  background: var(--surface-ground);
 }
 
 /* The session pane and its terminal. xterm sizes itself to its box. */

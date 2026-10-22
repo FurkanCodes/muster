@@ -9,12 +9,16 @@ import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect } f
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useDaemon } from "../../app/context";
 import { type KeyHandlers, useKeys } from "../../app/keys";
+import { Page } from "../../app/Page";
 import { SidebarAwayRow } from "../../app/Sidebar";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { chordsOf, labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { projectColour, projectsInOrder } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
+import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { NavCount, NavItem, NavLabel } from "../../ui/Nav";
+import { Swatch } from "../../ui/status";
 import { Agents } from "./Agents";
 import { OWN_AGENTS } from "./agentList";
 import { useSettings } from "./context";
@@ -33,6 +37,7 @@ import { Notifications } from "./Notifications";
 import { PluginDialogs } from "./PluginDialogs";
 import { Plugins } from "./Plugins";
 import { Project } from "./Project";
+import { Page as SettingsPage } from "./Row";
 import { SettingsProvider } from "./SettingsProvider";
 import "./settings.css";
 
@@ -60,9 +65,9 @@ function SettingsScreen() {
     // biome-ignore lint/a11y/noStaticElementInteractions: it only keeps a focused control's ⏎ and space from the screen's own keys.
     <div className="app-settings" data-settings onKeyDown={keepControlKeys}>
       <Sections shown={section} />
-      <div className="mu-pane app-settings-page">
+      <Page label="Settings page" className="app-settings-page">
         <ShownPage section={section} />
-      </div>
+      </Page>
       <PluginDialogs />
     </div>
   );
@@ -71,25 +76,26 @@ function SettingsScreen() {
 function SectionItem({
   id,
   current,
+  icon,
   children,
 }: {
   id: Section;
   current: boolean;
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   const { state, actions } = useSettings();
   return (
-    <button
-      type="button"
-      className="mu-nav-item"
-      aria-current={current ? "page" : undefined}
+    <NavItem
+      icon={icon}
+      current={current}
       onClick={() => {
         const first = firstRow(state.rows, id);
         if (first) actions.select(first.key);
       }}
     >
       {children}
-    </button>
+    </NavItem>
   );
 }
 
@@ -97,10 +103,7 @@ function ProjectItem({ id, current }: { id: string; current: boolean }) {
   const name = useDaemon((daemon) => daemon.projects[id]?.name ?? "");
   const colour = useDaemon((daemon) => projectColour(daemon, id));
   return (
-    <SectionItem id={projectSection(id)} current={current}>
-      <span className="mu-nav-icon">
-        <span className={`mu-swatch mu-p${colour}`} />
-      </span>
+    <SectionItem id={projectSection(id)} current={current} icon={<Swatch colour={colour} />}>
       <span className="app-settings-project">{name}</span>
     </SectionItem>
   );
@@ -118,20 +121,21 @@ function Sections({ shown }: { shown: Section }) {
   return (
     <section className="app-settings-sections" aria-label="Settings sections">
       <SidebarAwayRow />
-      <div className="mu-queue-head" data-tauri-drag-region>
-        <h1 className="mu-queue-title">Settings</h1>
-        <span className="mu-meta">The terminal UI shares them.</span>
+      <div className="app-column-heading" data-tauri-drag-region>
+        <Heading>
+          <HeadingTitle level={1}>Settings</HeadingTitle>
+          <HeadingLead>The terminal UI shares them.</HeadingLead>
+        </Heading>
       </div>
       <div className="app-settings-nav">
-        <div className="mu-nav-label">Muster</div>
+        <NavLabel>Muster</NavLabel>
         {MUSTER_SECTIONS.map((section) => (
           <SectionItem key={section.id} id={section.id} current={shown === section.id}>
-            <span className="mu-nav-icon" />
             {section.title}
-            {counts[section.id] ? <span className="mu-nav-count">{counts[section.id]}</span> : null}
+            {counts[section.id] ? <NavCount>{counts[section.id]}</NavCount> : null}
           </SectionItem>
         ))}
-        {projects.length > 0 ? <div className="mu-nav-label">Projects</div> : null}
+        {projects.length > 0 ? <NavLabel>Projects</NavLabel> : null}
         {projects.map((id) => (
           <ProjectItem key={id} id={id} current={shown === projectSection(id)} />
         ))}
@@ -165,12 +169,9 @@ function ShownPage({ section }: { section: Section }) {
     const title =
       MUSTER_SECTIONS.find((candidate) => candidate.id === section)?.title ?? "Settings";
     return (
-      <div className="mu-settings" aria-busy="true">
-        <div className="mu-settings-head">
-          <h2 className="mu-settings-title">{title}</h2>
-          <span className="mu-meta">Reading Muster's own settings…</span>
-        </div>
-      </div>
+      <SettingsPage title={title} lead="Reading Muster's own settings…" busy>
+        {null}
+      </SettingsPage>
     );
   }
   return <MusterPage section={section} preferences={preferences} />;

@@ -4,7 +4,9 @@ import { BridgeFailure } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
 import { Button } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { Detail, DetailList } from "../../ui/DetailList";
+import { Dialog, DialogText } from "../../ui/Dialog";
+import { BranchName, ErrorText } from "../../ui/status";
 import { shownKey } from "./agents";
 import { message, type TicketsModel } from "./data";
 import { ticketText } from "./TicketText";
@@ -121,7 +123,7 @@ export function CloseTicket({
       }
     >
       {phase === "close" ? (
-        <p className="mu-dialog-text">
+        <DialogText>
           Everyone watching{" "}
           {repository ? (
             <>
@@ -129,43 +131,34 @@ export function CloseTicket({
             </>
           ) : null}
           {key} is told. Muster changes nothing else in the tracker.
-        </p>
+        </DialogText>
       ) : (
-        <dl className="mu-details tickets-cleanup">
+        <DetailList className="tickets-cleanup">
           {working.length ? (
-            <>
-              <dt>Stops</dt>
-              <dd>
-                {working.length === 1 ? "1 agent" : `${working.length} agents`} still running:{" "}
-                {working.map((s) => ticketText(s.title)).join(", ")}
-              </dd>
-            </>
+            <Detail name="Stops">
+              {working.length === 1 ? "1 agent" : `${working.length} agents`} still running:{" "}
+              {working.map((s) => ticketText(s.title)).join(", ")}
+            </Detail>
           ) : null}
-          <dt>Removes</dt>
-          <dd>
+          <Detail name="Removes">
             {worktrees.map((w, i) => (
               <span key={w.id}>
                 {i ? (i === worktrees.length - 1 ? " and " : ", ") : null}
-                <span className="mu-branch">⎇ {ticketText(w.kind.branch)}</span>
+                <BranchName>{ticketText(w.kind.branch)}</BranchName>
               </span>
             ))}
             , once nothing runs in {worktrees.length === 1 ? "it" : "them"}
-          </dd>
-          <dt>Keeps</dt>
-          <dd>
+          </Detail>
+          <Detail name="Keeps">
             {worktrees.length === 1
               ? "its branch"
               : worktrees.length === 2
                 ? "both branches"
                 : `all ${worktrees.length} branches`}
-          </dd>
-        </dl>
+          </Detail>
+        </DetailList>
       )}
-      {error ? (
-        <p className="tickets-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Dialog>
   );
 }
@@ -319,16 +312,12 @@ function Cleanup({
         )
       }
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         {dirty
           ? `It has changes not committed. Removing deletes its folder and those changes. The branch stays.`
           : "Stopping its agents. Its worktrees are removed once nothing runs in them. Branches are kept."}
-      </p>
-      {error ? (
-        <p className="tickets-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      </DialogText>
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Dialog>
   );
 }

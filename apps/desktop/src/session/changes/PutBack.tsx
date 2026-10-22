@@ -14,7 +14,8 @@ import type { UndoPlan } from "../../ipc/generated/UndoPlan";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { ago } from "../../lib/format";
 import { Button } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { Detail, DetailList } from "../../ui/DetailList";
+import { Dialog, DialogText } from "../../ui/Dialog";
 import { entryLabel, oneLine, turnOf } from "./labels";
 
 function failure(error: unknown): string {
@@ -204,45 +205,36 @@ function PlanDialog({
         </>
       }
     >
-      <p className="mu-dialog-text">
+      <DialogText>
         {entry
           ? `The worktree's files go back as they were ${ago(now - entry.started)} ago.`
           : `The worktree's files go back as they were before #${plan.number}.`}{" "}
         What is there now is kept first, so this can be put back too.
-      </p>
-      <dl className="mu-details">
+      </DialogText>
+      <DetailList>
         {plan.later > 0 ? (
-          <>
-            <dt>Goes with it</dt>
-            <dd>
-              {later.map((other) => (
-                <span key={other.number} className="put-back-line">
-                  {entryLabel(timeline, other)}, {ago(now - other.ended)} ago
-                </span>
-              ))}
-              {plan.later > later.length ? (
-                <span className="put-back-line">
-                  {later.length === 0
-                    ? `What ${plan.later} later ${plan.later === 1 ? "entry" : "entries"} changed`
-                    : `and ${plan.later - later.length} more`}
-                </span>
-              ) : null}
-            </dd>
-          </>
+          <Detail name="Goes with it">
+            {later.map((other) => (
+              <span key={other.number} className="put-back-line">
+                {entryLabel(timeline, other)}, {ago(now - other.ended)} ago
+              </span>
+            ))}
+            {plan.later > later.length ? (
+              <span className="put-back-line">
+                {later.length === 0
+                  ? `What ${plan.later} later ${plan.later === 1 ? "entry" : "entries"} changed`
+                  : `and ${plan.later - later.length} more`}
+              </span>
+            ) : null}
+          </Detail>
         ) : null}
-        {plan.branch ? (
-          <>
-            <dt>The branch</dt>
-            <dd>{branchWords(plan.branch)}</dd>
-          </>
-        ) : null}
+        {plan.branch ? <Detail name="The branch">{branchWords(plan.branch)}</Detail> : null}
         {entry?.kind.kind === "turn" ? (
-          <>
-            <dt>{oneLine(entry.kind.agent)}</dt>
-            <dd>Still remembers that turn: tell it what you put back.</dd>
-          </>
+          <Detail name={oneLine(entry.kind.agent)}>
+            Still remembers that turn: tell it what you put back.
+          </Detail>
         ) : null}
-      </dl>
+      </DetailList>
     </Dialog>
   );
 }

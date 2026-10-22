@@ -31,16 +31,16 @@ function boardDay() {
 function renderTickets(bridge = boardDay()) {
   return renderWithApp(<WithKeys />, bridge);
 }
-const ticket = (key: string) => screen.getByRole("button", { name: new RegExp(`^#${key} `) });
+const ticket = (key: string) => screen.getByRole("option", { name: new RegExp(`^#${key} `) });
 
 describe("PRD-01 ARC-24 Tickets", () => {
   it("shows the board's grouped tickets, agents, labels, usage and text", async () => {
     const { bridge } = renderTickets();
-    expect(await screen.findByRole("button", { name: /^#214 / })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: /^#214 / })).toBeInTheDocument();
     expect(await screen.findByRole("article")).toHaveTextContent("Done when");
     expect(screen.getAllByText("182k tokens")).toHaveLength(2);
     expect(screen.getByText("opened by FurkanCodes")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^KEP-31 / })).toHaveLength(1);
+    expect(screen.getAllByRole("option", { name: /^KEP-31 / })).toHaveLength(1);
     expect(within(ticket("214")).getByRole("img", { name: "needs you" })).toBeInTheDocument();
     expect(within(ticket("214")).queryByRole("img", { name: "Shell" })).toBeNull();
     expect(bridge.sent.filter((c) => typeof c !== "string" && "ListIssues" in c)).toHaveLength(4);
@@ -56,7 +56,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
       "Its tickets could not be fetched: gh is not signed in",
     );
     await userEvent.keyboard("r");
-    expect(await screen.findByRole("button", { name: /^#214 / })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: /^#214 / })).toBeInTheDocument();
   });
   it("shows no open tickets, none of yours and the no-project state", async () => {
     const bridge = boardDay();
@@ -162,7 +162,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
     ];
     renderTickets(bridge);
     await screen.findByRole("article");
-    await userEvent.click(screen.getByRole("button", { name: /^KEP-28 / }));
+    await userEvent.click(screen.getByRole("option", { name: /^KEP-28 / }));
     await userEvent.keyboard("{Enter}");
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByRole("radio", { name: /Reader/ })).toBeNull();

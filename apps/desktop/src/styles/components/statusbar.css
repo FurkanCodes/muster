@@ -1,0 +1,21 @@
+/* Status bar */
+.mu-statusbar {
+  height: var(--layout-statusbar);
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+  padding: 0 var(--space-12);
+  background: var(--surface-rail);
+  border-top: var(--stroke-hairline) solid var(--line);
+  color: var(--text-quiet);
+  font-size: 12px;
+  line-height: 16px;
+  overflow: hidden;
+}
+.mu-note {
+  color: var(--text);
+  white-space: nowrap;
+}
+.mu-note--error {
+  color: var(--waiting);
+}

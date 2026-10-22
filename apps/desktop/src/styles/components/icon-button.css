@@ -1,0 +1,38 @@
+/* Icon button */
+.mu-icon-btn {
+  width: var(--size-control-md);
+  height: var(--size-control-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-quiet);
+  cursor: pointer;
+  transition:
+    background-color var(--timing-fast) var(--ease-out),
+    color var(--timing-fast) var(--ease-out);
+}
+.mu-icon-btn svg {
+  width: var(--size-icon-lg);
+  height: var(--size-icon-lg);
+}
+.mu-icon-btn:hover,
+.mu-icon-btn[aria-pressed="true"],
+.mu-icon-btn[aria-expanded="true"] {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.mu-icon-btn:active {
+  background: var(--surface-tint);
+}
+.mu-icon-btn--sm {
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+}
+.mu-icon-btn--sm svg {
+  width: var(--size-icon);
+  height: var(--size-icon);
+}

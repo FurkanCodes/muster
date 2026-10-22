@@ -6,8 +6,10 @@ import { useActions, useBridge, useDaemon } from "../../app/context";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import type { Sound } from "../../ipc/generated/Sound";
 import type { Tell } from "../../ipc/generated/Tell";
+import { Button } from "../../ui/controls";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
+import { Found } from "../../ui/status";
 import { canAsk } from "./asks";
 import { useSettings } from "./context";
 import { useHear } from "./hear";
@@ -171,19 +173,10 @@ export function Notifications({ preferences }: { preferences: Preferences }) {
           )}
           {told ? (
             <Control>
-              {notifier ? (
-                <span className="mu-found">✓ allowed</span>
-              ) : (
-                <span className="mu-quiet">not yet</span>
-              )}
-              <button
-                type="button"
-                className="mu-btn mu-btn--quiet"
-                title="System Settings, Notifications, Muster"
-                onClick={openSystemSettings}
-              >
+              {notifier ? <Found>✓ allowed</Found> : <span className="mu-quiet">not yet</span>}
+              <Button title="System Settings, Notifications, Muster" onClick={openSystemSettings}>
                 Open System Settings
-              </button>
+              </Button>
             </Control>
           ) : null}
         </SettingRow>

@@ -1,0 +1,86 @@
+/* The root every component sits in: its face, its ground and box sizing,
+   the text helpers (mono, quiet, cut, meta), and focus, one rule for all. */
+
+.mu-root {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text);
+  background: var(--surface-ground);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+.mu-root *,
+.mu-root *::before,
+.mu-root *::after {
+  box-sizing: border-box;
+}
+.mu-root :where(button) {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+.mu-mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+.mu-quiet {
+  color: var(--text-quiet);
+}
+.mu-cut {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mu-meta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+
+/* Focus, one rule (README: States). A control rings on its own edge, in the
+   keys' blue, following its radius, so a ring never spills past its parent
+   or runs into a neighbour. A line of a list has no ring: the keyboard's
+   place in a list is its fill, the same fill a click gives. */
+:where(
+  .mu-btn,
+  .mu-icon-btn,
+  .app-head-link,
+  .mu-seg-item,
+  .mu-nav-item,
+  .mu-pill,
+  .mu-command,
+  .mu-choice,
+  .mu-select
+):focus-visible {
+  outline: var(--stroke-focus) solid var(--focus-ring);
+  outline-offset: calc(-1 * var(--stroke-focus));
+}
+.mu-switch:focus-visible {
+  outline: var(--stroke-focus) solid var(--focus-ring);
+  outline-offset: var(--stroke-focus);
+}
+.mu-item:focus-visible,
+.mu-row:focus-visible,
+.mu-tree-row:focus-visible,
+.mu-file:focus-visible,
+.mu-ticket:focus-visible,
+.mu-folder:focus-visible,
+.mu-turnrow:focus-visible,
+.mu-menu-item:focus-visible {
+  outline: none;
+}
+/* A menu's focus is its cursor: the item the arrows are on is lit. */
+.mu-menu-item:focus-visible {
+  background: var(--surface-lit);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mu-root *,
+  .mu-root *::before,
+  .mu-root *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

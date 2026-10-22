@@ -5,6 +5,7 @@
 import { useEffect } from "react";
 import { useActions, useApp, useDaemon } from "../app/context";
 import { Button } from "../ui/controls";
+import { EmptyState, EmptyStateActions, EmptyStateText, EmptyStateTitle } from "../ui/EmptyState";
 import { KepPortrait } from "../ui/Kep";
 import { addProject, cloneProject } from "./actions";
 import { labelOf } from "./keymap";
@@ -20,16 +21,16 @@ export function Welcome() {
     return () => actions.setHints([]);
   }, [actions, key]);
   return (
-    <div className="mu-empty">
+    <EmptyState>
       <KepPortrait />
       <div className="ui-flow-stack">
-        <h1 className="mu-empty-title">Add a project to start</h1>
-        <p className="mu-empty-text">
+        <EmptyStateTitle level={1}>Add a project to start</EmptyStateTitle>
+        <EmptyStateText>
           A project is a folder, usually a git repository. Muster gathers its agents, worktrees and
           tickets here, and keeps them running when this window closes.
-        </p>
+        </EmptyStateText>
       </div>
-      <div className="mu-empty-actions">
+      <EmptyStateActions>
         <Button
           variant="primary"
           size="lg"
@@ -46,8 +47,8 @@ export function Welcome() {
         >
           Clone from GitHub
         </Button>
-      </div>
+      </EmptyStateActions>
       <span className="mu-meta">Or drop a folder on this window.</span>
-    </div>
+    </EmptyState>
   );
 }

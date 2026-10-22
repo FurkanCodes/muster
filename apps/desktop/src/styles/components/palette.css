@@ -1,0 +1,70 @@
+/* Command palette */
+.mu-palette {
+  width: var(--size-palette);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-xl);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-dialog);
+  overflow: hidden;
+}
+.mu-palette-field {
+  height: var(--size-palette-input);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: 0 var(--space-16);
+  border-bottom: var(--stroke-hairline) solid var(--line);
+  color: var(--text-quiet);
+}
+.mu-palette-field svg {
+  width: var(--size-icon-lg);
+  height: var(--size-icon-lg);
+  flex: none;
+}
+.mu-palette-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 22px;
+}
+.mu-palette-input::placeholder {
+  color: var(--text-quiet);
+}
+.mu-palette-list {
+  max-height: 420px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+}
+.mu-palette-group {
+  padding: var(--space-10) var(--space-8) var(--space-4);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-quiet);
+}
+.mu-palette-item {
+  height: var(--size-row);
+}
+.mu-palette-item mark {
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+.mu-palette-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+  padding: var(--space-8) var(--space-12);
+  border-top: var(--stroke-hairline) solid var(--line);
+}

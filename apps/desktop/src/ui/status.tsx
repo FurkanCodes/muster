@@ -1,6 +1,7 @@
 // Status marks, agent logos, counts, pull requests, diff stats, branches
 // (design system: Status).
 
+import type { ReactNode } from "react";
 import type { PullRequestStatus } from "../ipc/generated/PullRequestStatus";
 import { agentOf } from "../lib/agents";
 import { removed } from "../lib/format";
@@ -26,6 +27,69 @@ export function StatusMark({ kind }: { kind: StatusKind }) {
   );
 }
 
+/** A project's colour, a small round mark beside its name (`colour` its place in the list, 1 to 6). */
+export function Swatch({ colour }: { colour: number }) {
+  return <span className={`mu-swatch mu-p${colour}`} aria-hidden="true" />;
+}
+
+/** A mark's room with no mark in it, so the names after it line up with those after a mark. */
+export function MarkSpace() {
+  return <span className="mu-mark" aria-hidden="true" />;
+}
+
+/** A branch's name as the design system says one: after ⎇, in the quiet face it is set in. */
+export function BranchName({
+  title,
+  className,
+  children,
+}: {
+  title?: string;
+  /** A text utility: `mu-cut` where it is cut to fit. */
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className={className ? `mu-branch ${className}` : "mu-branch"} title={title}>
+      ⎇ {children}
+    </span>
+  );
+}
+
+/** Where work meets other work: an overlap (Git could merge it) or a conflict. */
+export function Clash({ kind }: { kind: "overlap" | "conflict" }) {
+  return <span className={`mu-clash-${kind}`}>{kind}</span>;
+}
+
+/** Something looked for and found ("found", "on PATH"), in the finished colour. */
+export function Found({ children }: { children: ReactNode }) {
+  return <span className="mu-found">{children}</span>;
+}
+
+/** Something looked for and not found, in the waiting colour. */
+export function Missing({ children }: { children: ReactNode }) {
+  return <span className="mu-missing">{children}</span>;
+}
+
+/** A version, as a program writes it: quiet, in mono. */
+export function Version({ children }: { children: ReactNode }) {
+  return <span className="mu-version">{children}</span>;
+}
+
+/** What went wrong, said in the waiting colour where it happened; `meta` under a field or a list. */
+export function ErrorText({
+  size = "body",
+  children,
+}: {
+  size?: "body" | "meta";
+  children: ReactNode;
+}) {
+  return (
+    <p className={`mu-error-text mu-error-text--${size}`} role="alert">
+      {children}
+    </p>
+  );
+}
+
 /** The not-seen dot. */
 export function NewsDot() {
   return <span className="mu-dot" role="img" aria-label="not seen" />;
@@ -41,19 +105,37 @@ export function AgentLogo({
   const agent = agentOf(harness);
   const sizeClass = size === "md" ? "" : ` mu-logo--${size}`;
   if (!agent.logo) {
-    return (
-      <span
-        className={`mu-logo mu-logo--mark mu-logo--${agent.tone}${sizeClass}`}
-        role="img"
-        aria-label={agent.name}
-      >
-        {agent.mark}
-      </span>
-    );
+    return <AgentMark mark={agent.mark} label={agent.name} tone={agent.tone} size={size} />;
   }
   return (
     <span className={`mu-logo${sizeClass}`}>
       <img src={agent.logo} alt={agent.name} draggable={false} />
+    </span>
+  );
+}
+
+/** An agent's mark where it has no logo of its own (one the person added): a character in a square. */
+export function AgentMark({
+  mark,
+  label,
+  tone,
+  size = "md",
+}: {
+  mark: string;
+  label: string;
+  /** Its own colour, where it is one of Muster's agents. */
+  tone?: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const classes = [
+    "mu-logo",
+    "mu-logo--mark",
+    tone ? `mu-logo--${tone}` : "",
+    size === "md" ? "" : `mu-logo--${size}`,
+  ];
+  return (
+    <span className={classes.filter(Boolean).join(" ")} role="img" aria-label={label}>
+      {mark}
     </span>
   );
 }

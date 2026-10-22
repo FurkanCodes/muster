@@ -1,0 +1,47 @@
+/* Status marks */
+.mu-mark {
+  width: var(--size-mark);
+  height: 16px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mu-mark::before {
+  content: "";
+  display: block;
+  box-sizing: border-box;
+  width: var(--size-dot);
+  height: var(--size-dot);
+  border-radius: var(--radius-full);
+}
+.mu-mark--working::before {
+  display: none;
+}
+.mu-mark--working {
+  color: var(--text-quiet);
+}
+/* Needs you: the one filled mark with a halo, the loudest thing in a list. */
+.mu-mark--waiting::before {
+  width: 8px;
+  height: 8px;
+  background: var(--waiting);
+  box-shadow: 0 0 0 3px var(--waiting-soft);
+}
+.mu-mark--done::before {
+  background: var(--done);
+}
+.mu-mark--error::before {
+  border: 1.5px solid var(--waiting);
+}
+.mu-mark--ended::before {
+  border: 1.5px solid var(--still);
+}
+.mu-dot {
+  width: var(--size-dot);
+  height: var(--size-dot);
+  border-radius: var(--radius-full);
+  background: var(--news);
+  display: inline-block;
+  flex: none;
+}

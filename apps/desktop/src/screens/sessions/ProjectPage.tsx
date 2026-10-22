@@ -10,6 +10,7 @@ import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from 
 import { useShallow } from "zustand/react/shallow";
 import { useNow } from "../../app/clock";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
+import { Page, PageActions, PageHeader, PageMeta, PageTitle } from "../../app/Page";
 import { offered } from "../../flows/agents";
 import { secondAgentWarning } from "../../flows/secondAgent";
 import { makeWorktree, openStarted, startSession } from "../../flows/start";
@@ -19,12 +20,26 @@ import type { ProjectId } from "../../ipc/generated/ProjectId";
 import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
-import { SidebarAway } from "../../session/SessionPane";
 import type { DaemonState } from "../../state/daemon";
 import { branchOf, projectColour, standsBeside } from "../../state/selectors";
-import { Button, IconButton } from "../../ui/controls";
+import { Banner, BannerBody } from "../../ui/Banner";
+import { Button, IconButton, Spacer } from "../../ui/controls";
+import { ListItemEnd, ListItemMeta, ListItemTitle, RowButton } from "../../ui/List";
+import { Section, SectionTitle } from "../../ui/Section";
 import { Select } from "../../ui/Select";
-import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
+import {
+  AgentLogo,
+  BranchName,
+  Clash,
+  DiffStat,
+  ErrorText,
+  MarkSpace,
+  NewsDot,
+  PullRequest,
+  StatusMark,
+  Swatch,
+} from "../../ui/status";
+import { Input } from "../../ui/TextField";
 import "./project.css";
 
 const NO_AGENTS: AddedAgent[] = [];
@@ -93,15 +108,14 @@ export function ProjectPage({ project }: { project: ProjectId }) {
     app.actions.composed();
   }, [app, request, askedPlace]);
   return (
-    <section className="mu-pane app-pane project-page" aria-label={name}>
-      <header className="app-head" data-tauri-drag-region>
-        <SidebarAway />
-        <span className={`mu-swatch mu-p${colour}`} />
-        <h2 className="app-head-title">{name}</h2>
-        <span className="mu-pane-meta mu-mono mu-cut" title={root}>
+    <Page label={name} className="project-page">
+      <PageHeader>
+        <Swatch colour={colour} />
+        <PageTitle>{name}</PageTitle>
+        <PageMeta className="mu-mono" title={root}>
           {homely(root)}
-        </span>
-        <span className="project-head-actions">
+        </PageMeta>
+        <PageActions>
           {plain ? null : (
             <Button
               size="sm"
@@ -114,8 +128,8 @@ export function ProjectPage({ project }: { project: ProjectId }) {
           <Button size="sm" icon="ticket" onClick={() => app.actions.show("tickets")}>
             Tickets
           </Button>
-        </span>
-      </header>
+        </PageActions>
+      </PageHeader>
       <div className="project-body">
         <Composer
           project={project}
@@ -124,18 +138,20 @@ export function ProjectPage({ project }: { project: ProjectId }) {
           onPlace={setPlace}
           field={field}
         />
-        <h3 className="project-heading">Where its work is</h3>
-        {places.length === 0 ? (
-          <p className="mu-meta">Nothing yet: the work you start shows here.</p>
-        ) : (
-          <ul className="project-places">
-            {places.map((id) => (
-              <PlaceCard key={id} id={id} onStart={startIn} />
-            ))}
-          </ul>
-        )}
+        <Section className="project-where">
+          <SectionTitle className="project-where-title">Where its work is</SectionTitle>
+          {places.length === 0 ? (
+            <p className="mu-meta">Nothing yet: the work you start shows here.</p>
+          ) : (
+            <ul className="project-places">
+              {places.map((id) => (
+                <PlaceCard key={id} id={id} onStart={startIn} />
+              ))}
+            </ul>
+          )}
+        </Section>
       </div>
-    </section>
+    </Page>
   );
 }
 
@@ -241,8 +257,9 @@ function Composer({
           />
         )}
         {place === "new" && !plain ? (
-          <input
-            className="mu-field-input mu-mono project-branch"
+          <Input
+            mono
+            className="project-branch"
             aria-label="Branch"
             placeholder="branch, if you like"
             autoComplete="off"
@@ -264,7 +281,7 @@ function Composer({
           disabled={task.busy}
           onChange={setHarness}
         />
-        <span className="mu-spacer" />
+        <Spacer />
         <Button
           variant="primary"
           type="submit"
@@ -275,15 +292,11 @@ function Composer({
         </Button>
       </div>
       {warning ? (
-        <div className="mu-banner mu-banner--overlap project-banner" role="status">
-          <span className="mu-banner-text">{warning}</span>
-        </div>
+        <Banner tone="overlap">
+          <BannerBody>{warning}</BannerBody>
+        </Banner>
       ) : null}
-      {task.error ? (
-        <p className="mu-meta project-error" role="alert">
-          {task.error}
-        </p>
-      ) : null}
+      {task.error ? <ErrorText size="meta">{task.error}</ErrorText> : null}
     </form>
   );
 }
@@ -312,16 +325,19 @@ function PlaceCard({ id, onStart }: { id: WorkspaceId; onStart: (id: WorkspaceId
         .map((row) => row.id),
     ),
   );
-  const where = plain ? "The folder itself" : `⎇ ${branch}`;
   return (
     <li className="project-place">
       <div className="project-place-head">
-        <span className={plain ? "mu-cut" : "mu-branch mu-cut"}>{where}</span>
+        {plain ? (
+          <span className="mu-cut">The folder itself</span>
+        ) : (
+          <BranchName className="mu-cut">{branch}</BranchName>
+        )}
         {kind === "checkout" ? <span className="mu-meta">your checkout</span> : null}
         {added || removed ? <DiffStat added={added} removed={removed} /> : null}
-        {clash ? <span className={`mu-clash-${clash}`}>{clash}</span> : null}
+        {clash ? <Clash kind={clash} /> : null}
         {pr ? <PullRequest pr={pr} /> : null}
-        <span className="mu-spacer" />
+        <Spacer />
         <IconButton
           icon="plus"
           size="sm"
@@ -361,31 +377,27 @@ function PlaceSession({ id }: { id: string }) {
   const unseen = session.unseen && session.status.state !== "needs_you";
   return (
     <li>
-      <button
-        type="button"
-        className="mu-row project-session"
-        aria-label={`${session.title}, ${what}`}
+      <RowButton
+        className="project-session"
+        label={`${session.title}, ${what}`}
         onClick={() => {
           actions.select("all", id);
           actions.keysTo("list");
         }}
       >
-        {beside ? <span className="mu-mark" /> : <StatusMark kind={statusKind(session)} />}
+        {beside ? <MarkSpace /> : <StatusMark kind={statusKind(session)} />}
         <AgentLogo harness={session.harness} />
-        <span className="mu-cut project-session-name" title={session.title}>
+        <ListItemTitle className="project-session-name" title={session.title}>
           {session.title}
-        </span>
-        <span
-          className={`mu-meta mu-cut ${session.status.state === "needs_you" ? "sessions-waiting" : ""}`}
-          title={what}
-        >
+        </ListItemTitle>
+        <ListItemMeta className="project-session-what" title={what}>
           {what}
-        </span>
-        <span className="mu-age">
+        </ListItemMeta>
+        <ListItemEnd>
           {ago(now - session.status_since)}
           {unseen ? <NewsDot /> : null}
-        </span>
-      </button>
+        </ListItemEnd>
+      </RowButton>
     </li>
   );
 }

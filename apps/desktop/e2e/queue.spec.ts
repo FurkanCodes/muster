@@ -37,11 +37,10 @@ test("ARC-24 Needs you lists by project; under each, who asks with what they ask
 
   const asking = option(page, "Sketch the Tauri shell");
   await expect(asking).toHaveAttribute("aria-selected", "true");
-  await expect(asking).toHaveClass(/mu-row--two/);
-  await expect(asking.locator(".queue-ask")).toHaveText("wants to run cargo build");
+  await expect(asking.locator(".mu-list-item-meta")).toHaveText("wants to run cargo build");
 
   const finish = option(page, "Resize settles once on release");
-  await expect(finish).toHaveClass(/mu-row--two/);
+  await expect(finish.locator(".mu-list-item-meta")).toBeVisible();
   await expect(finish).toContainText("⎇ fix/resize-under-load");
   await expect(finish).toContainText("#88");
   await expect(finish.getByRole("img", { name: "not seen" })).toBeVisible();
@@ -83,7 +82,9 @@ test("ARC-24 every reason to ask shows in the row and the banner, and the banner
       },
       { id: codex, reason },
     );
-    await expect(option(page, "Sketch the Tauri shell").locator(".queue-ask")).toHaveText(text);
+    await expect(option(page, "Sketch the Tauri shell").locator(".mu-list-item-meta")).toHaveText(
+      text,
+    );
     await expect(page.locator(".session-banner")).toContainText(text);
   }
   await page.evaluate(
@@ -358,7 +359,7 @@ test("ARC-24 an asking row says what it asks, and leaves Needs you as it stops",
   page,
 }) => {
   const row = option(page, "Share the Gradle cache across worktrees");
-  await expect(row.locator(".queue-ask")).toHaveText("asks which cache folder to use");
+  await expect(row.locator(".mu-list-item-meta")).toHaveText("asks which cache folder to use");
   await page.evaluate((id) => window.__muster.setStatus(id, { state: "running" }), gemini);
   // At work again, it needs nobody: All lists it.
   await expect(row).toHaveCount(0);

@@ -1,7 +1,18 @@
 // The changes view end to end in WebKit, over the mock daemon: each state
 // the Changes and Put back boards show, and the keys (ARC-24, ARC-25, PRD-14).
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+
+/** The list holds the focus and names `line` as its active one (ui/List: lines never take the focus). */
+async function active(list: Locator, line: Locator) {
+  await expect(list).toBeFocused();
+  await expect(line).toHaveAttribute("aria-selected", "true");
+  await expect(list).toHaveAttribute(
+    "aria-activedescendant",
+    (await line.getAttribute("id")) ?? "",
+  );
+}
+
 import type { MockBridge } from "../src/ipc/mock/bridge";
 
 declare global {
@@ -75,7 +86,7 @@ test("ARC-24 Not committed: files with kind, path and lines; ⏎ opens the diff;
   await expect(statusBar(page)).toContainText("next and last hunk");
 
   await page.keyboard.press("Escape");
-  await expect(files.getByRole("option", { name: "modified: src/link.rs" })).toBeFocused();
+  await active(files, files.getByRole("option", { name: "modified: src/link.rs" }));
   await page.keyboard.press("j");
   await page.keyboard.press("Enter");
   await expect
@@ -169,9 +180,8 @@ test("PRD-14 put back: the plan, then the dialog as the board draws it, then Und
   await expect(
     page.getByRole("listbox", { name: "Turns" }).getByRole("option", { selected: true }),
   ).toHaveText(/^5↺Put back as before #2/);
-  await expect(
-    page.getByRole("listbox", { name: "Turns" }).getByRole("option", { selected: true }),
-  ).toBeFocused();
+  const turns = page.getByRole("listbox", { name: "Turns" });
+  await active(turns, turns.getByRole("option", { selected: true }));
 });
 
 test("PRD-14 ⏎ puts back the files only, even where the branch could move too", async ({
@@ -284,9 +294,9 @@ for (const [command, asking, lead, empty] of [
       window.__muster.failNext(command, "git could not read the worktree", "internal");
       window.__muster.release(command);
     }, command);
-    await expect(page.getByRole("alert")).toHaveText(
-      `${lead}git could not read the worktreeAsk again`,
-    );
+    // What went wrong is the alert; the way to ask again stands beside it.
+    await expect(page.getByRole("alert")).toHaveText(`${lead}git could not read the worktree`);
+    await expect(page.getByRole("button", { name: "Ask again" })).toBeVisible();
     await page.evaluate(
       ({ workspace }) => {
         window.__muster.world.changes ??= {};
@@ -380,7 +390,7 @@ test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other w
   await open(page);
   const banner = page.locator(".mu-banner");
   await expect(banner).toHaveText(
-    "!Overlap with ⎇ fix/resize-under-load: both change crates/muster-client/src/connection.rs. Git could merge them.See its changes",
+    "Overlap with ⎇ fix/resize-under-load: both change crates/muster-client/src/connection.rs. Git could merge them.See its changes",
   );
   await expect(banner).toHaveClass(/mu-banner--overlap/);
   await expect(statusBar(page)).toContainText("the other work");
@@ -399,7 +409,7 @@ test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other w
     { workspace, other },
   );
   await expect(banner).toHaveText(
-    "!Conflict with ⎇ fix/resize-under-load: would conflict in src/link.rs and 2 more.See its changes",
+    "Conflict with ⎇ fix/resize-under-load: would conflict in src/link.rs and 2 more.See its changes",
   );
   await expect(banner).not.toHaveClass(/mu-banner--overlap/);
   await page.evaluate(
@@ -471,11 +481,11 @@ test("ARC-25 5,000 files not committed: a few dozen rows drawn, End and Home and
 
   await page.keyboard.press("End");
   const last = files.getByRole("option", { name: "modified: src/file4999.rs" });
-  await expect(last).toBeFocused();
+  await active(files, last);
   await expect(last).toBeInViewport();
   expect(await files.getByRole("option").count()).toBeLessThan(80);
   await page.keyboard.press("Home");
-  await expect(files.getByRole("option", { name: "modified: src/file0000.rs" })).toBeFocused();
+  await active(files, files.getByRole("option", { name: "modified: src/file0000.rs" }));
 
   // The wheel draws the rows it brings into sight, without a gap.
   await files.hover();

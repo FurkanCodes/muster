@@ -80,8 +80,8 @@ export function DiffView({
     event.stopPropagation();
   };
   return (
-    <div className="mu-diffview ui-diff">
-      <div className="mu-diffview-head">{head}</div>
+    <DiffFrame>
+      <DiffHead>{head}</DiffHead>
       <section
         ref={body}
         className="mu-diffview-body ui-diff-body"
@@ -112,7 +112,7 @@ export function DiffView({
           <p className="mu-quiet">… cut here: the rest is longer than Muster shows.</p>
         ) : null}
       </section>
-    </div>
+    </DiffFrame>
   );
 }
 
@@ -129,4 +129,23 @@ function Line({ line }: { line: DiffLine }) {
       <span className={line.kind === "header" ? "mu-quiet" : undefined}>{line.text}</span>
     </div>
   );
+}
+
+/** A diff's frame: its head, then its lines or what it waits for; `className` for where it stands. */
+export function DiffFrame({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <div className={className ? `mu-diffview ui-diff ${className}` : "mu-diffview ui-diff"}>
+      {children}
+    </div>
+  );
+}
+
+/** What the diff is of: its file or its turn, and what it comes to. */
+export function DiffHead({ children }: { children: ReactNode }) {
+  return <div className="mu-diffview-head">{children}</div>;
+}
+
+/** In place of the lines: what the diff waits for, or why it is not there. */
+export function DiffWaiting({ children }: { children: ReactNode }) {
+  return <div className="mu-diffview-body ui-diff-body">{children}</div>;
 }

@@ -43,7 +43,10 @@ test("ARC-24 a right-click on a session's line selects it and opens its menu at 
   const at = await line.boundingBox();
   expect(Math.abs((box?.x ?? 0) - ((at?.x ?? 0) + 120))).toBeLessThan(2);
   expect(Math.abs((box?.y ?? 0) - ((at?.y ?? 0) + 20))).toBeLessThan(2);
-  // Its keys are the ⋯ menu's: ↓ moves, ⎋ closes and gives the keys back to the list.
+  // Its keys are the ⋯ menu's: opened by the pointer it holds the focus with
+  // no item lit, as a Mac's does; ↓ moves, ⎋ closes and gives the keys back to the list.
+  await expect(menu).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(menu.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(menu.getByRole("menuitem", { name: /^Rename/ })).toBeFocused();

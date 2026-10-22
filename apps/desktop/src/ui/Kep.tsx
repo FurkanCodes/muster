@@ -12,10 +12,16 @@ const FACES: Record<Mood, { face: string; says: string }> = {
   away: { face: "▼;ᴥ;▼", says: "The daemon is out of reach" },
 };
 
-export function KepFace({ mood }: { mood: Mood }) {
+/** Kep's face for `mood`: in the sidebar's top, or `large` on a screen of its own (the daemon away). */
+export function KepFace({ mood, size = "small" }: { mood: Mood; size?: "small" | "large" }) {
   const { face, says } = FACES[mood];
   return (
-    <span className={`mu-kep mu-kep--${mood}`} title={says} role="img" aria-label={says}>
+    <span
+      className={`mu-kep mu-kep--${mood} mu-kep--${size}`}
+      title={says}
+      role="img"
+      aria-label={says}
+    >
       {face}
     </span>
   );

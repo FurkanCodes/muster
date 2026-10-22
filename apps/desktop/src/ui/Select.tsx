@@ -92,7 +92,7 @@ export function Select({
       </button>
       {open ? (
         <div
-          className="mu-menu ui-select-menu"
+          className="mu-select-menu ui-select-menu"
           role="listbox"
           id={id}
           aria-label={label}
@@ -129,14 +129,14 @@ export function Select({
           {options.map((option, index) => [
             option.apart ? (
               // biome-ignore lint/a11y/useSemanticElements: the design system's menu separator is a hairline div, as its boards draw it.
-              <div key={`apart-${option.value}`} className="mu-menu-sep" role="separator" />
+              <div key={`apart-${option.value}`} className="mu-select-sep" role="separator" />
             ) : null,
             <div
               key={option.value}
               id={`${id}-${index}`}
               role="option"
               aria-selected={value === option.value}
-              className={`mu-menu-item ${index === at ? "is-active" : ""}`}
+              className={`mu-select-option ${index === at ? "is-active" : ""}`}
               tabIndex={-1}
               onClick={() => {
                 onChange(option.value);

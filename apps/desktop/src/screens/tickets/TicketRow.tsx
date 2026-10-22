@@ -3,17 +3,21 @@ import { useApp, useDaemon } from "../../app/context";
 import type { Issue } from "../../ipc/generated/Issue";
 import { statusKind } from "../../lib/status";
 import { projectColour } from "../../state/selectors";
-import { AgentLogo, PullRequest, StatusMark } from "../../ui/status";
+import { ListItem } from "../../ui/List";
+import { AgentLogo, PullRequest, StatusMark, Swatch } from "../../ui/status";
 import { changedInSight, stamp } from "../queue/history";
 import { agentsOn, shownKey, ticketPullRequest, worktreesFor } from "./agents";
 import { ticketText } from "./TicketText";
 
 export function TicketRow({
+  lineId,
   issue,
   projects,
   selected,
   onSelect,
 }: {
+  /** Its id in the window, for its list's `aria-activedescendant`. */
+  lineId: string;
   issue: Issue;
   projects: readonly string[];
   selected: boolean;
@@ -31,14 +35,15 @@ export function TicketRow({
     (s) => ["waiting", "error"].includes(statusKind(s)) && changedInSight(app.daemon, s),
   );
   return (
-    <button
+    <ListItem
       // Drawn afresh for each new need, so each flashes once.
       key={asking ? stamp(asking) : "still"}
-      type="button"
-      className={`mu-ticket${asking ? " mu-flash mu-flash--waiting" : ""}`}
-      aria-label={`${shownKey(issue.key)} ${ticketText(issue.title)}`}
-      aria-current={selected || undefined}
-      onClick={onSelect}
+      id={lineId}
+      selected={selected}
+      label={`${shownKey(issue.key)} ${ticketText(issue.title)}`}
+      flash={asking ? "waiting" : undefined}
+      className="mu-ticket"
+      onSelect={onSelect}
     >
       <span className="mu-ticket-key">{shownKey(issue.key)}</span>
       <span className="mu-ticket-text">
@@ -63,17 +68,16 @@ export function TicketRow({
           <PullRequest pr={pr} />
         </span>
       ) : null}
-    </button>
+    </ListItem>
   );
 }
 
 export function ProjectName({ id }: { id: string }) {
   const name = useDaemon((s) => s.projects[id]?.name ?? "?");
-  const colour = useDaemon((s) => projectColour(s, id));
-  return <span className={`mu-p${colour}`}>{name}</span>;
+  return <span>{name}</span>;
 }
 
 export function ProjectSwatch({ id }: { id: string }) {
   const colour = useDaemon((s) => projectColour(s, id));
-  return <span className={`mu-swatch mu-p${colour}`} aria-hidden="true" />;
+  return <Swatch colour={colour} />;
 }

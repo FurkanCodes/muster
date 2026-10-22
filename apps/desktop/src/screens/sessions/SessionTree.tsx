@@ -8,6 +8,7 @@ import { useDaemon } from "../../app/context";
 import type { SessionActions } from "../../session/useSessionActions";
 import { RenameSession } from "../../session/useSessionActions";
 import { standsBeside } from "../../state/selectors";
+import { List } from "../../ui/List";
 import { drawn, estimate, inSight, placesOf, UNMEASURED } from "./sight";
 import {
   BesideLine,
@@ -114,7 +115,6 @@ export function SessionTree({
       row,
       level: row.kind === "project" ? 1 : 2,
       selected: row.id === selected,
-      resting,
       folded: folded.has(row.id),
       onPick,
       onFold,
@@ -137,13 +137,15 @@ export function SessionTree({
   };
 
   return (
-    <div
+    <List
       ref={list}
-      className="mu-tree sessions-tree"
-      role="tree"
-      tabIndex={0}
-      aria-label="Projects and sessions"
-      aria-activedescendant={at >= start && at < end && selected ? rowId(selected) : undefined}
+      kind="tree"
+      label="Projects and sessions"
+      className="sessions-tree"
+      activeId={at >= start && at < end && selected ? rowId(selected) : undefined}
+      resting={resting}
+      // It keeps its selected line in sight itself, drawn or not.
+      sight="list"
       // Read as the update is applied: a scroll's update can come after a
       // key's that moved the list since, and must not put it back.
       onScroll={() => setTop((was) => list.current?.scrollTop ?? was)}
@@ -151,6 +153,6 @@ export function SessionTree({
       <div aria-hidden="true" style={{ height: places[start] ?? 0 }} />
       {rows.slice(start, end).map((row, offset) => draw(row, start + offset))}
       <div aria-hidden="true" style={{ height: (places.at(-1) ?? 0) - (places[end] ?? 0) }} />
-    </div>
+    </List>
   );
 }
