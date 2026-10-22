@@ -171,7 +171,7 @@ function ShownPage({ section }: { section: Section }) {
       MUSTER_SECTIONS.find((candidate) => candidate.id === section)?.title ?? "Settings";
     return (
       <SettingsPage title={title} lead={null} busy>
-        <Loading label="Reading Muster's own settings" />
+        <Loading text="Loading settings" />
       </SettingsPage>
     );
   }

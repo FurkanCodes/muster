@@ -12,6 +12,6 @@ export function Connecting() {
       <EmptyStateText>Muster's daemon is out of reach.</EmptyStateText>
     </EmptyState>
   ) : (
-    <Loading label="Connecting to Muster" />
+    <Loading text="Connecting to Muster" />
   );
 }

@@ -34,9 +34,7 @@ function row(key: string): HTMLElement {
 describe("Settings", () => {
   it("says it is reading Muster's settings until the daemon sends them", async () => {
     const { keys } = renderSettings({ open: false });
-    expect(
-      await screen.findByRole("status", { name: "Reading Muster's own settings…" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Loading settings" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
     keys();
   });

@@ -23,7 +23,7 @@ The app's screens compose these (`ARC-26`): a component's classes are written on
 | Banner | `Banner` (`waiting`, `overlap`, `away`, `note`: the tone draws the mark), `BannerLead`, `BannerText` (one line), `BannerBody` (wraps) | `src/ui/Banner.tsx` |
 | EmptyState | `EmptyState`, `EmptyStateTitle`, `EmptyStateText`, `EmptyStateActions` | `src/ui/EmptyState.tsx` |
 | DetailList | `DetailList`, `Detail` | `src/ui/DetailList.tsx` |
-| Loading | `Loading`, the one wait: a line with a light running along it and the word Loading in its middle, lit as the light passes behind it; centred in a place with nothing yet, or a rule across its place (under a heading while what it heads is fetched again); what it waits for is its name to a screen reader | `src/ui/Loading.tsx` |
+| Loading | `Loading`, the one wait: a line with a light running along it and its `text` in its middle (Loading where none is given: `<Loading text="Loading tickets" />`), lit as the light passes behind it; centred in a place with nothing yet, or `layout="rule"` across its place (under a heading while what it heads is fetched again); its text is its name to a screen reader | `src/ui/Loading.tsx` |
 | Select | `Select`, a field (boxed) or `variant="quiet"` in a toolbar, an option's `mark` (an agent's logo) in its button too; its list drawn as a menu is, on Radix's popover, in the dialog it is in | `src/ui/Select.tsx` |
 | Menu | `ActionMenu` under its button or at a point, its items doing themselves on their keys (Radix) | `src/ui/Menu.tsx` |
 | Tooltip | `Tooltip`; every `IconButton` has one, its label and key (Radix) | `src/ui/Tooltip.tsx` |

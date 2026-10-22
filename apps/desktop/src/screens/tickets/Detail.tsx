@@ -134,7 +134,7 @@ export function Detail({
         )}
         <div className="tickets-rule" />
         {!text || text.state === "loading" ? (
-          <Loading label="Fetching its text" />
+          <Loading text="Loading ticket" />
         ) : text.state === "failed" ? (
           <ErrorText>
             Its text could not be fetched: {text.error}. {keys.refresh} tries now.

@@ -24,7 +24,7 @@
   padding: var(--space-8) 0;
 }
 .mu-loading-line {
-  flex: 1;
+  flex: 1 0 var(--space-24);
   height: 2px;
   border-radius: var(--radius-full);
   background-color: var(--line);
@@ -45,7 +45,11 @@
   animation-name: mu-loading-after;
 }
 .mu-loading-word {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   letter-spacing: 0.02em;
   animation: mu-loading-word var(--mu-loading-time) var(--ease-in-out) infinite;
 }

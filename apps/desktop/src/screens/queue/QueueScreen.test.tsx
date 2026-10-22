@@ -74,7 +74,7 @@ describe("ARC-24 Needs you, in the sidebar", () => {
     return waitFor(() =>
       expect(
         within(screen.getByRole("region", { name: "Needs you" })).getByRole("status", {
-          name: "Connecting to Muster…",
+          name: "Connecting to Muster",
         }),
       ).toBeVisible(),
     );

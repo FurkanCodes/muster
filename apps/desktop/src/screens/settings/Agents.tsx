@@ -73,7 +73,7 @@ function Where({
   harness: string;
   install: ReactNode;
 }): ReactNode {
-  if (found.state === "asking") return <Loading label="Looking for it" layout="rule" />;
+  if (found.state === "asking") return <Loading text="Looking for it" layout="rule" />;
   if (found.state === "not-known")
     return (
       <span className="mu-quiet">

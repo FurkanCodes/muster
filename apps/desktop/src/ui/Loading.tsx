@@ -3,19 +3,20 @@
 // running along it, broken in its middle by the word Loading, which the
 // light reaches and lights as it passes behind it, going on after it.
 //
-//   <Loading label="Fetching its text" />                  a place with nothing yet: centred in it
-//   <Loading label="Fetching its tickets" layout="rule" />  a rule across its place, as under a heading
+//   <Loading />                                  Loading, centred in a place with nothing yet
+//   <Loading text="Loading tickets" layout="rule" />  its own words, a rule across its place, as under a heading
 //
-// `label` says to a screen reader what it waits for; the eye reads Loading.
+// Its words are what a screen reader hears too; Loading where none are given.
 // It is CSS alone, so no script wakes for it, it stands still while the
-// window cannot be seen (ARC-25) and under Reduce motion.
+// window cannot be seen (ARC-25) and under Reduce motion. Every wait in the
+// window is one: no screen draws a wait of its own.
 
 export function Loading({
-  label,
+  text = "Loading",
   layout = "block",
 }: {
-  /** What it waits for, to a screen reader: "Fetching its tickets". */
-  label: string;
+  /** Its words, in its middle: what it waits for, short ("Loading tickets"). */
+  text?: string;
   /** Centred in a place with nothing yet, or a rule across its place. */
   layout?: "block" | "rule";
 }) {
@@ -25,11 +26,11 @@ export function Loading({
       role="status"
       aria-live="polite"
       aria-busy="true"
-      aria-label={`${label}…`}
+      aria-label={text}
     >
       <span className="mu-loading-line mu-loading-line--before" />
       <span className="mu-loading-word" aria-hidden="true">
-        Loading
+        {text}
       </span>
       <span className="mu-loading-line mu-loading-line--after" />
     </div>

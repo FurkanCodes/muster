@@ -174,9 +174,10 @@ test("a fetch that takes its time can be given up", async ({ page }) => {
   await address.fill("https://github.com/acme/muster-standup");
   await address.press("Enter");
   const waiting = page.getByRole("dialog", { name: "Add a plugin" });
-  await expect(
-    waiting.getByRole("status", { name: "Fetching https://github.com/acme/muster-standup…" }),
-  ).toHaveAttribute("aria-busy", "true");
+  await expect(waiting.getByRole("status", { name: "Fetching the plugin" })).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
   await page.keyboard.press("Escape");
   await expect(waiting).toBeHidden();
   await expect(note(page)).toHaveText(

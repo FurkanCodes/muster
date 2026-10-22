@@ -419,7 +419,7 @@ export function Project({ project }: { project: ProjectId }) {
       {settings ? (
         <Loaded project={project} name={name} settings={settings} />
       ) : read?.state === "failed" ? null : (
-        <Loading label="Reading its settings" />
+        <Loading text="Loading settings" />
       )}
       <RemoveProject project={project} name={name} />
       <Footnote>

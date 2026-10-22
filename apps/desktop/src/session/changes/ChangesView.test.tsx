@@ -292,10 +292,10 @@ describe("ARC-24 Turns", () => {
 
 describe("ARC-24 asking, refused and empty", () => {
   it.each([
-    ["WorkspaceChanges", "Asking git…", "", "Nothing here is waiting to be committed."],
+    ["WorkspaceChanges", "Loading changes", "", "Nothing here is waiting to be committed."],
     [
       "Timeline",
-      "Reading the turns…",
+      "Loading turns",
       "The timeline could not be read: ",
       "None kept yet: each agent's turn here is, from now on.",
     ],
@@ -305,7 +305,7 @@ describe("ARC-24 asking, refused and empty", () => {
     setup(bridge);
     if (command === "Timeline")
       await userEvent.click(await screen.findByRole("button", { name: /^Turns/ }));
-    expect(await screen.findByRole("status", { name: asking })).toHaveTextContent("Loading");
+    expect(await screen.findByRole("status", { name: asking })).toHaveTextContent(asking);
     await act(async () => {
       bridge.failNext(command, "git could not read the worktree", "internal");
       bridge.release(command);

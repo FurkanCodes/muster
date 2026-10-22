@@ -38,7 +38,7 @@ export function DiffPanel({
       <DiffHead>{head}</DiffHead>
       <DiffWaiting>
         {answer.state === "loading" ? (
-          <Loading label="Asking git" />
+          <Loading text="Loading diff" />
         ) : (
           <ErrorText>
             {answer.state === "error" ? answer.error : "The daemon did not send a diff."} r asks

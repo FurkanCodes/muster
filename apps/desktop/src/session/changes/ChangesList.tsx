@@ -30,7 +30,7 @@ function Waiting({
   refused?: string;
   onAgain(): void;
 }) {
-  if (answer.state === "loading") return <Loading label={asking} />;
+  if (answer.state === "loading") return <Loading text={asking} />;
   if (answer.state !== "error") return null;
   return (
     <div className="changes-note">
@@ -120,7 +120,7 @@ export function ChangesList({
       return (
         <Waiting
           answer={timeline}
-          asking="Reading the turns"
+          asking="Loading turns"
           refused="The timeline could not be read: "
           onAgain={onAgain}
         />
@@ -156,7 +156,7 @@ export function ChangesList({
     );
   }
   if (listing.state !== "ready")
-    return <Waiting answer={listing} asking="Asking git" onAgain={onAgain} />;
+    return <Waiting answer={listing} asking="Loading changes" onAgain={onAgain} />;
   const changes = listing.value;
   const base = changes.base ?? "its base";
   if (view === "uncommitted")

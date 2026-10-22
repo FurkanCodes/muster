@@ -156,7 +156,6 @@ export default function Tickets() {
   const refresh = () => {
     if (visible) {
       model.refresh(ids);
-      actions.tell("Fetching the tickets again…");
     }
   };
   const move = (by: number) => {
@@ -242,13 +241,10 @@ export default function Tickets() {
                   </div>
                   {/* Under its heading, its tickets kept under it while they are fetched again. */}
                   {list?.state === "loaded" && list.refreshing ? (
-                    <Loading
-                      label={`Fetching ${groupName(projects)}'s tickets again`}
-                      layout="rule"
-                    />
+                    <Loading text="Loading tickets" layout="rule" />
                   ) : null}
                   {!list || list.state === "loading" ? (
-                    <Loading label="Fetching its tickets" layout="rule" />
+                    <Loading text="Loading tickets" layout="rule" />
                   ) : list.state === "failed" ? (
                     <div className="tickets-state">
                       <ErrorText>Its tickets could not be fetched: {list.error}</ErrorText>
