@@ -59,7 +59,7 @@ impl Supervisor {
                 return;
             }
             PluginCommand::List => {
-                self.read_plugins();
+                self.read_plugins().await;
                 return answer(reply, Ok(Reply::Plugins(self.plugins.list(at))));
             }
             PluginCommand::Preview { origin } => {
@@ -106,7 +106,9 @@ impl Supervisor {
                 }
                 outcome.map(|()| id)
             }
-            PluginCommand::TryHooks { id, event } => return self.try_hooks(&id, event, reply),
+            PluginCommand::TryHooks { id, event } => {
+                return self.try_hooks(&id, event, reply).await;
+            }
             PluginCommand::Log { id } => {
                 let outcome = self.plugins.infos().iter().any(|info| info.id == id);
                 return answer(
@@ -170,13 +172,21 @@ impl Supervisor {
     }
 
     /// Reads the registry again, on the person's word; every client is
-    /// told if anything changed.
-    pub(super) fn read_plugins(&mut self) {
+    /// told if anything changed. A plugin that ran and does not now,
+    /// turned off in Muster's settings by hand or its manifest changed
+    /// since its approval, has its panels stopped, as turning it off does
+    /// (`ARC-23`, `ARC-14`).
+    pub(super) async fn read_plugins(&mut self) {
+        let ran = self.plugins.running_ids();
         let reading = self.plugins.read();
         let changed = self.plugins.take(reading);
         self.publish_ticket_plugins();
         if changed {
             self.tell_plugins();
+        }
+        let runs = self.plugins.running_ids();
+        for id in ran.iter().filter(|id| !runs.contains(id)) {
+            self.stop_panels_of(id).await;
         }
     }
 
@@ -201,13 +211,13 @@ impl Supervisor {
     /// `PluginCommand::TryHooks`: each hook of the plugin `id` that takes
     /// events of `kind` runs on a sample of one, its filters aside, and
     /// what each did is answered once all have ended.
-    fn try_hooks(
+    async fn try_hooks(
         &mut self,
         id: &str,
         kind: EventKind,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        self.read_plugins();
+        self.read_plugins().await;
         let (details, folder) = match self.plugins.runnable(id) {
             Ok(found) => found,
             Err(error) => return answer(reply, Err(error)),

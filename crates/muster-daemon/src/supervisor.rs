@@ -672,7 +672,7 @@ impl Supervisor {
                 changed
             }
             Command::ReadPreferences => {
-                let read = self.read_preferences();
+                let read = self.read_preferences().await;
                 self.settle_shared_builds(false).await;
                 Ok(read)
             }

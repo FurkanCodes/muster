@@ -111,7 +111,7 @@ impl Supervisor {
     /// `ReadPreferences`: reads Muster's own settings again, as the person
     /// edited them. A file that does not read is no refusal: the clients
     /// are told why, and the defaults hold meanwhile.
-    pub(super) fn read_preferences(&mut self) -> Reply {
+    pub(super) async fn read_preferences(&mut self) -> Reply {
         let read = settled(&self.config_dir);
         tracing::info!(
             agents = read.1.len(),
@@ -121,7 +121,7 @@ impl Supervisor {
         self.take_own_settings(read);
         // The plugins are in the same file, and their manifests are read
         // again with it.
-        self.read_plugins();
+        self.read_plugins().await;
         Reply::Done
     }
 
