@@ -89,6 +89,7 @@ body {
 }
 /* The projects' heading over the list, its + always there: the way to add one. */
 .app-projects-head {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;

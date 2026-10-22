@@ -305,6 +305,10 @@ impl App {
             (outcome, Then::PanelsKept) => self.panels_kept(outcome.map(drop)),
             (Ok(Reply::Models(models)), Then::Models(agent)) => self.on_models(&agent, Ok(models)),
             (Err(error), Then::Models(agent)) => self.on_models(&agent, Err(error.message)),
+            (Ok(Reply::Repositories(listed)), Then::Repositories) => {
+                self.on_repositories(Ok(listed));
+            }
+            (Err(error), Then::Repositories) => self.on_repositories(Err(error.message)),
             (Ok(Reply::Changes(changes)), Then::Changes(workspace)) => {
                 self.on_changes(workspace, Ok(changes));
             }

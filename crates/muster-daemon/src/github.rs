@@ -19,8 +19,8 @@ pub(crate) enum GitHubError {
     Missing,
     #[error("could not run gh: {0}")]
     Spawn(std::io::Error),
-    #[error("gh did not answer within {TIME_LIMIT:?}")]
-    TimedOut,
+    #[error("gh did not answer within {0:?}")]
+    TimedOut(Duration),
     #[error("gh: {0}")]
     Failed(String),
     #[error("gh answered something unexpected: {0}")]
@@ -35,6 +35,16 @@ pub(crate) async fn gh_with(
     repo: &Path,
     args: &[&str],
     input: Option<&str>,
+) -> Result<String, GitHubError> {
+    gh_within(repo, args, input, TIME_LIMIT).await
+}
+
+/// [`gh_with`], allowed `limit`: a clone takes as long as the repository is big.
+pub(crate) async fn gh_within(
+    repo: &Path,
+    args: &[&str],
+    input: Option<&str>,
+    limit: Duration,
 ) -> Result<String, GitHubError> {
     use tokio::io::AsyncWriteExt;
     let mut command = Command::new("gh");
@@ -60,8 +70,8 @@ pub(crate) async fn gh_with(
         }
         child.wait_with_output().await
     };
-    let output = match tokio::time::timeout(TIME_LIMIT, work).await {
-        Err(_) => return Err(GitHubError::TimedOut),
+    let output = match tokio::time::timeout(limit, work).await {
+        Err(_) => return Err(GitHubError::TimedOut(limit)),
         Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(GitHubError::Missing);
         }

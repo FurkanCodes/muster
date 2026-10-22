@@ -380,3 +380,74 @@ fn project_settings_are_shown_with_overrides_and_their_mistakes_explained() {
     let error = String::from_utf8_lossy(&wrong.stderr);
     assert!(error.contains("memroy"), "{error}");
 }
+
+#[tokio::test]
+async fn a_project_is_cloned_from_github_into_the_folder_chosen_and_added() {
+    let sandbox = Sandbox::new();
+    std::fs::write(
+        sandbox.fake_gh().join("repos.json"),
+        r#"[{"full_name": "o/app", "description": "The app", "private": true},
+            {"full_name": "o/site", "description": null, "private": false}]"#,
+    )
+    .unwrap();
+    let into = sandbox.root().join("code");
+    std::fs::create_dir_all(&into).unwrap();
+    let into = into.canonicalize().unwrap();
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+
+    let Reply::Repositories(listed) = connection.command(Command::ListRepositories).await.unwrap()
+    else {
+        panic!("expected Repositories");
+    };
+    let names: Vec<_> = listed
+        .iter()
+        .map(|repository| repository.name.as_str())
+        .collect();
+    assert_eq!(names, ["o/app", "o/site"]);
+    assert!(listed[0].private);
+
+    let clone = |repository: &str| Command::CloneProject {
+        repository: repository.to_owned(),
+        into: into.clone(),
+    };
+    let Reply::ProjectAdded { id } = connection
+        .command(clone("https://github.com/o/app.git"))
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    let snapshot = connection.subscribe().await.unwrap();
+    let project = snapshot
+        .projects
+        .iter()
+        .find(|project| project.id == id)
+        .unwrap();
+    assert_eq!(project.root, into.join("app"));
+    assert_eq!(project.name, "app");
+    assert_eq!(git(&into.join("app"), &["log", "--format=%s"]), "first");
+    assert!(
+        std::fs::read_to_string(sandbox.fake_gh().join("calls"))
+            .unwrap()
+            .contains(&format!(
+                "repo clone o/app {} -- --quiet",
+                into.join("app").display()
+            ))
+    );
+
+    // Its folder is there now; a name that is none; one GitHub does not know.
+    assert_eq!(
+        refused(connection.command(clone("o/app")).await),
+        ErrorCode::Conflict
+    );
+    assert_eq!(
+        refused(connection.command(clone("--upload-pack=x/y")).await),
+        ErrorCode::BadRequest
+    );
+    assert_eq!(
+        refused(connection.command(clone("o/missing")).await),
+        ErrorCode::NotFound
+    );
+    assert!(!into.join("missing").exists());
+}

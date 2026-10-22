@@ -58,6 +58,23 @@ fn size() -> TermSize {
     }
 }
 
+/// Repositories on GitHub, one with all it can say.
+fn hosted() -> Vec<muster_core::protocol::repositories::HostedRepository> {
+    use muster_core::protocol::repositories::HostedRepository;
+    vec![
+        HostedRepository {
+            name: "o/app".to_owned(),
+            description: Some("The app".to_owned()),
+            private: true,
+        },
+        HostedRepository {
+            name: "o/lib".to_owned(),
+            description: None,
+            private: false,
+        },
+    ]
+}
+
 fn key() -> TicketKey {
     TicketKey::parse("ENG-42").unwrap()
 }
@@ -492,6 +509,11 @@ fn commands() -> Vec<Command> {
         Command::ExplainSession { session },
         Command::ReadPreferences,
         Command::Agents,
+        Command::ListRepositories,
+        Command::CloneProject {
+            repository: "o/app".to_owned(),
+            into: PathBuf::from("/Users/you/code"),
+        },
         Command::Reveal { session },
         Command::ChangePreference(PreferenceChange::Notch(false)),
         Command::ChangePreference(PreferenceChange::SideBySideFrom(0)),
@@ -610,6 +632,7 @@ fn replies() -> Vec<Reply> {
         Reply::Changes(changes()),
         Reply::Explanation(Box::new(explanation())),
         Reply::Models(vec!["haiku".to_owned(), "sonnet".to_owned()]),
+        Reply::Repositories(hosted()),
         Reply::Agents(vec![
             AgentFound {
                 harness: "claude".to_owned(),

@@ -140,8 +140,8 @@ export class TauriBridge implements Bridge {
     }
   }
 
-  async pickFolder(): Promise<PickedFolder> {
-    return invoke<PickedFolder>("pick_folder");
+  async pickFolder(title?: string): Promise<PickedFolder> {
+    return invoke<PickedFolder>("pick_folder", { title: title ?? null });
   }
 
   async onFolderDrop(listener: (paths: string[]) => void): Promise<() => void> {

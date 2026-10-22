@@ -119,6 +119,8 @@ pub(super) enum Request {
     WorktreeMade(Box<super::worktrees::Made>),
     /// A worktree git removed off the loop, or could not.
     WorktreeRemoved(Box<super::worktrees::Removed>),
+    /// A project cloned off the loop, or not, to be added.
+    Cloned(Box<super::cloning::Cloned>),
     /// The sampler's measurement.
     Resources(ResourceReport),
     /// The sampler asks for the running shells' terminals.
@@ -186,6 +188,7 @@ impl std::fmt::Debug for Request {
             Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
             Self::WorktreeMade(_) => f.write_str("WorktreeMade"),
             Self::WorktreeRemoved(_) => f.write_str("WorktreeRemoved"),
+            Self::Cloned(_) => f.write_str("Cloned"),
             Self::Resources(_) => f.write_str("Resources"),
             Self::SpendTargets(_) => f.write_str("SpendTargets"),
             Self::Spends(spends) => write!(f, "Spends({})", spends.len()),

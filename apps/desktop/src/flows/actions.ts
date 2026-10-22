@@ -80,6 +80,22 @@ export function addProject(app: App): void {
   }, browse);
 }
 
+/** The first protocol whose daemon clones from GitHub (`REPOSITORIES_PROTOCOL`). */
+export const REPOSITORIES_PROTOCOL = 49;
+
+/** `g`: a project cloned from GitHub, into a folder the person chooses. */
+export function cloneProject(app: App): void {
+  const link = app.daemon.store.getState().link;
+  if (link.state === "up" && link.protocol < REPOSITORIES_PROTOCOL) {
+    complain(
+      app,
+      "The daemon runs an older muster that cannot clone from GitHub: Settings' Restart in place moves it onto this one, every session running on.",
+    );
+    return;
+  }
+  app.actions.openFlow({ kind: "clone-project" });
+}
+
 /**
  * `n` (and ⌘N): the selected project's page with its box ready to start
  * work, in the session's or worktree's place where one is selected, else in

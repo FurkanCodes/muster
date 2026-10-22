@@ -352,9 +352,12 @@ test.describe("PRD-01 adding a project", () => {
     page,
   }) => {
     await open(page);
-    // Under the list of every session, after the projects.
-    await page.getByRole("button", { name: /^All/ }).click();
+    // The Projects + offers a folder; with no Mac panel here, the folder browser asks.
     await page.getByRole("button", { name: "Add a project" }).click();
+    await page
+      .getByRole("menu", { name: "Add a project" })
+      .getByRole("menuitem", { name: /Open a folder/ })
+      .click();
     const dialog = page.getByRole("dialog", { name: "Add a project" });
     const field = dialog.getByRole("combobox", { name: "Folder" });
     await expect(field).toBeFocused();

@@ -57,7 +57,7 @@ export interface Bridge {
    * no panel (its end-to-end tests' build, the mock), the folder browser
    * standing in.
    */
-  pickFolder(): Promise<PickedFolder>;
+  pickFolder(title?: string): Promise<PickedFolder>;
   /** Tells `listener` the paths of what is dropped on the window, until the returned function is called. */
   onFolderDrop(listener: (paths: string[]) => void): Promise<() => void>;
 }

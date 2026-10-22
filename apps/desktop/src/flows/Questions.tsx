@@ -5,7 +5,7 @@ import { Move, Tidy } from "./BranchDialogs";
 import { RemoveProject, RemoveWorktree, Stop } from "./SessionDialogs";
 import type { Flow } from "./types";
 
-export type Question = Exclude<Flow, { kind: "add-project" | "new-worktree" }>;
+export type Question = Exclude<Flow, { kind: "add-project" | "clone-project" | "new-worktree" }>;
 
 export default function Questions({ flow }: { flow: Question }) {
   switch (flow.kind) {

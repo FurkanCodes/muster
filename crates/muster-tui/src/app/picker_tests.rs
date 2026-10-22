@@ -31,7 +31,7 @@ fn src() -> Vec<Folder> {
 
 fn picker(app: &App) -> (&str, &FolderPicker) {
     match &app.mode {
-        Mode::Dialog(Dialog::AddProject { path, picker }) => (path.text(), picker),
+        Mode::Dialog(Dialog::AddProject { path, picker, .. }) => (path.text(), picker),
         other => panic!("expected the add-project dialog, got {other:?}"),
     }
 }
@@ -201,4 +201,85 @@ fn pasting_a_path_lists_its_folder() {
         actions,
         [Action::ListFolders(PathBuf::from("/home/me/Desktop"))]
     );
+}
+
+#[test]
+fn g_clones_a_github_repository_into_the_folder_chosen() {
+    use muster_core::protocol::repositories::HostedRepository;
+    use muster_core::protocol::{Reply, ServerFrame};
+
+    let mut world = world();
+    let actions = press(&mut world.app, KeyCode::Char('g'));
+    let (req_id, asked) = command(&actions);
+    assert_eq!(asked, Command::ListRepositories);
+    assert!(render(&world.app).contains("Asking GitHub"));
+    let repository = |name: &str, private: bool| HostedRepository {
+        name: name.to_owned(),
+        description: Some(format!("{name}, described")),
+        private,
+    };
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Ok(Reply::Repositories(vec![
+            repository("o/site", false),
+            repository("o/app", true),
+        ])),
+    });
+    let screen = render(&world.app);
+    assert!(
+        screen.contains("o/site") && screen.contains("o/app"),
+        "{screen}"
+    );
+    assert!(screen.contains("private"), "{screen}");
+
+    // Typing narrows, choosing the first match.
+    typed(&mut world.app, "app");
+    let Mode::Dialog(Dialog::CloneProject(choice)) = &world.app.mode else {
+        panic!("expected the clone dialog, got {:?}", world.app.mode);
+    };
+    assert_eq!(choice.shown().len(), 1);
+    press(&mut world.app, KeyCode::Enter);
+
+    // Then where: the folder picker, cloning.
+    let Mode::Dialog(Dialog::AddProject { path, clone, .. }) = &world.app.mode else {
+        panic!("expected the folder picker, got {:?}", world.app.mode);
+    };
+    assert_eq!(clone.as_deref(), Some("o/app"));
+    assert_eq!(path.text(), "/src/");
+    assert!(render(&world.app).contains("Folder to clone o/app into (as app/ there)"));
+    let actions = press(&mut world.app, KeyCode::Enter);
+    let (_, sent) = command(&actions);
+    assert_eq!(
+        sent,
+        Command::CloneProject {
+            repository: "o/app".to_owned(),
+            into: PathBuf::from("/src/"),
+        }
+    );
+    assert_eq!(world.app.mode, Mode::Browse);
+}
+
+#[test]
+fn a_repository_named_is_cloned_though_github_could_not_list_any() {
+    use muster_core::protocol::{ErrorBody, ErrorCode, ServerFrame};
+
+    let mut world = world();
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('g')));
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Err(ErrorBody::new(
+            ErrorCode::BadRequest,
+            "the GitHub CLI (gh) is not signed in; run `gh auth login`",
+        )),
+    });
+    assert!(render(&world.app).contains("not signed in"));
+    // Nothing chosen and nothing named: ⏎ says what it wants.
+    press(&mut world.app, KeyCode::Enter);
+    assert!(render(&world.app).contains("Choose one, or type its name"));
+    typed(&mut world.app, "https://github.com/x/y");
+    press(&mut world.app, KeyCode::Enter);
+    let Mode::Dialog(Dialog::AddProject { clone, .. }) = &world.app.mode else {
+        panic!("expected the folder picker, got {:?}", world.app.mode);
+    };
+    assert_eq!(clone.as_deref(), Some("x/y"));
 }

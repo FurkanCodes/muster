@@ -136,7 +136,7 @@ export class MockBridge implements Bridge {
     this.listener = onMessage;
     this.emit({ kind: "link", link: { state: "connecting" } });
     queueMicrotask(() => {
-      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 47 } });
+      this.emit({ kind: "link", link: { state: "up", version: "0.4.1", protocol: 49 } });
       this.emit({
         kind: "patch",
         patch: this.patch({
@@ -321,7 +321,11 @@ export class MockBridge implements Bridge {
   /** The pretend daemon's window has no Mac panel: the folder browser stands in, unless a test says what is chosen. */
   picked: PickedFolder = { kind: "unavailable" };
 
-  async pickFolder(): Promise<PickedFolder> {
+  /** The titles the panel was opened with, for tests. */
+  readonly pickedWith: string[] = [];
+
+  async pickFolder(title?: string): Promise<PickedFolder> {
+    this.pickedWith.push(title ?? "Add a project");
     return this.picked;
   }
 

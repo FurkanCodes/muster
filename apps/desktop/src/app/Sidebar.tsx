@@ -6,9 +6,10 @@
 // AllSessions); Settings at its foot. It is the one list of the window: the
 // session or project selected in it fills the rest.
 
-import type { ReactNode } from "react";
-import { addProject, newSession } from "../flows/actions";
-import { useKeyLabel } from "../keys/useKeymap";
+import { type ReactNode, useState } from "react";
+import { addProject, cloneProject, newSession } from "../flows/actions";
+import { useKeymap } from "../keys/useKeymap";
+import { keysOf, SessionMenu } from "../session/SessionMenu";
 import { chats } from "../state/selectors";
 import type { ListId } from "../state/ui";
 import { IconButton, Kbd } from "../ui/controls";
@@ -102,20 +103,36 @@ function ListSwitch() {
   );
 }
 
-/** The projects' heading, and the way to add one. */
+/** The projects' heading, and the ways to add one: a folder of the Mac's, or a clone from GitHub. */
 function ProjectsHead({ linked }: { linked: boolean }) {
   const app = useApp();
-  const key = useKeyLabel("add_project");
+  const map = useKeymap();
+  const [open, setOpen] = useState(false);
   return (
     <div className="app-projects-head">
       <span className="app-projects-title">Projects</span>
       <IconButton
         icon="plus"
         size="sm"
-        label={`Add a project (${key})`}
+        label="Add a project"
+        pressed={open}
         disabled={!linked}
-        onClick={() => addProject(app)}
+        onClick={() => setOpen(!open)}
       />
+      {open ? (
+        <SessionMenu
+          label="Add a project"
+          items={[
+            { ...keysOf(map, "add_project"), label: "Open a folder…", does: () => addProject(app) },
+            {
+              ...keysOf(map, "clone_project"),
+              label: "Clone from GitHub…",
+              does: () => cloneProject(app),
+            },
+          ]}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

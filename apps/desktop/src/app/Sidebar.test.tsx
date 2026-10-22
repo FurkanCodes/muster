@@ -27,7 +27,7 @@ describe("ARC-24 the sidebar", () => {
       "Tickets",
       "Needs you",
       "All",
-      "Add a project (a)",
+      "Add a project",
       "Settings",
     ]);
   });
@@ -81,17 +81,27 @@ describe("ARC-24 the sidebar", () => {
   it("adds a project from the Mac's own folder panel, the folder browser standing in where there is none", async () => {
     const { bridge } = renderApp();
     await screen.findByRole("option", { name: "Sketch the Tauri shell" });
-    const add = screen.getByRole("button", { name: /^Add a project/ });
+    // The Projects + offers a folder of the Mac's, or a clone from GitHub.
+    const add = async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Add a project" }));
+      const menu = screen.getByRole("menu", { name: "Add a project" });
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Open a folder…a", "Clone from GitHub…g"]);
+      await userEvent.click(within(menu).getByRole("menuitem", { name: /Open a folder/ }));
+    };
 
     bridge.picked = { kind: "cancelled" };
-    await userEvent.click(add);
+    await add();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(
       bridge.sent.some((command) => typeof command === "object" && "AddProject" in command),
     ).toBe(false);
 
     bridge.picked = { kind: "chosen", path: "/Users/you/code/labs" };
-    await userEvent.click(add);
+    await add();
     await waitFor(() =>
       expect(bridge.sent).toContainEqual({
         AddProject: { root: "/Users/you/code/labs", name: null },
@@ -101,7 +111,7 @@ describe("ARC-24 the sidebar", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
 
     bridge.picked = { kind: "unavailable" };
-    await userEvent.click(screen.getByRole("button", { name: /^Add a project/ }));
+    await add();
     expect(await screen.findByRole("dialog", { name: "Add a project" })).toBeInTheDocument();
   });
 });

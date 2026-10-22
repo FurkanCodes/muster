@@ -5,6 +5,7 @@ import type { Explanation } from "./Explanation";
 import type { FileDiff } from "./FileDiff";
 import type { Health } from "./Health";
 import type { HooksTried } from "./HooksTried";
+import type { HostedRepository } from "./HostedRepository";
 import type { Issue } from "./Issue";
 import type { PluginList } from "./PluginList";
 import type { PluginPreview } from "./PluginPreview";
@@ -38,4 +39,4 @@ mine: boolean,
  * own issues (GitHub's, GitLab's), and from a daemon before
  * protocol 21. Projects with the same are offered together.
  */
-source: string | null, } } | { "IssueStarted": { workspace: WorkspaceId, session: SessionId, } } | { "IssueViewed": { issue: Issue, body: string, } } | { "RunStarted": { id: RunId, } } | { "RunHistory": { transitions: Array<RunTransition>, } } | { "PullRequestOpened": { pr: PullRequest, } } | { "ProjectSettings": ProjectSettings } | { "Health": Health } | { "Explanation": Explanation } | { "Models": Array<string> } | { "Agents": Array<AgentFound> } | { "Changes": Changes } | { "FileDiff": FileDiff } | { "Timeline": Timeline } | { "UndoPlan": UndoPlan } | { "Undone": { entry: number, moved_branch: boolean, } } | { "Moved": { onto: string, commits: number, entry: number, } } | { "RunTakenOver": { workspace: WorkspaceId, session: SessionId, } } | { "Plugins": PluginList } | { "PluginPreview": PluginPreview } | { "PluginLog": { id: string, log: string, } } | { "HooksTried": HooksTried } | "Done";
+source: string | null, } } | { "IssueStarted": { workspace: WorkspaceId, session: SessionId, } } | { "IssueViewed": { issue: Issue, body: string, } } | { "RunStarted": { id: RunId, } } | { "RunHistory": { transitions: Array<RunTransition>, } } | { "PullRequestOpened": { pr: PullRequest, } } | { "ProjectSettings": ProjectSettings } | { "Health": Health } | { "Explanation": Explanation } | { "Models": Array<string> } | { "Agents": Array<AgentFound> } | { "Repositories": Array<HostedRepository> } | { "Changes": Changes } | { "FileDiff": FileDiff } | { "Timeline": Timeline } | { "UndoPlan": UndoPlan } | { "Undone": { entry: number, moved_branch: boolean, } } | { "Moved": { onto: string, commits: number, entry: number, } } | { "RunTakenOver": { workspace: WorkspaceId, session: SessionId, } } | { "Plugins": PluginList } | { "PluginPreview": PluginPreview } | { "PluginLog": { id: string, log: string, } } | { "HooksTried": HooksTried } | "Done";

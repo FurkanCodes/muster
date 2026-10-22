@@ -14,6 +14,7 @@ mod by_hand;
 mod changes;
 mod clashes;
 mod clients;
+mod cloning;
 mod containers;
 mod events;
 mod explain;
@@ -115,6 +116,8 @@ pub(crate) struct Settings {
     /// Runs plugins' hooks as things happen, which the daemon cuts as it
     /// stops.
     pub(crate) hooks: crate::plugins::hooks::Hooks,
+    /// GitHub's repositories, to clone one as a project.
+    pub(crate) repositories: Arc<dyn crate::repositories::Repositories>,
 }
 
 /// The state and the runs as the store keeps them.
@@ -202,6 +205,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         resumes: recovery::Resumes::default(),
         worktree_jobs: worktrees::Jobs::default(),
         tasks: settings.tasks,
+        repositories: settings.repositories,
         places: settings.places,
         secrets: settings.secrets,
         agents,
@@ -337,6 +341,8 @@ struct Supervisor {
     worktree_jobs: worktrees::Jobs,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
+    /// GitHub's repositories, to clone one as a project.
+    repositories: Arc<dyn crate::repositories::Repositories>,
     /// Where the agents keep their records.
     places: crate::spend::Places,
     /// Where plugins' secrets are kept.
@@ -435,6 +441,11 @@ impl Supervisor {
                 Command::ListModels { agent } => self.list_models(&agent, reply),
                 // It runs each agent's program.
                 Command::Agents => self.find_agents(reply),
+                // These ask GitHub, through the person's own gh.
+                Command::ListRepositories => self.list_repositories(reply),
+                Command::CloneProject { repository, into } => {
+                    self.clone_project(&repository, &into, reply);
+                }
                 Command::ChangeSetting { project, change } => {
                     self.change_setting(project, &change, reply);
                 }
@@ -603,6 +614,7 @@ impl Supervisor {
                 self.sync_worktrees(project, listed).await;
             }
             Request::WorktreeMade(made) => self.worktree_made(*made).await,
+            Request::Cloned(cloned) => self.cloned(*cloned).await,
             Request::WorktreeRemoved(removed) => self.worktree_removed(*removed).await,
             Request::AddClient(reply) => {
                 // A client that left already drops the guard, which removes it.
@@ -719,6 +731,8 @@ impl Supervisor {
             | Command::ProjectSettings { .. }
             | Command::ListModels { .. }
             | Command::Agents
+            | Command::ListRepositories
+            | Command::CloneProject { .. }
             | Command::ChangeSetting { .. }
             | Command::StartFromIssue { .. }
             | Command::StartRun { .. }
@@ -830,6 +844,8 @@ fn command_name(command: &Command) -> &'static str {
         Command::ReadPreferences => "read preferences",
         Command::ListModels { .. } => "list models",
         Command::Agents => "agents",
+        Command::ListRepositories => "list repositories",
+        Command::CloneProject { .. } => "clone project",
         Command::AddProject { .. } => "add project",
         Command::RemoveProject { .. } => "remove project",
         Command::CreateWorktree { .. } => "create worktree",

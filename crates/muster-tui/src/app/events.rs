@@ -93,9 +93,17 @@ impl App {
                     data: encode_paste(text, screen.modes),
                 })]
             }
-            Mode::Dialog(Dialog::AddProject { path, picker }) => {
-                let (path, picker) = (path.clone(), picker.clone());
-                self.picker_paste(path, picker, text)
+            Mode::Dialog(Dialog::AddProject {
+                path,
+                picker,
+                clone,
+            }) => {
+                let (path, picker, clone) = (path.clone(), picker.clone(), clone.clone());
+                self.picker_paste(path, picker, clone, text)
+            }
+            Mode::Dialog(Dialog::CloneProject(choice)) => {
+                let choice = choice.clone();
+                self.clone_paste(choice, text)
             }
             Mode::Help(help) => {
                 let help = help.clone();
@@ -230,6 +238,7 @@ impl App {
     pub(super) fn list_action(&mut self, does: Does) -> Vec<Action> {
         match does {
             Does::AddProject => return self.open_add_project(),
+            Does::CloneProject => return self.open_clone_project(),
             Does::NewWorktree => self.new_worktree(),
             Does::ShowTickets => {
                 let project = self.selected.and_then(|row| self.model.project_of(row));
@@ -637,7 +646,12 @@ impl App {
                 model,
                 listed,
             } => self.naming_model_key(agent, model, listed, key),
-            Dialog::AddProject { path, picker } => self.picker_key(path, picker, key),
+            Dialog::AddProject {
+                path,
+                picker,
+                clone,
+            } => self.picker_key(path, picker, clone, key),
+            Dialog::CloneProject(choice) => self.clone_key(choice, key),
             dialog @ Dialog::TicketsFrom { .. } => self.tickets_from_key(dialog, key),
             Dialog::AssignAgent {
                 project,

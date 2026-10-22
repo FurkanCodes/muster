@@ -73,3 +73,11 @@
 .ui-palette .mu-palette-list {
   overscroll-behavior: contain;
 }
+/* A repository offered: its name, private where it is, and what it is, cut to fit. */
+.ui-flow-repository {
+  gap: var(--space-8);
+}
+.ui-flow-repository > .mu-meta {
+  flex: 1;
+  min-width: 0;
+}

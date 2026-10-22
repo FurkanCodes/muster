@@ -299,12 +299,12 @@ describe("ARC-24 the queue answers the person's keys", () => {
     bridge.world.preferences.keys = {
       move_down: ["y"],
       rename: ["E"],
-      pull_request_in_browser: ["g"],
+      pull_request_in_browser: ["p"],
       put_back: ["u"],
     };
     await opened(bridge);
     await waitFor(() => expect(hints()).toContain("⇧Erename"));
-    expect(hints()).toContain("gpull request");
+    expect(hints()).toContain("ppull request");
     expect(hints()).toContain("uput back");
     const changes = screen.getByRole("button", { name: "Changes" });
     await userEvent.keyboard("z");
@@ -315,7 +315,7 @@ describe("ARC-24 the queue answers the person's keys", () => {
     // Muster's own keys no longer do what the person moved.
     await userEvent.keyboard("b");
     expect(bridge.openedUrls).toEqual([]);
-    await userEvent.keyboard("g");
+    await userEvent.keyboard("p");
     await waitFor(() => expect(bridge.openedUrls).toHaveLength(1));
     await userEvent.keyboard("y");
     expect(selected()).toHaveAccessibleName("Resize settles once on release");

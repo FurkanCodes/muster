@@ -45,10 +45,11 @@ pub(crate) enum PickedFolder {
 }
 
 /// The Mac's own folder panel, as a sheet on the window, opened at the
-/// home folder to choose a project to add (`PRODUCT.md` §6a). The webview
-/// is given only this: it never opens a panel, or reads a folder, itself.
+/// home folder and titled `title` (to add a project, or to clone one into
+/// a folder: `PRODUCT.md` §6a). The webview is given only this: it never
+/// opens a panel, or reads a folder, itself.
 #[tauri::command]
-pub(crate) async fn pick_folder(window: tauri::Window) -> PickedFolder {
+pub(crate) async fn pick_folder(window: tauri::Window, title: Option<String>) -> PickedFolder {
     if cfg!(feature = "e2e") {
         return PickedFolder::Unavailable;
     }
@@ -56,7 +57,7 @@ pub(crate) async fn pick_folder(window: tauri::Window) -> PickedFolder {
     let mut panel = window
         .dialog()
         .file()
-        .set_title("Add a project")
+        .set_title(title.unwrap_or_else(|| "Add a project".to_owned()))
         .set_parent(&window);
     if let Some(home) = std::env::var_os("HOME") {
         panel = panel.set_directory(home);
