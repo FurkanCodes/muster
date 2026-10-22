@@ -5,13 +5,14 @@ import { ulid } from "../ipc/mock/scenario";
 import { renderApp } from "../test/render";
 
 // The one sidebar (PRD §6a): a new session, the palette and Tickets, the
-// switch between what needs the person and every session with the list
-// itself under it, and Settings at its foot.
+// switch between what needs the person and every session, the projects'
+// heading with the way to add one, the list itself under it, and Settings
+// at its foot.
 
 const sidebar = () => screen.findByRole("navigation", { name: "Sessions" });
 
 describe("ARC-24 the sidebar", () => {
-  it("has a new session, the palette and Tickets, the lists' switch, and Settings at its foot", async () => {
+  it("has a new session, the palette and Tickets, the lists' switch, a way to add a project, and Settings at its foot", async () => {
     renderApp();
     const nav = await sidebar();
     await within(nav).findByRole("option", { name: "Sketch the Tauri shell" });
@@ -26,6 +27,7 @@ describe("ARC-24 the sidebar", () => {
       "Tickets",
       "Needs you",
       "All",
+      "Add a project (a)",
       "Settings",
     ]);
   });

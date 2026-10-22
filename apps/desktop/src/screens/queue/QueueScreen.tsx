@@ -1,6 +1,8 @@
-// *Needs you* (design system: Queue): the queue in the sidebar, asking
-// first, then finished not seen, then at work, and beside it the selected
-// session's pane, live. While Tickets or Settings is shown beside it
+// *Needs you* (design system: Queue): the queue in the sidebar, by project
+// as the All list is, the project with the most urgent first and under it
+// what asks, then what finished not seen, then what is at work, and beside
+// it the selected session's pane, live. A project's heading goes to its
+// page. While Tickets or Settings is shown beside it
 // instead, the queue stays in the sidebar and its keys are theirs. The keys are the
 // terminal UI's, as the person set them (src/keys): ↑↓ (or k j) move, ⏎
 // gives the session's terminal the keys and ⇧Q gives them back, `l` goes
@@ -24,26 +26,25 @@ import {
   type SessionActions,
   useSessionActions,
 } from "../../session/useSessionActions";
-import { standsBeside } from "../../state/selectors";
+import { projectColour, standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
 import { lastNeeded } from "./history";
 import { optionId, QueueEntry } from "./QueueEntry";
-import { holdPlace, queueIds, type Section, sectionOf } from "./queue";
+import { byProject, holdPlace, projectOfSession, queueIds, type Section, sectionOf } from "./queue";
 import "./queue.css";
 
 const TITLE = "Needs you";
 const AREA = "needs-you";
 
-const SECTIONS: Record<Section, string> = {
-  asking: "Asking you",
-  news: "Finished, not seen",
-  working: "Working",
-};
-
 /** The list as shown and its selection, holding the selected one's place (`holdPlace`). */
 function useShownQueue() {
   const chosen = useUi((state) => state.selected[AREA]);
-  const list = useDaemon(useShallow(queueIds));
+  // By project, as the All list is, so a place held is one among what is shown.
+  const list = useDaemon(
+    useShallow((state) =>
+      byProject(queueIds(state), (id) => projectOfSession(state, id)).flatMap((group) => group.ids),
+    ),
+  );
   // Kept in its place only while it is not at work again.
   const stays = useDaemon((state) => {
     const session = chosen ? state.sessions[chosen] : undefined;
@@ -61,7 +62,18 @@ function useShownQueue() {
     shown = { list, chosen, stays, ...holdPlace(list, held.ids, chosen, stays) };
     setHeld(shown);
   }
-  return { ids: shown.ids, selected: shown.selected, chosen };
+  // Each project's heading over its rows, the place held kept among them.
+  const projects = useDaemon(
+    useShallow((state) => shown.ids.map((id) => projectOfSession(state, id))),
+  );
+  const projectOf = new Map(shown.ids.map((id, at) => [id, projects[at] ?? ""]));
+  const groups = byProject(shown.ids, (id) => projectOf.get(id) ?? "");
+  return {
+    groups,
+    ids: groups.flatMap((group) => group.ids),
+    selected: shown.selected,
+    chosen,
+  };
 }
 
 function hintsFor(
@@ -94,7 +106,7 @@ const IN_TERMINAL: readonly Hint[] = [
 export function QueueScreen({ active }: { active: boolean }) {
   const app = useApp();
   const actions = useActions();
-  const { ids, selected, chosen } = useShownQueue();
+  const { groups, ids, selected, chosen } = useShownQueue();
   const keysIn = useUi((state) => state.keysIn);
   const loaded = useDaemon((state) => state.loaded);
   const link = useDaemon((state) => state.link.state);
@@ -249,14 +261,11 @@ export function QueueScreen({ active }: { active: boolean }) {
               aria-activedescendant={selected ? optionId(selected) : undefined}
             >
               {nothingWaits ? <AllClear working={working} /> : null}
-              {ids.map((id, index) => {
-                const own = sections[index] ?? "news";
-                const head = own !== sections[index - 1];
-                return (
+              {groups.map((group) =>
+                group.ids.map((id, index) => (
                   <QueueRowSlot
                     key={id}
-                    head={head ? SECTIONS[own] : null}
-                    section={own}
+                    project={index === 0 ? group.project : null}
                     renaming={tools.renaming === id ? tools : null}
                   >
                     <QueueEntry
@@ -266,8 +275,8 @@ export function QueueScreen({ active }: { active: boolean }) {
                       onPick={pick}
                     />
                   </QueueRowSlot>
-                );
-              })}
+                )),
+              )}
             </div>
           )}
         </section>
@@ -282,27 +291,45 @@ export function QueueScreen({ active }: { active: boolean }) {
   );
 }
 
-/** A row of the list, under its section's label where a section begins, or its name being edited. */
+/** A row of the list, under its project's heading where the project's rows begin, or its name being edited. */
 function QueueRowSlot({
-  head,
-  section,
+  project,
   renaming,
   children,
 }: {
-  head: string | null;
-  section: Section;
+  project: string | null;
   renaming: SessionActions | null;
   children: ReactNode;
 }) {
   return (
     <>
-      {head ? (
-        <div className={`mu-section mu-section--${section}`} role="presentation">
-          {head}
-        </div>
-      ) : null}
+      {project === null ? null : <ProjectHeading project={project} />}
       {renaming ? <RenameSession actions={renaming} /> : children}
     </>
+  );
+}
+
+/** A project's heading in the queue, as its line in the All list: a click goes to its page. */
+function ProjectHeading({ project }: { project: string }) {
+  const actions = useActions();
+  const name = useDaemon((state) => state.projects[project]?.name ?? "");
+  const colour = useDaemon((state) => projectColour(state, project));
+  return (
+    <div className="queue-project" role="presentation">
+      <button
+        type="button"
+        tabIndex={-1}
+        className="queue-project-name"
+        title={`Open ${name}`}
+        onClick={() => {
+          actions.select("all", project);
+          actions.show("all");
+        }}
+      >
+        <span className={`mu-swatch mu-p${colour}`} />
+        <span className="mu-cut">{name}</span>
+      </button>
+    </div>
   );
 }
 

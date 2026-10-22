@@ -52,3 +52,33 @@ export function holdPlace(
   }
   return { ids: list, selected: list[Math.min(Math.max(at, 0), list.length - 1)] };
 }
+
+/** The project `session` is in, by its workspace; empty where none is known. */
+export function projectOfSession(state: DaemonState, session: SessionId): string {
+  return state.workspaces[state.sessions[session]?.workspace ?? ""]?.project ?? "";
+}
+
+/** A project's part of the queue: its sessions, in the queue's order. */
+export interface ProjectGroup {
+  project: string;
+  ids: readonly SessionId[];
+}
+
+/**
+ * The queue by project, as the All list groups sessions: each project once,
+ * in the order its first session comes, so the project with the most
+ * urgent comes first, and under it its sessions in the queue's order.
+ */
+export function byProject(
+  ids: readonly SessionId[],
+  projectOf: (id: SessionId) => string,
+): ProjectGroup[] {
+  const groups = new Map<string, SessionId[]>();
+  for (const id of ids) {
+    const project = projectOf(id);
+    const group = groups.get(project);
+    if (group) group.push(id);
+    else groups.set(project, [id]);
+  }
+  return [...groups].map(([project, grouped]) => ({ project, ids: grouped }));
+}

@@ -19,9 +19,9 @@ import { Button, Segmented } from "../ui/controls";
 import { Dialog } from "../ui/Dialog";
 import { Select } from "../ui/Select";
 import { TextArea, TextField } from "../ui/TextField";
-import { START_SIZE } from "./actions";
 import { offered, stepAgent } from "./agents";
 import { secondAgentWarning } from "./secondAgent";
+import { makeWorktree, openStarted, startSession } from "./start";
 import type { Flow } from "./types";
 import { useTask } from "./useTask";
 import "./flows.css";
@@ -104,20 +104,11 @@ export default function NewSession({
     if (!task.busy) actions.openFlow(null);
   };
 
-  const makeWorktree = async (): Promise<WorkspaceId> => {
-    const reply = await app.bridge.command({
-      CreateWorktree: { project, branch: branch.trim() || null, on: null },
-    });
-    if (typeof reply !== "object" || !("WorktreeCreated" in reply))
-      throw new Error("The daemon answered something else; try again.");
-    return reply.WorktreeCreated.id;
-  };
-
   const submit = () =>
     task.run(async () => {
       if (!project) throw new Error("Add a project first.");
       if (making) {
-        const made = await makeWorktree();
+        const made = await makeWorktree(app, project, branch);
         actions.openFlow(null);
         actions.show("all");
         whenKnown(app, "workspaces", made, () => actions.select("all", made));
@@ -126,32 +117,20 @@ export default function NewSession({
       }
       let workspace = place === "checkout" ? checkout?.id : place === "worktree" ? worktree : null;
       if (place === "new") {
-        workspace = await makeWorktree();
+        workspace = await makeWorktree(app, project, branch);
         // Kept, so a refused launch is tried again in it, not in another new one.
         setWorktree(workspace);
         setWhere("worktree");
       }
       if (!workspace) throw new Error("Choose where it starts: its checkout or a worktree.");
-      const reply = await app.bridge.command({
-        StartSession: {
-          workspace,
-          harness,
-          title: null,
-          size: START_SIZE,
-          prompt: agent?.takesPrompt ? prompt.trim() || null : null,
-        },
-      });
-      if (typeof reply !== "object" || !("SessionStarted" in reply))
-        throw new Error("The daemon answered something else; try again.");
-      const session = reply.SessionStarted.id;
-      actions.choseAgent(harness);
+      const session = await startSession(
+        app,
+        workspace,
+        harness,
+        agent?.takesPrompt ? prompt.trim() || null : null,
+      );
       actions.openFlow(null);
-      actions.show("all");
-      whenKnown(app, "sessions", session, () => {
-        actions.select("all", session);
-        actions.showTerminal(session);
-        actions.keysTo("terminal");
-      });
+      openStarted(app, session, harness);
     });
 
   // ←→ (and ↑↓) go round the agents while one has the focus.

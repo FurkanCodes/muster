@@ -1,15 +1,17 @@
 // The sidebar: Kep beside the window's own buttons, and the way to put the
 // sidebar away; a new session, the way to anything by typing and Tickets;
-// the switch between what needs the person and every session, with the
-// list itself under it (the list screens draw it: QueueScreen,
+// the switch between what needs the person and every session, then the
+// projects' heading with the way to add one, and the list itself under it,
+// sessions by project either way (the list screens draw it: QueueScreen,
 // AllSessions); Settings at its foot. It is the one list of the window: the
-// session selected in it fills the rest.
+// session or project selected in it fills the rest.
 
 import type { ReactNode } from "react";
-import { newSession } from "../flows/actions";
+import { addProject, newSession } from "../flows/actions";
+import { useKeyLabel } from "../keys/useKeymap";
 import { chats } from "../state/selectors";
 import type { ListId } from "../state/ui";
-import { Kbd } from "../ui/controls";
+import { IconButton, Kbd } from "../ui/controls";
 import { Icon, type IconName } from "../ui/Icon";
 import { KepFace, type Mood } from "../ui/Kep";
 import { useActions, useApp, useDaemon, useUi } from "./context";
@@ -100,6 +102,24 @@ function ListSwitch() {
   );
 }
 
+/** The projects' heading, and the way to add one. */
+function ProjectsHead({ linked }: { linked: boolean }) {
+  const app = useApp();
+  const key = useKeyLabel("add_project");
+  return (
+    <div className="app-projects-head">
+      <span className="app-projects-title">Projects</span>
+      <IconButton
+        icon="plus"
+        size="sm"
+        label={`Add a project (${key})`}
+        disabled={!linked}
+        onClick={() => addProject(app)}
+      />
+    </div>
+  );
+}
+
 export function Sidebar({ children }: { children: ReactNode }) {
   const app = useApp();
   const actions = useActions();
@@ -135,6 +155,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         onClick={() => actions.show("tickets")}
       />
       <ListSwitch />
+      <ProjectsHead linked={linked} />
       <div className="app-sidebar-list">{children}</div>
       <SideButton
         icon="gear"

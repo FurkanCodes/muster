@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { derive } from "../../ipc/mock/model";
 import { ulid, workingDay } from "../../ipc/mock/scenario";
 import { createDaemon, type DaemonState } from "../../state/daemon";
-import { holdPlace, queueIds, sectionOf } from "./queue";
+import { byProject, holdPlace, projectOfSession, queueIds, sectionOf } from "./queue";
 
 function stateOf(world = workingDay()): DaemonState {
   return {
@@ -58,6 +58,22 @@ describe("ARC-24 the queue's lists, in the model's order", () => {
     expect(sections).toContainEqual(["Sketch the Tauri shell", "asking"]);
     expect(sections).toContainEqual(["Resize settles once on release", "news"]);
     expect(sections).toContainEqual(["Upgrade AGP to 9.1", "working"]);
+  });
+});
+
+describe("the queue by project, as the All list groups sessions", () => {
+  it("lists each project once, the one with the most urgent first, its sessions in the queue's order", () => {
+    const state = stateOf();
+    const ids = queueIds(state);
+    const projectOf = (id: string) => projectOfSession(state, id);
+    const groups = byProject(ids, projectOf);
+    expect(groups[0]?.project).toBe(projectOf(ids[0] ?? ""));
+    expect(new Set(groups.map((group) => group.project)).size).toBe(groups.length);
+    for (const group of groups) {
+      expect(group.ids.every((id) => projectOf(id) === group.project)).toBe(true);
+      expect(group.ids).toEqual(ids.filter((id) => projectOf(id) === group.project));
+    }
+    expect(groups.flatMap((group) => group.ids).toSorted()).toEqual(ids.toSorted());
   });
 });
 

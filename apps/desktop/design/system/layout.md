@@ -41,7 +41,11 @@ With the sidebar away, the head makes room for the window's buttons (`layout-tra
 
 ## A list row, measured
 
-Every row of the list, in *Needs you* and in *All*, is a two-line row (`size-row-two`), or one line where the person says: its status mark, its agent's logo, its name over what it is doing (in the waiting colour while it asks), and its age. A finished row not seen says its branch, its diff stat and its pull request under its name. A project's line in *All* is a quiet heading, its swatch and name, its `+` there to the pointer; a worktree with no session in it has one quiet line of its own.
+Every row of the list, in *Needs you* and in *All*, is a two-line row (`size-row-two`), or one line where the person says: its status mark, its agent's logo, its name over what it is doing (in the waiting colour while it asks), and its age. A finished row not seen says its branch, its diff stat and its pull request under its name. Both lists are sessions by project: a project's line in *All*, and its heading in *Needs you*, is its swatch and its name in `body-strong` and `text`, a place one goes to (its page), its `+` there to the pointer; over the list, *Projects* in `label`, quiet, with the `+` that adds one. A worktree with no session in it has one quiet line of its own.
+
+## A project's page, measured
+
+In the session's place while a project is selected: its head (swatch, name in `title-pane`, its folder in `code`, then *New worktree* and *Tickets*, `size-control-sm`); then, within `layout-measure`, the box that starts work (`surface-panel`, `radius-lg`, `space-12` padding, its border `accent` while typed in: the prompt in `prose`, then where, which agent and the primary button), and *Where its work is*: a card for the checkout and each worktree (`surface-panel`, `radius-lg`), its branch, diff stat, overlap and pull request on its first line with `+` and remove at its end, its sessions under it as one-line rows.
 
 ## The session, measured
 

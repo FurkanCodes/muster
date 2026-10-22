@@ -93,11 +93,11 @@ describe("Needs you, over the real daemon", () => {
     await untilSession("Done unseen", "finished");
   });
 
-  it("PRD-01 lists who asks, then what finished unseen, then the agents at work, the longest first", async () => {
+  it("PRD-01 lists by project; under each, who asks, then what finished unseen, then the agents at work, the longest first", async () => {
     await untilShown(["Asks first", "Done unseen", "Long at work", "Lately at work"]);
     const heads: string[] = [];
-    for (const head of await $$(".queue-list .mu-section")) heads.push(await head.getText());
-    expect(heads).toEqual(["Asking you", "Finished, not seen", "Working"]);
+    for (const head of await $$(".queue-list .queue-project")) heads.push(await head.getText());
+    expect(heads).toEqual(["app"]);
     expect(session("Done unseen")?.unseen).toBe(true);
     await untilFlock(2, 1, 1);
   });
