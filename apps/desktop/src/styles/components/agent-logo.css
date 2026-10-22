@@ -1,0 +1,52 @@
+/* Agent logo */
+.mu-logo {
+  width: var(--size-logo);
+  height: var(--size-logo);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+.mu-logo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.mu-logo--sm {
+  width: var(--size-logo-sm);
+  height: var(--size-logo-sm);
+}
+.mu-logo--lg {
+  width: var(--size-logo-lg);
+  height: var(--size-logo-lg);
+  border-radius: var(--radius-sm);
+}
+.mu-logo--mark {
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+}
+.mu-logo--lg.mu-logo--mark {
+  font-size: 15px;
+}
+.mu-logo--claude {
+  color: var(--agent-claude);
+}
+.mu-logo--codex {
+  color: var(--agent-codex);
+}
+.mu-logo--gemini {
+  color: var(--agent-gemini);
+}
+.mu-logo--opencode {
+  color: var(--agent-opencode);
+}
+.mu-logo--copilot {
+  color: var(--agent-copilot);
+}
+.mu-logo--shell {
+  color: var(--text-quiet);
+}

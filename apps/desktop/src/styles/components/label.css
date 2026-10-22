@@ -1,0 +1,19 @@
+/* Label */
+.mu-label {
+  display: inline-flex;
+  align-items: center;
+  height: var(--size-badge);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-xs);
+  background: var(--surface-raised);
+  color: var(--text-quiet);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mu-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}

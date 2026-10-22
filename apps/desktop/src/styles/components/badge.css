@@ -1,0 +1,56 @@
+/* Badges and pull requests */
+.mu-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--size-badge);
+  height: var(--size-badge);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-quiet);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+}
+.mu-badge--waiting {
+  background: var(--waiting-soft);
+  color: var(--waiting);
+}
+.mu-badge--news {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.mu-pr {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+  white-space: nowrap;
+}
+.mu-pr-approved {
+  color: var(--done);
+}
+.mu-pr-changes {
+  color: var(--waiting);
+}
+.mu-pr-review {
+  color: var(--text-quiet);
+}
+.mu-pr-merged {
+  color: var(--merged);
+}
+.mu-pr-closed {
+  color: var(--text-quiet);
+}
+.mu-check-passed {
+  color: var(--done);
+}
+.mu-check-failed {
+  color: var(--waiting);
+}
+.mu-check-running {
+  color: var(--text-quiet);
+}

@@ -1,0 +1,71 @@
+/* Session tree (All sessions) */
+.mu-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-8) var(--space-16);
+}
+.mu-tree-row {
+  width: 100%;
+  min-height: var(--size-control-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-8);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--timing-base) var(--ease-out);
+}
+.mu-tree-row:hover {
+  background: var(--surface-raised);
+}
+.mu-tree-row[aria-selected="true"] {
+  background: var(--surface-lit);
+}
+/* The fold shows while the pointer is on its line, or while it is folded. */
+.mu-tree-fold {
+  width: var(--size-mark);
+  flex: none;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-quiet);
+  opacity: 0;
+  transition: opacity var(--timing-fast) var(--ease-out);
+}
+.mu-tree-row:hover .mu-tree-fold,
+.mu-tree-fold.is-folded {
+  opacity: 1;
+}
+.mu-tree-project {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mu-tree-end {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-tree-children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mu-tree-shell {
+  min-height: var(--size-control-sm);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}

@@ -1,0 +1,54 @@
+/* Text field */
+.mu-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+.mu-field-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text);
+}
+.mu-field-input {
+  height: var(--size-control-lg);
+  width: 100%;
+  padding: 0 var(--space-10);
+  border-radius: var(--radius-md);
+  border: var(--stroke-hairline) solid var(--line-strong);
+  background: var(--surface-term);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  transition: border-color var(--timing-fast) var(--ease-out);
+}
+.mu-field-input::placeholder {
+  color: var(--text-quiet);
+}
+.mu-field-input:hover {
+  border-color: var(--text-quiet);
+}
+.mu-field-input:focus {
+  outline: none;
+  border-color: var(--keys);
+  box-shadow: 0 0 0 1px var(--keys);
+}
+.mu-field-input--area {
+  height: auto;
+  min-height: 88px;
+  padding: var(--space-8) var(--space-10);
+  resize: vertical;
+}
+.mu-field-hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-field.has-error .mu-field-input {
+  border-color: var(--waiting);
+}
+.mu-field.has-error .mu-field-hint {
+  color: var(--waiting);
+}

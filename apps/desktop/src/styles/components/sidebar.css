@@ -1,0 +1,92 @@
+/* Sidebar and nav items */
+.mu-nav {
+  width: var(--layout-sidebar);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-12) var(--space-8);
+  background: var(--surface-rail);
+  border-right: var(--stroke-hairline) solid var(--line);
+}
+.mu-nav--folded {
+  width: var(--layout-sidebar-folded);
+}
+.mu-nav-label {
+  padding: var(--space-16) var(--space-10) var(--space-6);
+  color: var(--text-quiet);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.mu-nav-item {
+  width: 100%;
+  height: var(--size-control-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: 0 var(--space-10);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-quiet);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--timing-fast) var(--ease-out),
+    color var(--timing-fast) var(--ease-out);
+}
+.mu-nav-item:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.mu-nav-item[aria-current="page"] {
+  background: var(--surface-tint);
+  color: var(--text);
+}
+.mu-nav-icon {
+  width: var(--size-icon-lg);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.mu-nav-count {
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-quiet);
+}
+.mu-nav-count--waiting {
+  color: var(--waiting);
+}
+.mu-swatch {
+  width: var(--size-swatch);
+  height: var(--size-swatch);
+  border-radius: var(--radius-full);
+  flex: none;
+  display: inline-block;
+}
+.mu-swatch.mu-p1 {
+  background: var(--project-1);
+}
+.mu-swatch.mu-p2 {
+  background: var(--project-2);
+}
+.mu-swatch.mu-p3 {
+  background: var(--project-3);
+}
+.mu-swatch.mu-p4 {
+  background: var(--project-4);
+}
+.mu-swatch.mu-p5 {
+  background: var(--project-5);
+}
+.mu-swatch.mu-p6 {
+  background: var(--project-6);
+}

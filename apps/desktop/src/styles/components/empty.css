@@ -1,0 +1,49 @@
+/* Empty states and Kep */
+.mu-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-16);
+  max-width: 440px;
+  margin: auto;
+  padding: var(--space-48) var(--space-24);
+  text-align: center;
+}
+.mu-empty-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.mu-empty-text {
+  margin: 0;
+  color: var(--text-quiet);
+}
+.mu-empty-actions {
+  display: flex;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.mu-kep-portrait {
+  width: var(--size-kep);
+  height: auto;
+  image-rendering: pixelated;
+  display: block;
+}
+.mu-banner--away {
+  background: var(--working-soft);
+}
+.mu-banner--away .mu-banner-lead {
+  color: var(--working);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mu-root *,
+  .mu-root *::before,
+  .mu-root *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,49 @@
+/* Menu */
+.mu-menu {
+  min-width: var(--size-menu-min);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  border-radius: var(--radius-xl);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-popover);
+}
+.mu-menu-label {
+  padding: var(--space-6) var(--space-8) var(--space-4);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-menu-item {
+  width: 100%;
+  height: var(--size-control-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.mu-menu-item:hover {
+  background: var(--surface-raised);
+}
+.mu-menu-item.is-active {
+  background: var(--surface-lit);
+}
+.mu-menu-item .mu-kbd {
+  margin-left: auto;
+}
+.mu-menu-item--danger {
+  color: var(--waiting);
+}
+.mu-menu-sep {
+  height: var(--stroke-hairline);
+  margin: var(--space-4) var(--space-8);
+  background: var(--line);
+}

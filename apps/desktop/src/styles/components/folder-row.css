@@ -1,0 +1,34 @@
+/* Folder row */
+.mu-folder {
+  width: 100%;
+  height: var(--size-control-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.mu-folder:hover {
+  background: var(--surface-raised);
+}
+.mu-folder[aria-selected="true"] {
+  background: var(--surface-lit);
+}
+.mu-folder mark {
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+.mu-folder .mu-label {
+  margin-left: auto;
+  font-family: var(--font-sans);
+}

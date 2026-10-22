@@ -1,0 +1,27 @@
+/* Segmented control */
+.mu-seg {
+  display: inline-flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-tint);
+}
+.mu-seg-item {
+  height: var(--size-control-sm);
+  padding: 0 var(--space-10);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-quiet);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.mu-seg-item:hover {
+  color: var(--text);
+}
+.mu-seg-item[aria-pressed="true"] {
+  background: var(--surface-lit);
+  color: var(--text);
+}

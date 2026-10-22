@@ -1,0 +1,33 @@
+/* Diff stat and branch */
+.mu-diff {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mu-add {
+  color: var(--diff-add);
+}
+.mu-del {
+  color: var(--diff-del);
+}
+.mu-branch {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+  white-space: nowrap;
+}
+.mu-where {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-clash-overlap {
+  color: var(--working);
+}
+.mu-clash-conflict {
+  color: var(--waiting);
+}

@@ -1,0 +1,92 @@
+/* Ticket list */
+.mu-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-24) var(--space-12) var(--space-6);
+  min-width: 0;
+}
+.mu-group:first-child {
+  padding-top: var(--space-8);
+}
+.mu-group-name {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mu-group-source {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mu-ticket {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  min-height: var(--size-row);
+  padding: var(--space-6) var(--space-12);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--timing-base) var(--ease-out);
+}
+.mu-ticket:hover {
+  background: var(--surface-raised);
+}
+.mu-ticket[aria-selected="true"] {
+  background: var(--surface-lit);
+}
+.mu-ticket-key {
+  flex: none;
+  width: var(--size-ticket-key);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-quiet);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-ticket-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mu-ticket-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-ticket-agents {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-10);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-ticket-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.mu-ticket-agent .mu-mark {
+  width: auto;
+}
+.mu-ticket-end {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+}

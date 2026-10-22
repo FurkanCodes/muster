@@ -1,0 +1,46 @@
+/* Detail pane */
+.mu-pane {
+  background: var(--surface-panel);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.mu-pane-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-20) var(--space-10);
+}
+.mu-pane-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-width: 0;
+}
+.mu-pane-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex: none;
+}
+.mu-pane-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-16);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}

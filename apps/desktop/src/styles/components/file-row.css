@@ -1,0 +1,56 @@
+/* File row */
+.mu-file {
+  width: 100%;
+  min-height: var(--size-control-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-8);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.mu-file:hover {
+  background: var(--surface-raised);
+}
+.mu-file[aria-selected="true"] {
+  background: var(--surface-lit);
+}
+.mu-file-kind {
+  width: var(--size-mark);
+  flex: none;
+  text-align: center;
+}
+.mu-file-kind--M {
+  color: var(--text-quiet);
+}
+.mu-file-kind--A {
+  color: var(--done);
+}
+.mu-file-kind--D {
+  color: var(--waiting);
+}
+.mu-file-kind--R {
+  color: var(--text-quiet);
+}
+.mu-file-kind--U {
+  color: var(--text-quiet);
+}
+.mu-file-path {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: ltr;
+}
+.mu-file-dir {
+  color: var(--text-quiet);
+}

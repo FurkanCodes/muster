@@ -1,0 +1,43 @@
+/* This turn */
+.mu-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-lg);
+  background: var(--surface-ground);
+}
+.mu-turn-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-6) var(--space-10);
+}
+.mu-turn-title {
+  font-weight: 600;
+}
+.mu-turn-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+.mu-pill {
+  height: var(--size-control-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.mu-pill:hover {
+  background: var(--surface-lit);
+}

@@ -1,0 +1,40 @@
+/* Ticket text */
+.mu-prose {
+  max-width: var(--layout-measure);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+.mu-prose > :first-child {
+  margin-top: 0;
+}
+.mu-prose p {
+  margin: 0 0 var(--space-12);
+}
+.mu-prose h3 {
+  margin: var(--space-20) 0 var(--space-6);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.mu-prose ul,
+.mu-prose ol {
+  margin: 0 0 var(--space-12);
+  padding-left: var(--space-20);
+}
+.mu-prose li {
+  margin: var(--space-2) 0;
+}
+.mu-prose code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 13px;
+  padding: 1px var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--surface-raised);
+}
+.mu-pane-title--wrap {
+  white-space: normal;
+  text-wrap: balance;
+}
