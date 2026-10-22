@@ -73,10 +73,11 @@ describe("The real-app harness", () => {
   });
 
   it("presses the window's keys, and reads what a terminal shows", async () => {
+    // The window changes screens as it draws next, after the key.
     await pressOnWindow("⌘1");
-    expect(await shownScreen()).toBe("Sessions");
+    await until(async () => (await shownScreen()) === "Sessions", "⌘1 to show Sessions");
     await pressOnWindow("⌘2");
-    expect(await shownScreen()).toBe("Needs you");
+    await until(async () => (await shownScreen()) === "Needs you", "⌘2 to show Needs you");
     await goTo("Sessions");
     await goTo("Needs you");
     // Codex asks again, and is shown with its terminal. Claude's finish is
