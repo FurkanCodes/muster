@@ -103,6 +103,7 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
             SettingRow::NamedBy,
             SettingRow::NamingModel,
             SettingRow::Keys,
+            SettingRow::SharedBuilds,
             SettingRow::Agents,
             SettingRow::Plugins,
             SettingRow::AddPlugin,
@@ -451,4 +452,34 @@ fn branches_go_without_muster_once_turned_off_where_the_daemon_can_say() {
             .setting_rows()
             .contains(&SettingRow::MusterPrefix(project))
     );
+}
+
+#[test]
+fn shared_rust_builds_are_on_by_default_and_turned_off_on_the_settings_screen() {
+    let mut world = world();
+    press(&mut world.app, KeyCode::Char('4'));
+    world.app.settings_selected = Some(SettingRow::SharedBuilds);
+    let screen = render(&world.app);
+    assert!(screen.contains("Shared Rust builds"), "{screen}");
+    assert!(screen.contains("Cargo"), "what it writes is said: {screen}");
+    let actions = press(&mut world.app, KeyCode::Enter);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            Action::Send(ClientFrame::Command {
+                command: Command::ChangePreference(
+                    muster_core::settings::PreferenceChange::SharedBuilds(false)
+                ),
+                ..
+            })
+        )),
+        "{actions:?}"
+    );
+}
+
+#[test]
+fn a_daemon_that_shares_no_builds_shows_no_row_for_it() {
+    let mut world = world();
+    world.app.daemon_protocol = muster_core::settings::SHARED_BUILDS_PROTOCOL - 1;
+    assert!(!world.app.setting_rows().contains(&SettingRow::SharedBuilds));
 }

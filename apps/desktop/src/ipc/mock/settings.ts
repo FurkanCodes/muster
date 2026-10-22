@@ -201,6 +201,7 @@ export class MockSettings {
       next.naming = { ...now.naming, by_agent: change.NamesByAgent };
     else if ("NamedBy" in change) next.naming = { ...now.naming, ...change.NamedBy };
     else if ("Notifications" in change) next.notifications = change.Notifications;
+    else if ("SharedBuilds" in change) next.shared_builds = change.SharedBuilds;
     else if ("Tell" in change) {
       const key = { question: "questions", finish: "finishes", error: "errors" } as const;
       next.telling[key[change.Tell.kind]] = change.Tell.tell;

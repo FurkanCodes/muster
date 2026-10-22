@@ -269,6 +269,7 @@ fn preferences() -> Preferences {
                 sound: Sound::Named("Glass".to_owned()),
             },
         ),
+        shared_builds: false,
     }
 }
 
@@ -521,6 +522,7 @@ fn commands() -> Vec<Command> {
                 sound: Sound::Silent,
             },
         }),
+        Command::ChangePreference(PreferenceChange::SharedBuilds(false)),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),

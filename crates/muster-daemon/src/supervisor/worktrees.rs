@@ -67,6 +67,7 @@ impl Supervisor {
                 format!("cannot create {}: {error}", group.display()),
             )
         })?;
+        self.share_builds_in(&group).await;
         let path = unused_path(&group, &slug(&branch)).await;
         let exists = git::branch_exists(&project.root, &branch)
             .await
@@ -198,6 +199,8 @@ impl Supervisor {
             .map_err(store_error)?;
 
         self.drop_workspace(workspace);
+        // The project's last worktree there takes the shared builds along.
+        self.settle_shared_builds(false).await;
         Ok(Reply::Done)
     }
 

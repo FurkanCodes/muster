@@ -19,6 +19,7 @@ const input = {
     { id: "p2", loaded: false, fields: [], prefix: false },
   ],
   keys: ["quit", "rename"],
+  sharedBuilds: true,
 };
 
 describe("the settings as one list", () => {
@@ -60,8 +61,15 @@ describe("the settings as one list", () => {
     expect(projectOf("keys")).toBeNull();
   });
 
+  it("has a row for sharing builds only where the daemon shares them", () => {
+    expect(keys).toContain("general/shared_builds");
+    const older = settingRows({ ...input, sharedBuilds: false }).map((row) => row.key);
+    expect(older).not.toContain("general/shared_builds");
+  });
+
   it("moves through every page in order, no further than either end", () => {
-    expect(movedRow(rows, "general/side_by_side", 1)?.key).toBe("general/restart");
+    expect(movedRow(rows, "general/side_by_side", 1)?.key).toBe("general/shared_builds");
+    expect(movedRow(rows, "general/shared_builds", 1)?.key).toBe("general/restart");
     expect(movedRow(rows, "general/restart", 1)?.key).toBe("notifications/notifications");
     expect(movedRow(rows, "notifications/notifications", -1)?.key).toBe("general/restart");
     expect(movedRow(rows, "general/theme", -1)?.key).toBe("general/theme");

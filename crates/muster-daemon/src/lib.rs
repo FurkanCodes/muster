@@ -29,6 +29,7 @@ mod runs;
 mod secrets;
 mod server;
 mod service;
+mod shared_builds;
 mod spend;
 mod supervisor;
 mod tasks;

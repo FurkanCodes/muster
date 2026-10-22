@@ -77,6 +77,12 @@ export interface ProjectRows {
   prefix: boolean;
 }
 
+/**
+ * The first protocol whose daemon has a project's worktrees build into one
+ * folder and takes `SharedBuilds` (`SHARED_BUILDS_PROTOCOL`).
+ */
+export const SHARED_BUILDS_PROTOCOL = 47;
+
 export interface RowsInput {
   /** The agents, Muster's own then the person's, by id. */
   agents: readonly string[];
@@ -85,6 +91,8 @@ export interface RowsInput {
   projects: readonly ProjectRows[];
   /** The keys shown, by action or panel name, as Settings › Keys narrows them. */
   keys: readonly string[];
+  /** Whether the daemon has a project's worktrees build into one folder. */
+  sharedBuilds: boolean;
 }
 
 function rows(section: Section, kinds: readonly [string, RowKind][]): Row[] {
@@ -99,6 +107,7 @@ export function settingRows(input: RowsInput): Row[] {
       ["panels", "button"],
       ["colours", "select"],
       ["side_by_side", "select"],
+      ...(input.sharedBuilds ? [["shared_builds", "switch"] as [string, RowKind]] : []),
       ["restart", "button"],
     ]),
     ...rows("notifications", [
