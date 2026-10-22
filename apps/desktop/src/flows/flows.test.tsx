@@ -39,6 +39,18 @@ const named = (bridge: MockBridge, name: string) =>
   bridge.sent.filter((command) => typeof command === "object" && name in command);
 
 describe("PRD-03 a new session", () => {
+  it("says so where agents already work, and not in a new worktree", async () => {
+    await windowOver();
+    select("all", ulid(103));
+    await userEvent.keyboard("n");
+    const dialog = await screen.findByRole("dialog", { name: "New session" });
+    expect(within(dialog).getByRole("status")).toHaveTextContent(
+      "2 agents already work here: two agents in one place change the same files.",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "A new worktree" }));
+    expect(within(dialog).queryByRole("status")).toBeNull();
+  });
+
   it("makes the worktree, then starts in it; a refused launch is tried again there, never in another", async () => {
     const { bridge } = await windowOver();
     await userEvent.keyboard("n");

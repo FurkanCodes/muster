@@ -312,6 +312,37 @@ impl Model {
         chats.into_iter().chain(shells)
     }
 
+    /// The agents whose program still runs in `workspace`, oldest first:
+    /// another started there would change the same files. A shell, a
+    /// plugin's panel and the checks are no agents.
+    pub fn agents_alive_in(&self, workspace: WorkspaceId) -> Vec<&Session> {
+        let mut agents: Vec<&Session> = self
+            .sessions_of(workspace)
+            .filter(|session| session.kind().is_agent() && !session.status.is_exited())
+            .collect();
+        agents.sort_by_key(|session| (session.created_at, session.id));
+        agents
+    }
+
+    /// What the person is told before starting another agent in
+    /// `workspace`, where one is already at work (`PRODUCT.md` §6); the
+    /// desktop app says the same (`flows/secondAgent.ts`).
+    pub fn second_agent_warning(&self, workspace: WorkspaceId) -> Option<String> {
+        let agents = self.agents_alive_in(workspace);
+        let who = match agents.as_slice() {
+            [] => return None,
+            [one] => format!(
+                "{} already works here",
+                muster_core::text::one_line(&one.title)
+            ),
+            several => format!("{} agents already work here", several.len()),
+        };
+        Some(format!(
+            "{who}: two agents in one place change the same files. A new worktree keeps their \
+             work apart."
+        ))
+    }
+
     /// Whether `shell` (or a plugin's panel) is shown as its workspace's
     /// one chat's: a worktree with one agent at work in it, as most are,
     /// has its shell under that agent's chat; where several chats share the
@@ -513,6 +544,44 @@ mod tests {
         model.apply(Delta::WorkspaceRemoved { id: tree.id });
         assert!(model.sessions().is_empty());
         assert_eq!(model.rows().len(), 1);
+    }
+
+    #[test]
+    fn another_agent_is_warned_of_only_where_an_agent_still_runs() {
+        let app = project("app");
+        let tree = worktree(app.id, "work");
+        let mut ended = session(tree.id, "Ended", 1);
+        ended.status = SessionStatus::Exited { success: true };
+        let mut shell = session(tree.id, "zsh", 2);
+        shell.harness = "shell".to_owned();
+        let mut checks = session(tree.id, "Checks", 3);
+        checks.harness = "checks".to_owned();
+        let mut model = Model::default();
+        model.replace(Snapshot {
+            projects: vec![app],
+            workspaces: vec![tree.clone()],
+            sessions: vec![ended, shell, checks],
+            ..Snapshot::default()
+        });
+        assert_eq!(model.second_agent_warning(tree.id), None);
+
+        let mut done = session(tree.id, "Fix the login", 4);
+        done.status = SessionStatus::Finished;
+        model.apply(Delta::SessionUpserted(done));
+        assert_eq!(
+            model.second_agent_warning(tree.id).as_deref(),
+            Some(
+                "Fix the login already works here: two agents in one place change the same \
+                 files. A new worktree keeps their work apart."
+            )
+        );
+        model.apply(Delta::SessionUpserted(session(tree.id, "Tidy", 5)));
+        assert!(
+            model
+                .second_agent_warning(tree.id)
+                .unwrap()
+                .starts_with("2 agents already work here:")
+        );
     }
 
     #[test]

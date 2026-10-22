@@ -64,6 +64,9 @@
 .ui-flow-error {
   color: var(--waiting);
 }
+.ui-flow-banner .mu-banner-text {
+  white-space: normal;
+}
 .ui-flow-folders {
   display: flex;
   flex-direction: column;
