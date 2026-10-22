@@ -91,7 +91,7 @@ export function Hint({ keys, does }: { keys: string; does: string }) {
 export function Spinner({ still = false }: { still?: boolean }) {
   return (
     <span className={still ? "mu-spin mu-spin--still" : "mu-spin"} aria-hidden="true">
-      <span className="mu-spin-strip">⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏</span>
+      <span className="mu-spin-strip" />
     </span>
   );
 }

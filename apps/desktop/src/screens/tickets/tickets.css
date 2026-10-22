@@ -58,9 +58,9 @@
   background: var(--surface-ground);
 }
 .tickets-unassigned {
-  padding: var(--space-20) var(--space-12);
+  padding: var(--space-12);
   border-radius: var(--radius-lg);
-  border: var(--stroke-hairline) dashed var(--line-strong);
+  background: var(--surface-panel);
   display: flex;
   align-items: center;
   gap: var(--space-16);

@@ -31,7 +31,7 @@
   transition: border-color var(--timing-fast) var(--ease-out);
 }
 .project-composer:focus-within {
-  border-color: var(--accent);
+  border-color: var(--keys);
 }
 .project-prompt {
   width: 100%;
@@ -82,10 +82,10 @@
   gap: var(--space-4);
 }
 .project-heading {
-  margin-top: var(--space-12);
+  margin-top: var(--space-16);
   font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-quiet);
 }
 .project-places,
@@ -97,15 +97,13 @@
 .project-places {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
 }
 
-/* A place: its branch and what its work comes to, then its sessions. */
+/* A place: its branch and what its work comes to, then its sessions; places
+   part by a hairline and space, not boxes. */
 .project-place {
-  padding: var(--space-8) var(--space-8) var(--space-4);
-  border: var(--stroke-hairline) solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface-panel);
+  padding: var(--space-12) 0 var(--space-8);
+  border-top: var(--stroke-hairline) solid var(--line);
 }
 .project-place-head {
   display: flex;
@@ -117,7 +115,7 @@
   line-height: 18px;
 }
 .project-place-head .mu-icon-btn {
-  opacity: 0.6;
+  opacity: 0;
 }
 .project-place:hover .project-place-head .mu-icon-btn,
 .project-place-head .mu-icon-btn:focus-visible {

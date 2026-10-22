@@ -38,7 +38,7 @@
   background: var(--surface-raised);
 }
 .panels-prompt {
-  color: var(--accent);
+  color: var(--text-quiet);
 }
 .panels-body {
   flex: 1;
@@ -83,7 +83,7 @@
 }
 .panels-line:hover::after,
 .panels-line.is-dragged::after {
-  background: var(--accent);
+  background: var(--keys);
 }
 .panels-line:focus-visible {
   outline-offset: 0;
@@ -95,8 +95,8 @@
   z-index: var(--z-sticky);
   pointer-events: none;
   border-radius: var(--radius-lg);
-  border: var(--stroke-focus) solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: var(--stroke-focus) solid var(--keys);
+  background: color-mix(in srgb, var(--keys) 14%, transparent);
 }
 
 /* Full screen (`f`): the session and its panels fill the window; the

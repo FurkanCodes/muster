@@ -93,7 +93,7 @@ function Fold({ row, folded, onFold }: Pick<LineProps, "row" | "folded" | "onFol
   };
   return (
     // The list folds by its keys (← → e); this is the pointer's way.
-    <span className="mu-tree-fold" aria-hidden="true" onClick={fold}>
+    <span className={`mu-tree-fold${folded ? " is-folded" : ""}`} aria-hidden="true" onClick={fold}>
       {folded ? "▸" : "▾"}
     </span>
   );

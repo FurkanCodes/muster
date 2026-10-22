@@ -23,7 +23,7 @@ function themeFromTokens(element: Element) {
     foreground: token("--text"),
     cursor: token("--text"),
     cursorAccent: token("--surface-term"),
-    selectionBackground: token("--surface-lit"),
+    selectionBackground: token("--text-selection"),
   };
 }
 
