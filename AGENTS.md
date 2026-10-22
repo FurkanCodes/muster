@@ -5,9 +5,31 @@
 - `muster-core`, `muster-state` and `muster-model` do no IO (`ARC-01`). Docker, GitHub, ticket sources, harnesses, PTYs and the clock are reached only through their traits (`ARC-03`).
 - No source file over 1,000 lines (`ARC-08`). Split by responsibility before you get close.
 - Every behaviour change comes with tests: unit tests for the state machines, parsers and scheduler; end-to-end tests against the real daemon binary with fakes for external systems.
-- Before finishing: `cargo fmt --check`, `CARGO_BUILD_WARNINGS=deny cargo clippy --all-targets`, and the tests of what changed (`cargo nextest run -p <crate>`; CI runs them all).
+- Before finishing: `cargo fmt --check`, `CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets`, and the tests of what changed (see *Which tests to run*); CI runs them all.
 - Never put a real credential in code, fixtures, logs or test output (`PRD-06`). Recorded agent fixtures are scrubbed before they are committed.
 - Nebula (MIT) informed the design. If its code is ever copied, add its notice to `NOTICE` in the same change.
+
+## Which tests to run
+
+Compile wide, test narrow: clippy over the whole workspace catches a changed interface breaking a crate above it, so the tests can stay with what changed. Never run the whole suite for one change.
+
+- **While working:** only the test being written or fixed: `cargo nextest run -p <crate> <name filter>`.
+- **Before finishing:** the changed crate's tests, and the end-to-end files in `crates/muster/tests/` for the area touched (each starts the real daemon, so pick by name: several `--test` flags or a glob):
+
+  | Changed | Run |
+  |---|---|
+  | `muster-tui`, `muster-model` | `-p muster-tui -p muster-model`, then `-p muster --test 'tui*'` |
+  | `muster-daemon`, `muster-state` | `-p muster-daemon -p muster-state`, then `-p muster --test <area>` (`hooks`, `runs`, `worktrees`, …) |
+  | `muster-notch` | `-p muster-notch`, then `-p muster --test notch` |
+  | `muster-client` | `-p muster-client`, then `-p muster --test lifecycle --test detach --test slow_client`; every client talks through it, so a change to framing or the handshake runs the whole suite |
+  | `muster-core` | `-p muster-core`, then the crates and end-to-end files that use what changed |
+  | `crates/muster` (CLI) | the end-to-end files for the commands touched |
+  | `apps/desktop` webview | `pnpm lint`, `pnpm typecheck`, `pnpm test`; `pnpm e2e` for a screen's flow |
+  | `apps/desktop/src-tauri` | `cargo test` there; `pnpm bindings` if a type the webview uses changed |
+
+- **The whole suite** (`cargo nextest run --workspace`) only for a protocol version change (`ARC-09`), a dependency or toolchain update, a release, or when asked.
+- **Before a release only,** as CI does not run them: `pnpm e2e:app` (the real app, on a Mac) and the real-Docker suite (`MUSTER_DOCKER_TESTS=1 cargo test -p muster-daemon`).
+- **Don't repeat work:** a test that passed is not run again unless its code changed since; after a failure, rerun only the failing test until it passes, then the step's set once.
 
 ## Desktop app (`apps/desktop`)
 
