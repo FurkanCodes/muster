@@ -31,6 +31,12 @@ export function Checkbox({
       onMouseDown={(event) => event.preventDefault()}
       // The box's own: what it sits in hears no click.
       onClick={(event) => event.stopPropagation()}
-    />
+    >
+      <Base.Indicator className="mu-checkbox-tick">
+        <svg viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M2.75 6.25 5 8.5l4.25-5" />
+        </svg>
+      </Base.Indicator>
+    </Base.Root>
   );
 }

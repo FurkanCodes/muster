@@ -23,7 +23,7 @@ import {
 } from "../../ui/status";
 import { agentsOn, shownKey, worktreesFor } from "./agents";
 import { type Choosing, Conversation, TextPart } from "./Conversation";
-import { TEXT_ALONE, type TicketsModel, ticketId } from "./data";
+import { givenWords, TEXT_ALONE, type TicketsModel, ticketId } from "./data";
 import { ProjectName } from "./TicketRow";
 import { TicketText, ticketText } from "./TicketText";
 import { oneTicketOf } from "./words";
@@ -67,6 +67,10 @@ export function Detail({
     if (visible && !text) void model.view(project, issue);
   }, [visible, model, project, issue, text]);
   const shown = text?.state === "loaded" ? text.value.issue : issue;
+  // With comments, its text and each comment are given or not; the bar at
+  // the pane's foot assigns with what is given, its count on its button.
+  const choosing = text?.state === "loaded" && (text.value.comments?.length ?? 0) > 0;
+  const given = (brief.text ? 1 : 0) + brief.comments.length;
   return (
     <Page label={`Ticket ${shownKey(issue.key)}`} className="tickets-detail">
       <Heading className="tickets-detail-heading">
@@ -132,9 +136,11 @@ export function Detail({
                 An agent gets a worktree of its own and the ticket as its first prompt.
               </span>
             </span>
-            <Button variant="primary" onClick={onAssign} title="Assign an agent (⏎)">
-              Assign an agent
-            </Button>
+            {choosing ? null : (
+              <Button variant="primary" onClick={onAssign} title="Assign an agent (⏎)">
+                Assign an agent
+              </Button>
+            )}
           </section>
         )}
         <div className="tickets-rule" />
@@ -160,9 +166,26 @@ export function Detail({
             }}
           />
         )}
+        {choosing ? (
+          <div className="tickets-assign-bar">
+            <span className="mu-meta tickets-assign-said">{sentence(givenWords(brief))}</span>
+            <Button
+              variant="primary"
+              onClick={onAssign}
+              title={`${agents.length ? "Start another agent" : "Assign an agent"} with ${givenWords(brief)} (${agents.length ? keys.another : "⏎"})`}
+            >
+              {given > 1 ? `Assign ${given}` : "Assign"}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </Page>
   );
+}
+
+/** `words` as a sentence's start: its first letter a capital. */
+function sentence(words: string): string {
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /** Its text and what was said on it; parts to give an agent where there are comments. */

@@ -526,3 +526,24 @@ test("ARC-24 a ticket row flashes once when an agent on it comes to need the per
   await expect(ticket(page, "#205")).toHaveClass(/mu-flash--waiting/);
   await expect(ticket(page, "#214")).not.toHaveClass(/mu-flash/);
 });
+
+test("PRD §6a a long ticket scrolls under the list, which stays in place, its Assign kept in sight", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await start(page);
+  await tickets(page);
+  await ticket(page, "#214").click();
+  const body = page.locator(".tickets-detail-body");
+  await expect(body.getByRole("region", { name: "3 comments" })).toBeVisible();
+  const list = page.getByRole("region", { name: "Tickets", exact: true });
+  const before = await list.boundingBox();
+  await body.hover();
+  await page.mouse.wheel(0, 2000);
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect(await list.boundingBox()).toEqual(before);
+  // Its Assign stays at the pane's foot, counting what it gives.
+  await page.keyboard.press("]");
+  await page.keyboard.press(" ");
+  await expect(page.getByRole("button", { name: "Assign 2" })).toBeInViewport();
+});

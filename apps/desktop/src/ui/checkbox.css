@@ -1,36 +1,42 @@
-/* Checkbox (ui/Checkbox.tsx): a box, ticked while chosen. */
+/* Checkbox (ui/Checkbox.tsx): a box, ticked while chosen; the tick an
+   SVG in its middle (Base UI's Indicator, drawn only while ticked). */
 .mu-checkbox {
-  position: relative;
   width: 16px;
   height: 16px;
   flex: none;
+  display: inline-grid;
+  place-items: center;
   padding: 0;
-  border: var(--stroke-hairline) solid var(--line-strong);
+  border: var(--stroke-hairline) solid var(--text-quiet);
   border-radius: var(--radius-xs);
-  background: var(--surface-term);
+  background: transparent;
   cursor: pointer;
   transition:
     background-color var(--timing-fast) var(--ease-out),
     border-color var(--timing-fast) var(--ease-out);
 }
 .mu-checkbox:hover {
-  border-color: var(--text-quiet);
+  border-color: var(--text);
 }
 .mu-checkbox[aria-checked="true"] {
   border-color: var(--text);
   background: var(--text);
 }
-/* The tick: two strokes of a rotated corner. */
-.mu-checkbox[aria-checked="true"]::after {
-  content: "";
-  position: absolute;
-  left: 4.5px;
-  top: 1.5px;
-  width: 4px;
-  height: 8px;
-  border: solid var(--surface-panel);
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+.mu-checkbox-tick {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  color: var(--surface-panel);
+}
+.mu-checkbox-tick svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .mu-checkbox:focus-visible {
   outline: var(--stroke-focus) solid var(--focus-ring);

@@ -6,9 +6,12 @@
   flex-wrap: wrap;
   overflow: auto;
 }
+/* Side by side, each column is the window's height and scrolls on its own:
+   the list stays in place while a long ticket scrolls. */
 .tickets-list {
   flex: 1 0 var(--layout-queue);
   max-width: var(--layout-queue-max);
+  max-height: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -23,6 +26,7 @@
 }
 .tickets-detail {
   flex: 999 1 var(--layout-detail-min);
+  max-height: 100%;
   min-width: 0;
   min-height: 0;
 }
@@ -89,25 +93,25 @@
    initial, on a line that runs down the conversation. */
 .tickets-comments {
   margin: 0;
-  padding: 0 var(--space-12);
+  padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
+  gap: var(--space-4);
 }
 .tickets-comment {
   position: relative;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   column-gap: var(--space-12);
-  padding-bottom: var(--space-20);
 }
-/* The line from one comment's initial to the next's. */
+/* The line from one comment's initial down to the next's. */
 .tickets-comment:not(:last-child)::before {
   content: "";
   position: absolute;
-  top: 28px;
-  bottom: 4px;
-  left: 11.5px;
+  top: calc(var(--space-10) + 28px);
+  bottom: calc(-1 * var(--space-10));
+  left: calc(var(--space-12) + 11.5px);
   width: var(--stroke-hairline);
   background: var(--line);
 }
@@ -135,29 +139,54 @@
   padding: var(--space-4) 0 0;
 }
 
-/* Parts given to an agent or not: the one the keys are on is tinted. */
+/* Parts given to an agent or not (its text, each comment): each a block
+   of the same padding and corners, the one the keys are on tinted whole. */
 .tickets-part,
 .tickets-comment {
-  border-radius: var(--radius-md);
-  transition: background-color var(--timing-fast) var(--ease-out);
+  padding: var(--space-10) var(--space-12);
+  border: var(--stroke-hairline) solid transparent;
+  border-radius: var(--radius-lg);
+  transition:
+    background-color var(--timing-fast) var(--ease-out),
+    border-color var(--timing-fast) var(--ease-out);
 }
 .tickets-part[data-here],
 .tickets-comment[data-here] {
+  border-color: var(--line);
   background: var(--surface-tint);
 }
-.tickets-part {
-  padding: var(--space-8) 0;
+/* What the next agent is given, and the way to assign it, kept at the
+   pane's foot as the ticket scrolls under it. */
+.tickets-assign-bar {
+  position: sticky;
+  bottom: calc(-1 * var(--space-24));
+  z-index: 1;
+  margin: auto calc(-1 * var(--space-20)) calc(-1 * var(--space-24));
+  padding: var(--space-12) var(--space-20);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-12);
+  border-top: var(--stroke-hairline) solid var(--line);
+  background: var(--surface-panel);
+}
+.tickets-assign-said {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tickets-part .tickets-prose {
+  padding: 0;
 }
 .tickets-part-head {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: 0 var(--space-12) var(--space-8);
+  padding-bottom: var(--space-8);
   font-size: 13px;
   line-height: 18px;
-}
-.tickets-comment[data-here] {
-  outline: var(--space-8) solid var(--surface-tint);
 }
 
 .tickets-state {
