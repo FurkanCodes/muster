@@ -2,7 +2,7 @@
 # Measures the release app at rest (ARC-25): its CPU while seen and idle,
 # then while hidden, which must be zero, and its memory. Run on a Mac after
 # `pnpm tauri build --no-bundle`; it needs `muster` (MUSTER_BIN, else the
-# core's target/debug/muster) and asks System Events to bring the window to
+# core's debug build) and asks System Events to bring the window to
 # the front and then hide it, which macOS may ask the person to allow once.
 #
 # The app runs over a daemon of its own, never the person's: a runtime
@@ -14,8 +14,11 @@
 set -u
 here=${0:A:h}
 root=${here:h:h:h}
-app=$here/../src-tauri/target/release/muster-desktop
-export MUSTER_BIN=${MUSTER_BIN:-$root/target/debug/muster}
+# Where cargo builds the workspace in the current folder: `target`, unless
+# a cargo config of the machine's names another.
+target_dir() { cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p'; }
+app=$(cd $here/../src-tauri && target_dir)/release/muster-desktop
+export MUSTER_BIN=${MUSTER_BIN:-$(cd $root && target_dir)/debug/muster}
 seconds=${SECONDS_EACH:-60}
 [ -x "$app" ] || { echo "no release app: run pnpm tauri build --no-bundle" >&2; exit 1; }
 [ -x "$MUSTER_BIN" ] || { echo "no muster at $MUSTER_BIN" >&2; exit 1; }

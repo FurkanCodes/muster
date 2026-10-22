@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { targetDir } from "./cargo";
 import { STAND_IN_AGENT, STAND_IN_COPY, STAND_IN_GH, STAND_IN_MUSTER } from "./stand-ins";
 
 // A sandbox of its own for each spec file (wdio.conf.ts makes it before the
@@ -14,8 +15,8 @@ import { STAND_IN_AGENT, STAND_IN_COPY, STAND_IN_GH, STAND_IN_MUSTER } from "./s
 
 const root = resolve(import.meta.dirname, "../../../..");
 
-/** Muster itself, from the core workspace, unless MUSTER_BIN names one. */
-export const MUSTER = process.env.MUSTER_E2E_MUSTER ?? join(root, "target/debug/muster");
+/** Muster itself, the core workspace's debug build, unless MUSTER_E2E_MUSTER names one. */
+export const MUSTER = process.env.MUSTER_E2E_MUSTER ?? join(targetDir(root), "debug/muster");
 
 /** The agents Muster knows, each played by the stand-in. */
 export const AGENTS = ["claude", "codex", "gemini", "opencode", "copilot"] as const;
