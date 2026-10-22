@@ -600,21 +600,22 @@ async fn a_program_that_asked_is_told_as_its_terminal_gains_and_loses_focus() {
 async fn a_program_that_suspended_itself_is_continued_and_no_other_is() {
     let (pty, _) = shell(vec![], vec![]);
     // A loop that reports continues, like a program waiting for one. The
-    // shell runs the trap between the loop's commands.
+    // shell runs the trap between the loop's commands. It ends on its own
+    // rather than by ^C: a shell coming back from an interrupt may drop a
+    // line typed meanwhile, which a slow machine shows.
     let waiting = "trap 'echo got-cont-$((2+5))' CONT; echo ready-$((1+1)); \
-                   while :; do sleep 0.1; done\n";
+                   i=0; while [ $i -lt 8 ]; do sleep 0.1; i=$((i+1)); done; \
+                   echo idle-$((2*4))\n";
     pty.input(waiting.as_bytes().to_vec()).await;
     let (_, next) = read_until(&pty, None, "ready-2").await;
 
     // Not continued: it never handed the terminal back.
     pty.resume_if_suspended().await;
-    tokio::time::sleep(Duration::from_millis(400)).await;
-    let quiet = pty.attach(Some(next)).await.unwrap().replay.data;
-    assert!(!String::from_utf8_lossy(&quiet).contains("got-cont-7"));
+    let (quiet, next) = read_until(&pty, Some(next), "idle-8").await;
+    assert!(!quiet.contains("got-cont-7"), "{quiet}");
 
     // Turning bracketed paste on and then off while still running is what
     // Claude Code's suspend looks like.
-    pty.input(b"\x03".to_vec()).await;
     let suspend = "printf '\\033[?2004h\\033[?2004l'; echo handed-$((3*3)); \
                    while :; do sleep 0.1; done\n";
     pty.input(suspend.as_bytes().to_vec()).await;
