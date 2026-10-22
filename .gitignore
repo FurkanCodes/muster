@@ -5,3 +5,6 @@
 # Research notes and reports made while working on Muster, kept locally.
 /research_notes/
 /reports/
+
+# What scripts/agent-sessions.py measured: quotes commands, kept locally.
+/agent-sessions.json
