@@ -85,7 +85,7 @@ function Fetching({ dialog }: { dialog: Extract<PluginDialog, { step: "fetching"
         </Button>
       }
     >
-      <Loading label={`Fetching ${dialog.what}`} layout="inline" />
+      <Loading label={`Fetching ${dialog.what}`} layout="rule" />
       <DialogText className="mu-quiet">
         Nothing of it runs: Muster reads what it would run, and shows you before anything is added.
         git may take up to three minutes.

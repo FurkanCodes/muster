@@ -73,9 +73,9 @@ describe("ARC-24 Needs you, in the sidebar", () => {
     // In the list shown; the other list is kept, hidden, in its place.
     return waitFor(() =>
       expect(
-        within(screen.getByRole("region", { name: "Needs you" })).getByText(
-          "Connecting to Muster…",
-        ),
+        within(screen.getByRole("region", { name: "Needs you" })).getByRole("status", {
+          name: "Connecting to Muster…",
+        }),
       ).toBeVisible(),
     );
   });

@@ -14,7 +14,7 @@ import { Button, Segmented, Spacer } from "../../ui/controls";
 import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
 import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { List } from "../../ui/List";
-import { Loading, LoadingBar } from "../../ui/Loading";
+import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { Detail } from "./Detail";
@@ -209,9 +209,6 @@ export default function Tickets() {
                   className="tickets-project"
                   aria-label={`${groupName(projects)}'s tickets`}
                 >
-                  {list?.state === "loaded" && list.refreshing ? (
-                    <LoadingBar label={`Fetching ${groupName(projects)}'s tickets again`} />
-                  ) : null}
                   <div className="mu-group">
                     <ProjectSwatch id={project} />
                     <span className="mu-group-name">
@@ -243,8 +240,15 @@ export default function Tickets() {
                       />
                     ) : null}
                   </div>
+                  {/* Under its heading, its tickets kept under it while they are fetched again. */}
+                  {list?.state === "loaded" && list.refreshing ? (
+                    <Loading
+                      label={`Fetching ${groupName(projects)}'s tickets again`}
+                      layout="rule"
+                    />
+                  ) : null}
                   {!list || list.state === "loading" ? (
-                    <Loading label="Fetching its tickets" layout="inline" />
+                    <Loading label="Fetching its tickets" layout="rule" />
                   ) : list.state === "failed" ? (
                     <div className="tickets-state">
                       <ErrorText>Its tickets could not be fetched: {list.error}</ErrorText>

@@ -159,7 +159,7 @@ export default function AddProject() {
         {!folder ? (
           <span className="mu-meta">Start the path with / or ~/.</span>
         ) : !listing ? (
-          <Loading label={`Reading ${folder}`} layout="inline" />
+          <Loading label={`Reading ${folder}`} layout="rule" />
         ) : listing.error ? (
           <ErrorText size="meta">{listing.error}</ErrorText>
         ) : folders.length === 0 ? (

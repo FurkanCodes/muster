@@ -167,7 +167,7 @@ function Commands() {
             No action, session, ticket or setting holds “{typed.trim()}”.
           </p>
         ) : null}
-        {asking ? <Loading label="Asking for the tickets" layout="inline" /> : null}
+        {asking ? <Loading label="Asking for the tickets" layout="rule" /> : null}
       </div>
       <div className="mu-palette-foot">
         <Hint keys="↑↓" does="move" />

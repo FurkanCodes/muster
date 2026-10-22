@@ -50,7 +50,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
     bridge.hold("ListIssues");
     bridge.failNext("ListIssues", "gh is not signed in");
     renderTickets(bridge);
-    expect(await screen.findAllByText("Fetching its tickets…")).toHaveLength(4);
+    expect(await screen.findAllByRole("status", { name: "Fetching its tickets…" })).toHaveLength(4);
     act(() => bridge.release("ListIssues"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Its tickets could not be fetched: gh is not signed in",

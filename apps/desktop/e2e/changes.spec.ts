@@ -289,7 +289,7 @@ for (const [command, asking, lead, empty] of [
       }, command);
     });
     if (command === "Timeline") await page.getByRole("button", { name: /^Turns/ }).click();
-    await expect(page.getByText(asking)).toBeVisible();
+    await expect(page.getByRole("status", { name: asking })).toBeVisible();
     await page.evaluate((command) => {
       window.__muster.failNext(command, "git could not read the worktree", "internal");
       window.__muster.release(command);

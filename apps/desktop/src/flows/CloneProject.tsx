@@ -188,7 +188,7 @@ export default function CloneProject() {
           ))}
         </div>
         {listing.state === "asking" ? (
-          <Loading label="Asking GitHub" layout="inline" />
+          <Loading label="Asking GitHub" layout="rule" />
         ) : listing.state === "failed" ? (
           <ErrorText size="meta">{listing.error} ⏎ still clones one typed as owner/name.</ErrorText>
         ) : shown.length === 0 ? (

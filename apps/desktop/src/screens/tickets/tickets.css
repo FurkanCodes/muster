@@ -113,6 +113,3 @@
   gap: var(--space-4) var(--space-16);
 }
 /* A project's tickets: a bar along its top while they are fetched again. */
-.tickets-project {
-  position: relative;
-}
