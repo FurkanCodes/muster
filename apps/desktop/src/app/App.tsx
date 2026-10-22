@@ -116,6 +116,27 @@ function useNoBrowserMenu(): void {
   }, []);
 }
 
+/**
+ * In the Mac's full screen the window's own buttons go away, so their room
+ * goes too: the sidebar's top and the way back to it start at the window's
+ * edge. Full screen is the window covering the whole screen, the menu bar's
+ * place too, which a window merely made as large as it can be never does.
+ */
+function useWindowFull(): void {
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    const root = document.documentElement;
+    const tell = () => {
+      const full = window.outerWidth >= screen.width && window.outerHeight >= screen.height;
+      if (full) root.dataset.windowFull = "";
+      else delete root.dataset.windowFull;
+    };
+    tell();
+    window.addEventListener("resize", tell);
+    return () => window.removeEventListener("resize", tell);
+  }, []);
+}
+
 /** What the tab keys do, as the terminal UI's: Tab and ⇧Tab go round, 1–4 go to one. */
 const TAB_KEYS: Readonly<Record<string, (actions: UiActions) => void>> = {
   next_tab: (actions) => actions.cycle(1),
@@ -185,6 +206,7 @@ function Body() {
 function Window() {
   useTheme();
   useNoBrowserMenu();
+  useWindowFull();
   useApp();
   const fullScreen = useUi((state) => state.fullScreen !== null);
   return (

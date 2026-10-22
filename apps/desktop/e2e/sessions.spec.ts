@@ -198,7 +198,7 @@ test("ARC-24 panels move by their heads, resize by the line between, and are kep
   const agent = region(page, "Claude Code");
   const shell = region(page, "Shell");
   await expect(shell).toBeVisible();
-  const separator = page.getByRole("separator");
+  const separator = page.getByRole("separator", { name: /^Between/ });
   await expect(separator).toHaveAttribute("aria-orientation", "vertical");
 
   // The shell's head dropped on the lower part of the agent's panel: under it.

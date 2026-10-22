@@ -99,3 +99,52 @@ test("ARC-24 the session's head leads on: its changes, its project's page", asyn
   await head.getByRole("button", { name: /^⎇ feature\/desktop-app in muster/ }).click();
   await expect(page.getByPlaceholder("What should the agent do?")).toBeVisible();
 });
+
+test("ARC-24 with the sidebar away, every screen keeps the way back to it", async ({ page }) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+\\");
+  for (const [key, screen] of [
+    ["Meta+3", "Tickets"],
+    ["Meta+4", "Settings"],
+    ["Meta+1", "All"],
+    ["Meta+2", "Needs you"],
+  ] as const) {
+    await page.keyboard.press(key);
+    await expect(page.getByRole("button", { name: "Show the sidebar" }), screen).toBeVisible();
+  }
+  await page.keyboard.press("Meta+3");
+  await page.getByRole("button", { name: "Show the sidebar" }).click();
+  await expect(sidebar(page)).toBeVisible();
+});
+
+test("ARC-24 the sidebar's edge is dragged to resize it, kept, and put back by a double-click", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const edge = page.getByRole("separator", { name: "Sidebar width" });
+  const width = async () => (await sidebar(page).boundingBox())?.width ?? 0;
+  expect(await width()).toBe(288);
+  const box = await edge.boundingBox();
+  const x = (box?.x ?? 0) + (box?.width ?? 0) / 2;
+  const y = (box?.y ?? 0) + 200;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 60, y, { steps: 4 });
+  await page.mouse.up();
+  expect(await width()).toBe(348);
+  await expect(edge).toHaveAttribute("aria-valuenow", "348");
+  // Kept: the window opens again at the width it was left at.
+  await page.reload();
+  await expect(sidebar(page)).toBeVisible();
+  expect(await width()).toBe(348);
+  // Never narrower or wider than its bounds.
+  const again = await edge.boundingBox();
+  const from = (again?.x ?? 0) + (again?.width ?? 0) / 2;
+  await page.mouse.move(from, y);
+  await page.mouse.down();
+  await page.mouse.move(from - 400, y, { steps: 4 });
+  await page.mouse.up();
+  expect(await width()).toBe(220);
+  await edge.dblclick();
+  expect(await width()).toBe(288);
+});

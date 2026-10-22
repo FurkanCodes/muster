@@ -192,6 +192,59 @@ body {
   overflow: hidden;
   white-space: nowrap;
 }
+/* The Mac's full screen has no window buttons to make room for (App: useWindowFull). */
+html[data-window-full] {
+  --layout-traffic-lights: var(--space-24);
+}
+
+/* Over Tickets and Settings while the sidebar is away: the window's buttons' row, and the way back. */
+.app-away-row {
+  flex: none;
+  height: var(--layout-titlebar);
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--layout-traffic-lights) - var(--space-8));
+}
+
+/* The sidebar's right edge, dragged to make it wider or narrower (Sidebar: SidebarEdge). */
+.app-sidebar {
+  position: relative;
+}
+.app-sidebar-edge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  width: var(--space-6);
+  cursor: col-resize;
+  touch-action: none;
+}
+.app-sidebar-edge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--stroke-focus);
+  background: transparent;
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.app-sidebar-edge:hover::after {
+  background: var(--keys);
+  transition-delay: 120ms;
+}
+.app-sidebar-edge.is-dragged::after {
+  background: var(--keys);
+  transition-delay: 0ms;
+}
+/* While it is dragged the pointer says so everywhere, and nothing is chosen as text. */
+html[data-resizing] * {
+  cursor: col-resize !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 /* The head's facts are ways on (SessionPane: Where): quiet until the pointer is on one. */
 .app-head-where {
   gap: var(--space-2) var(--space-4);

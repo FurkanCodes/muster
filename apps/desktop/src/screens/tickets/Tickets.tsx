@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
+import { SidebarAwayRow } from "../../app/Sidebar";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
 import { labelOf } from "../../keys/keymap";
@@ -164,6 +165,7 @@ export default function Tickets() {
   return (
     <div className="tickets-screen" data-keys={dialog ? "dialog" : "list"}>
       <section className="tickets-list" aria-label="Tickets">
+        <SidebarAwayRow />
         <div className="mu-queue-head" data-tauri-drag-region>
           <h1 className="mu-queue-title">Tickets</h1>
           <span className="mu-meta">Each project's open tickets, and the agents on them.</span>
