@@ -162,6 +162,52 @@ async fn a_new_branch_starts_from_the_base_not_from_the_branch_checked_out() {
     assert!(!path.join("mine.txt").exists());
 }
 
+#[tokio::test]
+async fn two_projects_of_one_name_keep_their_worktrees_and_builds_apart() {
+    let sandbox = Sandbox::new();
+    let first = sandbox.repository("app");
+    // Another repository called `app`, elsewhere.
+    let second = sandbox.root().join("elsewhere/app");
+    std::fs::create_dir_all(&second).unwrap();
+    git(&second, &["init", "--quiet", "--initial-branch", "main"]);
+    std::fs::write(second.join("README.md"), "other\n").unwrap();
+    git(&second, &["add", "README.md"]);
+    git(&second, &["commit", "--quiet", "--message", "first"]);
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    let one = add_project(&mut connection, &first).await;
+    let other = add_project(&mut connection, &second.canonicalize().unwrap()).await;
+
+    let id = create(&mut connection, one, Some("a")).await.unwrap();
+    let worktrees_dir = sandbox.paths().worktrees_dir.canonicalize().unwrap();
+    assert_eq!(
+        worktree(&mut connection, id).await.0,
+        worktrees_dir.join("app/a")
+    );
+    let id = create(&mut connection, other, Some("b")).await.unwrap();
+    let (path, _) = worktree(&mut connection, id).await;
+    let group = path.parent().unwrap();
+    assert_ne!(group, worktrees_dir.join("app"));
+    assert!(
+        group
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("app-"),
+        "{}",
+        path.display()
+    );
+    // Each keeps its own folder for the next.
+    let id = create(&mut connection, other, Some("c")).await.unwrap();
+    assert_eq!(worktree(&mut connection, id).await.0, group.join("c"));
+    let id = create(&mut connection, one, Some("d")).await.unwrap();
+    assert_eq!(
+        worktree(&mut connection, id).await.0,
+        worktrees_dir.join("app/d")
+    );
+}
+
 /// A stand-in for git, first on the daemon's `PATH`, that holds `git
 /// worktree add` and `git worktree remove` until the test opens their gate
 /// (`<gates>/<add|remove>/open`), saying it has started first; anything

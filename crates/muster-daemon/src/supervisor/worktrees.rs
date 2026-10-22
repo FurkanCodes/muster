@@ -58,6 +58,17 @@ impl Jobs {
         self.making.iter().any(|making| making.path == path)
     }
 
+    /// The folders worktrees are being made in for the projects `of` takes.
+    fn making_of<'a>(
+        &'a self,
+        of: &'a dyn Fn(ProjectId) -> bool,
+    ) -> impl Iterator<Item = &'a Path> {
+        self.making
+            .iter()
+            .filter(move |making| of(making.project))
+            .map(|making| making.path.as_path())
+    }
+
     /// The folders worktrees are being made in.
     pub(super) fn making_paths(&self) -> impl Iterator<Item = &Path> {
         self.making.iter().map(|making| making.path.as_path())
@@ -180,20 +191,7 @@ impl Supervisor {
             ));
         }
 
-        let group = self
-            .worktrees_dir
-            .join(slug(&project.root.file_name().map_or_else(
-                || project.name.clone(),
-                |name| name.to_string_lossy().into_owned(),
-            )));
-        tokio::fs::create_dir_all(&group).await.map_err(|error| {
-            ErrorBody::new(
-                ErrorCode::Internal,
-                format!("cannot create {}: {error}", group.display()),
-            )
-        })?;
-        // By its real path, as git lists worktrees and the sync finds them.
-        let group = tokio::fs::canonicalize(&group).await.unwrap_or(group);
+        let group = self.group_for(&project).await?;
         self.share_builds_in(&group).await;
         let path = unused_path(&group, &slug(&branch), &self.worktree_jobs).await;
         let exists = git::branch_exists(&project.root, &branch)
@@ -212,6 +210,53 @@ impl Supervisor {
             exists,
             stacked_on,
         })
+    }
+
+    /// The folder of the worktrees directory `project`'s worktrees go in,
+    /// made, by its real path, as git lists worktrees and the sync finds
+    /// them: the one they are in already, else one named for the
+    /// project's folder, unless another project's worktrees are there
+    /// (two repositories both called `app`), whose builds it would share,
+    /// when its id's end is added.
+    async fn group_for(&self, project: &muster_core::Project) -> Result<PathBuf, ErrorBody> {
+        let made = |folder: PathBuf| async move {
+            tokio::fs::create_dir_all(&folder).await.map_err(|error| {
+                ErrorBody::new(
+                    ErrorCode::Internal,
+                    format!("cannot create {}: {error}", folder.display()),
+                )
+            })?;
+            Ok::<_, ErrorBody>(tokio::fs::canonicalize(&folder).await.unwrap_or(folder))
+        };
+        let dir = made(self.worktrees_dir.clone()).await?;
+        let groups_of = |of: &dyn Fn(ProjectId) -> bool| -> Vec<PathBuf> {
+            self.state
+                .workspaces
+                .iter()
+                .filter(|workspace| workspace.kind.is_worktree() && of(workspace.project))
+                .filter_map(|workspace| workspace.kind.host_path()?.parent())
+                .chain(
+                    self.worktree_jobs
+                        .making_of(of)
+                        .filter_map(|path| path.parent()),
+                )
+                .filter(|group| group.parent() == Some(dir.as_path()))
+                .map(Path::to_path_buf)
+                .collect()
+        };
+        if let Some(own) = groups_of(&|of| of == project.id).into_iter().next() {
+            return made(own).await;
+        }
+        let name = slug(&project.root.file_name().map_or_else(
+            || project.name.clone(),
+            |name| name.to_string_lossy().into_owned(),
+        ));
+        let plain = dir.join(&name);
+        if !groups_of(&|of| of != project.id).contains(&plain) {
+            return made(plain).await;
+        }
+        let id = project.id.ulid().to_string().to_lowercase();
+        made(dir.join(format!("{name}-{}", &id[id.len() - 6..]))).await
     }
 
     fn make_worktree(&mut self, plan: Plan, then: Then) {

@@ -39,8 +39,8 @@ pub(super) fn text(app: &App) -> Text<'static> {
         Line::from(
             "Muster writes a Cargo config in the folder that holds the project's worktrees: your \
              repository and your own checkout are never touched, and a build folder your project \
-             or CARGO_TARGET_DIR names still comes first. Two worktrees building at once take \
-             turns.",
+             or CARGO_TARGET_DIR names still comes first. Builds share one lock: agents \
+             building in two worktrees at once take turns, one waiting while the other builds.",
         ),
         Line::from(
             "Turned off, each worktree builds into a folder of its own again and the shared \
