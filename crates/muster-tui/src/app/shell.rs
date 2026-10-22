@@ -63,7 +63,7 @@ impl App {
         let running = self
             .model
             .sessions_of(workspace)
-            .find(|session| harness::is_shell(&session.harness) && session.ended_at.is_none())
+            .find(|session| session.kind().is_shell() && session.ended_at.is_none())
             .map(|session| session.id);
         if let Some(shell) = running {
             self.shell = Some(shell);

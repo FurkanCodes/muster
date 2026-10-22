@@ -6,6 +6,8 @@
 //! `plugin:<plugin>/<panel>`, so a restart in place carries it as any
 //! session, and a daemon that crashed ends it, as a shell.
 
+use muster_core::harness::SessionKind;
+
 /// What runs for a plugin's panel: its program and arguments, its title,
 /// and the variables it is given beyond every session's own.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,7 +48,9 @@ impl PanelLaunch {
     /// place: its program runs on, and it is known by its harness alone,
     /// titled by its panel's id. `None` if `harness` is no panel's.
     pub(crate) fn carried(harness: &str) -> Option<Self> {
-        let (plugin, panel) = muster_core::harness::panel_of(harness)?;
+        let SessionKind::Panel { plugin, panel } = SessionKind::of(harness) else {
+            return None;
+        };
         Some(Self::new(plugin, panel, panel, Vec::new()))
     }
 

@@ -4,6 +4,7 @@
 //! few seconds (`resources`). A name the person gives it stays.
 
 use muster_core::SessionId;
+use muster_core::harness::SessionKind;
 
 use super::Supervisor;
 use crate::pty::PtyHandle;
@@ -14,7 +15,7 @@ impl Supervisor {
     pub(super) fn shells(&self) -> Vec<(SessionId, PtyHandle)> {
         self.live
             .iter()
-            .filter(|(_, live)| muster_core::harness::named_by_foreground(live.harness.id()))
+            .filter(|(_, live)| SessionKind::of(live.harness.id()).named_by_foreground())
             .filter(|(_, live)| !live.machine.status().is_exited())
             .map(|(id, live)| (*id, live.pty.clone()))
             .collect()

@@ -38,7 +38,7 @@ impl App {
         let running = || {
             self.model
                 .sessions_of(workspace)
-                .filter(|session| harness::is_panel(&session.harness) && session.ended_at.is_none())
+                .filter(|session| session.kind().is_panel() && session.ended_at.is_none())
         };
         let newest = |beside: Option<SessionId>| {
             running()
@@ -86,7 +86,7 @@ impl App {
         let panel = self
             .model
             .session(session)
-            .is_some_and(|stored| harness::is_panel(&stored.harness));
+            .is_some_and(|stored| stored.kind().is_panel());
         if panel && !opened && self.plugin_beside() != Some(session) {
             self.mode = Mode::Browse;
         }

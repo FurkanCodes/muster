@@ -94,7 +94,7 @@ impl Supervisor {
             .sessions
             .iter()
             .find(|stored| stored.id == session)
-            .filter(|stored| !muster_core::harness::stands_beside(&stored.harness))?;
+            .filter(|stored| !stored.kind().stands_beside())?;
         Some(self.event_in(kind, stored.workspace)?.of_session(stored))
     }
 

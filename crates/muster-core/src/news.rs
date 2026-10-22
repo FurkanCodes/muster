@@ -15,7 +15,7 @@ pub const FINISH_HOLD: Duration = Duration::from_secs(2);
 /// they have not seen. A shell or a plugin's panel never does: it is the
 /// person's own or a plugin's, not an agent's.
 pub fn needs_attention(session: &Session) -> bool {
-    !crate::harness::stands_beside(&session.harness)
+    !session.kind().stands_beside()
         && (matches!(session.status, SessionStatus::NeedsYou { .. }) || session.unseen)
 }
 

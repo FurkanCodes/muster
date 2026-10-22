@@ -356,7 +356,7 @@ impl Supervisor {
                 format!("{} is still running", stored.title),
             ));
         }
-        if muster_core::harness::is_panel(&stored.harness) {
+        if stored.kind().is_panel() {
             return self.restart_panel(session, size).await;
         }
         let harness = self.known_harness(&stored.harness)?;
@@ -660,7 +660,7 @@ impl Supervisor {
             .filter(|session| session.workspace == workspace)
             .filter(|session| self.is_running(session.id))
             .map(|session| {
-                let ends = muster_core::harness::ends_with_workspace(&session.harness);
+                let ends = session.kind().ends_with_workspace();
                 (session.id, ends)
             })
             .collect()

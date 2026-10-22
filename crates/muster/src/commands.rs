@@ -616,7 +616,7 @@ fn sessions_on<'a>(
                         == Some(key)
             })
         })
-        .filter(|session| !muster_core::harness::is_panel(&session.harness))
+        .filter(|session| !session.kind().is_panel())
         .collect();
     agents.sort_by_key(|session| (session.created_at, session.id));
     agents
