@@ -124,7 +124,7 @@ impl Supervisor {
         workspace: WorkspaceId,
         session: Option<SessionId>,
     ) -> Result<(PanelLaunch, Option<SessionId>, Context), ErrorBody> {
-        self.read_plugins();
+        self.read_plugins().await;
         let refused = |error: PanelError| {
             tracing::info!(command = "open panel", %error, "command refused");
             error.body()

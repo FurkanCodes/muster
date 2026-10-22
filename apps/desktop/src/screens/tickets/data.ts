@@ -1,6 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import type { Bridge } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
+import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import type { Reply } from "../../ipc/generated/Reply";
 import type { TicketBrief } from "../../ipc/generated/TicketBrief";
 
@@ -54,6 +55,20 @@ export function givenWords(brief: TicketBrief): string {
   return brief.text ? `the ticket's text and ${comments} on it` : `${comments} on the ticket`;
 }
 
+/**
+ * What of the daemon's `plugins` decides where tickets come from: each ticket
+ * plugin, whether it is on, whether it can run, and the manifest approved, as
+ * the terminal UI's `ticket_sources` (`PRD-15`).
+ */
+export function ticketSources(plugins: readonly PluginInfo[]): string {
+  return plugins
+    .filter((plugin) => plugin.details?.tickets)
+    .map((plugin) =>
+      [plugin.id, plugin.enabled, plugin.problem === null, plugin.details?.sha256].join(" "),
+    )
+    .join("\n");
+}
+
 export function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -77,6 +92,8 @@ function createTickets(bridge: Bridge) {
   // "Fetching…", so nothing on it moves and its selected ticket stays.
   // Only the newest fetch of a project lands.
   const asked: Record<string, number> = {};
+  // The ticket plugins the lists were fetched under (`ticketSources`).
+  let sources: string | null = null;
   async function fetch(project: string, again = false) {
     const was = store.getState().lists[project];
     if (!again && was) return;
@@ -110,6 +127,11 @@ function createTickets(bridge: Bridge) {
       if (store.getState().texts[id] === loading)
         setText(id, { state: "failed", error: message(error) });
     }
+  }
+  function refresh(projects: readonly string[]) {
+    // Comments chosen may have moved: they are chosen again.
+    store.setState({ texts: {}, briefs: {}, parts: {} });
+    for (const project of projects) void fetch(project, true);
   }
   return {
     store,
@@ -146,10 +168,16 @@ function createTickets(bridge: Bridge) {
     reach(id: string, at: number) {
       store.setState((s) => ({ parts: { ...s.parts, [id]: at } }));
     },
-    refresh(projects: readonly string[]) {
-      // Comments chosen may have moved: they are chosen again.
-      store.setState({ texts: {}, briefs: {}, parts: {} });
-      for (const project of projects) void fetch(project, true);
+    refresh,
+    /**
+     * The daemon's ticket plugins as they are now: one turned on or off,
+     * added, gone or changed since the lists were fetched has them fetched
+     * again, as tickets may come from elsewhere now, or from nowhere.
+     */
+    follow(now: string, projects: readonly string[]) {
+      const was = sources;
+      sources = now;
+      if (was !== null && was !== now) refresh(projects);
     },
     /**
      * Only my tickets, for a project or the projects sharing its tickets:

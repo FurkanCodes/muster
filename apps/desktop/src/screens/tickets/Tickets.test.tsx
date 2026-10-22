@@ -67,6 +67,37 @@ describe("PRD-01 ARC-24 Tickets", () => {
     await userEvent.keyboard("r");
     expect(await screen.findByRole("option", { name: /^#214 / })).toBeInTheDocument();
   });
+  it("PRD-15 fetches the tickets again as a ticket plugin is turned off or on", async () => {
+    const bridge = boardDay();
+    renderTickets(bridge);
+    expect(await screen.findByRole("option", { name: /^#214 / })).toBeInTheDocument();
+    const listed = () =>
+      bridge.sent.filter((c) => typeof c !== "string" && "ListIssues" in c).length;
+    const before = listed();
+    const github = (enabled: boolean) =>
+      bridge.world.plugins.map((plugin) =>
+        plugin.id === "github" ? { ...plugin, enabled } : plugin,
+      );
+    // A plugin that gives no tickets changing fetches nothing.
+    act(() =>
+      bridge.settings.setPlugins(
+        bridge.world.plugins.map((plugin) =>
+          plugin.details?.tickets ? plugin : { ...plugin, enabled: !plugin.enabled },
+        ),
+      ),
+    );
+    expect(listed()).toBe(before);
+    act(() => bridge.settings.setPlugins(github(false)));
+    expect(
+      (await screen.findAllByRole("alert")).map((alert) => alert.textContent).join(" "),
+    ).toContain("the GitHub issues plugin, which is turned off");
+    expect(screen.queryByRole("option", { name: /^#214 / })).toBeNull();
+    // Linear's tickets stay.
+    expect(screen.getAllByRole("option", { name: /^KEP-31 / })).toHaveLength(1);
+    act(() => bridge.settings.setPlugins(github(true)));
+    expect(await screen.findByRole("option", { name: /^#214 / })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
   it("shows no open tickets, none of yours and the no-project state", async () => {
     const bridge = boardDay();
     for (const list of Object.values(bridge.world.tickets)) list.issues = [];

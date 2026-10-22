@@ -199,6 +199,8 @@ export function ticketCommand(mock: MockBridge, command: Command): Reply | undef
     const { project } = command.ListIssues;
     const list = world.tickets[project];
     if (!list) throw refused(`no project prj_${project}`, "not_found");
+    const off = mock.settings.ticketsRefused(project);
+    if (off) throw refused(off, "bad_request");
     return { Issues: structuredClone(list) };
   }
   if ("ViewIssue" in command) {

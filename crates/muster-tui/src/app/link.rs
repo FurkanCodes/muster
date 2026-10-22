@@ -8,7 +8,7 @@ use muster_core::protocol::{
 };
 
 use super::{
-    Action, App, Confirmed, Dialog, Link, Mode, Settings, Then, TicketText, Tickets, View,
+    Action, App, Confirmed, Dialog, Link, Mode, Settings, Then, TicketText, Tickets, View, tickets,
 };
 use crate::model::{Row, needs_attention};
 
@@ -65,6 +65,7 @@ impl App {
             ServerFrame::Snapshot(_)
                 | ServerFrame::Delta(Delta::Preferences(_) | Delta::PluginsChanged(_))
         );
+        let sources = settings.then(|| tickets::ticket_sources(self.model.plugins()));
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
             ServerFrame::Delta(delta) => {
@@ -121,6 +122,11 @@ impl App {
             }
             ServerFrame::Reveal { session } => return self.reveal(session),
             ServerFrame::Welcome(_) | ServerFrame::Incompatible(_) | ServerFrame::Error(_) => {}
+        }
+        if sources.is_some_and(|sources| sources != tickets::ticket_sources(self.model.plugins())) {
+            // A ticket plugin turned on or off, added, gone or changed:
+            // tickets may come from elsewhere now, or from nowhere.
+            self.forget_tickets();
         }
         if settings {
             // The person's keys, as the daemon keeps them, and those of the

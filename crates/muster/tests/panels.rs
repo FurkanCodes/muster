@@ -278,6 +278,51 @@ async fn a_panel_whose_program_is_missing_or_whose_plugin_is_off_is_refused_sayi
     );
 }
 
+#[tokio::test]
+async fn a_plugin_turned_off_by_hand_in_muster_s_settings_stops_its_panels_arc_23() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    plugin(
+        &sandbox,
+        &["install", &plugin_repository(&sandbox, MANIFEST), "--yes"],
+    );
+    let mut connection = daemon.connect().await;
+    let (_, chat) = chat(&mut connection, &sandbox).await;
+    let Reply::SessionStarted { id: panel } = connection
+        .command(open(Beside::Session(chat)))
+        .await
+        .unwrap()
+    else {
+        panic!("expected SessionStarted");
+    };
+    connection.attach(panel, None).await.unwrap();
+    let (text, _) = read_terminal(&mut connection, panel, "ready-42").await;
+    let program = text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("pid="))
+        .unwrap()
+        .to_owned();
+
+    // The person turns it off in the file, and has Muster read it again.
+    let settings = sandbox.paths().config_dir.join("settings.toml");
+    let written = std::fs::read_to_string(&settings).unwrap();
+    assert!(written.contains("enabled = true"), "{written}");
+    std::fs::write(
+        &settings,
+        written.replace("enabled = true", "enabled = false"),
+    )
+    .unwrap();
+    connection.command(Command::ReadPreferences).await.unwrap();
+
+    until("its program ended", async || !alive(&program)).await;
+    let mut connection = daemon.connect().await;
+    let snapshot = connection.subscribe().await.unwrap();
+    let stored = snapshot.sessions.iter().find(|s| s.id == panel).unwrap();
+    assert!(stored.ended_at.is_some(), "the panel stays listed, ended");
+    let chat = snapshot.sessions.iter().find(|s| s.id == chat).unwrap();
+    assert_eq!(chat.ended_at, None, "its session runs on");
+}
+
 /// One whole frame from `stream`, header and all, as the daemon wrote it.
 async fn raw_frame(stream: &mut tokio::net::UnixStream) -> Vec<u8> {
     use tokio::io::AsyncReadExt as _;

@@ -364,3 +364,70 @@ fn an_older_daemon_is_never_sent_the_change() {
     assert_eq!(world.app.mode, Mode::Browse);
     assert!(render(&world.app).contains("muster reload"));
 }
+
+#[test]
+fn turning_a_ticket_plugin_off_or_on_fetches_the_tickets_again_prd_15() {
+    let mut world = super::tickets_tests::on_tickets();
+    let project = world.project.id;
+    let listed = Command::ListIssues { project };
+    let mut github: Vec<PluginInfo> = own::MANIFESTS
+        .iter()
+        .map(|text| plugin(text, PluginSource::Builtin))
+        .collect();
+    let send = |world: &mut World, plugins: &[PluginInfo]| {
+        world
+            .app
+            .on_frame(ServerFrame::Delta(Delta::PluginsChanged(plugins.to_vec())))
+    };
+    let sent = |world: &mut World, plugins: &[PluginInfo]| {
+        super::tickets_tests::commands(&send(world, plugins))
+    };
+    // Muster's own plugins, as the daemon first tells of them.
+    let (req_id, asked) = command(&send(&mut world, &github));
+    assert_eq!(asked, listed);
+    world.app.on_frame(ServerFrame::Reply {
+        req_id,
+        outcome: Ok(Reply::Issues {
+            source: None,
+            tracker: "GitHub issues".to_owned(),
+            issues: Vec::new(),
+            mine: false,
+        }),
+    });
+    // The same plugins told again keep the tickets fetched.
+    assert!(sent(&mut world, &github).is_empty());
+    assert!(matches!(
+        world.app.tickets.get(&project),
+        Some(Tickets::Loaded { .. })
+    ));
+
+    // GitHub issues turned off: the tickets shown came from it, so they
+    // are fetched again, and the daemon says why there are none.
+    for plugin in github.iter_mut().filter(|plugin| plugin.id == "github") {
+        plugin.enabled = false;
+    }
+    assert_eq!(sent(&mut world, &github), std::slice::from_ref(&listed));
+    assert!(world.app.ticket_texts.is_empty());
+    // Turned on again, they are fetched once more.
+    for plugin in github.iter_mut().filter(|plugin| plugin.id == "github") {
+        plugin.enabled = true;
+    }
+    world.app.tickets.clear();
+    world
+        .app
+        .tickets
+        .insert(project, Tickets::Failed("off".to_owned()));
+    assert_eq!(sent(&mut world, &github), std::slice::from_ref(&listed));
+    // A plugin with no ticket source changing leaves them be.
+    let mut panel = youtrack();
+    panel.details.as_mut().unwrap().tickets = None;
+    github.push(panel);
+    world
+        .app
+        .tickets
+        .insert(project, Tickets::Failed("kept".to_owned()));
+    assert!(sent(&mut world, &github).is_empty());
+    // Anyone's ticket plugin installed changes where tickets may come from.
+    github.push(youtrack());
+    assert_eq!(sent(&mut world, &github), [listed]);
+}
