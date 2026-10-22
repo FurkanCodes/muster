@@ -18,6 +18,7 @@ pub(crate) async fn start(
 ) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
+    crate::commands::no_agent_starts_one(&snapshot, "hand tickets to the autopilot")?;
     let project = find_project(&snapshot, project)?;
     let name = project.name.clone();
     let handed = match &from {
@@ -130,7 +131,7 @@ pub(crate) async fn show(socket: &Path, wanted: &str) -> Outcome {
 }
 
 pub(crate) async fn cancel(socket: &Path, wanted: &str) -> Outcome {
-    let (run, mut connection) = command_target(socket, wanted).await?;
+    let (run, mut connection) = command_target(socket, wanted, None).await?;
     connection
         .command(Command::CancelRun { run: run.id })
         .await?;
@@ -143,7 +144,8 @@ pub(crate) async fn cancel(socket: &Path, wanted: &str) -> Outcome {
 
 pub(crate) async fn retry(socket: &Path, wanted: &str, notes: Option<String>) -> Outcome {
     let notes = notes.map(read_text).transpose()?;
-    let (run, mut connection) = command_target(socket, wanted).await?;
+    let (run, mut connection) =
+        command_target(socket, wanted, Some("send runs back to work")).await?;
     connection
         .command(Command::RetryRun { run: run.id, notes })
         .await?;
@@ -156,7 +158,8 @@ pub(crate) async fn retry(socket: &Path, wanted: &str, notes: Option<String>) ->
 
 pub(crate) async fn request_changes(socket: &Path, wanted: &str, comments: String) -> Outcome {
     let comments = read_text(comments)?;
-    let (run, mut connection) = command_target(socket, wanted).await?;
+    let (run, mut connection) =
+        command_target(socket, wanted, Some("send runs back to work")).await?;
     connection
         .command(Command::RequestChanges {
             run: run.id,
@@ -176,7 +179,7 @@ pub(crate) async fn request_changes(socket: &Path, wanted: &str, comments: Strin
 }
 
 pub(crate) async fn take_over(socket: &Path, wanted: &str) -> Outcome {
-    let (run, mut connection) = command_target(socket, wanted).await?;
+    let (run, mut connection) = command_target(socket, wanted, Some("take runs over")).await?;
     let reply = connection
         .command(Command::TakeOverRun { run: run.id })
         .await?;
@@ -193,7 +196,8 @@ pub(crate) async fn take_over(socket: &Path, wanted: &str) -> Outcome {
 }
 
 pub(crate) async fn hand_back(socket: &Path, wanted: &str) -> Outcome {
-    let (run, mut connection) = command_target(socket, wanted).await?;
+    let (run, mut connection) =
+        command_target(socket, wanted, Some("hand runs back to their agent")).await?;
     connection
         .command(Command::HandBackRun { run: run.id })
         .await?;
@@ -215,12 +219,19 @@ fn read_text(text: String) -> Result<String, std::io::Error> {
     Ok(read)
 }
 
+/// The run `wanted` names, and a connection to command it; `starting` says
+/// what it would set its agent doing, refused inside an agent's session
+/// (`commands::no_agent_starts_one`).
 async fn command_target(
     socket: &Path,
     wanted: &str,
+    starting: Option<&str>,
 ) -> Result<(Run, muster_client::Connection), Box<dyn std::error::Error>> {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
+    if let Some(what) = starting {
+        crate::commands::no_agent_starts_one(&snapshot, what)?;
+    }
     let run = find_run(&snapshot, wanted)?.clone();
     Ok((run, connection))
 }
