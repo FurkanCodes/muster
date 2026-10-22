@@ -7,23 +7,21 @@
 //     <HeadingActions><Button>Add a plugin</Button></HeadingActions>
 //   </Heading>
 
-import type { ReactNode } from "react";
-import { cn } from "../lib/cn";
+import { type PartProps, usePart } from "./part";
 
-export function Heading({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("mu-heading", className)}>{children}</div>;
+export function Heading(props: PartProps<"div">) {
+  return usePart("div", props, { className: "mu-heading" });
 }
 
 /** Its title: the window's heading (`level` 1, a column's) or a page's (2, the default). */
-export function HeadingTitle({ level = 2, children }: { level?: 1 | 2; children: ReactNode }) {
-  const Title = level === 1 ? "h1" : "h2";
-  return <Title className="mu-heading-title">{children}</Title>;
+export function HeadingTitle({ level = 2, ...props }: PartProps<"h2"> & { level?: 1 | 2 }) {
+  return usePart(level === 1 ? "h1" : "h2", props, { className: "mu-heading-title" });
 }
 
-export function HeadingLead({ children }: { children: ReactNode }) {
-  return <span className="mu-heading-lead">{children}</span>;
+export function HeadingLead(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-heading-lead" });
 }
 
-export function HeadingActions({ children }: { children: ReactNode }) {
-  return <div className="mu-heading-actions">{children}</div>;
+export function HeadingActions(props: PartProps<"div">) {
+  return usePart("div", props, { className: "mu-heading-actions" });
 }

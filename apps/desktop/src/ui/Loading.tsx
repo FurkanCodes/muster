@@ -11,28 +11,32 @@
 // window cannot be seen (ARC-25) and under Reduce motion. Every wait in the
 // window is one: no screen draws a wait of its own.
 
+import { type PartProps, usePart } from "./part";
+
 export function Loading({
   text = "Loading",
   layout = "block",
-}: {
+  ...props
+}: PartProps<"div"> & {
   /** Its words, in its middle: what it waits for, short ("Loading tickets"). */
   text?: string;
   /** Centred in a place with nothing yet, or a rule across its place. */
   layout?: "block" | "rule";
 }) {
-  return (
-    <div
-      className={`mu-loading mu-loading--${layout}`}
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-      aria-label={text}
-    >
-      <span className="mu-loading-line mu-loading-line--before" />
-      <span className="mu-loading-word" aria-hidden="true">
-        {text}
-      </span>
-      <span className="mu-loading-line mu-loading-line--after" />
-    </div>
-  );
+  return usePart("div", props, {
+    className: `mu-loading mu-loading--${layout}`,
+    role: "status",
+    "aria-live": "polite",
+    "aria-busy": true,
+    "aria-label": text,
+    children: (
+      <>
+        <span className="mu-loading-line mu-loading-line--before" />
+        <span className="mu-loading-word" aria-hidden="true">
+          {text}
+        </span>
+        <span className="mu-loading-line mu-loading-line--after" />
+      </>
+    ),
+  });
 }

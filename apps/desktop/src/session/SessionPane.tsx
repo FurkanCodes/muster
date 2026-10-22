@@ -15,7 +15,7 @@ import { ShellButton } from "../panels/PaneActions";
 import { Panels } from "../panels/Panels";
 import { toggleFullScreen } from "../panels/usePanelKeys";
 import { branchOf, projectColour } from "../state/selectors";
-import { IconButton } from "../ui/controls";
+import { IconButton, Pressable } from "../ui/controls";
 import { ActionMenu, keysOf, type MenuItem } from "../ui/Menu";
 import { AgentLogo, Branch, Clash, DiffStat, PullRequest } from "../ui/status";
 import { browsePullRequest } from "./byHand";
@@ -61,8 +61,7 @@ function Where({ session, onChanges }: { session: SessionId; onChanges: () => vo
   const pr = useDaemon((state) => state.workspaces[workspaceId]?.pull_request ?? null);
   return (
     <PageMeta>
-      <button
-        type="button"
+      <Pressable
         className="app-head-link"
         title={project ? `${project}'s page` : undefined}
         disabled={!projectId}
@@ -73,36 +72,33 @@ function Where({ session, onChanges }: { session: SessionId; onChanges: () => vo
         }}
       >
         <Branch branch={branch} project={project} colour={colour} />
-      </button>
+      </Pressable>
       {added || removed ? (
-        <button
-          type="button"
+        <Pressable
           className="app-head-link"
           title={`See what changed (${changesKey})`}
           onClick={onChanges}
         >
           <DiffStat added={added} removed={removed} />
-        </button>
+        </Pressable>
       ) : null}
       {clash ? (
-        <button
-          type="button"
+        <Pressable
           className="app-head-link"
           title={`See where it meets other work (${changesKey})`}
           onClick={onChanges}
         >
           <Clash kind={clash} />
-        </button>
+        </Pressable>
       ) : null}
       {pr ? (
-        <button
-          type="button"
+        <Pressable
           className="app-head-link"
           title={`#${pr.number} in the browser (${browserKey})`}
           onClick={() => browsePullRequest(app)}
         >
           <PullRequest pr={pr} />
-        </button>
+        </Pressable>
       ) : null}
     </PageMeta>
   );

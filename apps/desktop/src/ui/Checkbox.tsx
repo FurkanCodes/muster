@@ -7,6 +7,7 @@
 //   <Checkbox checked={given} label="Give the agent mira's comment" onChange={toggle} />
 
 import { Checkbox as Base } from "@base-ui/react/checkbox";
+import { nativeButton } from "./part";
 import "./checkbox.css";
 
 export function Checkbox({
@@ -21,7 +22,7 @@ export function Checkbox({
   return (
     <Base.Root
       nativeButton
-      render={<button type="button" />}
+      render={nativeButton}
       className="mu-checkbox"
       checked={checked}
       onCheckedChange={(next) => onChange(next)}

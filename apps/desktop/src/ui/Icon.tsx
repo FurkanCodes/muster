@@ -1,6 +1,8 @@
 // Line icons at 14 or 16 px, 1.75 wide, in currentColor (README: Iconography).
 // Drawn inline: no icon font, no package, no network.
 
+import { type PartProps, usePart } from "./part";
+
 const PATHS = {
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-3.5-3.5",
   plus: "M12 5v14M5 12h14",
@@ -22,29 +24,36 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS | "more";
 
-export function Icon({ name, size = 14 }: { name: IconName; size?: number }) {
-  if (name === "more") {
-    return (
-      <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-        <circle cx="5" cy="12" r="1.6" />
-        <circle cx="12" cy="12" r="1.6" />
-        <circle cx="19" cy="12" r="1.6" />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      aria-hidden="true"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d={PATHS[name]} />
-    </svg>
-  );
+export function Icon({
+  name,
+  size = 14,
+  ...props
+}: PartProps<"svg"> & { name: IconName; size?: number }) {
+  const shape =
+    name === "more"
+      ? {
+          fill: "currentColor",
+          children: (
+            <>
+              <circle cx="5" cy="12" r="1.6" />
+              <circle cx="12" cy="12" r="1.6" />
+              <circle cx="19" cy="12" r="1.6" />
+            </>
+          ),
+        }
+      : {
+          fill: "none",
+          stroke: "currentColor",
+          strokeWidth: 1.75,
+          strokeLinecap: "round" as const,
+          strokeLinejoin: "round" as const,
+          children: <path d={PATHS[name]} />,
+        };
+  return usePart("svg", props, {
+    "aria-hidden": true,
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    ...shape,
+  });
 }

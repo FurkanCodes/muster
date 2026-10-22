@@ -9,9 +9,11 @@
 //   <Select variant="quiet" …/>   (in a toolbar: no box until the pointer is on it)
 
 import { Select as Base } from "@base-ui/react/select";
-import { Fragment, type ReactNode, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { Icon } from "./Icon";
+import { listClosed, listOpened } from "./layers";
+import { nativeButton } from "./part";
 import { portalRoot } from "./portal";
 import "./select.css";
 
@@ -55,6 +57,15 @@ export function Select({
   const button = useRef<HTMLButtonElement>(null);
   // Whether the keys moved last, not the pointer: only they are said (onActive).
   const byKeys = useRef(false);
+  // Gone while its list is open (its dialog closed): the list is no longer open.
+  const shown = useRef(false);
+  shown.current = open;
+  useEffect(
+    () => () => {
+      if (shown.current) listClosed(false);
+    },
+    [],
+  );
   const chosen = options.find((o) => o.value === value) ?? options[0];
   const step = (by: number) => {
     if (onStep) {
@@ -72,8 +83,14 @@ export function Select({
         if (typeof next === "string") onChange(next);
       }}
       open={open}
-      onOpenChange={(next) => {
-        if (next) setContainer(button.current?.closest("dialog") ?? portalRoot());
+      onOpenChange={(next, details) => {
+        if (next === open) return;
+        if (next) {
+          setContainer(portalRoot());
+          listOpened();
+        } else {
+          listClosed(details.reason === "escape-key");
+        }
         setOpen(next);
       }}
       disabled={disabled}
@@ -81,6 +98,7 @@ export function Select({
     >
       <div className={cn("ui-select", variant === "quiet" && "ui-select--quiet")}>
         <Base.Trigger
+          render={nativeButton}
           ref={button}
           className={cn(
             "mu-select",

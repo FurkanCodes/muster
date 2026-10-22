@@ -3,6 +3,7 @@
 // on its way: it takes no second press.
 
 import { Switch as Base } from "@base-ui/react/switch";
+import { nativeButton } from "./part";
 
 export function Switch({
   on,
@@ -24,7 +25,7 @@ export function Switch({
   return (
     <Base.Root
       nativeButton
-      render={<button type="button" />}
+      render={nativeButton}
       className="mu-switch"
       checked={on}
       onCheckedChange={(next) => {

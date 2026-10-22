@@ -3,8 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithApp } from "../test/render";
+import { openList } from "../test/select";
 import { Button } from "./controls";
 import { Dialog, DialogText } from "./Dialog";
+import { Select } from "./Select";
 
 function Close({ onClose = vi.fn(), onAccept = vi.fn() }) {
   return (
@@ -141,5 +143,31 @@ describe("ARC-24 Dialog", () => {
     expect(keep).toHaveFocus();
     fireEvent.keyDown(keep, { key: "Tab", shiftKey: true });
     expect(close).toHaveFocus();
+  });
+  it("⎋ in a Select in it closes the Select's list, never the dialog with it", async () => {
+    const onClose = vi.fn();
+    function Asked() {
+      const [on, setOn] = useState("");
+      return (
+        <Dialog title="New worktree" onClose={onClose} onAccept={vi.fn()} actions={null}>
+          <Select
+            label="Made on top of"
+            value={on}
+            onChange={setOn}
+            options={[
+              { value: "", label: "⎇ main" },
+              { value: "w1", label: "⎇ feature" },
+            ]}
+          />
+        </Dialog>
+      );
+    }
+    renderWithApp(<Asked />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Made on top of" }));
+    await openList("Made on top of");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "New worktree" })).toBeInTheDocument();
   });
 });

@@ -30,6 +30,7 @@ import { lastNeeded } from "./history";
 import { optionId, QueueEntry } from "./QueueEntry";
 import { byProject, holdPlace, projectOfSession, queueIds, type Section, sectionOf } from "./queue";
 import "./queue.css";
+import { Pressable } from "../../ui/controls";
 
 const TITLE = "Needs you";
 const AREA = "needs-you";
@@ -282,8 +283,7 @@ function ProjectHeading({ project }: { project: string }) {
   const colour = useDaemon((state) => projectColour(state, project));
   return (
     <div className="queue-project" role="presentation">
-      <button
-        type="button"
+      <Pressable
         tabIndex={-1}
         className="queue-project-name"
         title={`Open ${name}`}
@@ -294,7 +294,7 @@ function ProjectHeading({ project }: { project: string }) {
       >
         <Swatch colour={colour} />
         <span className="mu-cut">{name}</span>
-      </button>
+      </Pressable>
     </div>
   );
 }

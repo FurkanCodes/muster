@@ -58,6 +58,21 @@ export function Field({
   );
 }
 
+/** What the person types into with a look of its own, given by its place (the palette's search): Base UI's input, with no look of the design system's. */
+export function PlainInput(
+  props: InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement> },
+) {
+  return <BaseInput {...props} />;
+}
+
+/** Lines the person types with a look of their own (a project's prompt): Base UI's input as a text area. */
+export function PlainTextArea({
+  ref,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: Ref<HTMLTextAreaElement> }) {
+  return <BaseInput render={<textarea ref={ref} {...props} />} />;
+}
+
 /** An input on its own, drawn as a field's (its label is elsewhere, or its placeholder says it). */
 export function Input({
   mono,

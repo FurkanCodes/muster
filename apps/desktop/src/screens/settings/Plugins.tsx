@@ -10,7 +10,7 @@ import { useDaemon } from "../../app/context";
 import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import { useKeyLabel, useKeymap } from "../../keys/useKeymap";
 import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
-import { Button } from "../../ui/controls";
+import { Button, Pressable } from "../../ui/controls";
 import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { Label } from "../../ui/Label";
 import { Section, SectionTitle } from "../../ui/Section";
@@ -60,8 +60,7 @@ function PluginItem({ id }: { id: string }) {
         else actions.togglePlugin(id);
       }}
     >
-      <button
-        type="button"
+      <Pressable
         className="mu-plugin-open"
         aria-current={state.selected?.key === row ? "true" : undefined}
         onClick={() => actions.select(row)}
@@ -74,7 +73,7 @@ function PluginItem({ id }: { id: string }) {
         <span className={`mu-plugin-what ${plugin.problem ? "is-off" : ""}`}>
           {busy ? "…" : what}
         </span>
-      </button>
+      </Pressable>
       <Switch
         on={runs(plugin)}
         label={name}
@@ -98,15 +97,14 @@ function AddItem() {
       className="mu-plugin"
       act={actions.addPlugin}
     >
-      <button
-        type="button"
+      <Pressable
         className="mu-plugin-open"
         title={`Add a plugin (${add})`}
         onClick={actions.addPlugin}
       >
         <span className="mu-plugin-name">+ Add a plugin…</span>
         <span className="mu-plugin-what">from a git repository's address or a folder of yours</span>
-      </button>
+      </Pressable>
     </SettingRow>
   );
 }

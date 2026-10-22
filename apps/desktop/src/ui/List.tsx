@@ -24,17 +24,10 @@
 //     </ListItem>
 //   </List>
 
-import {
-  createContext,
-  type MouseEvent,
-  type ReactNode,
-  type Ref,
-  type UIEventHandler,
-  use,
-  useEffect,
-  useRef,
-} from "react";
+import { createContext, type MouseEvent, type ReactNode, use, useEffect, useRef } from "react";
 import { cn } from "../lib/cn";
+import { Pressable } from "./controls";
+import { type PartProps, usePart } from "./part";
 
 interface ListShape {
   /** A tree's lines are its items; a listbox's its options. */
@@ -52,11 +45,8 @@ export function List({
   activeId,
   resting = false,
   sight = "line",
-  className,
-  ref,
-  onScroll,
-  children,
-}: {
+  ...props
+}: PartProps<"div"> & {
   /** Its name, for a screen reader. */
   label: string;
   kind?: "listbox" | "tree";
@@ -66,27 +56,15 @@ export function List({
   resting?: boolean;
   /** `list` where the list keeps its selected line in sight itself, drawing only what is in sight. */
   sight?: "line" | "list";
-  className?: string;
-  ref?: Ref<HTMLDivElement>;
-  onScroll?: UIEventHandler<HTMLDivElement>;
-  children: ReactNode;
 }) {
-  return (
-    <Shape value={{ kind, resting, sight }}>
-      {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: its role is `listbox` or `tree`, set from `kind`; both take a label and an active descendant. */}
-      <div
-        ref={ref}
-        className={cn("mu-list", className)}
-        role={kind}
-        tabIndex={0}
-        aria-label={label}
-        aria-activedescendant={activeId}
-        onScroll={onScroll}
-      >
-        {children}
-      </div>
-    </Shape>
-  );
+  const list = usePart("div", props, {
+    className: "mu-list",
+    role: kind,
+    tabIndex: 0,
+    "aria-label": label,
+    "aria-activedescendant": activeId,
+  });
+  return <Shape value={{ kind, resting, sight }}>{list}</Shape>;
 }
 
 /** A press on a line: its list takes the focus, never the line; the click then selects. */
@@ -140,11 +118,9 @@ export function ListItem({
     if (selected && sight === "line") line.current?.scrollIntoView?.({ block: "nearest" });
   }, [selected, sight]);
   return (
-    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: its role is `option` or `treeitem`, set from its list's kind; both take a selection.
-    <button
+    <Pressable
       ref={line}
       id={id}
-      type="button"
       role={kind === "tree" ? "treeitem" : "option"}
       tabIndex={-1}
       aria-selected={selected}
@@ -163,56 +139,28 @@ export function ListItem({
       onClick={onSelect}
     >
       {children}
-    </button>
+    </Pressable>
   );
 }
 
 /** Its name and, under it, what is said of it: the line's middle, taking the room left. */
-export function ListItemText({ children }: { children: ReactNode }) {
-  return <span className="mu-list-item-text">{children}</span>;
+export function ListItemText(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-list-item-text" });
 }
 
 /** Its name, cut where it runs out of room; all of it in the tooltip. */
-export function ListItemTitle({
-  title,
-  className,
-  children,
-}: {
-  title?: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <span className={cn("mu-list-item-title", className)} title={title}>
-      {children}
-    </span>
-  );
+export function ListItemTitle(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-list-item-title" });
 }
 
 /** What is said of it under its name: what it does, its branch, how its work stands. */
-export function ListItemMeta({
-  title,
-  className,
-  children,
-}: {
-  title?: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <span className={cn("mu-list-item-meta", className)} title={title}>
-      {children}
-    </span>
-  );
+export function ListItemMeta(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-list-item-meta" });
 }
 
 /** At the line's end: its age, a count, a pull request. */
-export function ListItemEnd({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <span className="mu-list-item-end" title={title}>
-      {children}
-    </span>
-  );
+export function ListItemEnd(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-list-item-end" });
 }
 
 /**
@@ -233,14 +181,13 @@ export function RowButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
+    <Pressable
       className={cn("mu-list-item mu-list-item--comfortable", className)}
       aria-label={label}
       title={title}
       onClick={onClick}
     >
       {children}
-    </button>
+    </Pressable>
   );
 }

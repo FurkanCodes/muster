@@ -1,6 +1,7 @@
 import type { FileChange } from "../ipc/generated/FileChange";
 import { splitPath } from "../lib/format";
 import { ListItem } from "./List";
+import { type PartProps, usePart } from "./part";
 import { DiffStat } from "./status";
 import "./file-row.css";
 
@@ -22,13 +23,13 @@ export function fileKind(kind: FileChange["kind"]): readonly [string, string] {
 }
 
 /** Git's letter for a kind of change, in its colour. */
-export function FileKind({ kind }: { kind: FileChange["kind"] }) {
+export function FileKind({ kind, ...props }: PartProps<"span"> & { kind: FileChange["kind"] }) {
   const [letter, tone] = KIND[kind];
-  return (
-    <span className={`mu-file-kind mu-file-kind--${tone} mu-mono`} aria-hidden="true">
-      {letter}
-    </span>
-  );
+  return usePart("span", props, {
+    className: `mu-file-kind mu-file-kind--${tone} mu-mono`,
+    "aria-hidden": true,
+    children: letter,
+  });
 }
 
 /** A file's line's id in the window, for its list's `aria-activedescendant`. */

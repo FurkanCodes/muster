@@ -40,7 +40,7 @@ import {
   StatusMark,
   Swatch,
 } from "../../ui/status";
-import { Input } from "../../ui/TextField";
+import { Input, PlainTextArea } from "../../ui/TextField";
 import "./project.css";
 
 const NO_AGENTS: AddedAgent[] = [];
@@ -231,7 +231,7 @@ function Composer({
         void submit();
       }}
     >
-      <textarea
+      <PlainTextArea
         ref={field}
         className="project-prompt"
         aria-label="First prompt"

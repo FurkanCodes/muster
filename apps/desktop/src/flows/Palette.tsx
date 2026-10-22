@@ -12,6 +12,7 @@ import { Modal } from "../ui/Dialog";
 import { Icon } from "../ui/Icon";
 import { Loading } from "../ui/Loading";
 import { AgentLogo, StatusMark } from "../ui/status";
+import { PlainInput } from "../ui/TextField";
 import { catalogue, type PaletteItem, type Ticket } from "./catalogue";
 import { helpFor } from "./help";
 import { labelOf } from "./keymap";
@@ -108,7 +109,7 @@ function Commands() {
     >
       <div className="mu-palette-field">
         <Icon name="search" size={16} />
-        <input
+        <PlainInput
           className="mu-palette-input"
           role="combobox"
           aria-label="Go to or do"
@@ -250,7 +251,7 @@ function EveryKey({ changes }: { changes: boolean }) {
     <Modal className="mu-palette ui-palette" label="Every key" initial="input" onClose={close}>
       <div className="mu-palette-field">
         <Icon name="search" size={16} />
-        <input
+        <PlainInput
           className="mu-palette-input"
           aria-label="Find a key"
           placeholder="Find a key, or what it does"

@@ -382,7 +382,16 @@ test("ARC-24 Select supports keyboard listbox choice and cancellation", async ({
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(select).toContainText("muster/issue-214-desktop-app");
-  await select.click();
+  // Opened again once the last choice has closed it (Base UI lets a press
+  // just after a choice go by): pressed again where the first did nothing.
+  const list = page.getByRole("listbox", { name: "Made on top of" });
+  await expect(list).toHaveCount(0);
+  await expect(async () => {
+    if ((await list.count()) === 0) await select.click();
+    await expect(list).toBeVisible({ timeout: 400 });
+  }).toPass();
+  // It has the keys a frame after it opens: on the option chosen.
+  await expect(list.getByRole("option", { selected: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("listbox", { name: "Made on top of" })).toHaveCount(0);
   await expect(page.getByRole("dialog")).toBeVisible();

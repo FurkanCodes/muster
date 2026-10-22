@@ -1,6 +1,8 @@
 import { Dialog as Base } from "@base-ui/react/dialog";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef } from "react";
 import { useApp } from "../app/context";
+import { listTakesEscape } from "./layers";
+import { type PartProps, usePart } from "./part";
 import { portalRoot } from "./portal";
 import "./dialog.css";
 
@@ -50,13 +52,7 @@ export function Modal({
       open
       onOpenChange={(open, details) => {
         // ⎋ in a list that floats over it (a Select's) closes that list, not this.
-        const at = details.event?.target;
-        if (
-          details.reason === "escape-key" &&
-          at instanceof Node &&
-          popup.current &&
-          !popup.current.contains(at)
-        ) {
+        if (details.reason === "escape-key" && listTakesEscape()) {
           details.cancel();
           return;
         }
@@ -203,22 +199,10 @@ export function Dialog({
 }
 
 /** A dialog's running text: what it asks, what follows from it; `busy`, what it is waiting for. */
-export function DialogText({
-  busy = false,
-  className,
-  children,
-}: {
-  busy?: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <p
-      className={className ? `mu-dialog-text ${className}` : "mu-dialog-text"}
-      role={busy ? "status" : undefined}
-      aria-busy={busy || undefined}
-    >
-      {children}
-    </p>
-  );
+export function DialogText({ busy = false, ...props }: PartProps<"p"> & { busy?: boolean }) {
+  return usePart("p", props, {
+    className: "mu-dialog-text",
+    role: busy ? "status" : undefined,
+    "aria-busy": busy || undefined,
+  });
 }
