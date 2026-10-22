@@ -13,6 +13,7 @@ import type { TermFrame } from "../ipc/frames";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { TerminalModes } from "../ipc/generated/TerminalModes";
 import { exposeForTests } from "./testing";
+import { WheelLines, wheelReport } from "./wheel";
 
 /** The colours of the theme in use, read from the design tokens. */
 function themeFromTokens(element: Element) {
@@ -44,6 +45,8 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   const term = useRef<XTerm | null>(null);
   // The position after the last byte written, so a reattach asks only for what is new.
   const nextSeq = useRef<number | null>(null);
+  // The modes the program set, as the daemon last said: whether it takes the mouse.
+  const modes = useRef<TerminalModes | null>(null);
   // Fitted to its pane at least once: only then is it fed. Bytes written to
   // xterm's own 80 by 24 and fitted after are wrapped again by xterm, and the
   // program's screen drawn into it is scrambled for good.
@@ -83,6 +86,29 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
       if (event.metaKey) return false;
       if (event.type === "keydown" && event.shiftKey && event.key === "Q") return false;
       return true;
+    });
+    // A program that takes the mouse is sent the wheel's every line, where
+    // the pointer is (`wheel.ts`); otherwise xterm scrolls its own lines,
+    // or on the alternate screen sends arrow keys.
+    const wheelLines = new WheelLines();
+    xterm.attachCustomWheelEventHandler((event) => {
+      const now = modes.current;
+      if (!now || now.mouse === "off" || event.shiftKey) return true;
+      const screen = xterm.element?.querySelector(".xterm-screen")?.getBoundingClientRect();
+      if (!screen || screen.width === 0 || screen.height === 0) return true;
+      event.preventDefault();
+      const lines = wheelLines.take(event, {
+        cellHeight: screen.height / xterm.rows,
+        rows: xterm.rows,
+      });
+      if (lines === 0) return false;
+      const cell = (at: number, size: number, count: number) =>
+        Math.min(count - 1, Math.max(0, Math.floor((at / size) * count)));
+      const column = cell(event.clientX - screen.left, screen.width, xterm.cols);
+      const row = cell(event.clientY - screen.top, screen.height, xterm.rows);
+      const report = wheelReport(lines < 0, event, column, row, now);
+      if (report) void bridge.input(session, report.repeat(Math.abs(lines))).catch(() => {});
+      return false;
     });
 
     // The program is told the size its terminal is drawn at, and only that:
@@ -126,6 +152,7 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
       xterm.dispose();
       term.current = null;
       nextSeq.current = null;
+      modes.current = null;
       setFitted(false);
     };
   }, [bridge, session, compact]);
@@ -152,7 +179,10 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
           xterm.write(frame.data);
           break;
         case "event":
-          if (frame.event.kind === "modes") xterm.write(modeSequences(frame.event.modes));
+          if (frame.event.kind === "modes") {
+            modes.current = frame.event.modes;
+            xterm.write(modeSequences(frame.event.modes));
+          }
           break;
       }
     };

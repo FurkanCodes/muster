@@ -23,6 +23,7 @@ import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
 import type { SessionStatus } from "../generated/SessionStatus";
 import type { TerminalColours } from "../generated/TerminalColours";
+import type { TerminalModes } from "../generated/TerminalModes";
 import type { Workspace } from "../generated/Workspace";
 import { ByHandWorld } from "./byHand";
 import { handleCommand } from "./commands";
@@ -34,6 +35,16 @@ import { MockSettings } from "./settings";
 import { agentsOnTickets } from "./tickets";
 
 const encoder = new TextEncoder();
+
+/** The modes of a program at its prompt: it takes pastes bracketed, and not the mouse. */
+const PROMPT_MODES: TerminalModes = {
+  kitty_flags: 0,
+  bracketed_paste: true,
+  application_cursor: false,
+  mouse: "off",
+  mouse_encoding: "default",
+  alternate_screen: false,
+};
 
 /** A command's kind: its variant's name. */
 function nameOf(command: Command): string {
@@ -69,6 +80,10 @@ export class MockBridge implements Bridge {
   /** Every command sent, in order: tests look here. */
   readonly sent: Command[] = [];
   readonly openedUrls: string[] = [];
+  /** Everything typed into a terminal, in order: tests look here. */
+  readonly typed: { session: SessionId; text: string }[] = [];
+  /** The modes each session's program set, where one set others (`setModes`). */
+  private readonly modes = new Map<SessionId, TerminalModes>();
   private readonly holds = new Map<
     string,
     { promise: Promise<void>; release: () => void; done: "later" | "now" }
@@ -239,18 +254,7 @@ export class MockBridge implements Bridge {
     if (watching) this.watching.add(session);
     else this.watching.delete(session);
     onFrame(decodeFrame(encodeFrame(FRAME_REPLAY, 0, text)));
-    const modes = {
-      kind: "modes",
-      modes: {
-        kitty_flags: 0,
-        bracketed_paste: true,
-        application_cursor: false,
-        mouse: "off",
-        mouse_encoding: "default",
-        alternate_screen: false,
-      },
-    };
-    onFrame(decodeFrame(encodeFrame(FRAME_EVENT, 0, encoder.encode(JSON.stringify(modes)))));
+    this.tellModes(session);
     if (watching && this.lookingNow) this.see(session);
   }
 
@@ -259,9 +263,26 @@ export class MockBridge implements Bridge {
     this.watching.delete(session);
   }
 
-  /** Echoes what is typed, as a program at its prompt would. */
+  /** Echoes what is typed, as a program at its prompt would; one that took the mouse does not. */
   async input(session: SessionId, text: string): Promise<void> {
+    this.typed.push({ session, text });
+    if ((this.modes.get(session) ?? PROMPT_MODES).mouse !== "off") return;
     this.output(session, text.replace(/\r/g, "\r\n"));
+  }
+
+  /** A session's program sets its modes, as the daemon tells them. */
+  setModes(session: SessionId, modes: Partial<TerminalModes>): void {
+    this.modes.set(session, { ...(this.modes.get(session) ?? PROMPT_MODES), ...modes });
+    this.tellModes(session);
+  }
+
+  private tellModes(session: SessionId): void {
+    const terminal = this.terminals.get(session);
+    if (!terminal) return;
+    const modes = { kind: "modes", modes: this.modes.get(session) ?? PROMPT_MODES };
+    terminal.onFrame(
+      decodeFrame(encodeFrame(FRAME_EVENT, 0, encoder.encode(JSON.stringify(modes)))),
+    );
   }
 
   /** Plays a sound by its name, as the app's Rust side would: the mock records it. */
