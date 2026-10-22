@@ -12,6 +12,7 @@ import type { AgentFound } from "../../ipc/generated/AgentFound";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { agentOf } from "../../lib/agents";
+import { Button } from "../../ui/controls";
 import { AgentLogo } from "../../ui/status";
 import { OWN_AGENTS, type OwnAgent } from "./agentList";
 import { type Found, useAgentsFound } from "./agentsFound";
@@ -203,29 +204,18 @@ export function Agents({ preferences }: { preferences: Preferences }) {
           </p>
         ) : null}
         <SettingRow id={rowKey("agents", "edit")} className="app-settings-buttons" act={edit}>
-          <button
-            type="button"
-            className="mu-btn mu-btn--quiet"
-            title="Open settings.toml in your editor"
-            disabled={opening}
-            onClick={edit}
-          >
+          <Button title="Open settings.toml in your editor" disabled={opening} onClick={edit}>
             Edit settings.toml
-          </button>
+          </Button>
         </SettingRow>
         <SettingRow
           id={rowKey("agents", "read_again")}
           className="app-settings-buttons"
           act={actions.readAgain}
         >
-          <button
-            type="button"
-            className="mu-btn mu-btn--quiet"
-            title={`Read it again (${readKey})`}
-            onClick={actions.readAgain}
-          >
+          <Button title={`Read it again (${readKey})`} onClick={actions.readAgain}>
             Read it again
-          </button>
+          </Button>
         </SettingRow>
       </Group>
 

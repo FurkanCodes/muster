@@ -4,6 +4,7 @@
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
+import { Tooltip } from "./Tooltip";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "quiet" | "danger";
@@ -47,25 +48,28 @@ type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   pressed?: boolean;
 };
 
+/** A button that is only its icon: its label is its name, and its tooltip (`title`, else the label) says it with its key. */
 export function IconButton({
   icon,
   label,
   size = "md",
   pressed,
   className = "",
+  title,
   ...rest
 }: IconButtonProps) {
   return (
-    <button
-      type="button"
-      className={`mu-icon-btn ${size === "sm" ? "mu-icon-btn--sm" : ""} ${className}`}
-      aria-label={label}
-      title={label}
-      aria-pressed={pressed}
-      {...rest}
-    >
-      <Icon name={icon} size={size === "sm" ? 14 : 16} />
-    </button>
+    <Tooltip content={title ?? label}>
+      <button
+        type="button"
+        className={`mu-icon-btn ${size === "sm" ? "mu-icon-btn--sm" : ""} ${className}`}
+        aria-label={label}
+        aria-pressed={pressed}
+        {...rest}
+      >
+        <Icon name={icon} size={size === "sm" ? 14 : 16} />
+      </button>
+    </Tooltip>
   );
 }
 

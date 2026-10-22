@@ -8,6 +8,28 @@ Dark is the first theme. Light follows the same rules value for value. A session
 - Components are plain CSS classes prefixed `mu-`. Put `mu-root` on the outermost element to set the ground, the type and box sizing.
 - Set `data-theme="light"` on any element to give it and what it holds the Light theme; Dark is the default.
 
+## Components
+
+The app's screens compose these and never write a component's class (`ARC-26`); a component's stylesheet sits beside it. The text utilities `mu-meta`, `mu-quiet`, `mu-cut` and `mu-mono` are the one exception.
+
+| Component | Parts | Where |
+|---|---|---|
+| Page | `Page`, `PageHeader` (clear of the window's buttons, the way back to the sidebar), `PageTitle`, `PageMeta`, `PageActions`; `NothingSelected` | `src/app/Page.tsx` |
+| Sidebar | `Sidebar`, `SidebarToggle`, `SidebarAway`, `SidebarAwayRow`; the edge that resizes it | `src/app/Sidebar.tsx` |
+| Nav | `NavItem` (icon, current, count or key at its end), `NavCount`, `NavLabel`: both sidebars' places | `src/ui/Nav.tsx` |
+| Heading | `Heading`, `HeadingTitle`, `HeadingLead`, `HeadingActions`: a column's or a settings page's head | `src/ui/Heading.tsx` |
+| Section | `Section`, `SectionTitle`: a group under a quiet heading that names its region | `src/ui/Section.tsx` |
+| List | `List` (`listbox` or `tree`), `ListItem` (`comfortable` or `compact`), `ListItemText`, `ListItemTitle`, `ListItemMeta`, `ListItemEnd`; `RowButton` for a line outside a list | `src/ui/List.tsx` |
+| Banner | `Banner` (`waiting`, `overlap`, `away`, `note`: the tone draws the mark), `BannerLead`, `BannerText` (one line), `BannerBody` (wraps) | `src/ui/Banner.tsx` |
+| EmptyState | `EmptyState`, `EmptyStateTitle`, `EmptyStateText`, `EmptyStateActions` | `src/ui/EmptyState.tsx` |
+| DetailList | `DetailList`, `Detail` | `src/ui/DetailList.tsx` |
+| Menu | `ActionMenu` under its button or at a point, its items doing themselves on their keys (Radix) | `src/ui/Menu.tsx` |
+| Tooltip | `Tooltip`; every `IconButton` has one, its label and key (Radix) | `src/ui/Tooltip.tsx` |
+| Controls | `Button`, `IconButton`, `Segmented` (with counts), `Kbd`, `Hint`, `Spinner`, `Switch`, `Select`, `TextField`, `Dialog` (the browser's `<dialog>`) | `src/ui` |
+| Status | `StatusMark`, `MarkSpace`, `NewsDot`, `AgentLogo`, `Badge`, `PullRequest`, `DiffStat`, `Branch`, `Swatch` | `src/ui/status.tsx` |
+
+A list the keyboard moves through is a `List`, and has one model: the list holds the focus and names its selected line (`aria-activedescendant`); a line never takes the focus, by key or by pointer. A row with a control in it (a setting's switch, a field) is not a `List`'s line: there the row or its control takes the focus.
+
 ## Voice
 
 Muster speaks plainly about what happened, in the words the person would use.

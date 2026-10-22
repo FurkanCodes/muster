@@ -19,9 +19,13 @@ describe("ARC-24 the sidebar", () => {
     const buttons = within(nav)
       .getAllByRole("button")
       .filter((button) => !button.closest('[role="listbox"]'))
-      .map((button) => button.textContent?.replace(/⌘.$/, "").replace(/\d+$/, "") || button.title);
+      .map(
+        (button) =>
+          button.textContent?.replace(/⌘.$/, "").replace(/\d+$/, "") ||
+          button.getAttribute("aria-label"),
+      );
     expect(buttons).toEqual([
-      "Hide the sidebar (⌘\\)",
+      "Hide the sidebar",
       "New session",
       "Search",
       "Tickets",

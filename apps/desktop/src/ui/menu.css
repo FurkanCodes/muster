@@ -1,4 +1,4 @@
-/* Menu */
+/* Menu (ui/Menu.tsx, on Radix's dropdown menu), and the palette's items. */
 .mu-menu {
   min-width: var(--size-menu-min);
   display: flex;
@@ -33,8 +33,11 @@
 .mu-menu-item:hover {
   background: var(--surface-raised);
 }
+/* The item the pointer or the arrows are on (Radix's highlight), and the palette's own. */
+.mu-menu-item[data-highlighted],
 .mu-menu-item.is-active {
   background: var(--surface-lit);
+  outline: none;
 }
 .mu-menu-item .mu-kbd {
   margin-left: auto;
@@ -46,4 +49,14 @@
   height: var(--stroke-hairline);
   margin: var(--space-4) var(--space-8);
   background: var(--line);
+}
+/* Over everything in the window, where Radix puts it. */
+.ui-menu {
+  z-index: var(--z-menu);
+}
+/* Where a right-click opened it: a point the menu hangs from. */
+.ui-menu-anchor {
+  position: fixed;
+  width: 0;
+  height: 0;
 }

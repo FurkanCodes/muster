@@ -23,7 +23,8 @@
 @import "./components/file-row.css";
 @import "./components/text-field.css";
 @import "./components/switch.css";
-@import "./components/menu.css";
+@import "../ui/menu.css";
+@import "../ui/tooltip.css";
 @import "./components/dialog.css";
 @import "./components/ticket-list.css";
 @import "./components/label.css";

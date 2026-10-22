@@ -5,7 +5,7 @@
 // asks; then its live terminal, with the shell and plugins' panels beside
 // it (src/panels), or the workspace's changes in its place.
 
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 import { useActions, useApp, useDaemon, useUi } from "../app/context";
 import { KeysHeld } from "../app/keys";
 import { Page, PageActions, PageHeader, PageMeta, PageTitle } from "../app/Page";
@@ -16,10 +16,10 @@ import { Panels } from "../panels/Panels";
 import { toggleFullScreen } from "../panels/usePanelKeys";
 import { branchOf, projectColour } from "../state/selectors";
 import { IconButton } from "../ui/controls";
+import { ActionMenu, keysOf, type MenuItem } from "../ui/Menu";
 import { AgentLogo, Branch, DiffStat, PullRequest } from "../ui/status";
 import { browsePullRequest } from "./byHand";
 import { NeedsYouBanner } from "./NeedsYouBanner";
-import { keysOf, type MenuItem, SessionMenu } from "./SessionMenu";
 import "./session.css";
 
 const ChangesView = lazy(() => import("./changes/ChangesView"));
@@ -119,13 +119,8 @@ export function SessionPane({
   const app = useApp();
   const actions = useActions();
   const map = useKeymap();
-  const [menuOpen, setMenuOpen] = useState(false);
   // Asked for by a right-click on this session's line in the list.
   const menuAt = useUi((state) => (state.menuAt?.session === session ? state.menuAt : null));
-  const closeMenu = () => {
-    setMenuOpen(false);
-    if (menuAt) actions.openMenuAt(null);
-  };
   const fullScreen = useUi((state) => state.fullScreen === session);
   const title = useDaemon((state) => state.sessions[session]?.title ?? "");
   const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
@@ -165,20 +160,18 @@ export function SessionPane({
             pressed={mode === "changes"}
             onClick={changes}
           />
-          <IconButton
-            icon="more"
-            label="More"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(!menuOpen)}
-          />
-        </PageActions>
-        {menuOpen || menuAt ? (
-          <SessionMenu
+          <ActionMenu
             label={title}
             items={items}
-            onClose={closeMenu}
-            at={menuOpen ? undefined : (menuAt ?? undefined)}
+            trigger={<IconButton icon="more" label="More" />}
+          />
+        </PageActions>
+        {menuAt ? (
+          <ActionMenu
+            label={title}
+            items={items}
+            at={menuAt}
+            onClose={() => actions.openMenuAt(null)}
           />
         ) : null}
       </PageHeader>

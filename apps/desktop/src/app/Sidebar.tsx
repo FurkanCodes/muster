@@ -16,13 +16,13 @@ import {
 } from "react";
 import { addProject, cloneProject, newSession } from "../flows/actions";
 import { useKeymap } from "../keys/useKeymap";
-import { keysOf, SessionMenu } from "../session/SessionMenu";
 import { keep, kept } from "../state/kept";
 import { chats } from "../state/selectors";
 import type { ListId } from "../state/ui";
 import { IconButton, Kbd, Segmented } from "../ui/controls";
 import { Icon, type IconName } from "../ui/Icon";
 import { KepFace, type Mood } from "../ui/Kep";
+import { ActionMenu, keysOf } from "../ui/Menu";
 import { NavItem } from "../ui/Nav";
 import { useActions, useApp, useDaemon, useUi } from "./context";
 
@@ -42,16 +42,14 @@ export function SidebarToggle() {
   const fullScreen = useUi((state) => state.fullScreen !== null);
   const hidden = folded || fullScreen;
   return (
-    <button
-      type="button"
-      className="mu-icon-btn app-sidebar-toggle"
-      aria-label={hidden ? "Show the sidebar" : "Hide the sidebar"}
+    <IconButton
+      icon="sidebar"
+      className="app-sidebar-toggle"
+      label={hidden ? "Show the sidebar" : "Hide the sidebar"}
       title={`${hidden ? "Show" : "Hide"} the sidebar (⌘\\)`}
       // Full screen brings the sidebar back as it leaves.
       onClick={() => (fullScreen ? actions.fillWindow(null) : actions.foldSidebar())}
-    >
-      <Icon name="sidebar" size={16} />
-    </button>
+    />
   );
 }
 
@@ -129,32 +127,21 @@ function ListSwitch() {
 function ProjectsHead({ linked }: { linked: boolean }) {
   const app = useApp();
   const map = useKeymap();
-  const [open, setOpen] = useState(false);
   return (
     <div className="app-projects-head">
       <span className="app-projects-title">Projects</span>
-      <IconButton
-        icon="plus"
-        size="sm"
+      <ActionMenu
         label="Add a project"
-        pressed={open}
-        disabled={!linked}
-        onClick={() => setOpen(!open)}
+        items={[
+          { ...keysOf(map, "add_project"), label: "Open a folder…", does: () => addProject(app) },
+          {
+            ...keysOf(map, "clone_project"),
+            label: "Clone from GitHub…",
+            does: () => cloneProject(app),
+          },
+        ]}
+        trigger={<IconButton icon="plus" size="sm" label="Add a project" disabled={!linked} />}
       />
-      {open ? (
-        <SessionMenu
-          label="Add a project"
-          items={[
-            { ...keysOf(map, "add_project"), label: "Open a folder…", does: () => addProject(app) },
-            {
-              ...keysOf(map, "clone_project"),
-              label: "Clone from GitHub…",
-              does: () => cloneProject(app),
-            },
-          ]}
-          onClose={() => setOpen(false)}
-        />
-      ) : null}
     </div>
   );
 }

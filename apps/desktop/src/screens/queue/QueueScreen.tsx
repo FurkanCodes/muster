@@ -21,7 +21,6 @@ import { Sidebar } from "../../app/Sidebar";
 import type { SessionId } from "../../ipc/generated/SessionId";
 import { type Keymap, labelOf } from "../../keys/keymap";
 import { useActionKeys, useBorrowedKeys, useKeymap } from "../../keys/useKeymap";
-import { keysOf, type MenuItem } from "../../session/SessionMenu";
 import { SessionPane } from "../../session/SessionPane";
 import {
   CloseSession,
@@ -33,6 +32,7 @@ import { projectColour, standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
 import { EmptyState, EmptyStateText, EmptyStateTitle } from "../../ui/EmptyState";
 import { List } from "../../ui/List";
+import { keysOf, type MenuItem } from "../../ui/Menu";
 import { Swatch } from "../../ui/status";
 import { lastNeeded } from "./history";
 import { optionId, QueueEntry } from "./QueueEntry";

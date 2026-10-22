@@ -1,8 +1,9 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ulid } from "../ipc/mock/scenario";
 import { renderApp, renderWithApp } from "../test/render";
+import { tooltipOf } from "../test/tooltip";
 import { SessionPane } from "./SessionPane";
 
 const codex = ulid(101);
@@ -55,11 +56,11 @@ describe("ARC-24 the session pane", () => {
     const { app } = renderWithApp(<SessionPane session={codex} />);
     await screen.findByRole("heading", { name: "Sketch the Tauri shell" });
     const shell = screen.getByRole("button", { name: "Shell" });
-    expect(shell).toHaveAttribute("title", "Shell in this workspace (⇧T)");
+    expect(await tooltipOf(shell)).toBe("Shell in this workspace (⇧T)");
     expect(shell).toHaveTextContent("");
     expect(screen.queryByRole("button", { name: "Full screen" })).not.toBeInTheDocument();
     const changes = screen.getByRole("button", { name: "Changes" });
-    expect(changes).toHaveAttribute("title", "Changes (d)");
+    expect(await tooltipOf(changes)).toBe("Changes (d)");
     expect(changes).toHaveTextContent("");
     await userEvent.click(changes);
     expect(app.ui.getState().pane).toBe("changes");
@@ -81,20 +82,23 @@ describe("ARC-24 the session pane", () => {
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "More" }));
-    const menu = screen.getByRole("menu", { name: "Sketch the Tauri shell" });
+    const menu = await screen.findByRole("menu", { name: "Sketch the Tauri shell" });
     const items = within(menu).getAllByRole("menuitem");
     expect(items.map((item) => item.textContent)).toEqual(["Full screenf", "RenameR", "Closex"]);
-    expect(items[0]).toHaveFocus();
+    // Opened by the pointer, the menu holds the focus with no item lit, as a Mac's does; ↓ lights the first.
+    await waitFor(() => expect(menu).toHaveFocus());
     expect(within(menu).getByRole("separator")).toBeInTheDocument();
-    await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
     expect(close).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await screen.findByRole("menu");
     await userEvent.keyboard("R");
     expect(rename).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole("button", { name: "More" }));
+    await screen.findByRole("menu");
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "More" })).toHaveFocus();
   });
 
