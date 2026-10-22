@@ -31,12 +31,11 @@ describe("ARC-24 Needs you, in the sidebar", () => {
       "Explain the release script",
     ]);
     const asking = selected();
-    expect(asking).toHaveClass("mu-row", "mu-row--two");
-    expect(within(asking).getByText("wants to run cargo build")).toHaveClass("queue-ask");
+    // Two lines: its name, and under it what it asks.
+    expect(within(asking).getByText("wants to run cargo build")).toHaveClass("mu-list-item-meta");
     // In full over its terminal, with its keys in the status bar.
     expect(asking).not.toHaveTextContent("⏎answer");
     const finish = within(queue()).getByRole("option", { name: "Resize settles once on release" });
-    expect(finish).toHaveClass("mu-row", "mu-row--two");
     expect(finish).toHaveTextContent("⎇ fix/resize-under-load+64−22#88approved✓12m");
     expect(within(finish).getByRole("img", { name: "not seen" })).toBeInTheDocument();
     const plain = within(queue()).getByRole("option", { name: "Explain the release script" });

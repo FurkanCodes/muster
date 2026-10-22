@@ -24,9 +24,18 @@ import type { DaemonState } from "../../state/daemon";
 import { branchOf, projectColour, standsBeside } from "../../state/selectors";
 import { Banner, BannerBody } from "../../ui/Banner";
 import { Button, IconButton } from "../../ui/controls";
+import { ListItemEnd, ListItemMeta, ListItemTitle, RowButton } from "../../ui/List";
 import { Section, SectionTitle } from "../../ui/Section";
 import { Select } from "../../ui/Select";
-import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark, Swatch } from "../../ui/status";
+import {
+  AgentLogo,
+  DiffStat,
+  MarkSpace,
+  NewsDot,
+  PullRequest,
+  StatusMark,
+  Swatch,
+} from "../../ui/status";
 import "./project.css";
 
 const NO_AGENTS: AddedAgent[] = [];
@@ -364,31 +373,27 @@ function PlaceSession({ id }: { id: string }) {
   const unseen = session.unseen && session.status.state !== "needs_you";
   return (
     <li>
-      <button
-        type="button"
-        className="mu-row project-session"
-        aria-label={`${session.title}, ${what}`}
+      <RowButton
+        className="project-session"
+        label={`${session.title}, ${what}`}
         onClick={() => {
           actions.select("all", id);
           actions.keysTo("list");
         }}
       >
-        {beside ? <span className="mu-mark" /> : <StatusMark kind={statusKind(session)} />}
+        {beside ? <MarkSpace /> : <StatusMark kind={statusKind(session)} />}
         <AgentLogo harness={session.harness} />
-        <span className="mu-cut project-session-name" title={session.title}>
+        <ListItemTitle className="project-session-name" title={session.title}>
           {session.title}
-        </span>
-        <span
-          className={`mu-meta mu-cut ${session.status.state === "needs_you" ? "sessions-waiting" : ""}`}
-          title={what}
-        >
+        </ListItemTitle>
+        <ListItemMeta className="project-session-what" title={what}>
           {what}
-        </span>
-        <span className="mu-age">
+        </ListItemMeta>
+        <ListItemEnd>
           {ago(now - session.status_since)}
           {unseen ? <NewsDot /> : null}
-        </span>
-      </button>
+        </ListItemEnd>
+      </RowButton>
     </li>
   );
 }

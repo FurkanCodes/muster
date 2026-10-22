@@ -75,7 +75,7 @@ function WorkspaceChanges({
   const rows = useRef<HTMLDivElement>(null);
   /** The entry an undo just made, to select and focus once the timeline lists it. */
   const newEntry = useRef<string | null>(null);
-  /** The selected row takes the focus once it is drawn: a long list draws only what is in sight. */
+  /** The list takes the focus once it is drawn, where the keys moved through it. */
   const focusing = useRef(false);
   // Moving to where the selection already is draws again, so the row takes the focus all the same.
   const [, setFollow] = useState(0);
@@ -97,14 +97,12 @@ function WorkspaceChanges({
     view === "turns" ? kept.entries.find((found) => String(found.number) === shown) : undefined;
   const file = files.find((found) => found.path === shown);
 
-  /** Gives the selected row the focus, where it is wanted and drawn. */
+  /** Gives the list the focus, where it is wanted: it names its selected line, which keeps itself in sight. */
   const focusWanted = () => {
-    if (!focusing.current) return;
-    const row = rows.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!row) return;
+    const list = rows.current;
+    if (!focusing.current || !list) return;
     focusing.current = false;
-    row.focus({ preventScroll: true });
-    row.scrollIntoView({ block: "nearest" });
+    list.focus({ preventScroll: true });
   };
   useEffect(() => {
     const made = newEntry.current;
@@ -244,12 +242,7 @@ function WorkspaceChanges({
             timeline={timeline}
             rows={rows}
             selected={selected}
-            onSelect={(id) => {
-              // The dialog hands the focus back to the row it left; the new entry stays selected.
-              if (newEntry.current !== null) return;
-              setSelection(id);
-              setKeysInDiff(false);
-            }}
+            resting={keysInDiff}
             onOpen={open}
             onAgain={askAgain}
             onDrawn={focusWanted}

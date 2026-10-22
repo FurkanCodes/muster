@@ -12,6 +12,7 @@ import { projectsInOrder } from "../../state/selectors";
 import { Button, Segmented } from "../../ui/controls";
 import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
 import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { List } from "../../ui/List";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { Detail } from "./Detail";
 import { groupProjects, message, ticketId, ticketsFor } from "./data";
@@ -28,6 +29,11 @@ type Selection = { issue: Issue; projects: string[]; tracker: string; source: st
 type TicketDialog =
   | { kind: "assign"; selected: Selection; another: boolean }
   | { kind: "close"; selected: Selection; worktrees: Workspace[] };
+
+/** A ticket's line's id in the window, for its list's `aria-activedescendant`. */
+function lineIdOf(project: string, key: Issue["key"]): string {
+  return `ticket-${ticketId(project, key)}`;
+}
 
 export default function Tickets() {
   const bridge = useBridge();
@@ -164,6 +170,17 @@ export default function Tickets() {
     ticket_in_browser: browser,
     close_ticket: close,
   });
+  // Each project's tickets are a list of their own: the keys moving the
+  // selection into another project's list take the focus there with it.
+  const selectedLine = selected ? lineIdOf(selected.projects[0] ?? "", selected.issue.key) : null;
+  useEffect(() => {
+    if (!selectedLine) return;
+    const focused = document.activeElement;
+    const into = document.getElementById(selectedLine)?.closest<HTMLElement>('[role="listbox"]');
+    if (into && focused !== into && focused?.closest(".tickets-list")) {
+      into.focus({ preventScroll: true });
+    }
+  }, [selectedLine]);
   return (
     <div className="tickets-screen" data-keys={dialog ? "dialog" : "list"}>
       <section className="tickets-list" aria-label="Tickets">
@@ -174,7 +191,7 @@ export default function Tickets() {
             <HeadingLead>Each project's open tickets, and the agents on them.</HeadingLead>
           </Heading>
         </div>
-        <div className="mu-queue tickets-queue">
+        <div className="tickets-queue">
           {!ids.length ? (
             <p className="tickets-state mu-meta">
               No projects yet: add one, and its open tickets show here.
@@ -232,17 +249,29 @@ export default function Tickets() {
                       {list.value.mine ? "none of yours open" : "no open tickets"}
                     </p>
                   ) : (
-                    list.value.issues.map((issue) => (
-                      <TicketRow
-                        key={issue.key}
-                        issue={issue}
-                        projects={projects}
-                        selected={
-                          selected?.projects[0] === project && selected.issue.key === issue.key
-                        }
-                        onSelect={() => actions.select("tickets", ticketId(project, issue.key))}
-                      />
-                    ))
+                    <List
+                      label={`${groupName(projects)}'s tickets`}
+                      activeId={
+                        selected?.projects[0] === project
+                          ? lineIdOf(project, selected.issue.key)
+                          : undefined
+                      }
+                      resting={dialog !== null}
+                      className="tickets-group"
+                    >
+                      {list.value.issues.map((issue) => (
+                        <TicketRow
+                          key={issue.key}
+                          lineId={lineIdOf(project, issue.key)}
+                          issue={issue}
+                          projects={projects}
+                          selected={
+                            selected?.projects[0] === project && selected.issue.key === issue.key
+                          }
+                          onSelect={() => actions.select("tickets", ticketId(project, issue.key))}
+                        />
+                      ))}
+                    </List>
                   )}
                 </section>
               );

@@ -1,31 +1,4 @@
-/* Session tree (All sessions) */
-.mu-tree {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-8) var(--space-16);
-}
-.mu-tree-row {
-  width: 100%;
-  min-height: var(--size-control-md);
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  padding: var(--space-4) var(--space-8);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--timing-base) var(--ease-out);
-}
-.mu-tree-row:hover {
-  background: var(--surface-raised);
-}
-.mu-tree-row[aria-selected="true"] {
-  background: var(--surface-lit);
-}
+/* Session tree (All sessions): what its lines have beyond a List's (ui/list.css). */
 /* The fold shows while the pointer is on its line, or while it is folded. */
 .mu-tree-fold {
   width: var(--size-mark);
@@ -36,7 +9,7 @@
   opacity: 0;
   transition: opacity var(--timing-fast) var(--ease-out);
 }
-.mu-tree-row:hover .mu-tree-fold,
+.mu-list-item:hover .mu-tree-fold,
 .mu-tree-fold.is-folded {
   opacity: 1;
 }
@@ -44,21 +17,7 @@
   font-weight: 500;
   white-space: nowrap;
 }
-.mu-tree-end {
-  margin-left: auto;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-quiet);
-}
-.mu-tree-children {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+/* A shell's line: a command, quiet and in mono, lower than a chat's. */
 .mu-tree-shell {
   min-height: var(--size-control-sm);
   padding-top: var(--space-2);

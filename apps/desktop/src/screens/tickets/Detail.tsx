@@ -8,6 +8,7 @@ import { agentOf } from "../../lib/agents";
 import { ago, spend } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { Button, IconButton } from "../../ui/controls";
+import { ListItemEnd, ListItemMeta, ListItemText, ListItemTitle, RowButton } from "../../ui/List";
 import { AgentLogo, DiffStat, PullRequest, StatusMark } from "../../ui/status";
 import { agentsOn, shownKey, worktreesFor } from "./agents";
 import { type TicketsModel, ticketId } from "./data";
@@ -163,21 +164,16 @@ function AgentRow({
   );
   if (!session) return null;
   return (
-    <button
-      type="button"
-      className="mu-row mu-row--two tickets-agent-row"
-      onClick={() => onOpen(id)}
-      title="Open its agent (⏎)"
-    >
+    <RowButton className="tickets-agent-row" title="Open its agent (⏎)" onClick={() => onOpen(id)}>
       <StatusMark kind={statusKind(session)} />
       <AgentLogo harness={session.harness} />
-      <span className="mu-row-text">
-        <span className="mu-cut">
+      <ListItemText>
+        <ListItemTitle>
           {label ?? agentOf(session.harness).name}{" "}
           <span className="mu-quiet">{ticketText(doing(session))}</span>
-        </span>
-        <span className="mu-row-line mu-meta">
-          <span className="mu-branch mu-cut">⎇ {ticketText(workspace?.kind.branch ?? "")}</span>
+        </ListItemTitle>
+        <ListItemMeta>
+          <span className="mu-branch">⎇ {ticketText(workspace?.kind.branch ?? "")}</span>
           {shared && workspace ? <ProjectName id={workspace.project} /> : null}
           {workspace?.changes ? (
             <DiffStat added={workspace.changes.added} removed={workspace.changes.removed} />
@@ -186,9 +182,9 @@ function AgentRow({
           {session.spend ? (
             <span>{spend(session.spend.tokens, session.spend.cost_micros)}</span>
           ) : null}
-        </span>
-      </span>
-      <span className="mu-age">{ago(now - session.status_since)}</span>
-    </button>
+        </ListItemMeta>
+      </ListItemText>
+      <ListItemEnd>{ago(now - session.status_since)}</ListItemEnd>
+    </RowButton>
   );
 }

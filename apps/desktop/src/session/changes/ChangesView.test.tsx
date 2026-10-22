@@ -9,6 +9,13 @@ import { ulid, workingDay } from "../../ipc/mock/scenario";
 import { renderWithApp } from "../../test/render";
 import ChangesView from "./ChangesView";
 
+/** The list holds the focus and names `line` as its active one (ui/List: lines never take the focus). */
+function expectActive(list: HTMLElement, line: HTMLElement) {
+  expect(list).toHaveFocus();
+  expect(line).toHaveAttribute("aria-selected", "true");
+  expect(list).toHaveAttribute("aria-activedescendant", line.id);
+}
+
 const workspace = ulid(11);
 let removeKeys: (() => void) | undefined;
 beforeEach(() => {
@@ -87,7 +94,10 @@ describe("ARC-24 Not committed", () => {
       { FileDiff: { workspace, part: "uncommitted", path: "src/link.rs" } },
     ]);
     await userEvent.keyboard("{Escape}");
-    expect(screen.getByRole("option", { name: "modified: src/link.rs" })).toHaveFocus();
+    expectActive(
+      screen.getByRole("listbox", { name: "Files not committed" }),
+      screen.getByRole("option", { name: "modified: src/link.rs" }),
+    );
     expect(app.ui.getState().pane).toBe("changes");
     await userEvent.keyboard("j{Enter}");
     await waitFor(() =>

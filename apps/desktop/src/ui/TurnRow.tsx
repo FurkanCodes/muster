@@ -3,6 +3,7 @@ import { useDaemon } from "../app/context";
 import type { Entry } from "../ipc/generated/Entry";
 import { agentOf } from "../lib/agents";
 import { ago } from "../lib/format";
+import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "./List";
 import { AgentLogo, DiffStat } from "./status";
 
 const AGENTS = ["claude", "codex", "gemini", "opencode", "copilot"];
@@ -12,18 +13,21 @@ function harnessNamed(agent: string): string {
   return AGENTS.find((id) => agentOf(id).name === agent) ?? agent;
 }
 
-/** One entry of a workspace's timeline: its number, who, what it changed, and when it ended. */
+/** A turn's line's id in the window, for its list's `aria-activedescendant`. */
+export function turnLineId(number: number | string): string {
+  return `turn-${number}`;
+}
+
+/** One entry of a workspace's timeline: its number, who, what it changed, and when it ended. A click opens its diff. */
 export function TurnRow({
   entry,
   label,
   selected,
-  onSelect,
   onOpen,
 }: {
   entry: Entry;
   label: string;
   selected: boolean;
-  onSelect(): void;
   onOpen(): void;
 }) {
   const now = useNow();
@@ -31,14 +35,13 @@ export function TurnRow({
   const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
   const files = entry.summary?.files ?? 0;
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      tabIndex={selected ? 0 : -1}
+    <ListItem
+      id={turnLineId(entry.number)}
+      selected={selected}
+      label={`${entry.number} ${label}`}
+      density="compact"
       className="mu-turnrow"
-      onFocus={onSelect}
-      onClick={onOpen}
+      onSelect={onOpen}
     >
       <span className="mu-turnrow-num">{entry.number}</span>
       {entry.kind.kind === "turn" ? (
@@ -48,9 +51,9 @@ export function TurnRow({
           {entry.kind.kind === "undo" ? "↺" : entry.kind.kind === "moved" ? "⎇" : "✎"}
         </span>
       )}
-      <span className="mu-turnrow-text">
-        <span>{label}</span>
-        <span className="mu-meta">
+      <ListItemText>
+        <ListItemTitle>{label}</ListItemTitle>
+        <ListItemMeta>
           {entry.summary ? (
             <>
               {files} {files === 1 ? "file" : "files"}{" "}
@@ -59,11 +62,11 @@ export function TurnRow({
           ) : (
             "changed no files"
           )}
-        </span>
-      </span>
-      <span className="mu-age" title={new Date(entry.ended).toLocaleString()}>
+        </ListItemMeta>
+      </ListItemText>
+      <ListItemEnd title={new Date(entry.ended).toLocaleString()}>
         {ago(now - entry.ended)}
-      </span>
-    </button>
+      </ListItemEnd>
+    </ListItem>
   );
 }

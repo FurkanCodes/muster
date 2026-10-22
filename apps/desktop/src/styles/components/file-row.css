@@ -1,27 +1,12 @@
-/* File row */
+/* What a changed file's line has beyond a List's (ui/list.css): lower, its path in mono. */
 .mu-file {
-  width: 100%;
   min-height: var(--size-control-sm);
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
   padding: var(--space-4) var(--space-8);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
   color: var(--text);
   font-family: var(--font-mono);
   font-variant-ligatures: none;
   font-size: 12px;
   line-height: 16px;
-  text-align: left;
-  cursor: pointer;
-}
-.mu-file:hover {
-  background: var(--surface-raised);
-}
-.mu-file[aria-selected="true"] {
-  background: var(--surface-lit);
 }
 .mu-file-kind {
   width: var(--size-mark);

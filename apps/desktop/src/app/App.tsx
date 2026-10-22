@@ -96,7 +96,7 @@ function useTheme(): void {
 
 /** Where the browser's own menu still serves on a right-click: text one can copy or type in. */
 const TEXT_MENU =
-  'input, textarea, [contenteditable="true"], .xterm, .mu-prose, .mu-panel-body, .mu-diffview-body, .mu-question';
+  'input, textarea, [contenteditable="true"], .xterm, .mu-prose, .mu-panel-body, .mu-diffview-body';
 
 /**
  * A right-click in the window opens no browser menu (Reload, Inspect): it is

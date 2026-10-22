@@ -14,7 +14,7 @@ import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf, projectColour } from "../../state/selectors";
-import { focusListOf } from "../../ui/listPointer";
+import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark, Swatch } from "../../ui/status";
 import { mostUrgent, sessionsOn, type TreeRow } from "./tree";
 
@@ -43,8 +43,6 @@ export interface LineProps {
   row: TreeRow;
   level: number;
   selected: boolean;
-  /** Selected while the keys are elsewhere: the terminal or a dialog. */
-  resting: boolean;
   /** For a project's line, whether it is folded. */
   folded: boolean;
   onPick: (id: string) => void;
@@ -54,10 +52,10 @@ export interface LineProps {
 function Age({ since, unseen = false }: { since: number; unseen?: boolean }) {
   const now = useNow();
   return (
-    <span className="mu-age">
+    <ListItemEnd>
       {ago(now - since)}
       {unseen ? <NewsDot /> : null}
-    </span>
+    </ListItemEnd>
   );
 }
 
@@ -77,13 +75,13 @@ function Standing({ row }: { row: TreeRow }) {
     return Boolean(urgent?.unseen && urgent.status.state !== "needs_you");
   });
   const hidden = useDaemon((state) => sessionsOn(state, row).length);
-  if (hidden === 0) return <span className="mu-tree-end">no sessions</span>;
+  if (hidden === 0) return <ListItemEnd>no sessions</ListItemEnd>;
   return (
-    <span className="mu-tree-end">
+    <ListItemEnd>
       {kind ? <StatusMark kind={kind} /> : null}
       {news ? <NewsDot /> : null}
       {hidden} folded
-    </span>
+    </ListItemEnd>
   );
 }
 
@@ -104,34 +102,32 @@ function Line({
   row,
   level,
   selected,
-  resting,
   expanded,
+  density,
   className,
   label,
   onPick,
   children,
-}: Pick<LineProps, "row" | "level" | "selected" | "resting" | "onPick"> & {
+}: Pick<LineProps, "row" | "level" | "selected" | "onPick"> & {
   expanded?: boolean;
-  className: string;
+  density: "comfortable" | "compact";
+  className?: string;
   label: string;
   children: ReactNode;
 }) {
   return (
-    <button
+    <ListItem
       id={rowId(row.id)}
-      type="button"
-      role="treeitem"
-      tabIndex={-1}
-      aria-level={level}
-      aria-selected={selected}
-      aria-expanded={expanded}
-      aria-label={label}
-      className={`${className} ${selected && resting ? "is-resting" : ""}`}
-      onMouseDown={focusListOf}
-      onClick={() => onPick(row.id)}
+      selected={selected}
+      label={label}
+      level={level}
+      expanded={expanded}
+      density={density}
+      className={className}
+      onSelect={() => onPick(row.id)}
     >
       {children}
-    </button>
+    </ListItem>
   );
 }
 
@@ -141,7 +137,7 @@ export function ProjectLine(props: LineProps) {
   const root = useDaemon((state) => state.projects[row.id]?.root ?? "");
   const colour = useDaemon((state) => projectColour(state, row.id));
   return (
-    <Line {...props} expanded={!folded} className="mu-tree-row sessions-project" label={name}>
+    <Line {...props} expanded={!folded} density="compact" className="sessions-project" label={name}>
       <Fold {...props} />
       <Swatch colour={colour} />
       <span className="mu-tree-project mu-cut" title={homely(root)}>
@@ -166,7 +162,8 @@ export function WorktreeLine(props: LineProps) {
   return (
     <Line
       {...props}
-      className="mu-tree-row sessions-worktree"
+      density="compact"
+      className="sessions-worktree"
       label={inGit ? branch : "not a git repository"}
     >
       {inGit ? (
@@ -174,10 +171,10 @@ export function WorktreeLine(props: LineProps) {
       ) : (
         <span className="mu-quiet mu-cut">not a git repository</span>
       )}
-      <span className="mu-tree-end">
+      <ListItemEnd>
         {added || removed ? <DiffStat added={added} removed={removed} /> : "no sessions"}
         {pr ? <PullRequest pr={pr} words={false} /> : null}
-      </span>
+      </ListItemEnd>
     </Line>
   );
 }
@@ -186,15 +183,11 @@ function ChatText({ session, lines }: { session: Session; lines: "one" | "two" }
   const asking = session.status.state === "needs_you";
   const what = doing(session);
   const name = (
-    <span className={`mu-cut ${asking ? "sessions-asking" : ""}`} title={session.title}>
+    <ListItemTitle className={asking ? "sessions-asking" : undefined} title={session.title}>
       {session.title}
-    </span>
+    </ListItemTitle>
   );
-  const words = (
-    <span className={`mu-meta mu-cut ${asking ? "sessions-waiting" : ""}`} title={what}>
-      {what}
-    </span>
-  );
+  const words = <ListItemMeta title={what}>{what}</ListItemMeta>;
   if (lines === "one")
     return (
       <>
@@ -203,10 +196,10 @@ function ChatText({ session, lines }: { session: Session; lines: "one" | "two" }
       </>
     );
   return (
-    <span className="mu-row-text">
+    <ListItemText>
       {name}
       {words}
-    </span>
+    </ListItemText>
   );
 }
 
@@ -216,11 +209,7 @@ export function SessionLine(props: LineProps) {
   if (!session) return null;
   const unseen = session.unseen && session.status.state !== "needs_you";
   return (
-    <Line
-      {...props}
-      className={lines === "two" ? "mu-row mu-row--two" : "mu-row"}
-      label={`${session.title}, ${doing(session)}`}
-    >
+    <Line {...props} density="comfortable" label={`${session.title}, ${doing(session)}`}>
       <StatusMark kind={statusKind(session)} />
       <AgentLogo harness={session.harness} />
       <ChatText session={session} lines={lines} />
@@ -251,13 +240,14 @@ export function BesideLine(props: LineProps & { panelKey: string | null }) {
   return (
     <Line
       {...props}
-      className="mu-tree-row mu-tree-shell"
+      density="compact"
+      className="mu-tree-shell"
       label={`${shell ? "Shell" : "Panel"}: ${name}${ended ? ", ended" : ""}`}
     >
       <span className={`mu-cut ${ended || waiting ? "" : "sessions-running"}`}>
         {shell ? "❯" : "◇"} {name}
       </span>
-      {end === null ? null : <span className="mu-tree-end">{end}</span>}
+      {end === null ? null : <ListItemEnd>{end}</ListItemEnd>}
     </Line>
   );
 }

@@ -9,6 +9,13 @@ import { renderWithApp } from "../../test/render";
 import ChangesView from "./ChangesView";
 import { inSight, ROW } from "./FileList";
 
+/** The list holds the focus and names `line` as its active one (ui/List: lines never take the focus). */
+function expectActive(list: HTMLElement, line: HTMLElement) {
+  expect(list).toHaveFocus();
+  expect(line).toHaveAttribute("aria-selected", "true");
+  expect(list).toHaveAttribute("aria-activedescendant", line.id);
+}
+
 const workspace = ulid(11);
 let removeKeys: (() => void) | undefined;
 beforeEach(() => {
@@ -68,14 +75,13 @@ describe("ARC-25 a long list of files", () => {
     const files = await screen.findByRole("listbox", { name: "Files not committed" });
     await userEvent.keyboard("{End}");
     const last = within(files).getByRole("option", { name: "modified: src/file4999.rs" });
-    expect(last).toHaveFocus();
-    expect(last).toHaveAttribute("aria-selected", "true");
+    expectActive(files, last);
     expect(within(files).getAllByRole("option").length).toBeLessThan(60);
     expect(files.scrollTop).toBe(inSight(0, 640, 4999));
     await userEvent.keyboard("{PageUp}{PageUp}k");
-    expect(within(files).getByRole("option", { name: "modified: src/file4978.rs" })).toHaveFocus();
+    expectActive(files, within(files).getByRole("option", { name: "modified: src/file4978.rs" }));
     await userEvent.keyboard("{Home}");
-    expect(within(files).getByRole("option", { name: "modified: src/file0000.rs" })).toHaveFocus();
+    expectActive(files, within(files).getByRole("option", { name: "modified: src/file0000.rs" }));
     expect(files.scrollTop).toBe(0);
     await userEvent.keyboard("{PageDown}j{Enter}");
     expect(await screen.findByRole("region", { name: "Diff" })).toHaveFocus();

@@ -1,0 +1,105 @@
+/* List (ui/List.tsx): a list the keyboard moves through, and its lines. The
+   list holds the focus and draws no ring: its selected line, lit while the
+   list has the keys and tinted while they are elsewhere, says where they are. */
+.mu-list {
+  outline: none;
+}
+.mu-list:focus-visible {
+  outline: none;
+}
+
+.mu-list-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--timing-base) var(--ease-out);
+}
+/* A person reads it: a session, a ticket. */
+.mu-list-item--comfortable {
+  min-height: var(--size-row);
+  padding: var(--space-6) var(--space-12);
+}
+/* One of many: a tree's line, a file, a turn. */
+.mu-list-item--compact {
+  min-height: var(--size-control-md);
+  padding: var(--space-4) var(--space-8);
+}
+.mu-list-item:hover {
+  background: var(--surface-raised);
+}
+.mu-list-item[aria-selected="true"] {
+  background: var(--surface-lit);
+}
+.mu-list-item[aria-selected="true"].is-resting {
+  background: var(--surface-tint);
+}
+/* A line never takes the focus; a RowButton, a button of its own, rings as any control. */
+.mu-list-item[role="option"]:focus-visible,
+.mu-list-item[role="treeitem"]:focus-visible {
+  outline: none;
+}
+
+.mu-list-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mu-list-item-title,
+.mu-list-item-meta {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-list-item-meta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+/* Facts side by side under the name: a branch, what the work comes to, a pull request. */
+.mu-list-item-meta > * + * {
+  margin-left: var(--space-10);
+}
+.mu-list-item-end {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+
+/* A line whose status just changed in sight flashes once in that status's colour. */
+.mu-flash {
+  animation: mu-flash calc(var(--timing-flash) * 2) var(--ease-out) 1;
+}
+.mu-flash--waiting {
+  --mu-flash: var(--waiting-soft);
+}
+.mu-flash--done {
+  --mu-flash: var(--done-soft);
+}
+.mu-flash--news {
+  --mu-flash: var(--news-soft);
+}
+@keyframes mu-flash {
+  0%,
+  50% {
+    background-color: var(--mu-flash);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

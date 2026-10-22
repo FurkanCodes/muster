@@ -1,5 +1,6 @@
 import type { FileChange } from "../ipc/generated/FileChange";
 import { splitPath } from "../lib/format";
+import { ListItem } from "./List";
 import { DiffStat } from "./status";
 import "./file-row.css";
 
@@ -20,34 +21,35 @@ export function fileKind(kind: FileChange["kind"]): readonly [string, string] {
   return KIND[kind];
 }
 
-/** One changed file: its kind, its path (less `folder`, said once above the list), its lines. */
+/** A file's line's id in the window, for its list's `aria-activedescendant`. */
+export function fileLineId(path: string): string {
+  return `file-${path}`;
+}
+
+/** One changed file: its kind, its path (less `folder`, said once above the list), its lines. A click opens its diff. */
 export function FileRow({
   file,
   folder = "",
   selected,
-  onSelect,
   onOpen,
 }: {
   file: FileChange;
   folder?: string;
   selected: boolean;
-  onSelect(): void;
   onOpen(): void;
 }) {
   const shown = file.path.startsWith(folder) ? file.path.slice(folder.length) : file.path;
   const path = splitPath(shown);
   const [letter, tone] = KIND[file.kind];
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      aria-label={`${file.kind}: ${file.from ? `${file.from} → ` : ""}${file.path}`}
-      tabIndex={selected ? 0 : -1}
+    <ListItem
+      id={fileLineId(file.path)}
+      selected={selected}
+      label={`${file.kind}: ${file.from ? `${file.from} → ` : ""}${file.path}`}
       title={file.path}
+      density="compact"
       className="mu-file"
-      onFocus={onSelect}
-      onClick={onOpen}
+      onSelect={onOpen}
     >
       <span className={`mu-file-kind mu-file-kind--${tone}`} aria-hidden="true">
         {letter}
@@ -60,6 +62,6 @@ export function FileRow({
         </bdi>
       </span>
       {file.lines ? <DiffStat {...file.lines} /> : <span className="mu-quiet">binary</span>}
-    </button>
+    </ListItem>
   );
 }

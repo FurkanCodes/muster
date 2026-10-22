@@ -13,7 +13,7 @@
 @import "./components/agent-logo.css";
 @import "./components/badge.css";
 @import "./components/diff-stat.css";
-@import "./components/queue.css";
+@import "../ui/list.css";
 @import "./components/pane.css";
 @import "../ui/heading.css";
 @import "../ui/section.css";

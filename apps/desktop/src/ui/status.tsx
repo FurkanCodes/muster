@@ -31,6 +31,11 @@ export function Swatch({ colour }: { colour: number }) {
   return <span className={`mu-swatch mu-p${colour}`} aria-hidden="true" />;
 }
 
+/** A mark's room with no mark in it, so the names after it line up with those after a mark. */
+export function MarkSpace() {
+  return <span className="mu-mark" aria-hidden="true" />;
+}
+
 /** The not-seen dot. */
 export function NewsDot() {
   return <span className="mu-dot" role="img" aria-label="not seen" />;

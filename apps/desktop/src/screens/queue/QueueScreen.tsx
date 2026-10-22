@@ -32,6 +32,7 @@ import {
 import { projectColour, standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
 import { EmptyState, EmptyStateText, EmptyStateTitle } from "../../ui/EmptyState";
+import { List } from "../../ui/List";
 import { Swatch } from "../../ui/status";
 import { lastNeeded } from "./history";
 import { optionId, QueueEntry } from "./QueueEntry";
@@ -255,12 +256,11 @@ export function QueueScreen({ active }: { active: boolean }) {
           {!loaded ? (
             <Connecting />
           ) : (
-            <div
-              className="mu-queue queue-list"
-              role="listbox"
-              tabIndex={0}
-              aria-label={`${TITLE} sessions`}
-              aria-activedescendant={selected ? optionId(selected) : undefined}
+            <List
+              label={`${TITLE} sessions`}
+              activeId={selected ? optionId(selected) : undefined}
+              resting={resting}
+              className="queue-list"
             >
               {nothingWaits ? <AllClear working={working} /> : null}
               {groups.map((group) =>
@@ -270,16 +270,11 @@ export function QueueScreen({ active }: { active: boolean }) {
                     project={index === 0 ? group.project : null}
                     renaming={tools.renaming === id ? tools : null}
                   >
-                    <QueueEntry
-                      id={id}
-                      selected={id === selected}
-                      resting={resting}
-                      onPick={pick}
-                    />
+                    <QueueEntry id={id} selected={id === selected} onPick={pick} />
                   </QueueRowSlot>
                 )),
               )}
-            </div>
+            </List>
           )}
         </section>
       </Sidebar>

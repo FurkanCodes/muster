@@ -17,6 +17,7 @@
 }
 .tickets-queue {
   flex: 1;
+  padding: var(--space-4) var(--space-8) var(--space-16);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -114,12 +115,6 @@
 .tickets-title-row .mu-pane-title {
   overflow-wrap: anywhere;
   text-wrap: pretty;
-}
-.tickets-screen .mu-ticket[aria-current="true"] {
-  background: var(--surface-lit);
-}
-.tickets-screen[data-keys="dialog"] .mu-ticket[aria-current="true"] {
-  background: var(--surface-tint);
 }
 .tickets-screen .mu-group {
   flex-wrap: wrap;
