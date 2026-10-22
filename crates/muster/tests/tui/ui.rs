@@ -45,6 +45,17 @@ impl Ui {
 
     /// Starts the UI with `env` set as well.
     pub(crate) fn start_with(sandbox: &Sandbox, cwd: &Path, env: &[(&str, &str)]) -> Self {
+        Self::start_over(sandbox, cwd, env, b"")
+    }
+
+    /// Starts the UI in a terminal already showing `earlier`, as a shell
+    /// leaves it.
+    pub(crate) fn start_over(
+        sandbox: &Sandbox,
+        cwd: &Path,
+        env: &[(&str, &str)],
+        earlier: &[u8],
+    ) -> Self {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: ROWS,
@@ -70,7 +81,9 @@ impl Ui {
         let child = pair.slave.spawn_command(command).unwrap();
         drop(pair.slave);
 
-        let screen = Arc::new(Mutex::new(vt100::Parser::new(ROWS, COLS, 0)));
+        let mut shown = vt100::Parser::new(ROWS, COLS, 0);
+        shown.process(earlier);
+        let screen = Arc::new(Mutex::new(shown));
         let mut reader = pair.master.try_clone_reader().unwrap();
         let mut writer = pair.master.take_writer().unwrap();
         let parsed = screen.clone();
