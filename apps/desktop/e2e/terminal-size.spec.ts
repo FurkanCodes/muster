@@ -82,3 +82,34 @@ test("ARC-24 a session coming to ask keeps its terminal's size: the banner float
   const after = (await sized(page)).filter((size) => size.session === id).length;
   expect(after).toBe(before);
 });
+
+test("ARC-24 ARC-25 switching between Needs you and All keeps the pane and its terminal where the same session is selected", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const sidebar = page.getByRole("navigation", { name: "Sessions" });
+  const id = await idOf(page, "Sketch the Tauri shell");
+  // In All too, so both lists have it selected.
+  await sidebar.getByRole("button", { name: /^All/ }).click();
+  await sidebar.getByRole("treeitem", { name: /^Sketch the Tauri shell/ }).click();
+  await expect(page.locator(".xterm")).toHaveCount(1);
+  await page.waitForTimeout(300);
+  // The terminal drawn now, marked so a new one would be told from it.
+  await page.evaluate((session) => {
+    const xterms = (window as unknown as { __musterXterms: Record<string, object> }).__musterXterms;
+    (xterms[session] as { marked?: boolean }).marked = true;
+  }, id);
+  const told = (await sized(page)).length;
+
+  for (const list of [/^Needs you/, /^All/, /^Needs you/]) {
+    await sidebar.getByRole("button", { name: list }).click();
+    await expect(page.getByRole("heading", { name: "Sketch the Tauri shell" })).toBeVisible();
+  }
+  const same = await page.evaluate((session) => {
+    const xterms = (window as unknown as { __musterXterms: Record<string, object> }).__musterXterms;
+    return (xterms[session] as { marked?: boolean }).marked === true;
+  }, id);
+  expect(same).toBe(true);
+  // Nothing was resized, so nothing was redrawn by the program.
+  expect((await sized(page)).length).toBe(told);
+});

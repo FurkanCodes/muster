@@ -110,8 +110,8 @@ describe("PRD-03 work starts on the project's page", () => {
       "Gemini CLI",
       "OpenCode",
       "Copilot CLI",
-      "Goose",
-      "A shell",
+      "•Goose",
+      "❯A shell",
     ]);
     await userEvent.click(screen.getByRole("option", { name: /Goose/ }));
     expect(within(box).getByRole("textbox", { name: "First prompt" })).toBeDisabled();
@@ -223,7 +223,8 @@ describe("PRD-01 the first run and the daemon out of reach", () => {
       onMessage({ kind: "link", link: { state: "down", reason: "no daemon answers.", since: 0 } });
     };
     renderApp(bridge);
-    expect(await screen.findByRole("heading", { name: "Waiting for the daemon" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Muster's daemon is away" })).toBeVisible();
+    expect(screen.getByRole("status", { name: "Waiting for the daemon" })).toBeVisible();
     expect(screen.getByText(/^no daemon answers\. Out of reach since/)).toHaveTextContent(
       "Its log is daemon.log in Muster's runtime folder.",
     );

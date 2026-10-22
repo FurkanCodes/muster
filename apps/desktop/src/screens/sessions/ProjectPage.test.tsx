@@ -7,8 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installKeys } from "../../app/keys";
 import { ulid } from "../../ipc/mock/scenario";
-import { renderWithApp } from "../../test/render";
-import AllSessions from "./AllSessions";
+import { renderList } from "../../test/render";
 
 let uninstall = () => {};
 beforeEach(() => localStorage.clear());
@@ -16,7 +15,7 @@ afterEach(() => uninstall());
 
 /** The All list with muster's line selected, its page beside it. */
 async function musterPage() {
-  const rendered = renderWithApp(<AllSessions active />);
+  const rendered = renderList("all");
   uninstall = installKeys(rendered.app);
   await screen.findByRole("tree");
   await userEvent.click(

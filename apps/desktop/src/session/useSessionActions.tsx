@@ -46,6 +46,10 @@ export function useSessionActions(session: SessionId | undefined) {
   const [renaming, setRenaming] = useState<SessionId | null>(null);
   const [closing, setClosing] = useState<SessionId | null>(null);
   const title = useDaemon((state) => (session ? (state.sessions[session]?.title ?? "") : ""));
+  // The one asked about may not be the one shown (a project page's line).
+  const closingTitle = useDaemon((state) =>
+    closing ? (state.sessions[closing]?.title ?? "") : "",
+  );
 
   const stored = () => (session ? app.daemon.store.getState().sessions[session] : undefined);
   return {
@@ -53,6 +57,7 @@ export function useSessionActions(session: SessionId | undefined) {
     title,
     renaming,
     closing,
+    closingTitle,
     rename() {
       if (!stored()) return app.actions.tell("Select a session to rename it.", true);
       setRenaming(session ?? null);
@@ -69,8 +74,9 @@ export function useSessionActions(session: SessionId | undefined) {
         return error instanceof Error ? error.message : String(error);
       }
     },
-    close() {
-      const found = stored();
+    /** Closes `which`, the shown session where none is named: at once where it has ended, after asking where it runs. */
+    close(which?: SessionId) {
+      const found = which ? app.daemon.store.getState().sessions[which] : stored();
       if (!found) return app.actions.tell("Select a session to close it.", true);
       // An ended session leaves the list at once; one that runs asks first.
       if (found.ended_at !== null || found.status.state === "exited") {
@@ -104,7 +110,7 @@ export function CloseSession({ actions }: { actions: SessionActions }) {
   if (!actions.closing) return null;
   return (
     <Dialog
-      title={`Close ${actions.title}?`}
+      title={`Close ${actions.closingTitle}?`}
       onClose={actions.keepIt}
       onAccept={actions.confirmClose}
       actions={

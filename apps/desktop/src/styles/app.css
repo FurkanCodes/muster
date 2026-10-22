@@ -412,3 +412,8 @@ html[data-visible="false"] *::after {
 .app-sidebar[hidden] + .app-screen {
   border-left: 0;
 }
+
+/* The pane's place while the shown list has nothing selected (app/Detail.tsx). */
+.app-detail-none {
+  flex: 1;
+}

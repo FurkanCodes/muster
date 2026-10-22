@@ -274,10 +274,10 @@ test("PRD-14 the TUI's refusals, said in the status bar: an agent at work, files
 });
 
 for (const [command, asking, lead, empty] of [
-  ["WorkspaceChanges", "Asking git…", "", "Nothing here is waiting to be committed."],
+  ["WorkspaceChanges", "Loading changes", "", "Nothing here is waiting to be committed."],
   [
     "Timeline",
-    "Reading the turns…",
+    "Loading turns",
     "The timeline could not be read: ",
     "None kept yet: each agent's turn here is, from now on.",
   ],
@@ -289,7 +289,7 @@ for (const [command, asking, lead, empty] of [
       }, command);
     });
     if (command === "Timeline") await page.getByRole("button", { name: /^Turns/ }).click();
-    await expect(page.getByText(asking)).toBeVisible();
+    await expect(page.getByRole("status", { name: asking })).toBeVisible();
     await page.evaluate((command) => {
       window.__muster.failNext(command, "git could not read the worktree", "internal");
       window.__muster.release(command);

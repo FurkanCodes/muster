@@ -8,7 +8,6 @@ import { Page, PageHeader, PageMeta, PageTitle } from "../../app/Page";
 import { branchOf } from "../../state/selectors";
 import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
 import { DiffStat, PullRequest } from "../../ui/status";
-import type { TreeRow } from "./tree";
 
 function WorktreeHead({ id }: { id: string }) {
   const branch = useDaemon((state) => {
@@ -32,11 +31,12 @@ function WorktreeHead({ id }: { id: string }) {
   );
 }
 
-export function RowDetail({ row, shellKey }: { row: TreeRow; shellKey: string }) {
+/** A worktree no session is in, by its workspace's id. */
+export function RowDetail({ workspace, shellKey }: { workspace: string; shellKey: string }) {
   return (
     <Page label="Selected line" className="sessions-detail">
       <PageHeader>
-        <WorktreeHead id={row.id} />
+        <WorktreeHead id={workspace} />
       </PageHeader>
       <EmptyState className="sessions-detail-empty">
         <EmptyStateText>

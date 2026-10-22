@@ -1,0 +1,94 @@
+/* Loading (ui/Loading.tsx): a line, the word Loading in its middle, and a
+   light running along the whole of it. Each half draws the same light,
+   placed by the whole width (cqw), so it runs on behind the word. */
+.mu-loading {
+  --mu-loading-light: 40cqw;
+  --mu-loading-time: 1.6s;
+  container-type: inline-size;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  color: var(--text-quiet);
+  font-size: 12px;
+  line-height: 16px;
+}
+/* A place with nothing yet: the line in its middle, not edge to edge. */
+.mu-loading--block {
+  max-width: 320px;
+  margin: auto;
+  padding: var(--space-32) 0;
+}
+/* A rule across its place. */
+.mu-loading--rule {
+  padding: var(--space-8) 0;
+}
+.mu-loading-line {
+  flex: 1 0 var(--space-24);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background-color: var(--line);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text) 75%, transparent),
+    transparent
+  );
+  background-size: var(--mu-loading-light) 100%;
+  background-repeat: no-repeat;
+  animation: var(--mu-loading-time) var(--ease-in-out) infinite;
+}
+.mu-loading-line--before {
+  animation-name: mu-loading-before;
+}
+.mu-loading-line--after {
+  animation-name: mu-loading-after;
+}
+.mu-loading-word {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  animation: mu-loading-word var(--mu-loading-time) var(--ease-in-out) infinite;
+}
+/* From before the line's start to past its end, by the whole width. */
+@keyframes mu-loading-before {
+  from {
+    background-position: calc(-1 * var(--mu-loading-light)) 0;
+  }
+  to {
+    background-position: 100cqw 0;
+  }
+}
+/* The same light, placed from the line's end, where the whole width ends too. */
+@keyframes mu-loading-after {
+  from {
+    background-position: right 100cqw top 0;
+  }
+  to {
+    background-position: right calc(-1 * var(--mu-loading-light)) top 0;
+  }
+}
+/* Lit as the light passes behind it, halfway. */
+@keyframes mu-loading-word {
+  0%,
+  30%,
+  70%,
+  100% {
+    color: var(--text-quiet);
+  }
+  50% {
+    color: var(--text);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mu-loading-line,
+  .mu-loading-word {
+    animation: none;
+  }
+  .mu-loading-line {
+    background-image: none;
+  }
+}

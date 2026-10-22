@@ -1,8 +1,8 @@
 // A project's page, beside the list while its line is selected: the app's
 // counterpart of the terminal UI's project and worktree lines. What the
 // project is and where; a box to start work in it, the prompt first and
-// where it runs and which agent under it (as the new session dialog asks,
-// in fewer words); and where its work is: its checkout and each worktree
+// under it one row of where it runs, which agent and Start (as the new
+// session dialog asks, in fewer words); and under the box where its work is: its checkout and each worktree
 // with its branch, what its work comes to, where it meets other work, its
 // pull request, and the sessions in it, each a click from its terminal.
 
@@ -20,6 +20,7 @@ import type { ProjectId } from "../../ipc/generated/ProjectId";
 import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
+import { useShownSessionActions } from "../../session/SessionActionsContext";
 import type { DaemonState } from "../../state/daemon";
 import { branchOf, projectColour, standsBeside } from "../../state/selectors";
 import { Banner, BannerBody } from "../../ui/Banner";
@@ -155,7 +156,7 @@ export function ProjectPage({ project }: { project: ProjectId }) {
   );
 }
 
-/** The box that starts work in the project: the prompt, then where, which agent, and Start. */
+/** The box that starts work in the project: the prompt, then a row of where, which agent, and Start. */
 function Composer({
   project,
   plain,
@@ -243,13 +244,14 @@ function Composer({
         onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={onKeyDown}
       />
-      <div className="project-composer-row">
+      <div className="project-composer-bar">
         {plain ? (
-          <span className="mu-meta">In the folder itself, as it is no repository</span>
+          <span className="mu-meta project-composer-note">In the folder itself</span>
         ) : (
           <Select
             label="Where"
             size="md"
+            variant="quiet"
             options={where}
             value={place}
             disabled={task.busy}
@@ -261,7 +263,7 @@ function Composer({
             mono
             className="project-branch"
             aria-label="Branch"
-            placeholder="branch, if you like"
+            placeholder="branch name, if you like"
             autoComplete="off"
             spellCheck={false}
             value={branch}
@@ -272,9 +274,11 @@ function Composer({
         <Select
           label="Agent"
           size="md"
+          variant="quiet"
           options={agents.map((offer) => ({
             value: offer.id,
             label: offer.name,
+            mark: <AgentLogo harness={offer.id} />,
             note: offer.id === last ? "last chosen" : undefined,
           }))}
           value={harness}
@@ -366,9 +370,14 @@ function PlaceCard({ id, onStart }: { id: WorkspaceId; onStart: (id: WorkspaceId
   );
 }
 
-/** A session in a place: how it stands and what it is doing, a click from its terminal. */
+/**
+ * A session in a place: how it stands and what it is doing, a click from its
+ * terminal; under the pointer, the way to close it from here (after asking,
+ * while it runs), as ⌘K or a right-click on its line does.
+ */
 function PlaceSession({ id }: { id: string }) {
   const actions = useActions();
+  const tools = useShownSessionActions();
   const now = useNow();
   const session = useDaemon((state) => state.sessions[id]);
   if (!session) return null;
@@ -376,7 +385,7 @@ function PlaceSession({ id }: { id: string }) {
   const what = beside ? (session.harness === "shell" ? "shell" : "panel") : doing(session);
   const unseen = session.unseen && session.status.state !== "needs_you";
   return (
-    <li>
+    <li className="project-session-line">
       <RowButton
         className="project-session"
         label={`${session.title}, ${what}`}
@@ -398,6 +407,15 @@ function PlaceSession({ id }: { id: string }) {
           {unseen ? <NewsDot /> : null}
         </ListItemEnd>
       </RowButton>
+      <span className="project-session-close">
+        <IconButton
+          icon="trash"
+          size="sm"
+          label={`Close ${session.title}`}
+          title="Close the session"
+          onClick={() => tools.close(id)}
+        />
+      </span>
     </li>
   );
 }

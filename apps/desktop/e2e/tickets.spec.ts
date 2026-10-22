@@ -52,7 +52,7 @@ test("ARC-25 loading lists and text, tracker failure and r to fetch again", asyn
     window.__muster.failNext("ListIssues", "gh is not signed in");
   });
   await tickets(page);
-  await expect(page.getByText("Fetching its tickets…")).toHaveCount(4);
+  await expect(page.getByRole("status", { name: "Loading tickets" })).toHaveCount(4);
   await page.evaluate(() => window.__muster.release("ListIssues"));
   await expect(page.getByRole("alert")).toContainText(
     "Its tickets could not be fetched: gh is not signed in",
@@ -61,7 +61,7 @@ test("ARC-25 loading lists and text, tracker failure and r to fetch again", asyn
   await expect(ticket(page, "#214")).toBeVisible();
   await page.evaluate(() => window.__muster.hold("ViewIssue"));
   await ticket(page, "#214").click();
-  await expect(page.getByRole("status", { name: "Fetching its text…" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading ticket", exact: true })).toBeVisible();
   await page.evaluate(() => {
     window.__muster.failNext("ViewIssue", "tracker cannot be reached");
     window.__muster.release("ViewIssue");
@@ -125,6 +125,25 @@ test("PRD-01 Mine and All change the project's setting and surface refusals", as
   await expect(kep.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Linear (KEP), only yours")).toBeVisible();
   await expect(ticket(page, "KEP-31")).toHaveCount(1);
+});
+
+test("ARC-24 Mine and All keep the list shown while it is fetched again, its selected ticket too", async ({
+  page,
+}) => {
+  await start(page);
+  await tickets(page);
+  await ticket(page, "#205").click();
+  await expect(ticket(page, "#205")).toHaveAttribute("aria-selected", "true");
+  await page.evaluate(() => window.__muster.hold("ListIssues"));
+  await page.getByRole("button", { name: "Mine", exact: true }).first().click();
+  // Asked again, a Loading rule under the project's heading says so; the list as it was stays under it.
+  const muster = page.getByRole("region", { name: "muster's tickets" });
+  await expect(muster.getByRole("status", { name: "Loading tickets" })).toBeVisible();
+  await expect(page.getByRole("status", { name: "Loading tickets" })).toHaveCount(1);
+  await expect(ticket(page, "#205")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Resize settles once on release" })).toBeVisible();
+  await page.evaluate(() => window.__muster.release("ListIssues"));
+  await expect(page.getByRole("status", { name: "Loading tickets" })).toHaveCount(0);
 });
 
 test("PRD-07 PRD-10 ticket HTML, images and links never load or execute", async ({ page }) => {

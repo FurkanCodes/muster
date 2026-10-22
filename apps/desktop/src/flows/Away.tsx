@@ -11,6 +11,7 @@ import { Banner, BannerBody, BannerLead } from "../ui/Banner";
 import { Button } from "../ui/controls";
 import { EmptyState, EmptyStateText, EmptyStateTitle } from "../ui/EmptyState";
 import { KepFace } from "../ui/Kep";
+import { Loading } from "../ui/Loading";
 import "./away.css";
 
 function useAway(): { since: number; reason: string } | null {
@@ -58,11 +59,12 @@ export function Away() {
   return (
     <EmptyState>
       <KepFace mood="away" size="large" />
-      <EmptyStateTitle>Waiting for the daemon</EmptyStateTitle>
+      <EmptyStateTitle>Muster's daemon is away</EmptyStateTitle>
       <EmptyStateText>
         When it is back, your sessions are back with it: those in containers as they were, the rest
         through their own agent's resume. Closing this window changes nothing.
       </EmptyStateText>
+      <Loading text="Waiting for the daemon" layout="rule" />
       {away ? (
         <p className="mu-meta ui-flow-said">
           {away.reason ? `${away.reason.replace(/\.$/, "")}. ` : null}Out of reach since {at}. Its

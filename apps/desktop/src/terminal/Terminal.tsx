@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useActions, useApp, useBridge, useUi } from "../app/context";
 import type { TermFrame } from "../ipc/frames";
 import type { SessionId } from "../ipc/generated/SessionId";
@@ -44,6 +44,10 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   const term = useRef<XTerm | null>(null);
   // The position after the last byte written, so a reattach asks only for what is new.
   const nextSeq = useRef<number | null>(null);
+  // Fitted to its pane at least once: only then is it fed. Bytes written to
+  // xterm's own 80 by 24 and fitted after are wrapped again by xterm, and the
+  // program's screen drawn into it is scrambled for good.
+  const [fitted, setFitted] = useState(false);
 
   // One xterm for the component's life.
   useEffect(() => {
@@ -88,19 +92,23 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
     // would draw its screen at and leave behind once told the real size.
     let frame = 0;
     let told = "";
+    const measure = () => {
+      if (element.clientWidth === 0 || element.clientHeight === 0) return;
+      const wanted = fit.proposeDimensions();
+      if (!wanted || !Number.isFinite(wanted.cols) || !Number.isFinite(wanted.rows)) return;
+      fit.fit();
+      setFitted(true);
+      const now = `${xterm.cols}x${xterm.rows}`;
+      if (now === told) return;
+      told = now;
+      void bridge.resize(session, xterm.cols, xterm.rows).catch(() => {});
+    };
     const size = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (element.clientWidth === 0 || element.clientHeight === 0) return;
-        const wanted = fit.proposeDimensions();
-        if (!wanted || !Number.isFinite(wanted.cols) || !Number.isFinite(wanted.rows)) return;
-        fit.fit();
-        const now = `${xterm.cols}x${xterm.rows}`;
-        if (now === told) return;
-        told = now;
-        void bridge.resize(session, xterm.cols, xterm.rows).catch(() => {});
-      });
+      frame = requestAnimationFrame(measure);
     };
+    // At once where the pane is laid out already, so the first bytes find it fitted.
+    measure();
     const resize = new ResizeObserver(size);
     resize.observe(element);
     // The terminal's face loads with the first terminal shown: its cell is
@@ -118,12 +126,13 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
       xterm.dispose();
       term.current = null;
       nextSeq.current = null;
+      setFitted(false);
     };
   }, [bridge, session, compact]);
 
-  // Streams while the window is seen; detaches while it is not (`ARC-25`).
+  // Streams while the window is seen, once fitted; detaches while it is not (`ARC-25`).
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !fitted) return;
     const onFrame = (frame: TermFrame) => {
       const xterm = term.current;
       if (!xterm) return;
@@ -151,7 +160,7 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
     return () => {
       void bridge.detach(session).catch(() => {});
     };
-  }, [bridge, session, visible]);
+  }, [bridge, session, visible, fitted]);
 
   // The terminal takes the keys when told to, and tells the daemon it is in focus.
   useEffect(() => {

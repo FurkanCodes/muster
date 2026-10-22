@@ -16,23 +16,15 @@ import { useShallow } from "zustand/react/shallow";
 import { Connecting } from "../../app/Connecting";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
-import { NothingSelected } from "../../app/Page";
-import { Sidebar } from "../../app/Sidebar";
 import type { SessionId } from "../../ipc/generated/SessionId";
 import { type Keymap, labelOf } from "../../keys/keymap";
 import { useActionKeys, useBorrowedKeys, useKeymap } from "../../keys/useKeymap";
-import { SessionPane } from "../../session/SessionPane";
-import {
-  CloseSession,
-  RenameSession,
-  type SessionActions,
-  useSessionActions,
-} from "../../session/useSessionActions";
+import { useShownSessionActions } from "../../session/SessionActionsContext";
+import { RenameSession, type SessionActions } from "../../session/useSessionActions";
 import { projectColour, standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
 import { EmptyState, EmptyStateText, EmptyStateTitle } from "../../ui/EmptyState";
 import { List } from "../../ui/List";
-import { keysOf, type MenuItem } from "../../ui/Menu";
 import { Swatch } from "../../ui/status";
 import { lastNeeded } from "./history";
 import { optionId, QueueEntry } from "./QueueEntry";
@@ -124,7 +116,7 @@ export function QueueScreen({ active }: { active: boolean }) {
       }),
     ),
   );
-  const tools = useSessionActions(selected);
+  const tools = useShownSessionActions();
   const workspace = useDaemon((state) =>
     selected ? state.sessions[selected]?.workspace : undefined,
   );
@@ -219,7 +211,7 @@ export function QueueScreen({ active }: { active: boolean }) {
           move_down: () => move(1),
           move_up: () => move(-1),
           rename: tools.rename,
-          close: tools.close,
+          close: () => tools.close(),
           last_alarm: goToLast,
         }
       : {},
@@ -229,19 +221,6 @@ export function QueueScreen({ active }: { active: boolean }) {
     active ? { put_back: putBack, pull_request_in_browser: tools.browser } : {},
   );
 
-  const menu: MenuItem[] = [
-    { ...keysOf(map, "rename"), label: "Rename", does: tools.rename },
-    ...(hasPullRequest
-      ? [
-          {
-            ...keysOf(map, "pull_request_in_browser"),
-            label: "Pull request in the browser",
-            does: tools.browser,
-          },
-        ]
-      : []),
-    { ...keysOf(map, "close"), label: "Close", does: tools.close, danger: true },
-  ];
   // Selected while the keys are elsewhere: a terminal, a dialog, or Tickets and Settings beside it.
   const resting = keysIn !== "list" || !active;
   // The agents at work are counted, not listed: they need nobody yet.
@@ -249,46 +228,32 @@ export function QueueScreen({ active }: { active: boolean }) {
   const nothingWaits = waiting === 0;
 
   return (
-    <>
-      <Sidebar>
-        <section className="queue-column" aria-label={TITLE}>
-          <h1 className="app-hidden">{TITLE}</h1>
-          {!loaded ? (
-            <Connecting />
-          ) : (
-            <List
-              label={`${TITLE} sessions`}
-              activeId={selected ? optionId(selected) : undefined}
-              resting={resting}
-              className="queue-list"
-            >
-              {nothingWaits ? <AllClear working={working} /> : null}
-              {groups.map((group) =>
-                group.ids.map((id, index) => (
-                  <QueueRowSlot
-                    key={id}
-                    project={index === 0 ? group.project : null}
-                    renaming={tools.renaming === id ? tools : null}
-                  >
-                    <QueueEntry id={id} selected={id === selected} onPick={pick} />
-                  </QueueRowSlot>
-                )),
-              )}
-            </List>
+    <section className="queue-column" aria-label={TITLE}>
+      <h1 className="app-hidden">{TITLE}</h1>
+      {!loaded ? (
+        <Connecting />
+      ) : (
+        <List
+          label={`${TITLE} sessions`}
+          activeId={selected ? optionId(selected) : undefined}
+          resting={resting}
+          className="queue-list"
+        >
+          {nothingWaits ? <AllClear working={working} /> : null}
+          {groups.map((group) =>
+            group.ids.map((id, index) => (
+              <QueueRowSlot
+                key={id}
+                project={index === 0 ? group.project : null}
+                renaming={tools.renaming === id ? tools : null}
+              >
+                <QueueEntry id={id} selected={id === selected} onPick={pick} />
+              </QueueRowSlot>
+            )),
           )}
-        </section>
-      </Sidebar>
-      {active ? (
-        <main className="app-screen">
-          {selected ? (
-            <SessionPane session={selected} menu={menu} />
-          ) : (
-            <NothingSelected className="session-pane queue-none" />
-          )}
-        </main>
-      ) : null}
-      <CloseSession actions={tools} />
-    </>
+        </List>
+      )}
+    </section>
   );
 }
 

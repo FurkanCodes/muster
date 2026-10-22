@@ -10,8 +10,7 @@ import { installKeys } from "../../app/keys";
 import type { Session } from "../../ipc/generated/Session";
 import { MockBridge } from "../../ipc/mock/bridge";
 import { ulid, workingDay } from "../../ipc/mock/scenario";
-import { renderWithApp } from "../../test/render";
-import AllSessions from "./AllSessions";
+import { renderList } from "../../test/render";
 
 const gradle = ulid(200);
 let uninstall = () => {};
@@ -19,7 +18,7 @@ beforeEach(() => localStorage.clear());
 afterEach(() => uninstall());
 
 async function screenShown() {
-  const rendered = renderWithApp(<AllSessions active />);
+  const rendered = renderList("all");
   uninstall = installKeys(rendered.app);
   await screen.findByRole("tree");
   return rendered;
@@ -137,7 +136,7 @@ describe("ARC-24 All sessions", () => {
   });
 
   it("takes no keys while Tickets or Settings is shown beside it", async () => {
-    const rendered = renderWithApp(<AllSessions active={false} />);
+    const rendered = renderList("all", false);
     uninstall = installKeys(rendered.app);
     await screen.findByRole("tree");
     await waitFor(() => expect(rendered.app.ui.getState().selected.all).toBe(ulid(100)));
@@ -156,7 +155,7 @@ describe("ARC-25 a tree of thousands of sessions", () => {
       title: `Session ${n}`,
     }));
     bridge.world.sessions.push(...many);
-    const rendered = renderWithApp(<AllSessions active />, bridge);
+    const rendered = renderList("all", true, bridge);
     uninstall = installKeys(rendered.app);
     const tree = await screen.findByRole("tree");
     await screen.findByRole("treeitem", { name: /^Session 0,/ });

@@ -10,15 +10,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installKeys } from "../../app/keys";
 import { MockBridge } from "../../ipc/mock/bridge";
 import { ulid, workingDay } from "../../ipc/mock/scenario";
-import { renderWithApp } from "../../test/render";
-import AllSessions from "./AllSessions";
+import { renderList } from "../../test/render";
 
 let uninstall = () => {};
 beforeEach(() => localStorage.clear());
 afterEach(() => uninstall());
 
 async function shown(bridge = new MockBridge(workingDay())) {
-  const rendered = renderWithApp(<AllSessions active />, bridge);
+  const rendered = renderList("all", true, bridge);
   uninstall = installKeys(rendered.app);
   act(() => rendered.app.actions.show("all"));
   await screen.findByRole("tree");

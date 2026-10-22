@@ -70,7 +70,14 @@ describe("ARC-24 Needs you, in the sidebar", () => {
     const bridge = new MockBridge(workingDay());
     bridge.open = async () => {};
     renderApp(bridge);
-    return waitFor(() => expect(screen.getByText("Connecting to Muster…")).toBeInTheDocument());
+    // In the list shown; the other list is kept, hidden, in its place.
+    return waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Needs you" })).getByRole("status", {
+          name: "Connecting to Muster",
+        }),
+      ).toBeVisible(),
+    );
   });
 });
 

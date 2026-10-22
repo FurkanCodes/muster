@@ -278,7 +278,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           return next;
         }),
       readAgain: () => {
-        ui.tell("Reading the settings again…");
         setProjects(new Map());
         setDrafts(new Map());
         setReads((count) => count + 1);

@@ -81,17 +81,6 @@
 .tickets-state {
   padding: var(--space-8) var(--space-12);
 }
-.tickets-loading {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
-  max-width: var(--layout-measure);
-}
-.tickets-loading > span:empty {
-  height: var(--space-12);
-  background: var(--surface-raised);
-  border-radius: var(--radius-xs);
-}
 .tickets-screen .mu-ticket {
   width: 100%;
   content-visibility: auto;
@@ -123,3 +112,4 @@
   align-items: center;
   gap: var(--space-4) var(--space-16);
 }
+/* A project's tickets: a bar along its top while they are fetched again. */

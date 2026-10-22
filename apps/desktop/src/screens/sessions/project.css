@@ -4,29 +4,32 @@
   flex: 1;
   min-width: 0;
 }
+/* Its body is one column centred in the pane: the box that starts work,
+   and under it where the work is. */
+.project-page {
+  container-type: inline-size;
+}
 .project-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--space-8) var(--space-20) var(--space-24);
-  display: flex;
-  flex-direction: column;
+  padding: clamp(var(--space-24), 8vh, 96px) var(--space-20) var(--space-32);
+  display: grid;
+  grid-template-columns: minmax(0, 800px);
+  justify-content: center;
+  align-content: start;
   gap: var(--space-12);
 }
-.project-body > * {
-  width: 100%;
-  max-width: var(--layout-measure);
-}
 
-/* The box: the prompt, then where, which agent and Start under it. */
+/* The box: the prompt, then one row under it of where, which agent and Start. */
 .project-composer {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
-  padding: var(--space-12);
-  border: var(--stroke-hairline) solid var(--line);
-  border-radius: var(--radius-lg);
+  padding: var(--space-12) var(--space-12) var(--space-10);
+  border: var(--stroke-hairline) solid var(--line-strong);
+  border-radius: var(--radius-xl);
   background: var(--surface-panel);
   transition: border-color var(--timing-fast) var(--ease-out);
 }
@@ -35,8 +38,8 @@
 }
 .project-prompt {
   width: 100%;
-  min-height: 72px;
-  padding: var(--space-4) var(--space-2);
+  min-height: 96px;
+  padding: var(--space-4) var(--space-4);
   border: 0;
   background: transparent;
   color: var(--text);
@@ -52,26 +55,43 @@
 .project-prompt:disabled {
   cursor: not-allowed;
 }
-.project-composer-row {
+/* Its row: each control 28px tall on one line, Start at its end. */
+.project-composer-bar {
   display: flex;
   align-items: center;
-  gap: var(--space-8);
-  flex-wrap: wrap;
+  gap: var(--space-4);
+  min-width: 0;
 }
-.project-composer-row .ui-select {
-  min-width: 180px;
+.project-composer-bar > .ui-select {
+  flex: none;
+  max-width: 40%;
 }
-/* The new worktree's branch, if the person names one: muster/ and six letters if not. */
+.project-composer-note {
+  padding: 0 var(--space-8);
+}
+/* The new worktree's branch, if the person names one (muster/ and six
+   letters if not): quiet as the row's choices are, boxed while typed in. */
 .project-branch {
+  flex: 0 1 200px;
   width: auto;
-  flex: 1 1 160px;
-  min-width: 120px;
-  max-width: 240px;
+  min-width: 96px;
   height: var(--size-control-md);
+  border-color: transparent;
+  background: transparent;
+}
+.project-branch:hover {
+  border-color: transparent;
+  background: var(--surface-raised);
+}
+.project-branch:focus {
+  background: var(--surface-term);
+}
+.project-composer-bar > .mu-btn {
+  flex: none;
 }
 
 .project-where {
-  margin-top: var(--space-16);
+  margin-top: var(--space-20);
 }
 /* In line with the composer's edge, as the page's own text is. */
 .project-where-title {
@@ -126,4 +146,25 @@
 .project-session-what {
   flex: 1;
   min-width: 0;
+}
+
+/* A session's line in a place, and under the pointer the way to close it, at its end over its age. */
+.project-session-line {
+  position: relative;
+}
+.project-session-close {
+  position: absolute;
+  top: 50%;
+  right: var(--space-4);
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity var(--timing-fast) var(--ease-out);
+}
+.project-session-line:hover .project-session-close,
+.project-session-close:focus-within {
+  opacity: 1;
+}
+/* Its age gives way to it while it shows. */
+.project-session-line:hover .mu-list-item-end {
+  visibility: hidden;
 }

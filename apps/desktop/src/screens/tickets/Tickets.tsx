@@ -14,6 +14,7 @@ import { Button, Segmented, Spacer } from "../../ui/controls";
 import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
 import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { List } from "../../ui/List";
+import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { Detail } from "./Detail";
@@ -155,7 +156,6 @@ export default function Tickets() {
   const refresh = () => {
     if (visible) {
       model.refresh(ids);
-      actions.tell("Fetching the tickets again…");
     }
   };
   const move = (by: number) => {
@@ -203,7 +203,11 @@ export default function Tickets() {
               const project = projects[0] ?? "";
               const list = lists[project];
               return (
-                <section key={project} aria-label={`${groupName(projects)}'s tickets`}>
+                <section
+                  key={project}
+                  className="tickets-project"
+                  aria-label={`${groupName(projects)}'s tickets`}
+                >
                   <div className="mu-group">
                     <ProjectSwatch id={project} />
                     <span className="mu-group-name">
@@ -235,10 +239,12 @@ export default function Tickets() {
                       />
                     ) : null}
                   </div>
+                  {/* Under its heading, its tickets kept under it while they are fetched again. */}
+                  {list?.state === "loaded" && list.refreshing ? (
+                    <Loading text="Loading tickets" layout="rule" />
+                  ) : null}
                   {!list || list.state === "loading" ? (
-                    <p className="tickets-state mu-meta" role="status">
-                      Fetching its tickets…
-                    </p>
+                    <Loading text="Loading tickets" layout="rule" />
                   ) : list.state === "failed" ? (
                     <div className="tickets-state">
                       <ErrorText>Its tickets could not be fetched: {list.error}</ErrorText>
