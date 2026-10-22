@@ -14,8 +14,8 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use super::dialogs::input_window;
 use super::plugins::{runs_lines, source_text};
 use super::settings::detail;
-use crate::app::PluginDialog;
 use crate::app::plugins::{Typed, is_folder};
+use crate::app::{App, PluginDialog};
 use crate::input::LineInput;
 
 /// One part of the dialog, top to bottom.
@@ -25,7 +25,12 @@ enum Part<'a> {
     Input(&'a LineInput, bool),
 }
 
-pub(super) fn draw_plugin_dialog(frame: &mut Frame<'_>, dialog: &PluginDialog, area: Rect) {
+pub(super) fn draw_plugin_dialog(
+    frame: &mut Frame<'_>,
+    app: &App,
+    dialog: &PluginDialog,
+    area: Rect,
+) {
     let width = area.width.saturating_sub(4).min(84);
     let inner = width.saturating_sub(2).max(1);
     let (title, parts) = match dialog {
@@ -38,7 +43,7 @@ pub(super) fn draw_plugin_dialog(frame: &mut Frame<'_>, dialog: &PluginDialog, a
             } else {
                 " Update a plugin "
             };
-            (title.to_owned(), fetching(what))
+            (title.to_owned(), fetching(app, what, usize::from(inner)))
         }
         PluginDialog::Failed { title, message } => (
             format!(" {title} "),
@@ -182,9 +187,10 @@ fn add<'a>(typed: &'a Typed, refused: Option<&str>) -> Vec<Part<'a>> {
     parts
 }
 
-fn fetching(what: &str) -> Vec<Part<'static>> {
+fn fetching(app: &App, what: &str, width: usize) -> Vec<Part<'static>> {
     vec![Part::Text(vec![
-        Line::from(format!("Fetching {}…", one_line(what))),
+        super::loading::rule(app, "Fetching the plugin", width),
+        Line::from(one_line(what)).dim(),
         Line::from(""),
         Line::from(
             "Nothing of it runs: Muster reads what it would run, and shows you before anything \

@@ -575,10 +575,19 @@ fn commands() -> Vec<Command> {
             size: size(),
             another: true,
             on: Some(workspace),
+            brief: None,
         },
     ];
     all.extend(plugin_samples::commands());
     all
+}
+
+fn comment() -> muster_core::IssueComment {
+    muster_core::IssueComment {
+        author: Some("octocat".to_owned()),
+        at: Some(muster_core::Timestamp::from_millis(1_792_661_400_000)),
+        body: "Seen on **main** too.".to_owned(),
+    }
 }
 
 fn replies() -> Vec<Reply> {
@@ -606,6 +615,7 @@ fn replies() -> Vec<Reply> {
         Reply::IssueViewed {
             issue: issue(),
             body: "It fails.".to_owned(),
+            comments: vec![comment()],
         },
         Reply::RunStarted { id: RunId::new() },
         Reply::RunHistory {

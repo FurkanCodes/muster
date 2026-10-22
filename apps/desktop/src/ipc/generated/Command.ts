@@ -7,6 +7,7 @@ import type { RunId } from "./RunId";
 import type { SessionId } from "./SessionId";
 import type { SettingChange } from "./SettingChange";
 import type { TermSize } from "./TermSize";
+import type { TicketBrief } from "./TicketBrief";
 import type { TicketKey } from "./TicketKey";
 import type { WorkspaceId } from "./WorkspaceId";
 
@@ -47,4 +48,9 @@ another: boolean,
  * made on top of; a worktree found as it is stays as it is. Sent
  * only to a daemon of 28 or later.
  */
-on: WorkspaceId | null, } } | { "Plugin": PluginCommand };
+on: WorkspaceId | null, 
+/**
+ * What of the ticket the agent is given: its text and the comments
+ * the person chose; none for its text alone, as before protocol 50.
+ */
+brief: TicketBrief | null, } } | { "Plugin": PluginCommand };

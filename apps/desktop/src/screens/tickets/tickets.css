@@ -78,6 +78,88 @@
 .tickets-prose pre {
   white-space: pre-wrap;
 }
+/* A link's words, never a link (PRD-07): its address beside them. */
+.tickets-link {
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 2px;
+}
+
+/* What was said after it was filed: each comment under its writer's
+   initial, on a line that runs down the conversation. */
+.tickets-comments {
+  margin: 0;
+  padding: 0 var(--space-12);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.tickets-comment {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: var(--space-12);
+  padding-bottom: var(--space-20);
+}
+/* The line from one comment's initial to the next's. */
+.tickets-comment:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 28px;
+  bottom: 4px;
+  left: 11.5px;
+  width: var(--stroke-hairline);
+  background: var(--line);
+}
+.tickets-comment-mark {
+  grid-row: 1 / span 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-quiet);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tickets-comment-head {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: 13px;
+  line-height: 18px;
+}
+.tickets-comment .tickets-prose {
+  padding: var(--space-4) 0 0;
+}
+
+/* Parts given to an agent or not: the one the keys are on is tinted. */
+.tickets-part,
+.tickets-comment {
+  border-radius: var(--radius-md);
+  transition: background-color var(--timing-fast) var(--ease-out);
+}
+.tickets-part[data-here],
+.tickets-comment[data-here] {
+  background: var(--surface-tint);
+}
+.tickets-part {
+  padding: var(--space-8) 0;
+}
+.tickets-part-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-12) var(--space-8);
+  font-size: 13px;
+  line-height: 18px;
+}
+.tickets-comment[data-here] {
+  outline: var(--space-8) solid var(--surface-tint);
+}
+
 .tickets-state {
   padding: var(--space-8) var(--space-12);
 }

@@ -27,6 +27,24 @@ describe("PRD-07 PRD-10 ticket text is inert", () => {
     expect(container.querySelector("pre")).toHaveTextContent('<img src="x">');
     expect(container.querySelector("img")).toBeNull();
   });
+  it("draws quotes, rules, tasks and italics as the terminal UI does", () => {
+    const { container } = render(
+      <TicketText
+        body={
+          "> it was fine\n> last week\n\n---\n\n- [ ] to do\n- [x] done\n\n_slanted_ but snake_case_name\n\n~~~\n*not bold*\n~~~"
+        }
+      />,
+    );
+    expect(container.querySelector("blockquote")).toHaveTextContent("it was fine last week");
+    expect(container.querySelector("hr")).not.toBeNull();
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "☐ to do",
+      "☑ done",
+    ]);
+    expect(container.querySelector("em")).toHaveTextContent("slanted");
+    expect(screen.getByRole("article")).toHaveTextContent("snake_case_name");
+    expect(container.querySelector("pre")).toHaveTextContent("*not bold*");
+  });
   it("says when there is no description and drops control characters", () => {
     render(<TicketText body="  " />);
     expect(screen.getByText("(No description.)")).toBeInTheDocument();

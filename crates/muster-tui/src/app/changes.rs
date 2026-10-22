@@ -77,6 +77,8 @@ pub(crate) enum ChangeRow<'a> {
     Commit(&'a Commit),
     Entry(&'a Entry),
     Note(String),
+    /// What is being asked for, while it is: drawn as the one wait.
+    Loading(&'static str),
     Error(String),
 }
 
@@ -166,7 +168,7 @@ impl ChangesPane {
             lines.extend(self.clashes.iter().map(ChangeRow::Clash));
         }
         lines.extend(match &self.listing {
-            None => vec![ChangeRow::Note("Asking git…".to_owned())],
+            None => vec![ChangeRow::Loading("Loading changes")],
             Some(Err(error)) => vec![
                 ChangeRow::Error(error.clone()),
                 ChangeRow::Note("r asks again.".to_owned()),

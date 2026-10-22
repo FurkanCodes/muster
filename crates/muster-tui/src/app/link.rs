@@ -272,9 +272,9 @@ impl App {
             (Err(error), Then::Tickets(project)) => {
                 self.tickets.insert(project, Tickets::Failed(error.message));
             }
-            (Ok(Reply::IssueViewed { body, .. }), Then::TicketText(project, key)) => {
+            (Ok(Reply::IssueViewed { body, comments, .. }), Then::TicketText(project, key)) => {
                 self.ticket_texts
-                    .insert((project, key), TicketText::Loaded(body));
+                    .insert((project, key), TicketText::Loaded { body, comments });
             }
             (Err(error), Then::TicketText(project, key)) => {
                 self.ticket_texts

@@ -544,6 +544,7 @@ fn read_issue(item: &Value, browse: impl Fn(&str) -> String) -> Option<IssueDeta
         body: multi_line(&description_text(
             fields.get("description").unwrap_or(&Value::Null),
         )),
+        comments: Vec::new(),
         noun: super::Noun::own(own::JIRA),
     })
 }

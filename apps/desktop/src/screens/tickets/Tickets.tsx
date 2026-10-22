@@ -17,6 +17,7 @@ import { List } from "../../ui/List";
 import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
+import { partId } from "./Conversation";
 import { Detail } from "./Detail";
 import { groupProjects, message, ticketId, ticketsFor } from "./data";
 import { ProjectName, ProjectSwatch, TicketRow } from "./TicketRow";
@@ -75,7 +76,15 @@ export default function Tickets() {
     browser: labelOf(map, "ticket_in_browser"),
     close: labelOf(map, "close_ticket"),
     refresh: labelOf(map, "refresh_tickets"),
+    nextPart: labelOf(map, "next_part"),
+    choosePart: labelOf(map, "choose_part"),
   };
+  // The selected ticket's parts: its text and each comment, where it has comments.
+  const selectedId = selected ? ticketId(selected.projects[0] ?? "", selected.issue.key) : "";
+  const comments = useStore(model.store, (s) => {
+    const text = s.texts[selectedId];
+    return text?.state === "loaded" ? (text.value.comments?.length ?? 0) : 0;
+  });
   const agentCount = useDaemon((s) =>
     selected
       ? agentsOn(
@@ -105,12 +114,29 @@ export default function Tickets() {
             ...(agentCount ? [{ key: keys.another, does: "another agent" }] : []),
             ...(selected.issue.url ? [{ key: keys.browser, does: "browser" }] : []),
             { key: keys.close, does: "close ticket" },
+            ...(comments
+              ? [
+                  { key: keys.nextPart, does: "next part" },
+                  { key: keys.choosePart, does: "give it or not" },
+                ]
+              : []),
           ]
         : []),
       { key: keys.refresh, does: "fetch again" },
     ]);
     return () => actions.setHints([]);
-  }, [actions, selected, agentCount, keys.another, keys.browser, keys.close, keys.refresh]);
+  }, [
+    actions,
+    selected,
+    agentCount,
+    comments,
+    keys.another,
+    keys.browser,
+    keys.close,
+    keys.refresh,
+    keys.nextPart,
+    keys.choosePart,
+  ]);
   useEffect(() => {
     actions.keysTo(dialog ? "dialog" : "list");
     return () => actions.keysTo("list");
@@ -163,6 +189,20 @@ export default function Tickets() {
     const next = entries[Math.max(0, Math.min(entries.length - 1, at + by))];
     if (next) actions.select("tickets", ticketId(next.projects[0] ?? "", next.issue.key));
   };
+  // `]` and `[` go between the selected ticket's parts, space gives the
+  // agent the one the keys are on or not, as in the terminal UI.
+  const part = (by: number) => {
+    if (!comments) return;
+    const at = model.store.getState().parts[selectedId] ?? 0;
+    const next = Math.max(0, Math.min(comments, at + by));
+    model.reach(selectedId, next);
+    document.getElementById(partId(next))?.scrollIntoView?.({ block: "nearest" });
+  };
+  const choosePart = () => {
+    if (!comments) return;
+    if (!model.choose(selectedId, model.store.getState().parts[selectedId] ?? 0))
+      actions.tell("The agent needs the ticket's text or a comment to work on.", true);
+  };
   useKeys({ Enter: open, ArrowDown: () => move(1), ArrowUp: () => move(-1) });
   useActionKeys("tickets", {
     move_down: () => move(1),
@@ -171,6 +211,9 @@ export default function Tickets() {
     another_agent: () => assign(true),
     ticket_in_browser: browser,
     close_ticket: close,
+    next_part: () => part(1),
+    previous_part: () => part(-1),
+    choose_part: choosePart,
   });
   // Each project's tickets are a list of their own: the keys moving the
   // selection into another project's list take the focus there with it.

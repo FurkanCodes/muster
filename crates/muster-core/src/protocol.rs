@@ -138,7 +138,11 @@
 //! (`Workspace::ticket`, a field older clients pass over); version 49
 //! cloning a project from GitHub (`Command::ListRepositories` and
 //! `Command::CloneProject`, sent only to a daemon of 49 or later, answered
-//! with `Reply::Repositories` and `Reply::ProjectAdded`).
+//! with `Reply::Repositories` and `Reply::ProjectAdded`); version 50 what
+//! was said on a ticket after it was filed (`Reply::IssueViewed::comments`,
+//! a field older clients pass over), and which of it an agent is given
+//! (`Command::StartFromIssue::brief`, sent only to a daemon of 50 or
+//! later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -167,7 +171,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 49;
+pub const PROTOCOL_VERSION: u32 = 50;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -618,6 +622,10 @@ pub enum Command {
         /// only to a daemon of 28 or later.
         #[serde(default)]
         on: Option<WorkspaceId>,
+        /// What of the ticket the agent is given: its text and the comments
+        /// the person chose; none for its text alone, as before protocol 50.
+        #[serde(default)]
+        brief: Option<crate::TicketBrief>,
     },
     /// Ask of the daemon's plugins: list them, preview, install, update,
     /// turn on or off, or remove one (`ARCHITECTURE.md` §7a), or open one's
@@ -666,6 +674,10 @@ pub enum Reply {
     IssueViewed {
         issue: Issue,
         body: String,
+        /// What was said on it after, oldest first: none from a tracker
+        /// that gives none, and from a daemon before protocol 50.
+        #[serde(default)]
+        comments: Vec<crate::IssueComment>,
     },
     RunStarted {
         id: RunId,

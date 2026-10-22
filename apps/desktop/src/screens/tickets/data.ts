@@ -2,6 +2,7 @@ import { createStore } from "zustand/vanilla";
 import type { Bridge } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Reply } from "../../ipc/generated/Reply";
+import type { TicketBrief } from "../../ipc/generated/TicketBrief";
 
 export type Issues = Extract<Reply, { Issues: unknown }>["Issues"];
 export type Viewed = Extract<Reply, { IssueViewed: unknown }>["IssueViewed"];
@@ -13,6 +14,10 @@ export type Load<T> =
 export interface TicketData {
   lists: Record<string, Load<Issues>>;
   texts: Record<string, Load<Viewed>>;
+  /** What of each ticket an agent is given, as the person chose; its text alone until then. */
+  briefs: Record<string, TicketBrief>;
+  /** The part of each ticket the keys are on: 0 its text, 1 its first comment… */
+  parts: Record<string, number>;
   changing: Record<string, boolean>;
   lastAgent: string;
   lastProjects: Record<string, string>;
@@ -20,6 +25,35 @@ export interface TicketData {
 export function ticketId(project: string, key: string): string {
   return `${project}:${key}`;
 }
+/** Its text alone: what an agent is given until the person chooses otherwise. */
+export const TEXT_ALONE: TicketBrief = { text: true, comments: [] };
+
+/** Whether `brief` gives part `at` (0 its text, 1 its first comment…). */
+export function gives(brief: TicketBrief, at: number): boolean {
+  return at === 0 ? brief.text : brief.comments.includes(at - 1);
+}
+
+/** `brief` giving part `at` or not, as the terminal UI's `TicketBrief::toggle`; null where nothing would be left. */
+export function toggled(brief: TicketBrief, at: number): TicketBrief | null {
+  const next =
+    at === 0
+      ? { ...brief, text: !brief.text }
+      : {
+          ...brief,
+          comments: gives(brief, at)
+            ? brief.comments.filter((c) => c !== at - 1)
+            : [...brief.comments, at - 1].sort((a, b) => a - b),
+        };
+  return next.text || next.comments.length ? next : null;
+}
+
+/** What `brief` gives, in words: `the ticket's text and 2 comments on it`. */
+export function givenWords(brief: TicketBrief): string {
+  const comments = brief.comments.length === 1 ? "1 comment" : `${brief.comments.length} comments`;
+  if (!brief.comments.length) return "the ticket's text";
+  return brief.text ? `the ticket's text and ${comments} on it` : `${comments} on the ticket`;
+}
+
 export function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -28,6 +62,8 @@ function createTickets(bridge: Bridge) {
   const store = createStore<TicketData>(() => ({
     lists: {},
     texts: {},
+    briefs: {},
+    parts: {},
     changing: {},
     lastAgent: "claude",
     lastProjects: {},
@@ -99,8 +135,20 @@ function createTickets(bridge: Bridge) {
         texts: Object.fromEntries(Object.entries(s.texts).filter(([, v]) => v.state !== "failed")),
       }));
     },
+    /** Gives the agent part `at` of ticket `id`, or stops; false where nothing would be left. */
+    choose(id: string, at: number): boolean {
+      const next = toggled(store.getState().briefs[id] ?? TEXT_ALONE, at);
+      if (!next) return false;
+      store.setState((s) => ({ briefs: { ...s.briefs, [id]: next } }));
+      return true;
+    },
+    /** Puts the keys on part `at` of ticket `id`. */
+    reach(id: string, at: number) {
+      store.setState((s) => ({ parts: { ...s.parts, [id]: at } }));
+    },
     refresh(projects: readonly string[]) {
-      store.setState({ texts: {} });
+      // Comments chosen may have moved: they are chosen again.
+      store.setState({ texts: {}, briefs: {}, parts: {} });
       for (const project of projects) void fetch(project, true);
     },
     /**

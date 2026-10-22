@@ -642,6 +642,7 @@ pub(crate) async fn start_issue(
             size: TermSize::default(),
             another,
             on: None,
+            brief: None,
         })
         .await?;
     let Reply::IssueStarted { workspace, session } = reply else {

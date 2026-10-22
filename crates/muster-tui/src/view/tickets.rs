@@ -8,7 +8,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{describe, list_block, look, mark, panel, pull_request, shorten};
+use super::{describe, list_block, loading, look, mark, markdown, panel, pull_request, shorten};
 use crate::app::{App, HarnessChoice, TicketRow, TicketText, Tickets};
 
 /// The most agents shown on a ticket's line; the rest are counted.
@@ -70,8 +70,18 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
     match row {
         TicketRow::Project(project) => {
             let project = *project;
+            let mut spans = names(app, project);
             let state = match app.tickets.get(&project) {
-                None | Some(Tickets::Loading) => Span::from("  fetching…").dim(),
+                None | Some(Tickets::Loading) => {
+                    // The rest of its heading is the wait.
+                    let named: usize = spans.iter().map(|span| span.content.chars().count()).sum();
+                    spans.push(Span::raw(" "));
+                    spans.extend(
+                        loading::rule(app, "Loading tickets", width.saturating_sub(named + 1))
+                            .spans,
+                    );
+                    return Line::from(spans);
+                }
                 Some(Tickets::Loaded { tickets, mine, .. }) if tickets.is_empty() => {
                     Span::from(if *mine {
                         "  none of yours open"
@@ -88,7 +98,6 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                     Span::from(format!("  {}", shorten(error, width.saturating_sub(4)))).red()
                 }
             };
-            let mut spans = names(app, project);
             spans.push(state);
             Line::from(spans)
         }
@@ -140,19 +149,94 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
     }
 }
 
-/// The selected ticket, or the selected project's tickets as a whole.
+/// The selected ticket, or the selected project's tickets as a whole,
+/// scrolled as far as the person paged (`App::ticket_scrolled`).
 pub(super) fn draw_ticket_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let text = match &app.tickets_selected {
-        Some(TicketRow::Ticket(project, key)) => ticket_text(app, *project, key),
-        Some(TicketRow::Project(project)) => project_text(app, *project),
-        None => Text::from("Select a ticket to see it here.").dim(),
-    };
+    let width = usize::from(area.width.saturating_sub(2));
+    let height = usize::from(area.height.saturating_sub(2));
+    let text = details_text(app, width);
+    let last = wrapped_height(&text, width).saturating_sub(height);
+    let scrolled = app.ticket_scrolled().min(last);
+    let mut block = panel(app, " Ticket ", false);
+    if last > 0 {
+        let more = if scrolled < last {
+            " PgDn more "
+        } else {
+            " PgUp back "
+        };
+        block = block.title_bottom(Line::from(more).right_aligned().dim());
+    }
     frame.render_widget(
         Paragraph::new(text)
             .wrap(Wrap { trim: false })
-            .block(panel(app, " Ticket ", false)),
+            .scroll((u16::try_from(scrolled).unwrap_or(u16::MAX), 0))
+            .block(block),
         area,
     );
+}
+
+/// How many lines the selected ticket's details take, wrapped at `width`.
+pub(crate) fn details_height(app: &App, width: usize) -> usize {
+    wrapped_height(&details_text(app, width), width)
+}
+
+/// Where each part of the selected ticket starts in its details, wrapped
+/// at `width`: its text, then each comment; none where it has no comments.
+pub(crate) fn part_lines(app: &App, width: usize) -> Vec<usize> {
+    let Some(TicketRow::Ticket(project, key)) = &app.tickets_selected else {
+        return Vec::new();
+    };
+    let mut parts = Vec::new();
+    let text = ticket_text(app, *project, key, width, &mut parts);
+    parts
+        .into_iter()
+        .map(|at| {
+            let before = Text::from(text.lines[..at.min(text.lines.len())].to_vec());
+            wrapped_height(&before, width)
+        })
+        .collect()
+}
+
+fn details_text(app: &App, width: usize) -> Text<'static> {
+    match &app.tickets_selected {
+        Some(TicketRow::Ticket(project, key)) => {
+            ticket_text(app, *project, key, width, &mut Vec::new())
+        }
+        Some(TicketRow::Project(project)) => project_text(app, *project, width),
+        None => Text::from("Select a ticket to see it here.").dim(),
+    }
+}
+
+/// Lines `text` takes wrapped at `width`, a line its words' worth: what
+/// ratatui's wrapping breaks at a word may take a line more, so this is
+/// counted as the words fall.
+fn wrapped_height(text: &Text<'_>, width: usize) -> usize {
+    let width = width.max(1);
+    text.lines
+        .iter()
+        .map(|line| {
+            let mut rows = 1;
+            let mut used = 0;
+            let content: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+            for word in content.split_inclusive(' ') {
+                let len = word.chars().count();
+                if used + len.min(width) > width && used > 0 {
+                    rows += 1;
+                    used = 0;
+                }
+                used += len;
+                while used > width {
+                    rows += 1;
+                    used -= width;
+                }
+            }
+            rows
+        })
+        .sum()
 }
 
 /// The names of the projects sharing `project`'s tickets, each in its
@@ -173,7 +257,7 @@ fn names(app: &App, project: muster_core::ProjectId) -> Vec<Span<'static>> {
     spans
 }
 
-fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
+fn project_text(app: &App, project: muster_core::ProjectId, width: usize) -> Text<'static> {
     let sharing = app.sharing(project);
     let mut lines = Vec::new();
     for found in sharing.iter().filter_map(|id| app.model.project(*id)) {
@@ -224,7 +308,7 @@ fn project_text(app: &App, project: muster_core::ProjectId) -> Text<'static> {
             lines.push(Line::from(change).dim());
         }
         Some(Tickets::Loading) | None => {
-            lines.push(Line::from("Fetching its tickets…").dim());
+            lines.push(loading::rule(app, "Loading tickets", width));
         }
     }
     Text::from(lines)
@@ -238,6 +322,8 @@ fn ticket_text(
     app: &App,
     project: muster_core::ProjectId,
     key: &muster_core::TicketKey,
+    width: usize,
+    parts: &mut Vec<usize>,
 ) -> Text<'static> {
     let Some(ticket) = app.ticket(project, key) else {
         return Text::default();
@@ -338,18 +424,112 @@ fn ticket_text(
     }
     lines.push(Line::from(""));
     match app.ticket_texts.get(&(project, key.clone())) {
-        None | Some(TicketText::Loading) => lines.push(Line::from("Fetching its text…").dim()),
+        None | Some(TicketText::Loading) => lines.push(loading::rule(app, "Loading ticket", width)),
         Some(TicketText::Failed(error)) => {
             lines.push(Line::from(format!("Its text could not be fetched: {error}")).red());
         }
-        Some(TicketText::Loaded(body)) if body.trim().is_empty() => {
-            lines.push(Line::from("(No description.)").dim());
-        }
-        Some(TicketText::Loaded(body)) => {
-            lines.extend(body.lines().map(|line| Line::from(line.to_owned())));
+        Some(TicketText::Loaded { body, comments }) => {
+            let theme = super::theme::of(app);
+            // With comments, its text is a part to give the agent or not,
+            // as each comment is.
+            let choosing = (!comments.is_empty()).then(|| Choosing {
+                brief: app.ticket_brief(project, key),
+                here: app.ticket_part(),
+            });
+            if let Some(choosing) = &choosing {
+                parts.push(lines.len());
+                lines.push(choosing.head(app, 0, vec![Span::from("Its text").bold()]));
+            }
+            if body.trim().is_empty() {
+                lines.push(Line::from("(No description.)").dim());
+            } else {
+                lines.extend(markdown::lines(body, &theme));
+            }
+            conversation(app, comments, width, choosing.as_ref(), &mut lines, parts);
         }
     }
     Text::from(lines)
+}
+
+/// What was said on a ticket after it was filed, oldest first: each
+/// comment under who wrote it and when, its text drawn as the ticket's is.
+/// What of a ticket the person gives an agent, and the part the keys are on.
+struct Choosing {
+    brief: muster_core::TicketBrief,
+    here: usize,
+}
+
+impl Choosing {
+    /// Part `at`'s heading: whether the agent is given it, then `said`;
+    /// tinted where the keys are.
+    fn head(&self, app: &App, at: usize, said: Vec<Span<'static>>) -> Line<'static> {
+        let theme = super::theme::of(app);
+        let mark = if self.brief.gives(at) {
+            Span::styled("☑ ", Style::default().fg(theme.done))
+        } else {
+            Span::styled("☐ ", theme.quiet)
+        };
+        let mut spans = vec![mark];
+        spans.extend(said);
+        let line = Line::from(spans);
+        if at == self.here {
+            line.style(look::selected_style(app, false))
+        } else {
+            line
+        }
+    }
+}
+
+fn conversation(
+    app: &App,
+    comments: &[muster_core::IssueComment],
+    width: usize,
+    choosing: Option<&Choosing>,
+    lines: &mut Vec<Line<'static>>,
+    parts: &mut Vec<usize>,
+) {
+    if comments.is_empty() {
+        return;
+    }
+    let theme = super::theme::of(app);
+    lines.push(Line::from(""));
+    let count = match comments.len() {
+        1 => "1 comment".to_owned(),
+        many => format!("{many} comments"),
+    };
+    let heading = format!("── {count} ");
+    let rest = width.saturating_sub(heading.chars().count());
+    lines.push(Line::from(vec![
+        Span::styled(heading, theme.quiet),
+        Span::styled("─".repeat(rest), Style::default().fg(theme.line)),
+    ]));
+    for (at, comment) in comments.iter().enumerate() {
+        lines.push(Line::from(""));
+        let mut said = vec![
+            Span::from(
+                comment
+                    .author
+                    .clone()
+                    .unwrap_or_else(|| "someone".to_owned()),
+            )
+            .bold(),
+        ];
+        if let (Some(at), Some(now)) = (comment.at, app.now) {
+            let ago = muster_core::time::between(at, now);
+            said.push(Span::styled(
+                format!(" · {} ago", look::short_span(ago, false)),
+                theme.quiet,
+            ));
+        }
+        match choosing {
+            Some(choosing) => {
+                parts.push(lines.len());
+                lines.push(choosing.head(app, at + 1, said));
+            }
+            None => lines.push(Line::from(said)),
+        }
+        lines.extend(markdown::lines(&comment.body, &theme));
+    }
 }
 
 /// The keys that apply on the Tickets screen, for what is selected.
@@ -371,6 +551,13 @@ pub(super) fn hints(app: &App) -> Vec<String> {
             hints.extend(hint(app, Does::TicketInBrowser, "browser"));
         }
         hints.extend(hint(app, Does::CloseTicket, "close"));
+        if matches!(
+            app.ticket_texts.get(&(*project, key.clone())),
+            Some(TicketText::Loaded { comments, .. }) if !comments.is_empty()
+        ) {
+            hints.extend(hint(app, Does::NextPart, "next part"));
+            hints.extend(hint(app, Does::ChoosePart, "give it or not"));
+        }
     }
     hints.extend(hint(app, Does::RefreshTickets, "refresh"));
     hints

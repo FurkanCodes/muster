@@ -4,6 +4,7 @@
 
 import { BridgeFailure } from "../bridge";
 import type { Command } from "../generated/Command";
+import type { IssueComment } from "../generated/IssueComment";
 import type { Project } from "../generated/Project";
 import type { ProjectSettings } from "../generated/ProjectSettings";
 import type { Reply } from "../generated/Reply";
@@ -21,6 +22,25 @@ export interface TicketScenario {
   ticketTexts: Record<string, Viewed>;
   ticketSettings: Record<string, ProjectSettings>;
 }
+
+/** What was said on #214 after it was filed, oldest first. */
+const BOARD_CONVERSATION: IssueComment[] = [
+  {
+    author: "mira-k",
+    at: NOW - 26 * 60 * 60 * 1000,
+    body: "Does the window keep its **own** connection, or share the TUI's? If it shares it, closing the TUI would take the window down with it.",
+  },
+  {
+    author: "sam",
+    at: NOW - 5 * 60 * 60 * 1000,
+    body: "Its own: `muster-client` opens one per client.\n\n- the daemon already serves many\n- nothing changes on its side\n\nSee [ARCHITECTURE §5c](https://github.com/o/muster/blob/main/ARCHITECTURE.md).",
+  },
+  {
+    author: null,
+    at: null,
+    body: "> nothing changes on its side\n\nGood, then this can ship on its own.",
+  },
+];
 
 const BOARD_TEXT = `The first slice of Muster Desktop: a window that lists sessions and shows one live terminal, as another client of the daemon. Nothing about the daemon changes.
 
@@ -90,6 +110,7 @@ export function ticketScenario(projects: Project[]): TicketScenario {
       scenario.ticketTexts[`${project.id}:${issue.key}`] = {
         issue,
         body: issue.key === "217" ? YOUTRACK_TEXT : issue.key === "214" ? BOARD_TEXT : "",
+        comments: issue.key === "214" ? BOARD_CONVERSATION : [],
       };
   });
   return scenario;

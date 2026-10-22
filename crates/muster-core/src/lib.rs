@@ -42,7 +42,7 @@ pub mod time;
 pub mod timeline;
 
 pub use changes::{ChangeKind, ChangePart, ChangeSummary, Changes, FileChange, FileDiff};
-pub use entities::{Issue, Project, Session, Workspace, WorkspaceKind};
+pub use entities::{Issue, IssueComment, Project, Session, TicketBrief, Workspace, WorkspaceKind};
 pub use ids::{ParseIdError, ProjectId, RunId, SessionId, WorkspaceId};
 pub use paths::Paths;
 pub use pulls::{Checks, PullRequestState, PullRequestStatus, Review};

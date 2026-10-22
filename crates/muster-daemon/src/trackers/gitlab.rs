@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use muster_core::plugins::own;
 use muster_core::text::{multi_line, one_line};
-use muster_core::{Issue, TicketKey};
+use muster_core::time::parse_rfc3339;
+use muster_core::{Issue, IssueComment, TicketKey};
 use serde::Deserialize;
 
 use super::{BoxFuture, IssueDetail, ServiceError, TicketSource};
@@ -42,6 +43,34 @@ struct GlabAuthor {
     username: String,
 }
 
+/// A note on an issue, as GitLab's API gives it: a comment, or one GitLab
+/// wrote itself on a change (`system`), which is left out.
+#[derive(Debug, Deserialize)]
+struct GlabNote {
+    #[serde(default)]
+    author: Option<GlabAuthor>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    system: bool,
+}
+
+impl GlabNote {
+    /// The note as a comment, cleaned; none where GitLab wrote it or it says nothing.
+    fn into_comment(self) -> Option<IssueComment> {
+        (!self.system && !self.body.trim().is_empty()).then(|| IssueComment {
+            author: self.author.map(|author| one_line(&author.username)),
+            at: self.created_at.as_deref().and_then(parse_rfc3339),
+            body: multi_line(&self.body),
+        })
+    }
+}
+
+/// The most notes asked for: GitLab's largest page.
+const NOTES_LIMIT: &str = "100";
+
 impl GlabIssue {
     /// The issue as Muster keeps it, its text cleaned of control characters.
     fn into_detail(self) -> IssueDetail {
@@ -54,6 +83,7 @@ impl GlabIssue {
                 author: self.author.map(|author| one_line(&author.username)),
             },
             body: multi_line(&self.description.unwrap_or_default()),
+            comments: Vec::new(),
             noun: super::Noun::own(own::GITLAB),
         }
     }
@@ -101,8 +131,30 @@ impl TicketSource for GitLabIssues {
     fn view<'a>(&'a self, key: &'a TicketKey) -> BoxFuture<'a, Result<IssueDetail, ServiceError>> {
         Box::pin(async move {
             let iid = iid(key)?;
-            let json = glab(&self.root, &["issue", "view", &iid, "--output", "json"]).await?;
-            Ok(parse::<GlabIssue>(&json)?.into_detail())
+            // Its notes through GitLab's API, oldest first, the project
+            // filled in by `glab` from the checkout's remote.
+            let notes = format!(
+                "projects/:fullpath/issues/{iid}/notes?sort=asc&order_by=created_at&per_page={NOTES_LIMIT}"
+            );
+            let viewing = ["issue", "view", &iid, "--output", "json"];
+            let noting = ["api", notes.as_str()];
+            let (issue, notes) =
+                tokio::join!(glab(&self.root, &viewing), glab(&self.root, &noting));
+            let mut detail = parse::<GlabIssue>(&issue?)?.into_detail();
+            // Notes that cannot be read leave the issue as it is, without
+            // them: its text, and starting work on it, never wait on them.
+            match notes.and_then(|notes| parse::<Vec<GlabNote>>(&notes)) {
+                Ok(notes) => {
+                    detail.comments = notes
+                        .into_iter()
+                        .filter_map(GlabNote::into_comment)
+                        .collect();
+                }
+                Err(error) => {
+                    tracing::info!(%key, %error, "a GitLab issue's notes could not be read");
+                }
+            }
+            Ok(detail)
         })
     }
 
@@ -149,5 +201,27 @@ mod tests {
             iid(&TicketKey::parse("APP-1").unwrap()),
             Err(ServiceError::NotFound(_))
         ));
+    }
+
+    // Shaped like GitLab's API for an issue's notes (`GET /projects/:id/issues/:iid/notes`).
+    #[test]
+    fn its_notes_are_its_comments_gitlab_s_own_left_out() {
+        let json = r#"[
+            {"id":1,"body":"changed the description","author":{"id":3,"username":"someone"},"created_at":"2026-10-22T09:29:00.000Z","system":true,"noteable_iid":12},
+            {"id":2,"body":"Seen on `main`\u001b[2J","author":{"id":4,"username":"other"},"created_at":"2026-10-22T11:30:00.000+02:00","system":false},
+            {"id":3,"body":"  ","author":{"id":4,"username":"other"},"created_at":"2026-10-22T09:31:00Z","system":false}]"#;
+        let comments: Vec<IssueComment> = parse::<Vec<GlabNote>>(json)
+            .unwrap()
+            .into_iter()
+            .filter_map(GlabNote::into_comment)
+            .collect();
+        assert_eq!(
+            comments,
+            [IssueComment {
+                author: Some("other".to_owned()),
+                at: Some(muster_core::Timestamp::from_millis(1_792_661_400_000)),
+                body: "Seen on `main`[2J".to_owned(),
+            }]
+        );
     }
 }

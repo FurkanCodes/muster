@@ -149,6 +149,78 @@ pub struct Issue {
     pub author: Option<String>,
 }
 
+/// What someone said on a ticket after it was filed, oldest first: who,
+/// when and what. Anyone can write one, so it is data, never instructions
+/// (`PRD-07`), cleaned as the ticket's text is. From protocol 50.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct IssueComment {
+    /// Who wrote it, where the tracker says.
+    pub author: Option<String>,
+    /// When, where the tracker says.
+    pub at: Option<crate::Timestamp>,
+    pub body: String,
+}
+
+/// What of a ticket an agent is given as its first prompt: its text, and
+/// the comments the person chose, by their place among the ticket's
+/// comments as [`IssueComment`]s come, oldest first. The person chooses
+/// at least one of them. From protocol 50.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct TicketBrief {
+    pub text: bool,
+    pub comments: Vec<u32>,
+}
+
+impl Default for TicketBrief {
+    /// Its text alone, as before comments could be given.
+    fn default() -> Self {
+        Self {
+            text: true,
+            comments: Vec::new(),
+        }
+    }
+}
+
+impl TicketBrief {
+    /// Whether it gives the agent anything to work on.
+    pub fn is_empty(&self) -> bool {
+        !self.text && self.comments.is_empty()
+    }
+
+    /// Gives the agent part `at` (0 its text, 1 its first comment…) or
+    /// stops giving it; refused (`false`) where that would leave nothing.
+    pub fn toggle(&mut self, at: usize) -> bool {
+        let mut next = self.clone();
+        if at == 0 {
+            next.text = !next.text;
+        } else {
+            let comment = u32::try_from(at - 1).unwrap_or(u32::MAX);
+            if let Some(found) = next.comments.iter().position(|chosen| *chosen == comment) {
+                next.comments.remove(found);
+            } else {
+                next.comments.push(comment);
+                next.comments.sort_unstable();
+            }
+        }
+        if next.is_empty() {
+            return false;
+        }
+        *self = next;
+        true
+    }
+
+    /// Whether it gives part `at`, as [`TicketBrief::toggle`] counts.
+    pub fn gives(&self, at: usize) -> bool {
+        if at == 0 {
+            self.text
+        } else {
+            u32::try_from(at - 1).is_ok_and(|comment| self.comments.contains(&comment))
+        }
+    }
+}
+
 /// One agent process in one workspace.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -193,5 +265,31 @@ impl Session {
     /// person's shell or a plugin's panel.
     pub fn kind(&self) -> crate::harness::SessionKind<'_> {
         crate::harness::SessionKind::of(&self.harness)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TicketBrief;
+
+    #[test]
+    fn a_brief_gives_its_text_and_the_comments_chosen_never_nothing() {
+        let mut brief = TicketBrief::default();
+        assert!(brief.gives(0) && !brief.gives(1));
+        // Its text alone cannot be taken away: the agent would have nothing.
+        assert!(!brief.toggle(0));
+        assert!(brief.toggle(3) && brief.toggle(1));
+        assert_eq!(brief.comments, [0, 2]);
+        assert!(brief.toggle(0));
+        assert!(!brief.text && brief.gives(1) && brief.gives(3) && !brief.gives(2));
+        assert!(brief.toggle(1));
+        assert!(!brief.toggle(3), "the last part chosen stays");
+        assert_eq!(
+            brief,
+            TicketBrief {
+                text: false,
+                comments: vec![2]
+            }
+        );
     }
 }

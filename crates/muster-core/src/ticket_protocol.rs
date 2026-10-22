@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::text::{multi_line, one_line};
-use crate::{Issue, TicketKey};
+use crate::time::{parse_rfc3339, rfc3339};
+use crate::{Issue, IssueComment, TicketKey};
 
 /// The version of the protocol this Muster speaks, said in `hello`.
 pub const PROTOCOL: u32 = 1;
@@ -35,6 +36,12 @@ const MOST_URL: usize = 2_048;
 
 /// The most labels a ticket keeps.
 const MOST_LABELS: usize = 50;
+
+/// The most comments a ticket keeps: its newest, the oldest cut.
+const MOST_COMMENTS: usize = 500;
+
+/// The most of a comment's text kept.
+const MOST_COMMENT: usize = 64 * 1024;
 
 /// The most of a name kept: a label, an author, where the tickets are.
 const MOST_NAME: usize = 200;
@@ -280,6 +287,28 @@ pub struct Ticket {
     pub author: Option<String>,
 }
 
+/// What someone said on a ticket, as a plugin gives it: who, when (RFC
+/// 3339, `2026-10-22T09:30:00Z`) and what.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct Comment {
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub at: Option<String>,
+    pub body: String,
+}
+
+impl From<&IssueComment> for Comment {
+    fn from(comment: &IssueComment) -> Self {
+        Self {
+            author: comment.author.clone(),
+            at: comment.at.map(rfc3339),
+            body: comment.body.clone(),
+        }
+    }
+}
+
 /// A ticket's key as a plugin writes it: text, or a plain number.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -327,6 +356,9 @@ pub struct Listing {
 pub struct Viewing {
     pub ticket: Ticket,
     pub body: String,
+    /// What was said on it after it was filed, oldest first; a plugin
+    /// may leave it out.
+    pub comments: Vec<Comment>,
 }
 
 /// The protocol a plugin's answer to `hello` says it speaks.
@@ -381,6 +413,7 @@ pub fn listed(result: Value) -> Result<Listed, String> {
 pub struct Viewed {
     pub issue: Issue,
     pub body: String,
+    pub comments: Vec<IssueComment>,
 }
 
 #[derive(Deserialize)]
@@ -388,6 +421,8 @@ struct RawViewing {
     ticket: Value,
     #[serde(default)]
     body: Option<String>,
+    #[serde(default)]
+    comments: Option<Value>,
 }
 
 /// The answer to `view` for `asked`, checked and cleaned: the ticket must be
@@ -399,9 +434,33 @@ pub fn viewed(result: Value, asked: &TicketKey) -> Result<Viewed, String> {
     if issue.key != *asked {
         return Err(format!("asked for {asked}, it answered with {}", issue.key));
     }
+    let mut comments: Vec<IssueComment> = match raw.comments {
+        Some(Value::Array(comments)) => comments.into_iter().filter_map(comment).collect(),
+        _ => Vec::new(),
+    };
+    if comments.len() > MOST_COMMENTS {
+        comments.drain(..comments.len() - MOST_COMMENTS);
+    }
     Ok(Viewed {
         issue,
         body: cut(multi_line(&raw.body.unwrap_or_default()), MOST_BODY),
+        comments,
+    })
+}
+
+/// `value` as a comment Muster takes, cleaned; none where a field is of the
+/// wrong kind or it says nothing. A moment that does not read is left out,
+/// not the comment.
+fn comment(value: Value) -> Option<IssueComment> {
+    let comment: Comment = serde_json::from_value(value).ok()?;
+    let body = cut(multi_line(&comment.body), MOST_COMMENT);
+    if body.trim().is_empty() {
+        return None;
+    }
+    Some(IssueComment {
+        author: name(comment.author),
+        at: comment.at.as_deref().and_then(parse_rfc3339),
+        body,
     })
 }
 

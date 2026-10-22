@@ -134,11 +134,11 @@ fn tab_opens_a_folder_and_shift_tab_goes_back_up() {
     let actions = press(&mut world.app, KeyCode::Tab);
     assert_eq!(picker(&world.app).0, "/src/muster/");
     assert_eq!(actions, [Action::ListFolders(PathBuf::from("/src/muster"))]);
-    assert!(render(&world.app).contains("Listing…"));
+    assert!(render(&world.app).contains("Loading folder"));
 
     // A listing for a folder no longer shown is dropped.
     world.app.on_folders(&PathBuf::from("/src"), Ok(src()));
-    assert!(render(&world.app).contains("Listing…"));
+    assert!(render(&world.app).contains("Loading folder"));
     world.app.on_folders(
         &PathBuf::from("/src/muster"),
         Ok(vec![folder("crates", false)]),
@@ -212,7 +212,7 @@ fn g_clones_a_github_repository_into_the_folder_chosen() {
     let actions = press(&mut world.app, KeyCode::Char('g'));
     let (req_id, asked) = command(&actions);
     assert_eq!(asked, Command::ListRepositories);
-    assert!(render(&world.app).contains("Asking GitHub"));
+    assert!(render(&world.app).contains("Loading repositories"));
     let repository = |name: &str, private: bool| HostedRepository {
         name: name.to_owned(),
         description: Some(format!("{name}, described")),

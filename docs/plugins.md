@@ -199,7 +199,7 @@ Muster speaks to the program over its stdin and stdout, in JSON-RPC 2.0, one mes
 → {"jsonrpc":"2.0","id":2,"method":"list","params":{"project":{"root":"/work/app","remote":"github.com/o/app","settings":{"file":"TICKETS.txt"}},"mine":false}}
 ← {"jsonrpc":"2.0","id":2,"result":{"where":"TICKETS.txt","source":null,"tickets":[{"key":"APP-7","title":"The login page says 404","url":"","labels":["bug"],"author":"sam"}]}}
 → {"jsonrpc":"2.0","id":3,"method":"view","params":{"project":{…},"key":"APP-7"}}
-← {"jsonrpc":"2.0","id":3,"result":{"ticket":{"key":"APP-7","title":"The login page says 404"},"body":"After signing in…"}}
+← {"jsonrpc":"2.0","id":3,"result":{"ticket":{"key":"APP-7","title":"The login page says 404"},"body":"After signing in…","comments":[{"author":"mira","at":"2026-10-22T09:30:00Z","body":"Seen on `main` too."}]}}
 → {"jsonrpc":"2.0","id":4,"method":"close","params":{"project":{…},"key":"APP-7"}}
 ← {"jsonrpc":"2.0","id":4,"result":{}}
   or, where it cannot:
@@ -231,7 +231,7 @@ The rules:
 **`view`**: one ticket, with its text.
 
 - params: `project`; `key`, the ticket's key.
-- result: `ticket`, the ticket, which must be the one asked for; `body`, its text, as plain text with newlines.
+- result: `ticket`, the ticket, which must be the one asked for; `body`, its text, as plain text with newlines (Markdown is drawn as such, in the window and the terminal); `comments`, optional, what was said on it after it was filed, oldest first, each a **comment** (below).
 
 **`close`**: closes a ticket, because the person asked. It is the one change Muster makes in a tracker.
 
@@ -252,7 +252,13 @@ A **ticket** is:
 - `labels`: optional, a list of text.
 - `author`: optional, who filed it.
 
-Muster checks and cleans every answer. A ticket whose key is not one of those shapes, or with a field of the wrong kind, is left out (and counted in the daemon's log), not the whole listing. A listing keeps 1,000 tickets; a title is cut to 1,000 bytes, an address to 2,048, labels to 50 of 200, a body to 256 KiB, an error's message to 4,000. Control characters go, and credentials are hidden.
+A **comment** is:
+
+- `body`: its text, as a ticket's; one with none is left out.
+- `author`: optional, who wrote it.
+- `at`: optional, when, in RFC 3339 (`"2026-10-22T09:30:00Z"`, `"2026-10-22T11:30:00.250+02:00"`); one Muster cannot read is left out, not the comment.
+
+Muster checks and cleans every answer. A ticket whose key is not one of those shapes, or with a field of the wrong kind, is left out (and counted in the daemon's log), not the whole listing. A listing keeps 1,000 tickets; a title is cut to 1,000 bytes, an address to 2,048, labels to 50 of 200, a body to 256 KiB, comments to the newest 500 of 64 KiB each, an error's message to 4,000. Control characters go, and credentials are hidden.
 
 ### 4. Errors
 

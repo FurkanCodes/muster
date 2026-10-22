@@ -5,8 +5,10 @@ use std::path::PathBuf;
 
 use super::Sandbox;
 
-/// Stands in for the GitLab CLI: answers `issue list` and `issue view N`
-/// from fixture files, records `issue close N`, keeps one merge request
+/// Stands in for the GitLab CLI: answers `issue list`, `issue view N` and
+/// an issue's notes (`api projects/:fullpath/issues/N/notes…`) from
+/// fixture files, none where there is no `notes-N.json` (refused where
+/// there is a `notes-N.fail`), records `issue close N`, keeps one merge request
 /// (!17) once one is created, with how it was asked for, and records every
 /// call. Like the real one, it pushes nothing.
 pub(super) const FAKE_GLAB: &str = r#"#!/bin/sh
@@ -20,6 +22,10 @@ case "$1 $2" in
   "issue close")
     if [ ! -f "$dir/issue-$3.json" ]; then echo "404 Not Found" >&2; exit 1; fi
     echo "$3" >> "$dir/closed"; echo "Closed issue #$3" ;;
+  api\ projects/:fullpath/issues/*)
+    iid=${2#projects/:fullpath/issues/}; iid=${iid%%/*}
+    if [ -f "$dir/notes-$iid.fail" ]; then echo "GET …/notes: 403 Forbidden" >&2; exit 1
+    elif [ -f "$dir/notes-$iid.json" ]; then cat "$dir/notes-$iid.json"; else echo "[]"; fi ;;
   "mr list") if [ -f "$dir/mr.json" ]; then cat "$dir/mr.json"; else echo "[]"; fi ;;
   "mr create")
     printf '%s\n' "$@" > "$dir/mr-create"

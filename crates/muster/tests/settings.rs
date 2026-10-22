@@ -345,6 +345,7 @@ async fn branches_go_without_muster_once_the_person_says_so() {
             size: muster_core::protocol::TermSize::default(),
             another: false,
             on: None,
+            brief: None,
         })
         .await
         .unwrap()

@@ -2,7 +2,7 @@
 # A ticket plugin in POSIX sh: the ticket protocol on stdin and stdout,
 # one JSON-RPC message a line. Its tickets are tickets.jsonl, one JSON
 # object a line, in its folder, where Muster runs it; closing one takes
-# its line out. It says on stderr, its log, which variables it was given.
+# its line out. What was said on one is comments-<key>.json, if there. It says on stderr, its log, which variables it was given.
 
 reply() { printf '{"jsonrpc":"2.0","id":%s,"result":%s}\n' "$id" "$1"; }
 refuse() { printf '{"jsonrpc":"2.0","id":%s,"error":{"code":"%s","message":"%s"}}\n' "$id" "$1" "$2"; }
@@ -29,7 +29,8 @@ while IFS= read -r line; do
       if [ -z "$ticket" ]; then
         refuse not_found "there is no task $key"
       else
-        reply "{\"ticket\":$ticket,\"body\":\"$(line=$ticket field body)\"}"
+        comments=$(cat "comments-$key.json" 2>/dev/null || printf '[]')
+        reply "{\"ticket\":$ticket,\"body\":\"$(line=$ticket field body)\",\"comments\":$comments}"
       fi
       ;;
     *'"method":"close"'*)

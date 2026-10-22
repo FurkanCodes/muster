@@ -227,6 +227,7 @@ fn read_issue(item: &Value) -> Option<IssueDetail> {
             author: author.map(|author| one_line(&author)),
         },
         body: multi_line(text("description")),
+        comments: Vec::new(),
         noun: super::Noun::own(own::LINEAR),
     })
 }

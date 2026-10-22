@@ -31,7 +31,14 @@ test("ARC-24 the Tickets board: groups, agents, pull request, author, labels and
   await expect(page.getByText("182k tokens", { exact: true })).toHaveCount(2);
   await expect(page.getByText("opened by FurkanCodes")).toBeVisible();
   await expect(page.locator(".mu-label", { hasText: "desktop" })).toBeVisible();
-  await expect(page.getByRole("article")).toContainText("Done when");
+  await expect(page.getByRole("article", { name: "The ticket's text" })).toContainText("Done when");
+  // What was said on it after, under its text, oldest first.
+  const said = page.getByRole("region", { name: "3 comments" });
+  await expect(said.getByRole("article")).toHaveCount(3);
+  await expect(said.getByRole("article").first()).toHaveAccessibleName("mira-k's comment");
+  await expect(said.getByRole("article", { name: "sam's comment" })).toContainText(
+    "muster-client opens one per client.",
+  );
   await expect(ticket(page, "KEP-31")).toHaveCount(1);
   await expect(
     page.locator(".mu-group-name").filter({ hasText: "kep-site, kep-api" }),
@@ -70,7 +77,7 @@ test("ARC-25 loading lists and text, tracker failure and r to fetch again", asyn
     "Its text could not be fetched: tracker cannot be reached",
   );
   await page.keyboard.press("r");
-  await expect(page.getByRole("article")).toContainText("Done when");
+  await expect(page.getByRole("article", { name: "The ticket's text" })).toContainText("Done when");
 });
 
 test("ARC-24 empty project, only-mine empty and no projects", async ({ page }) => {
@@ -159,7 +166,7 @@ test("PRD-07 PRD-10 ticket HTML, images and links never load or execute", async 
         '<img src="https://untrusted.invalid/image"><script>window.ticketExecuted=true</script>\n\n![pixel](https://untrusted.invalid/pixel)\n\n[Read more](https://untrusted.invalid/read)';
   }, id(1));
   await tickets(page);
-  const body = page.getByRole("article");
+  const body = page.getByRole("article", { name: "The ticket's text" });
   await expect(body).toContainText('<img src="https://untrusted.invalid/image">');
   await expect(body).toContainText("![pixel](https://untrusted.invalid/pixel)");
   await expect(body).toContainText("Read more (https://untrusted.invalid/read)");
@@ -216,6 +223,7 @@ test("PRD-01 Assign board: Tab chooses agent, arrows choose base, Enter starts o
       size: { rows: 24, cols: 80 },
       another: false,
       on: id(11),
+      brief: null,
     },
   });
   await tickets(page);
@@ -467,6 +475,8 @@ test("PRD-01 another agent starts in its own worktree on the chosen branch", asy
       size: { rows: 24, cols: 80 },
       another: true,
       on: id(11),
+      // #214 has comments: what its agent is given goes with it, its text alone unless chosen.
+      brief: { text: true, comments: [] },
     },
   });
   expect(
@@ -483,7 +493,9 @@ test("ARC-24 a ticket with no description says so", async ({ page }) => {
     if (detail) detail.body = "";
   }, id(1));
   await tickets(page);
-  await expect(page.getByRole("article")).toHaveText("(No description.)");
+  await expect(page.getByRole("article", { name: "The ticket's text" })).toHaveText(
+    "(No description.)",
+  );
 });
 
 test("ARC-24 a ticket row flashes once when an agent on it comes to need the person", async ({

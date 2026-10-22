@@ -5,7 +5,7 @@
 
 use muster_core::{SessionId, SessionStatus, Timestamp};
 
-use super::{App, Mode, View};
+use super::{App, Dialog, Mode, PluginDialog, Settings, TicketText, Tickets, View};
 use crate::model::{Row, needs_attention};
 use crate::motion::{FLASH_STEPS, GLAD_STEPS, NOTE_DIMS, NOTE_GOES};
 
@@ -31,9 +31,47 @@ impl App {
         self.motion
             && (!self.flashes.is_empty()
                 || self.kep_glad()
+                || self.waiting_shown()
                 || self.model.sessions().iter().any(|session| {
                     session.status == SessionStatus::Running || needs_attention(session)
                 }))
+    }
+
+    /// Whether a wait is on screen (`view::loading`), its light running:
+    /// tickets, a ticket's text or settings being fetched, a workspace's
+    /// changes or a diff asked for, a plugin or GitHub's repositories.
+    fn waiting_shown(&self) -> bool {
+        let dialog = match &self.mode {
+            Mode::Dialog(Dialog::Plugin(PluginDialog::Fetching { .. })) => true,
+            Mode::Dialog(Dialog::CloneProject(choice)) => choice.listed.is_none(),
+            _ => false,
+        };
+        let changes = self.changes.as_ref().is_some_and(|pane| match &pane.diff {
+            Some(diff) => diff.text.is_none(),
+            None => pane.listing.is_none(),
+        });
+        let screen = match self.view {
+            View::Tickets => {
+                self.model
+                    .projects()
+                    .iter()
+                    // Each heading's, as `ticket_rows` lists them.
+                    .filter(|project| self.lead(project.id) == project.id)
+                    .any(|project| {
+                        matches!(self.tickets.get(&project.id), None | Some(Tickets::Loading))
+                    })
+                    || self
+                        .ticket_texts
+                        .values()
+                        .any(|text| matches!(text, TicketText::Loading))
+            }
+            View::Settings => self
+                .settings
+                .values()
+                .any(|settings| matches!(settings, Settings::Loading)),
+            View::Sessions | View::NeedsYou => false,
+        };
+        dialog || changes || screen
     }
 
     /// Whether anything waits on the steps going by: something moving, a

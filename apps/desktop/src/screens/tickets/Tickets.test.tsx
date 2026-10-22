@@ -37,7 +37,16 @@ describe("PRD-01 ARC-24 Tickets", () => {
   it("shows the board's grouped tickets, agents, labels, usage and text", async () => {
     const { bridge } = renderTickets();
     expect(await screen.findByRole("option", { name: /^#214 / })).toBeInTheDocument();
-    expect(await screen.findByRole("article")).toHaveTextContent("Done when");
+    expect(await screen.findByRole("article", { name: "The ticket's text" })).toHaveTextContent(
+      "Done when",
+    );
+    // What was said on it after, under its text, oldest first.
+    const said = screen.getByRole("region", { name: "3 comments" });
+    expect(
+      within(said)
+        .getAllByRole("article")
+        .map((a) => a.getAttribute("aria-label")),
+    ).toEqual(["mira-k's comment", "sam's comment", "Someone's comment"]);
     expect(screen.getAllByText("182k tokens")).toHaveLength(2);
     expect(screen.getByText("opened by FurkanCodes")).toBeInTheDocument();
     expect(screen.getAllByRole("option", { name: /^KEP-31 / })).toHaveLength(1);
@@ -75,7 +84,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
   });
   it("changes Only my tickets and says a refused change, the tickets read again", async () => {
     const { bridge, app } = renderTickets();
-    await screen.findByRole("article");
+    await screen.findByRole("article", { name: "The ticket's text" });
     const mine = () =>
       within(screen.getByRole("group", { name: "Which of muster's tickets" })).getByRole("button", {
         name: "Mine",
@@ -96,7 +105,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
   });
   it("opens the newest live agent and remembers the ticket on return", async () => {
     const { app } = renderTickets();
-    await screen.findByRole("article");
+    await screen.findByRole("article", { name: "The ticket's text" });
     await userEvent.keyboard("{Enter}");
     expect(app.ui.getState().screen).toBe("needs-you");
     expect(app.ui.getState().terminal).toBe(ulid(101));
@@ -109,7 +118,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
     if (!issue) throw new Error("missing ticket fixture");
     issue.url = "javascript:alert(1)";
     const { app } = renderTickets(bridge);
-    await screen.findByRole("article");
+    await screen.findByRole("article", { name: "The ticket's text" });
     expect(bridge.openedUrls).toEqual([]);
     await userEvent.keyboard("b");
     expect(bridge.openedUrls).toEqual(["https://github.com/FurkanCodes/muster/issues/214"]);
@@ -120,7 +129,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
   });
   it("assigns with Tab and arrows, remembers the agent and opens its session", async () => {
     const { bridge, app } = renderTickets();
-    await screen.findByRole("article");
+    await screen.findByRole("article", { name: "The ticket's text" });
     await userEvent.click(ticket("217"));
     await userEvent.keyboard("{Enter}");
     const dialog = await screen.findByRole("dialog");
@@ -136,6 +145,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
         size: { rows: 24, cols: 80 },
         another: false,
         on: ulid(11),
+        brief: null,
       },
     });
     expect(app.ui.getState().screen).toBe("all");
@@ -145,6 +155,42 @@ describe("PRD-01 ARC-24 Tickets", () => {
     expect(within(again).getByRole("radio", { name: /Codex/ })).toHaveAttribute(
       "aria-checked",
       "true",
+    );
+  });
+  it("PRD-07 gives the agent the parts chosen with ] [ and space, or their boxes", async () => {
+    const { bridge } = renderTickets();
+    const said = await screen.findByRole("region", { name: "3 comments" });
+    await userEvent.click(ticket("214"));
+    const box = (name: string) => screen.getByRole("checkbox", { name });
+    expect(box("Give the agent the ticket's text")).toHaveAttribute("aria-checked", "true");
+    // Its text alone cannot be taken away.
+    await userEvent.keyboard(" ");
+    expect(box("Give the agent the ticket's text")).toHaveAttribute("aria-checked", "true");
+    // ] to the second comment, space to give it; a box gives the third.
+    await userEvent.keyboard("]] ");
+    expect(box("Give the agent sam's comment")).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(box("Give the agent Someone's comment"));
+    // A box takes the keys to its part; [ back to the text, space to leave it out.
+    // ([[ is one [ to userEvent.)
+    await userEvent.keyboard("[[[[[[ ");
+    expect(box("Give the agent the ticket's text")).toHaveAttribute("aria-checked", "false");
+    expect(
+      within(said)
+        .getAllByRole("checkbox")
+        .map((b) => b.getAttribute("aria-checked")),
+    ).toEqual(["false", "true", "true"]);
+    // #214 has its agent: another is given these.
+    await userEvent.keyboard("a");
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("gets 2 comments on the ticket as its first prompt");
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual({
+        StartFromIssue: expect.objectContaining({
+          key: "214",
+          brief: { text: false, comments: [1, 2] },
+        }),
+      }),
     );
   });
   it("chooses a shared ticket's project and offers only prompt-taking added agents", async () => {
@@ -161,7 +207,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
       },
     ];
     renderTickets(bridge);
-    await screen.findByRole("article");
+    await screen.findByRole("article", { name: "The ticket's text" });
     await userEvent.click(screen.getByRole("option", { name: /^KEP-28 / }));
     await userEvent.keyboard("{Enter}");
     const dialog = await screen.findByRole("dialog");
@@ -182,7 +228,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
   });
   it("never closes until confirmed; then waits for session ends and asks about dirty files", async () => {
     const { bridge } = renderTickets();
-    await screen.findByRole("article");
+    await screen.findByRole("article", { name: "The ticket's text" });
     await userEvent.keyboard("x");
     let dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("button", { name: "Keep it open" })).toHaveFocus();
@@ -205,7 +251,7 @@ describe("PRD-01 ARC-24 Tickets", () => {
   });
   it("ARC-25 fetches no tickets while hidden and does not poll", async () => {
     const { app, bridge } = renderTickets();
-    await screen.findByRole("article");
+    await screen.findByRole("article", { name: "The ticket's text" });
     const before = bridge.sent.length;
     act(() => app.actions.setVisible(false));
     await userEvent.keyboard("r");

@@ -11,7 +11,7 @@
 
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::tickets::ticket_branch;
-use muster_core::{ProjectId, TicketKey, WorkspaceId};
+use muster_core::{ProjectId, TicketBrief, TicketKey, WorkspaceId};
 use tokio::sync::oneshot;
 
 use super::{Request, Supervisor, worktrees};
@@ -27,6 +27,7 @@ pub(super) struct FetchedIssue {
     pub(super) on: Option<muster_core::WorkspaceId>,
     /// Whether its branch starts with `muster/`, as the project says.
     pub(super) prefixed: bool,
+    pub(super) brief: TicketBrief,
     pub(super) detail: Result<IssueDetail, ServiceError>,
     pub(super) reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
@@ -35,6 +36,8 @@ pub(super) struct FetchedIssue {
 /// (`worktrees::Then`).
 pub(super) struct TicketThen {
     detail: IssueDetail,
+    /// What of it the agent is given.
+    brief: TicketBrief,
     harness: String,
     size: TermSize,
     reply: oneshot::Sender<Result<Reply, ErrorBody>>,
@@ -63,6 +66,8 @@ pub(super) struct TicketStart {
     /// The workspace whose branch a worktree made for it is made on top
     /// of.
     pub(super) on: Option<muster_core::WorkspaceId>,
+    /// What of it the agent is given: its text, and the comments chosen.
+    pub(super) brief: TicketBrief,
 }
 
 impl Supervisor {
@@ -135,6 +140,7 @@ impl Supervisor {
                 Ok::<_, ServiceError>(Reply::IssueViewed {
                     issue: detail.issue,
                     body: detail.body,
+                    comments: detail.comments,
                 })
             }
             .await
@@ -184,9 +190,17 @@ impl Supervisor {
             size,
             another,
             on,
+            brief,
         }: TicketStart,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
+        if brief.is_empty() {
+            let _ = reply.send(Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "give the agent the ticket's text or a comment on it",
+            )));
+            return;
+        }
         // Work on a ticket goes in a worktree of its own.
         let place = match self
             .repository_root(project, "worktrees for tickets")
@@ -214,6 +228,7 @@ impl Supervisor {
                 another,
                 on,
                 prefixed,
+                brief,
                 detail,
                 reply,
             };
@@ -233,6 +248,7 @@ impl Supervisor {
             another,
             on,
             prefixed,
+            brief,
             detail,
             reply,
         } = fetched;
@@ -240,6 +256,24 @@ impl Supervisor {
             Ok(detail) => detail,
             Err(error) => return refuse(reply, error.body()),
         };
+        // The comments chosen are those the person saw: one gone since
+        // is said, not a comment put in its place.
+        if brief
+            .comments
+            .iter()
+            .any(|at| usize::try_from(*at).map_or(true, |at| at >= detail.comments.len()))
+        {
+            return refuse(
+                reply,
+                ErrorBody::new(
+                    ErrorCode::Conflict,
+                    format!(
+                        "{} has fewer comments than when you chose them: look at it again",
+                        detail.issue.key.shown()
+                    ),
+                ),
+            );
+        }
         let branch = ticket_branch(&detail.issue.key, &detail.issue.title, prefixed);
         // Its worktree, made for it, whatever its branch is called now.
         let existing = self
@@ -254,6 +288,7 @@ impl Supervisor {
             .map(|found| found.id);
         let ticket = TicketThen {
             detail,
+            brief,
             harness,
             size,
             reply,
@@ -275,11 +310,15 @@ impl Supervisor {
     pub(super) async fn start_ticket_agent(&mut self, workspace: WorkspaceId, ticket: TicketThen) {
         let TicketThen {
             detail,
+            brief,
             harness,
             size,
             reply,
         } = ticket;
-        match self.ticket_agent(workspace, &detail, harness, size).await {
+        match self
+            .ticket_agent(workspace, &detail, &brief, harness, size)
+            .await
+        {
             Ok(started) => {
                 let _ = reply.send(Ok(started));
             }
@@ -291,6 +330,7 @@ impl Supervisor {
         &mut self,
         workspace: WorkspaceId,
         detail: &IssueDetail,
+        brief: &TicketBrief,
         harness: String,
         size: TermSize,
     ) -> Result<Reply, ErrorBody> {
@@ -298,7 +338,7 @@ impl Supervisor {
             .harness(&harness)
             .is_some_and(|found| found.takes_prompt());
         let prompt = match takes_prompt.then(trackers::new_fence).transpose() {
-            Ok(fence) => fence.map(|fence| trackers::issue_prompt(detail, &fence)),
+            Ok(fence) => fence.map(|fence| trackers::issue_prompt(detail, brief, &fence)),
             Err(error) => {
                 return Err(ErrorBody::new(
                     ErrorCode::Internal,

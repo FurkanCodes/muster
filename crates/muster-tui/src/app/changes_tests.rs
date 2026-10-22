@@ -115,7 +115,7 @@ fn enter_shows_a_file_s_diff_and_esc_goes_back_step_by_step() {
             path: "src/login.rs".to_owned(),
         }
     );
-    assert!(render(&world.app).contains("Asking git…"));
+    assert!(render(&world.app).contains("Loading diff"));
     let text = "diff --git a/src/login.rs b/src/login.rs\n@@ -0,0 +1,2 @@\n+fn login() {}\n+fn logout() {}\n";
     reply(
         &mut world,

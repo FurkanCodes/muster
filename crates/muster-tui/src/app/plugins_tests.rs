@@ -346,7 +346,7 @@ fn a_plugin_is_added_from_git_after_its_preview_and_selected_once_listed() {
     );
     let screen = render(&world);
     assert!(
-        screen.contains("Fetching https://example.com/zoe.git…"),
+        screen.contains("Fetching the plugin") && screen.contains("https://example.com/zoe.git"),
         "{screen}"
     );
     assert!(screen.contains("esc give up"), "{screen}");
@@ -509,7 +509,7 @@ fn u_updates_a_plugin_after_showing_what_it_runs_now() {
             id: "zoe".to_owned()
         }
     );
-    assert!(render(&world).contains("Fetching zoe as it is now…"));
+    assert!(render(&world).contains("zoe as it is now"));
     reply(
         &mut world,
         req_id,

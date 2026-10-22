@@ -260,6 +260,41 @@ fn a_viewed_ticket_is_the_one_asked_for_with_its_text_cleaned() {
     // No text is none.
     let bare = super::viewed(json!({"ticket": {"key": "1", "title": "t"}}), &key("1")).unwrap();
     assert_eq!(bare.body, "");
+    assert!(bare.comments.is_empty());
+}
+
+#[test]
+fn a_viewed_ticket_s_comments_are_cleaned_cut_and_the_newest_kept() {
+    let mut comments = vec![
+        json!({"author": "oc\u{1b}to", "at": "2026-10-22T09:30:00Z", "body": "Seen\r\non main\u{1b}[2J"}),
+        json!({"author": "", "at": "yesterday", "body": "c".repeat(MOST_COMMENT + 10)}),
+        json!({"body": "   "}),
+        json!({"author": 7, "body": "a name of the wrong kind"}),
+        json!("not a comment"),
+    ];
+    let viewing = json!({"ticket": {"key": "42", "title": "t"}, "comments": comments.clone()});
+    let viewed = viewed(viewing, &key("42")).unwrap();
+    assert_eq!(viewed.comments.len(), 2);
+    assert_eq!(viewed.comments[0].author.as_deref(), Some("octo"));
+    assert_eq!(
+        viewed.comments[0].at.map(crate::Timestamp::as_millis),
+        Some(1_792_661_400_000)
+    );
+    assert_eq!(viewed.comments[0].body, "Seen\non main[2J");
+    // A moment that does not read, or no name, leaves the comment.
+    assert_eq!(viewed.comments[1].author, None);
+    assert_eq!(viewed.comments[1].at, None);
+    assert_eq!(viewed.comments[1].body.len(), MOST_COMMENT);
+    // Comments that are no list are none; too many keep the newest.
+    let odd = json!({"ticket": {"key": "42", "title": "t"}, "comments": "many"});
+    assert!(super::viewed(odd, &key("42")).unwrap().comments.is_empty());
+    comments = (0..MOST_COMMENTS + 3)
+        .map(|n| json!({"body": n.to_string()}))
+        .collect();
+    let many = json!({"ticket": {"key": "42", "title": "t"}, "comments": comments});
+    let kept = super::viewed(many, &key("42")).unwrap().comments;
+    assert_eq!(kept.len(), MOST_COMMENTS);
+    assert_eq!(kept[0].body, "3");
 }
 
 #[test]
@@ -287,16 +322,24 @@ fn a_plugin_writes_what_muster_reads() {
     let listed = listed(result).unwrap();
     assert_eq!(listed.tracker.as_deref(), Some("GitHub issues"));
     assert_eq!(listed.tickets, std::slice::from_ref(&issue));
+    let said = IssueComment {
+        author: Some("octocat".to_owned()),
+        at: Some(crate::Timestamp::from_millis(1_792_661_400_000)),
+        body: "Seen on main too.".to_owned(),
+    };
     let viewing = Viewing {
         ticket: Ticket::from(&issue),
         body: "text".to_owned(),
+        comments: vec![Comment::from(&said)],
     };
     let value = serde_json::to_value(&viewing).unwrap();
+    assert_eq!(value["comments"][0]["at"], "2026-10-22T09:30:00Z");
     assert_eq!(
         viewed(value, &key("42")).unwrap(),
         Viewed {
             issue,
-            body: "text".to_owned()
+            body: "text".to_owned(),
+            comments: vec![said],
         }
     );
 }
