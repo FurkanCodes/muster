@@ -67,9 +67,17 @@ function checkoutOf(app: App, project: string): Workspace | null {
   );
 }
 
-/** `a`: the folder browser. */
+/**
+ * `a`: the Mac's own folder panel, the project added as it is chosen;
+ * where the app has none (its tests' build, the mock), the folder browser.
+ */
 export function addProject(app: App): void {
-  app.actions.openFlow({ kind: "add-project" });
+  const browse = () => app.actions.openFlow({ kind: "add-project" });
+  app.bridge.pickFolder().then((picked) => {
+    if (picked.kind === "unavailable") return browse();
+    if (picked.kind === "chosen")
+      addProjectAt(app, picked.path).catch((error: unknown) => complain(app, said(error)));
+  }, browse);
 }
 
 /**

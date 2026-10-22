@@ -6,6 +6,7 @@
 import type { TermFrame } from "./frames";
 import type { Command } from "./generated/Command";
 import type { Folders } from "./generated/desktop/Folders";
+import type { PickedFolder } from "./generated/desktop/PickedFolder";
 import type { StateMessage } from "./generated/desktop/StateMessage";
 import type { Reply } from "./generated/Reply";
 import type { SessionId } from "./generated/SessionId";
@@ -50,6 +51,13 @@ export interface Bridge {
   colours(colours: TerminalColours): Promise<void>;
   /** The folders in the folder `path` (absolute, or from `~`), to add one as a project. Rejects with why it cannot. */
   listFolders(path: string): Promise<Folders>;
+  /**
+   * The Mac's own folder panel, to choose a project to add: the folder
+   * chosen, or that the person cancelled, or `unavailable` where the app has
+   * no panel (its end-to-end tests' build, the mock), the folder browser
+   * standing in.
+   */
+  pickFolder(): Promise<PickedFolder>;
   /** Tells `listener` the paths of what is dropped on the window, until the returned function is called. */
   onFolderDrop(listener: (paths: string[]) => void): Promise<() => void>;
 }

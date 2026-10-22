@@ -30,7 +30,7 @@ impl Drop for LinkTask {
 /// Starts the app and blocks until it quits. The daemon, and every
 /// session, keep running (`PRD-09`).
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
     #[cfg(feature = "e2e")]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
     let result = builder
@@ -66,6 +66,7 @@ pub fn run() {
             ticket_url::open_ticket_url,
             sounds::hear,
             folders::list_folders,
+            folders::pick_folder,
             settings_actions::restart_in_place,
             settings_actions::open_notification_settings,
             settings_actions::edit_settings_file,

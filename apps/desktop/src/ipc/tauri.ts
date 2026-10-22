@@ -8,6 +8,7 @@ import { decodeFrame, type TermFrame } from "./frames";
 import type { Command } from "./generated/Command";
 import type { BridgeError } from "./generated/desktop/BridgeError";
 import type { Folders } from "./generated/desktop/Folders";
+import type { PickedFolder } from "./generated/desktop/PickedFolder";
 import type { StateMessage } from "./generated/desktop/StateMessage";
 import type { Reply } from "./generated/Reply";
 import type { SessionId } from "./generated/SessionId";
@@ -137,6 +138,10 @@ export class TauriBridge implements Bridge {
         refused?.reason ? `Cannot read ${refused.path ?? path}: ${refused.reason}` : String(error),
       );
     }
+  }
+
+  async pickFolder(): Promise<PickedFolder> {
+    return invoke<PickedFolder>("pick_folder");
   }
 
   async onFolderDrop(listener: (paths: string[]) => void): Promise<() => void> {

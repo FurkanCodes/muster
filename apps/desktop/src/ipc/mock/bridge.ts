@@ -15,6 +15,7 @@ import type { Command } from "../generated/Command";
 import type { Folders } from "../generated/desktop/Folders";
 import type { LinkState } from "../generated/desktop/LinkState";
 import type { Patch } from "../generated/desktop/Patch";
+import type { PickedFolder } from "../generated/desktop/PickedFolder";
 import type { StateMessage } from "../generated/desktop/StateMessage";
 import type { ErrorCode } from "../generated/ErrorCode";
 import type { Reply } from "../generated/Reply";
@@ -315,6 +316,13 @@ export class MockBridge implements Bridge {
         `Cannot read ${path}: No such file or directory (os error 2)`,
       );
     return { path, folders };
+  }
+
+  /** The pretend daemon's window has no Mac panel: the folder browser stands in, unless a test says what is chosen. */
+  picked: PickedFolder = { kind: "unavailable" };
+
+  async pickFolder(): Promise<PickedFolder> {
+    return this.picked;
   }
 
   async onFolderDrop(listener: (paths: string[]) => void): Promise<() => void> {

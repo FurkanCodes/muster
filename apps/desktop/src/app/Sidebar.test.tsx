@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ulid } from "../ipc/mock/scenario";
@@ -76,5 +76,32 @@ describe("ARC-24 the sidebar", () => {
     const page = await screen.findByRole("region", { name: "muster" });
     expect(within(page).getByRole("textbox", { name: "First prompt" })).toHaveFocus();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("adds a project from the Mac's own folder panel, the folder browser standing in where there is none", async () => {
+    const { bridge } = renderApp();
+    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
+    const add = screen.getByRole("button", { name: /^Add a project/ });
+
+    bridge.picked = { kind: "cancelled" };
+    await userEvent.click(add);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      bridge.sent.some((command) => typeof command === "object" && "AddProject" in command),
+    ).toBe(false);
+
+    bridge.picked = { kind: "chosen", path: "/Users/you/code/labs" };
+    await userEvent.click(add);
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual({
+        AddProject: { root: "/Users/you/code/labs", name: null },
+      }),
+    );
+    expect(await screen.findByRole("region", { name: "labs" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    bridge.picked = { kind: "unavailable" };
+    await userEvent.click(screen.getByRole("button", { name: /^Add a project/ }));
+    expect(await screen.findByRole("dialog", { name: "Add a project" })).toBeInTheDocument();
   });
 });

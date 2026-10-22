@@ -2,3 +2,8 @@
 identifier = "allow-list-folders"
 description = "Lists the folders in a folder, for the folder browser that adds a project."
 commands.allow = ["list_folders"]
+
+[[permission]]
+identifier = "allow-pick-folder"
+description = "Opens the Mac's own folder panel to choose a project to add; the webview gets the folder chosen, nothing else."
+commands.allow = ["pick_folder"]
