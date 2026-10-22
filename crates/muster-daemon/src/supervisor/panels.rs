@@ -6,6 +6,7 @@
 //! (`MUSTER_PLUGIN_*`) and the variables and secrets its manifest names
 //! over them.
 
+use muster_core::harness::SessionKind;
 use muster_core::plugins::{Context, Missing, PanelOn};
 use muster_core::protocol::plugins::Beside;
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
@@ -86,7 +87,7 @@ impl Supervisor {
         size: TermSize,
     ) -> Result<Reply, ErrorBody> {
         let stored = self.stored_session(session)?;
-        let Some((plugin, panel)) = muster_core::harness::panel_of(&stored.harness) else {
+        let SessionKind::Panel { plugin, panel } = stored.kind() else {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
                 format!("{} is no plugin's panel", stored.title),
@@ -236,7 +237,7 @@ impl Supervisor {
             .sessions
             .iter()
             .filter(|session| {
-                muster_core::harness::panel_of(&session.harness).is_some_and(|(of, _)| of == plugin)
+                matches!(session.kind(), SessionKind::Panel { plugin: of, .. } if of == plugin)
             })
             .map(|session| session.id)
             .filter(|session| self.is_running(*session))

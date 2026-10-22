@@ -169,3 +169,11 @@ pub struct Session {
     #[serde(default)]
     pub beside: Option<SessionId>,
 }
+
+impl Session {
+    /// What it is, as its harness says: an agent's chat, the checks, the
+    /// person's shell or a plugin's panel.
+    pub fn kind(&self) -> crate::harness::SessionKind<'_> {
+        crate::harness::SessionKind::of(&self.harness)
+    }
+}

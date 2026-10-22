@@ -5,7 +5,6 @@
 //! without a panel's: its layout refuses a panel it does not know, and its
 //! keys a name that is no action of theirs, each the whole setting.
 
-use crate::harness;
 use crate::keys::Action;
 use crate::layout::Panel;
 use crate::plugins::PANELS_PROTOCOL;
@@ -18,8 +17,7 @@ impl Snapshot {
     #[must_use]
     pub fn for_version(mut self, version: u32) -> Self {
         if version < PANELS_PROTOCOL {
-            self.sessions
-                .retain(|session| !harness::is_panel(&session.harness));
+            self.sessions.retain(|session| !session.kind().is_panel());
             self.preferences = before_panels(self.preferences);
         }
         self
@@ -41,7 +39,7 @@ impl Delta {
             return Some(self);
         }
         match self {
-            Self::SessionUpserted(session) if harness::is_panel(&session.harness) => None,
+            Self::SessionUpserted(session) if session.kind().is_panel() => None,
             Self::Preferences(preferences) => Some(Self::Preferences(before_panels(preferences))),
             delta => Some(delta),
         }

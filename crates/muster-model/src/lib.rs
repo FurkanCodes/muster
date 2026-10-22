@@ -207,7 +207,7 @@ impl Model {
             .sessions
             .iter()
             .filter(|session| workspaces.contains(&session.workspace))
-            .filter(|session| !muster_core::harness::is_panel(&session.harness))
+            .filter(|session| !session.kind().is_panel())
             .collect();
         agents.sort_by_key(|session| (session.created_at, session.id));
         agents
@@ -444,7 +444,7 @@ pub use muster_core::news::needs_attention;
 /// Whether `session` stands beside the chats rather than among them: a
 /// shell, the person's own, or a plugin's panel, not an agent's chat.
 pub fn stands_beside(session: &Session) -> bool {
-    muster_core::harness::stands_beside(&session.harness)
+    session.kind().stands_beside()
 }
 
 fn upsert<T, K: PartialEq>(items: &mut Vec<T>, item: T, key: impl Fn(&T) -> K) {
