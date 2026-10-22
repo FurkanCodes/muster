@@ -17,6 +17,7 @@ import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { splitPath } from "../../lib/format";
 import type { Hint } from "../../state/ui";
 import { Button, Segmented } from "../../ui/controls";
+import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
 import { fileKind } from "../../ui/FileRow";
 import { DiffStat } from "../../ui/status";
 import { ChangesList, type View } from "./ChangesList";
@@ -286,11 +287,13 @@ function WorkspaceChanges({
           />
         ) : (
           <div className="mu-diffview ui-diff changes-pick">
-            <p className="mu-empty-text">
-              {view === "turns"
-                ? "Choose a turn to see what it changed."
-                : "Choose a file to see its diff."}
-            </p>
+            <EmptyState>
+              <EmptyStateText>
+                {view === "turns"
+                  ? "Choose a turn to see what it changed."
+                  : "Choose a file to see its diff."}
+              </EmptyStateText>
+            </EmptyState>
           </div>
         )}
       </div>

@@ -419,9 +419,9 @@ describe("ARC-24 other work on the same files", () => {
         }),
       );
       const banner = screen.getByText(conflict ? "Conflict" : "Overlap").closest(".mu-banner");
-      expect(banner).toHaveTextContent(`!${words}See its changes`);
-      expect(banner).toHaveClass(conflict ? "mu-banner" : "mu-banner--overlap");
-      expect(banner?.classList.contains("mu-banner--overlap")).toBe(!conflict);
+      // The mark is drawn by the banner's tone, never a glyph in its text.
+      expect(banner).toHaveTextContent(`${words}See its changes`);
+      expect(banner).toHaveClass(conflict ? "mu-banner--waiting" : "mu-banner--overlap");
       await userEvent.keyboard("1");
       expect(app.ui.getState().selected.all).toBe(ulid(103));
       expect(app.ui.getState().screen).toBe("all");

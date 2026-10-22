@@ -3,7 +3,7 @@ import { useApp, useDaemon } from "../../app/context";
 import type { Issue } from "../../ipc/generated/Issue";
 import { statusKind } from "../../lib/status";
 import { projectColour } from "../../state/selectors";
-import { AgentLogo, PullRequest, StatusMark } from "../../ui/status";
+import { AgentLogo, PullRequest, StatusMark, Swatch } from "../../ui/status";
 import { changedInSight, stamp } from "../queue/history";
 import { agentsOn, shownKey, ticketPullRequest, worktreesFor } from "./agents";
 import { ticketText } from "./TicketText";
@@ -75,5 +75,5 @@ export function ProjectName({ id }: { id: string }) {
 
 export function ProjectSwatch({ id }: { id: string }) {
   const colour = useDaemon((s) => projectColour(s, id));
-  return <span className={`mu-swatch mu-p${colour}`} aria-hidden="true" />;
+  return <Swatch colour={colour} />;
 }

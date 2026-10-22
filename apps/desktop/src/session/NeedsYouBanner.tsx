@@ -7,8 +7,8 @@ import { useDaemon } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { ago } from "../lib/format";
 import { doing } from "../lib/status";
+import { Banner, BannerLead, BannerText } from "../ui/Banner";
 import { Hint } from "../ui/controls";
-import { StatusMark } from "../ui/status";
 import { plainText } from "./question";
 
 export function NeedsYouBanner({ session }: { session: SessionId }) {
@@ -19,14 +19,13 @@ export function NeedsYouBanner({ session }: { session: SessionId }) {
   const since = useDaemon((state) => state.sessions[session]?.status_since ?? 0);
   if (waits === null) return null;
   return (
-    <div className="mu-banner session-banner" role="status">
-      <StatusMark kind="waiting" />
-      <span className="mu-banner-text mu-cut" title={waits}>
-        <span className="mu-banner-lead">Needs you:</span> {waits}
-      </span>
+    <Banner className="session-banner">
+      <BannerText title={waits}>
+        <BannerLead>Needs you:</BannerLead> {waits}
+      </BannerText>
       <Since since={since} />
       <Hint keys="⏎" does="answer in the terminal" />
-    </div>
+    </Banner>
   );
 }
 

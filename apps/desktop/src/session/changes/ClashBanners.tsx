@@ -7,6 +7,7 @@ import { useActions, useApp, useDaemon } from "../../app/context";
 import { useKeys } from "../../app/keys";
 import type { Clash } from "../../ipc/generated/Clash";
 import { standsBeside } from "../../state/selectors";
+import { Banner, BannerLead, BannerText } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
 import { clashFiles, clashWords, placeName, wouldConflict } from "./labels";
 
@@ -32,25 +33,18 @@ function ClashBanner({ clash, index }: { clash: Clash; index: number }) {
   };
   useKeys({ [key]: open });
   return (
-    <div className={`mu-banner ${conflict ? "" : "mu-banner--overlap"}`} role="status">
-      <span
-        className={`mu-mark ${conflict ? "mu-mark--waiting" : "mu-mark--working"}`}
-        aria-hidden="true"
-      >
-        !
-      </span>
-      <span className="mu-banner-text" title={`${lead} with ${place}: ${clashWords(clash)}`}>
-        <span className="mu-banner-lead">{lead}</span> with{" "}
-        <span className="mu-branch">{place}</span>:{" "}
+    <Banner tone={conflict ? "waiting" : "overlap"}>
+      <BannerText title={`${lead} with ${place}: ${clashWords(clash)}`}>
+        <BannerLead>{lead}</BannerLead> with <span className="mu-branch">{place}</span>:{" "}
         {conflict ? "would conflict in " : "both change "}
         <span className="mu-mono">{named}</span>
         {more ? ` and ${more} more` : ""}
         {conflict ? "." : ". Git could merge them."}
-      </span>
+      </BannerText>
       <Button size="sm" title={`See its changes (${key})`} onClick={open}>
         See its changes
       </Button>
-    </div>
+    </Banner>
   );
 }
 

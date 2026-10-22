@@ -75,3 +75,12 @@
 .mu-menu-item:focus-visible {
   background: var(--surface-lit);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .mu-root *,
+  .mu-root *::before,
+  .mu-root *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

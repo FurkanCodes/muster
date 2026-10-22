@@ -15,7 +15,7 @@ import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { branchOf, projectColour } from "../../state/selectors";
 import { focusListOf } from "../../ui/listPointer";
-import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
+import { AgentLogo, DiffStat, NewsDot, PullRequest, StatusMark, Swatch } from "../../ui/status";
 import { mostUrgent, sessionsOn, type TreeRow } from "./tree";
 
 /** The row's id in the tree, for `aria-activedescendant`. */
@@ -143,7 +143,7 @@ export function ProjectLine(props: LineProps) {
   return (
     <Line {...props} expanded={!folded} className="mu-tree-row sessions-project" label={name}>
       <Fold {...props} />
-      <span className={`mu-swatch mu-p${colour}`} />
+      <Swatch colour={colour} />
       <span className="mu-tree-project mu-cut" title={homely(root)}>
         {name}
       </span>

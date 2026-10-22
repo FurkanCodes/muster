@@ -33,6 +33,10 @@
   color: var(--text-quiet);
   flex: none;
 }
+.mu-kep--large {
+  font-size: 28px;
+  line-height: 36px;
+}
 .mu-kep--barking {
   color: var(--waiting);
 }

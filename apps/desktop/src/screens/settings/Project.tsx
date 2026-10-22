@@ -11,6 +11,7 @@ import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
 import type { SettingSource } from "../../ipc/generated/SettingSource";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { projectColour } from "../../state/selectors";
+import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { Select, type SelectOption } from "../../ui/Select";
@@ -407,15 +408,12 @@ export function Project({ project }: { project: ProjectId }) {
       }
     >
       {read?.state === "failed" ? (
-        <div className="mu-banner app-settings-banner" role="status">
-          <span className="mu-mark mu-mark--waiting" aria-hidden="true">
-            ▲
-          </span>
-          <span className="app-settings-banner-text">
-            <span className="mu-banner-lead">Its settings cannot be read:</span>{" "}
-            {sentence(read.error)}. Fix the file it names, then press {readKey}.
-          </span>
-        </div>
+        <Banner className="app-settings-banner">
+          <BannerBody>
+            <BannerLead>Its settings cannot be read:</BannerLead> {sentence(read.error)}. Fix the
+            file it names, then press {readKey}.
+          </BannerBody>
+        </Banner>
       ) : null}
       {settings ? (
         <Loaded project={project} name={name} settings={settings} />

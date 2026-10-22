@@ -13,14 +13,16 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { Connecting } from "../../app/Connecting";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
+import { NothingSelected } from "../../app/Page";
 import { Sidebar } from "../../app/Sidebar";
 import type { SessionId } from "../../ipc/generated/SessionId";
 import { type Keymap, labelOf } from "../../keys/keymap";
 import { useActionKeys, useBorrowedKeys, useKeymap } from "../../keys/useKeymap";
 import { keysOf, type MenuItem } from "../../session/SessionMenu";
-import { SessionPane, SidebarAway } from "../../session/SessionPane";
+import { SessionPane } from "../../session/SessionPane";
 import {
   CloseSession,
   RenameSession,
@@ -29,6 +31,8 @@ import {
 } from "../../session/useSessionActions";
 import { projectColour, standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
+import { EmptyState, EmptyStateText, EmptyStateTitle } from "../../ui/EmptyState";
+import { Swatch } from "../../ui/status";
 import { lastNeeded } from "./history";
 import { optionId, QueueEntry } from "./QueueEntry";
 import { byProject, holdPlace, projectOfSession, queueIds, type Section, sectionOf } from "./queue";
@@ -111,7 +115,6 @@ export function QueueScreen({ active }: { active: boolean }) {
   const { groups, waiting, ids, selected, chosen } = useShownQueue();
   const keysIn = useUi((state) => state.keysIn);
   const loaded = useDaemon((state) => state.loaded);
-  const link = useDaemon((state) => state.link.state);
   const sections = useDaemon(
     useShallow((state) =>
       ids.map((id) => {
@@ -250,11 +253,7 @@ export function QueueScreen({ active }: { active: boolean }) {
         <section className="queue-column" aria-label={TITLE}>
           <h1 className="app-hidden">{TITLE}</h1>
           {!loaded ? (
-            <div className="mu-empty" role="status">
-              <p className="mu-empty-text">
-                {link === "down" ? "Muster's daemon is out of reach." : "Connecting to Muster…"}
-              </p>
-            </div>
+            <Connecting />
           ) : (
             <div
               className="mu-queue queue-list"
@@ -286,7 +285,11 @@ export function QueueScreen({ active }: { active: boolean }) {
       </Sidebar>
       {active ? (
         <main className="app-screen">
-          {selected ? <SessionPane session={selected} menu={menu} /> : <NoneSelected />}
+          {selected ? (
+            <SessionPane session={selected} menu={menu} />
+          ) : (
+            <NothingSelected className="session-pane queue-none" />
+          )}
         </main>
       ) : null}
       <CloseSession actions={tools} />
@@ -329,7 +332,7 @@ function ProjectHeading({ project }: { project: string }) {
           actions.show("all");
         }}
       >
-        <span className={`mu-swatch mu-p${colour}`} />
+        <Swatch colour={colour} />
         <span className="mu-cut">{name}</span>
       </button>
     </div>
@@ -338,25 +341,13 @@ function ProjectHeading({ project }: { project: string }) {
 
 function AllClear({ working }: { working: number }) {
   return (
-    <div className="mu-empty queue-clear" role="presentation">
-      <h2 className="mu-empty-title queue-clear-title">All clear</h2>
-      <p className="mu-empty-text">
+    <EmptyState className="queue-clear" role="presentation">
+      <EmptyStateTitle className="queue-clear-title">All clear</EmptyStateTitle>
+      <EmptyStateText>
         {working === 0
           ? "No agent is at work. Muster will show them here when they need you."
           : `${working} ${working === 1 ? "agent" : "agents"} at work. Muster will show them here when they need you.`}
-      </p>
-    </div>
-  );
-}
-
-/** The pane's place while nothing is selected: the window keeps its shape. */
-function NoneSelected() {
-  return (
-    <section className="mu-pane app-pane session-pane queue-none" aria-label="No session">
-      <header className="app-head" data-tauri-drag-region>
-        <SidebarAway />
-      </header>
-      <p className="mu-meta queue-none-text">The session you select shows here, live.</p>
-    </section>
+      </EmptyStateText>
+    </EmptyState>
   );
 }

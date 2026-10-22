@@ -4,6 +4,7 @@ import { BridgeFailure } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
 import { Button } from "../../ui/controls";
+import { Detail, DetailList } from "../../ui/DetailList";
 import { Dialog } from "../../ui/Dialog";
 import { shownKey } from "./agents";
 import { message, type TicketsModel } from "./data";
@@ -131,18 +132,14 @@ export function CloseTicket({
           {key} is told. Muster changes nothing else in the tracker.
         </p>
       ) : (
-        <dl className="mu-details tickets-cleanup">
+        <DetailList className="tickets-cleanup">
           {working.length ? (
-            <>
-              <dt>Stops</dt>
-              <dd>
-                {working.length === 1 ? "1 agent" : `${working.length} agents`} still running:{" "}
-                {working.map((s) => ticketText(s.title)).join(", ")}
-              </dd>
-            </>
+            <Detail name="Stops">
+              {working.length === 1 ? "1 agent" : `${working.length} agents`} still running:{" "}
+              {working.map((s) => ticketText(s.title)).join(", ")}
+            </Detail>
           ) : null}
-          <dt>Removes</dt>
-          <dd>
+          <Detail name="Removes">
             {worktrees.map((w, i) => (
               <span key={w.id}>
                 {i ? (i === worktrees.length - 1 ? " and " : ", ") : null}
@@ -150,16 +147,15 @@ export function CloseTicket({
               </span>
             ))}
             , once nothing runs in {worktrees.length === 1 ? "it" : "them"}
-          </dd>
-          <dt>Keeps</dt>
-          <dd>
+          </Detail>
+          <Detail name="Keeps">
             {worktrees.length === 1
               ? "its branch"
               : worktrees.length === 2
                 ? "both branches"
                 : `all ${worktrees.length} branches`}
-          </dd>
-        </dl>
+          </Detail>
+        </DetailList>
       )}
       {error ? (
         <p className="tickets-error" role="alert">

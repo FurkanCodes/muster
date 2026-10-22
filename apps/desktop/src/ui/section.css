@@ -1,0 +1,14 @@
+/* Section (ui/Section.tsx): a group under a quiet heading. */
+.mu-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mu-section-title {
+  margin: 0;
+  padding: 0 var(--space-12) var(--space-6);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-quiet);
+}

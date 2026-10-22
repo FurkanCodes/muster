@@ -15,6 +15,9 @@ import { chordsOf, labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { projectColour, projectsInOrder } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
+import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { NavCount, NavItem, NavLabel } from "../../ui/Nav";
+import { Swatch } from "../../ui/status";
 import { Agents } from "./Agents";
 import { OWN_AGENTS } from "./agentList";
 import { useSettings } from "./context";
@@ -71,25 +74,26 @@ function SettingsScreen() {
 function SectionItem({
   id,
   current,
+  icon,
   children,
 }: {
   id: Section;
   current: boolean;
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   const { state, actions } = useSettings();
   return (
-    <button
-      type="button"
-      className="mu-nav-item"
-      aria-current={current ? "page" : undefined}
+    <NavItem
+      icon={icon}
+      current={current}
       onClick={() => {
         const first = firstRow(state.rows, id);
         if (first) actions.select(first.key);
       }}
     >
       {children}
-    </button>
+    </NavItem>
   );
 }
 
@@ -97,10 +101,7 @@ function ProjectItem({ id, current }: { id: string; current: boolean }) {
   const name = useDaemon((daemon) => daemon.projects[id]?.name ?? "");
   const colour = useDaemon((daemon) => projectColour(daemon, id));
   return (
-    <SectionItem id={projectSection(id)} current={current}>
-      <span className="mu-nav-icon">
-        <span className={`mu-swatch mu-p${colour}`} />
-      </span>
+    <SectionItem id={projectSection(id)} current={current} icon={<Swatch colour={colour} />}>
       <span className="app-settings-project">{name}</span>
     </SectionItem>
   );
@@ -118,20 +119,21 @@ function Sections({ shown }: { shown: Section }) {
   return (
     <section className="app-settings-sections" aria-label="Settings sections">
       <SidebarAwayRow />
-      <div className="mu-queue-head" data-tauri-drag-region>
-        <h1 className="mu-queue-title">Settings</h1>
-        <span className="mu-meta">The terminal UI shares them.</span>
+      <div className="app-column-heading" data-tauri-drag-region>
+        <Heading>
+          <HeadingTitle level={1}>Settings</HeadingTitle>
+          <HeadingLead>The terminal UI shares them.</HeadingLead>
+        </Heading>
       </div>
       <div className="app-settings-nav">
-        <div className="mu-nav-label">Muster</div>
+        <NavLabel>Muster</NavLabel>
         {MUSTER_SECTIONS.map((section) => (
           <SectionItem key={section.id} id={section.id} current={shown === section.id}>
-            <span className="mu-nav-icon" />
             {section.title}
-            {counts[section.id] ? <span className="mu-nav-count">{counts[section.id]}</span> : null}
+            {counts[section.id] ? <NavCount>{counts[section.id]}</NavCount> : null}
           </SectionItem>
         ))}
-        {projects.length > 0 ? <div className="mu-nav-label">Projects</div> : null}
+        {projects.length > 0 ? <NavLabel>Projects</NavLabel> : null}
         {projects.map((id) => (
           <ProjectItem key={id} id={id} current={shown === projectSection(id)} />
         ))}
@@ -166,10 +168,10 @@ function ShownPage({ section }: { section: Section }) {
       MUSTER_SECTIONS.find((candidate) => candidate.id === section)?.title ?? "Settings";
     return (
       <div className="mu-settings" aria-busy="true">
-        <div className="mu-settings-head">
-          <h2 className="mu-settings-title">{title}</h2>
-          <span className="mu-meta">Reading Muster's own settings…</span>
-        </div>
+        <Heading className="app-settings-heading">
+          <HeadingTitle>{title}</HeadingTitle>
+          <HeadingLead>Reading Muster's own settings…</HeadingLead>
+        </Heading>
       </div>
     );
   }

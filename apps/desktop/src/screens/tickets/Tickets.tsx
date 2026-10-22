@@ -10,6 +10,8 @@ import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { projectsInOrder } from "../../state/selectors";
 import { Button, Segmented } from "../../ui/controls";
+import { EmptyState, EmptyStateText } from "../../ui/EmptyState";
+import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { Detail } from "./Detail";
 import { groupProjects, message, ticketId, ticketsFor } from "./data";
@@ -166,9 +168,11 @@ export default function Tickets() {
     <div className="tickets-screen" data-keys={dialog ? "dialog" : "list"}>
       <section className="tickets-list" aria-label="Tickets">
         <SidebarAwayRow />
-        <div className="mu-queue-head" data-tauri-drag-region>
-          <h1 className="mu-queue-title">Tickets</h1>
-          <span className="mu-meta">Each project's open tickets, and the agents on them.</span>
+        <div className="app-column-heading" data-tauri-drag-region>
+          <Heading>
+            <HeadingTitle level={1}>Tickets</HeadingTitle>
+            <HeadingLead>Each project's open tickets, and the agents on them.</HeadingLead>
+          </Heading>
         </div>
         <div className="mu-queue tickets-queue">
           {!ids.length ? (
@@ -260,9 +264,9 @@ export default function Tickets() {
         />
       ) : (
         <section className="mu-pane tickets-detail">
-          <div className="mu-empty">
-            <p className="mu-empty-text">Select a ticket to see it here.</p>
-          </div>
+          <EmptyState>
+            <EmptyStateText>Select a ticket to see it here.</EmptyStateText>
+          </EmptyState>
         </section>
       )}
       <Suspense fallback={null}>

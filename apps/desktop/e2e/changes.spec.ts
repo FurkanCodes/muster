@@ -380,7 +380,7 @@ test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other w
   await open(page);
   const banner = page.locator(".mu-banner");
   await expect(banner).toHaveText(
-    "!Overlap with ⎇ fix/resize-under-load: both change crates/muster-client/src/connection.rs. Git could merge them.See its changes",
+    "Overlap with ⎇ fix/resize-under-load: both change crates/muster-client/src/connection.rs. Git could merge them.See its changes",
   );
   await expect(banner).toHaveClass(/mu-banner--overlap/);
   await expect(statusBar(page)).toContainText("the other work");
@@ -399,7 +399,7 @@ test("ARC-24 overlap and conflict banners, worded as the TUI's, with the other w
     { workspace, other },
   );
   await expect(banner).toHaveText(
-    "!Conflict with ⎇ fix/resize-under-load: would conflict in src/link.rs and 2 more.See its changes",
+    "Conflict with ⎇ fix/resize-under-load: would conflict in src/link.rs and 2 more.See its changes",
   );
   await expect(banner).not.toHaveClass(/mu-banner--overlap/);
   await page.evaluate(

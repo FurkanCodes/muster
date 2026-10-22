@@ -26,6 +26,11 @@ export function StatusMark({ kind }: { kind: StatusKind }) {
   );
 }
 
+/** A project's colour, a small round mark beside its name (`colour` its place in the list, 1 to 6). */
+export function Swatch({ colour }: { colour: number }) {
+  return <span className={`mu-swatch mu-p${colour}`} aria-hidden="true" />;
+}
+
 /** The not-seen dot. */
 export function NewsDot() {
   return <span className="mu-dot" role="img" aria-label="not seen" />;

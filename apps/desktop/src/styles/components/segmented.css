@@ -25,3 +25,11 @@
   background: var(--surface-lit);
   color: var(--text);
 }
+/* A segment's count, after its label; in the waiting colour where they wait on the person. */
+.mu-seg-count {
+  margin-left: var(--space-6);
+  color: var(--text-quiet);
+}
+.mu-seg-count--waiting {
+  color: var(--waiting);
+}

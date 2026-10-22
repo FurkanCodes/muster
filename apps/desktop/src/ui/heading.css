@@ -1,0 +1,33 @@
+/* Heading (ui/Heading.tsx): a place's title, the line under it, its actions
+   at its end. Its room around it is the place's to give. */
+.mu-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-16);
+  row-gap: var(--space-2);
+  align-items: start;
+}
+.mu-heading-title {
+  grid-column: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.mu-heading-lead {
+  grid-column: 1;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-quiet);
+}
+.mu-heading-actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}

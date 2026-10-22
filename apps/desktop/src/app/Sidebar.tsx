@@ -20,9 +20,10 @@ import { keysOf, SessionMenu } from "../session/SessionMenu";
 import { keep, kept } from "../state/kept";
 import { chats } from "../state/selectors";
 import type { ListId } from "../state/ui";
-import { IconButton, Kbd } from "../ui/controls";
+import { IconButton, Kbd, Segmented } from "../ui/controls";
 import { Icon, type IconName } from "../ui/Icon";
 import { KepFace, type Mood } from "../ui/Kep";
+import { NavItem } from "../ui/Nav";
 import { useActions, useApp, useDaemon, useUi } from "./context";
 
 function useMood(): Mood {
@@ -54,6 +55,16 @@ export function SidebarToggle() {
   );
 }
 
+/** The window's own buttons sit over the pane's head while the sidebar is away: room for them, and the way back. */
+export function SidebarAway() {
+  const away = useUi((state) => state.sidebarFolded || state.fullScreen !== null);
+  return away ? (
+    <span className="app-head-away">
+      <SidebarToggle />
+    </span>
+  ) : null;
+}
+
 /**
  * Over a screen with no head of its own (Tickets, Settings), while the
  * sidebar is away: a row clear of the window's buttons, and the way back.
@@ -83,19 +94,15 @@ function SideButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className="mu-nav-item"
-      aria-current={current ? "page" : undefined}
+    <NavItem
+      icon={<Icon name={icon} size={16} />}
+      current={current}
       disabled={disabled}
       onClick={onClick}
     >
-      <span className="mu-nav-icon">
-        <Icon name={icon} size={16} />
-      </span>
       {label}
       {keys ? <Kbd className="app-sidebar-key">{keys}</Kbd> : null}
-    </button>
+    </NavItem>
   );
 }
 
@@ -104,23 +111,17 @@ function ListSwitch() {
   const list = useUi((state) => state.list);
   const waiting = useDaemon((state) => state.derived.counts.waiting);
   const all = useDaemon((state) => chats(state).length);
-  const segment = (id: ListId, label: string, count: number, tone: string) => (
-    <button
-      type="button"
-      className="mu-seg-item app-lists-item"
-      aria-pressed={list === id}
-      onClick={() => actions.show(id)}
-    >
-      {label}
-      {count > 0 ? <span className={`app-lists-count ${tone}`}>{count}</span> : null}
-    </button>
-  );
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, as Segmented's.
-    <div className="mu-seg app-lists" role="group" aria-label="Sessions listed">
-      {segment("needs-you", "Needs you", waiting, "app-lists-count--waiting")}
-      {segment("all", "All", all, "")}
-    </div>
+    <Segmented<ListId>
+      label="Sessions listed"
+      className="app-lists"
+      segments={[
+        { value: "needs-you", label: "Needs you", count: waiting, tone: "waiting" },
+        { value: "all", label: "All", count: all },
+      ]}
+      value={list}
+      onChange={(id) => actions.show(id)}
+    />
   );
 }
 

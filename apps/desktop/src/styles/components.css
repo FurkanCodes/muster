@@ -15,7 +15,9 @@
 @import "./components/diff-stat.css";
 @import "./components/queue.css";
 @import "./components/pane.css";
-@import "./components/banner.css";
+@import "../ui/heading.css";
+@import "../ui/section.css";
+@import "../ui/banner.css";
 @import "./components/terminal.css";
 @import "./components/turn.css";
 @import "./components/file-row.css";
@@ -29,7 +31,7 @@
 @import "./components/agent-choice.css";
 @import "./components/settings.css";
 @import "./components/plugin-row.css";
-@import "./components/details.css";
+@import "../ui/detail-list.css";
 @import "./components/prose.css";
 @import "./components/tree.css";
 @import "./components/panel.css";
@@ -39,4 +41,4 @@
 @import "./components/key-row.css";
 @import "./components/agent-row.css";
 @import "./components/folder-row.css";
-@import "./components/empty.css";
+@import "../ui/empty-state.css";

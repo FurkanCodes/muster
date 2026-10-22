@@ -5,34 +5,6 @@
   gap: var(--space-4);
   padding: var(--space-4) var(--space-8) var(--space-16);
 }
-.mu-queue-head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-16) var(--space-20) var(--space-8);
-}
-.mu-queue-title {
-  margin: 0;
-  font-size: 18px;
-  line-height: 24px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.mu-section {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-24) var(--space-12) var(--space-4);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-}
-.mu-section:first-child {
-  padding-top: var(--space-8);
-}
-.mu-section {
-  color: var(--text-quiet);
-}
 .mu-item {
   width: 100%;
   display: flex;

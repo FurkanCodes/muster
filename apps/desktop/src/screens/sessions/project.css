@@ -69,24 +69,16 @@
   max-width: 240px;
   height: var(--size-control-md);
 }
-.project-banner .mu-banner-text {
-  white-space: normal;
-}
 .project-error {
   color: var(--waiting);
 }
 
-.project-head-actions {
-  margin-left: auto;
-  display: flex;
-  gap: var(--space-4);
-}
-.project-heading {
+.project-where {
   margin-top: var(--space-16);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--text-quiet);
+}
+/* In line with the composer's edge, as the page's own text is. */
+.project-where-title {
+  padding-left: 0;
 }
 .project-places,
 .project-sessions {

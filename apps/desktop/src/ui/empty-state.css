@@ -1,4 +1,4 @@
-/* Empty states and Kep */
+/* EmptyState (ui/EmptyState.tsx): what a place says while it has nothing to show, and Kep. */
 .mu-empty {
   display: flex;
   flex-direction: column;
@@ -31,19 +31,4 @@
   height: auto;
   image-rendering: pixelated;
   display: block;
-}
-.mu-banner--away {
-  background: var(--working-soft);
-}
-.mu-banner--away .mu-banner-lead {
-  color: var(--working);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mu-root *,
-  .mu-root *::before,
-  .mu-root *::after {
-    transition: none !important;
-    animation: none !important;
-  }
 }

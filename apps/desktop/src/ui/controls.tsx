@@ -99,6 +99,10 @@ export function Spinner({ still = false }: { still?: boolean }) {
 export interface Segment<T extends string> {
   value: T;
   label: string;
+  /** How many it holds, after its label; none where there are none. */
+  count?: number;
+  /** The count's tone: `waiting` where they wait on the person. */
+  tone?: "waiting";
 }
 
 export function Segmented<T extends string>({
@@ -107,9 +111,12 @@ export function Segmented<T extends string>({
   value,
   onChange,
   busy = false,
+  className,
 }: {
   label: string;
   segments: readonly Segment<T>[];
+  /** Where it sits, for its place's own layout (the sidebar's lists' switch fills its width). */
+  className?: string;
   value: T;
   onChange: (value: T) => void;
   /** A change is on its way: no second press until it is answered. */
@@ -117,7 +124,12 @@ export function Segmented<T extends string>({
 }) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, not a form; a fieldset would bring a legend and form semantics.
-    <div className="mu-seg" role="group" aria-label={label} aria-busy={busy || undefined}>
+    <div
+      className={className ? `mu-seg ${className}` : "mu-seg"}
+      role="group"
+      aria-label={label}
+      aria-busy={busy || undefined}
+    >
       {segments.map((segment) => (
         <button
           key={segment.value}
@@ -128,6 +140,15 @@ export function Segmented<T extends string>({
           onClick={() => onChange(segment.value)}
         >
           {segment.label}
+          {segment.count ? (
+            <span
+              className={
+                segment.tone ? `mu-seg-count mu-seg-count--${segment.tone}` : "mu-seg-count"
+              }
+            >
+              {segment.count}
+            </span>
+          ) : null}
         </button>
       ))}
     </div>

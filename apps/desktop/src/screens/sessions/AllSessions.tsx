@@ -10,8 +10,10 @@
 // the pull request in the browser (src/session/byHand.ts).
 
 import { useEffect } from "react";
+import { Connecting } from "../../app/Connecting";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
+import { NothingSelected } from "../../app/Page";
 import { Sidebar } from "../../app/Sidebar";
 import { newSession } from "../../flows/actions";
 import { labelOf } from "../../keys/keymap";
@@ -20,10 +22,11 @@ import { toggleShell } from "../../panels/beside";
 import { usePanelHandlers } from "../../panels/usePanelKeys";
 import * as byHand from "../../session/byHand";
 import { keysOf, type MenuItem } from "../../session/SessionMenu";
-import { SessionPane, SidebarAway } from "../../session/SessionPane";
+import { SessionPane } from "../../session/SessionPane";
 import { CloseSession, useSessionActions } from "../../session/useSessionActions";
 import { standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
+import { EmptyState, EmptyStateText, EmptyStateTitle } from "../../ui/EmptyState";
 import { ProjectPage } from "./ProjectPage";
 import { RowDetail } from "./RowDetail";
 import { SessionTree } from "./SessionTree";
@@ -37,10 +40,10 @@ const IN_TERMINAL: readonly Hint[] = [
 
 function Empty() {
   return (
-    <div className="mu-empty" role="status">
-      <h2 className="mu-empty-title">No projects yet</h2>
-      <p className="mu-empty-text">Each project you add shows here, with its sessions.</p>
-    </div>
+    <EmptyState role="status">
+      <EmptyStateTitle>No projects yet</EmptyStateTitle>
+      <EmptyStateText>Each project you add shows here, with its sessions.</EmptyStateText>
+    </EmptyState>
   );
 }
 
@@ -52,7 +55,6 @@ export default function AllSessions({ active }: { active: boolean }) {
   const keysIn = useUi((state) => state.keysIn);
   const fullScreen = useUi((state) => state.fullScreen !== null);
   const loaded = useDaemon((state) => state.loaded);
-  const link = useDaemon((state) => state.link.state);
   const map = useKeymap();
   const session = selected?.kind === "session" ? selected.id : undefined;
   const tools = useSessionActions(session);
@@ -262,11 +264,7 @@ export default function AllSessions({ active }: { active: boolean }) {
         <section className="sessions-column" aria-label="Sessions">
           <h1 className="app-hidden">Sessions</h1>
           {!loaded ? (
-            <div className="mu-empty" role="status">
-              <p className="mu-empty-text">
-                {link === "down" ? "Muster's daemon is out of reach." : "Connecting to Muster…"}
-              </p>
-            </div>
+            <Connecting />
           ) : tree.rows.length === 0 ? (
             <Empty />
           ) : (
@@ -297,14 +295,7 @@ export default function AllSessions({ active }: { active: boolean }) {
           ) : selected ? (
             <RowDetail row={selected} shellKey={shellKey} />
           ) : (
-            <section className="mu-pane app-pane sessions-detail" aria-label="No session">
-              <header className="app-head" data-tauri-drag-region>
-                <SidebarAway />
-              </header>
-              <p className="mu-meta sessions-detail-empty">
-                The session you select shows here, live.
-              </p>
-            </section>
+            <NothingSelected className="sessions-detail" />
           )}
         </main>
       ) : null}

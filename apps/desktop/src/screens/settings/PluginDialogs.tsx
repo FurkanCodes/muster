@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useActions, useBridge } from "../../app/context";
 import type { PluginPreview } from "../../ipc/generated/PluginPreview";
+import { Banner, BannerBody } from "../../ui/Banner";
 import { Button, Spinner } from "../../ui/controls";
 import { Dialog } from "../../ui/Dialog";
 import { TextField } from "../../ui/TextField";
@@ -198,14 +199,14 @@ function Approve({ preview }: { preview: PluginPreview }) {
           It needs programs that are not on PATH: it can be {done}, but they are yours to get.
         </p>
       ) : null}
-      <div className="mu-banner app-settings-note">
-        <span className="mu-meta app-settings-note-text">
+      <Banner tone="note">
+        <BannerBody>
           {details.hooks.length > 0
             ? "A hook only hears. It cannot start, prompt or type into an agent. "
             : ""}
           If its manifest changes, it is turned off until you approve it again. {after}
-        </span>
-      </div>
+        </BannerBody>
+      </Banner>
     </Dialog>
   );
 }

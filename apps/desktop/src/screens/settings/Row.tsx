@@ -3,7 +3,11 @@
 // row, which the whole of is the target of its control, selected with the
 // keys or a press, and answering ⏎, space and ← → while selected.
 
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
+import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
+import { Section, SectionTitle } from "../../ui/Section";
+import { Swatch } from "../../ui/status";
 import { type RowBehaviour, useSettings } from "./context";
 import { sentence } from "./words";
 
@@ -135,15 +139,13 @@ export function Control({ children }: { children: ReactNode }) {
   return <span className="mu-setting-control">{children}</span>;
 }
 
+/** A page's settings under one heading. */
 export function Group({ title, children }: { title: string; children: ReactNode }) {
-  const id = useId();
   return (
-    <section className="mu-settings-group" aria-labelledby={id}>
-      <h3 className="mu-settings-group-title" id={id}>
-        {title}
-      </h3>
+    <Section>
+      <SectionTitle>{title}</SectionTitle>
       {children}
-    </section>
+    </Section>
   );
 }
 
@@ -164,16 +166,14 @@ export function Page({
 }) {
   return (
     <div className="mu-settings">
-      <div className={`mu-settings-head ${aside ? "app-settings-head--aside" : ""}`}>
-        <div className="app-settings-head-text">
-          <h2 className="mu-settings-title">
-            {swatch ? <span className={`mu-swatch mu-p${swatch}`} /> : null}
-            {title}
-          </h2>
-          <span className="mu-meta">{lead}</span>
-        </div>
-        {aside}
-      </div>
+      <Heading className="app-settings-heading">
+        <HeadingTitle>
+          {swatch ? <Swatch colour={swatch} /> : null}
+          {title}
+        </HeadingTitle>
+        <HeadingLead>{lead}</HeadingLead>
+        {aside ? <HeadingActions>{aside}</HeadingActions> : null}
+      </Heading>
       {children}
     </div>
   );
@@ -187,15 +187,11 @@ export function Footnote({ children }: { children: ReactNode }) {
 /** Muster's own settings do not read: the rest are its defaults meanwhile. */
 export function Unreadable({ problem, readKey }: { problem: string; readKey: string }) {
   return (
-    <div className="mu-banner app-settings-banner" role="status">
-      <span className="mu-mark mu-mark--waiting" aria-hidden="true">
-        ▲
-      </span>
-      <span className="app-settings-banner-text">
-        <span className="mu-banner-lead">Muster's own settings do not read:</span>{" "}
-        {sentence(problem)}. Until they do, Muster's defaults hold. Fix the file, then press{" "}
-        {readKey}.
-      </span>
-    </div>
+    <Banner className="app-settings-banner">
+      <BannerBody>
+        <BannerLead>Muster's own settings do not read:</BannerLead> {sentence(problem)}. Until they
+        do, Muster's defaults hold. Fix the file, then press {readKey}.
+      </BannerBody>
+    </Banner>
   );
 }

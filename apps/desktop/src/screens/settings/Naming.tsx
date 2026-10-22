@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActions, useBridge } from "../../app/context";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { agentOf } from "../../lib/agents";
+import { Detail, DetailList } from "../../ui/DetailList";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
 import { namers, OWN_AGENTS } from "./agentList";
@@ -233,17 +234,18 @@ export function Naming({ preferences }: { preferences: Preferences }) {
 
       <Group title="How a name is made">
         <div className="app-settings-example">
-          <dl className="mu-details">
-            <dt>The prompt</dt>
-            <dd className="mu-mono">
-              Sketch the Tauri shell for Muster Desktop: a crate that connects through muster-client
-              and forwards the state to the webview.
-            </dd>
-            <dt>At once</dt>
-            <dd>Sketch the Tauri shell for Muster Desktop: a crate that…</dd>
-            <dt>A few seconds later</dt>
-            <dd className="app-settings-strong">Sketch the Tauri shell</dd>
-          </dl>
+          <DetailList>
+            <Detail name="The prompt">
+              <span className="mu-mono">
+                Sketch the Tauri shell for Muster Desktop: a crate that connects through
+                muster-client and forwards the state to the webview.
+              </span>
+            </Detail>
+            <Detail name="At once">Sketch the Tauri shell for Muster Desktop: a crate that…</Detail>
+            <Detail name="A few seconds later">
+              <span className="app-settings-strong">Sketch the Tauri shell</span>
+            </Detail>
+          </DetailList>
           <span className="mu-meta">
             Where the prompt is only a few words, the start of the agent's first answer goes too,
             and the chat is named once more as that turn ends.

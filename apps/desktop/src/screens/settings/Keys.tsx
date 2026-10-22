@@ -13,6 +13,7 @@ import { pressedChord, writtenChord } from "../../keys/chord";
 import { checkKey, isSet, refusalText, warningsOf, warningText } from "../../keys/keymap";
 import { useKeymap } from "../../keys/useKeymap";
 import { Button, Kbd } from "../../ui/controls";
+import { Section, SectionTitle } from "../../ui/Section";
 import { useSettings } from "./context";
 import { type KeyEntry, keyEntries, narrowed } from "./keyRows";
 import { rowKey } from "./model";
@@ -202,10 +203,8 @@ export function Keys({ preferences }: { preferences: Preferences }) {
       </SettingRow>
 
       {state.find.trim() === "" ? (
-        <section className="mu-settings-group" aria-labelledby="keys-window">
-          <h3 className="mu-settings-group-title" id="keys-window">
-            This window
-          </h3>
+        <Section>
+          <SectionTitle>This window</SectionTitle>
           {WINDOW_KEYS.map((key) => (
             <div
               key={key.what}
@@ -220,16 +219,16 @@ export function Keys({ preferences }: { preferences: Preferences }) {
               </span>
             </div>
           ))}
-        </section>
+        </Section>
       ) : null}
 
       {groups.map((group) => (
-        <section key={group.title} className="mu-settings-group" aria-label={group.title}>
-          <h3 className="mu-settings-group-title">{group.title}</h3>
+        <Section key={group.title}>
+          <SectionTitle>{group.title}</SectionTitle>
           {group.entries.map((entry) => (
             <KeyItem key={entry.name} entry={entry} suggested={suggestedPanels.has(entry.name)} />
           ))}
-        </section>
+        </Section>
       ))}
       {entries.length === 0 ? (
         <p className="app-settings-loading">No key does “{state.find.trim()}”.</p>
