@@ -71,9 +71,10 @@ export function SettingRow({
     if (!selected || !row) return;
     row.scrollIntoView?.({ block: "nearest" });
     if (focusFollows.current) {
-      // The row itself, so ↑↓ go on moving; a field's own input, to type in.
+      // The row itself, so ↑↓ go on moving; a field's own input, to type in
+      // (not the hidden one a Base UI switch or select keeps for forms).
       focusFollows.current = false;
-      (row.querySelector<HTMLElement>("input") ?? row).focus();
+      (row.querySelector<HTMLElement>('input:not([aria-hidden="true"])') ?? row).focus();
     }
   }, [selected, focusFollows]);
 

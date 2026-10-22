@@ -1,9 +1,14 @@
-// Buttons, key caps, hints, segmented controls (design system: Actions).
-// Variants are explicit props with a closed set of values, never stacks of
-// booleans (composition: patterns-explicit-variants).
+// Buttons, key caps, hints, segmented controls (design system: Actions),
+// on Base UI's button and toggle group. Variants are explicit props with a
+// closed set of values, never stacks of booleans (composition:
+// patterns-explicit-variants).
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Button as BaseButton } from "@base-ui/react/button";
+import { Toggle } from "@base-ui/react/toggle";
+import { ToggleGroup } from "@base-ui/react/toggle-group";
+import type { ButtonHTMLAttributes, ComponentProps } from "react";
 import { Icon, type IconName } from "./Icon";
+import { nativeButton, type PartProps, usePart } from "./part";
 import { Tooltip } from "./Tooltip";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -28,7 +33,8 @@ export function Button({
 }: ButtonProps) {
   const sizeClass = size === "md" ? "" : `mu-btn--${size}`;
   return (
-    <button
+    <BaseButton
+      render={nativeButton}
       type={type}
       className={`mu-btn mu-btn--${variant} ${sizeClass} ${className}`}
       aria-busy={busy || undefined}
@@ -37,8 +43,17 @@ export function Button({
       {busy ? <Spinner /> : icon ? <Icon name={icon} /> : null}
       {children}
       {kbd ? <Kbd className="mu-key">{kbd}</Kbd> : null}
-    </button>
+    </BaseButton>
   );
+}
+
+/**
+ * Something pressed that has a look of its own, given by the place it is in
+ * (a head's link, a row's way in): Base UI's button, with no look of the
+ * design system's.
+ */
+export function Pressable({ type = "button", ...rest }: ComponentProps<typeof BaseButton>) {
+  return <BaseButton render={nativeButton} type={type} {...rest} />;
 }
 
 type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -60,7 +75,8 @@ export function IconButton({
 }: IconButtonProps) {
   return (
     <Tooltip content={title ?? label}>
-      <button
+      <BaseButton
+        render={nativeButton}
         type="button"
         className={`mu-icon-btn ${size === "sm" ? "mu-icon-btn--sm" : ""} ${className}`}
         aria-label={label}
@@ -68,24 +84,35 @@ export function IconButton({
         {...rest}
       >
         <Icon name={icon} size={size === "sm" ? 14 : 16} />
-      </button>
+      </BaseButton>
     </Tooltip>
   );
 }
 
-export function Kbd({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <kbd className={`mu-kbd ${className}`}>{children}</kbd>;
+export function Kbd(props: PartProps<"kbd">) {
+  return usePart("kbd", props, { className: "mu-kbd" });
 }
 
 /** A key cap and what it does. */
 /** A key and what it does: `⏎ answer`; several keys that do the same, each in its cap. */
-export function Hint({ keys, does }: { keys: string | readonly string[]; does: string }) {
-  return (
-    <span className="mu-hint">
-      {typeof keys === "string" ? <Kbd>{keys}</Kbd> : keys.map((key) => <Kbd key={key}>{key}</Kbd>)}
-      {does}
-    </span>
-  );
+export function Hint({
+  keys,
+  does,
+  ...props
+}: PartProps<"span"> & { keys: string | readonly string[]; does: string }) {
+  return usePart("span", props, {
+    className: "mu-hint",
+    children: (
+      <>
+        {typeof keys === "string" ? (
+          <Kbd>{keys}</Kbd>
+        ) : (
+          keys.map((key) => <Kbd key={key}>{key}</Kbd>)
+        )}
+        {does}
+      </>
+    ),
+  });
 }
 
 /**
@@ -93,12 +120,12 @@ export function Hint({ keys, does }: { keys: string | readonly string[]; does: s
  * it shows its first step and draws nothing more, for a mark that stands for
  * work while none is going on (`ARC-25`).
  */
-export function Spinner({ still = false }: { still?: boolean }) {
-  return (
-    <span className={still ? "mu-spin mu-spin--still" : "mu-spin"} aria-hidden="true">
-      <span className="mu-spin-strip" />
-    </span>
-  );
+export function Spinner({ still = false, ...props }: PartProps<"span"> & { still?: boolean }) {
+  return usePart("span", props, {
+    className: still ? "mu-spin mu-spin--still" : "mu-spin",
+    "aria-hidden": true,
+    children: <span className="mu-spin-strip" />,
+  });
 }
 
 export interface Segment<T extends string> {
@@ -128,21 +155,28 @@ export function Segmented<T extends string>({
   busy?: boolean;
 }) {
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, not a form; a fieldset would bring a legend and form semantics.
-    <div
+    <ToggleGroup
       className={className ? `mu-seg ${className}` : "mu-seg"}
-      role="group"
       aria-label={label}
       aria-busy={busy || undefined}
+      value={[value]}
+      onValueChange={(pressed) => {
+        // One is always pressed: pressing it again keeps it.
+        const next = pressed[0] as T | undefined;
+        if (next && next !== value) onChange(next);
+      }}
+      // ← → are the screen's (a setting steps on them), not a walk along the buttons.
+      onKeyDown={(event) => {
+        if (event.key.startsWith("Arrow")) event.preventBaseUIHandler();
+      }}
     >
       {segments.map((segment) => (
-        <button
+        <Toggle
           key={segment.value}
-          type="button"
+          value={segment.value}
+          render={nativeButton}
           className="mu-seg-item"
-          aria-pressed={value === segment.value}
           disabled={busy}
-          onClick={() => onChange(segment.value)}
         >
           {segment.label}
           {segment.count ? (
@@ -154,17 +188,19 @@ export function Segmented<T extends string>({
               {segment.count}
             </span>
           ) : null}
-        </button>
+        </Toggle>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 
 /** Room taking what is left in a row, pushing what follows to its end; where it `dragsWindow`, the window moves by it. */
-export function Spacer({ dragsWindow = false }: { dragsWindow?: boolean }) {
-  return dragsWindow ? (
-    <span className="mu-spacer" data-tauri-drag-region />
-  ) : (
-    <span className="mu-spacer" />
-  );
+export function Spacer({
+  dragsWindow = false,
+  ...props
+}: PartProps<"span"> & { dragsWindow?: boolean }) {
+  return usePart("span", props, {
+    className: "mu-spacer",
+    ...(dragsWindow ? { "data-tauri-drag-region": true } : {}),
+  });
 }

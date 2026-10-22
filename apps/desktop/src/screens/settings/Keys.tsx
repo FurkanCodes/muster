@@ -12,7 +12,7 @@ import type { Preferences } from "../../ipc/generated/Preferences";
 import { pressedChord, writtenChord } from "../../keys/chord";
 import { checkKey, isSet, refusalText, warningsOf, warningText } from "../../keys/keymap";
 import { useKeymap } from "../../keys/useKeymap";
-import { Button, Kbd } from "../../ui/controls";
+import { Button, Kbd, Pressable } from "../../ui/controls";
 import { Label } from "../../ui/Label";
 import { Section, SectionTitle } from "../../ui/Section";
 import { Input } from "../../ui/TextField";
@@ -66,8 +66,7 @@ function KeyItem({ entry, suggested }: { entry: KeyEntry; suggested: boolean }) 
           {entry.set ? <Label>yours</Label> : null}
           {suggested ? <Label>its suggestion</Label> : null}
         </span>
-        <button
-          type="button"
+        <Pressable
           className="app-keyrow-set"
           aria-label={`Set the key for ${entry.what}, now ${entry.labels.join(" ") || "none"}`}
           onClick={start}
@@ -84,7 +83,7 @@ function KeyItem({ entry, suggested }: { entry: KeyEntry; suggested: boolean }) 
               <span className="mu-quiet">none</span>
             )}
           </span>
-        </button>
+        </Pressable>
       </SettingRow>
       {waiting && state.waiting?.refused ? (
         <div className="mu-keyrow-error" role="alert">

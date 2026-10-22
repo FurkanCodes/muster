@@ -2,10 +2,12 @@
 // Checkbox): a small box, ticked while chosen. Its label names what it
 // chooses, for the person's screen reader and its tooltip. A click ticks
 // it and leaves the keys where they were (a list's ⏎ stays the list's);
-// ⇥ still reaches it.
+// ⇥ still reaches it. On Base UI's checkbox, drawn as a button.
 //
 //   <Checkbox checked={given} label="Give the agent mira's comment" onChange={toggle} />
 
+import { Checkbox as Base } from "@base-ui/react/checkbox";
+import { nativeButton } from "./part";
 import "./checkbox.css";
 
 export function Checkbox({
@@ -18,19 +20,17 @@ export function Checkbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a button styled as the design system's box, as Switch is.
-    <button
-      type="button"
-      role="checkbox"
+    <Base.Root
+      nativeButton
+      render={nativeButton}
       className="mu-checkbox"
-      aria-checked={checked}
+      checked={checked}
+      onCheckedChange={(next) => onChange(next)}
       aria-label={label}
       title={label}
       onMouseDown={(event) => event.preventDefault()}
-      onClick={(event) => {
-        event.stopPropagation();
-        onChange(!checked);
-      }}
+      // The box's own: what it sits in hears no click.
+      onClick={(event) => event.stopPropagation()}
     />
   );
 }

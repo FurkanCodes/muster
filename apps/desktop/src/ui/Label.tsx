@@ -3,17 +3,13 @@
 //
 //   <Labels>{labels.map((label) => <Label key={label}>{label}</Label>)}</Labels>
 
-import type { ReactNode } from "react";
+import { type PartProps, usePart } from "./part";
 
-export function Label({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <span className="mu-label" title={title}>
-      {children}
-    </span>
-  );
+export function Label(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-label" });
 }
 
 /** Several labels in a row, wrapping. */
-export function Labels({ children }: { children: ReactNode }) {
-  return <span className="mu-labels">{children}</span>;
+export function Labels(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-labels" });
 }

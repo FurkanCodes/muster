@@ -47,6 +47,7 @@ Measured on this repository's own agent sessions (`scripts/agent-sessions.py`, 2
 
 - The plan, branches and who owns what: [apps/desktop/PLAN.md](apps/desktop/PLAN.md). The app is `PRODUCT.md` §6a and `ARCHITECTURE.md` §5c (`ARC-24`, `ARC-25`, `ARC-26`).
 - Screens compose the components in `src/ui` (and `src/app`'s `Page` and `Sidebar`); a component's `mu-*` classes are written only in the file that defines it (`ARC-26`); the table in `apps/desktop/design/system/README.md` (Components) says what exists. A list the keyboard moves through is a `List`.
+- Every component is built on Base UI (`@base-ui/react`, its docs in `node_modules/@base-ui/react/docs`): an interactive one on its part, the rest on `usePart` (`src/ui/part.ts`, Base UI's `useRender`); a Base UI button takes `render={nativeButton}`. No Radix, no hand-made `<button>`, `<input>` or `<dialog>` in a screen. Before and after a component change, compare the window's states pixel for pixel; the design never moves with it.
 - `pnpm install` in `apps/desktop`, then `pnpm dev:mock` (the window over a pretend daemon, in a browser), `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm e2e`; `pnpm bindings` after changing a Rust type the webview uses; `pnpm tauri dev` for the real app.
 - React 19 with the React Compiler and Zustand: follow the `vercel-react-best-practices` and `vercel-composition-patterns` skills. Types come from Rust (`src/ipc/generated`), never by hand.
 - `apps/desktop/src-tauri` is a Cargo workspace of its own: run cargo there for it, and from the root for the core.

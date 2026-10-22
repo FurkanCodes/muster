@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useKeys } from "../app/keys";
 import type { FileDiff } from "../ipc/generated/FileDiff";
 import { type DiffLine, isBinary, LINE, lineAt, parseDiff } from "./diff";
+import { type PartProps, usePart } from "./part";
 import "./diff-view.css";
 
 /** Lines drawn beyond the edges of the view, so a scroll shows no gap. */
@@ -132,20 +133,16 @@ function Line({ line }: { line: DiffLine }) {
 }
 
 /** A diff's frame: its head, then its lines or what it waits for; `className` for where it stands. */
-export function DiffFrame({ className, children }: { className?: string; children: ReactNode }) {
-  return (
-    <div className={className ? `mu-diffview ui-diff ${className}` : "mu-diffview ui-diff"}>
-      {children}
-    </div>
-  );
+export function DiffFrame(props: PartProps<"div">) {
+  return usePart("div", props, { className: "mu-diffview ui-diff" });
 }
 
 /** What the diff is of: its file or its turn, and what it comes to. */
-export function DiffHead({ children }: { children: ReactNode }) {
-  return <div className="mu-diffview-head">{children}</div>;
+export function DiffHead(props: PartProps<"div">) {
+  return usePart("div", props, { className: "mu-diffview-head" });
 }
 
 /** In place of the lines: what the diff waits for, or why it is not there. */
-export function DiffWaiting({ children }: { children: ReactNode }) {
-  return <div className="mu-diffview-body ui-diff-body">{children}</div>;
+export function DiffWaiting(props: PartProps<"div">) {
+  return usePart("div", props, { className: "mu-diffview-body ui-diff-body" });
 }

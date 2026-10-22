@@ -117,7 +117,7 @@ test.describe("General", () => {
     await expect(note(page)).toHaveText(
       "A session sits beside the list in a window of 110 columns or more.",
     );
-    await expect(page.getByRole("button", { name: "Session beside the list from" })).toHaveText(
+    await expect(page.getByRole("combobox", { name: "Session beside the list from" })).toHaveText(
       "110 columns",
     );
     expect(await sent(page)).toEqual(
@@ -137,7 +137,7 @@ test.describe("General", () => {
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(menu).toBeHidden();
-    await expect(page.getByRole("button", { name: "Colours" })).toHaveText("The terminal's own");
+    await expect(page.getByRole("combobox", { name: "Colours" })).toHaveText("The terminal's own");
     await expect(note(page)).toHaveText("Muster draws in your terminal's colours.");
   });
 
@@ -188,13 +188,13 @@ test.describe("Notifications", () => {
       "false",
     );
     await expect(row(page, "notifications/tell.question")).toHaveAttribute("aria-disabled", "true");
-    await expect(page.getByRole("button", { name: "Sound for questions" })).toBeDisabled();
+    await expect(page.getByRole("combobox", { name: "Sound for questions" })).toBeDisabled();
     await expect(page.getByText("Off above, so Muster's helper sends none.")).toBeVisible();
   });
 
   test("hears each sound as it is chosen, and keeps the one chosen", async ({ page }) => {
     await openSettings(page, "Notifications");
-    await page.getByRole("button", { name: "Sound for errors" }).click();
+    await page.getByRole("combobox", { name: "Sound for errors" }).click();
     const menu = page.getByRole("listbox", { name: "Sound for errors" });
     await expect(menu.getByRole("option", { name: "Basso" })).toHaveAttribute(
       "aria-selected",
@@ -204,7 +204,7 @@ test.describe("Notifications", () => {
     await expect(note(page)).toHaveText("Playing Blow");
     await page.keyboard.press("Enter");
     await expect(note(page)).toHaveText("Errors are told, with Blow.");
-    await expect(page.getByRole("button", { name: "Sound for errors" })).toHaveText("Blow");
+    await expect(page.getByRole("combobox", { name: "Sound for errors" })).toHaveText("Blow");
     expect(await mock(page, (daemon) => daemon.heard)).toEqual(["Blow"]);
     expect(await sent(page)).toContainEqual({
       ChangePreference: { Tell: { kind: "error", tell: { on: true, sound: "Blow" } } },
@@ -284,25 +284,27 @@ test.describe("Agents", () => {
 test.describe("Naming chats", () => {
   test("names chats by the agent picked, with a model it lists or one typed", async ({ page }) => {
     await openSettings(page, "Naming chats");
-    await expect(page.getByRole("button", { name: "Its model" })).toBeDisabled();
-    await page.getByRole("button", { name: "Named by" }).click();
+    await expect(page.getByRole("combobox", { name: "Its model" })).toBeDisabled();
+    await page.getByRole("combobox", { name: "Named by" }).click();
     await page.getByRole("option", { name: "Claude Code" }).click();
     await expect(note(page)).toHaveText("Chats are named by the agent shown.");
-    await expect(page.getByRole("button", { name: "Named by" })).toHaveText("Claude Code");
-    await page.getByRole("button", { name: "Its model" }).click();
+    await expect(page.getByRole("combobox", { name: "Named by" })).toHaveText("Claude Code");
+    await page.getByRole("combobox", { name: "Its model" }).click();
     const models = page.getByRole("listbox", { name: "Its model" });
     await expect(models.getByRole("option", { name: "sonnet" })).toBeVisible();
     await models.getByRole("option", { name: "sonnet" }).click();
     await expect(note(page)).toHaveText("Chats are named with the model shown.");
-    await expect(page.getByRole("button", { name: "Its model" })).toContainText("sonnet");
+    await expect(page.getByRole("combobox", { name: "Its model" })).toContainText("sonnet");
     // One typed, as the agent lists none.
-    await page.getByRole("button", { name: "Its model" }).click();
+    await page.getByRole("combobox", { name: "Its model" }).click();
     await page.getByRole("option", { name: "Type one…" }).click();
     const typed = page.getByRole("textbox", { name: "Its model, typed" });
     await expect(typed).toBeFocused();
     await typed.fill("claude-haiku-5-5");
     await typed.press("Enter");
-    await expect(page.getByRole("button", { name: "Its model" })).toContainText("claude-haiku-5-5");
+    await expect(page.getByRole("combobox", { name: "Its model" })).toContainText(
+      "claude-haiku-5-5",
+    );
     expect(await sent(page)).toEqual(
       expect.arrayContaining([
         { ListModels: { agent: "claude" } },
@@ -333,7 +335,7 @@ test.describe("a project's page", () => {
     await openSettings(page, "kep-site");
     await expect(page.getByRole("heading", { name: "kep-site" })).toBeVisible();
     await expect(page.getByText("It shares its tickets with kep-api")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Tickets from" })).toHaveText("Linear");
+    await expect(page.getByRole("combobox", { name: "Tickets from" })).toHaveText("Linear");
     await expect(row(page, `project:${KEP_SITE}/tickets_from`)).toContainText("Linear, team KEP");
     await expect(page.getByLabel("Team key, such as ENG")).toHaveValue("KEP");
     await expect(row(page, `project:${KEP_SITE}/muster_prefix`)).toContainText("from muster.toml");
@@ -363,7 +365,7 @@ test.describe("a project's page", () => {
       "GitHub issues, as its git remote says",
     );
     // Linear needs a team: the cursor goes there, and ⏎ keeps it.
-    await page.getByRole("button", { name: "Tickets from" }).click();
+    await page.getByRole("combobox", { name: "Tickets from" }).click();
     await page.getByRole("option", { name: "Linear" }).click();
     await expect(note(page)).toHaveText("Linear needs its Team key, such as ENG.");
     const team = page.getByLabel("Team key, such as ENG");
@@ -372,7 +374,7 @@ test.describe("a project's page", () => {
     await team.press("Enter");
     await expect(note(page)).toHaveText("muster's tickets now come from Linear, team ENG.");
     // Jira needs a site; once one project has it, another is offered it and kept at once.
-    await page.getByRole("button", { name: "Tickets from" }).click();
+    await page.getByRole("combobox", { name: "Tickets from" }).click();
     await page.getByRole("option", { name: "Jira" }).click();
     await expect(note(page)).toHaveText("Jira needs its Jira site, such as acme.atlassian.net.");
     const site = page.getByLabel("Jira site, such as acme.atlassian.net");
@@ -386,7 +388,7 @@ test.describe("a project's page", () => {
       .getByRole("region", { name: "Settings sections" })
       .getByRole("button", { name: /^lamphaus/ })
       .click();
-    await page.getByRole("button", { name: "Tickets from" }).click();
+    await page.getByRole("combobox", { name: "Tickets from" }).click();
     await page.getByRole("option", { name: "Jira" }).click();
     await expect(note(page)).toHaveText(
       "lamphaus's tickets now come from Jira at acme.atlassian.net.",
@@ -436,7 +438,7 @@ test.describe("a project's page", () => {
     await page.keyboard.press("Meta+,");
     const sections = page.getByRole("region", { name: "Settings sections" });
     await sections.getByRole("button", { name: /^muster/ }).click();
-    await expect(page.getByRole("button", { name: "Tickets from" })).toHaveText("Choose…");
+    await expect(page.getByRole("combobox", { name: "Tickets from" })).toHaveText("Choose…");
     await expect(row(page, `project:${MUSTER}/tickets_from`)).toContainText(
       "says nothing of where its tickets are",
     );

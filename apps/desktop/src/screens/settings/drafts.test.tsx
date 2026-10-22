@@ -36,7 +36,7 @@ describe("ARC-24 a project's choice waiting for its field", () => {
     const mine = await screen.findByRole("switch", { name: "Only my tickets" });
     bridge.hold("ChangeSetting");
     await userEvent.click(mine);
-    await userEvent.click(screen.getByRole("button", { name: "Tickets from" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Tickets from" }));
     await userEvent.click(await screen.findByRole("option", { name: "Linear" }));
     expect(await screen.findByLabelText(/^Team key, such as ENG/)).toBeInTheDocument();
     act(() => bridge.release("ChangeSetting"));
@@ -58,7 +58,7 @@ describe("ARC-24 a project's settings as the daemon answers them", () => {
     // Made at once, answered late: the daemon answers each change from a task of its own.
     bridge.hold({ ChangeSetting: { project: ulid(1), change: { OnlyMyTickets: true } } }, "now");
     await userEvent.click(mine);
-    await userEvent.click(screen.getByRole("button", { name: "Tickets from" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Tickets from" }));
     await userEvent.click(await screen.findByRole("option", { name: "Linear" }));
     await userEvent.type(await screen.findByLabelText(/^Team key, such as ENG/), "ENG{Enter}");
     await waitFor(() =>
@@ -69,7 +69,7 @@ describe("ARC-24 a project's settings as the daemon answers them", () => {
       bridge.release({ ChangeSetting: { project: ulid(1), change: { OnlyMyTickets: true } } }),
     );
     await waitFor(() => expect(mine).not.toHaveAttribute("aria-busy"));
-    expect(screen.getByRole("button", { name: "Tickets from" })).toHaveTextContent("Linear");
+    expect(screen.getByRole("combobox", { name: "Tickets from" })).toHaveTextContent("Linear");
     expect(app.ui.getState().note?.text).toBe("muster's tickets now come from Linear, team ENG.");
     keys();
   });

@@ -3,36 +3,29 @@
 // the option it is on, so the option never takes the focus. A click chooses
 // it; a double-click goes into it, or takes it.
 
-import type { ReactNode } from "react";
+import { type PartProps, usePart } from "./part";
 
 export function FolderOption({
   id,
   selected,
-  className,
   onChoose,
   onOpen,
-  children,
-}: {
+  ...props
+}: PartProps<"div"> & {
   /** Its id in the window, for the field's `aria-activedescendant`. */
   id: string;
   selected: boolean;
-  className?: string;
   onChoose: () => void;
   onOpen: () => void;
-  children: ReactNode;
 }) {
-  return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the field keeps the keys; ↑↓ there choose, as a click does here.
-    <div
-      id={id}
-      role="option"
-      tabIndex={-1}
-      aria-selected={selected}
-      className={className ? `mu-folder ${className}` : "mu-folder"}
-      onClick={onChoose}
-      onDoubleClick={onOpen}
-    >
-      {children}
-    </div>
-  );
+  // The field keeps the keys; ↑↓ there choose, as a click does here.
+  return usePart("div", props, {
+    id,
+    role: "option",
+    tabIndex: -1,
+    "aria-selected": selected,
+    className: "mu-folder",
+    onClick: onChoose,
+    onDoubleClick: onOpen,
+  });
 }

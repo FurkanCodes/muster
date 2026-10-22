@@ -10,7 +10,7 @@ Dark is the first theme. Light follows the same rules value for value. A session
 
 ## Components
 
-The app's screens compose these (`ARC-26`): a component's classes are written only in the file that defines it, and its stylesheet sits beside it; anywhere else it is used as a component. The text utilities `mu-meta`, `mu-quiet`, `mu-cut` and `mu-mono` are the one exception. A screen's own pieces (a ticket's line, a key's row, the tree's lines) are components of their own file, and the same holds for them.
+The app's screens compose these (`ARC-26`): a component's classes are written only in the file that defines it, and its stylesheet sits beside it; anywhere else it is used as a component. Every one stands on Base UI (`@base-ui/react`): an interactive one on Base UI's part of the same kind, the rest on its `useRender` through `usePart` (`src/ui/part.ts`), so each takes a `render` prop as Base UI's own parts do. Base UI brings behaviour and accessibility only; how each looks is this design system's, unchanged. The text utilities `mu-meta`, `mu-quiet`, `mu-cut` and `mu-mono` are the one exception. A screen's own pieces (a ticket's line, a key's row, the tree's lines) are components of their own file, and the same holds for them.
 
 | Component | Parts | Where |
 |---|---|---|
@@ -25,12 +25,13 @@ The app's screens compose these (`ARC-26`): a component's classes are written on
 | DetailList | `DetailList`, `Detail` | `src/ui/DetailList.tsx` |
 | Loading | `Loading`, the one wait: a line with a light running along it and its `text` in its middle (Loading where none is given: `<Loading text="Loading tickets" />`), lit as the light passes behind it; centred in a place with nothing yet, or `layout="rule"` across its place (under a heading while what it heads is fetched again); its text is its name to a screen reader | `src/ui/Loading.tsx` |
 | Checkbox | `Checkbox`, one choice among several each on its own (a ticket's parts given to an agent); a click ticks it without taking the keys | `src/ui/Checkbox.tsx` |
-| Select | `Select`, a field (boxed) or `variant="quiet"` in a toolbar, an option's `mark` (an agent's logo) in its button too; its list drawn as a menu is, on Radix's popover, in the dialog it is in | `src/ui/Select.tsx` |
-| Menu | `ActionMenu` under its button or at a point, its items doing themselves on their keys (Radix) | `src/ui/Menu.tsx` |
-| Tooltip | `Tooltip`; every `IconButton` has one, its label and key (Radix) | `src/ui/Tooltip.tsx` |
-| Controls | `Button`, `IconButton`, `Segmented` (with counts), `Kbd`, `Hint` (one key or several), `Spacer`, `Spinner`, `Switch` | `src/ui` |
-| Fields | `TextField`, `TextArea`, `Field` (a label over any control, a hint or an error under it), `Input` | `src/ui/TextField.tsx` |
-| Dialog | `Dialog` (the browser's `<dialog>`), `DialogText` | `src/ui/Dialog.tsx` |
+| Select | `Select`, a field (boxed) or `variant="quiet"` in a toolbar, an option's `mark` (an agent's logo) in its button too; its list drawn as a menu is (Base UI Select: its button a `combobox`) | `src/ui/Select.tsx` |
+| Menu | `ActionMenu` under its button or at a point, its items doing themselves on their keys (Base UI Menu) | `src/ui/Menu.tsx` |
+| Tooltip | `Tooltip`; every `IconButton` has one, its label and key (Base UI Tooltip) | `src/ui/Tooltip.tsx` |
+| Controls | `Button`, `IconButton`, `Pressable` (a press with a look of its place's own) on Base UI Button; `Segmented` (with counts) on its ToggleGroup; `Switch` on its Switch; `Kbd`, `Hint` (one key or several), `Spacer`, `Spinner` | `src/ui` |
+| Fields | `TextField`, `TextArea`, `Field` (a label over any control, a hint or an error under it), `Input`, `PlainInput`, `PlainTextArea` (Base UI Field and Input) | `src/ui/TextField.tsx` |
+| AgentChoice | the agents as cards, one chosen (Base UI RadioGroup) | `src/ui/AgentChoice.tsx` |
+| Dialog | `Dialog`, `DialogText`; `Modal`, what a dialog and the palette float on (Base UI Dialog) | `src/ui/Dialog.tsx` |
 | Label | `Label`, `Labels` | `src/ui/Label.tsx` |
 | Status | `StatusMark`, `MarkSpace`, `NewsDot`, `AgentLogo`, `AgentMark`, `Badge`, `PullRequest`, `DiffStat`, `Branch`, `BranchName`, `Clash`, `Found`, `Missing`, `Version`, `ErrorText`, `Swatch` | `src/ui/status.tsx` |
 | Diff | `DiffView`, `DiffFrame`, `DiffHead`, `DiffWaiting`; `FileRow`, `FileKind`; `TurnRow` | `src/ui` |

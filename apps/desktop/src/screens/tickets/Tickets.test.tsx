@@ -213,7 +213,8 @@ describe("PRD-01 ARC-24 Tickets", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByRole("radio", { name: /Reader/ })).toBeNull();
     await userEvent.click(within(dialog).getByRole("radio", { name: /Builder/ }));
-    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.keyboard("{Enter}");
     await waitFor(() =>
       expect(
         bridge.sent.some(

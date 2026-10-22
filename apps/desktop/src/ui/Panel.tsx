@@ -4,44 +4,27 @@
 // while it has the keys. Composed, not configured: the consumer puts what it
 // needs in the head and the body.
 
-import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { IconButton, Spacer } from "./controls";
+import { type PartProps, usePart } from "./part";
 
 export function Panel({
   label,
   hasKeys,
-  className = "",
-  style,
-  children,
-}: {
-  label: string;
-  hasKeys: boolean;
-  className?: string;
-  style?: CSSProperties;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      className={`mu-panel ${hasKeys ? "has-keys" : ""} ${className}`}
-      aria-label={label}
-      style={style}
-    >
-      {children}
-    </section>
-  );
+  ...props
+}: PartProps<"section"> & { label: string; hasKeys: boolean }) {
+  return usePart("section", props, {
+    className: hasKeys ? "mu-panel has-keys" : "mu-panel",
+    "aria-label": label,
+  });
 }
 
 /** The head: the panel's handle, its title in 600 and what runs in it in `meta`. */
-export function PanelHead({ children, ...rest }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className="mu-panel-head" {...rest}>
-      {children}
-    </div>
-  );
+export function PanelHead(props: PartProps<"div">) {
+  return usePart("div", props, { className: "mu-panel-head" });
 }
 
-export function PanelTitle({ children }: { children: ReactNode }) {
-  return <span className="mu-panel-title">{children}</span>;
+export function PanelTitle(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-panel-title" });
 }
 
 /** The head's way to put the panel away, with its key in the tooltip. */

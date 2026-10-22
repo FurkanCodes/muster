@@ -5,18 +5,18 @@
 //   </DetailList>
 
 import type { ReactNode } from "react";
-import { cn } from "../lib/cn";
+import { type PartProps, usePart } from "./part";
 
-export function DetailList({ className, children }: { className?: string; children: ReactNode }) {
-  return <dl className={cn("mu-details", className)}>{children}</dl>;
+export function DetailList(props: PartProps<"dl">) {
+  return usePart("dl", props, { className: "mu-details" });
 }
 
-/** One fact: its name, then its value. */
-export function Detail({ name, children }: { name: ReactNode; children: ReactNode }) {
+/** One fact: its name, then its value (the part, its `render` the value's). */
+export function Detail({ name, ...props }: PartProps<"dd"> & { name: ReactNode }) {
   return (
     <>
       <dt>{name}</dt>
-      <dd>{children}</dd>
+      {usePart("dd", props, {})}
     </>
   );
 }

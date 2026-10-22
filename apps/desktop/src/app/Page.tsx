@@ -14,69 +14,43 @@
 //   </Page>
 
 import type { ReactNode } from "react";
-import { cn } from "../lib/cn";
 import { Spacer } from "../ui/controls";
+import { type PartProps, usePart } from "../ui/part";
 import { SidebarAway } from "./Sidebar";
 
 export function Page({
   label,
-  className,
-  children,
-}: {
+  ...props
+}: PartProps<"section"> & {
   /** Its name, for a screen reader: what it shows. */
   label: string;
-  className?: string;
-  children: ReactNode;
 }) {
-  return (
-    <section className={cn("mu-pane app-pane", className)} aria-label={label}>
-      {children}
-    </section>
-  );
+  return usePart("section", props, { className: "mu-pane app-pane", "aria-label": label });
 }
 
 /** The row at its top: the window is dragged by it, and the sidebar is brought back from it. */
-export function PageHeader({ children }: { children?: ReactNode }) {
-  return (
-    <header className="app-head" data-tauri-drag-region>
-      <SidebarAway />
-      {children}
-    </header>
-  );
+export function PageHeader({ children, ...props }: PartProps<"header">) {
+  return usePart("header", props, {
+    className: "app-head",
+    // The window is dragged by it (Tauri's own attribute).
+    ...{ "data-tauri-drag-region": true },
+    children: (
+      <>
+        <SidebarAway />
+        {children}
+      </>
+    ),
+  });
 }
 
-export function PageTitle({
-  title,
-  className,
-  children,
-}: {
-  /** All of it, for the tooltip, where the title is cut. */
-  title?: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <h2 className={cn("app-head-title", className)} title={title}>
-      {children}
-    </h2>
-  );
+/** Its title; `title` all of it, for the tooltip, where the title is cut. */
+export function PageTitle(props: PartProps<"h2">) {
+  return usePart("h2", props, { className: "app-head-title" });
 }
 
 /** What it is about, after its title: where it runs, what its work comes to. Cut first as room runs out. */
-export function PageMeta({
-  title,
-  className,
-  children,
-}: {
-  title?: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <span className={cn("mu-pane-meta app-head-where", className)} title={title}>
-      {children}
-    </span>
-  );
+export function PageMeta(props: PartProps<"span">) {
+  return usePart("span", props, { className: "mu-pane-meta app-head-where" });
 }
 
 /** Its actions, at the row's end; the room before them still drags the window. */

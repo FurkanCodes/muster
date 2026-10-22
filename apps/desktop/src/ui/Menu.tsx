@@ -1,4 +1,4 @@
-// A menu of actions (design system: Menu), on Radix's dropdown menu: it
+// A menu of actions (design system: Menu), on Base UI's menu: it
 // keeps the focus while open, moves by ↑↓ (and round), finds an item by
 // its first letters, closes on ⎋ or a click outside and gives the focus
 // back to what opened it. Each item also does itself on its own key, as
@@ -8,7 +8,7 @@
 //   <ActionMenu label={title} items={items} trigger={<IconButton icon="more" label="More" />} />
 //   <ActionMenu label={title} items={items} at={{ x, y }} onClose={…} />   (a right-click's)
 
-import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import { Menu } from "@base-ui/react/menu";
 import { type KeyboardEvent, type ReactElement, useRef, useState } from "react";
 import { chordOf } from "../app/keys";
 import { domChord } from "../keys/chord";
@@ -71,60 +71,80 @@ export function ActionMenu({
     change(false);
     item.does();
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  // An item's own key does it before the menu's finding by first letters
+  // takes the letter.
+  const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey) return;
-    // The screen behind it hears none of the menu's keys.
-    event.stopPropagation();
     const pressed = chordOf(event);
     const item = items.find((candidate) => (candidate.chords ?? [candidate.key]).includes(pressed));
     if (item) {
       event.preventDefault();
+      event.stopPropagation();
       choose(item);
     }
   };
+  // The screen behind it hears none of the menu's keys.
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!event.metaKey) event.stopPropagation();
+  };
   const entry = (item: MenuItem) => (
-    <Dropdown.Item
+    <Menu.Item
       key={item.key + item.label}
       className={cn("mu-menu-item", item.danger && "mu-menu-item--danger")}
-      onSelect={() => item.does()}
+      // Found by its words as typed, not its key cap's.
+      label={item.label}
+      onClick={() => item.does()}
     >
       {item.label}
       <Kbd>{item.key}</Kbd>
-    </Dropdown.Item>
+    </Menu.Item>
   );
+  // Where a right-click opened it: a point the menu hangs from.
+  const anchor = useRef<HTMLSpanElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
   return (
-    <Dropdown.Root open={shown} onOpenChange={change} modal={false}>
-      <Dropdown.Trigger asChild>
-        {at ? (
-          <span className="ui-menu-anchor" style={{ left: at.x, top: at.y }} aria-hidden="true" />
-        ) : (
-          trigger
-        )}
-      </Dropdown.Trigger>
-      <Dropdown.Portal container={portalRoot()}>
-        <Dropdown.Content
-          className="mu-menu ui-menu"
-          // Named for what it acts on, not by its button (Radix names it by its trigger).
-          aria-label={label}
-          aria-labelledby={undefined}
+    <Menu.Root open={shown} onOpenChange={(next) => change(next)} modal={false}>
+      {at ? (
+        <span
+          ref={anchor}
+          className="ui-menu-anchor"
+          style={{ left: at.x, top: at.y }}
+          aria-hidden="true"
+        />
+      ) : (
+        <Menu.Trigger render={trigger} />
+      )}
+      <Menu.Portal container={portalRoot()}>
+        <Menu.Positioner
+          className="ui-menu"
           side="bottom"
           align={at ? "start" : "end"}
           sideOffset={at ? 0 : 4}
           collisionPadding={8}
-          loop
-          onKeyDown={onKeyDown}
-          onCloseAutoFocus={(event) => {
-            const back = opener.current;
-            if (!at || !(back instanceof HTMLElement) || !back.isConnected) return;
-            event.preventDefault();
-            back.focus({ preventScroll: true });
-          }}
+          anchor={at ? anchor : undefined}
         >
-          {plain.map(entry)}
-          {danger.length && plain.length ? <Dropdown.Separator className="mu-menu-sep" /> : null}
-          {danger.map(entry)}
-        </Dropdown.Content>
-      </Dropdown.Portal>
-    </Dropdown.Root>
+          <Menu.Popup
+            className="mu-menu"
+            // Named for what it acts on, not by its button.
+            aria-label={label}
+            aria-labelledby={undefined}
+            onKeyDownCapture={onKeyDownCapture}
+            onKeyDown={onKeyDown}
+            ref={popup}
+            finalFocus={() => {
+              // An item that took the focus on (a name to type) keeps it there.
+              const now = document.activeElement;
+              if (now && now !== document.body && !popup.current?.contains(now)) return false;
+              const back = opener.current;
+              return at && back instanceof HTMLElement && back.isConnected ? back : true;
+            }}
+          >
+            {plain.map(entry)}
+            {danger.length && plain.length ? <Menu.Separator className="mu-menu-sep" /> : null}
+            {danger.map(entry)}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }

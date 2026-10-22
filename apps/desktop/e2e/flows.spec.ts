@@ -237,7 +237,7 @@ const startBox = (page: Page, project: string) =>
 
 /** Chooses `option` in the box's select named `label`. */
 async function choose(page: Page, box: ReturnType<typeof startBox>, label: string, option: RegExp) {
-  await box.getByRole("button", { name: label, exact: true }).click();
+  await box.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("listbox", { name: label }).getByRole("option", { name: option }).click();
 }
 
@@ -252,10 +252,10 @@ test.describe("PRD-03 work starts on the project's page", () => {
     const prompt = box.getByRole("textbox", { name: "First prompt" });
     await expect(prompt).toBeFocused();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(box.getByRole("button", { name: "Where", exact: true })).toContainText(
+    await expect(box.getByRole("combobox", { name: "Where", exact: true })).toContainText(
       "⎇ feature/desktop-app",
     );
-    await box.getByRole("button", { name: "Agent", exact: true }).click();
+    await box.getByRole("combobox", { name: "Agent", exact: true }).click();
     const agents = page.getByRole("listbox", { name: "Agent" }).getByRole("option");
     await expect(agents.first()).toContainText("Claude Code");
     await expect(agents.first()).toContainText("last chosen");
@@ -305,7 +305,7 @@ test.describe("PRD-03 work starts on the project's page", () => {
     await page.keyboard.press("Shift+Q");
     await page.keyboard.press("n");
     await expect(
-      startBox(page, "muster").getByRole("button", { name: "Agent", exact: true }),
+      startBox(page, "muster").getByRole("combobox", { name: "Agent", exact: true }),
     ).toContainText("A shell");
   });
 

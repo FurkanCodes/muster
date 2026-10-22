@@ -7,7 +7,8 @@
 //   </NavItem>
 
 import type { ReactNode } from "react";
-import { cn } from "../lib/cn";
+import { Pressable } from "./controls";
+import { type PartProps, usePart } from "./part";
 
 export function NavItem({
   icon,
@@ -25,8 +26,7 @@ export function NavItem({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
+    <Pressable
       className="mu-nav-item"
       aria-current={current ? "page" : undefined}
       disabled={disabled}
@@ -34,16 +34,18 @@ export function NavItem({
     >
       <span className="mu-nav-icon">{icon}</span>
       {children}
-    </button>
+    </Pressable>
   );
 }
 
 /** How many there are, at the line's end; `waiting` where they wait on the person. */
-export function NavCount({ tone, children }: { tone?: "waiting"; children: ReactNode }) {
-  return <span className={cn("mu-nav-count", tone && `mu-nav-count--${tone}`)}>{children}</span>;
+export function NavCount({ tone, ...props }: PartProps<"span"> & { tone?: "waiting" }) {
+  return usePart("span", props, {
+    className: tone ? `mu-nav-count mu-nav-count--${tone}` : "mu-nav-count",
+  });
 }
 
 /** A quiet word over a group of places. */
-export function NavLabel({ children }: { children: ReactNode }) {
-  return <div className="mu-nav-label">{children}</div>;
+export function NavLabel(props: PartProps<"div">) {
+  return usePart("div", props, { className: "mu-nav-label" });
 }

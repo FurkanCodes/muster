@@ -1,5 +1,9 @@
 // A setting that is on or off and takes effect at once (design system:
-// Switch). Busy while its change is on its way: it takes no second press.
+// Switch), on Base UI's switch, drawn as a button. Busy while its change is
+// on its way: it takes no second press.
+
+import { Switch as Base } from "@base-ui/react/switch";
+import { nativeButton } from "./part";
 
 export function Switch({
   on,
@@ -19,18 +23,18 @@ export function Switch({
   title?: string;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
+    <Base.Root
+      nativeButton
+      render={nativeButton}
       className="mu-switch"
-      aria-checked={on}
+      checked={on}
+      onCheckedChange={(next) => {
+        if (!busy && !disabled) onChange(next);
+      }}
       aria-label={label}
       aria-busy={busy || undefined}
       aria-disabled={disabled || undefined}
       title={title}
-      onClick={() => {
-        if (!busy && !disabled) onChange(!on);
-      }}
     />
   );
 }

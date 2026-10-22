@@ -1,4 +1,4 @@
-/* Menu (ui/Menu.tsx, on Radix's dropdown menu); the palette's lines (flows/Palette.tsx) and a Select's list (ui/Select.tsx) are drawn as it is. */
+/* Menu (ui/Menu.tsx, on Base UI's menu); the palette's lines (flows/Palette.tsx) and a Select's list (ui/Select.tsx) are drawn as it is. */
 .mu-menu,
 .mu-select-menu {
   min-width: var(--size-menu-min);
@@ -38,10 +38,10 @@
 .mu-select-option:hover {
   background: var(--surface-raised);
 }
-/* The item the pointer or the arrows are on (Radix's highlight), and the palette's own. */
+/* The item the pointer or the arrows are on (Base UI's highlight), and the palette's own. */
 .mu-menu-item[data-highlighted],
 .mu-palette-item.is-active,
-.mu-select-option.is-active {
+.mu-select-option[data-highlighted] {
   background: var(--surface-lit);
   outline: none;
 }
@@ -58,7 +58,7 @@
   margin: var(--space-4) var(--space-8);
   background: var(--line);
 }
-/* Over everything in the window, where Radix puts it. */
+/* Over everything in the window, where Base UI puts it. */
 .ui-menu {
   z-index: var(--z-menu);
 }
@@ -68,7 +68,8 @@
   width: 0;
   height: 0;
 }
-/* A Select's list holds the keys as any list does: its lit option says so, not a ring. */
+/* A menu or a Select's list holds the keys as any list does: its lit item says so, not a ring. */
+.mu-menu:focus-visible,
 .mu-select-menu:focus-visible {
   outline: none;
 }

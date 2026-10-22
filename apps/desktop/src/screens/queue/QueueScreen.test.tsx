@@ -227,9 +227,14 @@ describe("ARC-24 renaming, closing and the pull request from the list", () => {
     const dialog = await screen.findByRole("dialog", { name: "Close Sketch the Tauri shell?" });
     expect(dialog).toHaveTextContent("Its agent stops and it leaves the list.");
     expect(within(dialog).getByRole("button", { name: "Keep it" })).toHaveFocus();
-    // The queue behind it hears none of the dialog's keys.
+    // The queue behind it hears none of the dialog's keys (and is hidden from a screen reader while it asks).
     await userEvent.keyboard("j");
-    expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
+    expect(
+      within(screen.getByRole("listbox", { name: /Needs you/, hidden: true })).getByRole("option", {
+        selected: true,
+        hidden: true,
+      }),
+    ).toHaveAccessibleName("Sketch the Tauri shell");
     await userEvent.click(within(dialog).getByRole("button", { name: "Keep it" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(bridge.sent).not.toContainEqual({ StopSession: { session: ulid(101) } });

@@ -5,6 +5,7 @@ import type { App } from "../app/context";
 import { MockBridge } from "../ipc/mock/bridge";
 import { ulid, workingDay } from "../ipc/mock/scenario";
 import { renderApp, renderWithApp } from "../test/render";
+import { openList } from "../test/select";
 import { catalogue } from "./catalogue";
 
 beforeAll(() => {
@@ -46,10 +47,8 @@ async function startBox(project: string) {
 
 /** Chooses `option` in the box's select named `label`. */
 async function choose(box: HTMLElement, label: string, option: string | RegExp) {
-  await userEvent.click(within(box).getByRole("button", { name: label }));
-  await userEvent.click(
-    within(screen.getByRole("listbox", { name: label })).getByRole("option", { name: option }),
-  );
+  await userEvent.click(within(box).getByRole("combobox", { name: label }));
+  await userEvent.click(within(await openList(label)).getByRole("option", { name: option }));
 }
 
 describe("PRD-03 work starts on the project's page", () => {
@@ -79,7 +78,7 @@ describe("PRD-03 work starts on the project's page", () => {
     );
     // Where now names the worktree made, so the next try starts there.
     await waitFor(() =>
-      expect(within(box).getByRole("button", { name: "Where" })).toHaveTextContent("spike/webgl"),
+      expect(within(box).getByRole("combobox", { name: "Where" })).toHaveTextContent("spike/webgl"),
     );
     await userEvent.click(within(box).getByRole("button", { name: /^Start Claude Code/ }));
     await waitFor(() => expect(named(bridge, "StartSession")).toHaveLength(2));
@@ -100,8 +99,8 @@ describe("PRD-03 work starts on the project's page", () => {
     select("needs-you", ulid(101));
     await userEvent.keyboard("n");
     const box = await startBox("muster");
-    await userEvent.click(within(box).getByRole("button", { name: "Agent" }));
-    const names = within(screen.getByRole("listbox", { name: "Agent" }))
+    await userEvent.click(within(box).getByRole("combobox", { name: "Agent" }));
+    const names = within(await openList("Agent"))
       .getAllByRole("option")
       .map((option) => option.textContent);
     expect(names).toEqual([

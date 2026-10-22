@@ -88,7 +88,7 @@ describe("ARC-24 the sidebar", () => {
     // The Projects + offers a folder of the Mac's, or a clone from GitHub.
     const add = async () => {
       await userEvent.click(screen.getByRole("button", { name: "Add a project" }));
-      const menu = screen.getByRole("menu", { name: "Add a project" });
+      const menu = await screen.findByRole("menu", { name: "Add a project" });
       expect(
         within(menu)
           .getAllByRole("menuitem")

@@ -6,28 +6,19 @@
 //     …
 //   </Section>
 
-import { createContext, type ReactNode, use, useId } from "react";
-import { cn } from "../lib/cn";
+import { createContext, use, useId } from "react";
+import { type PartProps, usePart } from "./part";
 
 const TitleId = createContext<string | undefined>(undefined);
 
-export function Section({ className, children }: { className?: string; children: ReactNode }) {
+export function Section(props: PartProps<"section">) {
   const id = useId();
-  return (
-    <TitleId value={id}>
-      <section className={cn("mu-section", className)} aria-labelledby={id}>
-        {children}
-      </section>
-    </TitleId>
-  );
+  const section = usePart("section", props, { className: "mu-section", "aria-labelledby": id });
+  return <TitleId value={id}>{section}</TitleId>;
 }
 
 /** The section's heading: 12px, quiet, the region's name. */
-export function SectionTitle({ className, children }: { className?: string; children: ReactNode }) {
+export function SectionTitle(props: PartProps<"h3">) {
   const id = use(TitleId);
-  return (
-    <h3 className={cn("mu-section-title", className)} id={id}>
-      {children}
-    </h3>
-  );
+  return usePart("h3", props, { className: "mu-section-title", id });
 }
