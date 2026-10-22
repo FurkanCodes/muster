@@ -103,6 +103,25 @@ fn a_program_s_copy_reaches_the_clipboard_and_is_not_made_again_on_attaching() {
 }
 
 #[test]
+fn the_ui_draws_on_a_screen_of_its_own_and_gives_the_shell_s_back_arc_13() {
+    let sandbox = Sandbox::new();
+    let _stop = StopDaemon(sandbox.paths().socket());
+    let root = sandbox.repository("app");
+    // The person's terminal as their shell left it.
+    let earlier: Vec<u8> = (0..ui::ROWS - 1)
+        .flat_map(|row| format!("$ old shell line {row:02}\r\n").into_bytes())
+        .collect();
+    let mut ui = Ui::start_over(&sandbox, &root, &LOCAL, &earlier);
+    ui.wait_for("No projects yet");
+    assert!(!ui.text().contains("old shell line"), "{}", ui.text());
+
+    ui.keys(b"q");
+    assert!(ui.wait_for_exit());
+    ui.wait_for("$ old shell line 00");
+    ui.wait_without("No projects yet");
+}
+
+#[test]
 fn resizing_the_window_updates_the_fixed_viewport_and_the_program_arc_13() {
     let sandbox = Sandbox::new();
     let _stop = StopDaemon(sandbox.paths().socket());

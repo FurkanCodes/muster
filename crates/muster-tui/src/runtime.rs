@@ -11,6 +11,7 @@ use crossterm::event::{
     PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
+use crossterm::terminal::{Clear, ClearType, EnterAlternateScreen};
 use futures_util::StreamExt;
 use muster_core::protocol::TermSize;
 use ratatui::DefaultTerminal;
@@ -496,6 +497,11 @@ impl HostTerminal {
             viewport: ratatui::Viewport::Fixed(area),
         });
         let mut out = stdout();
+        // A screen of its own, cleared, so nothing of the shell's shows
+        // through the cells a frame leaves blank, and the shell's screen is
+        // back as it was on quitting. ratatui enters it only with the
+        // default viewport; its own clear would ask where the cursor is.
+        execute!(out, EnterAlternateScreen, Clear(ClearType::All))?;
         // The mouse scrolls sessions back, picks lines and selects a
         // session's text; the person's terminal's own selection, of whole
         // lines of the window, then takes a modifier (Option or Shift).
