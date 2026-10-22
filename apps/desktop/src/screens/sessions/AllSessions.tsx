@@ -13,22 +13,16 @@ import { useEffect } from "react";
 import { Connecting } from "../../app/Connecting";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
-import { NothingSelected } from "../../app/Page";
-import { Sidebar } from "../../app/Sidebar";
 import { newSession } from "../../flows/actions";
 import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
 import { toggleShell } from "../../panels/beside";
 import { usePanelHandlers } from "../../panels/usePanelKeys";
 import * as byHand from "../../session/byHand";
-import { SessionPane } from "../../session/SessionPane";
-import { CloseSession, useSessionActions } from "../../session/useSessionActions";
+import { useShownSessionActions } from "../../session/SessionActionsContext";
 import { standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
 import { EmptyState, EmptyStateText, EmptyStateTitle } from "../../ui/EmptyState";
-import { keysOf, type MenuItem } from "../../ui/Menu";
-import { ProjectPage } from "./ProjectPage";
-import { RowDetail } from "./RowDetail";
 import { SessionTree } from "./SessionTree";
 import { useTree } from "./useTree";
 import "./sessions.css";
@@ -57,7 +51,7 @@ export default function AllSessions({ active }: { active: boolean }) {
   const loaded = useDaemon((state) => state.loaded);
   const map = useKeymap();
   const session = selected?.kind === "session" ? selected.id : undefined;
-  const tools = useSessionActions(session);
+  const tools = useShownSessionActions();
   const hasPullRequest = useDaemon((state) =>
     Boolean(selected?.workspace && state.workspaces[selected.workspace]?.pull_request),
   );
@@ -165,7 +159,7 @@ export default function AllSessions({ active }: { active: boolean }) {
           ...(session
             ? {
                 rename: tools.rename,
-                close: tools.close,
+                close: () => tools.close(),
               }
             : {
                 // The pane's own keys answer on a session; on a project, the list's.
@@ -237,69 +231,31 @@ export default function AllSessions({ active }: { active: boolean }) {
     if (bound.chords.length)
       panelKeys[`plugin:${bound.action.plugin}/${bound.action.panel}`] = label(bound.name);
   }
-  const menu: MenuItem[] = [
-    ...(isChat ? [{ ...keysOf(map, "rename"), label: "Rename", does: tools.rename }] : []),
-    { ...keysOf(map, "checks"), label: "Run the checks", does: () => byHand.runChecks(app) },
-    { ...keysOf(map, "review"), label: "Review the change", does: () => byHand.review(app) },
-    {
-      ...keysOf(map, "open_pull_request"),
-      label: "Open a draft pull request",
-      does: () => byHand.openPullRequest(app),
-    },
-    ...(hasPullRequest
-      ? [
-          {
-            ...keysOf(map, "pull_request_in_browser"),
-            label: "Pull request in the browser",
-            does: () => byHand.browsePullRequest(app),
-          },
-        ]
-      : []),
-    { ...keysOf(map, "close"), label: "Close", does: tools.close, danger: true },
-  ];
 
   return (
-    <>
-      <Sidebar>
-        <section className="sessions-column" aria-label="Sessions">
-          <h1 className="app-hidden">Sessions</h1>
-          {!loaded ? (
-            <Connecting />
-          ) : tree.rows.length === 0 ? (
-            <Empty />
-          ) : (
-            <SessionTree
-              rows={tree.rows}
-              folded={tree.folded}
-              selected={selected?.id}
-              resting={keysIn !== "list" || !active}
-              renaming={tools.renaming ? tools : null}
-              panelKeys={panelKeys}
-              onPick={(id) => {
-                // Picked beside Tickets or Settings, it is shown in their place.
-                if (!active) actions.show("all");
-                tree.pick(id);
-                actions.keysTo("list");
-              }}
-              onFold={tree.fold}
-            />
-          )}
-        </section>
-      </Sidebar>
-      {active ? (
-        <main className="app-screen">
-          {session ? (
-            <SessionPane session={session} menu={menu} />
-          ) : selected?.kind === "project" ? (
-            <ProjectPage key={selected.id} project={selected.id} />
-          ) : selected ? (
-            <RowDetail row={selected} shellKey={shellKey} />
-          ) : (
-            <NothingSelected className="sessions-detail" />
-          )}
-        </main>
-      ) : null}
-      <CloseSession actions={tools} />
-    </>
+    <section className="sessions-column" aria-label="Sessions">
+      <h1 className="app-hidden">Sessions</h1>
+      {!loaded ? (
+        <Connecting />
+      ) : tree.rows.length === 0 ? (
+        <Empty />
+      ) : (
+        <SessionTree
+          rows={tree.rows}
+          folded={tree.folded}
+          selected={selected?.id}
+          resting={keysIn !== "list" || !active}
+          renaming={tools.renaming ? tools : null}
+          panelKeys={panelKeys}
+          onPick={(id) => {
+            // Picked beside Tickets or Settings, it is shown in their place.
+            if (!active) actions.show("all");
+            tree.pick(id);
+            actions.keysTo("list");
+          }}
+          onFold={tree.fold}
+        />
+      )}
+    </section>
   );
 }

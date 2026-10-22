@@ -151,3 +151,21 @@ test("ARC-24 the sidebar's edge is dragged to resize it, kept, and put back by a
   await edge.dblclick();
   expect(await width()).toBe(288);
 });
+
+test("ARC-24 a session's line on its project's page closes it from there, asking first while it runs", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.keyboard.press("Meta+1");
+  await sidebar(page).getByRole("treeitem", { name: "muster", exact: true }).click();
+  const line = page.locator(".project-session-line", { hasText: "Flaky resize test under load" });
+  await line.hover();
+  await line.getByRole("button", { name: "Close Flaky resize test under load" }).click();
+  // The one on the line, not the one selected: the dialog names it.
+  const dialog = page.getByRole("dialog", { name: "Close Flaky resize test under load?" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Keep it" }).click();
+  await expect(dialog).toBeHidden();
+  // Still on the project's page.
+  await expect(page.getByPlaceholder("What should the agent do?")).toBeVisible();
+});

@@ -216,7 +216,7 @@ export default function Tickets() {
                     </span>
                     <span className="mu-group-source">
                       {list?.state === "loaded"
-                        ? `${list.value.tracker}${list.value.mine ? ", only yours" : ""}`
+                        ? `${list.value.tracker}${list.value.mine ? ", only yours" : ""}${list.refreshing ? " · fetching…" : ""}`
                         : ""}
                     </span>
                     <Spacer />

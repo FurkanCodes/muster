@@ -4,19 +4,31 @@
   flex: 1;
   min-width: 0;
 }
+/* Its body is centred in the pane: one column, and where the pane is wide
+   two, starting work on the left and where the work is on the right. */
+.project-page {
+  container-type: inline-size;
+}
 .project-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--space-8) var(--space-20) var(--space-24);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
+  padding: var(--space-16) var(--space-20) var(--space-24);
+  display: grid;
+  grid-template-columns: minmax(0, 720px);
+  justify-content: center;
+  align-content: start;
+  gap: var(--space-12) var(--space-32);
 }
-.project-body > * {
-  width: 100%;
-  max-width: var(--layout-measure);
+@container (min-width: 1080px) {
+  .project-body {
+    grid-template-columns: repeat(2, minmax(0, 600px));
+    align-items: start;
+  }
+  .project-body .project-where {
+    margin-top: 0;
+  }
 }
 
 /* The box: the prompt, then where, which agent and Start under it. */
@@ -126,4 +138,25 @@
 .project-session-what {
   flex: 1;
   min-width: 0;
+}
+
+/* A session's line in a place, and under the pointer the way to close it, at its end over its age. */
+.project-session-line {
+  position: relative;
+}
+.project-session-close {
+  position: absolute;
+  top: 50%;
+  right: var(--space-4);
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity var(--timing-fast) var(--ease-out);
+}
+.project-session-line:hover .project-session-close,
+.project-session-close:focus-within {
+  opacity: 1;
+}
+/* Its age gives way to it while it shows. */
+.project-session-line:hover .mu-list-item-end {
+  visibility: hidden;
 }

@@ -8,7 +8,8 @@ export type Viewed = Extract<Reply, { IssueViewed: unknown }>["IssueViewed"];
 export type Load<T> =
   | { state: "loading" }
   | { state: "failed"; error: string }
-  | { state: "loaded"; value: T };
+  /** `refreshing` while it is fetched again: shown as it was until the new one comes. */
+  | { state: "loaded"; value: T; refreshing?: boolean };
 export interface TicketData {
   lists: Record<string, Load<Issues>>;
   texts: Record<string, Load<Viewed>>;
@@ -35,19 +36,27 @@ function createTickets(bridge: Bridge) {
     store.setState((s) => ({ lists: { ...s.lists, [id]: value } }));
   const setText = (id: string, value: Load<Viewed>) =>
     store.setState((s) => ({ texts: { ...s.texts, [id]: value } }));
+  // Fetched again (r, Mine and All), a list already shown stays shown,
+  // marked refreshing, until the new one comes: it never gives way to
+  // "Fetching…", so nothing on it moves and its selected ticket stays.
+  // Only the newest fetch of a project lands.
+  const asked: Record<string, number> = {};
   async function fetch(project: string, again = false) {
-    if (!again && store.getState().lists[project]) return;
-    const loading = { state: "loading" } as const;
-    setList(project, loading);
+    const was = store.getState().lists[project];
+    if (!again && was) return;
+    const ask = (asked[project] ?? 0) + 1;
+    asked[project] = ask;
+    setList(
+      project,
+      was?.state === "loaded" ? { ...was, refreshing: true } : ({ state: "loading" } as const),
+    );
     try {
       const reply = await bridge.command({ ListIssues: { project } });
       if (typeof reply !== "object" || !("Issues" in reply))
         throw new Error("The daemon did not return its tickets.");
-      if (store.getState().lists[project] === loading)
-        setList(project, { state: "loaded", value: reply.Issues });
+      if (asked[project] === ask) setList(project, { state: "loaded", value: reply.Issues });
     } catch (error) {
-      if (store.getState().lists[project] === loading)
-        setList(project, { state: "failed", error: message(error) });
+      if (asked[project] === ask) setList(project, { state: "failed", error: message(error) });
     }
   }
   async function view(project: string, issue: Issue) {

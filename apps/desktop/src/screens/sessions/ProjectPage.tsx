@@ -20,6 +20,7 @@ import type { ProjectId } from "../../ipc/generated/ProjectId";
 import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
+import { useShownSessionActions } from "../../session/SessionActionsContext";
 import type { DaemonState } from "../../state/daemon";
 import { branchOf, projectColour, standsBeside } from "../../state/selectors";
 import { Banner, BannerBody } from "../../ui/Banner";
@@ -366,9 +367,14 @@ function PlaceCard({ id, onStart }: { id: WorkspaceId; onStart: (id: WorkspaceId
   );
 }
 
-/** A session in a place: how it stands and what it is doing, a click from its terminal. */
+/**
+ * A session in a place: how it stands and what it is doing, a click from its
+ * terminal; under the pointer, the way to close it from here (after asking,
+ * while it runs), as ⌘K or a right-click on its line does.
+ */
 function PlaceSession({ id }: { id: string }) {
   const actions = useActions();
+  const tools = useShownSessionActions();
   const now = useNow();
   const session = useDaemon((state) => state.sessions[id]);
   if (!session) return null;
@@ -376,7 +382,7 @@ function PlaceSession({ id }: { id: string }) {
   const what = beside ? (session.harness === "shell" ? "shell" : "panel") : doing(session);
   const unseen = session.unseen && session.status.state !== "needs_you";
   return (
-    <li>
+    <li className="project-session-line">
       <RowButton
         className="project-session"
         label={`${session.title}, ${what}`}
@@ -398,6 +404,15 @@ function PlaceSession({ id }: { id: string }) {
           {unseen ? <NewsDot /> : null}
         </ListItemEnd>
       </RowButton>
+      <span className="project-session-close">
+        <IconButton
+          icon="trash"
+          size="sm"
+          label={`Close ${session.title}`}
+          title="Close the session"
+          onClick={() => tools.close(id)}
+        />
+      </span>
     </li>
   );
 }

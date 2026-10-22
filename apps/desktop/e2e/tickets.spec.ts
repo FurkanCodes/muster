@@ -127,6 +127,24 @@ test("PRD-01 Mine and All change the project's setting and surface refusals", as
   await expect(ticket(page, "KEP-31")).toHaveCount(1);
 });
 
+test("ARC-24 Mine and All keep the list shown while it is fetched again, its selected ticket too", async ({
+  page,
+}) => {
+  await start(page);
+  await tickets(page);
+  await ticket(page, "#205").click();
+  await expect(ticket(page, "#205")).toHaveAttribute("aria-selected", "true");
+  await page.evaluate(() => window.__muster.hold("ListIssues"));
+  await page.getByRole("button", { name: "Mine", exact: true }).first().click();
+  // Asked again, the list as it was stays: no "Fetching its tickets…" in its place.
+  await expect(page.getByText("GitHub issues · fetching…")).toBeVisible();
+  await expect(page.getByText("Fetching its tickets…")).toHaveCount(0);
+  await expect(ticket(page, "#205")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Resize settles once on release" })).toBeVisible();
+  await page.evaluate(() => window.__muster.release("ListIssues"));
+  await expect(page.getByText("GitHub issues · fetching…")).toHaveCount(0);
+});
+
 test("PRD-07 PRD-10 ticket HTML, images and links never load or execute", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (request) => {

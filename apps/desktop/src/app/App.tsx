@@ -1,7 +1,7 @@
 // The window: the sidebar and its list, the session or the page shown
 // beside it, the status bar.
 
-import { type ReactNode, Suspense, useEffect, useState } from "react";
+import { Activity, type ReactNode, Suspense, useEffect, useState } from "react";
 import { Away, AwayBanner } from "../flows/Away";
 import { SESSION_LISTS } from "../flows/actions";
 import { Flows } from "../flows/Flows";
@@ -10,6 +10,7 @@ import type { Bridge } from "../ipc/bridge";
 import { screenKeys } from "../keys/keymap";
 import { KEY_SCREENS, useKeymap } from "../keys/useKeymap";
 import { installQueueHistory } from "../screens/queue/history";
+import { SessionActionsProvider } from "../session/SessionActionsContext";
 import { createDaemon } from "../state/daemon";
 import { createUi, isList, type UiActions } from "../state/ui";
 import { terminalColours } from "../terminal/colours";
@@ -23,8 +24,14 @@ import {
   useDaemon,
   useUi,
 } from "./context";
+import { Detail } from "./Detail";
 import { installKeys, useKeys } from "./keys";
+import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
+
+/** The lists, in the order their switch shows them. */
+const LIST_IDS = ["needs-you", "all"] as const;
+
 import { LISTS, PAGES } from "./screens";
 import { installVisibility } from "./visibility";
 
@@ -177,7 +184,6 @@ function Body() {
   const loaded = useDaemon((state) => state.loaded);
   const away = useDaemon((state) => state.link.state === "down");
   const empty = useDaemon((state) => Object.keys(state.projects).length === 0);
-  const List = LISTS[list];
   // Out of reach, the window stays as it was, still (src/flows: Away), or
   // Kep waits where nothing was known yet; with no projects, the lists of
   // sessions welcome a first one.
@@ -188,18 +194,29 @@ function Body() {
     const Shown = PAGES[screen];
     page = <Shown />;
   }
+  // The sidebar and what is beside it are drawn once, whichever list shows:
+  // its switch only shows one list and hides the other (Activity: kept with
+  // its place, its folds and its scroll, its keys let go while hidden), and
+  // the pane beside it is the shown list's selected line's, so a session
+  // selected in both keeps its pane, and its terminal, as the lists switch.
   return (
-    <div className="app-body" inert={away && loaded ? true : undefined}>
-      {/* Apart, so a page loading for the first time never takes the list away meanwhile. */}
-      <Suspense fallback={null}>
-        <List active={page === null} />
-      </Suspense>
-      {page ? (
+    <SessionActionsProvider>
+      <div className="app-body" inert={away && loaded ? true : undefined}>
+        <Sidebar>
+          {LIST_IDS.map((id) => {
+            const List = LISTS[id];
+            return (
+              <Activity key={id} mode={id === list ? "visible" : "hidden"}>
+                <List active={id === list && page === null} />
+              </Activity>
+            );
+          })}
+        </Sidebar>
         <main className="app-screen">
-          <Suspense fallback={null}>{page}</Suspense>
+          {page ? <Suspense fallback={null}>{page}</Suspense> : <Detail />}
         </main>
-      ) : null}
-    </div>
+      </div>
+    </SessionActionsProvider>
   );
 }
 
