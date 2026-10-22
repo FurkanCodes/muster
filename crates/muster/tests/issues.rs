@@ -246,6 +246,59 @@ async fn starting_the_same_issue_again_reuses_its_worktree() {
 }
 
 #[tokio::test]
+async fn a_ticket_keeps_its_worktree_when_its_branch_is_renamed() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let (first, _) = start_issue(&mut connection, setup.project, 42)
+        .await
+        .unwrap();
+    let snapshot = connection.subscribe().await.unwrap();
+    let made = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.id == first)
+        .unwrap();
+    assert_eq!(made.ticket, Some(muster_core::TicketKey::number(42)));
+    let path = made.kind.host_path().unwrap().to_owned();
+
+    // Its agent names the branch for what it did.
+    support::git(&path, &["branch", "-m", "fix/login-redirect"]);
+    let renamed = || async {
+        let mut watcher = setup.daemon.connect().await;
+        watcher
+            .subscribe()
+            .await
+            .unwrap()
+            .workspaces
+            .iter()
+            .any(|workspace| {
+                workspace.id == first && workspace.kind.branch() == "fix/login-redirect"
+            })
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !renamed().await {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the branch watcher never saw the rename"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    let (second, _) = start_issue(&mut connection, setup.project, 42)
+        .await
+        .unwrap();
+    assert_eq!(second, first, "the ticket's agent goes where its work is");
+    let snapshot = connection.subscribe().await.unwrap();
+    assert!(
+        snapshot
+            .workspaces
+            .iter()
+            .all(|workspace| workspace.kind.is_checkout() || workspace.id == first),
+        "no second worktree"
+    );
+}
+
+#[tokio::test]
 async fn another_agent_works_in_a_worktree_of_its_own_and_the_list_shows_them() {
     let setup = setup().await;
     let mut connection = setup.daemon.connect().await;

@@ -312,9 +312,7 @@ impl Supervisor {
                 .host_path()
                 .map(|path| path.to_string_lossy().into_owned()),
             branch: branch.map(str::to_owned),
-            ticket: branch
-                .and_then(muster_core::tickets::issue_of_branch)
-                .map(String::from),
+            ticket: found.ticket_or_branch().map(String::from),
             pr: found.pull_request.as_ref().map(|pr| pr.url.clone()),
             ..Context::default()
         };

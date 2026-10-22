@@ -96,28 +96,34 @@ export function ticketScenario(projects: Project[]): TicketScenario {
 }
 
 /**
- * Puts the board's agents on their tickets: muster's two worktrees on
- * branches named for #214 and #205, and a kep-api worktree for KEP-31 with
+ * Puts the board's agents on their tickets: muster's two worktrees made
+ * for #214 and #205, on branches named for them, and a kep-api worktree for KEP-31 with
  * its Gemini in it. The working day keeps its own branch names for the other
  * screens; a test that wants the board calls this.
  */
 export function agentsOnTickets(mock: MockBridge): void {
   const world = mock.world;
   const changed: Workspace[] = [];
-  const rename = (workspace: Workspace | undefined, branch: string) => {
+  const rename = (workspace: Workspace | undefined, branch: string, ticket: string) => {
     if (workspace?.kind.kind !== "worktree") return;
     workspace.kind = { ...workspace.kind, branch };
+    workspace.ticket = ticket;
     changed.push({ ...workspace });
   };
   const of = (project: string) => world.workspaces.filter((w) => w.project === project);
   const [muster, , , kepApi] = world.projects;
   const trees = of(muster?.id ?? "").filter((w) => w.kind.kind === "worktree");
-  rename(trees[0], "muster/issue-214-desktop-app-sessions-list-and-one-live");
-  rename(trees[1], "muster/issue-205-resize-settles-once-on-release");
+  rename(trees[0], "muster/issue-214-desktop-app-sessions-list-and-one-live", "214");
+  rename(trees[1], "muster/issue-205-resize-settles-once-on-release", "205");
   const checkout = of(kepApi?.id ?? "").find((w) => w.kind.kind === "checkout");
   const gemini = world.sessions.find((s) => s.workspace === checkout?.id);
   if (kepApi && gemini) {
-    const tree = worktree(kepApi.id, "muster/issue-KEP-31-sign-up-page-loads-the-old-pricing", 1);
+    const tree = worktree(
+      kepApi.id,
+      "muster/issue-KEP-31-sign-up-page-loads-the-old-pricing",
+      1,
+      "KEP-31",
+    );
     world.workspaces.push(tree);
     changed.push(tree);
     gemini.workspace = tree.id;
@@ -127,7 +133,7 @@ export function agentsOnTickets(mock: MockBridge): void {
   mock.publish({ workspaces: changed });
 }
 
-function worktree(project: string, branch: string, n: number): Workspace {
+function worktree(project: string, branch: string, n: number, ticket: string | null): Workspace {
   return {
     id: `01JT${String(n).padStart(22, "0")}`,
     project,
@@ -138,6 +144,7 @@ function worktree(project: string, branch: string, n: number): Workspace {
     timeline: null,
     clashes: [],
     stacked_on: null,
+    ticket,
   };
 }
 
@@ -253,7 +260,12 @@ function startFromIssue(
   );
   const inProject = (b: string) =>
     world.workspaces.find((w) => w.project === project && w.kind.branch === b);
-  let workspace = another ? undefined : inProject(branch);
+  // Its worktree, made for it, whatever its branch is called now.
+  let workspace = another
+    ? undefined
+    : world.workspaces.find(
+        (w) => w.project === project && w.kind.kind === "worktree" && w.ticket === key,
+      );
   if (!workspace) {
     // Another agent's worktree is `…-2`, `…-3`: the first nobody has.
     let n = 2;
@@ -263,7 +275,7 @@ function startFromIssue(
     if (on && (!base || base.project !== project || base.kind.kind !== "worktree"))
       throw refused("the worktree to build on is not in this project", "bad_request");
     workspace = {
-      ...worktree(project, chosen, world.workspaces.length + 100),
+      ...worktree(project, chosen, world.workspaces.length + 100, key),
       stacked_on: base ? { branch: base.kind.branch, at: "0a1b2c3" } : null,
     };
     world.workspaces.push(workspace);

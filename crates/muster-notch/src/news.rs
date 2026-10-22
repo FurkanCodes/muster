@@ -230,6 +230,7 @@ mod tests {
             timeline: None,
             clashes: Vec::new(),
             stacked_on: None,
+            ticket: None,
         };
         let mut asking = session(
             SessionStatus::NeedsYou {

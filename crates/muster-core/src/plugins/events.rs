@@ -135,7 +135,8 @@ pub struct Event {
     pub workspace: Option<EventWorkspace>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<EventSession>,
-    /// The ticket the workspace's branch is for, by its key: `42`,
+    /// The ticket the workspace was made for, else the one its branch's
+    /// name says (`Workspace::ticket_or_branch`), by its key: `42`,
     /// `APP-7`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ticket: Option<String>,
@@ -221,12 +222,10 @@ impl Event {
         project: Option<&Project>,
         workspace: Option<&Workspace>,
     ) -> Self {
-        let workspace = workspace.map(EventWorkspace::of);
         let ticket = workspace
-            .as_ref()
-            .and_then(|workspace| workspace.branch.as_deref())
-            .and_then(crate::tickets::issue_of_branch)
+            .and_then(Workspace::ticket_or_branch)
             .map(String::from);
+        let workspace = workspace.map(EventWorkspace::of);
         Self {
             event: kind,
             at,

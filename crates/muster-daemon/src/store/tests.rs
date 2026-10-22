@@ -38,6 +38,7 @@ fn worktree(project: ProjectId) -> Workspace {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: None,
     }
 }
 
@@ -144,6 +145,60 @@ fn a_database_from_a_newer_muster_is_refused() {
 }
 
 #[test]
+fn worktrees_from_before_tickets_were_stored_take_theirs_from_their_branch_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    let project = project("/src/app");
+    let rows = [
+        ("worktree", "muster/issue-42-fix-the-login", Some("42")),
+        ("worktree", "issue-PROJ-7-tidy-up-2", Some("PROJ-7")),
+        ("worktree", "feature/mine", None),
+        // The person's checkout is never a ticket's.
+        ("checkout", "issue-9-theirs", None),
+    ];
+    {
+        let conn = Connection::open(&path).unwrap();
+        for migration in &MIGRATIONS[..8] {
+            conn.execute_batch(migration).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 8).unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, root, created_at) VALUES (?1, 'app', '/src/app', 1)",
+            [project.id.to_string()],
+        )
+        .unwrap();
+        for (n, (kind, branch, _)) in rows.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO workspaces (id, project_id, kind, path, branch, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    WorkspaceId::new().to_string(),
+                    project.id.to_string(),
+                    kind,
+                    format!("/w/{n}"),
+                    branch,
+                    i64::try_from(n).unwrap(),
+                ],
+            )
+            .unwrap();
+        }
+    }
+    let store = Store::open(&path, at(1)).unwrap();
+    let tickets: Vec<Option<String>> = store
+        .snapshot()
+        .unwrap()
+        .workspaces
+        .iter()
+        .map(|workspace| workspace.ticket.as_ref().map(|key| key.as_str().to_owned()))
+        .collect();
+    let wanted: Vec<Option<String>> = rows
+        .iter()
+        .map(|(_, _, ticket)| ticket.map(str::to_owned))
+        .collect();
+    assert_eq!(tickets, wanted);
+}
+
+#[test]
 fn data_survives_reopening() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("muster.db");
@@ -172,7 +227,24 @@ fn legacy_samples(path: &std::path::Path) -> (Store, muster_core::protocol::Snap
     let workspace = worktree(project.id);
     let session = session(workspace.id);
     store.insert_project(&project).unwrap();
-    store.insert_workspace(&workspace).unwrap();
+    // As that schema's workspaces were written, before `ticket`.
+    let WorkspaceKind::Worktree { path, branch } = &workspace.kind else {
+        unreachable!("a worktree")
+    };
+    store
+        .conn
+        .execute(
+            "INSERT INTO workspaces (id, project_id, kind, path, branch, created_at)
+             VALUES (?1, ?2, 'worktree', ?3, ?4, ?5)",
+            rusqlite::params![
+                workspace.id.to_string(),
+                project.id.to_string(),
+                path.to_str().unwrap(),
+                branch,
+                workspace.created_at.as_millis(),
+            ],
+        )
+        .unwrap();
     // As that schema's sessions were written, before `beside`.
     store
         .conn
@@ -807,6 +879,7 @@ fn a_run_s_container_is_a_workspace_of_its_project_and_goes_with_the_run() {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: None,
     };
     store.insert_workspace(&container).unwrap();
     let mut agent = session(container.id);

@@ -134,7 +134,8 @@
 //! version 47 a Rust project's worktrees building into one folder
 //! (`Preferences::shared_builds`, a field older clients pass over;
 //! `PreferenceChange::SharedBuilds`, sent only to a daemon of 47 or
-//! later).
+//! later); version 48 the ticket a worktree was made for
+//! (`Workspace::ticket`, a field older clients pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -162,7 +163,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 47;
+pub const PROTOCOL_VERSION: u32 = 48;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 

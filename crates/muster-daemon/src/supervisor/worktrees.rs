@@ -112,6 +112,8 @@ struct Plan {
     /// Whether the branch exists already, to be checked out as it is.
     exists: bool,
     stacked_on: Option<Stacked>,
+    /// The ticket it is made for, if any.
+    ticket: Option<muster_core::TicketKey>,
 }
 
 /// A worktree git made off the loop, or could not, on its way back.
@@ -139,8 +141,12 @@ impl Supervisor {
         on: Option<WorkspaceId>,
         then: Then,
     ) {
+        let ticket = match &then {
+            Then::Ticket(ticket) => Some(ticket.key().clone()),
+            Then::Reply(_) => None,
+        };
         match self.plan_worktree(project, branch, on).await {
-            Ok(plan) => self.make_worktree(plan, then),
+            Ok(plan) => self.make_worktree(Plan { ticket, ..plan }, then),
             Err(error) => then.refuse(error),
         }
     }
@@ -209,6 +215,7 @@ impl Supervisor {
             branch,
             exists,
             stacked_on,
+            ticket: None,
         })
     }
 
@@ -304,6 +311,7 @@ impl Supervisor {
             timeline: None,
             clashes: Vec::new(),
             stacked_on: plan.stacked_on,
+            ticket: plan.ticket,
         };
         let stored = workspace.clone();
         let inserted = self

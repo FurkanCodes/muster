@@ -41,6 +41,11 @@ pub(super) struct TicketThen {
 }
 
 impl TicketThen {
+    /// The ticket's key.
+    pub(super) fn key(&self) -> &TicketKey {
+        &self.detail.issue.key
+    }
+
     pub(super) fn refuse(self, error: ErrorBody) {
         refuse(self.reply, error);
     }
@@ -236,7 +241,17 @@ impl Supervisor {
             Err(error) => return refuse(reply, error.body()),
         };
         let branch = ticket_branch(&detail.issue.key, &detail.issue.title, prefixed);
-        let existing = self.worktree_on(project, &branch).map(|found| found.id);
+        // Its worktree, made for it, whatever its branch is called now.
+        let existing = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| {
+                workspace.project == project
+                    && workspace.kind.is_worktree()
+                    && workspace.ticket.as_ref() == Some(&detail.issue.key)
+            })
+            .map(|found| found.id);
         let ticket = TicketThen {
             detail,
             harness,

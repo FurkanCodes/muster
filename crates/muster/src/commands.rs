@@ -614,8 +614,7 @@ fn sessions_on<'a>(
                 workspace.id == session.workspace
                     && workspace.project == project
                     && workspace.kind.is_worktree()
-                    && muster_core::tickets::issue_of_branch(workspace.kind.branch()).as_ref()
-                        == Some(key)
+                    && workspace.ticket.as_ref() == Some(key)
             })
         })
         .filter(|session| !session.kind().is_panel())

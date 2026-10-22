@@ -184,22 +184,21 @@ impl Model {
         &self.sessions
     }
 
-    /// The projects' worktrees for ticket `key`: on branches named for it.
+    /// The projects' worktrees for ticket `key`: made for it, whatever their
+    /// branches are called now.
     pub fn worktrees_for(&self, projects: &[ProjectId], key: &TicketKey) -> Vec<WorkspaceId> {
         self.workspaces
             .iter()
             .filter(|workspace| {
                 projects.contains(&workspace.project) && workspace.kind.is_worktree()
             })
-            .filter(|workspace| {
-                muster_core::tickets::issue_of_branch(workspace.kind.branch()).as_ref() == Some(key)
-            })
+            .filter(|workspace| workspace.ticket.as_ref() == Some(key))
             .map(|workspace| workspace.id)
             .collect()
     }
 
     /// The agents working on ticket `key` in `projects`: the sessions in
-    /// their worktrees on branches named for it, oldest first; a plugin's
+    /// the worktrees made for it, oldest first; a plugin's
     /// panel beside them is none.
     pub fn agents_on(&self, projects: &[ProjectId], key: &TicketKey) -> Vec<&Session> {
         let workspaces = self.worktrees_for(projects, key);

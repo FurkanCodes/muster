@@ -8,7 +8,7 @@ use rusqlite::Connection;
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -130,6 +130,33 @@ const V7: &str = "DROP TABLE resource_samples;";
 /// beside and told of again when it is started again (`PRD-15`).
 const V8: &str = "ALTER TABLE sessions ADD COLUMN beside TEXT;";
 
+/// The ticket a worktree was made for, so its agents stay the ticket's
+/// whatever its branch is called later. Worktrees made before it have
+/// theirs read once from their branch's name ([`tickets_from_branches`]).
+const V9: &str = "ALTER TABLE workspaces ADD COLUMN ticket TEXT;";
+
+/// The version whose migration fills in worktrees' tickets.
+const TICKETS: u32 = 9;
+
+/// Each worktree's ticket, as its branch's name says (`muster/issue-42-…`):
+/// how the ticket's agents were found before it was stored. Run once, in
+/// the migration that adds it.
+fn tickets_from_branches(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    let named: Vec<(String, String)> = tx
+        .prepare("SELECT id, branch FROM workspaces WHERE kind = 'worktree'")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (id, branch) in named {
+        if let Some(key) = muster_core::tickets::issue_of_branch(&branch) {
+            tx.execute(
+                "UPDATE workspaces SET ticket = ?2 WHERE id = ?1",
+                rusqlite::params![id, key.as_str()],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// The schema version this build creates.
 pub(super) fn latest_version() -> u32 {
     u32::try_from(MIGRATIONS.len()).unwrap_or(u32::MAX)
@@ -153,6 +180,9 @@ pub(super) fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
     for (version, migration) in (1..=known).zip(MIGRATIONS).skip(current as usize) {
         let tx = conn.transaction()?;
         tx.execute_batch(migration)?;
+        if version == TICKETS {
+            tickets_from_branches(&tx)?;
+        }
         tx.pragma_update(None, "user_version", version)?;
         tx.commit()?;
     }
