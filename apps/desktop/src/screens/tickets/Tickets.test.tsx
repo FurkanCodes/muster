@@ -179,6 +179,9 @@ describe("PRD-01 ARC-24 Tickets", () => {
         .getAllByRole("checkbox")
         .map((b) => b.getAttribute("aria-checked")),
     ).toEqual(["false", "true", "true"]);
+    // The bar at the pane's foot counts what is given, and assigns it.
+    expect(screen.getByText("2 comments on the ticket")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Assign 2" })).toBeInTheDocument();
     // #214 has its agent: another is given these.
     await userEvent.keyboard("a");
     const dialog = await screen.findByRole("dialog");

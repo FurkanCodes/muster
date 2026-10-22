@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn its_notes_are_its_comments_gitlab_s_own_left_out() {
         let json = r#"[
-            {"id":1,"body":"changed the description","author":{"id":3,"username":"someone"},"created_at":"2026-10-22T09:29:00.000Z","system":true,"noteable_iid":12},
+            {"id":1,"body":"changed the description","author":{"id":3,"username":"someone"},"created_at":"2026-10-22T09:29:00.000Z","system":true},
             {"id":2,"body":"Seen on `main`\u001b[2J","author":{"id":4,"username":"other"},"created_at":"2026-10-22T11:30:00.000+02:00","system":false},
             {"id":3,"body":"  ","author":{"id":4,"username":"other"},"created_at":"2026-10-22T09:31:00Z","system":false}]"#;
         let comments: Vec<IssueComment> = parse::<Vec<GlabNote>>(json)
