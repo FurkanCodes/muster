@@ -196,6 +196,7 @@ async fn create_worktree(
             project,
             branch: Some(branch.to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

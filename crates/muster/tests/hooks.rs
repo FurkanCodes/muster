@@ -200,6 +200,7 @@ async fn worktree(
             project,
             branch: Some(branch.to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -217,6 +218,7 @@ async fn start(connection: &mut Connection, workspace: WorkspaceId, harness: &st
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

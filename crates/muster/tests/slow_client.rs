@@ -148,6 +148,7 @@ async fn a_client_that_reads_slowly_catches_up_from_the_ring_arc_14() {
             title: None,
             size: SIZE,
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()
@@ -257,6 +258,7 @@ async fn a_client_starting_over_sees_the_program_s_screen_not_the_output_s_middl
             title: None,
             size: SIZE,
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

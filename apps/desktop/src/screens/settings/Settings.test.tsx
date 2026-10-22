@@ -122,6 +122,18 @@ describe("Settings", () => {
     keys();
   });
 
+  it("turns agents starting agents off with ⏎ (PRD-01)", async () => {
+    const { app, bridge, keys } = renderSettings();
+    await screen.findByRole("group", { name: "Theme" });
+    act(() => app.actions.select("settings", "agents/delegation"));
+    expect(await screen.findByRole("switch", { name: "Agents start agents" })).toBeChecked();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual({ ChangePreference: { AgentsStartAgents: false } }),
+    );
+    keys();
+  });
+
   it("hears a sound stepped to with ← →, and not the Mac's own alert", async () => {
     const { app, bridge, keys } = renderSettings();
     await screen.findByRole("group", { name: "Theme" });

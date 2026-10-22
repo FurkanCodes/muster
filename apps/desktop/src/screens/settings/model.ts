@@ -83,6 +83,12 @@ export interface ProjectRows {
  */
 export const SHARED_BUILDS_PROTOCOL = 47;
 
+/**
+ * The first protocol whose daemon lets agents start agents within the
+ * person's limits and takes `AgentsStartAgents` (`DELEGATION_PROTOCOL`).
+ */
+export const DELEGATION_PROTOCOL = 51;
+
 export interface RowsInput {
   /** The agents, Muster's own then the person's, by id. */
   agents: readonly string[];
@@ -93,6 +99,8 @@ export interface RowsInput {
   keys: readonly string[];
   /** Whether the daemon has a project's worktrees build into one folder. */
   sharedBuilds: boolean;
+  /** Whether the daemon lets agents start agents within limits. */
+  delegation: boolean;
 }
 
 function rows(section: Section, kinds: readonly [string, RowKind][]): Row[] {
@@ -122,6 +130,7 @@ export function settingRows(input: RowsInput): Row[] {
       ...input.agents.map((agent): [string, RowKind] => [`agent.${agent}`, "item"]),
       ["edit", "button"],
       ["read_again", "button"],
+      ...(input.delegation ? [["delegation", "switch"] as [string, RowKind]] : []),
     ]),
     ...rows("naming", [
       ["names_by_agent", "switch"],

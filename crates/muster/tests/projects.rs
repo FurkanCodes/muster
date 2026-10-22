@@ -51,6 +51,7 @@ async fn start_shell(connection: &mut Connection, workspace: WorkspaceId) -> Ses
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()
@@ -131,6 +132,7 @@ async fn branches_follow_switches_in_the_checkout_and_in_worktrees() {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -220,6 +222,7 @@ async fn removing_a_project_forgets_it_and_leaves_the_repository_alone() {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

@@ -182,6 +182,7 @@ fn sessions() -> Vec<Session> {
             }),
         }),
         beside: Some(SessionId::new()),
+        started_by: Some(SessionId::new()),
     };
     let statuses = [
         SessionStatus::Fresh,
@@ -202,6 +203,7 @@ fn sessions() -> Vec<Session> {
         spend: None,
         tidy: None,
         beside: None,
+        started_by: None,
         ..full.clone()
     }));
     all
@@ -289,6 +291,11 @@ fn preferences() -> Preferences {
             },
         ),
         shared_builds: false,
+        delegation: muster_core::delegation::Delegation {
+            allowed: false,
+            at_once: 2,
+            depth: 1,
+        },
     }
 }
 
@@ -438,6 +445,7 @@ fn commands() -> Vec<Command> {
             project,
             branch: Some("work".to_owned()),
             on: Some(workspace),
+            named_for: Some("Fix the login".to_owned()),
         },
         Command::RemoveWorktree {
             workspace,
@@ -449,6 +457,7 @@ fn commands() -> Vec<Command> {
             title: Some("Fix".to_owned()),
             size: size(),
             prompt: Some("Fix the login".to_owned()),
+            started_by: Some(SessionId::new()),
         },
         Command::StopSession { session },
         Command::CheckWorkspace {
@@ -507,6 +516,14 @@ fn commands() -> Vec<Command> {
         },
         Command::Health,
         Command::ExplainSession { session },
+        Command::ReadSession {
+            session,
+            what: muster_core::protocol::Reading::Screen,
+        },
+        Command::ReadSession {
+            session,
+            what: muster_core::protocol::Reading::LastReply,
+        },
         Command::ReadPreferences,
         Command::Agents,
         Command::ListRepositories,
@@ -547,6 +564,7 @@ fn commands() -> Vec<Command> {
             },
         }),
         Command::ChangePreference(PreferenceChange::SharedBuilds(false)),
+        Command::ChangePreference(PreferenceChange::AgentsStartAgents(false)),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),
@@ -683,6 +701,9 @@ fn replies() -> Vec<Reply> {
         Reply::RunTakenOver {
             workspace: WorkspaceId::new(),
             session: SessionId::new(),
+        },
+        Reply::SessionText {
+            text: Some("Fixed it.".to_owned()),
         },
         Reply::Done,
     ];

@@ -7,6 +7,7 @@
 
 mod auth;
 mod commands;
+mod daemon_start;
 mod explain;
 mod json;
 mod launchd;
@@ -17,6 +18,7 @@ mod plugins;
 mod reload;
 mod runs;
 mod upgrade;
+mod verbs;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -28,7 +30,10 @@ use muster_daemon::DaemonConfig;
 #[derive(Debug, Parser)]
 #[command(
     version,
-    about = "A cockpit for coding agents, with an optional autopilot."
+    about = "A cockpit for coding agents, with an optional autopilot.",
+    after_help = "Start an agent: muster <agent> [PROMPT], such as `muster claude \"fix the \
+                  login redirect\"`: in a new worktree of the project you are in, in the \
+                  background, and back at once (`muster claude --help`)."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -128,6 +133,13 @@ enum Commands {
         #[arg(long, hide = true)]
         background: bool,
     },
+    #[command(flatten)]
+    Verb(verbs::Verb),
+    /// `muster <agent> [PROMPT]`: start a coding agent in the background,
+    /// in a new worktree of the project you are in, on PROMPT, and return
+    /// (`muster claude --help` says more).
+    #[command(external_subcommand)]
+    Agent(Vec<String>),
     /// Serve Muster's own ticket plugin ID (`github`, `gitlab`, `jira`,
     /// `linear`) on stdin and stdout: what the daemon runs to reach a
     /// project's tickets.
@@ -491,7 +503,14 @@ fn main() -> ExitCode {
                 harness,
                 another,
             })) => commands::start_issue(&socket, &project, key, harness, another).await,
-            None => return ui(paths).await,
+            Some(Commands::Verb(verb)) => {
+                return match verbs::run(&paths, verb).await {
+                    verbs::Then::Exit(code) => code,
+                    verbs::Then::Open(session) => ui(paths, Some(session)).await,
+                };
+            }
+            Some(Commands::Agent(args)) => return verbs::start::run(&paths, args).await,
+            None => return ui(paths, None).await,
         };
         match outcome {
             Ok(()) => ExitCode::SUCCESS,
@@ -519,8 +538,8 @@ async fn run_command(socket: &std::path::Path, command: RunCommand) -> commands:
     }
 }
 
-/// Opens the terminal UI.
-async fn ui(paths: Paths) -> ExitCode {
+/// Opens the terminal UI, on `open` if given.
+async fn ui(paths: Paths, open: Option<muster_core::SessionId>) -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     // MUSTER_NOTIFY=off keeps the UI from notifying.
     let notify = !matches!(
@@ -547,48 +566,19 @@ async fn ui(paths: Paths) -> ExitCode {
         });
     let options = muster_tui::Options {
         socket: paths.socket(),
-        start_daemon: Some(Box::new(move || start_daemon(&paths))),
+        start_daemon: Some(Box::new(move || daemon_start::start(&paths))),
         cwd,
         notify,
         motion,
         start_notch,
         // What macOS says the terminal is, to bring it to the front.
         terminal_app: std::env::var("__CFBundleIdentifier").ok(),
+        open,
     };
     match muster_tui::run(options).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => fail(error),
     }
-}
-
-/// Starts `muster daemon --detach`, logging to `daemon.log` in the runtime
-/// directory. That starts the daemon itself apart from this process and
-/// returns at once, so the daemon is never the UI's child: whatever ends
-/// the UI, its whole process tree included, leaves the daemon and its
-/// sessions running (`PRD-09`). A thread waits for the short-lived starter
-/// so it never lingers as a zombie.
-fn start_daemon(paths: &Paths) -> std::io::Result<()> {
-    use std::os::unix::fs::DirBuilderExt;
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&paths.runtime_dir)?;
-    let log = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(paths.runtime_dir.join("daemon.log"))?;
-    let mut daemon = std::process::Command::new(std::env::current_exe()?)
-        .args(["daemon", "--detach"])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(log)
-        .spawn()?;
-    std::thread::Builder::new()
-        .name("muster-reap-daemon".to_owned())
-        .spawn(move || {
-            let _ = daemon.wait();
-        })?;
-    Ok(())
 }
 
 /// Starts `muster notch --detach`, which starts the notch apart from the
@@ -908,7 +898,7 @@ impl Signals {
     }
 }
 
-fn fail(error: impl std::fmt::Display) -> ExitCode {
+pub(crate) fn fail(error: impl std::fmt::Display) -> ExitCode {
     // A message can quote git, a path or an issue: no control characters.
     eprintln!(
         "muster: {}",

@@ -10,7 +10,9 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
-use super::{list_block, look, naming, panel, plugins, shared_builds, shorten, telling};
+use super::{
+    delegation, list_block, look, naming, panel, plugins, shared_builds, shorten, telling,
+};
 use crate::app::{App, SettingRow, Settings};
 
 /// What the only-my-tickets setting is called in the list.
@@ -95,6 +97,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::SharedBuilds => {
             labelled(shared_builds::LABEL, shared_builds::value(app), width)
         }
+        SettingRow::Delegation => labelled(delegation::LABEL, delegation::value(app), width),
         SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
         SettingRow::Tell(kind) => labelled(&telling::label(kind), telling::value(app, kind), width),
         SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
@@ -266,6 +269,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::Panels) => panels_text(app),
         Some(SettingRow::Keys) => keys_text(app),
         Some(SettingRow::SharedBuilds) => shared_builds::text(app),
+        Some(SettingRow::Delegation) => delegation::text(app),
         Some(SettingRow::Notifications) => notifications_text(app),
         Some(SettingRow::Tell(kind)) => telling::text(app, kind),
         Some(SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel) => {
@@ -289,6 +293,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Panels => panels_text(app),
                 SettingRow::Keys => keys_text(app),
                 SettingRow::SharedBuilds => shared_builds::text(app),
+                SettingRow::Delegation => delegation::text(app),
                 SettingRow::Notifications => notifications_text(app),
                 SettingRow::Tell(kind) => telling::text(app, kind),
                 SettingRow::NamesByAgent | SettingRow::NamedBy | SettingRow::NamingModel => {
@@ -872,6 +877,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
         Some(SettingRow::NamingModel) => hints.push("⏎ choose"),
         Some(SettingRow::Keys) => hints.push("⏎ set them"),
         Some(SettingRow::SharedBuilds) => hints.push(shared_builds::hint(app)),
+        Some(SettingRow::Delegation) => hints.push(delegation::hint(app)),
         Some(SettingRow::Notifications) => {
             hints.push(if app.model.preferences().notifications {
                 "⏎ turn off"

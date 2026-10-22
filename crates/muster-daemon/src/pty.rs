@@ -163,6 +163,8 @@ enum Command {
     /// The process group in the terminal's foreground, which has the keys:
     /// a shell's, or the program it runs now.
     Foreground(oneshot::Sender<Option<u32>>),
+    /// Its screen as text (`Screen::text`).
+    Text(oneshot::Sender<String>),
 }
 
 /// A cheap, cloneable way to reach a terminal's actor.
@@ -249,6 +251,13 @@ impl PtyHandle {
         let (reply, answer) = oneshot::channel();
         self.commands.send(Command::Foreground(reply)).await.ok()?;
         answer.await.ok().flatten()
+    }
+
+    /// Its screen as it stands, as text; `None` once the terminal is gone.
+    pub(crate) async fn text(&self) -> Option<String> {
+        let (reply, answer) = oneshot::channel();
+        self.commands.send(Command::Text(reply)).await.ok()?;
+        answer.await.ok()
     }
 
     /// Hands the terminal over, for the daemon's next version: `None` if
@@ -876,6 +885,10 @@ impl Actor {
                     .and_then(|master| rustix::termios::tcgetpgrp(master).ok())
                     .and_then(|group| u32::try_from(group.as_raw_nonzero().get()).ok());
                 let _ = reply.send(group);
+            }
+            Command::Text(reply) => {
+                self.draw();
+                let _ = reply.send(self.screen.text());
             }
             Command::Stop => {
                 if self.live.is_some() && !self.stopping {

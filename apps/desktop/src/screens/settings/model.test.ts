@@ -20,6 +20,7 @@ const input = {
   ],
   keys: ["quit", "rename"],
   sharedBuilds: true,
+  delegation: true,
 };
 
 describe("the settings as one list", () => {
@@ -65,6 +66,12 @@ describe("the settings as one list", () => {
     expect(keys).toContain("general/shared_builds");
     const older = settingRows({ ...input, sharedBuilds: false }).map((row) => row.key);
     expect(older).not.toContain("general/shared_builds");
+  });
+
+  it("has a row for agents starting agents only where the daemon lets them (PRD-01)", () => {
+    expect(keys).toContain("agents/delegation");
+    const older = settingRows({ ...input, delegation: false }).map((row) => row.key);
+    expect(older).not.toContain("agents/delegation");
   });
 
   it("moves through every page in order, no further than either end", () => {

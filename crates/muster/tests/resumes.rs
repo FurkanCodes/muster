@@ -43,6 +43,7 @@ async fn setup() -> (Sandbox, Daemon, WorkspaceId) {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -80,6 +81,7 @@ async fn turn_in(
             title: Some(title.to_owned()),
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

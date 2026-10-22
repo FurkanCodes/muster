@@ -172,6 +172,8 @@ pub(crate) struct SessionEntry {
     activity: Option<String>,
     spend: Option<SpendEntry>,
     usage: Option<UsageEntry>,
+    /// The agent's session that started it, where an agent did (`PRD-01`).
+    started_by: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -350,6 +352,7 @@ pub(crate) fn session_entry(snapshot: &Snapshot, session: &Session) -> SessionEn
                 .map(|micros| muster_core::num::fraction(micros) / 1_000_000.0),
         }),
         usage,
+        started_by: session.started_by.map(|starter| starter.to_string()),
     }
 }
 

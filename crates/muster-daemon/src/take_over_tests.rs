@@ -196,6 +196,7 @@ async fn the_person_drives_the_run_s_agent_in_its_container_and_hands_it_back() 
         title: None,
         size: TermSize::default(),
         prompt: None,
+        started_by: None,
     };
     let refused = setup
         .supervisor
@@ -333,6 +334,7 @@ async fn a_daemon_restart_starts_the_person_s_agent_again_and_ends_their_shells(
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

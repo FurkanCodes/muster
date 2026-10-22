@@ -17,7 +17,7 @@ export async function makeWorktree(
   branch: string | null,
 ): Promise<WorkspaceId> {
   const reply = await app.bridge.command({
-    CreateWorktree: { project, branch: branch?.trim() || null, on: null },
+    CreateWorktree: { project, branch: branch?.trim() || null, on: null, named_for: null },
   });
   if (typeof reply !== "object" || !("WorktreeCreated" in reply))
     throw new Error("The daemon answered something else; try again.");
@@ -32,7 +32,14 @@ export async function startSession(
   prompt: string | null,
 ): Promise<SessionId> {
   const reply = await app.bridge.command({
-    StartSession: { workspace, harness, title: null, size: START_SIZE, prompt },
+    StartSession: {
+      workspace,
+      harness,
+      title: null,
+      size: START_SIZE,
+      prompt,
+      started_by: null,
+    },
   });
   if (typeof reply !== "object" || !("SessionStarted" in reply))
     throw new Error("The daemon answered something else; try again.");

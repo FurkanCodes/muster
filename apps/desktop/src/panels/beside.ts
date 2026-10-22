@@ -129,7 +129,14 @@ export async function toggleShell(
   }
   try {
     const reply = await app.bridge.command({
-      StartSession: { workspace, harness: SHELL, title: null, size: STARTING_SIZE, prompt: null },
+      StartSession: {
+        workspace,
+        harness: SHELL,
+        title: null,
+        size: STARTING_SIZE,
+        prompt: null,
+        started_by: null,
+      },
     });
     if (typeof reply !== "object" || !("SessionStarted" in reply)) return null;
     const id = reply.SessionStarted.id;

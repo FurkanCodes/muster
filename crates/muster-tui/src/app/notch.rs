@@ -66,6 +66,14 @@ impl App {
         actions
     }
 
+    /// `muster attach`: the session opens as one picked in the notch does,
+    /// with the keys in it, once the state shows it.
+    pub(crate) fn open_at_start(&mut self, session: SessionId) {
+        self.welcome = false;
+        self.view = View::Sessions;
+        self.wanted = Some((Row::Session(session), true));
+    }
+
     /// ⏎ on *Notifications*: on, or off.
     pub(super) fn toggle_notifications(&mut self) -> Vec<Action> {
         let on = !self.model.preferences().notifications;

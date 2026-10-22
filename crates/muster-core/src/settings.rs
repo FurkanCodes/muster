@@ -238,6 +238,10 @@ pub struct Preferences {
     /// unless the person turns it off. From protocol 47.
     #[serde(default = "on")]
     pub shared_builds: bool,
+    /// How far agents may set agents working through Muster's command line
+    /// (`[delegation]`, `PRD-01`). From protocol 51.
+    #[serde(default)]
+    pub delegation: crate::delegation::Delegation,
 }
 
 fn on() -> bool {
@@ -299,6 +303,7 @@ impl Default for Preferences {
             notifications: true,
             telling: crate::telling::Telling::default(),
             shared_builds: true,
+            delegation: crate::delegation::Delegation::default(),
         }
     }
 }
@@ -472,6 +477,9 @@ pub enum PreferenceChange {
     /// Have the worktrees of a Rust project build into one folder, or each
     /// into its own. From protocol 47.
     SharedBuilds(bool),
+    /// Let agents set agents working through Muster's command line, or
+    /// not (`PRD-01`). From protocol 51.
+    AgentsStartAgents(bool),
 }
 
 /// The first protocol whose daemon keeps [`Preferences::shared_builds`]

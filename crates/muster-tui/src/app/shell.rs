@@ -77,6 +77,7 @@ impl App {
                 title: None,
                 size: self.session_size(),
                 prompt: None,
+                started_by: None,
             },
             Then::OpenShell,
         )]

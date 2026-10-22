@@ -17,7 +17,7 @@ export type Snapshot = { projects: Array<Project>, workspaces: Array<Workspace>,
 resources: ResourceReport | null, 
 /**
  * Whether the person is looking at any client's window
- * ([`ClientFrame::Looking`]). From protocol 23.
+ * ([`super::ClientFrame::Looking`]). From protocol 23.
  */
 looked_at: boolean, 
 /**
@@ -26,7 +26,7 @@ looked_at: boolean,
 preferences: Preferences, 
 /**
  * Whether Muster's helper on a Mac shows notifications of the Mac's
- * own now ([`ClientFrame::Notifier`]): the UIs then send their
+ * own now ([`super::ClientFrame::Notifier`]): the UIs then send their
  * terminals none. From protocol 39.
  */
 notifier: boolean, 

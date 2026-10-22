@@ -74,6 +74,7 @@ async fn setup(settings: Option<&str>) -> Setup {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -100,6 +101,7 @@ async fn start(
             title: None,
             size: TermSize::default(),
             prompt: prompt.map(str::to_owned),
+            started_by: None,
         })
         .await
         .map(|reply| match reply {

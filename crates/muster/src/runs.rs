@@ -414,7 +414,7 @@ fn cut(text: &str, max: usize) -> String {
     clippy::disallowed_methods,
     reason = "ARC-03: a command's one wall clock"
 )]
-fn now() -> Timestamp {
+pub(crate) fn now() -> Timestamp {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_millis());

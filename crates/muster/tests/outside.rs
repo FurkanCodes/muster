@@ -109,6 +109,7 @@ async fn a_worktree_made_with_git_appears_and_goes_when_git_removes_it() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap();
@@ -146,6 +147,7 @@ async fn a_worktree_deleted_by_hand_is_forgotten_once_nothing_runs_in_it() {
             project,
             branch: Some("doomed".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -161,6 +163,7 @@ async fn a_worktree_deleted_by_hand_is_forgotten_once_nothing_runs_in_it() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap();
@@ -209,6 +212,7 @@ async fn muster_s_own_worktrees_are_neither_doubled_nor_brought_back() {
                 project,
                 branch: Some(format!("race-{round}")),
                 on: None,
+                named_for: None,
             })
             .await
             .unwrap()

@@ -52,6 +52,7 @@ async fn start(connection: &mut Connection, workspace: WorkspaceId, prompt: &str
             title: None,
             size: TermSize::default(),
             prompt: Some(prompt.to_owned()),
+            started_by: None,
         })
         .await
         .unwrap()

@@ -130,6 +130,7 @@ impl Supervisor {
                     signals: super::explain::Recent::default(),
                     naming: None,
                     named_by_person: false,
+                    last_reply: None,
                 },
             );
             if let Some(ago) = finished {

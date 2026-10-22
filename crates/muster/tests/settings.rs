@@ -357,6 +357,7 @@ async fn branches_go_without_muster_once_the_person_says_so() {
             project,
             branch: None,
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

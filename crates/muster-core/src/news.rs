@@ -112,6 +112,7 @@ mod tests {
             spend: None,
             tidy: None,
             beside: None,
+            started_by: None,
         }
     }
 

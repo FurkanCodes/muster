@@ -3,6 +3,7 @@ import type { ChangePart } from "./ChangePart";
 import type { PluginCommand } from "./PluginCommand";
 import type { PreferenceChange } from "./PreferenceChange";
 import type { ProjectId } from "./ProjectId";
+import type { Reading } from "./Reading";
 import type { RunId } from "./RunId";
 import type { SessionId } from "./SessionId";
 import type { SettingChange } from "./SettingChange";
@@ -24,16 +25,29 @@ name: string | null, } } | { "RemoveProject": { project: ProjectId, } } | { "Cre
  * rather than on what the checkout has. Sent only to a daemon of
  * 28 or later.
  */
-on: WorkspaceId | null, } } | { "RemoveWorktree": { workspace: WorkspaceId, force: boolean, } } | { "StartSession": { workspace: WorkspaceId, 
+on: WorkspaceId | null, 
+/**
+ * With no `branch`, a new branch named from these words (a
+ * prompt's: `muster/fix-the-login`), `-2`, `-3`… where that is
+ * taken, never an existing branch. Sent only to a daemon of 51 or
+ * later.
+ */
+named_for: string | null, } } | { "RemoveWorktree": { workspace: WorkspaceId, force: boolean, } } | { "StartSession": { workspace: WorkspaceId, 
 /**
  * A harness id: `shell`, `claude`, or an agent the person added
- * ([`Preferences::agents`]).
+ * ([`crate::settings::Preferences::agents`]).
  */
 harness: string, title: string | null, size: TermSize, 
 /**
  * A first prompt, for harnesses that take one.
  */
-prompt: string | null, } } | { "StopSession": { session: SessionId, } } | { "CheckWorkspace": { workspace: WorkspaceId, size: TermSize, } } | { "ReviewWorkspace": { workspace: WorkspaceId, size: TermSize, } } | { "TidyCommits": { workspace: WorkspaceId, harness: string, size: TermSize, } } | { "MoveOnto": { workspace: WorkspaceId, } } | { "OpenPullRequest": { workspace: WorkspaceId, } } | { "RestartSession": { session: SessionId, size: TermSize, } } | { "RemoveSession": { session: SessionId, } } | { "RenameSession": { session: SessionId, title: string, } } | { "ListIssues": { project: ProjectId, } } | { "ViewIssue": { project: ProjectId, key: TicketKey, } } | { "CloseIssue": { project: ProjectId, key: TicketKey, } } | { "ProjectSettings": { project: ProjectId, } } | { "WorkspaceChanges": { workspace: WorkspaceId, } } | { "FileDiff": { workspace: WorkspaceId, part: ChangePart, path: string, } } | { "Timeline": { workspace: WorkspaceId, } } | { "EntryDiff": { workspace: WorkspaceId, number: number, } } | { "UndoPlan": { workspace: WorkspaceId, number: number, } } | { "Undo": { workspace: WorkspaceId, number: number, move_branch: boolean, } } | "Health" | { "ExplainSession": { session: SessionId, } } | { "Reveal": { session: SessionId, } } | { "ChangePreference": PreferenceChange } | "ReadPreferences" | { "ListModels": { agent: string, } } | "Agents" | "ListRepositories" | { "CloneProject": { repository: string, into: string, } } | { "ChangeSetting": { project: ProjectId, change: SettingChange, } } | { "StartRun": { project: ProjectId, number: number, from: WorkspaceId | null, } } | { "CancelRun": { run: RunId, } } | { "RetryRun": { run: RunId, notes: string | null, } } | { "TakeOverRun": { run: RunId, } } | { "HandBackRun": { run: RunId, } } | { "RequestChanges": { run: RunId, comments: string, } } | { "RunHistory": { run: RunId, } } | { "StartFromIssue": { project: ProjectId, key: TicketKey, 
+prompt: string | null, 
+/**
+ * The agent's session asking, where an agent runs the command
+ * line (`PRD-01`): the daemon refuses past the person's limits
+ * and marks what it starts. Sent only to a daemon of 51 or later.
+ */
+started_by: SessionId | null, } } | { "StopSession": { session: SessionId, } } | { "CheckWorkspace": { workspace: WorkspaceId, size: TermSize, } } | { "ReviewWorkspace": { workspace: WorkspaceId, size: TermSize, } } | { "TidyCommits": { workspace: WorkspaceId, harness: string, size: TermSize, } } | { "MoveOnto": { workspace: WorkspaceId, } } | { "OpenPullRequest": { workspace: WorkspaceId, } } | { "RestartSession": { session: SessionId, size: TermSize, } } | { "RemoveSession": { session: SessionId, } } | { "RenameSession": { session: SessionId, title: string, } } | { "ListIssues": { project: ProjectId, } } | { "ViewIssue": { project: ProjectId, key: TicketKey, } } | { "CloseIssue": { project: ProjectId, key: TicketKey, } } | { "ProjectSettings": { project: ProjectId, } } | { "WorkspaceChanges": { workspace: WorkspaceId, } } | { "FileDiff": { workspace: WorkspaceId, part: ChangePart, path: string, } } | { "Timeline": { workspace: WorkspaceId, } } | { "EntryDiff": { workspace: WorkspaceId, number: number, } } | { "UndoPlan": { workspace: WorkspaceId, number: number, } } | { "Undo": { workspace: WorkspaceId, number: number, move_branch: boolean, } } | "Health" | { "ExplainSession": { session: SessionId, } } | { "ReadSession": { session: SessionId, what: Reading, } } | { "Reveal": { session: SessionId, } } | { "ChangePreference": PreferenceChange } | "ReadPreferences" | { "ListModels": { agent: string, } } | "Agents" | "ListRepositories" | { "CloneProject": { repository: string, into: string, } } | { "ChangeSetting": { project: ProjectId, change: SettingChange, } } | { "StartRun": { project: ProjectId, number: number, from: WorkspaceId | null, } } | { "CancelRun": { run: RunId, } } | { "RetryRun": { run: RunId, notes: string | null, } } | { "TakeOverRun": { run: RunId, } } | { "HandBackRun": { run: RunId, } } | { "RequestChanges": { run: RunId, comments: string, } } | { "RunHistory": { run: RunId, } } | { "StartFromIssue": { project: ProjectId, key: TicketKey, 
 /**
  * A harness id, such as `claude` or `shell`.
  */

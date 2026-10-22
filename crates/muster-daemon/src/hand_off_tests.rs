@@ -47,6 +47,7 @@ async fn worktree(setup: &Setup, branch: &str) -> (WorkspaceId, PathBuf) {
             project: setup.project,
             branch: Some(branch.to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

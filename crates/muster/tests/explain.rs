@@ -59,6 +59,7 @@ async fn claude_session(sandbox: &Sandbox, daemon: &Daemon) -> (Connection, Sess
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -72,6 +73,7 @@ async fn claude_session(sandbox: &Sandbox, daemon: &Daemon) -> (Connection, Sess
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

@@ -341,6 +341,7 @@ pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<St
             project: project.id,
             branch,
             on: None,
+            named_for: None,
         })
         .await?;
     let Reply::WorktreeCreated { id } = reply else {
@@ -387,7 +388,6 @@ pub(crate) async fn start_session(
 ) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
-    no_agent_starts_one(&snapshot, "start sessions")?;
     let workspace = find_worktree(&snapshot, worktree)?.id;
     let reply = connection
         .command(Command::StartSession {
@@ -396,6 +396,7 @@ pub(crate) async fn start_session(
             title,
             size: TermSize::default(),
             prompt,
+            started_by: crate::verbs::started_by(),
         })
         .await?;
     let Reply::SessionStarted { id } = reply else {
@@ -418,7 +419,6 @@ pub(crate) async fn stop_session(socket: &Path, session: &str) -> Outcome {
 pub(crate) async fn restart_session(socket: &Path, session: &str) -> Outcome {
     let session: SessionId = session.parse()?;
     let mut connection = connect(socket).await?;
-    no_agent_starts_one(&connection.subscribe().await?, "start sessions again")?;
     connection
         .command(Command::RestartSession {
             session,
@@ -652,13 +652,14 @@ pub(crate) async fn start_issue(
     Ok(())
 }
 
-/// Refuses to set an agent working from inside one of this daemon's
-/// sessions that is no shell (`PRD-01`): an agent there could run the
-/// command as well as the person, and nothing starts on its own. The
-/// person's own shell in Muster may, as may a session of another daemon
-/// (one under test), which this one does not know. A guard against an
-/// agent's ordinary use, as `muster plugin`'s is, not a wall: a program
-/// running as the person can do what the person can.
+/// Refuses to put an agent on a ticket, a review or a run from inside one
+/// of this daemon's sessions that is no shell (`PRD-01`, `PRD-07`): an
+/// agent may start sessions, within the person's limits, but which tickets
+/// are worked on, and what is reviewed or handed to the autopilot, is the
+/// person's to say. The person's own shell in Muster may, as may a session
+/// of another daemon (one under test), which this one does not know. A
+/// guard against an agent's ordinary use, as `muster plugin`'s is, not a
+/// wall: a program running as the person can do what the person can.
 pub(crate) fn no_agent_starts_one(snapshot: &Snapshot, what: &str) -> Result<(), String> {
     let Some(inside) = std::env::var("MUSTER_SESSION")
         .ok()
@@ -678,8 +679,8 @@ pub(crate) fn no_agent_starts_one(snapshot: &Snapshot, what: &str) -> Result<(),
     }
     Err(format!(
         "this runs inside {}, a session in Muster, where an agent could run it as well, and \
-         agents do not set agents working: {what} in Muster's window, in a shell Muster \
-         opened, or in a terminal of your own",
+         agents do not put agents on tickets, reviews or runs: {what} in Muster's window, in a \
+         shell Muster opened, or in a terminal of your own",
         shown(&session.title)
     ))
 }

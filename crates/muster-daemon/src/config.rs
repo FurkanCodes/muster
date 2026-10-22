@@ -163,10 +163,17 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
             notifications: config.notifications,
             telling: config.telling,
             shared_builds: config.shared_builds,
+            delegation: config.delegation,
         },
         agents: config.agents,
         warnings: config.warnings,
     })
+}
+
+/// The settings `text` with agents let start agents, or not (`PRD-01`).
+fn agents_start_agents(text: Option<&str>, on: bool) -> Result<String, edit::EditError> {
+    let table = muster_core::delegation::DELEGATION;
+    edit::set_flag_in(text, preferences::NEW_FILE, table, "allowed", on)
 }
 
 /// Makes `change` in Muster's own settings in `config_dir`, keeping the
@@ -245,6 +252,7 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             let (table, key) = SHARED_BUILDS;
             edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
         }
+        PreferenceChange::AgentsStartAgents(on) => agents_start_agents(text.as_deref(), *on),
         PreferenceChange::Tell { kind, tell } => {
             let (table, _) = NOTIFICATIONS;
             let sound = format!("{}_sound", kind.key());

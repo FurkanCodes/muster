@@ -248,6 +248,7 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::NamingModel,
         SettingRow::Keys,
         SettingRow::SharedBuilds,
+        SettingRow::Delegation,
         SettingRow::Agents,
         SettingRow::Plugins,
         SettingRow::AddPlugin
@@ -269,6 +270,7 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::NamingModel,
         SettingRow::Keys,
         SettingRow::SharedBuilds,
+        SettingRow::Delegation,
         SettingRow::Agents,
         SettingRow::Plugins,
         SettingRow::AddPlugin

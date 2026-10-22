@@ -44,6 +44,7 @@ async fn an_agent_changing_the_line_the_person_changed_is_shown_to_conflict() {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -81,6 +82,7 @@ async fn an_agent_changing_the_line_the_person_changed_is_shown_to_conflict() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

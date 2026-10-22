@@ -76,6 +76,7 @@ async fn start(link: &Link, workspace: WorkspaceId, harness: &str) -> SessionId 
             title: None,
             size: TermSize { cols: 80, rows: 24 },
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()
@@ -136,6 +137,7 @@ async fn the_link_connects_and_patches_the_state_as_the_daemon_changes_it_arc_24
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await;
     assert!(

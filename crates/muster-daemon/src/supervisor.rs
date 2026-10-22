@@ -270,6 +270,9 @@ struct Live {
     naming: Option<naming::Asking>,
     /// The person named it: no name of Muster's replaces theirs.
     named_by_person: bool,
+    /// The answer its agent last ended a turn with, as its hooks told it:
+    /// for `muster wait` and `muster logs --reply`; never stored.
+    last_reply: Option<String>,
 }
 
 #[derive(Debug)]
@@ -481,8 +484,10 @@ impl Supervisor {
                     project,
                     branch,
                     on,
+                    named_for,
                 } => {
                     let then = worktrees::Then::Reply(reply);
+                    let branch = worktrees::Branch::new(branch, named_for);
                     self.create_worktree(project, branch, on, then).await;
                 }
                 Command::RemoveWorktree { workspace, force } => {
@@ -684,10 +689,12 @@ impl Supervisor {
                 title,
                 size,
                 prompt,
+                started_by,
             } => {
-                self.start_session(workspace, harness, title, size, prompt)
-                    .await
+                let asked = sessions::Asked::new(title, prompt, started_by);
+                self.start_session(workspace, harness, size, asked).await
             }
+            Command::ReadSession { session, what } => Ok(self.read_session(session, what).await),
             Command::StopSession { session } => self.stop_session(session).await,
             Command::CheckWorkspace { workspace, size } => {
                 self.check_workspace(workspace, size).await
@@ -833,6 +840,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Ping => "ping",
         Command::Health => "health",
         Command::ExplainSession { .. } => "explain session",
+        Command::ReadSession { .. } => "read session",
         Command::WorkspaceChanges { .. } => "workspace changes",
         Command::FileDiff { .. } => "file diff",
         Command::Timeline { .. } => "timeline",

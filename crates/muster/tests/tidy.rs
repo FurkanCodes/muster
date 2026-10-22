@@ -49,6 +49,7 @@ async fn an_agent_tidies_the_commits_not_pushed_and_muster_checks_the_files() {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

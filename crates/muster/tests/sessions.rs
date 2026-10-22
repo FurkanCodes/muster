@@ -49,6 +49,7 @@ async fn setup() -> Setup {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -78,6 +79,7 @@ async fn start(connection: &mut Connection, workspace: WorkspaceId) -> SessionId
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()
@@ -452,6 +454,7 @@ async fn a_worktree_with_a_running_session_is_not_removed() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()
@@ -481,6 +484,7 @@ async fn unknown_harnesses_and_sessions_are_refused() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await;
     assert!(
@@ -548,7 +552,7 @@ async fn input_modes_reach_the_client() {
 }
 
 #[tokio::test]
-async fn an_agent_cannot_set_agents_working_but_the_person_s_shell_can_prd_01() {
+async fn an_agent_starts_sessions_but_puts_no_agent_on_a_ticket_a_review_or_a_run_prd_01() {
     let setup = setup().await;
     let mut connection = setup.daemon.connect().await;
     let shell = start(&mut connection, setup.workspace).await;
@@ -559,6 +563,7 @@ async fn an_agent_cannot_set_agents_working_but_the_person_s_shell_can_prd_01() 
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()
@@ -581,19 +586,26 @@ async fn an_agent_cannot_set_agents_working_but_the_person_s_shell_can_prd_01() 
     };
     let start_one = ["session", "start", "work", "--harness", "shell"];
 
-    for args in [
-        &start_one[..],
-        &["session", "restart", &shell.to_string()],
-        &["issue", "start", "app", "42"],
-        &["review", "work"],
-    ] {
+    for args in [&["issue", "start", "app", "42"][..], &["review", "work"]] {
         let (ok, stderr) = inside(agent.to_string(), args);
         assert!(!ok, "{args:?} ran inside an agent");
         assert!(
-            stderr.contains("agents do not set agents working"),
+            stderr.contains("agents do not put agents on tickets"),
             "{args:?}: {stderr}"
         );
     }
+    // A session it starts names it, within the person's limits.
+    let (ok, stderr) = inside(agent.to_string(), &start_one);
+    assert!(ok, "an agent starting a session: {stderr}");
+    let snapshot = connection.subscribe().await.unwrap();
+    assert!(
+        snapshot
+            .sessions
+            .iter()
+            .any(|session| session.started_by == Some(agent)),
+        "{:?}",
+        snapshot.sessions
+    );
     // Reading is no starting.
     assert!(inside(agent.to_string(), &["session", "list"]).0);
 

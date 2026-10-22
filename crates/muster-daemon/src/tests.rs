@@ -191,6 +191,7 @@ async fn what_needs_git_is_refused_plainly_in_a_plain_folder() {
                 project,
                 branch: Some("work".to_owned()),
                 on: None,
+                named_for: None,
             },
             "notes is a plain folder, not a git repository; worktrees need one",
         ),
@@ -343,6 +344,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
         spend: None,
         tidy: None,
         beside: None,
+        started_by: None,
     };
     let id = session.id;
     store

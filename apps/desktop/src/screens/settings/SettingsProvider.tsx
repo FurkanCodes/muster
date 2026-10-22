@@ -26,7 +26,15 @@ import {
   type SettingsValue,
 } from "./context";
 import { keyEntries, narrowed } from "./keyRows";
-import { keptRow, movedRow, rowKey, rowName, SHARED_BUILDS_PROTOCOL, settingRows } from "./model";
+import {
+  DELEGATION_PROTOCOL,
+  keptRow,
+  movedRow,
+  rowKey,
+  rowName,
+  SHARED_BUILDS_PROTOCOL,
+  settingRows,
+} from "./model";
 import { isFolder, pluginOrder } from "./pluginWords";
 import { chosenTracker, fieldsFor, offeredTrackers } from "./trackers";
 import { oneLine, problemText } from "./words";
@@ -93,6 +101,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const sharedBuilds = useDaemon(
     (state) => state.link.state === "up" && state.link.protocol >= SHARED_BUILDS_PROTOCOL,
   );
+  const delegation = useDaemon(
+    (state) => state.link.state === "up" && state.link.protocol >= DELEGATION_PROTOCOL,
+  );
   const map = useKeymap();
   const [projects, setProjects] = useState<ReadonlyMap<ProjectId, Read>>(() => new Map());
   const [drafts, setDrafts] = useState<ReadonlyMap<ProjectId, Draft>>(() => new Map());
@@ -125,6 +136,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }),
     keys: narrowed(keyEntries(map), find).map((entry) => entry.name),
     sharedBuilds,
+    delegation,
   });
   const selected = keptRow(rows, wanted);
 

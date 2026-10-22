@@ -40,6 +40,7 @@ async fn an_agent_s_turn_ending_shows_what_it_changed_and_each_file_s_diff() {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -62,6 +63,7 @@ async fn an_agent_s_turn_ending_shows_what_it_changed_and_each_file_s_diff() {
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()

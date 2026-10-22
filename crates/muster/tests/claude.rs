@@ -49,6 +49,7 @@ async fn setup_in(sandbox: Sandbox) -> Setup {
             project,
             branch: Some("work".to_owned()),
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()
@@ -74,6 +75,7 @@ async fn start_claude(
             title: None,
             size: TermSize::default(),
             prompt: prompt.map(str::to_owned),
+            started_by: None,
         })
         .await
         .unwrap()
@@ -360,6 +362,7 @@ async fn the_shell_takes_no_prompt() {
             title: None,
             size: TermSize::default(),
             prompt: Some("hello".to_owned()),
+            started_by: None,
         })
         .await;
     assert!(

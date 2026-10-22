@@ -13,6 +13,7 @@ use serde::Deserialize;
 
 use super::ConfigError;
 use super::agents::{self, AgentDefinition};
+use crate::delegation::Delegation;
 use crate::layout::Layout;
 use crate::plugins::registry::{self, PluginEntry};
 use crate::settings::{Naming, Palette, SessionLines};
@@ -58,6 +59,8 @@ pub struct MusterConfig {
     /// Whether a Rust project's worktrees build into one folder
     /// (`[worktrees] shared_builds`).
     pub shared_builds: bool,
+    /// How far agents may set agents working (`[delegation]`).
+    pub delegation: Delegation,
     /// The plugins the person installed, linked or turned off
     /// (`[plugins.<id>]`), by id.
     pub plugins: Vec<PluginEntry>,
@@ -81,6 +84,7 @@ impl Default for MusterConfig {
             notifications: true,
             telling: Telling::default(),
             shared_builds: true,
+            delegation: Delegation::default(),
             plugins: Vec::new(),
             warnings: Vec::new(),
         }
@@ -108,6 +112,8 @@ struct File {
     notifications: Notifications,
     #[serde(default)]
     worktrees: Worktrees,
+    #[serde(default)]
+    delegation: DelegationTable,
     /// Read by [`registry::parse`], which names the key that is wrong.
     plugins: Option<toml::Value>,
 }
@@ -174,6 +180,14 @@ struct Notch {
 #[serde(deny_unknown_fields)]
 struct Worktrees {
     shared_builds: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DelegationTable {
+    allowed: Option<bool>,
+    at_once: Option<u8>,
+    depth: Option<u8>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -277,6 +291,17 @@ impl MusterConfig {
                 .worktrees
                 .shared_builds
                 .unwrap_or(default.shared_builds),
+            delegation: Delegation {
+                allowed: read
+                    .delegation
+                    .allowed
+                    .unwrap_or(default.delegation.allowed),
+                at_once: read
+                    .delegation
+                    .at_once
+                    .unwrap_or(default.delegation.at_once),
+                depth: read.delegation.depth.unwrap_or(default.delegation.depth),
+            },
             plugins,
             warnings,
         })

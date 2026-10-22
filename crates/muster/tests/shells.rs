@@ -32,6 +32,7 @@ async fn start(connection: &mut Connection, workspace: WorkspaceId, harness: &st
             title: None,
             size: TermSize::default(),
             prompt: None,
+            started_by: None,
         })
         .await
         .unwrap()
@@ -122,6 +123,7 @@ async fn a_worktree_s_shell_ends_with_it_but_an_agent_at_work_keeps_it() {
             project,
             branch: None,
             on: None,
+            named_for: None,
         })
         .await
         .unwrap()

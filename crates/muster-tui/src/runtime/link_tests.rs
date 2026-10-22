@@ -22,6 +22,7 @@ fn options(socket: std::path::PathBuf) -> Options {
         motion: false,
         start_notch: None,
         terminal_app: None,
+        open: None,
     }
 }
 

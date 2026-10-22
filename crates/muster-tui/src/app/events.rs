@@ -672,6 +672,7 @@ impl App {
                         project,
                         branch,
                         on: None,
+                        named_for: None,
                     };
                     vec![self.command(command, Then::SelectWorktree)]
                 }
@@ -729,6 +730,7 @@ impl App {
                     title: None,
                     size: self.session_size(),
                     prompt,
+                    started_by: None,
                 };
                 self.last_harness = harness;
                 vec![self.command(command, Then::OpenSession)]

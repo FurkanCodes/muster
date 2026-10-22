@@ -59,6 +59,8 @@ pub(crate) enum SettingRow {
     Keys,
     /// Whether a project's worktrees build into one folder.
     SharedBuilds,
+    /// Whether agents may set agents working (`PRD-01`).
+    Delegation,
     /// Whether the person is told of what newly needs them.
     Notifications,
     /// Whether a kind of notification is told, and how it sounds.
@@ -92,6 +94,7 @@ impl SettingRow {
             | Self::NamingModel
             | Self::Keys
             | Self::SharedBuilds
+            | Self::Delegation
             | Self::Notifications
             | Self::Tell(_)
             | Self::Agents
@@ -150,6 +153,7 @@ impl App {
             (self.naming_known(), SettingRow::NamingModel),
             (self.keys_known(), SettingRow::Keys),
             (self.shared_builds_known(), SettingRow::SharedBuilds),
+            (self.delegation_known(), SettingRow::Delegation),
             (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
         ];
         if self.model.loaded() && own.iter().any(|(known, _)| *known) {
@@ -182,6 +186,25 @@ impl App {
         )]
     }
 
+    /// Whether the daemon lets agents start agents within limits.
+    pub(crate) fn delegation_known(&self) -> bool {
+        self.daemon_protocol >= muster_core::delegation::DELEGATION_PROTOCOL
+    }
+
+    /// ⏎ on *Agents start agents*: on, or off.
+    fn toggle_delegation(&mut self) -> Vec<Action> {
+        let on = !self.model.preferences().delegation.allowed;
+        let said = if on {
+            "Agents may start agents through Muster's command line, within your limits."
+        } else {
+            "No agent starts agents: the command line refuses inside an agent's session."
+        };
+        vec![self.command(
+            Command::ChangePreference(PreferenceChange::AgentsStartAgents(on)),
+            Then::Say(said),
+        )]
+    }
+
     /// A key on the Settings screen; the rest are inert here.
     pub(super) fn settings_key(&mut self, key: &KeyEvent, does: Option<Does>) -> Vec<Action> {
         match (key.code, does) {
@@ -199,6 +222,7 @@ impl App {
                 Some(SettingRow::NamingModel) => return self.choose_naming_model(),
                 Some(SettingRow::Keys) => return self.open_rebinding(),
                 Some(SettingRow::SharedBuilds) => return self.toggle_shared_builds(),
+                Some(SettingRow::Delegation) => return self.toggle_delegation(),
                 Some(SettingRow::Notifications) => return self.toggle_notifications(),
                 Some(SettingRow::Tell(kind)) => return self.toggle_tell(kind),
                 Some(SettingRow::Plugin(plugin)) => return self.toggle_plugin(plugin),

@@ -14,7 +14,7 @@ use muster_core::{SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::Start;
 
 use super::Supervisor;
-use super::sessions::Mode;
+use super::sessions::{Mode, Ties};
 use crate::harness::{Harness, PanelLaunch, Place};
 use crate::plugins::PluginError;
 
@@ -377,7 +377,7 @@ impl Supervisor {
         panel.env.extend(context.variables());
         let harness = Harness::panel(panel);
         let id = self
-            .add_session_beside(workspace, &harness, None, Start::Idle, beside)
+            .add_session_tied(workspace, &harness, None, Start::Idle, Ties::beside(beside))
             .await?;
         let mode = Mode::Fresh { prompt: None };
         let place = Place::Host(path);
