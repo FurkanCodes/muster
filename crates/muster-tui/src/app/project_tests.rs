@@ -27,6 +27,7 @@ fn with_checkout() -> (World, Workspace) {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: None,
     };
     world
         .app
@@ -231,6 +232,7 @@ fn with_container() -> (World, Workspace) {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: None,
     };
     world
         .app

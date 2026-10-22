@@ -139,6 +139,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       timeline: null,
       clashes: [],
       stacked_on: null,
+      ticket: null,
     };
     world.projects.push(added);
     world.workspaces.push(checkout);
@@ -209,6 +210,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       timeline: null,
       clashes: [],
       stacked_on: parent ? { branch: parent.kind.branch, at: "d4e5f6a" } : null,
+      ticket: null,
     };
     world.workspaces.push(workspace);
     changesOf(mock)[made] = {

@@ -38,16 +38,14 @@ export function ticketBranch(key: TicketKey, title: string, prefixed = true): st
   return `${prefixed ? "muster/" : ""}issue-${key}${slug ? `-${slug}` : ""}`;
 }
 
+/** `Model::worktrees_for`: the worktrees made for ticket `key`, whatever their branches are called now. */
 export function worktreesFor(
   workspaces: readonly Workspace[],
   projects: readonly string[],
   key: TicketKey,
 ): Workspace[] {
   return workspaces.filter(
-    (w) =>
-      w.kind.kind === "worktree" &&
-      projects.includes(w.project) &&
-      issueOfBranch(w.kind.branch) === key,
+    (w) => w.kind.kind === "worktree" && projects.includes(w.project) && w.ticket === key,
   );
 }
 

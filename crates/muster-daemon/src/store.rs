@@ -11,8 +11,9 @@ fn insert_workspace_row(conn: &Connection, workspace: &Workspace) -> Result<()> 
     let columns = rows::workspace_columns(workspace)?;
     conn.execute(
         "INSERT INTO workspaces
-             (id, project_id, kind, path, branch, created_at, run_id, stacked_on, stacked_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             (id, project_id, kind, path, branch, created_at, run_id, stacked_on, stacked_at,
+              ticket)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             id_text(workspace.id),
             id_text(workspace.project),
@@ -23,6 +24,10 @@ fn insert_workspace_row(conn: &Connection, workspace: &Workspace) -> Result<()> 
             columns.run,
             workspace.stacked_on.as_ref().map(|stacked| &stacked.branch),
             workspace.stacked_on.as_ref().map(|stacked| &stacked.at),
+            workspace
+                .ticket
+                .as_ref()
+                .map(muster_core::TicketKey::as_str),
         ],
     )?;
     Ok(())
@@ -364,7 +369,8 @@ impl Store {
             rows::project,
         )?;
         let workspaces = self.collect(
-            "SELECT id, project_id, kind, path, branch, created_at, run_id, stacked_on, stacked_at
+            "SELECT id, project_id, kind, path, branch, created_at, run_id, stacked_on, stacked_at,
+                    ticket
              FROM workspaces WHERE removed_at IS NULL ORDER BY created_at, id",
             rows::workspace,
         )?;

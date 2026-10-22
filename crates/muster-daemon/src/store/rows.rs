@@ -99,6 +99,7 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
     let run: Option<String> = row.get(6)?;
     let stacked_on: Option<String> = row.get(7)?;
     let stacked_at: Option<String> = row.get(8)?;
+    let ticket: Option<String> = row.get(9)?;
     Ok((|| {
         let kind = match kind.as_str() {
             "worktree" => WorkspaceKind::Worktree {
@@ -127,6 +128,12 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
             stacked_on: stacked_on
                 .zip(stacked_at)
                 .map(|(branch, at)| muster_core::stacks::Stacked { branch, at }),
+            ticket: ticket
+                .map(|key| {
+                    muster_core::TicketKey::parse(&key)
+                        .ok_or_else(|| StoreError::Invalid(format!("ticket {key:?}")))
+                })
+                .transpose()?,
         })
     })())
 }

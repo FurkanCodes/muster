@@ -18,7 +18,8 @@ pub fn project(name: &str) -> Project {
     }
 }
 
-/// A worktree of `project` on `branch`.
+/// A worktree of `project` on `branch`; made for the ticket its name says,
+/// if any (`muster/issue-42-…`), as the daemon names a ticket's.
 pub fn worktree(project: ProjectId, branch: &str) -> Workspace {
     Workspace {
         id: WorkspaceId::new(),
@@ -33,6 +34,7 @@ pub fn worktree(project: ProjectId, branch: &str) -> Workspace {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: muster_core::tickets::issue_of_branch(branch),
     }
 }
 

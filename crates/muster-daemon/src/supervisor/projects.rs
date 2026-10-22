@@ -230,6 +230,7 @@ impl Supervisor {
             timeline: None,
             clashes: Vec::new(),
             stacked_on: None,
+            ticket: None,
         }
     }
 

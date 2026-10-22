@@ -416,6 +416,7 @@ async fn a_container_left_by_a_run_that_ended_goes_when_the_daemon_starts() {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: None,
     };
     let mut store = Store::open(&database, muster_core::Timestamp::from_millis(0)).unwrap();
     store.insert_workspace(&left).unwrap();

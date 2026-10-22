@@ -71,6 +71,8 @@ function workspace(
     timeline: null,
     clashes: [],
     stacked_on: null,
+    // Made for the ticket its name says, as the daemon names one's.
+    ticket: /^muster\/issue-(\d+)-/.exec(branch)?.[1] ?? null,
     ...extra,
   };
 }

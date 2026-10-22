@@ -35,11 +35,18 @@ describe("ARC-24 ticket branches follow muster_core::tickets", () => {
     );
     expect(ticketBranch("42", "")).toBe("muster/issue-42");
   });
-  it("joins shared projects' worktrees and excludes shells and plugin panels", () => {
+  it("joins shared projects' worktrees made for it and excludes shells and plugin panels", () => {
     const world = workingDay();
     const tree = world.workspaces.find((w) => w.id === ulid(11));
     if (!tree) throw new Error("missing worktree fixture");
-    tree.kind.branch = "muster/issue-214-desktop-app";
+    // Made for #214, whatever its branch is called now.
+    tree.ticket = "214";
+    tree.kind.branch = "fix/desktop-app";
+    // A branch of the person's own named like a ticket's is never one.
+    const theirs = world.workspaces.find((w) => w.id === ulid(12));
+    if (!theirs) throw new Error("missing worktree fixture");
+    theirs.kind.branch = "issue-214-mine";
+    theirs.ticket = null;
     const trees = worktreesFor(world.workspaces, [ulid(1)], "214");
     expect(trees.map((w) => w.id)).toEqual([ulid(11)]);
     const agents = agentsOn(world.sessions, trees);

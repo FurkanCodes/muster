@@ -27,6 +27,7 @@ fn workspace(project: &Project, branch: &str) -> Workspace {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: None,
     }
 }
 

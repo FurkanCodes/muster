@@ -4,6 +4,7 @@ import type { Clash } from "./Clash";
 import type { ProjectId } from "./ProjectId";
 import type { PullRequestStatus } from "./PullRequestStatus";
 import type { Stacked } from "./Stacked";
+import type { TicketKey } from "./TicketKey";
 import type { Timestamp } from "./Timestamp";
 import type { WorkspaceId } from "./WorkspaceId";
 import type { WorkspaceKind } from "./WorkspaceKind";
@@ -38,4 +39,10 @@ clashes: Array<Clash>,
  * The branch its own is stacked on, if it was made on top of
  * another's; stored.
  */
-stacked_on: Stacked | null, };
+stacked_on: Stacked | null, 
+/**
+ * The ticket it was made for, when an agent was started on one:
+ * whatever its branch is called later, its agents are the ticket's.
+ * Stored; from protocol 48, a field older clients pass over.
+ */
+ticket: TicketKey | null, };

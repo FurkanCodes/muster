@@ -122,6 +122,8 @@ fn agent_for_42(world: &World, branch: &str, created: i64) -> (Workspace, muster
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        // Made for the ticket its name says, as the daemon names one's.
+        ticket: muster_core::tickets::issue_of_branch(branch),
     };
     let mut agent = session(workspace.id, "#42 Fix the login redirect", created);
     agent.harness = "claude".to_owned();
@@ -318,12 +320,31 @@ fn each_agent_on_a_ticket_is_named() {
 }
 
 #[test]
-fn the_agents_on_a_ticket_are_those_on_branches_named_for_it() {
+fn the_agents_on_a_ticket_are_those_in_worktrees_made_for_it_whatever_their_branches() {
     let mut world = on_tickets();
     let first = agent_on_42(&mut world, "muster/issue-42-fix", 10);
     let second = agent_on_42(&mut world, "muster/issue-42-fix-2", 20);
     agent_on_42(&mut world, "muster/issue-4-other", 30);
     agent_on_42(&mut world, "feature/issue-42", 40);
+    // Its agent renamed the branch: still the ticket's.
+    let (mut renamed, third) = agent_for_42(&world, "muster/issue-42-fix-3", 45);
+    renamed.kind = WorkspaceKind::Worktree {
+        path: PathBuf::from("/w/fix-3"),
+        branch: "fix/login-redirect".to_owned(),
+    };
+    // A branch of the person's own, named like a ticket's: never one.
+    let (mut theirs, their_agent) = agent_for_42(&world, "issue-42-mine", 46);
+    theirs.ticket = None;
+    for workspace in [renamed, theirs] {
+        world
+            .app
+            .on_frame(ServerFrame::Delta(Delta::WorkspaceUpserted(workspace)));
+    }
+    for agent in [third.clone(), their_agent] {
+        world
+            .app
+            .on_frame(ServerFrame::Delta(Delta::SessionUpserted(agent)));
+    }
     // A plugin's panel beside an agent is no agent.
     let mut panel = session(first.workspace, "graph", 50);
     panel.harness = "plugin:session-graph/graph".to_owned();
@@ -337,7 +358,7 @@ fn the_agents_on_a_ticket_are_those_on_branches_named_for_it() {
         .iter()
         .map(|session| session.id)
         .collect();
-    assert_eq!(agents, [first.id, second.id]);
+    assert_eq!(agents, [first.id, second.id, third.id]);
 }
 
 #[test]

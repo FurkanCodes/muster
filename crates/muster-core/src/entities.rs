@@ -51,6 +51,24 @@ pub struct Workspace {
     /// another's; stored.
     #[serde(default)]
     pub stacked_on: Option<crate::stacks::Stacked>,
+    /// The ticket it was made for, when an agent was started on one:
+    /// whatever its branch is called later, its agents are the ticket's.
+    /// Stored; from protocol 48, a field older clients pass over.
+    #[serde(default)]
+    pub ticket: Option<TicketKey>,
+}
+
+impl Workspace {
+    /// The ticket its work is for, as plugins and hooks are told: the one
+    /// it was made for, else the one its branch's name says
+    /// (`muster/issue-42-…`), as when the person checked out a ticket's
+    /// branch themselves. Which agents are a ticket's goes by
+    /// [`Workspace::ticket`] alone.
+    pub fn ticket_or_branch(&self) -> Option<TicketKey> {
+        self.ticket
+            .clone()
+            .or_else(|| crate::tickets::issue_of_branch(self.kind.branch()))
+    }
 }
 
 /// The kinds of workspace.

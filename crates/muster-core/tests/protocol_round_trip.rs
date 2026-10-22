@@ -107,6 +107,7 @@ fn workspaces() -> Vec<Workspace> {
             branch: "muster/base".to_owned(),
             at: "a1b2c3d".to_owned(),
         }),
+        ticket: Some(key()),
     };
     let checkout = Workspace {
         id: WorkspaceId::new(),
@@ -119,6 +120,7 @@ fn workspaces() -> Vec<Workspace> {
         timeline: None,
         clashes: Vec::new(),
         stacked_on: None,
+        ticket: None,
         ..full.clone()
     };
     let container = Workspace {
