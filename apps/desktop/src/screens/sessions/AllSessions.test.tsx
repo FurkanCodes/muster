@@ -129,7 +129,7 @@ describe("ARC-24 All sessions", () => {
     act(() => app.actions.compose(ulid(2), ulid(20)));
     const page = await screen.findByRole("region", { name: "lamphaus" });
     expect(screen.getByRole("textbox", { name: "First prompt" })).toHaveFocus();
-    expect(screen.getByRole("button", { name: "Where" })).toHaveTextContent("Its checkout");
+    expect(screen.getByRole("combobox", { name: "Where" })).toHaveTextContent("Its checkout");
     expect(page).toBeInTheDocument();
     // Done: showing the page again leaves the keys with the list.
     expect(app.ui.getState().compose).toBeNull();

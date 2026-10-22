@@ -9,12 +9,15 @@
   width: auto;
   max-width: 100%;
 }
-/* Its list, where Radix puts it: at least as wide as its button, never past the window. */
-.ui-select-menu {
+/* Where Base UI places its list: over everything. */
+.ui-select-layer {
   z-index: var(--z-menu);
-  min-width: max(var(--size-menu-min), var(--radix-popover-trigger-width));
-  max-width: min(420px, var(--radix-popover-content-available-width));
-  max-height: min(var(--size-dialog), var(--radix-popover-content-available-height));
+}
+/* Its list: at least as wide as its button, never past the window. */
+.ui-select-menu {
+  min-width: max(var(--size-menu-min), var(--anchor-width));
+  max-width: min(420px, var(--available-width));
+  max-height: min(var(--size-dialog), var(--available-height));
   overflow-y: auto;
   overscroll-behavior: contain;
 }

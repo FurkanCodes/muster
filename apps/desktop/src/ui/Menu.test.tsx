@@ -41,7 +41,9 @@ describe("ActionMenu", () => {
     window.addEventListener("keydown", behind);
     render(<Opened list={list} />);
     await userEvent.click(screen.getByRole("button", { name: "More" }));
-    await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu");
+    // Base UI moves the focus into it as it opens, a frame later.
+    await waitFor(() => expect(menu.contains(document.activeElement)).toBe(true));
     await userEvent.keyboard("R");
     expect(list[1]?.does).toHaveBeenCalledOnce();
     expect(behind).not.toHaveBeenCalled();

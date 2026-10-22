@@ -2,20 +2,16 @@
    palette floats, and the few arrangements the boards draw inline. Every
    value is a token. */
 
-/* The palette's native <dialog>: the browser's frame gives way to mu-palette's,
-   about a fifth of the way down the window over the scrim. */
+/* Where the palette's Modal floats: about a fifth of the way down the
+   window, over the scrim. */
 .ui-palette {
-  border: 0;
-  padding: 0;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  height: fit-content;
   color: var(--text);
   margin: min(20vh, 140px) auto auto;
   max-height: calc(100% - var(--space-48));
-}
-.ui-palette:not([open]) {
-  display: none;
-}
-.ui-palette::backdrop {
-  background: var(--scrim);
 }
 .ui-palette-meta {
   margin-left: auto;

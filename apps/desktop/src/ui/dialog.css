@@ -1,17 +1,21 @@
-/* The native <dialog> under mu-dialog: the browser's own frame and backdrop give way to the design system's. */
-.ui-dialog {
-  border: 0;
-  color: var(--text);
+/* What a Modal floats over: the scrim, over the whole window. */
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
   z-index: var(--z-dialog);
+  background: var(--scrim);
+}
+/* Under mu-dialog: in the middle of the window, as tall as it needs. */
+.ui-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  height: fit-content;
+  margin: auto;
+  color: var(--text);
   max-height: calc(100% - var(--space-24));
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-.ui-dialog:not([open]) {
-  display: none;
-}
-.ui-dialog::backdrop {
-  background: var(--scrim);
 }
 .ui-dialog--wide {
   width: var(--size-dialog-wide);

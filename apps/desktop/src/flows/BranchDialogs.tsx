@@ -57,7 +57,7 @@ export function Tidy({ workspace }: { workspace: WorkspaceId }) {
       app.actions.tell("Starting the tidy…");
     });
   // ⇥ ⇧⇥ (and the arrows) go round the agents, as in the TUI's dialog.
-  const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const by =
       event.key === "Tab"
         ? event.shiftKey

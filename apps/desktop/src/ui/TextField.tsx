@@ -2,15 +2,12 @@
 // the label tied to the input, then a hint, or what went wrong in its place.
 // One line (TextField) or lines growing downwards (TextArea); a path or a
 // branch in mono; what belongs under the input, as the folders under the
-// path the person types, given as children.
+// path the person types, given as children. On Base UI's field and input,
+// which tie the label, the hint and what went wrong to the input.
 
-import {
-  type InputHTMLAttributes,
-  type ReactNode,
-  type Ref,
-  type TextareaHTMLAttributes,
-  useId,
-} from "react";
+import { Field as BaseField } from "@base-ui/react/field";
+import { Input as BaseInput } from "@base-ui/react/input";
+import type { InputHTMLAttributes, ReactNode, Ref, TextareaHTMLAttributes } from "react";
 import "./text-field.css";
 
 interface Said {
@@ -25,38 +22,39 @@ interface Said {
 }
 
 /**
- * A label over a control, and a hint or what went wrong under it. With an
- * `id` the label is the input's own; without one it names a control that
- * carries its own label (a Select, the agents' choice).
+ * A label over a control, and a hint or what went wrong under it. Around
+ * its own input (`labels`) the label is the input's; around a control that
+ * carries its own label (a Select, the agents' choice) it only shows.
  */
 export function Field({
-  id,
+  labels = false,
   label,
   hint,
   error,
   children,
-}: Pick<Said, "label" | "hint" | "error"> & { id?: string; children: ReactNode }) {
+}: Pick<Said, "label" | "hint" | "error"> & { labels?: boolean; children: ReactNode }) {
   const said = error || hint;
   return (
-    <div className={`mu-field ${error ? "has-error" : ""}`}>
-      {id ? (
-        <label className="mu-field-label" htmlFor={id}>
-          {label}
-        </label>
+    <BaseField.Root
+      className={`mu-field ${error ? "has-error" : ""}`}
+      invalid={error ? true : undefined}
+    >
+      {labels ? (
+        <BaseField.Label className="mu-field-label">{label}</BaseField.Label>
       ) : (
         <span className="mu-field-label">{label}</span>
       )}
       {children}
       {said ? (
-        <span
-          id={id ? `${id}-hint` : undefined}
+        <BaseField.Description
           className="mu-field-hint"
           role={error ? "alert" : undefined}
+          render={<span />}
         >
           {said}
-        </span>
+        </BaseField.Description>
       ) : null}
-    </div>
+    </BaseField.Root>
   );
 }
 
@@ -66,7 +64,7 @@ export function Input({
   className,
   ...rest
 }: InputHTMLAttributes<HTMLInputElement> & { mono?: boolean; ref?: Ref<HTMLInputElement> }) {
-  return <input {...rest} className={`${inputClass(false, mono)} ${className ?? ""}`} />;
+  return <BaseInput {...rest} className={`${inputClass(false, mono)} ${className ?? ""}`} />;
 }
 
 const inputClass = (area: boolean, mono: boolean | undefined) =>
@@ -83,18 +81,14 @@ export function TextField({
   ...rest
 }: Said &
   Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "value"> & { children?: ReactNode }) {
-  const id = useId();
   return (
-    <Field id={id} label={label} hint={hint} error={error}>
-      <input
-        id={id}
+    <Field labels label={label} hint={hint} error={error}>
+      <BaseField.Control
         className={inputClass(false, mono)}
         autoComplete="off"
         spellCheck={false}
         value={value}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error || hint ? `${id}-hint` : undefined}
-        onChange={(event) => onChange(event.target.value)}
+        onValueChange={(next) => onChange(next)}
         {...rest}
       />
       {children}
@@ -111,17 +105,13 @@ export function TextArea({
   mono,
   ...rest
 }: Said & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "value">) {
-  const id = useId();
   return (
-    <Field id={id} label={label} hint={hint} error={error}>
-      <textarea
-        id={id}
+    <Field labels label={label} hint={hint} error={error}>
+      <BaseField.Control
+        render={<textarea {...rest} />}
         className={inputClass(true, mono)}
         value={value}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error || hint ? `${id}-hint` : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        {...rest}
+        onValueChange={(next) => onChange(next)}
       />
     </Field>
   );

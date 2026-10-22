@@ -73,7 +73,7 @@ export default function AddProject() {
       actions.openFlow(null);
     });
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!(event.target instanceof HTMLInputElement)) return;
     const by = { ArrowDown: 1, ArrowUp: -1, PageDown: 8, PageUp: -8 }[event.key];
     if (by !== undefined) {

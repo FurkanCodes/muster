@@ -298,7 +298,12 @@ test("PRD-09 x asks first, ⎋ keeps it, and Close session stops it and takes it
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Keep it" })).toBeFocused();
   await page.keyboard.press("j");
-  await expect(option(page, "Sketch the Tauri shell")).toHaveAttribute("aria-selected", "true");
+  // The list behind is hidden from a screen reader while the dialog asks.
+  await expect(
+    page
+      .getByRole("listbox", { includeHidden: true })
+      .getByRole("option", { name: "Sketch the Tauri shell", exact: true, includeHidden: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await page.keyboard.press("x");
@@ -335,7 +340,10 @@ test("PRD-14 z opens the newest turn's putting back in the changes, never while 
   await page.evaluate((id) => window.__muster.setStatus(id, { state: "finished" }), codex);
   await option(page, "Sketch the Tauri shell").click();
   await page.keyboard.press("z");
-  await expect(changes).toHaveAttribute("aria-pressed", "true");
+  // Behind the put-back dialog, hidden from a screen reader while it asks.
+  await expect(
+    page.getByRole("button", { name: "Changes", exact: true, includeHidden: true }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 test("ARC-24 the queue keeps its last state while the daemon is out of reach", async ({ page }) => {

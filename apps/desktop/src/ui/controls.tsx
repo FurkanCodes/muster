@@ -1,7 +1,11 @@
-// Buttons, key caps, hints, segmented controls (design system: Actions).
-// Variants are explicit props with a closed set of values, never stacks of
-// booleans (composition: patterns-explicit-variants).
+// Buttons, key caps, hints, segmented controls (design system: Actions),
+// on Base UI's button and toggle group. Variants are explicit props with a
+// closed set of values, never stacks of booleans (composition:
+// patterns-explicit-variants).
 
+import { Button as BaseButton } from "@base-ui/react/button";
+import { Toggle } from "@base-ui/react/toggle";
+import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import { Tooltip } from "./Tooltip";
@@ -28,7 +32,7 @@ export function Button({
 }: ButtonProps) {
   const sizeClass = size === "md" ? "" : `mu-btn--${size}`;
   return (
-    <button
+    <BaseButton
       type={type}
       className={`mu-btn mu-btn--${variant} ${sizeClass} ${className}`}
       aria-busy={busy || undefined}
@@ -37,7 +41,7 @@ export function Button({
       {busy ? <Spinner /> : icon ? <Icon name={icon} /> : null}
       {children}
       {kbd ? <Kbd className="mu-key">{kbd}</Kbd> : null}
-    </button>
+    </BaseButton>
   );
 }
 
@@ -60,7 +64,7 @@ export function IconButton({
 }: IconButtonProps) {
   return (
     <Tooltip content={title ?? label}>
-      <button
+      <BaseButton
         type="button"
         className={`mu-icon-btn ${size === "sm" ? "mu-icon-btn--sm" : ""} ${className}`}
         aria-label={label}
@@ -68,7 +72,7 @@ export function IconButton({
         {...rest}
       >
         <Icon name={icon} size={size === "sm" ? 14 : 16} />
-      </button>
+      </BaseButton>
     </Tooltip>
   );
 }
@@ -128,22 +132,23 @@ export function Segmented<T extends string>({
   busy?: boolean;
 }) {
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, not a form; a fieldset would bring a legend and form semantics.
-    <div
+    <ToggleGroup
       className={className ? `mu-seg ${className}` : "mu-seg"}
-      role="group"
       aria-label={label}
       aria-busy={busy || undefined}
+      value={[value]}
+      onValueChange={(pressed) => {
+        // One is always pressed: pressing it again keeps it.
+        const next = pressed[0] as T | undefined;
+        if (next && next !== value) onChange(next);
+      }}
+      // ← → are the screen's (a setting steps on them), not a walk along the buttons.
+      onKeyDown={(event) => {
+        if (event.key.startsWith("Arrow")) event.preventBaseUIHandler();
+      }}
     >
       {segments.map((segment) => (
-        <button
-          key={segment.value}
-          type="button"
-          className="mu-seg-item"
-          aria-pressed={value === segment.value}
-          disabled={busy}
-          onClick={() => onChange(segment.value)}
-        >
+        <Toggle key={segment.value} value={segment.value} className="mu-seg-item" disabled={busy}>
           {segment.label}
           {segment.count ? (
             <span
@@ -154,9 +159,9 @@ export function Segmented<T extends string>({
               {segment.count}
             </span>
           ) : null}
-        </button>
+        </Toggle>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 

@@ -196,7 +196,7 @@ test("PRD-01 Assign board: Tab chooses agent, arrows choose base, Enter starts o
     "true",
   );
   await page.keyboard.press("ArrowRight");
-  await expect(dialog.getByRole("button", { name: "Made on top of", exact: true })).toContainText(
+  await expect(dialog.getByRole("combobox", { name: "Made on top of", exact: true })).toContainText(
     "muster/issue-214-desktop-app",
   );
   await page.evaluate(() => window.__muster.hold("StartFromIssue"));
@@ -241,11 +241,11 @@ test("ARC-24 shared tickets ask which project and remember it", async ({ page })
   await ticket(page, "KEP-28").click();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("button", { name: "Project", exact: true })).toContainText(
+  await expect(dialog.getByRole("combobox", { name: "Project", exact: true })).toContainText(
     "kep-site",
   );
   await page.keyboard.press("ArrowDown");
-  await expect(dialog.getByRole("button", { name: "Project", exact: true })).toContainText(
+  await expect(dialog.getByRole("combobox", { name: "Project", exact: true })).toContainText(
     "kep-api",
   );
   await page.keyboard.press("Enter");
@@ -257,7 +257,7 @@ test("ARC-24 shared tickets ask which project and remember it", async ({ page })
   await expect(dialog).toHaveCount(0);
   await tickets(page);
   await page.keyboard.press("a");
-  await expect(dialog.getByRole("button", { name: "Project", exact: true })).toContainText(
+  await expect(dialog.getByRole("combobox", { name: "Project", exact: true })).toContainText(
     "kep-api",
   );
   await page.keyboard.press("Escape");
@@ -306,7 +306,8 @@ test("PRD-01 close asks first; Escape keeps it, refusal keeps it, success offers
   await expect(dialog.getByRole("button", { name: "Close ticket" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("alert")).toContainText("not allowed to close this ticket");
-  await expect(ticket(page, "#214")).toHaveCount(1);
+  // Still listed, behind the dialog that asks (hidden from a screen reader meanwhile).
+  await expect(page.getByRole("option", { name: /^#214 /, includeHidden: true })).toHaveCount(1);
   await dialog.getByRole("button", { name: "Close ticket" }).click();
   dialog = page.getByRole("dialog", { name: "Closed #214. Clean up after it?" });
   await expect(dialog).toContainText("1 agent still running: Sketch the Tauri shell");
@@ -375,7 +376,7 @@ test("ARC-24 Select supports keyboard listbox choice and cancellation", async ({
   await page.keyboard.press("Enter");
   const select = page
     .getByRole("dialog")
-    .getByRole("button", { name: "Made on top of", exact: true });
+    .getByRole("combobox", { name: "Made on top of", exact: true });
   await select.click();
   await expect(page.getByRole("listbox", { name: "Made on top of" })).toBeVisible();
   await page.keyboard.press("ArrowDown");

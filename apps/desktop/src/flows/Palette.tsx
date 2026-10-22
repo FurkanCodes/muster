@@ -8,6 +8,7 @@ import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { useActions, useApp, useUi } from "../app/context";
 import { statusKind } from "../lib/status";
 import { Hint, Kbd, Spacer } from "../ui/controls";
+import { Modal } from "../ui/Dialog";
 import { Icon } from "../ui/Icon";
 import { Loading } from "../ui/Loading";
 import { AgentLogo, StatusMark } from "../ui/status";
@@ -18,28 +19,6 @@ import { found } from "./match";
 import "./flows.css";
 
 const PAGE = 10;
-
-/** The palette's own modal: the window behind is inert while it is up. */
-function useModal(onClose: () => void) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    const previous = document.activeElement;
-    dialog?.showModal();
-    dialog?.querySelector<HTMLInputElement>("input")?.focus();
-    return () => {
-      dialog?.close();
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-    };
-  }, []);
-  return {
-    ref,
-    onCancel: (event: { preventDefault(): void }) => {
-      event.preventDefault();
-      onClose();
-    },
-  };
-}
 
 export default function Palette() {
   const mode = useUi((state) => state.paletteMode);
@@ -95,7 +74,6 @@ function Commands() {
   const [at, setAt] = useState(0);
   const id = useId();
   const close = () => actions.openPalette(false);
-  const modal = useModal(close);
   const { tickets, asking } = useTickets(typed.trim() !== "");
   const items = catalogue(app, typed, tickets);
   const lit = Math.min(at, items.length - 1);
@@ -122,11 +100,11 @@ function Commands() {
   }, [id, chosen]);
 
   return (
-    <dialog
-      ref={modal.ref}
+    <Modal
       className="mu-palette ui-palette"
-      aria-label="Command palette"
-      onCancel={modal.onCancel}
+      label="Command palette"
+      initial="input"
+      onClose={close}
     >
       <div className="mu-palette-field">
         <Icon name="search" size={16} />
@@ -176,7 +154,7 @@ function Commands() {
         <Spacer />
         {help !== "none" ? <Hint keys={help.split(" ")[0] ?? help} does="every key" /> : null}
       </div>
-    </dialog>
+    </Modal>
   );
 }
 
@@ -253,7 +231,6 @@ function EveryKey({ changes }: { changes: boolean }) {
   const [typed, setTyped] = useState("");
   const list = useRef<HTMLDivElement>(null);
   const close = () => actions.openPalette(false);
-  const modal = useModal(close);
   const sections = helpFor(
     changes ? "changes" : screen,
     app.daemon.store.getState().preferences,
@@ -270,12 +247,7 @@ function EveryKey({ changes }: { changes: boolean }) {
     }
   };
   return (
-    <dialog
-      ref={modal.ref}
-      className="mu-palette ui-palette"
-      aria-label="Every key"
-      onCancel={modal.onCancel}
-    >
+    <Modal className="mu-palette ui-palette" label="Every key" initial="input" onClose={close}>
       <div className="mu-palette-field">
         <Icon name="search" size={16} />
         <input
@@ -311,6 +283,6 @@ function EveryKey({ changes }: { changes: boolean }) {
         <Hint keys="↑↓" does="scroll" />
         <Hint keys={["⏎", "⎋"]} does="close" />
       </div>
-    </dialog>
+    </Modal>
   );
 }

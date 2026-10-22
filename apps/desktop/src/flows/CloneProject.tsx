@@ -99,7 +99,7 @@ export default function CloneProject() {
       }
     });
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!(event.target instanceof HTMLInputElement) || into !== null) return;
     const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
     if (by === undefined || shown.length === 0) return;

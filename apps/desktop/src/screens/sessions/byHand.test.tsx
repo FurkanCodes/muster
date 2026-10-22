@@ -138,7 +138,9 @@ describe("PRD §5 the stages by hand, from All sessions", () => {
     const { app } = await shown(bridge);
     await userEvent.click(row(/^Flaky resize test/));
     await userEvent.click(await screen.findByRole("button", { name: "More" }));
-    expect(screen.getByRole("menuitem", { name: /^Run the checks/ })).toHaveTextContent("⇧C");
+    expect(await screen.findByRole("menuitem", { name: /^Run the checks/ })).toHaveTextContent(
+      "⇧C",
+    );
     expect(screen.getByRole("menuitem", { name: /^Open a draft pull request/ })).toHaveTextContent(
       "⇧O",
     );

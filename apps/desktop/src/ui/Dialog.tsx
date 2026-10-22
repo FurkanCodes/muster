@@ -1,10 +1,89 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef } from "react";
+import { Dialog as Base } from "@base-ui/react/dialog";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef } from "react";
 import { useApp } from "../app/context";
+import { portalRoot } from "./portal";
 import "./dialog.css";
 
 /**
- * A question Muster asks before it acts (design system: Dialog). A native
- * modal keeps the focus inside and the window behind it inert. ⏎ does the
+ * What floats over the window while it asks or offers (a Dialog, the
+ * palette), on Base UI's dialog: modal, so the focus stays inside and the
+ * window behind is inert, over the scrim, closed by ⎋ but never by a click
+ * outside. The focus starts on what `initial` finds inside, and goes back
+ * to what had it as it closes.
+ */
+export function Modal({
+  className,
+  label,
+  initial,
+  onClose,
+  onKeyDown,
+  children,
+}: {
+  className: string;
+  /** Its name, where no title of its own names it. */
+  label?: string;
+  /** Where the focus starts, as a selector inside it. */
+  initial: string;
+  onClose: () => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
+  children: ReactNode;
+}) {
+  const popup = useRef<HTMLDivElement | null>(null);
+  // The focus goes in as it is drawn, not a frame later: a key pressed at
+  // once is the Modal's. Once only, though its ref may be set again; Base
+  // UI's own initial focus lands on the same.
+  const focused = useRef(false);
+  const drawn = (node: HTMLDivElement | null) => {
+    popup.current = node;
+    if (!node || focused.current) return;
+    focused.current = true;
+    node.querySelector<HTMLElement>(initial)?.focus();
+  };
+  useEffect(() => {
+    const previous = document.activeElement;
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+  return (
+    <Base.Root
+      open
+      onOpenChange={(open, details) => {
+        // ⎋ in a list that floats over it (a Select's) closes that list, not this.
+        const at = details.event?.target;
+        if (
+          details.reason === "escape-key" &&
+          at instanceof Node &&
+          popup.current &&
+          !popup.current.contains(at)
+        ) {
+          details.cancel();
+          return;
+        }
+        if (!open) onClose();
+      }}
+      disablePointerDismissal
+    >
+      <Base.Portal container={portalRoot()}>
+        <Base.Backdrop className="ui-modal-backdrop" />
+        <Base.Popup
+          ref={drawn}
+          className={className}
+          aria-label={label}
+          initialFocus={() => popup.current?.querySelector<HTMLElement>(initial) ?? true}
+          finalFocus={false}
+          onKeyDown={onKeyDown}
+        >
+          {children}
+        </Base.Popup>
+      </Base.Portal>
+    </Base.Root>
+  );
+}
+
+/**
+ * A question Muster asks before it acts (design system: Dialog), a Modal
+ * that keeps the focus inside and the window behind it inert. ⏎ does the
  * acting answer and ⎋ the other, but ⏎ on a focused answer does that one,
  * so a danger dialog, whose focus starts on the answer that does nothing,
  * never acts on a ⏎ meant for it; ← → go between the answers (⇥ reaches no
@@ -20,7 +99,7 @@ const FOCUSABLE =
   "button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])";
 
 /** ⇥ past the last thing in the dialog goes round to the first, ⇧⇥ the other way. */
-function keepTab(event: KeyboardEvent<HTMLDialogElement>) {
+function keepTab(event: KeyboardEvent<HTMLDivElement>) {
   const inside = [...event.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
     (element) => element.tabIndex >= 0,
   );
@@ -53,34 +132,22 @@ export function Dialog({
   actions: ReactNode;
   onClose: () => void;
   onAccept: () => void;
-  onKeyDown?: (event: KeyboardEvent<HTMLDialogElement>) => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
   width?: "normal" | "wide";
 }) {
   const app = useApp();
-  const ref = useRef<HTMLDialogElement>(null);
-  const id = useId();
   useEffect(() => {
-    const dialog = ref.current;
-    const previous = document.activeElement;
     const keysWere = app.ui.getState().keysIn;
     app.actions.keysTo("dialog");
-    dialog?.showModal();
-    dialog?.querySelector<HTMLElement>("[data-dialog-initial]")?.focus();
     return () => {
-      dialog?.close();
       if (app.ui.getState().keysIn === "dialog") app.actions.keysTo(keysWere);
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, [app]);
   return (
-    <dialog
-      ref={ref}
+    <Modal
       className={`mu-dialog ui-dialog ${width === "wide" ? "ui-dialog--wide" : ""}`}
-      aria-labelledby={id}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
+      initial="[data-dialog-initial]"
+      onClose={onClose}
       onKeyDown={(event) => {
         // Keys in a modal are its own: the window's listener (app/keys.ts)
         // never sees them, so it neither acts on them nor clears a note an
@@ -123,19 +190,15 @@ export function Dialog({
     >
       {meta ? (
         <div className="ui-dialog-head">
-          <h2 className="mu-dialog-title" id={id}>
-            {title}
-          </h2>
+          <Base.Title className="mu-dialog-title">{title}</Base.Title>
           <span className="mu-meta">{meta}</span>
         </div>
       ) : (
-        <h2 className="mu-dialog-title" id={id}>
-          {title}
-        </h2>
+        <Base.Title className="mu-dialog-title">{title}</Base.Title>
       )}
       {children}
       <div className="mu-dialog-actions">{actions}</div>
-    </dialog>
+    </Modal>
   );
 }
 

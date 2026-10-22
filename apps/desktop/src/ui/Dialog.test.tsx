@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -28,11 +28,16 @@ function Close({ onClose = vi.fn(), onAccept = vi.fn() }) {
   );
 }
 
+/** Once it has the focus: Base UI gives it to the answer marked first a frame after it opens. */
+async function opened() {
+  await waitFor(() => expect(screen.getByRole("button", { name: "Keep it open" })).toHaveFocus());
+}
+
 describe("ARC-24 Dialog", () => {
-  it("is named by its question and starts on the answer marked first", () => {
+  it("is named by its question and starts on the answer marked first", async () => {
     renderWithApp(<Close />);
     expect(screen.getByRole("dialog", { name: "Close #205 on GitHub?" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Keep it open" })).toHaveFocus();
+    await opened();
   });
   it("says what the question is about under its title", () => {
     renderWithApp(
@@ -52,6 +57,7 @@ describe("ARC-24 Dialog", () => {
     const onClose = vi.fn();
     const onAccept = vi.fn();
     renderWithApp(<Close onClose={onClose} onAccept={onAccept} />);
+    await opened();
     await userEvent.keyboard("{Enter}");
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onAccept).not.toHaveBeenCalled();
@@ -69,6 +75,7 @@ describe("ARC-24 Dialog", () => {
   it("← → go between the answers and ⌘⏎ does the acting one from any", async () => {
     const onAccept = vi.fn();
     renderWithApp(<Close onAccept={onAccept} />);
+    await opened();
     await userEvent.keyboard("{ArrowRight}");
     expect(screen.getByRole("button", { name: "Close ticket" })).toHaveFocus();
     await userEvent.keyboard("{ArrowRight}{ArrowLeft}");
@@ -76,24 +83,26 @@ describe("ARC-24 Dialog", () => {
     await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
     expect(onAccept).toHaveBeenCalledTimes(1);
   });
-  it("⏎ elsewhere in it does the acting answer and ⎋ the other", () => {
+  it("⏎ elsewhere in it does the acting answer and ⎋ the other", async () => {
     const onClose = vi.fn();
     const onAccept = vi.fn();
     renderWithApp(<Close onClose={onClose} onAccept={onAccept} />);
     const text = screen.getByText("Everyone watching it is told.");
     fireEvent.keyDown(text, { key: "Enter" });
     expect(onAccept).toHaveBeenCalledTimes(1);
-    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+    await opened();
+    await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-  it("ARC-24 has the window's keys while open, and gives them back as it closes", () => {
+  it("ARC-24 has the window's keys while open, and gives them back as it closes", async () => {
     function Asked() {
       const [open, setOpen] = useState(true);
       return open ? <Close onClose={vi.fn(() => setOpen(false))} /> : null;
     }
     const { app } = renderWithApp(<Asked />);
     expect(app.ui.getState().keysIn).toBe("dialog");
-    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+    await opened();
+    await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(app.ui.getState().keysIn).toBe("list");
   });

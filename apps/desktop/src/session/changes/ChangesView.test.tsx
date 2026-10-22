@@ -285,7 +285,11 @@ describe("ARC-24 Turns", () => {
     await waitFor(() =>
       expect(sent(bridge, command)).toEqual([{ [command]: { workspace, number: 4 } }]),
     );
-    expect(screen.getByRole("button", { name: "Turns 4" })).toHaveAttribute("aria-pressed", "true");
+    // Behind the put-back dialog, hidden from a screen reader while it asks.
+    expect(screen.getByRole("button", { name: "Turns 4", hidden: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(app.ui.getState().pane).toBe("changes");
   });
 });

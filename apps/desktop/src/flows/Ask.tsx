@@ -35,7 +35,7 @@ export function Ask({
   tone?: "primary" | "danger";
   task: ReturnType<typeof useTask>;
   onAct: () => void;
-  onKeyDown?: (event: KeyboardEvent<HTMLDialogElement>) => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
   children?: ReactNode;
 }) {
   const actions = useActions();

@@ -1,15 +1,15 @@
-// A choice of one among a few (design system: Select): a button showing the
-// chosen one, ← → stepping through them in place, and on ⏎, ↓ or a click
-// its list, drawn as a menu is, on Radix's popover: under the button and at
-// least as wide, turned up where the window has no room below, closed by ⎋,
-// a click outside or the focus leaving. Inside a dialog it is drawn in the
-// dialog, which alone takes the pointer while it is open.
+// A choice of one among a few (design system: Select), on Base UI's
+// select: a button showing the chosen one, ← → stepping through them in
+// place, and on ⏎, ↓ or a click its list, drawn as a menu is: under the
+// button and at least as wide, turned up where the window has no room
+// below, closed by ⎋ or a click outside. Inside a dialog it is drawn in
+// the dialog, which alone takes the pointer while it is open.
 //
 //   <Select label="Agent" options={options} value={value} onChange={setValue} />
 //   <Select variant="quiet" …/>   (in a toolbar: no box until the pointer is on it)
 
-import * as Popover from "@radix-ui/react-popover";
-import { type ReactNode, useId, useRef, useState } from "react";
+import { Select as Base } from "@base-ui/react/select";
+import { Fragment, type ReactNode, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { Icon } from "./Icon";
 import { portalRoot } from "./portal";
@@ -50,11 +50,11 @@ export function Select({
   onStep?: (by: number) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [at, setAt] = useState(0);
   // Where its list is drawn: the dialog it is in, or the window's root.
   const [container, setContainer] = useState<HTMLElement | undefined>(undefined);
-  const id = useId();
   const button = useRef<HTMLButtonElement>(null);
+  // Whether the keys moved last, not the pointer: only they are said (onActive).
+  const byKeys = useRef(false);
   const chosen = options.find((o) => o.value === value) ?? options[0];
   const step = (by: number) => {
     if (onStep) {
@@ -65,142 +65,108 @@ export function Select({
     const next = options[(index + by + options.length) % options.length];
     if (next) onChange(next.value);
   };
-  const show = (next: boolean) => {
-    if (next) {
-      setAt(
-        Math.max(
-          0,
-          options.findIndex((o) => o.value === value),
-        ),
-      );
-      setContainer(button.current?.closest("dialog") ?? portalRoot());
-    }
-    setOpen(next);
-  };
-  const choose = (option: SelectOption | undefined) => {
-    if (option) onChange(option.value);
-    setOpen(false);
-    button.current?.focus();
-  };
   return (
-    <Popover.Root open={open} onOpenChange={show}>
+    <Base.Root
+      value={value}
+      onValueChange={(next) => {
+        if (typeof next === "string") onChange(next);
+      }}
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setContainer(button.current?.closest("dialog") ?? portalRoot());
+        setOpen(next);
+      }}
+      disabled={disabled}
+      modal={false}
+    >
       <div className={cn("ui-select", variant === "quiet" && "ui-select--quiet")}>
-        <Popover.Anchor asChild>
-          <button
-            ref={button}
-            type="button"
-            className={cn(
-              "mu-select",
-              size === "lg" && "mu-select--lg",
-              variant === "quiet" && "mu-select--quiet",
-            )}
-            aria-label={label}
-            aria-haspopup="listbox"
-            aria-expanded={open}
-            aria-controls={open ? id : undefined}
-            disabled={disabled}
-            onClick={() => show(!open)}
-            onKeyDown={(event) => {
-              if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
-                event.preventDefault();
-                event.stopPropagation();
-                step(event.key === "ArrowLeft" ? -1 : 1);
-              }
-              if (["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) {
-                event.preventDefault();
-                event.stopPropagation();
-                show(true);
-              }
-            }}
-          >
-            <span className="mu-select-value">
-              {chosen?.mark ? (
-                <span className="ui-select-mark" aria-hidden="true">
-                  {chosen.mark}
-                </span>
-              ) : null}
-              <span className="mu-cut">{chosen?.label}</span>
-              {chosen?.note && variant === "field" ? (
-                <span className="mu-quiet">{chosen.note}</span>
-              ) : null}
-            </span>
-            <Icon name="chevron" />
-          </button>
-        </Popover.Anchor>
-      </div>
-      <Popover.Portal container={container}>
-        <Popover.Content
-          className="mu-select-menu ui-select-menu"
-          role="listbox"
-          id={id}
+        <Base.Trigger
+          ref={button}
+          className={cn(
+            "mu-select",
+            size === "lg" && "mu-select--lg",
+            variant === "quiet" && "mu-select--quiet",
+          )}
           aria-label={label}
-          tabIndex={0}
+          onKeyDown={(event) => {
+            if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
+              event.preventDefault();
+              event.stopPropagation();
+              step(event.key === "ArrowLeft" ? -1 : 1);
+            }
+            if (["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) {
+              // Its own: the screen behind does not take them too.
+              event.stopPropagation();
+            }
+          }}
+        >
+          <span className="mu-select-value">
+            {chosen?.mark ? (
+              <span className="ui-select-mark" aria-hidden="true">
+                {chosen.mark}
+              </span>
+            ) : null}
+            <span className="mu-cut">{chosen?.label}</span>
+            {chosen?.note && variant === "field" ? (
+              <span className="mu-quiet">{chosen.note}</span>
+            ) : null}
+          </span>
+          <Icon name="chevron" />
+        </Base.Trigger>
+      </div>
+      <Base.Portal container={container}>
+        <Base.Positioner
+          className="ui-select-layer"
+          alignItemWithTrigger={false}
           side="bottom"
           align="start"
           sideOffset={4}
           collisionPadding={8}
-          aria-activedescendant={`${id}-${at}`}
-          // The list holds the keys while open, its options never the focus.
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            (event.currentTarget as HTMLElement).focus();
-          }}
-          onCloseAutoFocus={(event) => event.preventDefault()}
-          // Its own ⎋ closes it and gives the focus back, below.
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          // A press on its own button is the button's: it closes it.
-          onInteractOutside={(event) => {
-            if (button.current?.contains(event.target as Node)) event.preventDefault();
-          }}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.key === "Escape") {
-              event.preventDefault();
-              setOpen(false);
-              button.current?.focus();
-            }
-            if (["ArrowDown", "ArrowUp"].includes(event.key)) {
-              event.preventDefault();
-              const next =
-                (at + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
-              setAt(next);
-              const option = options[next];
-              if (option) onActive?.(option.value);
-            }
-            if (["Enter", " "].includes(event.key)) {
-              event.preventDefault();
-              choose(options[at]);
-            }
-          }}
         >
-          {options.map((option, index) => [
-            option.apart ? (
-              // biome-ignore lint/a11y/useSemanticElements: the design system's menu separator is a hairline div, as its boards draw it.
-              <div key={`apart-${option.value}`} className="mu-select-sep" role="separator" />
-            ) : null,
-            <div
-              key={option.value}
-              id={`${id}-${index}`}
-              role="option"
-              aria-selected={value === option.value}
-              className={cn("mu-select-option", index === at && "is-active")}
-              tabIndex={-1}
-              onPointerMove={() => setAt(index)}
-              onClick={() => choose(option)}
-              onKeyDown={() => {}}
-            >
-              <span className="mu-option-check">{value === option.value ? "✓" : ""}</span>
-              {option.mark ? (
-                <span className="ui-select-mark" aria-hidden="true">
-                  {option.mark}
-                </span>
-              ) : null}
-              <span className="mu-cut">{option.label}</span>
-              {option.note ? <span className="mu-quiet ui-select-note">{option.note}</span> : null}
-            </div>,
-          ])}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+          <Base.Popup
+            className="mu-select-menu ui-select-menu"
+            onKeyDownCapture={() => {
+              byKeys.current = true;
+            }}
+            // The screen behind hears none of its keys, nor the click Base
+            // UI makes of ⏎ on an option (a settings row would take it as its own).
+            onKeyDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onPointerMove={() => {
+              byKeys.current = false;
+            }}
+          >
+            <Base.List aria-label={label}>
+              {options.map((option) => (
+                <Fragment key={option.value}>
+                  {option.apart ? <Base.Separator className="mu-select-sep" /> : null}
+                  <Base.Item
+                    value={option.value}
+                    label={option.label}
+                    className="mu-select-option"
+                    onFocus={() => {
+                      if (byKeys.current) onActive?.(option.value);
+                    }}
+                  >
+                    <span className="mu-option-check">{value === option.value ? "✓" : ""}</span>
+                    {option.mark ? (
+                      <span className="ui-select-mark" aria-hidden="true">
+                        {option.mark}
+                      </span>
+                    ) : null}
+                    <Base.ItemText className="mu-cut" render={<span />}>
+                      {option.label}
+                    </Base.ItemText>
+                    {option.note ? (
+                      <span className="mu-quiet ui-select-note">{option.note}</span>
+                    ) : null}
+                  </Base.Item>
+                </Fragment>
+              ))}
+            </Base.List>
+          </Base.Popup>
+        </Base.Positioner>
+      </Base.Portal>
+    </Base.Root>
   );
 }

@@ -24,6 +24,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@fontsource/instrument-sans": "5.3.0",
     "@fontsource/jetbrains-mono": "5.3.0",
     "@radix-ui/react-dropdown-menu": "2.1.16",

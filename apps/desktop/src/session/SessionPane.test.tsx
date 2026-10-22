@@ -92,7 +92,8 @@ describe("ARC-24 the session pane", () => {
     expect(close).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: "More" }));
-    await screen.findByRole("menu");
+    const again = await screen.findByRole("menu");
+    await waitFor(() => expect(again).toHaveFocus());
     await userEvent.keyboard("R");
     expect(rename).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole("button", { name: "More" }));
@@ -105,10 +106,10 @@ describe("ARC-24 the session pane", () => {
   it("fills the window from its more menu, and says so there to leave it", async () => {
     const { app } = renderWithApp(<SessionPane session={codex} />);
     await userEvent.click(await screen.findByRole("button", { name: "More" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: /^Full screen/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^Full screen/ }));
     expect(app.ui.getState().fullScreen).toBe(codex);
     await userEvent.click(screen.getByRole("button", { name: "More" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: /^Leave full screen/ }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /^Leave full screen/ }));
     expect(app.ui.getState().fullScreen).toBeNull();
   });
 });

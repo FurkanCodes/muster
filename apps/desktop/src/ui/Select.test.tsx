@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
+import { listGone, openList } from "../test/select";
 import { Select } from "./Select";
 
 const options = [
@@ -23,7 +24,7 @@ function Chosen() {
 describe("ARC-24 Select", () => {
   it("shows the value and its note, and ← → step through without opening", async () => {
     render(<Chosen />);
-    const select = screen.getByRole("button", { name: "Made on top of" });
+    const select = screen.getByRole("combobox", { name: "Made on top of" });
     expect(select).toHaveTextContent("⎇ mainthe base");
     select.focus();
     await userEvent.keyboard("{ArrowRight}{ArrowRight}");
@@ -36,17 +37,18 @@ describe("ARC-24 Select", () => {
   });
   it("opens a listbox on ⏎, ↑↓ move, ⏎ chooses and ⎋ closes", async () => {
     render(<Chosen />);
-    screen.getByRole("button", { name: "Made on top of" }).focus();
+    screen.getByRole("combobox", { name: "Made on top of" }).focus();
     await userEvent.keyboard("{Enter}");
-    const list = screen.getByRole("listbox", { name: "Made on top of" });
+    await openList("Made on top of");
     expect(screen.getByRole("option", { name: /main/ })).toHaveAttribute("aria-selected", "true");
     await userEvent.keyboard("{ArrowDown}{Enter}");
-    expect(list).not.toBeInTheDocument();
+    await listGone();
     expect(screen.getByRole("status")).toHaveTextContent("w1");
     await userEvent.keyboard("{Enter}");
+    await openList("Made on top of");
     await userEvent.keyboard("{ArrowDown}{Escape}");
-    expect(screen.queryByRole("listbox")).toBeNull();
+    await listGone();
     expect(screen.getByRole("status")).toHaveTextContent("w1");
-    expect(screen.getByRole("button", { name: "Made on top of" })).toHaveFocus();
+    expect(screen.getByRole("combobox", { name: "Made on top of" })).toHaveFocus();
   });
 });
