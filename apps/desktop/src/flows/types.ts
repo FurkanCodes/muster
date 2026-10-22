@@ -7,8 +7,6 @@ import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 
 export type Flow =
   | { kind: "add-project" }
-  /** Where it was opened: a workspace to start in, or a project to start for. */
-  | { kind: "new-session"; project: ProjectId | null; workspace: WorkspaceId | null }
   | { kind: "new-worktree"; project: ProjectId }
   | { kind: "stop"; session: SessionId }
   | { kind: "tidy"; workspace: WorkspaceId }

@@ -1,8 +1,9 @@
 // *Needs you* (design system: Queue): the queue in the sidebar, by project
 // as the All list is, the project with the most urgent first and under it
-// what asks, then what finished not seen, then what is at work, and beside
-// it the selected session's pane, live. A project's heading goes to its
-// page. While Tickets or Settings is shown beside it
+// what asks, then what finished not seen, and beside it the selected
+// session's pane, live. The agents at work need nobody yet: *All* lists
+// them, and an empty queue says how many there are. A project's heading
+// goes to its page. While Tickets or Settings is shown beside it
 // instead, the queue stays in the sidebar and its keys are theirs. The keys are the
 // terminal UI's, as the person set them (src/keys): ↑↓ (or k j) move, ⏎
 // gives the session's terminal the keys and ⇧Q gives them back, `l` goes
@@ -45,11 +46,10 @@ function useShownQueue() {
       byProject(queueIds(state), (id) => projectOfSession(state, id)).flatMap((group) => group.ids),
     ),
   );
-  // Kept in its place only while it is not at work again.
-  const stays = useDaemon((state) => {
-    const session = chosen ? state.sessions[chosen] : undefined;
-    return Boolean(session && session.status.state !== "running");
-  });
+  // Kept in its place while it is there, at work again too: the person
+  // answering it types on in its terminal, which never moves under them.
+  // It goes once another is selected, or the keys come back to the list.
+  const stays = useDaemon((state) => Boolean(chosen && state.sessions[chosen]));
   const [held, setHeld] = useState(() => ({
     list,
     chosen,
@@ -70,6 +70,8 @@ function useShownQueue() {
   const groups = byProject(shown.ids, (id) => projectOf.get(id) ?? "");
   return {
     groups,
+    /** How many wait, the one held in its place left out. */
+    waiting: list.length,
     ids: groups.flatMap((group) => group.ids),
     selected: shown.selected,
     chosen,
@@ -106,7 +108,7 @@ const IN_TERMINAL: readonly Hint[] = [
 export function QueueScreen({ active }: { active: boolean }) {
   const app = useApp();
   const actions = useActions();
-  const { groups, ids, selected, chosen } = useShownQueue();
+  const { groups, waiting, ids, selected, chosen } = useShownQueue();
   const keysIn = useUi((state) => state.keysIn);
   const loaded = useDaemon((state) => state.loaded);
   const link = useDaemon((state) => state.link.state);
@@ -238,8 +240,9 @@ export function QueueScreen({ active }: { active: boolean }) {
   ];
   // Selected while the keys are elsewhere: a terminal, a dialog, or Tickets and Settings beside it.
   const resting = keysIn !== "list" || !active;
-  const working = sections.filter((one) => one === "working").length;
-  const nothingWaits = working === sections.length;
+  // The agents at work are counted, not listed: they need nobody yet.
+  const working = useDaemon((state) => state.derived.counts.working);
+  const nothingWaits = waiting === 0;
 
   return (
     <>

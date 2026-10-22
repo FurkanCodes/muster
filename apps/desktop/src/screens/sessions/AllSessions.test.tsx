@@ -66,6 +66,7 @@ describe("ARC-24 All sessions", () => {
     );
     await userEvent.click(row("lamphaus"));
     expect(app.ui.getState().hints).toEqual([
+      { key: "n", does: "start work" },
       { key: "⏎", does: "fold or unfold" },
       { key: "⇧T", does: "shell" },
     ]);
@@ -81,7 +82,7 @@ describe("ARC-24 All sessions", () => {
       }),
     );
     await userEvent.click(row("lamphaus"));
-    expect(app.ui.getState().hints[1]).toEqual({ key: "⇧S", does: "shell" });
+    expect(app.ui.getState().hints[2]).toEqual({ key: "⇧S", does: "shell" });
     await userEvent.keyboard("z");
     expect(row("lamphaus")).toHaveAttribute("aria-expanded", "false");
   });
@@ -124,14 +125,15 @@ describe("ARC-24 All sessions", () => {
     expect(app.ui.getState().selected.all).toBe(ulid(100));
   });
 
-  it("starts a session in a project's checkout from the + on its line", async () => {
+  it("shows a project's page, its box ready, where work is asked to start; once", async () => {
     const { app } = await screenShown();
-    await userEvent.click(screen.getByRole("button", { name: "New session in lamphaus" }));
-    expect(app.ui.getState().flow).toEqual({
-      kind: "new-session",
-      project: ulid(2),
-      workspace: ulid(20),
-    });
+    act(() => app.actions.compose(ulid(2), ulid(20)));
+    const page = await screen.findByRole("region", { name: "lamphaus" });
+    expect(screen.getByRole("textbox", { name: "First prompt" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Where" })).toHaveTextContent("Its checkout");
+    expect(page).toBeInTheDocument();
+    // Done: showing the page again leaves the keys with the list.
+    expect(app.ui.getState().compose).toBeNull();
   });
 
   it("takes no keys while Tickets or Settings is shown beside it", async () => {

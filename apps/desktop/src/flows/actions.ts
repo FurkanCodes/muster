@@ -8,6 +8,7 @@ import type { App } from "../app/context";
 import type { Project } from "../ipc/generated/Project";
 import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
+import { projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import { whenKnown } from "../state/whenKnown";
 import { labelOf } from "./keymap";
@@ -71,30 +72,23 @@ export function addProject(app: App): void {
   app.actions.openFlow({ kind: "add-project" });
 }
 
-/** `n`: a session in the selected worktree, a project's checkout, or where the person says. */
+/**
+ * `n` (and ⌘N): the selected project's page with its box ready to start
+ * work, in the session's or worktree's place where one is selected, else in
+ * a new worktree; the first project's where none is selected (Tickets,
+ * Settings). Work starts in one place only: the project's page.
+ */
 export function newSession(app: App): void {
-  const { workspace, project, onProject } = here(app);
-  if (Object.keys(app.daemon.store.getState().projects).length === 0) {
+  const state = app.daemon.store.getState();
+  const { workspace, project } = here(app);
+  const into = project ?? projectsInOrder(state)[0];
+  if (!into) {
     complain(app, `Add a project first: press ${key(app, "add_project")}.`);
     return;
   }
-  const into = onProject && project ? checkoutOf(app, project.id) : workspace;
-  // A run's container is the run's own; the dialog starts elsewhere.
-  const usable = into && into.kind.kind !== "container" ? into : null;
-  app.actions.openFlow({
-    kind: "new-session",
-    project: project?.id ?? null,
-    workspace: usable?.id ?? null,
-  });
-}
-
-/** A project line's `+`: a session in its checkout, or where the person says. */
-export function newSessionIn(app: App, project: string): void {
-  app.actions.openFlow({
-    kind: "new-session",
-    project,
-    workspace: checkoutOf(app, project)?.id ?? null,
-  });
+  // A run's container is the run's own: work starts elsewhere.
+  const place = workspace && workspace.kind.kind !== "container" ? workspace.id : null;
+  app.actions.compose(into.id, place);
 }
 
 /** `w`: a new worktree for the selected project. */

@@ -43,29 +43,11 @@
   background: transparent;
 }
 
-/* Two fields side by side, as the New session board sets Project and Where. */
-.ui-flow-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-16);
-}
-.ui-flow-columns .mu-seg {
-  height: var(--size-control-lg);
-  align-items: center;
-}
-.ui-flow-where {
-  min-height: var(--size-control-lg);
-  display: flex;
-  align-items: center;
-}
 .ui-flow-quiet {
   font-weight: 400;
 }
 .ui-flow-error {
   color: var(--waiting);
-}
-.ui-flow-banner .mu-banner-text {
-  white-space: normal;
 }
 .ui-flow-folders {
   display: flex;
@@ -80,12 +62,6 @@
   display: none;
 }
 
-@media (max-width: 600px) {
-  .ui-flow-columns {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* The palette's field is where typing goes from the start: no ring around
    it, as the board draws it, but its line turns accent while it has the keys. */
 .ui-palette .mu-palette-input:focus-visible {
@@ -96,11 +72,4 @@
 }
 .ui-palette .mu-palette-list {
   overscroll-behavior: contain;
-}
-/* Where's choices keep to one line each, Project taking the rest of the row. */
-.ui-flow-columns:has(.mu-seg) {
-  grid-template-columns: minmax(160px, 1fr) auto;
-}
-.ui-flow-columns .mu-seg-item {
-  white-space: nowrap;
 }

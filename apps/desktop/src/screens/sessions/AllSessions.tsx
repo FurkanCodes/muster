@@ -70,6 +70,7 @@ export default function AllSessions({ active }: { active: boolean }) {
   const renameKey = label("rename");
   const closeKey = label("close");
   const pullKey = label("pull_request_in_browser");
+  const startKey = label("new_session");
 
   /** The workspace a line works in: a session's, or a project's own checkout. */
   const workspaceOf = (): string | null => {
@@ -197,12 +198,13 @@ export default function AllSessions({ active }: { active: boolean }) {
       ]);
     if (kind === "workspace")
       return actions.setHints([
-        { key: "⏎", does: "new session" },
+        { key: "⏎", does: "start work here" },
         { key: shellKey, does: "shell" },
         { key: closeKey, does: "remove" },
       ]);
     if (kind)
       return actions.setHints([
+        { key: startKey, does: "start work" },
         { key: "⏎", does: "fold or unfold" },
         { key: shellKey, does: "shell" },
       ]);
@@ -220,6 +222,7 @@ export default function AllSessions({ active }: { active: boolean }) {
     renameKey,
     closeKey,
     pullKey,
+    startKey,
     changesShown,
     active,
   ]);

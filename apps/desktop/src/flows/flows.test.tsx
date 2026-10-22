@@ -38,43 +38,56 @@ function select(screenId: Parameters<App["actions"]["select"]>[0], id: string) {
 const named = (bridge: MockBridge, name: string) =>
   bridge.sent.filter((command) => typeof command === "object" && name in command);
 
-describe("PRD-03 a new session", () => {
-  it("says so where agents already work, and not in a new worktree", async () => {
+/** The project page's box, as `n` or a project's line shows it. */
+async function startBox(project: string) {
+  const page = await screen.findByRole("region", { name: project });
+  return within(page).getByRole("form", { name: "Start work" });
+}
+
+/** Chooses `option` in the box's select named `label`. */
+async function choose(box: HTMLElement, label: string, option: string | RegExp) {
+  await userEvent.click(within(box).getByRole("button", { name: label }));
+  await userEvent.click(
+    within(screen.getByRole("listbox", { name: label })).getByRole("option", { name: option }),
+  );
+}
+
+describe("PRD-03 work starts on the project's page", () => {
+  it("n opens it ready where the session works, says who works there, and not in a new worktree", async () => {
     await windowOver();
     select("all", ulid(103));
     await userEvent.keyboard("n");
-    const dialog = await screen.findByRole("dialog", { name: "New session" });
-    expect(within(dialog).getByRole("status")).toHaveTextContent(
+    const box = await startBox("muster");
+    expect(within(box).getByRole("textbox", { name: "First prompt" })).toHaveFocus();
+    expect(within(box).getByRole("status")).toHaveTextContent(
       "2 agents already work here: two agents in one place change the same files.",
     );
-    await userEvent.click(within(dialog).getByRole("button", { name: "A new worktree" }));
-    expect(within(dialog).queryByRole("status")).toBeNull();
+    await choose(box, "Where", "A new worktree");
+    expect(within(box).queryByRole("status")).toBeNull();
   });
 
   it("makes the worktree, then starts in it; a refused launch is tried again there, never in another", async () => {
     const { bridge } = await windowOver();
-    await userEvent.keyboard("n");
-    const dialog = await screen.findByRole("dialog", { name: "New session" });
-    await userEvent.click(within(dialog).getByRole("button", { name: "A new worktree" }));
-    await userEvent.type(within(dialog).getByRole("textbox", { name: /Branch/ }), "spike/webgl");
+    select("all", ulid(1));
+    const box = await startBox("muster");
+    await userEvent.type(within(box).getByRole("textbox", { name: "Branch" }), "spike/webgl");
     // The daemon refuses the first launch.
     bridge.failNext("StartSession", "could not start Claude Code: no such file");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Start Claude Code" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    await userEvent.click(within(box).getByRole("button", { name: /^Start Claude Code/ }));
+    expect(await within(box).findByRole("alert")).toHaveTextContent(
       "could not start Claude Code: no such file",
     );
-    expect(within(dialog).getByRole("button", { name: "A worktree" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    // Where now names the worktree made, so the next try starts there.
+    await waitFor(() =>
+      expect(within(box).getByRole("button", { name: "Where" })).toHaveTextContent("spike/webgl"),
     );
-    await userEvent.click(within(dialog).getByRole("button", { name: "Start Claude Code" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await userEvent.click(within(box).getByRole("button", { name: /^Start Claude Code/ }));
+    await waitFor(() => expect(named(bridge, "StartSession")).toHaveLength(2));
     expect(named(bridge, "CreateWorktree")).toHaveLength(1);
     const made = (named(bridge, "CreateWorktree")[0] as { CreateWorktree: { branch: string } })
       .CreateWorktree;
     expect(made.branch).toBe("spike/webgl");
     const starts = named(bridge, "StartSession") as { StartSession: { workspace: string } }[];
-    expect(starts).toHaveLength(2);
     expect(starts[0]?.StartSession.workspace).toBe(starts[1]?.StartSession.workspace);
   });
 
@@ -86,22 +99,23 @@ describe("PRD-03 a new session", () => {
     const { bridge } = await windowOver(new MockBridge(world));
     select("needs-you", ulid(101));
     await userEvent.keyboard("n");
-    const dialog = await screen.findByRole("dialog", { name: "New session" });
-    const names = within(dialog)
-      .getAllByRole("radio")
-      .map((radio) => radio.textContent);
+    const box = await startBox("muster");
+    await userEvent.click(within(box).getByRole("button", { name: "Agent" }));
+    const names = within(screen.getByRole("listbox", { name: "Agent" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
     expect(names).toEqual([
-      "Claude Codelast chosen",
+      "✓Claude Codelast chosen",
       "Codex",
       "Gemini CLI",
       "OpenCode",
       "Copilot CLI",
-      "•Goose",
-      "❯A shell",
+      "Goose",
+      "A shell",
     ]);
-    await userEvent.click(within(dialog).getByRole("radio", { name: /Goose/ }));
-    expect(within(dialog).getByRole("textbox", { name: "First prompt" })).toBeDisabled();
-    await userEvent.click(within(dialog).getByRole("button", { name: "Start Goose" }));
+    await userEvent.click(screen.getByRole("option", { name: /Goose/ }));
+    expect(within(box).getByRole("textbox", { name: "First prompt" })).toBeDisabled();
+    await userEvent.click(within(box).getByRole("button", { name: /^Start Goose/ }));
     await waitFor(() => expect(named(bridge, "StartSession")).toHaveLength(1));
     expect(named(bridge, "StartSession")[0]).toMatchObject({
       StartSession: { harness: "goose", prompt: null, workspace: ulid(11) },

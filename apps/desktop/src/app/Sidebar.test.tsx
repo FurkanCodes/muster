@@ -69,10 +69,12 @@ describe("ARC-24 the sidebar", () => {
     expect(screen.queryByRole("heading", { name: "Tickets", level: 1 })).toBeNull();
   });
 
-  it("starts a new session from its button, where the selected session works", async () => {
+  it("New session opens the selected session's project page, its box ready", async () => {
     renderApp();
     await screen.findByRole("option", { name: "Sketch the Tauri shell" });
     await userEvent.click(screen.getByRole("button", { name: /^New session/ }));
-    expect(await screen.findByRole("dialog", { name: /New session/ })).toBeInTheDocument();
+    const page = await screen.findByRole("region", { name: "muster" });
+    expect(within(page).getByRole("textbox", { name: "First prompt" })).toHaveFocus();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

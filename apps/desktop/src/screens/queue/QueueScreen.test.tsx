@@ -18,21 +18,17 @@ async function opened(bridge = new MockBridge(workingDay())) {
 }
 
 describe("ARC-24 Needs you, in the sidebar", () => {
-  it("lists by project, the most urgent first; under each, who asks, then finishes not seen, then agents at work", async () => {
+  it("lists by project, the most urgent first; under each, who asks, then finishes not seen; never the agents at work", async () => {
     await opened();
     const labels = within(queue())
       .getAllByRole("presentation")
       .map((label) => label.textContent);
-    expect(labels).toEqual(["muster", "lamphaus", "kep-api"]);
+    expect(labels).toEqual(["muster", "lamphaus"]);
     expect(names()).toEqual([
       "Sketch the Tauri shell",
       "Resize settles once on release",
-      "Split view.rs by responsibility",
-      "Flaky resize test under load",
       "Share the Gradle cache across worktrees",
       "Explain the release script",
-      "Upgrade AGP to 9.1",
-      "Sign-up page loads the old pricing",
     ]);
     const asking = selected();
     expect(asking).toHaveClass("mu-row", "mu-row--two");
@@ -45,9 +41,7 @@ describe("ARC-24 Needs you, in the sidebar", () => {
     expect(within(finish).getByRole("img", { name: "not seen" })).toBeInTheDocument();
     const plain = within(queue()).getByRole("option", { name: "Explain the release script" });
     expect(plain).toHaveTextContent("no changes");
-    const worker = within(queue()).getByRole("option", { name: "Upgrade AGP to 9.1" });
-    expect(worker).toHaveClass("mu-row", "mu-row--two");
-    expect(worker).toHaveTextContent("Upgrade AGP to 9.1running ./gradlew assembleDebug8m");
+    expect(within(queue()).queryByRole("option", { name: "Upgrade AGP to 9.1" })).toBeNull();
   });
 
   it("says All clear, with how many work, when nothing asks or waits unseen", async () => {
@@ -60,7 +54,8 @@ describe("ARC-24 Needs you, in the sidebar", () => {
     expect(
       screen.getByText("6 agents at work. Muster will show them here when they need you."),
     ).toBeInTheDocument();
-    expect(within(queue()).getByText("muster")).toBeInTheDocument();
+    // The agents at work are counted, not listed; the one selected stays until another is.
+    expect(names()).toEqual(["Sketch the Tauri shell"]);
   });
 
   it("tells the daemon out of reach, keeping the queue as it last stood", async () => {
@@ -93,7 +88,8 @@ describe("ARC-24 the queue's keys", () => {
     expect(hints()).toContain("⏎open");
     expect(hints()).toContain("bpull request");
     await userEvent.keyboard("j");
-    expect(selected()).toHaveAccessibleName("Split view.rs by responsibility");
+    expect(selected()).toHaveAccessibleName("Share the Gradle cache across worktrees");
+    expect(hints()).toContain("⏎answer");
     await userEvent.keyboard("kk{ArrowUp}");
     expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
     expect(queue()).toHaveAttribute("aria-activedescendant", selected().id);
@@ -124,7 +120,7 @@ describe("ARC-24 the queue's keys", () => {
     expect(selected()).toHaveAccessibleName("Resize settles once on release");
     expect(names()[1]).toBe("Resize settles once on release");
     await userEvent.keyboard("j");
-    expect(selected()).toHaveAccessibleName("Split view.rs by responsibility");
+    expect(selected()).toHaveAccessibleName("Share the Gradle cache across worktrees");
     expect(names()).not.toContain("Resize settles once on release");
   });
 
@@ -132,7 +128,7 @@ describe("ARC-24 the queue's keys", () => {
     const { bridge } = await opened();
     await userEvent.keyboard("j");
     act(() => bridge.removeSession(ulid(104)));
-    expect(selected()).toHaveAccessibleName("Split view.rs by responsibility");
+    expect(selected()).toHaveAccessibleName("Share the Gradle cache across worktrees");
   });
 
   it("goes back to the first that waits after answering one, as the terminal UI does", async () => {

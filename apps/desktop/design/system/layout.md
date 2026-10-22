@@ -9,13 +9,13 @@ The window, measured: one sidebar holding the list, the selected session beside 
 │ ⌕ Search             ⌘K │ └─────────────────────────────────────────────────────────┘ │
 │ ▭ Tickets               │                                                            │
 │ [ Needs you 2 │ All 8 ] │   terminal, on the window's own ground (surface-term),     │
-│ Asking you              │   no frame of its own                                      │
+│ Projects              + │   no frame of its own                                      │
+│ ■ muster                │                                                            │
 │ ▲ ◎ Sketch the Tau… 1m  │                                                            │
 │     wants to run cargo… │                                                            │
-│ Finished, not seen      │                                                            │
 │ ✓ ✻ Resize settles… 12m │                                                            │
-│ Working                 │                                                            │
-│ ⠹ ◘ Upgrade AGP to… 8m  │                                                            │
+│ ■ lamphaus              │                                                            │
+│ ▲ ✦ Share the Grad… 3m  │                                                            │
 │ ⚙ Settings           ⌘, │                                                            │
 ├──────────────────────────┴────────────────────────────────────────────────────────────┤
 │ ⏎ answer  d see changes  z put back      Codex · 182k tokens · 212 MB  ⠿4 ▲2 ✓2 ▮▮▮▯ │  layout-statusbar 28

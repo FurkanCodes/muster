@@ -6,7 +6,7 @@
 // with its branch, what its work comes to, where it meets other work, its
 // pull request, and the sessions in it, each a click from its terminal.
 
-import { type KeyboardEvent, type RefObject, useRef, useState } from "react";
+import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useNow } from "../../app/clock";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
@@ -82,6 +82,16 @@ export function ProjectPage({ project }: { project: ProjectId }) {
     setPlace(workspace);
     field.current?.focus();
   };
+  // Work asked to start here (`n`, ⌘N, New session): the box ready, where it was asked.
+  const asked = useUi((state) => (state.compose?.project === project ? state.compose : null));
+  const request = asked?.request;
+  const askedPlace = asked?.place ?? null;
+  useEffect(() => {
+    if (request === undefined) return;
+    setPlace(askedPlace ?? "new");
+    field.current?.focus();
+    app.actions.composed();
+  }, [app, request, askedPlace]);
   return (
     <section className="mu-pane app-pane project-page" aria-label={name}>
       <header className="app-head" data-tauri-drag-region>
@@ -150,6 +160,7 @@ function Composer({
   const [harness, setHarness] = useState(() => agents[0]?.id ?? "claude");
   const agent = agents.find((offer) => offer.id === harness) ?? agents[0];
   const [prompt, setPrompt] = useState("");
+  const [branch, setBranch] = useState("");
   const places = useDaemon(useShallow((state) => placeOptions(state, project)));
   const warning = useDaemon((state) =>
     place !== "new" && harness !== "shell" ? secondAgentWarning(state.sessions, place) : null,
@@ -161,7 +172,7 @@ function Composer({
     task.run(async () => {
       let workspace = place;
       if (workspace === "new") {
-        workspace = await makeWorktree(app, project, null);
+        workspace = await makeWorktree(app, project, branch);
         // Kept, so a refused launch is tried again in it, not in another new one.
         onPlace(workspace);
       }
@@ -172,6 +183,7 @@ function Composer({
         takesPrompt ? prompt.trim() || null : null,
       );
       setPrompt("");
+      setBranch("");
       openStarted(app, session, harness);
     });
 
@@ -228,6 +240,18 @@ function Composer({
             onChange={(next) => onPlace(next)}
           />
         )}
+        {place === "new" && !plain ? (
+          <input
+            className="mu-field-input mu-mono project-branch"
+            aria-label="Branch"
+            placeholder="branch, if you like"
+            autoComplete="off"
+            spellCheck={false}
+            value={branch}
+            disabled={task.busy}
+            onChange={(event) => setBranch(event.target.value)}
+          />
+        ) : null}
         <Select
           label="Agent"
           size="md"

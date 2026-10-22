@@ -31,26 +31,15 @@
   padding-top: var(--space-16);
 }
 /* A project's line heads its sessions: its swatch and name in weight, in
-   the text's colour, as a place one goes to (its page), its + there to the pointer. */
+   the text's colour, as a place one goes to (its page). */
 .sessions-project {
   color: var(--text);
   font-size: 13px;
   line-height: 18px;
   min-height: var(--size-control-md);
-  padding-right: var(--space-32);
 }
 .sessions-project .mu-tree-project {
   font-weight: 600;
-}
-.sessions-new {
-  position: absolute;
-  right: var(--space-4);
-  bottom: 2px;
-  opacity: 0;
-}
-.sessions-line:hover .sessions-new,
-.sessions-new:focus-visible {
-  opacity: 1;
 }
 .sessions-node--under .sessions-line {
   padding-top: var(--space-2);

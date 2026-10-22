@@ -61,6 +61,14 @@
 .project-composer-row .ui-select {
   min-width: 180px;
 }
+/* The new worktree's branch, if the person names one: muster/ and six letters if not. */
+.project-branch {
+  width: auto;
+  flex: 1 1 160px;
+  min-width: 120px;
+  max-width: 240px;
+  height: var(--size-control-md);
+}
 .project-banner .mu-banner-text {
   white-space: normal;
 }

@@ -39,13 +39,20 @@ async function find(text: string): Promise<void> {
   await fill(paletteField(), text);
 }
 
-/** Opens the new-session dialog on `n` with the row named `on` selected. */
-async function newSession(on: string) {
-  await selectRow(on);
+/** The box on `project`'s page that starts work, ready on `n` with its line selected. */
+async function startBox(project: string) {
+  await selectRow(project);
   await press("n");
-  const shown = dialog("New session");
-  await expect(shown).toBeDisplayed();
-  return shown;
+  const box = $(`//section[@aria-label="${project}"]//form[@aria-label="Start work"]`);
+  await expect(box).toBeDisplayed();
+  await expect(field(box, "First prompt")).toBeFocused();
+  return box;
+}
+
+/** Chooses the option holding `name` in the box's select labelled `label`. */
+async function choose(box: ReturnType<typeof $>, label: string, name: string) {
+  await box.$(`.//button[@aria-label="${label}"]`).click();
+  await option($(`//*[@role="listbox"][@aria-label="${label}"]`), name).click();
 }
 
 let app = "";
@@ -196,15 +203,14 @@ describe("The flows", () => {
     });
   });
 
-  describe("a new session", () => {
+  describe("work starts on the project's page", () => {
     it("starts Claude Code in a new worktree with a first prompt, which names it", async () => {
-      const shown = await newSession("app");
-      await fill(field(shown, "First prompt"), "Fix the login redirect\nIt lands on /404.");
-      await button(shown, "A new worktree").click();
-      await fill(field(shown, "Branch"), "fix/login");
-      await radio(shown, "Claude Code").click();
-      await button(shown, "Start Claude Code").click();
-      await until(noDialog, "the dialog to close");
+      const box = await startBox("app");
+      await fill(field(box, "First prompt"), "Fix the login redirect\nIt lands on /404.");
+      await choose(box, "Where", "A new worktree");
+      await fill(field(box, "Branch"), "fix/login");
+      await choose(box, "Agent", "Claude Code");
+      await button(box, "Start Claude Code").click();
       const started = await until(() => session("Fix the login redirect"), "the session");
       expect(started.harness).toBe("claude");
       expect(started.branch).toBe("fix/login");
@@ -227,11 +233,10 @@ describe("The flows", () => {
     ] as const) {
       it(`starts ${name} in the project's checkout, with no first prompt`, async () => {
         const before = new Set(sessionIds());
-        const shown = await newSession("app");
-        await button(shown, "Its checkout").click();
-        await radio(shown, name).click();
-        await button(shown, `Start ${name}`).click();
-        await until(noDialog, "the dialog to close");
+        const box = await startBox("app");
+        await choose(box, "Where", "Its checkout");
+        await choose(box, "Agent", name);
+        await button(box, `Start ${name}`).click();
         const made = await until(
           () => sessionsNow().find((one) => !before.has(one.id)),
           `the ${name} session`,
@@ -245,27 +250,24 @@ describe("The flows", () => {
 
     it("starts a shell, which takes no first prompt", async () => {
       const before = new Set(sessionIds());
-      const shown = await newSession("app");
-      await button(shown, "Its checkout").click();
-      await radio(shown, "A shell").click();
-      await expect(field(shown, "First prompt")).toBeDisabled();
-      await button(shown, "Start a shell").click();
-      await until(noDialog, "the dialog to close");
+      const box = await startBox("app");
+      await choose(box, "Where", "Its checkout");
+      await choose(box, "Agent", "A shell");
+      await expect(field(box, "First prompt")).toBeDisabled();
+      await button(box, "Start a shell").click();
       const made = await until(() => sessionsNow().find((one) => !before.has(one.id)), "the shell");
       expect(made.harness).toBe("shell");
     });
 
-    it("keeps the daemon's refusal in the dialog, and starts nothing", async () => {
+    it("keeps the daemon's refusal in the box, and starts nothing", async () => {
       const before = sessionIds().length;
-      const shown = await newSession("app");
-      await button(shown, "A new worktree").click();
-      await fill(field(shown, "Branch"), "not a branch");
-      await radio(shown, "A shell").click();
-      await button(shown, "Start a shell").click();
-      await expect(alertIn(shown)).toHaveText('"not a branch" is not a valid branch name');
+      const box = await startBox("app");
+      await choose(box, "Where", "A new worktree");
+      await fill(field(box, "Branch"), "not a branch");
+      await choose(box, "Agent", "A shell");
+      await button(box, "Start a shell").click();
+      await expect(alertIn(box)).toHaveText('"not a branch" is not a valid branch name');
       expect(sessionIds()).toHaveLength(before);
-      await press("Escape");
-      await until(noDialog, "the dialog to close");
     });
 
     it("w makes a worktree on a branch", async () => {
@@ -399,8 +401,10 @@ describe("The flows", () => {
       await pressOnWindow("⌘2");
       await run("add a project", "Add a project");
       await opens("Add a project");
+      // Work starts on the project's page, its box ready.
       await run("new session", "Start a new session");
-      await opens("New session");
+      await expect($('//form[@aria-label="Start work"]//textarea')).toBeFocused();
+      await press("Escape");
       for (const screen of ["Sessions", "Needs you", "Tickets", "Settings"] as const) {
         await run(`go to ${screen}`, `Go to ${screen}`);
         expect(await shownScreen()).toBe(screen);
