@@ -231,11 +231,22 @@ pub(crate) fn run(paths: &Paths, asked: &Asked) -> Result<ExitCode, Box<dyn std:
 /// How Muster gets onto a machine with `probe`'s system: a copy of this
 /// one where it runs the same build, else this version's release.
 fn install_words(probe: &Probe) -> &'static str {
-    if probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
+    if given_binary().is_some() {
+        "the binary MUSTER_REMOTE_BINARY names, over ssh"
+    } else if probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
         "a copy of this one, over ssh"
     } else {
         "its release, from GitHub, checked"
     }
+}
+
+/// The binary the person asks to be put on the machine instead of this one
+/// or a release (`MUSTER_REMOTE_BINARY`): a build for its system, such as
+/// one of a branch not released yet.
+fn given_binary() -> Option<std::path::PathBuf> {
+    std::env::var_os("MUSTER_REMOTE_BINARY")
+        .filter(|path| !path.is_empty())
+        .map(std::path::PathBuf::from)
 }
 
 /// Runs `script` with `sh` on the machine, given on its standard input so
@@ -280,9 +291,14 @@ fn ssh(target: &str) -> std::process::Command {
 /// installer of this version's release run there (checksum-verified),
 /// then its daemon moved onto it if one runs (`PRD-09`).
 fn install(target: &str, probe: &Probe) -> Result<(), Box<dyn std::error::Error>> {
-    if probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
-        let exe = std::env::current_exe()?;
-        let bytes = std::fs::read(&exe)?;
+    let given = given_binary();
+    if given.is_some() || probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
+        let exe = match given {
+            Some(given) => given,
+            None => std::env::current_exe()?,
+        };
+        let bytes = std::fs::read(&exe)
+            .map_err(|error| format!("cannot read {}: {error}", exe.display()))?;
         let ours = muster_core::hex::encode(&sha2::Sha256::digest(&bytes));
         let put = format!(
             "mkdir -p \"$HOME/.local/bin\" && cat > \"{REMOTE_BIN}.part\" && chmod 755 \"{REMOTE_BIN}.part\" && mv \"{REMOTE_BIN}.part\" \"{REMOTE_BIN}\""

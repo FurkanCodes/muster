@@ -175,6 +175,8 @@ muster --on vm attach fix-login/2       # a session there, straight in this tab
 muster --on vm                          # your own UI, on vm's agents; reconnects if the link drops
 ```
 
+To try a branch on a machine before it is released, `scripts/ssh-dev-build.sh you@host` builds this checkout there (it needs Rust on the machine), or `MUSTER_REMOTE_BINARY=/path/to/muster muster ssh vm --install` puts a build of yours there.
+
 Tickets work the same way, in plain words:
 
 ```bash
