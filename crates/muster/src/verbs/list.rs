@@ -1,4 +1,4 @@
-//! `muster list [workspaces|agents|terminals|sessions|projects|tickets]`: what
+//! `muster list [workspaces|agents|terminals|sessions|projects|tickets|machines]`: what
 //! Muster has, said in the person's words (`PRODUCT.md` §6b). Sessions are
 //! listed under their projects and workspaces by number. In a workspace
 //! (a worktree, or a Muster terminal's), agents, terminals and sessions are
@@ -36,6 +36,9 @@ pub(crate) enum Listing {
     /// The project's open tickets, with the agents on each.
     #[value(alias = "ticket")]
     Tickets,
+    /// Your machines, for `muster ssh`.
+    #[value(alias = "machine")]
+    Machines,
 }
 
 /// Whose sessions a listing shows.
@@ -55,6 +58,9 @@ pub(crate) async fn run(
     let what = what.unwrap_or(Listing::Sessions);
     if what == Listing::Workspaces {
         return super::workspaces::list(paths, all, json).await;
+    }
+    if what == Listing::Machines {
+        return crate::ssh::list(paths, json);
     }
     if what == Listing::Tickets {
         return super::tickets::list(paths, json).await;

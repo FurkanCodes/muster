@@ -22,6 +22,7 @@ pub mod html;
 pub mod ids;
 pub mod keys;
 pub mod layout;
+pub mod machines;
 pub mod names;
 pub mod news;
 pub mod num;

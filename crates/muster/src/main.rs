@@ -17,6 +17,7 @@ mod output;
 mod plugins;
 mod reload;
 mod runs;
+mod ssh;
 mod upgrade;
 mod verbs;
 

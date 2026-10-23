@@ -100,6 +100,32 @@ pub(crate) enum Verb {
         #[arg(long)]
         bg: bool,
     },
+    /// Machines of your own, reached with ssh, where Muster runs too.
+    #[command(subcommand)]
+    Machine(crate::ssh::MachineCommand),
+    /// Muster on MACHINE (saved with `muster machine add`, or any host your
+    /// ssh knows): checks it, installs Muster there after asking, and opens
+    /// its Muster, or runs one command there (`muster ssh vm list agents`).
+    /// Its agents keep working while this computer sleeps.
+    Ssh {
+        machine: String,
+        /// Install or update Muster there without asking.
+        #[arg(long, conflicts_with = "no_install")]
+        install: bool,
+        /// Never install or update it there.
+        #[arg(long)]
+        no_install: bool,
+        /// Say what agents need there (signed in, git, gh), and stop unless
+        /// a command follows.
+        #[arg(long)]
+        check: bool,
+        /// The folder there to run it in.
+        #[arg(long, value_name = "DIR")]
+        dir: Option<String>,
+        /// A command of Muster's to run there, rather than its UI.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        words: Vec<String>,
+    },
     /// Give SESSION a name.
     Rename {
         session: String,
@@ -236,6 +262,25 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
             };
             tickets::run(paths, asked).await
         }
+        Verb::Machine(command) => crate::ssh::machine(paths, command),
+        Verb::Ssh {
+            machine,
+            install,
+            no_install,
+            check,
+            dir,
+            words,
+        } => crate::ssh::run(
+            paths,
+            &crate::ssh::Asked {
+                machine,
+                install,
+                no_install,
+                check,
+                dir,
+                words,
+            },
+        ),
         Verb::Rename { session, name } => terminals::rename(paths, &session, &name).await,
         Verb::Close { session, yes } => terminals::close(paths, &session, yes).await,
         Verb::Init { shell } => return Then::Exit(init::run(paths, shell).await),
