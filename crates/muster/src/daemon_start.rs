@@ -12,6 +12,10 @@ const LOOK_EVERY: Duration = Duration::from_millis(50);
 
 /// A connection to the daemon, started first if none answers.
 pub(crate) async fn connect(paths: &Paths) -> Result<Connection, Box<dyn std::error::Error>> {
+    // There, the bridge starts the machine's daemon where none runs.
+    if let Some(remote) = crate::ssh::remote() {
+        return Ok(crate::ssh::connect(remote).await?);
+    }
     let socket = paths.socket();
     match crate::commands::connect(&socket).await {
         Err(ClientError::Unreachable { .. }) => {}

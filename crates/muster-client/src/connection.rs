@@ -9,8 +9,8 @@ use muster_core::protocol::{
     ClientFrame, Command, ErrorBody, FIRST_PROTOCOL_VERSION, Hello, Incompatible,
     MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, Reply, ServerFrame, Snapshot, TermSize, Welcome,
 };
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::UnixStream;
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 
 use crate::transport::{FramedRead, FramedWrite, TransportError};
 
@@ -33,18 +33,40 @@ pub enum ClientError {
     Closed,
     #[error("the daemon sent something unexpected: {0}")]
     Unexpected(String),
+    /// The program carrying the connection (`ssh` to another machine)
+    /// could not, said in its words.
+    #[error("{0}")]
+    Carrier(String),
 }
+
+/// The stream a connection reads the daemon from: its socket, or a
+/// program carrying it, such as `ssh` to another machine.
+type Reader = Box<dyn AsyncRead + Send + Unpin>;
+/// The stream a connection writes to the daemon.
+type Writer = Box<dyn AsyncWrite + Send + Unpin>;
+/// What a connection keeps alive as long as it is open: the program
+/// carrying it, where one does.
+type Held = Box<dyn std::any::Any + Send>;
 
 /// An open, greeted connection. Requests are answered in turn; frames the
 /// daemon pushes meanwhile (state changes and terminal output) wait for
 /// [`next_event`](Self::next_event).
-#[derive(Debug)]
 pub struct Connection {
-    reader: FramedRead<OwnedReadHalf>,
-    writer: FramedWrite<OwnedWriteHalf>,
+    reader: FramedRead<Reader>,
+    writer: FramedWrite<Writer>,
     welcome: Welcome,
     pending: VecDeque<ServerFrame>,
     next_req_id: u64,
+    held: Option<Held>,
+}
+
+impl std::fmt::Debug for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Connection")
+            .field("welcome", &self.welcome)
+            .field("pending", &self.pending.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Connection {
@@ -58,7 +80,19 @@ impl Connection {
                     source,
                 })?;
         let (read, write) = stream.into_split();
-        let (mut reader, mut writer) = (FramedRead::new(read), FramedWrite::new(write));
+        Self::over(read, write, client).await
+    }
+
+    /// Says hello as `client` over any stream that carries the daemon's
+    /// frames both ways, such as a program's standard input and output.
+    pub async fn over(
+        reader: impl AsyncRead + Send + Unpin + 'static,
+        writer: impl AsyncWrite + Send + Unpin + 'static,
+        client: &str,
+    ) -> Result<Self, ClientError> {
+        let reader: Reader = Box::new(reader);
+        let writer: Writer = Box::new(writer);
+        let (mut reader, mut writer) = (FramedRead::new(reader), FramedWrite::new(writer));
 
         writer
             .send(&ClientFrame::Hello(Hello::current(client)))
@@ -78,7 +112,16 @@ impl Connection {
             welcome,
             pending: VecDeque::new(),
             next_req_id: 1,
+            held: None,
         })
+    }
+
+    /// Keeps `held` alive as long as the connection is open: the program
+    /// carrying it, ended as the connection is dropped.
+    #[must_use]
+    pub fn holding(mut self, held: impl std::any::Any + Send) -> Self {
+        self.held = Some(Box::new(held));
+        self
     }
 
     /// What the daemon said when it accepted the hello.
@@ -287,10 +330,17 @@ pub async fn daemon_identity(socket: &Path, client: &str) -> Result<(u32, String
     }
 }
 
-/// The sending half of a split [`Connection`].
-#[derive(Debug)]
+/// The sending half of a split [`Connection`], which keeps what the
+/// connection held alive.
 pub struct FrameSender {
-    writer: FramedWrite<OwnedWriteHalf>,
+    writer: FramedWrite<Writer>,
+    _held: Option<Held>,
+}
+
+impl std::fmt::Debug for FrameSender {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FrameSender").finish_non_exhaustive()
+    }
 }
 
 impl FrameSender {
@@ -302,10 +352,17 @@ impl FrameSender {
 }
 
 /// The receiving half of a split [`Connection`].
-#[derive(Debug)]
 pub struct FrameReceiver {
-    reader: FramedRead<OwnedReadHalf>,
+    reader: FramedRead<Reader>,
     pending: VecDeque<ServerFrame>,
+}
+
+impl std::fmt::Debug for FrameReceiver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FrameReceiver")
+            .field("pending", &self.pending.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl FrameReceiver {
@@ -331,6 +388,7 @@ impl Connection {
         (
             FrameSender {
                 writer: self.writer,
+                _held: self.held,
             },
             FrameReceiver {
                 reader: self.reader,

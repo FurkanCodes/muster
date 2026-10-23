@@ -141,3 +141,64 @@ async fn ssh_installs_only_when_told_then_runs_muster_there_arc_27() {
         "{hosts}"
     );
 }
+
+#[tokio::test]
+async fn on_a_machine_every_command_asks_its_muster_through_ssh_arc_27() {
+    let setup = setup();
+    let repository = setup.sandbox.repository("app");
+    assert!(
+        setup
+            .run(&["project", "add", repository.to_str().unwrap()])
+            .status
+            .success()
+    );
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    let installed = setup.run(&["ssh", "vm", "--install", "--check"]);
+    assert!(installed.status.success(), "{}", text(&installed.stderr));
+    std::fs::remove_file(setup.sandbox.root().join("ssh-hosts")).unwrap();
+
+    // Through the bridge there, the machine's daemon answers.
+    let projects = setup.run(&["--on", "vm", "list", "projects"]);
+    assert!(projects.status.success(), "{}", text(&projects.stderr));
+    assert!(
+        text(&projects.stdout).contains("app"),
+        "{}",
+        text(&projects.stdout)
+    );
+    let made = setup.run(&["--on", "vm", "workspace", "add", "fix-login", "-p", "app"]);
+    assert!(made.status.success(), "{}", text(&made.stderr));
+    let listed = setup
+        .sandbox
+        .command()
+        .args(["list", "workspaces", "--all"])
+        .env("MUSTER_MACHINE", "vm")
+        .env("FAKE_SSH_HOME", &setup.home)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(
+        text(&listed.stdout).contains("fix-login"),
+        "{}{}",
+        text(&listed.stdout),
+        text(&listed.stderr)
+    );
+    let hosts = std::fs::read_to_string(setup.sandbox.root().join("ssh-hosts")).unwrap();
+    assert_eq!(hosts.lines().count(), 3, "each through ssh: {hosts}");
+
+    // This machine's folder means nothing there: where is named.
+    let unnamed = setup.run(&["--on", "vm", "claude", "Fix it"]);
+    assert!(!unnamed.status.success());
+    assert!(
+        text(&unnamed.stderr).contains("--in WORKSPACE"),
+        "{}",
+        text(&unnamed.stderr)
+    );
+    // Its own UI is `muster ssh`'s.
+    let ui = setup.run(&["--on", "vm"]);
+    assert!(!ui.status.success());
+    assert!(
+        text(&ui.stderr).contains("muster ssh vm"),
+        "{}",
+        text(&ui.stderr)
+    );
+}

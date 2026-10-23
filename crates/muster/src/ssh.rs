@@ -17,6 +17,7 @@ use std::os::unix::process::CommandExt as _;
 use std::process::{ExitCode, Stdio};
 
 use clap::Subcommand;
+use muster_client::ClientError;
 use muster_core::Paths;
 use muster_core::machines::{self, Machines, Probe};
 use sha2::Digest as _;
@@ -119,6 +120,123 @@ pub(crate) fn list(paths: &Paths, json: bool) -> Result<ExitCode, Box<dyn std::e
         println!("{name:<16}  {}", machine.target);
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The machine every command talks to, with `--on`: its name and what
+/// ssh is given.
+#[derive(Debug)]
+pub(crate) struct Remote {
+    pub(crate) name: String,
+    pub(crate) target: String,
+}
+
+static REMOTE: std::sync::OnceLock<Remote> = std::sync::OnceLock::new();
+
+/// Sends every command to machine `name` (`--on`), as it is saved or as
+/// ssh knows it.
+pub(crate) fn set_remote(paths: &Paths, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let target = read_machines(paths)?.target(name)?;
+    let _ = REMOTE.set(Remote {
+        name: name.to_owned(),
+        target,
+    });
+    Ok(())
+}
+
+/// The machine commands go to, with `--on`.
+pub(crate) fn remote() -> Option<&'static Remote> {
+    REMOTE.get()
+}
+
+/// Has Muster on `remote` carry this connection: `ssh` runs `muster bridge`
+/// there, which joins it to that machine's daemon, starting one where none
+/// runs; the frames cross ssh's standard input and output as they are.
+pub(crate) async fn connect(remote: &Remote) -> Result<muster_client::Connection, ClientError> {
+    let bridge =
+        "PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH\"; exec muster bridge";
+    let mut child = tokio::process::Command::new("ssh")
+        .args([
+            "-T",
+            "--",
+            &remote.target,
+            &format!("sh -c {}", quoted(bridge)),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|error| ClientError::Carrier(format!("could not run ssh: {error}")))?;
+    let (Some(writer), Some(reader)) = (child.stdin.take(), child.stdout.take()) else {
+        return Err(ClientError::Carrier("ssh gave no way to talk".to_owned()));
+    };
+    let name = &remote.name;
+    match muster_client::Connection::over(reader, writer, crate::commands::CLIENT).await {
+        Ok(connection) => Ok(connection.holding(child)),
+        Err(ClientError::Closed | ClientError::Transport(_)) => Err(ClientError::Carrier(format!(
+            "could not reach Muster on {name} over ssh: `muster ssh {name} --check` says why"
+        ))),
+        Err(ClientError::Incompatible(theirs)) => Err(ClientError::Carrier(format!(
+            "Muster on {name} is {}, another version than this one: `muster ssh {name} --install` \
+             brings it to {VERSION}",
+            theirs.daemon_version
+        ))),
+        Err(error) => Err(error),
+    }
+}
+
+/// `muster bridge`, which `--on` has ssh run on the machine: joins its
+/// standard input and output to this machine's daemon, starting it where
+/// none runs, until either side closes.
+pub(crate) async fn bridge(paths: &Paths) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let socket = paths.socket();
+    let stream = if let Ok(stream) = tokio::net::UnixStream::connect(&socket).await {
+        stream
+    } else {
+        crate::daemon_start::start(paths)?;
+        let deadline = crate::instant_now() + muster_tui::START_WAIT;
+        loop {
+            match tokio::net::UnixStream::connect(&socket).await {
+                Ok(stream) => break stream,
+                Err(_) if crate::instant_now() < deadline => {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                Err(error) => return Err(format!("the daemon did not start: {error}").into()),
+            }
+        }
+    };
+    let (mut from_daemon, mut to_daemon) = stream.into_split();
+    let to = async {
+        let mut stdin = tokio::io::stdin();
+        let mut buffer = vec![0_u8; 64 * 1024];
+        loop {
+            let read = stdin.read(&mut buffer).await?;
+            if read == 0 {
+                return Ok::<_, std::io::Error>(());
+            }
+            to_daemon.write_all(&buffer[..read]).await?;
+        }
+    };
+    let from = async {
+        let mut stdout = tokio::io::stdout();
+        let mut buffer = vec![0_u8; 64 * 1024];
+        loop {
+            let read = from_daemon.read(&mut buffer).await?;
+            if read == 0 {
+                return Ok::<_, std::io::Error>(());
+            }
+            stdout.write_all(&buffer[..read]).await?;
+            stdout.flush().await?;
+        }
+    };
+    tokio::select! {
+        _ = to => {}
+        _ = from => {}
+    }
+    // Ended at once: a read of standard input still waiting would hold the
+    // process until ssh closed it.
+    std::process::exit(0);
 }
 
 /// What `muster ssh` was asked.

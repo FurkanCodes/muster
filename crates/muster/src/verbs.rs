@@ -100,6 +100,10 @@ pub(crate) enum Verb {
         #[arg(long)]
         bg: bool,
     },
+    /// Join standard input and output to this machine's daemon: what
+    /// `--on` has ssh run on a machine.
+    #[command(hide = true)]
+    Bridge,
     /// Machines of your own, reached with ssh, where Muster runs too.
     #[command(subcommand)]
     Machine(crate::ssh::MachineCommand),
@@ -226,6 +230,15 @@ pub(crate) enum Verb {
     Stop { session: String },
 }
 
+/// Whether `verb` can ask another machine's Muster (`--on`): not those
+/// about this machine's machines, shells and bridge.
+pub(crate) fn on_another_machine(verb: &Verb) -> bool {
+    !matches!(
+        verb,
+        Verb::Ssh { .. } | Verb::Machine(_) | Verb::Init { .. } | Verb::Bridge
+    ) && !matches!(verb, Verb::Attach { ui: true, .. })
+}
+
 /// What `muster` does once a verb has run.
 pub(crate) enum Then {
     Exit(ExitCode),
@@ -263,6 +276,7 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
             tickets::run(paths, asked).await
         }
         Verb::Machine(command) => crate::ssh::machine(paths, command),
+        Verb::Bridge => crate::ssh::bridge(paths).await,
         Verb::Ssh {
             machine,
             install,
@@ -324,6 +338,10 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
 /// Muster's (`MUSTER_SESSION`): the daemon tells an agent's from a shell's
 /// and holds an agent to the person's limits (`PRD-01`).
 pub(crate) fn started_by() -> Option<SessionId> {
+    // A session of this machine's is none of another's.
+    if crate::ssh::remote().is_some() {
+        return None;
+    }
     std::env::var("MUSTER_SESSION").ok()?.parse().ok()
 }
 
