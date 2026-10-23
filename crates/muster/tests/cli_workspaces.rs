@@ -395,3 +395,104 @@ async fn init_s_functions_make_a_bare_agent_a_session_of_the_workspace_prd_13() 
     tab.type_in(b"\x11\x11");
     assert!(tab.ends());
 }
+
+#[tokio::test]
+async fn keys_are_pressed_by_name_and_a_wait_is_for_text_prd_6b() {
+    let setup = setup().await;
+    setup.run(&["workspace", "add", "fix-login"]);
+    let workspace = setup.workspace("muster/fix-login").await;
+    setup.run(&["term", "new", "--bg", "--in", "fix-login", "server"]);
+    setup.sessions_in(workspace, 1).await;
+
+    setup.run(&["send", "fix-login/1", "sleep", "30"]);
+    setup.run(&["keys", "fix-login/1", "ctrl+c"]);
+    setup.run(&[
+        "keys",
+        "fix-login/1",
+        "e",
+        "c",
+        "h",
+        "o",
+        "space",
+        "o",
+        "k",
+        "-",
+        "4",
+        "2",
+        "enter",
+    ]);
+    let waited = setup.run(&["wait", "fix-login/1", "--for", "ok-42", "--timeout", "10s"]);
+    assert!(text(&waited.stdout).contains("ok-42"));
+
+    let late = setup
+        .sandbox
+        .command()
+        .current_dir(&setup.repository)
+        .args([
+            "wait",
+            "fix-login/1",
+            "--for",
+            "never-shown",
+            "--timeout",
+            "1s",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(late.status.code(), Some(124));
+
+    let refused = setup
+        .sandbox
+        .command()
+        .current_dir(&setup.repository)
+        .args(["keys", "fix-login/1", "hello"])
+        .output()
+        .unwrap();
+    assert!(!refused.status.success(), "no key is called hello");
+}
+
+#[tokio::test]
+async fn a_terminal_moves_to_another_workspace_and_an_agent_does_not_prd_6b() {
+    let setup = setup().await;
+    setup.run(&["workspace", "add", "fix-login"]);
+    setup.run(&["workspace", "add", "api-cache"]);
+    let (from, to) = (
+        setup.workspace("muster/fix-login").await,
+        setup.workspace("muster/api-cache").await,
+    );
+    setup.run(&["term", "new", "--bg", "--in", "fix-login", "server"]);
+    setup.sessions_in(from, 1).await;
+    let moved = text(
+        &setup
+            .run(&["move", "fix-login/1", "--to", "api-cache"])
+            .stdout,
+    );
+    assert!(
+        moved.contains("Moved it to api-cache (api-cache/1)"),
+        "{moved}"
+    );
+    let there = setup.sessions_in(to, 1).await;
+    assert_eq!(there[0].title, "server");
+    let snapshot = setup.snapshot().await;
+    assert!(
+        !snapshot
+            .sessions
+            .iter()
+            .any(|session| session.workspace == from),
+        "the old one is closed"
+    );
+
+    setup.run(&["claude", "--in", "muster/fix-login", "--json", "Fix it"]);
+    let refused = setup
+        .sandbox
+        .command()
+        .current_dir(&setup.repository)
+        .args(["move", "fix-login/1", "--to", "api-cache"])
+        .output()
+        .unwrap();
+    assert!(!refused.status.success());
+    assert!(
+        text(&refused.stderr).contains("is an agent"),
+        "{}",
+        text(&refused.stderr)
+    );
+}

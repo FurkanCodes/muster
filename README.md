@@ -154,6 +154,15 @@ muster term new                    # another terminal in the same workspace
 muster attach fix-login/1          # from anywhere, straight back into session 1
 ```
 
+Drive a terminal from another tab:
+
+```bash
+muster send fix-login/1 npm run dev        # type a command and press Enter
+muster wait fix-login/1 --for "ready on"   # until it shows that text
+muster keys fix-login/1 ctrl+c             # press keys by name: enter, esc, up, f5…
+muster move fix-login/1 --to api-cache     # a terminal into another workspace
+```
+
 Tickets work the same way, in plain words:
 
 ```bash

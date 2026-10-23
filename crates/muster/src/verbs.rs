@@ -12,6 +12,7 @@ use muster_client::Connection;
 use muster_core::protocol::{Command, Snapshot};
 use muster_core::{Paths, SessionId, SessionStatus};
 
+mod control;
 mod init;
 pub(crate) mod list;
 mod logs;
@@ -161,6 +162,25 @@ pub(crate) enum Verb {
         /// Give up after this long (30s, 5m, 2h).
         #[arg(long, value_parser = wait::duration)]
         timeout: Option<Duration>,
+        /// Wait until the session shows this text instead (exit 0; 4 if it
+        /// ends first, 124 out of time): for a terminal's command or server.
+        #[arg(long = "for", value_name = "TEXT", conflicts_with_all = ["any", "until"])]
+        for_text: Option<String>,
+    },
+    /// Press keys in SESSION by name: `muster keys fix-login/2 down enter`,
+    /// or esc, tab, backspace, ctrl+c, alt+x, f1… or one character each.
+    Keys {
+        session: String,
+        #[arg(required = true, allow_hyphen_values = true)]
+        keys: Vec<String>,
+    },
+    /// Take terminal SESSION to workspace WS: a new terminal there under its
+    /// name, shown where it was shown, and the old one closed. An agent is
+    /// never moved: its work is in its workspace.
+    Move {
+        session: String,
+        #[arg(long, value_name = "WS")]
+        to: String,
     },
     /// Print what SESSION shows now, as text; its agent's last answer with
     /// --reply; or, with -f, its terminal's output as it comes.
@@ -236,7 +256,14 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
             any,
             until,
             timeout,
-        } => wait(paths, &sessions, any, until, timeout).await,
+            for_text,
+        } => match (for_text, sessions.as_slice()) {
+            (Some(text), [session]) => control::wait_for_text(paths, session, &text, timeout).await,
+            (Some(_), _) => Err("--for waits on one session".into()),
+            (None, _) => wait(paths, &sessions, any, until, timeout).await,
+        },
+        Verb::Keys { session, keys } => control::keys(paths, &session, &keys).await,
+        Verb::Move { session, to } => control::move_terminal(paths, &session, &to).await,
         Verb::Logs {
             session,
             reply,
