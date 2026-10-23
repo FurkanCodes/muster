@@ -100,7 +100,12 @@ const COPILOT: &[&str] = &[
 /// without hooks, a shell or an agent the person added, which could then
 /// report as it (`ARC-11`). A plugin's panel is told where it is
 /// (`MUSTER_PLUGIN_*`), and only it.
-const MUSTER: &[&str] = &["MUSTER_SESSION", "MUSTER_HOOK_SOCKET", "MUSTER_HOOK_TOKEN"];
+const MUSTER: &[&str] = &[
+    "MUSTER_SESSION",
+    "MUSTER_TERMINAL",
+    "MUSTER_HOOK_SOCKET",
+    "MUSTER_HOOK_TOKEN",
+];
 
 /// Prefixes of the same, for families of them.
 const PREFIXES: &[&str] = &[

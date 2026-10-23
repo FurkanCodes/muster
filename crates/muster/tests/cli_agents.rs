@@ -265,12 +265,12 @@ async fn here_reads_the_prompt_from_standard_input_and_works_in_the_checkout() {
     );
     assert_eq!(branch_of(&setup.snapshot().await, session), "main");
 
-    // `ls` names it by the id the other verbs take.
-    let listed = setup.run(&["ls"]);
+    // `list` names it by the id the other verbs take.
+    let listed = setup.run(&["list"]);
     let line = text(&listed.stdout);
     assert!(line.contains(started["short"].as_str().unwrap()), "{line}");
     assert!(line.contains("Tidy the README"), "{line}");
-    let json = setup.run(&["ls", "--json"]);
+    let json = setup.run(&["list", "--json"]);
     let list: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
     assert_eq!(list["sessions"][0]["id"], session.to_string());
 }
@@ -391,7 +391,7 @@ async fn prd_01_an_agent_may_start_agents_and_what_it_starts_names_it() {
     let snapshot = setup.snapshot().await;
     let started = snapshot.sessions.iter().find(|s| s.id == child).unwrap();
     assert_eq!(started.started_by, Some(parent));
-    let listed = setup.run(&["ls"]);
+    let listed = setup.run(&["list"]);
     assert!(
         text(&listed.stdout).contains("started by"),
         "{}",

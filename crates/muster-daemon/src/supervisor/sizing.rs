@@ -143,6 +143,19 @@ impl Sizing {
         sessions
     }
 
+    /// The clients watching the session now: those showing it to the
+    /// person.
+    pub(super) fn watchers(&self, session: SessionId) -> Vec<u64> {
+        self.sessions.get(&session).map_or_else(Vec::new, |sizers| {
+            sizers
+                .clients
+                .iter()
+                .filter(|(_, sizer)| sizer.watching > 0)
+                .map(|(client, _)| *client)
+                .collect()
+        })
+    }
+
     /// The sessions `client` is a client of.
     pub(super) fn sessions_of(&self, client: u64) -> Vec<SessionId> {
         self.sessions

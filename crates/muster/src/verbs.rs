@@ -1,6 +1,7 @@
 //! The verbs that drive agents from a shell (`PRODUCT.md` §6b): start one
 //! on a prompt and get the shell back (`muster claude "…"`), list them, send
-//! one a prompt, wait for them, read what one shows, and open one.
+//! one a prompt, wait for them, read what one shows, and open one; make
+//! workspaces and go into them, and start terminals there.
 
 use std::collections::HashMap;
 use std::process::ExitCode;
@@ -11,12 +12,16 @@ use muster_client::Connection;
 use muster_core::protocol::{Command, Snapshot};
 use muster_core::{Paths, SessionId, SessionStatus};
 
-mod list;
+mod init;
+pub(crate) mod list;
 mod logs;
 mod send;
 pub(crate) mod start;
+mod tab;
 pub(crate) mod targets;
+mod terminals;
 pub(crate) mod wait;
+mod workspaces;
 
 use self::wait::{Until, Waited, Waiting};
 use crate::commands::{self, shown};
@@ -27,11 +32,12 @@ const BEGIN_WITHIN: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Verb {
-    /// List the sessions of the project you are in (or every one, with
-    /// --all, or outside a project): each one's id, name, branch and how it
-    /// is doing.
-    #[command(visible_alias = "ps")]
-    Ls {
+    /// List what Muster has: `muster list workspaces`, `list agents`,
+    /// `list terminals`, `list projects`, or every session. In a workspace,
+    /// its agents and terminals; elsewhere in a project, the project's.
+    List {
+        #[arg(value_enum)]
+        what: Option<list::Listing>,
         /// Every project's.
         #[arg(long)]
         all: bool,
@@ -39,9 +45,55 @@ pub(crate) enum Verb {
         #[arg(long)]
         json: bool,
     },
-    /// Open SESSION (its id, name or branch) in the terminal UI, with your
-    /// keys in it. Leaving the UI leaves it running.
-    Attach { session: String },
+    /// Show SESSION (its number in the workspace you are in, `WS/N`, its
+    /// id, name or branch) straight in this terminal tab, your keys in it;
+    /// Ctrl-Q (Settings › Keys) leaves it running. Inside a Muster
+    /// terminal, it takes that terminal's place, and Ctrl-Q comes back.
+    Attach {
+        session: String,
+        /// Open it in the terminal UI instead.
+        #[arg(long)]
+        ui: bool,
+    },
+    /// Workspaces: worktrees of a project (or a project's own checkout),
+    /// each with its terminals and agents.
+    #[command(subcommand, visible_alias = "ws")]
+    Workspace(workspaces::WorkspaceCommand),
+    /// Go into workspace WS (or the one you are in): this tab shows its
+    /// terminal, the one used last or a new one. What you start there,
+    /// `muster claude` or another terminal, belongs to it and shows in its
+    /// place; Ctrl-Q goes back.
+    Enter {
+        #[arg(value_name = "WS")]
+        workspace: Option<String>,
+        /// A new terminal, even where one runs.
+        #[arg(long)]
+        new: bool,
+    },
+    /// A workspace's terminals.
+    #[command(subcommand, visible_alias = "t")]
+    Term(terminals::TermCommand),
+    /// Give SESSION a name.
+    Rename {
+        session: String,
+        #[arg(required = true)]
+        name: Vec<String>,
+    },
+    /// Stop SESSION, after asking where it runs, and take it off the list.
+    Close {
+        session: String,
+        /// Stop it without asking.
+        #[arg(short, long)]
+        yes: bool,
+    },
+    /// Print functions for your shell, to add to its rc file as
+    /// `eval "$(muster init zsh)"`: an agent typed by its name in a
+    /// workspace's terminal (`claude "fix it"`) then starts as a session of
+    /// that workspace. Nothing else changes.
+    Init {
+        #[arg(value_enum)]
+        shell: init::Shell,
+    },
     /// Type TEXT into SESSION and press Enter: a prompt for its agent, or a
     /// command for a shell. `-` reads it from standard input.
     Send {
@@ -111,11 +163,18 @@ pub(crate) enum Then {
 
 pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
     let ran = match verb {
-        Verb::Ls { all, json } => list::run(paths, all, json).await,
-        Verb::Attach { session } => match attach(paths, &session).await {
-            Ok(id) => return Then::Open(id),
+        Verb::List { what, all, json } => list::run(paths, what, all, json).await,
+        Verb::Attach { session, ui } => match attach(paths, &session).await {
+            Ok(id) if ui => return Then::Open(id),
+            Ok(id) => tab::show(paths, id).await,
             Err(error) => Err(error),
         },
+        Verb::Workspace(command) => return workspaces::run(paths, command).await,
+        Verb::Enter { workspace, new } => workspaces::enter(paths, workspace.as_deref(), new).await,
+        Verb::Term(command) => return terminals::run(paths, command).await,
+        Verb::Rename { session, name } => terminals::rename(paths, &session, &name).await,
+        Verb::Close { session, yes } => terminals::close(paths, &session, yes).await,
+        Verb::Init { shell } => return Then::Exit(init::run(paths, shell).await),
         Verb::Send {
             session,
             text,

@@ -146,6 +146,33 @@ impl Supervisor {
         Ok(Reply::Done)
     }
 
+    /// Shows `to` in every client that shows the person `from` now: a
+    /// terminal tab attached to it (`muster attach`), or a window with it
+    /// in view. Refused where nothing shows `from`, or `to` is no session.
+    pub(super) fn switch(&self, from: SessionId, to: SessionId) -> Result<Reply, ErrorBody> {
+        if !self.state.sessions.iter().any(|stored| stored.id == to) {
+            return Err(ErrorBody::new(ErrorCode::NotFound, "no such session"));
+        }
+        let mut shown = false;
+        for client in self.sizing.watchers(from) {
+            if let Some(looker) = self.lookers.clients.get(&client) {
+                // A client too busy to take it goes on showing `from`.
+                shown |= looker
+                    .outgoing
+                    .try_send(ServerFrame::Reveal { session: to })
+                    .is_ok();
+            }
+        }
+        if shown {
+            Ok(Reply::Done)
+        } else {
+            Err(ErrorBody::new(
+                ErrorCode::NotFound,
+                "nothing shows that session to you now",
+            ))
+        }
+    }
+
     /// Makes a change in Muster's own settings and tells every client.
     pub(super) fn change_preference(
         &mut self,

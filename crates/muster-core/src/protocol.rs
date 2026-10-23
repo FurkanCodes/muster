@@ -151,7 +151,10 @@
 //! the limits the person sets (`Preferences::delegation`, a field older
 //! clients pass over; `PreferenceChange::AgentsStartAgents`), each sent
 //! only to a daemon of 51 or later
-//! ([`crate::delegation::DELEGATION_PROTOCOL`]).
+//! ([`crate::delegation::DELEGATION_PROTOCOL`]); version 52 a session shown
+//! in place of another where the person watches it, as a terminal tab of
+//! the command line follows a session started from inside it
+//! (`Command::Switch`, sent only to a daemon of 52 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -181,7 +184,9 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 51;
+pub const PROTOCOL_VERSION: u32 = 52;
+/// The first protocol whose daemon takes [`Command::Switch`].
+pub const SWITCH_PROTOCOL: u32 = 52;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -559,6 +564,14 @@ pub enum Command {
     /// ([`ServerFrame::Reveal`]); refused when no window is open. Sent
     /// only to a daemon of 23 or later.
     Reveal { session: SessionId },
+    /// Show `to` instead of `from` wherever the person is watching `from`
+    /// now: a terminal tab of the command line attached to it, or a window
+    /// showing it, is sent [`ServerFrame::Reveal`] for `to`. So a session
+    /// started from inside a session's terminal (`muster claude` typed in a
+    /// workspace's shell) takes the place the person typed in. Answered
+    /// with [`Reply::Done`], or refused when nothing shows `from`. Sent only
+    /// to a daemon of 52 or later ([`SWITCH_PROTOCOL`]).
+    Switch { from: SessionId, to: SessionId },
     /// Change one of Muster's own settings, in the person's own file;
     /// answered with [`Reply::Done`], every client told by
     /// [`Delta::Preferences`]. Sent only to a daemon of 23 or later.

@@ -671,6 +671,7 @@ impl Supervisor {
             Command::Health => Ok(Reply::Health(self.health())),
             Command::ExplainSession { session } => self.explain_session(session),
             Command::Reveal { session } => self.reveal(session),
+            Command::Switch { from, to } => self.switch(from, to),
             Command::ChangePreference(change) => {
                 let changed = self.change_preference(&change);
                 self.settle_shared_builds(false).await;
@@ -850,6 +851,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::RenameSession { .. } => "rename session",
         Command::MoveOnto { .. } => "move onto",
         Command::Reveal { .. } => "reveal",
+        Command::Switch { .. } => "switch",
         Command::ChangePreference(_) => "change preference",
         Command::ReadPreferences => "read preferences",
         Command::ListModels { .. } => "list models",

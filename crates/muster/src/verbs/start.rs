@@ -1,6 +1,8 @@
 //! `muster <agent> [PROMPT]`: a coding agent started in the background, in
 //! a worktree of its own in the project the person stands in, and the
-//! command back at once, so the next can be started straight away.
+//! command back at once, so the next can be started straight away. Typed in
+//! a workspace's terminal (`muster enter`), it starts in that workspace
+//! instead, and takes the terminal's place where the person is.
 
 use std::io::{IsTerminal, Read as _, Write as _};
 use std::path::{Path, PathBuf};
@@ -23,7 +25,7 @@ use crate::commands::{self, shown, unexpected};
     name = "muster <agent>",
     about = "Start a coding agent in the background on PROMPT, in a new worktree of the \
              project you are in, and return: start another straight away, and see them with \
-             `muster ls`, `muster wait`, `muster logs` or `muster attach`."
+             `muster list`, `muster wait`, `muster logs` or `muster attach`."
 )]
 struct Args {
     /// The agent: `claude`, `codex`, `gemini`, `opencode`, `copilot`, or
@@ -52,6 +54,10 @@ struct Args {
     /// answer, exiting as `muster wait` does.
     #[arg(long)]
     wait: bool,
+    /// In a workspace's terminal, start it and stay, rather than show it
+    /// in the terminal's place.
+    #[arg(long)]
+    bg: bool,
     /// With --wait, give up after this long (30s, 5m, 2h).
     #[arg(long, requires = "wait", value_parser = wait::duration)]
     timeout: Option<std::time::Duration>,
@@ -101,9 +107,15 @@ async fn start(paths: &Paths, args: Args) -> Result<ExitCode, Box<dyn std::error
         );
     }
     let snapshot = connection.subscribe().await?;
-    let snapshot = with_project(&mut connection, snapshot, &args).await?;
-    let (workspace, made) =
-        workspace_for(&mut connection, &snapshot, &args, prompt.as_deref()).await?;
+    let terminal = in_terminal(&snapshot, &args);
+    let snapshot = match terminal {
+        Some(_) => snapshot,
+        None => with_project(&mut connection, snapshot, &args).await?,
+    };
+    let (workspace, made) = match terminal {
+        Some((_, workspace)) => (workspace, false),
+        None => workspace_for(&mut connection, &snapshot, &args, prompt.as_deref()).await?,
+    };
     let started = connection
         .command(Command::StartSession {
             workspace,
@@ -131,6 +143,10 @@ async fn start(paths: &Paths, args: Args) -> Result<ExitCode, Box<dyn std::error
         }
     };
     let snapshot = connection.subscribe().await?;
+    if terminal.is_some() && !args.bg && !args.wait && !args.json {
+        drop(connection);
+        return super::tab::show(paths, session).await;
+    }
     report(&snapshot, session, workspace, args.json)?;
     if !args.wait {
         return Ok(ExitCode::SUCCESS);
@@ -145,6 +161,26 @@ async fn start(paths: &Paths, args: Args) -> Result<ExitCode, Box<dyn std::error
     let waited = wait::follow(&mut connection, &[session], statuses, &waiting).await?;
     super::tell(&mut connection, &snapshot, &waited).await?;
     Ok(waited.code())
+}
+
+/// The terminal the person typed this in and its workspace, where they
+/// typed it in a workspace's terminal (`MUSTER_TERMINAL`) and named no
+/// other place: what they start there belongs to that workspace.
+fn in_terminal(snapshot: &Snapshot, args: &Args) -> Option<(SessionId, WorkspaceId)> {
+    if args.here
+        || args.in_worktree.is_some()
+        || args.project.is_some()
+        || args.branch.is_some()
+        || std::env::var_os("MUSTER_TERMINAL").is_none()
+    {
+        return None;
+    }
+    let inside = super::started_by()?;
+    snapshot
+        .sessions
+        .iter()
+        .find(|session| session.id == inside && session.kind().is_shell())
+        .map(|session| (session.id, session.workspace))
 }
 
 /// The prompt the words make, read from standard input for `-`; `None`

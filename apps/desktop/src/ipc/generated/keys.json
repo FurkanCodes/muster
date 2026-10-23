@@ -600,6 +600,17 @@
         "changes"
       ],
       "what": "back to the list (or a click on it)"
+    },
+    {
+      "group": "In a terminal tab",
+      "keys": [
+        "ctrl-q"
+      ],
+      "name": "leave_tab",
+      "screens": [
+        "in_tab"
+      ],
+      "what": "back to the session shown before in the tab, else to your own shell (the session keeps running)"
     }
   ],
   "kept": [
@@ -668,6 +679,10 @@
     {
       "id": "in_session",
       "title": "In a session"
+    },
+    {
+      "id": "in_tab",
+      "title": "In a terminal tab"
     }
   ]
 }

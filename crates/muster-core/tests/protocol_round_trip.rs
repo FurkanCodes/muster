@@ -532,6 +532,10 @@ fn commands() -> Vec<Command> {
             into: PathBuf::from("/Users/you/code"),
         },
         Command::Reveal { session },
+        Command::Switch {
+            from: session,
+            to: SessionId::new(),
+        },
         Command::ChangePreference(PreferenceChange::Notch(false)),
         Command::ChangePreference(PreferenceChange::SideBySideFrom(0)),
         Command::ChangePreference(PreferenceChange::Palette(Palette::Terminal)),

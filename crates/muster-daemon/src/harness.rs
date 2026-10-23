@@ -609,6 +609,11 @@ pub(crate) fn spawn_spec(harness: &Harness, launch: &Launch) -> SpawnSpec {
         .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
         .collect();
     env.push(("MUSTER_SESSION".to_owned(), launch.session.to_string()));
+    if matches!(harness.kind, Kind::Shell) {
+        // A workspace's terminal: what the person starts from it belongs to
+        // the workspace (`muster init`'s functions ask, with no daemon).
+        env.push(("MUSTER_TERMINAL".to_owned(), "1".to_owned()));
+    }
     match &launch.place {
         Place::Host(cwd) => on_host(harness, launch, cwd.clone(), env),
         Place::Container {

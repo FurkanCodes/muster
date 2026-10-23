@@ -1307,6 +1307,7 @@ name = "muster"
 version = "0.5.6"
 dependencies = [
  "clap",
+ "crossterm",
  "muster-client",
  "muster-core",
  "muster-daemon",

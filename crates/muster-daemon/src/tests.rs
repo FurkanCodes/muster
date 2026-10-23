@@ -481,6 +481,17 @@ async fn a_session_is_shown_only_if_it_and_a_window_are_there() {
 }
 
 #[tokio::test]
+async fn a_session_takes_another_s_place_only_where_that_one_is_shown_arc_09() {
+    let supervisor = start(16).await;
+    let (from, to) = (muster_core::SessionId::new(), muster_core::SessionId::new());
+    let refused = supervisor
+        .command(Command::Switch { from, to })
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::NotFound);
+}
+
+#[tokio::test]
 async fn a_client_of_an_older_protocol_is_sent_only_what_it_knows() {
     let dir = tempfile::tempdir().unwrap();
     let supervisor = start(16).await;

@@ -140,6 +140,11 @@ export function untyped(chord: Chord): boolean {
   return chord.ctrl || chord.alt || ("char" in chord.key && /^[A-Z]$/.test(chord.key.char));
 }
 
+/** Whether a terminal tab (`muster attach`) can tell it from typing: a lower-case letter with ⌃ or ⌥ (`Chord::in_tab`). */
+export function inTab(chord: Chord): boolean {
+  return (chord.ctrl || chord.alt) && "char" in chord.key && /^[a-z]$/.test(chord.key.char);
+}
+
 const DOM_NAMES: Readonly<Record<Named, string>> = {
   tab: "Tab",
   backtab: "⇧Tab",

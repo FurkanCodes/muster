@@ -50,7 +50,7 @@ impl Variant for ServerFrame {
 }
 
 impl Variant for Command {
-    const COUNT: usize = 45;
+    const COUNT: usize = 46;
     fn variant(&self) -> usize {
         match self {
             Self::Ping => 0,
@@ -98,6 +98,7 @@ impl Variant for Command {
             Self::ListRepositories => 42,
             Self::CloneProject { .. } => 43,
             Self::ReadSession { .. } => 44,
+            Self::Switch { .. } => 45,
         }
     }
 }

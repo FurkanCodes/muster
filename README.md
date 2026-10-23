@@ -134,13 +134,27 @@ muster codex "Add tests for the session list"
 Then see them, wait for them and read what they did. `wait` says by its exit status how each one ended: 0 finished, 3 needs you, 124 out of time.
 
 ```bash
-muster ls
+muster list agents
 muster wait a1b2c3 && muster logs --reply a1b2c3
 muster prompt a1b2c3 "Now run the tests"
 muster attach a1b2c3
 ```
 
 An agent can start agents the same way, within limits you set on the Settings screen. Each one it starts says so.
+
+Or work inside a workspace (a worktree) from your terminal, as you would with tmux. `muster enter` turns the tab into the workspace's terminal. Whatever you start there belongs to that workspace and shows in the same tab. Ctrl-Q goes back one step, and everything keeps running. To see your other agents, list them in another tab with `muster list agents`:
+
+```bash
+muster workspace add fix-login     # a worktree on muster/fix-login
+muster list workspaces             # your workspaces, each with its sessions by number
+muster enter fix-login             # this tab is now the workspace's terminal
+muster list agents                 # (in another tab) this workspace's agents; --all for everything
+claude "Fix the login redirect"    # a session of this workspace, shown here; Ctrl-Q comes back
+muster term new                    # another terminal in the same workspace
+muster attach fix-login/1          # from anywhere, straight back into session 1
+```
+
+A bare `claude` (or any agent's name) starts a Muster session only after you add `eval "$(muster init zsh)"` to your `~/.zshrc` (or `bash`, `fish`). Muster never edits that file itself. Without the line, type `muster claude`.
 
 The same things work from scripts:
 
@@ -202,7 +216,7 @@ When a session's status looks wrong, ask why it has it: whom it waits on and for
 muster session explain <session-id>
 ```
 
-For your own scripts, `muster status`, `muster ls`, `muster session list` and `muster issue list` take `--json` and print one JSON document instead of words. Each starts with `"format": 1`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
+For your own scripts, `muster status`, `muster list`, `muster session list` and `muster issue list` take `--json` and print one JSON document instead of words. Each starts with `"format": 1`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
 
 ```bash
 muster session list --json | jq -r '.sessions[] | select(.status == "needs_you") | .title'
