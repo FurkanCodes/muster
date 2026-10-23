@@ -367,8 +367,8 @@ enum SessionCommand {
 /// nor the commands about this machine's shells and machines.
 fn on_another_machine(command: Option<&Commands>) -> bool {
     match command {
-        None
-        | Some(
+        None => true,
+        Some(
             Commands::Daemon { .. }
             | Commands::Reload
             | Commands::Upgrade
@@ -418,8 +418,7 @@ fn main() -> ExitCode {
     let remote = on_another_machine(cli.command.as_ref());
     if let Some(machine) = cli.on.as_deref().filter(|_| !remote) {
         return fail(format!(
-            "--on {machine} asks another machine's Muster: for its own UI, `muster ssh \
-             {machine}`; this command runs here"
+            "--on {machine} asks another machine's Muster; this command runs here"
         ));
     }
     let on = cli.on.clone().or_else(|| {
@@ -586,6 +585,7 @@ async fn run_command(socket: &std::path::Path, command: RunCommand) -> commands:
 /// Opens the terminal UI, on `open` if given.
 async fn ui(paths: Paths, open: Option<muster_core::SessionId>) -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+    let paths_socket = paths.socket();
     // MUSTER_NOTIFY=off keeps the UI from notifying.
     let notify = !matches!(
         std::env::var("MUSTER_NOTIFY").as_deref(),
@@ -609,9 +609,20 @@ async fn ui(paths: Paths, open: Option<muster_core::SessionId>) -> ExitCode {
             Box::new(move || start_notch(&notch_paths))
                 as Box<dyn Fn() -> std::io::Result<()> + Send + Sync>
         });
+    // Another machine's Muster: reached through ssh each time the link is
+    // lost, nothing of this machine's offered for it.
+    let remote = ssh::remote();
+    let connect = remote.map(ssh::connector);
+    let here = remote.is_none();
+    let start_daemon: Option<Box<dyn Fn() -> std::io::Result<()> + Send + Sync>> =
+        here.then(|| Box::new(move || daemon_start::start(&paths)) as _);
+    let start_notch = start_notch.filter(|_| here);
+    let cwd = if here { cwd } else { PathBuf::from("/") };
     let options = muster_tui::Options {
-        socket: paths.socket(),
-        start_daemon: Some(Box::new(move || daemon_start::start(&paths))),
+        socket: paths_socket,
+        connect,
+        machine: remote.map(|remote| remote.name.clone()),
+        start_daemon,
         cwd,
         notify,
         motion,

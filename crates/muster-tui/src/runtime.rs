@@ -35,9 +35,29 @@ use drawing::Draws;
 use self::link::{LINK_EVENTS, LinkEvent, Outgoing, keep_linked};
 pub use self::link::{START_AGAIN_AFTER, START_WAIT};
 
+/// Connects to a daemon some other way than its socket here: another
+/// machine's, through ssh.
+pub type Connector = Box<
+    dyn Fn() -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<muster_client::Connection, muster_client::ClientError>,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
 /// How the app finds, and if need be starts, the daemon.
 pub struct Options {
     pub socket: PathBuf,
+    /// Connects instead of the socket, as many times as the link is lost:
+    /// to another machine's daemon (`machine`).
+    pub connect: Option<Connector>,
+    /// The machine whose Muster this is, where `connect` reaches another;
+    /// shown, and nothing of this machine's (its folders, its notch) is
+    /// offered for it.
+    pub machine: Option<String>,
     /// Starts a daemon when none answers. `None` never starts one.
     pub start_daemon: Option<Box<dyn Fn() -> std::io::Result<()> + Send + Sync>>,
     /// Where `muster` was started, offered when adding a project.
@@ -63,6 +83,8 @@ impl std::fmt::Debug for Options {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Options")
             .field("socket", &self.socket)
+            .field("machine", &self.machine)
+            .field("connects", &self.connect.is_some())
             .field("starts_daemon", &self.start_daemon.is_some())
             .field("cwd", &self.cwd)
             .field("notify", &self.notify)
@@ -118,6 +140,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     }
     let outside = Outside::take(&mut options);
     app.notch_here = outside.start_notch.is_some();
+    app.machine.clone_from(&outside.machine);
 
     // Bounded: a loop that falls behind stops the link reading, and the
     // daemon treats this client as any slow one (`ARC-14`). The loop never
@@ -294,6 +317,8 @@ fn tick(app: &mut App, steps: &mut motion::Steps, dirty: &mut bool) -> Vec<Actio
 struct Outside {
     start_notch: Option<Box<dyn Fn() -> std::io::Result<()> + Send + Sync>>,
     terminal_app: Option<String>,
+    /// Another machine's Muster is shown: this one's folders are not its.
+    machine: Option<String>,
 }
 
 impl Outside {
@@ -302,6 +327,7 @@ impl Outside {
         Self {
             start_notch: options.start_notch.take(),
             terminal_app: options.terminal_app.take(),
+            machine: options.machine.clone(),
         }
     }
 }
@@ -332,6 +358,16 @@ fn perform(
                 if let Some(app) = &outside.terminal_app {
                     bring_to_front(app);
                 }
+            }
+            Action::ListFolders(dir) if outside.machine.is_some() => {
+                let machine = outside.machine.as_deref().unwrap_or_default();
+                let _ = listed_folders.send((
+                    dir,
+                    Err(format!(
+                        "the folders are {machine}'s, which this window cannot list: type the \
+                         path there"
+                    )),
+                ));
             }
             Action::ListFolders(dir) => {
                 let listed = listed_folders.clone();

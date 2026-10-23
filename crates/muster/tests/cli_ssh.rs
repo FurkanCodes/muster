@@ -193,12 +193,12 @@ async fn on_a_machine_every_command_asks_its_muster_through_ssh_arc_27() {
         "{}",
         text(&unnamed.stderr)
     );
-    // Its own UI is `muster ssh`'s.
-    let ui = setup.run(&["--on", "vm"]);
-    assert!(!ui.status.success());
+    // What runs only here is refused there.
+    let here = setup.run(&["--on", "vm", "daemon"]);
+    assert!(!here.status.success());
     assert!(
-        text(&ui.stderr).contains("muster ssh vm"),
+        text(&here.stderr).contains("this command runs here"),
         "{}",
-        text(&ui.stderr)
+        text(&here.stderr)
     );
 }

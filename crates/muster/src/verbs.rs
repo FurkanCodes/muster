@@ -236,7 +236,7 @@ pub(crate) fn on_another_machine(verb: &Verb) -> bool {
     !matches!(
         verb,
         Verb::Ssh { .. } | Verb::Machine(_) | Verb::Init { .. } | Verb::Bridge
-    ) && !matches!(verb, Verb::Attach { ui: true, .. })
+    )
 }
 
 /// What `muster` does once a verb has run.

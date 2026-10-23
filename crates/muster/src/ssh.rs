@@ -185,6 +185,19 @@ pub(crate) async fn connect(remote: &Remote) -> Result<muster_client::Connection
     }
 }
 
+/// [`connect`] to `remote`, for the UI to call each time its link is lost.
+pub(crate) fn connector(remote: &'static Remote) -> muster_tui::Connector {
+    Box::new(move || {
+        let connecting: std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<muster_client::Connection, ClientError>>
+                    + Send,
+            >,
+        > = Box::pin(connect(remote));
+        connecting
+    })
+}
+
 /// `muster bridge`, which `--on` has ssh run on the machine: joins its
 /// standard input and output to this machine's daemon, starting it where
 /// none runs, until either side closes.

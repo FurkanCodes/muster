@@ -37,7 +37,10 @@ fn standing(app: &App, room: usize) -> Vec<Span<'static>> {
         Link::Connected { .. } if !app.model.loaded() => vec![Span::from("loading…").dim()],
         Link::Connected { daemon_version } => fleet(app, daemon_version, room),
         Link::Lost(_) => vec![Span::styled(
-            "daemon unreachable; retrying…",
+            match &app.machine {
+                Some(machine) => format!("{machine} unreachable; reconnecting…"),
+                None => "daemon unreachable; retrying…".to_owned(),
+            },
             Style::default().fg(theme::of(app).waiting),
         )],
     }
@@ -64,6 +67,13 @@ fn tabs(app: &App) -> Vec<Span<'static>> {
     let theme = theme::of(app);
     let waiting = app.model.needs_you().len();
     let mut spans = vec![name(app), Span::raw(" ")];
+    // Another machine's Muster says so first, in the accent.
+    if let Some(machine) = &app.machine {
+        spans.push(Span::styled(
+            format!("on {} ", muster_core::text::one_line(machine)),
+            Style::default().fg(theme.accent),
+        ));
+    }
     for (at, (view, name)) in [
         (View::Sessions, "Sessions"),
         (View::NeedsYou, "Needs you"),

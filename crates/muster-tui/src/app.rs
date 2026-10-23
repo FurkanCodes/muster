@@ -547,6 +547,9 @@ pub(crate) struct App {
     /// Whether Muster's notch can show here: a Mac, with a program to
     /// start it.
     pub(crate) notch_here: bool,
+    /// The machine whose Muster this UI shows, reached through ssh
+    /// (`muster --on vm`); `None` for this one's.
+    pub(crate) machine: Option<String>,
     /// Whether this UI has started the notch since it connected, or seen
     /// it turned off since.
     notch_started: bool,
@@ -654,6 +657,7 @@ impl App {
             daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
             graphics: crate::view::logos::Graphics::Text,
             notch_here: false,
+            machine: None,
             notch_started: false,
             notch_changing: false,
             colours: muster_core::colours::TerminalColours::default(),

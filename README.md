@@ -172,6 +172,7 @@ muster ssh vm list agents               # or one command there
 muster ssh vm enter fix-login
 muster --on vm list agents              # your own muster, asking vm's
 muster --on vm attach fix-login/2       # a session there, straight in this tab
+muster --on vm                          # your own UI, on vm's agents; reconnects if the link drops
 ```
 
 Tickets work the same way, in plain words:

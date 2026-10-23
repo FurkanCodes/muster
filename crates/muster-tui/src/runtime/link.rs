@@ -60,9 +60,13 @@ impl Outgoing {
 /// connection is lost.
 pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>) {
     let mut last_start: Option<Instant> = None;
+    // Tries in a row that failed: another machine is tried again less and
+    // less often, up to [`FARTHEST_RETRY`], not every half second.
+    let mut failed: u32 = 0;
     loop {
         match connect(&options, &mut last_start).await {
             Ok(connection) => {
+                failed = 0;
                 let (sender, receiver, welcome) = connection.into_split();
                 // Unbounded on purpose: the loop must never wait on a daemon
                 // that may be waiting for this client to read.
@@ -93,6 +97,7 @@ pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent
                 }
             }
             Err(error) => {
+                failed = failed.saturating_add(1);
                 if events
                     .send(LinkEvent::Lost(error.to_string()))
                     .await
@@ -102,8 +107,24 @@ pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent
                 }
             }
         }
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(retry_after(options.connect.is_some(), failed)).await;
     }
+}
+
+/// The longest another machine's link waits before it is tried again.
+const FARTHEST_RETRY: Duration = Duration::from_secs(8);
+
+/// How long the link waits before connecting again, `failed` tries in a
+/// row having failed: half a second here; for another machine, twice as
+/// long after each failure, up to [`FARTHEST_RETRY`].
+fn retry_after(remote: bool, failed: u32) -> Duration {
+    let first = Duration::from_millis(500);
+    if !remote {
+        return first;
+    }
+    first
+        .saturating_mul(2_u32.saturating_pow(failed.saturating_sub(1)))
+        .min(FARTHEST_RETRY)
 }
 
 /// Hands the loop each frame from the daemon, waiting for room: why the
@@ -145,6 +166,9 @@ async fn connect(
     options: &Options,
     last_start: &mut Option<Instant>,
 ) -> Result<Connection, ClientError> {
+    if let Some(connect) = &options.connect {
+        return connect().await;
+    }
     match Connection::connect(&options.socket, CLIENT).await {
         Err(ClientError::Unreachable { .. }) => {}
         other => return other,
