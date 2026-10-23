@@ -209,6 +209,17 @@ impl Store {
         }
     }
 
+    /// Records the ticket a workspace is worked on for, or none.
+    pub fn update_ticket(&mut self, workspace: WorkspaceId, ticket: Option<&str>) -> Result<()> {
+        match self.conn.execute(
+            "UPDATE workspaces SET ticket = ?2 WHERE id = ?1",
+            params![id_text(workspace), ticket],
+        )? {
+            0 => Err(StoreError::NotFound(workspace.to_string())),
+            _ => Ok(()),
+        }
+    }
+
     /// Records what a workspace now has checked out.
     pub fn update_branch(&mut self, workspace: WorkspaceId, branch: &str) -> Result<()> {
         match self.conn.execute(

@@ -368,6 +368,58 @@ impl Supervisor {
         }
     }
 
+    /// Makes `workspace`, a worktree, the one `key` is worked on in, or no
+    /// ticket's (`Command::AssignTicket`), as the person asked.
+    pub(super) async fn assign_ticket(
+        &mut self,
+        workspace: WorkspaceId,
+        key: Option<muster_core::TicketKey>,
+    ) -> Result<Reply, ErrorBody> {
+        let found = self
+            .state
+            .workspaces
+            .iter()
+            .find(|candidate| candidate.id == workspace)
+            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, "no such workspace"))?;
+        if !found.kind.is_worktree() {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "a ticket is worked on in a worktree; this is the project's own checkout",
+            ));
+        }
+        if let Some(key) = &key
+            && let Some(other) = self.state.workspaces.iter().find(|other| {
+                other.id != workspace
+                    && other.project == found.project
+                    && other.ticket.as_ref() == Some(key)
+            })
+        {
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!(
+                    "{} is worked on in {} already",
+                    key.shown(),
+                    other.kind.branch()
+                ),
+            ));
+        }
+        let stored = key.as_ref().map(|key| key.as_str().to_owned());
+        self.write(move |store| store.update_ticket(workspace, stored.as_deref()))
+            .await;
+        let Some(found) = self
+            .state
+            .workspaces
+            .iter_mut()
+            .find(|candidate| candidate.id == workspace)
+        else {
+            return Err(ErrorBody::new(ErrorCode::NotFound, "no such workspace"));
+        };
+        found.ticket = key;
+        let updated = found.clone();
+        self.broadcast(muster_core::protocol::Delta::WorkspaceUpserted(updated));
+        Ok(Reply::Done)
+    }
+
     /// `branch-2`, `-3`… : the first no workspace has and the repository
     /// does not have yet, for another agent's worktree.
     async fn unused_worktree_branch(

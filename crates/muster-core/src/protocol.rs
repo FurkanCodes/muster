@@ -154,7 +154,8 @@
 //! ([`crate::delegation::DELEGATION_PROTOCOL`]); version 52 a session shown
 //! in place of another where the person watches it, as a terminal tab of
 //! the command line follows a session started from inside it
-//! (`Command::Switch`, sent only to a daemon of 52 or later).
+//! (`Command::Switch`), and a ticket made a worktree's as the person asks
+//! (`Command::AssignTicket`), each sent only to a daemon of 52 or later.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -572,6 +573,16 @@ pub enum Command {
     /// with [`Reply::Done`], or refused when nothing shows `from`. Sent only
     /// to a daemon of 52 or later ([`SWITCH_PROTOCOL`]).
     Switch { from: SessionId, to: SessionId },
+    /// Make `workspace` (a worktree) the one ticket `key` is worked on in,
+    /// as the person asked; `None` makes it no ticket's. Its agents are then
+    /// the ticket's, and starting work on the ticket goes there. Refused for
+    /// a project's own checkout, and where another worktree of the project
+    /// has the ticket. Answered with [`Reply::Done`]. Sent only to a daemon
+    /// of 52 or later ([`SWITCH_PROTOCOL`]).
+    AssignTicket {
+        workspace: WorkspaceId,
+        key: Option<TicketKey>,
+    },
     /// Change one of Muster's own settings, in the person's own file;
     /// answered with [`Reply::Done`], every client told by
     /// [`Delta::Preferences`]. Sent only to a daemon of 23 or later.

@@ -154,6 +154,17 @@ muster term new                    # another terminal in the same workspace
 muster attach fix-login/1          # from anywhere, straight back into session 1
 ```
 
+Tickets work the same way, in plain words:
+
+```bash
+muster list tickets                # the project's open tickets, with the agents on each
+muster ticket 42                   # its text and comments
+muster ticket 42 claude            # an agent on it, in the workspace you're in
+muster ticket 42 assign fix-login  # make a workspace the ticket's
+muster ticket 42 open              # in the browser
+muster ticket 42 close             # close it, after asking
+```
+
 A bare `claude` (or any agent's name) starts a Muster session only after you add `eval "$(muster init zsh)"` to your `~/.zshrc` (or `bash`, `fish`). Muster never edits that file itself. Without the line, type `muster claude`.
 
 The same things work from scripts:

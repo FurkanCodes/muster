@@ -672,6 +672,7 @@ impl Supervisor {
             Command::ExplainSession { session } => self.explain_session(session),
             Command::Reveal { session } => self.reveal(session),
             Command::Switch { from, to } => self.switch(from, to),
+            Command::AssignTicket { workspace, key } => self.assign_ticket(workspace, key).await,
             Command::ChangePreference(change) => {
                 let changed = self.change_preference(&change);
                 self.settle_shared_builds(false).await;
@@ -852,6 +853,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::MoveOnto { .. } => "move onto",
         Command::Reveal { .. } => "reveal",
         Command::Switch { .. } => "switch",
+        Command::AssignTicket { .. } => "assign ticket",
         Command::ChangePreference(_) => "change preference",
         Command::ReadPreferences => "read preferences",
         Command::ListModels { .. } => "list models",

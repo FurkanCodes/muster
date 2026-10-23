@@ -20,6 +20,7 @@ pub(crate) mod start;
 mod tab;
 pub(crate) mod targets;
 mod terminals;
+mod tickets;
 pub(crate) mod wait;
 mod workspaces;
 
@@ -73,6 +74,31 @@ pub(crate) enum Verb {
     /// A workspace's terminals.
     #[command(subcommand, visible_alias = "t")]
     Term(terminals::TermCommand),
+    /// Ticket KEY (`42`, `#42`, `APP-7`) of the project you are in: read it;
+    /// or `claude` (any agent) puts one on it, in the workspace you are in,
+    /// which becomes the ticket's (else in the ticket's own); `assign
+    /// [WS]` makes a workspace the ticket's, `unassign` no longer; `open`
+    /// shows it in the browser; `close` closes it in its tracker, after
+    /// asking.
+    Ticket {
+        #[arg(value_parser = tickets::ticket_key)]
+        key: muster_core::TicketKey,
+        /// open, close, assign [WS], unassign, or an agent's name.
+        words: Vec<String>,
+        /// The project (its name, id or folder), where you are not in one.
+        #[arg(short, long)]
+        project: Option<String>,
+        /// Close it without asking.
+        #[arg(short, long)]
+        yes: bool,
+        /// Another agent on it, in a worktree of its own.
+        #[arg(long)]
+        another: bool,
+        /// In a workspace's terminal, start it and stay, rather than show
+        /// it in the terminal's place.
+        #[arg(long)]
+        bg: bool,
+    },
     /// Give SESSION a name.
     Rename {
         session: String,
@@ -172,6 +198,24 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
         Verb::Workspace(command) => return workspaces::run(paths, command).await,
         Verb::Enter { workspace, new } => workspaces::enter(paths, workspace.as_deref(), new).await,
         Verb::Term(command) => return terminals::run(paths, command).await,
+        Verb::Ticket {
+            key,
+            words,
+            project,
+            yes,
+            another,
+            bg,
+        } => {
+            let asked = tickets::Asked {
+                key,
+                words,
+                project,
+                yes,
+                another,
+                bg,
+            };
+            tickets::run(paths, asked).await
+        }
         Verb::Rename { session, name } => terminals::rename(paths, &session, &name).await,
         Verb::Close { session, yes } => terminals::close(paths, &session, yes).await,
         Verb::Init { shell } => return Then::Exit(init::run(paths, shell).await),
