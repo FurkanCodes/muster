@@ -262,6 +262,10 @@ pub(crate) struct Here<'a> {
 /// The project and workspace `folder` is in, the one nearest it where
 /// several hold it (a worktree inside its project's folder).
 pub(crate) fn here<'a>(snapshot: &'a Snapshot, folder: &Path) -> Option<Here<'a>> {
+    // This machine's folder is none of another's (`--on`).
+    if crate::ssh::remote().is_some() {
+        return None;
+    }
     let folder = canonical(folder);
     let workspace = snapshot
         .workspaces

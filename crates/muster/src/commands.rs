@@ -11,7 +11,12 @@ pub(crate) const CLIENT: &str = concat!("muster ", env!("CARGO_PKG_VERSION"));
 
 pub(crate) type Outcome = Result<(), Box<dyn std::error::Error>>;
 
+/// A connection to the daemon: the one on this machine at `socket`, or,
+/// with `--on`, the machine's through ssh (`ssh::connect`).
 pub(crate) async fn connect(socket: &Path) -> Result<Connection, ClientError> {
+    if let Some(remote) = crate::ssh::remote() {
+        return crate::ssh::connect(remote).await;
+    }
     Connection::connect(socket, CLIENT).await
 }
 

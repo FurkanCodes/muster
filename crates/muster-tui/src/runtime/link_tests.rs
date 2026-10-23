@@ -16,6 +16,8 @@ const FRAMES: usize = 400;
 fn options(socket: std::path::PathBuf) -> Options {
     Options {
         socket,
+        connect: None,
+        machine: None,
         start_daemon: None,
         cwd: std::path::PathBuf::from("/"),
         notify: false,
@@ -110,4 +112,16 @@ async fn a_ui_that_stops_reading_stops_the_daemon_writing_and_loses_nothing_arc_
     }
     assert!(matches!(link.recv().await, Some(LinkEvent::Lost(_))));
     daemon.await.unwrap();
+}
+
+#[test]
+fn another_machine_is_tried_again_less_and_less_often() {
+    assert_eq!(retry_after(false, 9), Duration::from_millis(500));
+    assert_eq!(retry_after(true, 1), Duration::from_millis(500));
+    assert_eq!(retry_after(true, 2), Duration::from_secs(1));
+    assert_eq!(retry_after(true, 4), Duration::from_secs(4));
+    assert_eq!(retry_after(true, 5), Duration::from_secs(8));
+    assert_eq!(retry_after(true, 6), FARTHEST_RETRY);
+    assert_eq!(FARTHEST_RETRY, Duration::from_secs(15));
+    assert_eq!(retry_after(true, 30), FARTHEST_RETRY);
 }

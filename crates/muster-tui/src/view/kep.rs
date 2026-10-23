@@ -179,7 +179,13 @@ pub(crate) const FACE_WIDTH: usize = 6;
 /// What the welcome says under Muster's name, and whether it is bad news.
 fn greeting(app: &App) -> (String, bool) {
     match &app.link {
-        Link::Lost(_) => return ("The daemon can't be reached; retrying…".to_owned(), true),
+        Link::Lost(_) => {
+            let said = match &app.machine {
+                Some(machine) => format!("{machine} can't be reached; reconnecting…"),
+                None => "The daemon can't be reached; retrying…".to_owned(),
+            };
+            return (said, true);
+        }
         _ if !app.model.loaded() => return ("Rounding up your sessions…".to_owned(), false),
         _ => {}
     }

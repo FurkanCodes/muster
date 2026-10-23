@@ -163,6 +163,20 @@ muster keys fix-login/1 ctrl+c             # press keys by name: enter, esc, up,
 muster move fix-login/1 --to api-cache     # a terminal into another workspace
 ```
 
+Run agents on a machine of your own (a server, a cloud VM such as a DigitalOcean droplet, a Linux VM on your PC, a Mac at home: macOS or Linux, Intel/AMD or ARM, anything you can `ssh` into), so they keep working while your laptop sleeps. The first `muster ssh` there is where ssh may ask you for a password or to trust the machine; after that, connections are shared and never stop to ask. If your ssh forwards your agent (`ForwardAgent yes` for that host), agents there push with your keys. Muster installs itself there only after asking, says what's missing (Claude Code signed in there, git, gh), and opens Muster on it through your own ssh:
+
+```bash
+muster machine add vm you@203.0.113.7   # a name for it; your ssh keys stay ssh's
+muster ssh vm                           # check, install after asking, open its Muster
+muster ssh vm list agents               # or one command there
+muster ssh vm enter fix-login
+muster --on vm list agents              # your own muster, asking vm's
+muster --on vm attach fix-login/2       # a session there, straight in this tab
+muster --on vm                          # your own UI, on vm's agents; reconnects if the link drops
+```
+
+`muster ssh vm --install` downloads the machine's release here, checks it, and sends it over ssh, so the machine needs only ssh. To try a branch on a Linux machine before it is released, `scripts/linux-build.sh` builds this checkout for Linux in Docker, and `MUSTER_REMOTE_BINARY=target/linux/muster-x86_64 muster ssh vm --install` puts it there.
+
 Tickets work the same way, in plain words:
 
 ```bash

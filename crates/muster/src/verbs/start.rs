@@ -205,6 +205,13 @@ async fn with_project(
     if args.project.is_some() || args.in_worktree.is_some() {
         return Ok(snapshot);
     }
+    if crate::ssh::remote().is_some() {
+        return Err(
+            "on another machine, name where it works: `--in WORKSPACE` or `-p PROJECT` \
+                    (`muster --on MACHINE list workspaces`)"
+                .into(),
+        );
+    }
     let cwd = std::env::current_dir()?;
     if targets::here(&snapshot, &cwd).is_some() {
         return Ok(snapshot);

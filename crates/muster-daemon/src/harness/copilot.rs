@@ -159,6 +159,7 @@ mod tests {
             size: TermSize::default(),
             checks: None,
             support: None,
+            ssh_agent: None,
         }
     }
 

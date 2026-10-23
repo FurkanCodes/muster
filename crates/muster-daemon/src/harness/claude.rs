@@ -393,6 +393,7 @@ mod tests {
             size: TermSize::default(),
             checks: None,
             support: None,
+            ssh_agent: None,
         };
         let fresh = arguments(&launch(false, Some("fix the login")));
         assert_eq!(&fresh[..2], ["--session-id", SESSION]);
