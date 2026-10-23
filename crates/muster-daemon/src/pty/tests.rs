@@ -385,6 +385,7 @@ async fn a_session_s_program_is_told_its_terminal_is_muster() {
         size: TermSize::default(),
         checks: None,
         support: None,
+        ssh_agent: None,
     };
     let spec = SpawnSpec {
         // The person's own shell would read their startup files.

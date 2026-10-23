@@ -13,6 +13,15 @@ use serde::Deserialize;
 /// The file's name in Muster's own settings folder.
 pub const FILE: &str = "machines.toml";
 
+/// What `muster bridge` says on a line of its own, on another machine,
+/// before any frame of the protocol: what a login printed before it is no
+/// part of it.
+pub const BRIDGE_READY: &str = "muster-bridge-ready:1";
+
+/// Muster's link, in its runtime folder, to the ssh agent the person's ssh
+/// forwarded last, named to every session as `SSH_AUTH_SOCK`.
+pub const AGENT_LINK: &str = "ssh-agent.sock";
+
 /// Every machine saved, by label.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -112,10 +121,15 @@ fn check_label(label: &str) -> Result<(), MachinesError> {
 }
 
 /// A target ssh takes as a host, and never as an option or a command: no
-/// leading `-`, no spaces, nothing a shell would read.
+/// leading `-`, no spaces, nothing a shell would read; and never a
+/// password (`user:secret@host`): only ssh keeps those.
 fn check_target(target: &str) -> Result<(), MachinesError> {
+    let password = target
+        .rsplit_once('@')
+        .is_some_and(|(user, _)| user.contains(':'));
     let fine = !target.is_empty()
         && !target.starts_with('-')
+        && !password
         && target
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || "@.-_:[]%".contains(c));
@@ -239,7 +253,8 @@ mod tests {
             machines.add("9lives", "x"),
             Err(MachinesError::Label(_))
         ));
-        for target in ["-oProxyCommand=sh", "a b", "x;rm", ""] {
+        machines.add("v6", "you@[2001:db8::1]").unwrap();
+        for target in ["-oProxyCommand=sh", "a b", "x;rm", "", "you:secret@host"] {
             assert!(machines.add("vm", target).is_err(), "{target:?}");
             assert!(machines.target(target).is_err(), "{target:?}");
         }

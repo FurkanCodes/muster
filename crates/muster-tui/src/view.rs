@@ -5,11 +5,11 @@ use muster_core::num::fraction;
 use muster_core::{SessionStatus, WaitReason};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders};
 
-use crate::app::{App, Mode, View};
+use crate::app::{App, Link, Mode, View};
 use crate::layout::{Divider, Solved};
 use crate::motion;
 
@@ -229,6 +229,18 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         draw_session(frame, app, beside, plugin, app.typing_in_plugin());
     }
     drag::draw_moving(frame, app, &areas);
+    // The daemon out of reach: what it last said stays, dimmed, until it
+    // answers again; the bars above and below say so.
+    if matches!(app.link, Link::Lost(_)) {
+        let between = Rect {
+            y: top.bottom(),
+            height: bottom.y.saturating_sub(top.bottom()),
+            ..area
+        };
+        frame
+            .buffer_mut()
+            .set_style(between, Style::default().add_modifier(Modifier::DIM));
+    }
     draw_bottom_bar(frame, app, bottom);
     match &app.mode {
         Mode::Dialog(dialog) => dialogs::draw_dialog(frame, app, dialog, area),

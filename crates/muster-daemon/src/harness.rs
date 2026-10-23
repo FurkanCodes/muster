@@ -513,6 +513,10 @@ pub(crate) struct Launch {
     /// The folder holding the files of Muster's own a harness reads its
     /// hooks from ([`support`]), once written.
     pub(crate) support: Option<PathBuf>,
+    /// Muster's link to the ssh agent the person's ssh forwarded to this
+    /// machine (`muster bridge`), named to the program as `SSH_AUTH_SOCK`
+    /// where it leads somewhere.
+    pub(crate) ssh_agent: Option<PathBuf>,
 }
 
 /// Runs a session's program in a container: `$1` the session, `$2` the
@@ -613,6 +617,12 @@ pub(crate) fn spawn_spec(harness: &Harness, launch: &Launch) -> SpawnSpec {
         // A workspace's terminal: what the person starts from it belongs to
         // the workspace (`muster init`'s functions ask, with no daemon).
         env.push(("MUSTER_TERMINAL".to_owned(), "1".to_owned()));
+    }
+    if let Some(agent) = &launch.ssh_agent {
+        env.push((
+            "SSH_AUTH_SOCK".to_owned(),
+            agent.to_string_lossy().into_owned(),
+        ));
     }
     match &launch.place {
         Place::Host(cwd) => on_host(harness, launch, cwd.clone(), env),

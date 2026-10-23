@@ -386,3 +386,29 @@ fn a_ui_older_than_its_daemon_says_how_to_start_the_new_one() {
         assert!(!render(&world.app).contains("This window runs muster"));
     }
 }
+
+#[test]
+fn another_machine_out_of_reach_stays_drawn_dimmed_and_says_so_arc_27() {
+    let mut world = world();
+    world.app.machine = Some("vm".to_owned());
+    let connected = buffer(&world.app);
+    assert!(render(&world.app).contains("on vm"));
+    world
+        .app
+        .on_disconnected("the daemon closed the connection".to_owned());
+    let lost = buffer(&world.app);
+    let screen = render(&world.app);
+    assert!(screen.contains("vm unreachable; reconnecting"), "{screen}");
+    // What it last showed is still there, dimmed, the bars aside.
+    let middle = SIZE.rows / 2;
+    assert_eq!(
+        lost[(2, middle)].symbol(),
+        connected[(2, middle)].symbol(),
+        "{screen}"
+    );
+    assert!(lost[(2, middle)].modifier.contains(Modifier::DIM));
+    assert!(
+        !lost[(2, 0)].modifier.contains(Modifier::DIM),
+        "the top bar"
+    );
+}

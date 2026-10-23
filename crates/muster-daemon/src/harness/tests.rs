@@ -55,6 +55,7 @@ fn checks_run_in_a_shell_with_their_limit_and_commands() {
                 limit: std::time::Duration::from_mins(30),
             }),
             support: None,
+            ssh_agent: None,
         },
     );
     assert_eq!(spec.program, "/bin/sh");
@@ -75,6 +76,7 @@ fn a_review_is_claude_code_in_plan_mode_resumed_or_not() {
         size: TermSize::default(),
         checks: None,
         support: None,
+        ssh_agent: None,
     };
     let fresh = spawn_spec(&REVIEW, &launch(false));
     assert_eq!(fresh.program, "claude");
@@ -89,6 +91,34 @@ fn a_review_is_claude_code_in_plan_mode_resumed_or_not() {
         ["--permission-mode", "plan", "--resume", "id"]
     );
     assert!(REVIEW.is_agent() && REVIEW.can_resume() && REVIEW.has_hooks());
+}
+
+#[test]
+fn the_person_s_forwarded_ssh_agent_reaches_a_session_arc_27() {
+    let launch = |ssh_agent: Option<PathBuf>| Launch {
+        session: SessionId::new(),
+        agent_session: None,
+        resume: false,
+        prompt: None,
+        hooks: None,
+        place: Place::Host(PathBuf::from("/work")),
+        size: TermSize::default(),
+        checks: None,
+        support: None,
+        ssh_agent,
+    };
+    let agent = |spec: &crate::pty::SpawnSpec| {
+        spec.env
+            .iter()
+            .find(|(key, _)| key == "SSH_AUTH_SOCK")
+            .map(|(_, value)| value.clone())
+    };
+    let linked = spawn_spec(
+        &CLAUDE,
+        &launch(Some(PathBuf::from("/run/m/ssh-agent.sock"))),
+    );
+    assert_eq!(agent(&linked).as_deref(), Some("/run/m/ssh-agent.sock"));
+    assert_eq!(agent(&spawn_spec(&CLAUDE, &launch(None))), None);
 }
 
 #[test]
@@ -108,6 +138,7 @@ fn hooks_reach_the_program_through_its_environment() {
             size: TermSize::default(),
             checks: None,
             support: None,
+            ssh_agent: None,
         },
     );
     assert_eq!(spec.program, "claude");
@@ -266,6 +297,7 @@ fn agent_launch(agent_session: Option<&str>, support: Option<&str>) -> Launch {
         size: TermSize::default(),
         checks: None,
         support: support.map(PathBuf::from),
+        ssh_agent: None,
     }
 }
 
@@ -488,6 +520,7 @@ fn an_added_agent_runs_as_its_settings_say() {
         size: TermSize::default(),
         checks: None,
         support: None,
+        ssh_agent: None,
     };
     let fresh = spawn_spec(&mine, &launch(false));
     assert_eq!(fresh.program, "my-agent");

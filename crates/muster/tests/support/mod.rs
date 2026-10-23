@@ -138,6 +138,44 @@ const FAKE_COPY: &str = r#"#!/bin/sh
 cat > "$FAKE_CLIPBOARD_DIR/copied"
 "#;
 
+/// A stand-in `ssh` (`ARC-27`): the machine is a home of its own with only
+/// the system's programs. Like a real login it greets first on standard
+/// output; it notes each call's arguments in `ssh-calls`, and where
+/// `ssh-fails` exists, says what it holds on standard error and fails, as
+/// ssh does. `SSH_AUTH_SOCK` passes through, as a forwarded agent would.
+pub(crate) const FAKE_SSH: &str = r#"#!/bin/sh
+echo "$*" >> "$FAKE_SSH_HOME/../ssh-calls"
+if [ -f "$FAKE_SSH_HOME/../ssh-fails" ]; then
+  cat "$FAKE_SSH_HOME/../ssh-fails" >&2
+  exit 255
+fi
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -t|-T|-q|-C) shift ;;
+    -o) shift 2 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+shift
+echo "Welcome to the stand-in machine"
+HOME="$FAKE_SSH_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" exec sh -c "$*"
+"#;
+
+impl Sandbox {
+    /// Puts the stand-in `ssh` on this sandbox's `PATH`, its machine's home
+    /// at `machine-home` (returned), made.
+    pub(crate) fn fake_ssh(&self) -> PathBuf {
+        let home = self.root().join("machine-home");
+        std::fs::create_dir_all(&home).unwrap();
+        let ssh = self.root().join("bin").join("ssh");
+        std::fs::write(&ssh, FAKE_SSH).unwrap();
+        std::fs::set_permissions(&ssh, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        home
+    }
+}
+
 impl Sandbox {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();

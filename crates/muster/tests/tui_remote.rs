@@ -25,29 +25,10 @@ use std::time::{Duration, Instant};
 use support::{Sandbox, daemon_pid};
 use ui::{StopDaemon, Ui};
 
-/// The stand-in machine: options dropped, the command run by `sh` with
-/// `HOME` the machine's and only the system's programs.
-const FAKE_SSH: &str = r#"#!/bin/sh
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -t|-T|-q) shift ;;
-    -o) shift 2 ;;
-    --) shift; break ;;
-    *) break ;;
-  esac
-done
-shift
-HOME="$FAKE_SSH_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" exec sh -c "$*"
-"#;
-
 #[tokio::test]
 async fn the_ui_shows_another_machine_s_muster_and_connects_again_arc_27() {
     let sandbox = Sandbox::new();
-    let home = sandbox.root().join("machine-home");
-    std::fs::create_dir_all(&home).unwrap();
-    let ssh = sandbox.root().join("bin").join("ssh");
-    std::fs::write(&ssh, FAKE_SSH).unwrap();
-    std::fs::set_permissions(&ssh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let home = sandbox.fake_ssh();
     let daemon = sandbox.start();
     let repository = sandbox.repository("app");
     let home_text = home.to_str().unwrap();
@@ -79,6 +60,15 @@ async fn the_ui_shows_another_machine_s_muster_and_connects_again_arc_27() {
     );
     ui.wait_for("on vm");
     ui.wait_for("app");
+    // The UI's ssh never asks: nobody could answer it there.
+    let calls = std::fs::read_to_string(sandbox.root().join("ssh-calls")).unwrap();
+    let bridge = calls
+        .lines()
+        .find(|call| call.contains("muster bridge"))
+        .unwrap();
+    for option in ["BatchMode=yes", "StrictHostKeyChecking=yes", "ControlPath="] {
+        assert!(bridge.contains(option), "{option}: {bridge}");
+    }
 
     // The machine's daemon goes; its bridge starts another as the UI
     // connects again, and the UI follows what changes there.
@@ -92,4 +82,38 @@ async fn the_ui_shows_another_machine_s_muster_and_connects_again_arc_27() {
     run(&["--on", "vm", "workspace", "add", "later", "-p", "app"]);
     ui.wait_for("later");
     ui.wait_for("on vm");
+}
+
+#[tokio::test]
+async fn an_ssh_that_cannot_never_writes_over_the_ui_arc_27() {
+    let sandbox = Sandbox::new();
+    let home = sandbox.fake_ssh();
+    let _daemon = sandbox.start();
+    let repository = sandbox.repository("app");
+    let saved = sandbox
+        .command()
+        .args(["machine", "add", "vm", "tester@vm.example"])
+        .output()
+        .unwrap();
+    assert!(saved.status.success());
+    std::fs::write(
+        sandbox.root().join("ssh-fails"),
+        "tester@vm.example: Permission denied (publickey).\n",
+    )
+    .unwrap();
+    let ui = Ui::start_with(
+        &sandbox,
+        &repository,
+        &[
+            ("MUSTER_MACHINE", "vm"),
+            ("FAKE_SSH_HOME", home.to_str().unwrap()),
+        ],
+    );
+    ui.wait_for("unreachable; reconnecting");
+    ui.wait_for("could not sign in to");
+    assert!(
+        !ui.text().contains("Permission denied (publickey)"),
+        "ssh's own words never over the UI:\n{}",
+        ui.text()
+    );
 }

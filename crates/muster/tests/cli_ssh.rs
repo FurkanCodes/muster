@@ -20,25 +20,9 @@ mod support;
 
 use std::path::PathBuf;
 use std::process::Output;
+use std::time::{Duration, Instant};
 
 use support::{BINARY, Daemon, Sandbox};
-
-/// The stand-in: options dropped, the host noted, the command run by `sh`
-/// with `HOME` the machine's and only the system's programs, as on a
-/// machine of its own.
-const FAKE_SSH: &str = r#"#!/bin/sh
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -t|-T|-q) shift ;;
-    -o) shift 2 ;;
-    --) shift; break ;;
-    *) break ;;
-  esac
-done
-host="$1"; shift
-echo "$host" >> "$FAKE_SSH_HOME/../ssh-hosts"
-HOME="$FAKE_SSH_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" exec sh -c "$*"
-"#;
 
 struct Setup {
     sandbox: Sandbox,
@@ -48,11 +32,7 @@ struct Setup {
 
 fn setup() -> Setup {
     let sandbox = Sandbox::new();
-    let home = sandbox.root().join("machine-home");
-    std::fs::create_dir_all(&home).unwrap();
-    let ssh = sandbox.root().join("bin").join("ssh");
-    std::fs::write(&ssh, FAKE_SSH).unwrap();
-    std::fs::set_permissions(&ssh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let home = sandbox.fake_ssh();
     let daemon = sandbox.start();
     Setup {
         sandbox,
@@ -135,10 +115,12 @@ async fn ssh_installs_only_when_told_then_runs_muster_there_arc_27() {
     let again = setup.run(&["ssh", "vm", "list", "machines"]);
     assert!(again.status.success(), "{}", text(&again.stderr));
     assert!(!text(&again.stderr).contains("Installed"));
-    let hosts = std::fs::read_to_string(setup.sandbox.root().join("ssh-hosts")).unwrap();
+    let calls = std::fs::read_to_string(setup.sandbox.root().join("ssh-calls")).unwrap();
     assert!(
-        hosts.lines().all(|host| host == "tester@vm.example"),
-        "{hosts}"
+        calls
+            .lines()
+            .all(|call| call.contains("-- tester@vm.example")),
+        "{calls}"
     );
 }
 
@@ -155,7 +137,7 @@ async fn on_a_machine_every_command_asks_its_muster_through_ssh_arc_27() {
     setup.run(&["machine", "add", "vm", "tester@vm.example"]);
     let installed = setup.run(&["ssh", "vm", "--install", "--check"]);
     assert!(installed.status.success(), "{}", text(&installed.stderr));
-    std::fs::remove_file(setup.sandbox.root().join("ssh-hosts")).unwrap();
+    std::fs::remove_file(setup.sandbox.root().join("ssh-calls")).unwrap();
 
     // Through the bridge there, the machine's daemon answers.
     let projects = setup.run(&["--on", "vm", "list", "projects"]);
@@ -182,8 +164,21 @@ async fn on_a_machine_every_command_asks_its_muster_through_ssh_arc_27() {
         text(&listed.stdout),
         text(&listed.stderr)
     );
-    let hosts = std::fs::read_to_string(setup.sandbox.root().join("ssh-hosts")).unwrap();
-    assert_eq!(hosts.lines().count(), 3, "each through ssh: {hosts}");
+    // Each through ssh, past the machine's greeting; none from a terminal
+    // here, so none may ask.
+    let calls = std::fs::read_to_string(setup.sandbox.root().join("ssh-calls")).unwrap();
+    assert_eq!(calls.lines().count(), 3, "each through ssh: {calls}");
+    for call in calls.lines() {
+        for option in [
+            "BatchMode=yes",
+            "ServerAliveInterval=5",
+            "ConnectTimeout=10",
+            "-C",
+        ] {
+            assert!(call.contains(option), "{option}: {call}");
+        }
+        assert!(call.contains("muster bridge"), "{call}");
+    }
 
     // This machine's folder means nothing there: where is named.
     let unnamed = setup.run(&["--on", "vm", "claude", "Fix it"]);
@@ -201,4 +196,76 @@ async fn on_a_machine_every_command_asks_its_muster_through_ssh_arc_27() {
         "{}",
         text(&here.stderr)
     );
+}
+
+#[tokio::test]
+async fn an_ssh_that_cannot_says_why_and_what_to_do_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    let fails = setup.sandbox.root().join("ssh-fails");
+    std::fs::write(
+        &fails,
+        "tester@vm.example: Permission denied (publickey).\n",
+    )
+    .unwrap();
+    let denied = setup.run(&["--on", "vm", "list", "projects"]);
+    assert!(!denied.status.success());
+    let said = text(&denied.stderr);
+    assert!(said.contains("ssh-add"), "{said}");
+    assert!(said.contains("muster ssh vm"), "{said}");
+    std::fs::write(&fails, "Host key verification failed.\n").unwrap();
+    let untrusted = text(&setup.run(&["--on", "vm", "list", "projects"]).stderr);
+    assert!(untrusted.contains("accept it"), "{untrusted}");
+    // No Muster there to answer: said, and how to put it there.
+    std::fs::remove_file(&fails).unwrap();
+    let missing = text(&setup.run(&["--on", "vm", "list", "projects"]).stderr);
+    assert!(missing.contains("--install"), "{missing}");
+}
+
+#[tokio::test]
+async fn the_person_s_forwarded_ssh_agent_reaches_sessions_there_arc_27() {
+    let setup = setup();
+    let repository = setup.sandbox.repository("app");
+    assert!(
+        setup
+            .run(&["project", "add", repository.to_str().unwrap()])
+            .status
+            .success()
+    );
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    setup.run(&["ssh", "vm", "--install", "--check"]);
+    setup.run(&["--on", "vm", "workspace", "add", "keys", "-p", "app"]);
+    // As the person's ssh forwards their agent: a socket of theirs.
+    let agent = setup.sandbox.root().join("agent.sock");
+    let _listening = std::os::unix::net::UnixListener::bind(&agent).unwrap();
+    let started = setup
+        .sandbox
+        .command()
+        .args(["--on", "vm", "term", "new", "--bg", "--in", "keys"])
+        .env("FAKE_SSH_HOME", &setup.home)
+        .env("SSH_AUTH_SOCK", &agent)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(started.status.success(), "{}", text(&started.stderr));
+    let link = setup.sandbox.paths().runtime_dir.join("ssh-agent.sock");
+    assert_eq!(std::fs::read_link(&link).unwrap(), agent);
+    setup.run(&[
+        "--on",
+        "vm",
+        "send",
+        "keys/1",
+        "echo",
+        "agent=$SSH_AUTH_SOCK",
+    ]);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let wanted = format!("agent={}", link.display());
+    loop {
+        let shown = text(&setup.run(&["--on", "vm", "logs", "keys/1"]).stdout);
+        if shown.contains(&wanted) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "no {wanted} in:\n{shown}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }

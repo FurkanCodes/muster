@@ -61,12 +61,14 @@ impl Outgoing {
 pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>) {
     let mut last_start: Option<Instant> = None;
     // Tries in a row that failed: another machine is tried again less and
-    // less often, up to [`FARTHEST_RETRY`], not every half second.
+    // less often, up to [`FARTHEST_RETRY`], not every half second. A link
+    // that falls again soon after it came counts as one more failure, so a
+    // flapping link is not tried at once each time.
     let mut failed: u32 = 0;
     loop {
         match connect(&options, &mut last_start).await {
             Ok(connection) => {
-                failed = 0;
+                let since = monotonic();
                 let (sender, receiver, welcome) = connection.into_split();
                 // Unbounded on purpose: the loop must never wait on a daemon
                 // that may be waiting for this client to read.
@@ -92,6 +94,11 @@ pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent
                 let Some(reason) = read_frames(receiver, &events).await else {
                     return;
                 };
+                failed = if monotonic().saturating_duration_since(since) >= HEALTHY {
+                    0
+                } else {
+                    failed.saturating_add(1)
+                };
                 if events.send(LinkEvent::Lost(reason)).await.is_err() {
                     return;
                 }
@@ -112,7 +119,11 @@ pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent
 }
 
 /// The longest another machine's link waits before it is tried again.
-const FARTHEST_RETRY: Duration = Duration::from_secs(8);
+const FARTHEST_RETRY: Duration = Duration::from_secs(15);
+
+/// How long a link must last for the next to be tried at once when it
+/// falls.
+const HEALTHY: Duration = Duration::from_secs(30);
 
 /// How long the link waits before connecting again, `failed` tries in a
 /// row having failed: half a second here; for another machine, twice as

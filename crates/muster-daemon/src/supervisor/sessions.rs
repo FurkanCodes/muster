@@ -151,6 +151,16 @@ impl Supervisor {
         Ok(Reply::SessionStarted { id })
     }
 
+    /// The person's ssh agent for a session on the host, where their ssh
+    /// forwarded one to this machine and `muster bridge` linked it in the
+    /// runtime folder (`ARC-27`); a link that leads nowhere is none.
+    fn ssh_agent(&self, on_host: bool) -> Option<std::path::PathBuf> {
+        self.hook_socket
+            .parent()
+            .map(|dir| dir.join(muster_core::machines::AGENT_LINK))
+            .filter(|link| on_host && link.exists())
+    }
+
     /// What `session` shows, or its agent last answered, as text: for
     /// `muster logs` and `muster wait`.
     pub(super) async fn read_session(&self, session: SessionId, what: Reading) -> Reply {
@@ -362,6 +372,7 @@ impl Supervisor {
                 false
             }
         });
+        let ssh_agent = self.ssh_agent(on_host);
         let spec = harness::spawn_spec(
             &harness,
             &harness::Launch {
@@ -374,6 +385,7 @@ impl Supervisor {
                 size,
                 checks,
                 support: hooked.then_some(support).flatten(),
+                ssh_agent,
             },
         );
         let events = self.pty_events.clone();
