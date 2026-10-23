@@ -190,6 +190,41 @@ async fn install(http: &reqwest::Client, base: &str) -> Result<Installed, String
     })
 }
 
+/// Release `version`'s muster for `target` (`x86_64-unknown-linux-gnu`),
+/// downloaded here and checked as an upgrade's is, for another machine
+/// (`muster ssh --install`), which then downloads nothing itself
+/// (`ARC-21`, `ARC-27`). `MUSTER_RELEASES` points elsewhere, for tests.
+pub(crate) async fn release_binary(version: &str, target: &str) -> Result<Vec<u8>, String> {
+    let (http, _) = client()?;
+    let base = std::env::var("MUSTER_RELEASES")
+        .unwrap_or_else(|_| format!("{REPOSITORY}/releases/download/v{version}"));
+    let archive = format!("muster-{target}.tar.gz");
+    eprintln!("Downloading {base}/{archive}");
+    let Some(bytes) = fetch_if_there(&http, &format!("{base}/{archive}")).await? else {
+        return Err(format!(
+            "release {version} has no muster for {target}: MUSTER_REMOTE_BINARY names a build \
+             of your own for it"
+        ));
+    };
+    let published = fetch(&http, &format!("{base}/{archive}.sha256")).await?;
+    if !matches(&bytes, &published) {
+        return Err(
+            "the download does not match its published checksum; nothing was installed there"
+                .to_owned(),
+        );
+    }
+    let unpacked = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let saved = unpacked.path().join(&archive);
+    std::fs::write(&saved, &bytes).map_err(|error| error.to_string())?;
+    say_attested(&saved).await?;
+    untar(&saved, unpacked.path())?;
+    let program = unpacked
+        .path()
+        .join(format!("muster-{target}"))
+        .join("muster");
+    std::fs::read(&program).map_err(|error| format!("the archive holds no muster: {error}"))
+}
+
 /// Checks the archive at `path` against the attestation GitHub made as the
 /// release workflow built it, where the GitHub CLI can; whether it could.
 /// A mismatch is an error: the download is not what the workflow built.

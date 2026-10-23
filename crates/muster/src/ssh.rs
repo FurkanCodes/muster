@@ -1,8 +1,9 @@
 //! Muster on a machine of the person's own, reached with their `ssh`
 //! (`PRODUCT.md` §6b): `muster machine add vm furkan@203.0.113.7` saves
 //! one, and `muster ssh vm` asks it what it has, installs Muster there
-//! after asking (a copy of this one where it runs the same build, else the
-//! release of this version from its own installer), says what is missing
+//! after asking (a copy of this one where it runs the same build, else
+//! this version's release for it, downloaded here and sent over ssh, so
+//! the machine needs only ssh), says what is missing
 //! for agents to work there, and opens its Muster through ssh: its UI, or
 //! one command (`muster ssh vm list agents`). Agents there keep working
 //! while the person's own computer sleeps.
@@ -166,7 +167,10 @@ pub(crate) struct Asked {
 }
 
 /// `muster ssh MACHINE [COMMAND…]`.
-pub(crate) fn run(paths: &Paths, asked: &Asked) -> Result<ExitCode, Box<dyn std::error::Error>> {
+pub(crate) async fn run(
+    paths: &Paths,
+    asked: &Asked,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let target = read_machines(paths)?.target(&asked.machine)?;
     let probe = Probe::read(&ask(&target, &probe_script())?);
     let system = probe.system.clone().unwrap_or_else(|| "?".to_owned());
@@ -194,7 +198,7 @@ pub(crate) fn run(paths: &Paths, asked: &Asked) -> Result<ExitCode, Box<dyn std:
                 .into());
             }
         } else {
-            install(&target, &probe)?;
+            install(&target, &probe).await?;
             remote = Some(REMOTE_BIN.to_owned());
             installed = true;
         }
@@ -228,15 +232,16 @@ pub(crate) fn run(paths: &Paths, asked: &Asked) -> Result<ExitCode, Box<dyn std:
     Err(format!("could not run ssh: {error}").into())
 }
 
-/// How Muster gets onto a machine with `probe`'s system: a copy of this
-/// one where it runs the same build, else this version's release.
+/// How Muster gets onto a machine with `probe`'s system (`install`).
 fn install_words(probe: &Probe) -> &'static str {
     if given_binary().is_some() {
         "the binary MUSTER_REMOTE_BINARY names, over ssh"
     } else if probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
         "a copy of this one, over ssh"
+    } else if probe.release_target().is_some() {
+        "its release for that system, downloaded here and checked, then sent over ssh"
     } else {
-        "its release, from GitHub, checked"
+        "its installer, run there, which builds it from source"
     }
 }
 
@@ -286,49 +291,20 @@ fn ssh(target: &str) -> std::process::Command {
     command
 }
 
-/// Installs this version on the machine: this binary copied over ssh and
-/// checked by its SHA-256 where it runs the same build, else the
-/// installer of this version's release run there (checksum-verified),
-/// then its daemon moved onto it if one runs (`PRD-09`).
-fn install(target: &str, probe: &Probe) -> Result<(), Box<dyn std::error::Error>> {
-    let given = given_binary();
-    if given.is_some() || probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
-        let exe = match given {
-            Some(given) => given,
-            None => std::env::current_exe()?,
-        };
-        let bytes = std::fs::read(&exe)
-            .map_err(|error| format!("cannot read {}: {error}", exe.display()))?;
-        let ours = muster_core::hex::encode(&sha2::Sha256::digest(&bytes));
-        let put = format!(
-            "mkdir -p \"$HOME/.local/bin\" && cat > \"{REMOTE_BIN}.part\" && chmod 755 \"{REMOTE_BIN}.part\" && mv \"{REMOTE_BIN}.part\" \"{REMOTE_BIN}\""
-        );
-        let mut child = ssh(target)
-            .arg(format!("sh -c {}", quoted(&put)))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .spawn()?;
-        child
-            .stdin
-            .take()
-            .ok_or("no way to send it")?
-            .write_all(&bytes)?;
-        if !child.wait()?.success() {
-            return Err("could not copy muster there".into());
-        }
-        let theirs = ask(
-            target,
-            &format!(
-                "s=$(shasum -a 256 \"{REMOTE_BIN}\" 2>/dev/null || sha256sum \"{REMOTE_BIN}\"); \
-                 echo \"muster-sha256:${{s%% *}}\"\n"
-            ),
-        )?;
-        let theirs = theirs
-            .lines()
-            .find_map(|line| line.trim().strip_prefix("muster-sha256:"));
-        if theirs != Some(ours.as_str()) {
-            return Err("the copy there is not this muster: it was changed on its way".into());
-        }
+/// Installs this version on the machine as a binary sent over ssh and
+/// checked there by its SHA-256: the one MUSTER_REMOTE_BINARY names, a copy
+/// of this one where it runs the same build, else this version's release
+/// for its system, downloaded and checked here, so the machine needs no
+/// internet or toolchain. Only a system Muster has no release for runs the
+/// release's installer there, which builds from source. Then its daemon
+/// is moved onto it if one runs (`PRD-09`).
+async fn install(target: &str, probe: &Probe) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = if let Some(given) = given_binary() {
+        read_binary(&given)?
+    } else if probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
+        read_binary(&std::env::current_exe()?)?
+    } else if let Some(release) = probe.release_target() {
+        crate::upgrade::release_binary(VERSION, &release).await?
     } else {
         let script = format!(
             "curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/v{VERSION}/install.sh | MUSTER_VERSION=v{VERSION} sh -s -- --no-app"
@@ -340,8 +316,55 @@ fn install(target: &str, probe: &Probe) -> Result<(), Box<dyn std::error::Error>
         if !status.success() {
             return Err("its installer failed there; what it said is above".into());
         }
+        return reloaded(target);
+    };
+    put(target, &bytes)?;
+    reloaded(target)
+}
+
+fn read_binary(path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    std::fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()).into())
+}
+
+/// Puts `bytes` on the machine as its muster, through ssh, and checks the
+/// copy there is them.
+fn put(target: &str, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let ours = muster_core::hex::encode(&sha2::Sha256::digest(bytes));
+    let put = format!(
+        "mkdir -p \"$HOME/.local/bin\" && cat > \"{REMOTE_BIN}.part\" && chmod 755 \"{REMOTE_BIN}.part\" && mv \"{REMOTE_BIN}.part\" \"{REMOTE_BIN}\""
+    );
+    let mut child = ssh(target)
+        .arg(format!("sh -c {}", quoted(&put)))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()?;
+    child
+        .stdin
+        .take()
+        .ok_or("no way to send it")?
+        .write_all(bytes)?;
+    if !child.wait()?.success() {
+        return Err("could not copy muster there".into());
     }
-    // A daemon running there moves onto it in place; none running is fine.
+    let theirs = ask(
+        target,
+        &format!(
+            "s=$(shasum -a 256 \"{REMOTE_BIN}\" 2>/dev/null || sha256sum \"{REMOTE_BIN}\"); \
+             echo \"muster-sha256:${{s%% *}}\"\n"
+        ),
+    )?;
+    let theirs = theirs
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("muster-sha256:"));
+    if theirs != Some(ours.as_str()) {
+        return Err("the copy there is not this muster: it was changed on its way".into());
+    }
+    Ok(())
+}
+
+/// Moves a daemon running there onto the new muster in place; none
+/// running is fine.
+fn reloaded(target: &str) -> Result<(), Box<dyn std::error::Error>> {
     let _ = ssh(target)
         .arg(format!(
             "sh -c {}",

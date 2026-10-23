@@ -175,7 +175,7 @@ muster --on vm attach fix-login/2       # a session there, straight in this tab
 muster --on vm                          # your own UI, on vm's agents; reconnects if the link drops
 ```
 
-To try a branch on a machine before it is released, `scripts/ssh-dev-build.sh you@host` builds this checkout there (it needs Rust on the machine), or `MUSTER_REMOTE_BINARY=/path/to/muster muster ssh vm --install` puts a build of yours there.
+`muster ssh vm --install` downloads the machine's release here, checks it, and sends it over ssh, so the machine needs only ssh. To try a branch on a Linux machine before it is released, `scripts/linux-build.sh` builds this checkout for Linux in Docker, and `MUSTER_REMOTE_BINARY=target/linux/muster-x86_64 muster ssh vm --install` puts it there.
 
 Tickets work the same way, in plain words:
 

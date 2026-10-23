@@ -1,7 +1,8 @@
 //! End-to-end tests for machines of the person's own (`PRODUCT.md` §6b,
 //! `ARC-27`): `muster machine add` and `muster list machines`, and `muster
 //! ssh` asking a machine what it has, installing Muster there only when
-//! told to (a copy of this one, checked), saying what agents need, and
+//! told to (a copy of this one, or the release for its system downloaded
+//! here, each checked), saying what agents need, and
 //! running Muster's command there. A stand-in `ssh` on `PATH` runs what it
 //! is given with `sh`, in a home of its own, as the machine.
 
@@ -21,6 +22,8 @@ mod support;
 use std::path::PathBuf;
 use std::process::Output;
 use std::time::{Duration, Instant};
+
+use sha2::Digest as _;
 
 use support::{BINARY, Daemon, Sandbox};
 
@@ -291,4 +294,136 @@ async fn a_binary_the_person_names_is_the_one_put_there_arc_27() {
         std::fs::read(setup.home.join(".local/bin/muster")).unwrap(),
         std::fs::read(&given).unwrap()
     );
+}
+
+/// Serves `files` by path on a local port, as a release's downloads are;
+/// its address.
+fn serve(files: Vec<(String, Vec<u8>)>) -> String {
+    use std::io::{BufRead as _, Write as _};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            let path = line
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or_default()
+                .to_owned();
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).is_err() || header.trim().is_empty() {
+                    break;
+                }
+            }
+            let body = files
+                .iter()
+                .find(|(at, _)| *at == path)
+                .map(|(_, body)| body);
+            let status = if body.is_some() {
+                "200 OK"
+            } else {
+                "404 Not Found"
+            };
+            let body = body.cloned().unwrap_or_default();
+            let head = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(&body);
+        }
+    });
+    address
+}
+
+/// A machine that says it is Linux on x86-64, whatever runs the tests,
+/// and a release of this version for it served on a local port, its
+/// checksum file saying `checksum` (the right one if `None`): the release's
+/// address and its program.
+fn linux_release(setup: &Setup, checksum: Option<&str>) -> (String, Vec<u8>) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let bin = setup.home.join(".local/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("uname"), "#!/bin/sh\necho 'Linux x86_64'\n").unwrap();
+    std::fs::set_permissions(bin.join("uname"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let version = text(
+        &setup
+            .sandbox
+            .command()
+            .arg("--version")
+            .output()
+            .unwrap()
+            .stdout,
+    );
+    let name = "muster-x86_64-unknown-linux-gnu";
+    let dir = setup.sandbox.root().join("release");
+    std::fs::create_dir_all(dir.join(name)).unwrap();
+    let program = format!("#!/bin/sh\necho '{}'\n", version.trim());
+    std::fs::write(dir.join(name).join("muster"), &program).unwrap();
+    let archive = dir.join(format!("{name}.tar.gz"));
+    let packed = std::process::Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&dir)
+        .arg(name)
+        .status()
+        .unwrap();
+    assert!(packed.success());
+    let bytes = std::fs::read(&archive).unwrap();
+    let right = muster_core::hex::encode(&sha2::Sha256::digest(&bytes));
+    let sum = format!("{}  {name}.tar.gz\n", checksum.unwrap_or(&right));
+    let base = serve(vec![
+        (format!("/{name}.tar.gz"), bytes),
+        (format!("/{name}.tar.gz.sha256"), sum.into_bytes()),
+    ]);
+    (base, program.into_bytes())
+}
+
+fn install_from(setup: &Setup, base: &str) -> Output {
+    setup
+        .sandbox
+        .command()
+        .args(["ssh", "vm", "--install", "--check"])
+        .env("FAKE_SSH_HOME", &setup.home)
+        .env("MUSTER_RELEASES", base)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn another_system_s_release_is_downloaded_here_and_sent_over_ssh_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    let (base, program) = linux_release(&setup, None);
+    let installed = install_from(&setup, &base);
+    assert!(installed.status.success(), "{}", text(&installed.stderr));
+    assert_eq!(
+        std::fs::read(setup.home.join(".local/bin/muster")).unwrap(),
+        program,
+        "the release's program, unpacked here"
+    );
+    // The machine downloaded nothing: no installer ran there.
+    let calls = std::fs::read_to_string(setup.sandbox.root().join("ssh-calls")).unwrap();
+    assert!(!calls.contains("install.sh"), "{calls}");
+}
+
+#[tokio::test]
+async fn a_release_that_does_not_match_its_checksum_is_never_sent_arc_21() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    let (base, _) = linux_release(&setup, Some(&"0".repeat(64)));
+    let refused = install_from(&setup, &base);
+    assert!(!refused.status.success());
+    assert!(
+        text(&refused.stderr).contains("published checksum"),
+        "{}",
+        text(&refused.stderr)
+    );
+    assert!(!setup.home.join(".local/bin/muster").exists());
 }

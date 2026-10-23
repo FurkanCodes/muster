@@ -191,24 +191,34 @@ impl Probe {
     /// `linux`, `macos`; `x86_64`, `aarch64`), so a binary of that build
     /// runs there as it is.
     pub fn same_build(&self, os: &str, arch: &str) -> bool {
-        let Some(system) = &self.system else {
-            return false;
-        };
-        let mut words = system.split_whitespace();
-        let (Some(kernel), Some(machine)) = (words.next(), words.next()) else {
-            return false;
-        };
-        let kernel = match kernel {
+        self.platform() == Some((os, arch))
+    }
+
+    /// Its system and processor as Rust names them (`linux`, `x86_64`),
+    /// where they are ones Muster is built for.
+    fn platform(&self) -> Option<(&'static str, &'static str)> {
+        let mut words = self.system.as_deref()?.split_whitespace();
+        let kernel = match words.next()? {
             "Linux" => "linux",
             "Darwin" => "macos",
-            _ => return false,
+            _ => return None,
         };
-        let machine = match machine {
+        let machine = match words.next()? {
             "x86_64" | "amd64" => "x86_64",
             "aarch64" | "arm64" => "aarch64",
-            _ => return false,
+            _ => return None,
         };
-        kernel == os && machine == arch
+        Some((kernel, machine))
+    }
+
+    /// The target a release builds for it (`x86_64-unknown-linux-gnu`),
+    /// named as the release's archives are: `muster-<target>.tar.gz`.
+    pub fn release_target(&self) -> Option<String> {
+        let (os, arch) = self.platform()?;
+        Some(match os {
+            "linux" => format!("{arch}-unknown-linux-gnu"),
+            _ => format!("{arch}-apple-darwin"),
+        })
     }
 
     /// Whether its `muster` is missing or older than `version`.
@@ -277,6 +287,26 @@ mod tests {
         assert_eq!(nothing.muster, None);
         assert!(nothing.needs("0.1.0"));
         assert!(nothing.same_build("macos", "aarch64"));
+    }
+
+    #[test]
+    fn a_machine_s_release_is_named_by_its_target_arc_27() {
+        let target =
+            |system: &str| Probe::read(&format!("muster-probe:system={system}\n")).release_target();
+        assert_eq!(
+            target("Linux x86_64").as_deref(),
+            Some("x86_64-unknown-linux-gnu")
+        );
+        assert_eq!(
+            target("Linux aarch64").as_deref(),
+            Some("aarch64-unknown-linux-gnu")
+        );
+        assert_eq!(
+            target("Darwin arm64").as_deref(),
+            Some("aarch64-apple-darwin")
+        );
+        assert_eq!(target("FreeBSD amd64"), None);
+        assert_eq!(target("Linux riscv64"), None);
     }
 
     #[test]

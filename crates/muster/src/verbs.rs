@@ -284,17 +284,20 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
             check,
             dir,
             words,
-        } => crate::ssh::run(
-            paths,
-            &crate::ssh::Asked {
-                machine,
-                install,
-                no_install,
-                check,
-                dir,
-                words,
-            },
-        ),
+        } => {
+            crate::ssh::run(
+                paths,
+                &crate::ssh::Asked {
+                    machine,
+                    install,
+                    no_install,
+                    check,
+                    dir,
+                    words,
+                },
+            )
+            .await
+        }
         Verb::Rename { session, name } => terminals::rename(paths, &session, &name).await,
         Verb::Close { session, yes } => terminals::close(paths, &session, yes).await,
         Verb::Init { shell } => return Then::Exit(init::run(paths, shell).await),
