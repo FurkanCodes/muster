@@ -17,7 +17,7 @@ use crate::commands::{self, shown};
 /// paste and Enter as one paste would take the Enter as a new line in it.
 const BEFORE_ENTER: Duration = Duration::from_millis(150);
 /// How long the terminal has to say how it takes keys.
-const MODES_WAIT: Duration = Duration::from_secs(5);
+pub(crate) const MODES_WAIT: Duration = Duration::from_secs(5);
 
 pub(crate) async fn send(
     paths: &Paths,
@@ -111,7 +111,7 @@ fn sendable(session: &Session, force: bool) -> Result<(), String> {
 
 /// Types `text` into `session`'s terminal as a paste, as its program takes
 /// one, then Enter if `enter`.
-async fn type_into(
+pub(crate) async fn type_into(
     connection: &mut Connection,
     session: SessionId,
     text: &str,
@@ -132,7 +132,7 @@ async fn type_into(
 
 /// How `session`'s program takes keys, as its stream says after its
 /// replay.
-async fn modes(
+pub(crate) async fn modes(
     connection: &mut Connection,
     session: SessionId,
 ) -> Result<TerminalModes, Box<dyn std::error::Error>> {
@@ -161,7 +161,7 @@ pub(crate) fn paste(text: &str, modes: TerminalModes) -> Vec<u8> {
 }
 
 /// Enter, as the program takes keys: kitty's form where it asked for it.
-fn enter_key(modes: TerminalModes) -> &'static [u8] {
+pub(crate) fn enter_key(modes: TerminalModes) -> &'static [u8] {
     if modes.kitty_flags == 0 {
         b"\r"
     } else {

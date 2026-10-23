@@ -9,7 +9,7 @@
 
 import table from "../ipc/generated/keys.json";
 import type { PluginInfo } from "../ipc/generated/PluginInfo";
-import { type Chord, chordLabel, domChord, parseChord, sameChord, untyped } from "./chord";
+import { type Chord, chordLabel, domChord, inTab, parseChord, sameChord, untyped } from "./chord";
 
 /** Where a key is pressed, as the table names it. */
 export type KeyScreen =
@@ -18,7 +18,8 @@ export type KeyScreen =
   | "tickets"
   | "settings"
   | "changes"
-  | "in_session";
+  | "in_session"
+  | "in_tab";
 
 export interface KeyAction {
   /** Its name in `[keys]`. */
@@ -110,6 +111,7 @@ export function panelsOf(plugins: readonly PluginInfo[]): PanelAction[] {
 export type Refusal =
   | { kind: "kept"; key: string; used: string }
   | { kind: "typed"; key: string }
+  | { kind: "in_tab"; key: string }
   | { kind: "taken"; key: string; other: string };
 
 /** What reads in the person's keys but does nothing (`KeysWarning`). */
@@ -194,6 +196,7 @@ function check(
   const used = keptAs(chord);
   if (used) return { kind: "kept", key, used };
   if (action.screens.includes("in_session") && !untyped(chord)) return { kind: "typed", key };
+  if (action.screens.includes("in_tab") && !inTab(chord)) return { kind: "in_tab", key };
   const other = takenBy(keys, action, chord);
   if (other) return { kind: "taken", key, other: other.name };
   const panel = action.screens.some((screen) => SESSION_LISTS.includes(screen))
@@ -419,6 +422,8 @@ function refusalWords(refusal: Refusal): string {
       return `${refusal.key} is ${refusal.used}, which is the same on every screen`;
     case "typed":
       return `${refusal.key} would never reach a session's program; a key there needs ⌃ or ⌥, or is a capital letter`;
+    case "in_tab":
+      return `${refusal.key} cannot be told from typing in a terminal tab; a key there is a letter with ⌃ or ⌥`;
     case "taken":
       return `${refusal.key} is ${refusal.other}'s on the same screen`;
   }
@@ -435,6 +440,8 @@ export function refusalText(map: Keymap, refusal: Refusal): string {
       return `${refusal.key} is ${refusal.used}, the same on every screen. Press another key.`;
     case "typed":
       return `${refusal.key} would reach the program as typing. A key inside a terminal needs ⌃ or ⌥, or is a capital letter. Press another key.`;
+    case "in_tab":
+      return `${refusal.key} cannot be told from typing in a terminal tab. A key there is a letter with ⌃ or ⌥. Press another key.`;
     case "taken":
       return `${refusal.key} already does “${capital(whatOf(map, refusal.other))}” on this screen. Press another key.`;
   }

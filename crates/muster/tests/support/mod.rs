@@ -394,6 +394,7 @@ impl Sandbox {
             .env("MUSTER_NOTCH", "off")
             // Not inside a Muster session, whatever the tests run in.
             .env_remove("MUSTER_SESSION")
+            .env_remove("MUSTER_TERMINAL")
             .env("CLAUDE_CODE_OAUTH_TOKEN", "")
             .env("ANTHROPIC_API_KEY", "")
             // As if the daemon were started from inside an agent session,

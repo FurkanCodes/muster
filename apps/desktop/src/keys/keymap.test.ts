@@ -119,6 +119,13 @@ describe("setting a key", () => {
     expect(checkKey(defaultKeymap(), "leave_session", chord("alt-q"))).toBeNull();
     expect(checkKey(defaultKeymap(), "fold_list", chord("Z"))).toBeNull();
   });
+
+  it("leaves a terminal tab only on a letter with ⌃ or ⌥", () => {
+    for (const key of ["Q", "f2", "ctrl-]"]) {
+      expect(checkKey(defaultKeymap(), "leave_tab", chord(key))?.kind, key).toBe("in_tab");
+    }
+    expect(checkKey(defaultKeymap(), "leave_tab", chord("alt-x"))).toBeNull();
+  });
 });
 
 describe("plugins' panels", () => {

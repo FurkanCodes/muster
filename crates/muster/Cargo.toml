@@ -11,6 +11,7 @@ homepage = "https://github.com/FurkanCodes/muster"
 
 [dependencies]
 clap.workspace = true
+crossterm.workspace = true
 muster-client.workspace = true
 muster-core.workspace = true
 muster-daemon.workspace = true

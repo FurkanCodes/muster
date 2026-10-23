@@ -532,6 +532,18 @@ fn commands() -> Vec<Command> {
             into: PathBuf::from("/Users/you/code"),
         },
         Command::Reveal { session },
+        Command::Switch {
+            from: session,
+            to: SessionId::new(),
+        },
+        Command::AssignTicket {
+            workspace,
+            key: Some(TicketKey::parse("APP-7").unwrap()),
+        },
+        Command::AssignTicket {
+            workspace,
+            key: None,
+        },
         Command::ChangePreference(PreferenceChange::Notch(false)),
         Command::ChangePreference(PreferenceChange::SideBySideFrom(0)),
         Command::ChangePreference(PreferenceChange::Palette(Palette::Terminal)),

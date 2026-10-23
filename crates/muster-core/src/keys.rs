@@ -34,6 +34,10 @@ pub enum Screen {
     /// A session's terminal, while it has the keys: every key not an
     /// action here goes to its program.
     InSession,
+    /// A session shown straight in a terminal tab of the person's own
+    /// (`muster attach`, `muster enter`): every key but this screen's goes
+    /// to its program.
+    InTab,
 }
 
 impl Screen {
@@ -46,6 +50,7 @@ impl Screen {
             Self::Settings => "Settings",
             Self::Changes => "In the changes",
             Self::InSession => "In a session",
+            Self::InTab => "In a terminal tab",
         }
     }
 }
@@ -178,6 +183,8 @@ actions! {
     ChangesHelp "changes_help" &[Screen::Changes], ["?"], "these keys";
     LeaveSession "leave_session" &[Screen::InSession, Screen::Changes], ["Q", "ctrl-]"],
         "back to the list (or a click on it)";
+    LeaveTab "leave_tab" &[Screen::InTab], ["ctrl-q"],
+        "back to the session shown before in the tab, else to your own shell (the session keeps running)";
 }
 
 impl Action {
@@ -257,6 +264,11 @@ pub enum KeysError {
          or alt, or is a capital letter"
     )]
     Typed { action: String, key: String },
+    #[error(
+        "keys.{action}: {key} cannot be told from typing in a terminal tab; a key there is a \
+         letter with ctrl or alt"
+    )]
+    InTab { action: String, key: String },
 }
 
 impl Chord {
@@ -363,6 +375,13 @@ impl Chord {
     /// Ctrl or Alt, or a capital letter.
     fn untyped(self) -> bool {
         self.ctrl || self.alt || matches!(self.key, Key::Char(c) if c.is_ascii_uppercase())
+    }
+
+    /// Whether a terminal tab can tell it from typing, in what the person's
+    /// terminal sends whatever keyboard mode the program asked for: a
+    /// lower-case letter with Ctrl or Alt.
+    pub fn in_tab(self) -> bool {
+        (self.ctrl || self.alt) && matches!(self.key, Key::Char(c) if c.is_ascii_lowercase())
     }
 }
 
@@ -520,6 +539,10 @@ impl Keymap {
         if action.screens().contains(&Screen::InSession) && !chord.untyped() {
             let (action, key) = named();
             return Err(KeysError::Typed { action, key });
+        }
+        if action.screens().contains(&Screen::InTab) && !chord.in_tab() {
+            let (action, key) = named();
+            return Err(KeysError::InTab { action, key });
         }
         let other = self
             .taken(action, chord)
@@ -733,6 +756,26 @@ mod tests {
         );
         // On screens they never share, two actions may have one key.
         assert!(Keymap::with(&set(&[("refresh_tickets", &["n"])])).is_ok());
+    }
+
+    #[test]
+    fn a_terminal_tab_is_left_on_a_letter_with_ctrl_or_alt_prd_6b() {
+        let keys = Keymap::default();
+        assert_eq!(
+            keys.action(Screen::InTab, Chord::parse("ctrl-q").unwrap()),
+            Some(Action::LeaveTab)
+        );
+        assert_eq!(Action::LeaveTab.group(), "In a terminal tab");
+        assert!(Keymap::with(&set(&[("leave_tab", &["alt-x"])])).is_ok());
+        for typed in ["Q", "x", "f2", "ctrl-]"] {
+            assert!(
+                matches!(
+                    Keymap::with(&set(&[("leave_tab", &[typed])])),
+                    Err(KeysError::InTab { .. })
+                ),
+                "{typed}"
+            );
+        }
     }
 
     #[test]
