@@ -1304,7 +1304,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "muster"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "clap",
  "crossterm",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "muster-client"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "muster-core",
  "serde",
@@ -1341,7 +1341,7 @@ dependencies = [
 
 [[package]]
 name = "muster-core"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "proptest",
  "rmp-serde",
@@ -1357,7 +1357,7 @@ dependencies = [
 
 [[package]]
 name = "muster-daemon"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "axum",
  "base64",
@@ -1386,14 +1386,14 @@ dependencies = [
 
 [[package]]
 name = "muster-model"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "muster-core",
 ]
 
 [[package]]
 name = "muster-notch"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "block2",
  "dispatch2",
@@ -1412,7 +1412,7 @@ dependencies = [
 
 [[package]]
 name = "muster-state"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "muster-core",
  "proptest",
@@ -1422,7 +1422,7 @@ dependencies = [
 
 [[package]]
 name = "muster-tui"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "base64",
  "crossterm",
