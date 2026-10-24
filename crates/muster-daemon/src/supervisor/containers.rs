@@ -57,7 +57,7 @@ impl Supervisor {
     /// Fetches the runs' credential off the loop, then carries on with
     /// `purpose` in [`on_credential`](Self::on_credential).
     pub(super) fn fetch_credential(&self, purpose: Purpose) {
-        let (requests, credentials) = (self.requests.clone(), self.credentials.clone());
+        let (requests, credentials) = (self.requests.clone(), self.systems.credentials.clone());
         self.tasks.spawn(async move {
             let secret = credentials.claude().await;
             let fetched = CredentialFetched { secret, purpose };
@@ -398,7 +398,7 @@ impl Supervisor {
             .and_then(|active| active.context.container.clone())
             .ok_or_else(|| ErrorBody::new(ErrorCode::Conflict, "the run's container is gone"))?;
         Ok(Place::Container {
-            docker: self.docker.clone(),
+            docker: self.systems.docker.clone(),
             container,
             secret,
         })
@@ -430,7 +430,7 @@ impl Supervisor {
             .get(&run)
             .and_then(|active| active.context.container.clone())
         {
-            self.work.stop_session(container, session);
+            self.systems.work.stop_session(container, session);
         }
     }
 

@@ -24,13 +24,3 @@
   font-size: 12px;
   line-height: 18px;
 }
-.mu-term-dim {
-  color: var(--text-quiet);
-}
-.mu-term-cursor {
-  background: var(--text);
-  color: var(--surface-term);
-}
-.mu-term-select {
-  background: var(--text-selection);
-}

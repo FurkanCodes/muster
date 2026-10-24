@@ -6,49 +6,26 @@
 // daemon clones it into a folder of its name there and adds it; where the
 // app has no panel (its tests' build, the mock), a field asks instead.
 
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useId, useState } from "react";
 import { useActions, useApp } from "../app/context";
 import type { HostedRepository } from "../ipc/generated/HostedRepository";
 import { whenKnown } from "../state/whenKnown";
-import { Button } from "../ui/controls";
-import { Dialog } from "../ui/Dialog";
+import { Dialog, DialogAnswers } from "../ui/Dialog";
 import { FolderOption } from "../ui/FolderOption";
 import { Label } from "../ui/Label";
 import { Loading } from "../ui/Loading";
 import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
-import { said } from "./actions";
 import { folderOf, repositoryName, shownRepositories } from "./repositories";
 import { useTask } from "./useTask";
 import "./flows.css";
-
-type Listing =
-  | { state: "asking" }
-  | { state: "listed"; repositories: HostedRepository[] }
-  | { state: "failed"; error: string };
+import { ask } from "../ipc/ask";
+import { type Asked, useAsked } from "../ipc/useAsked";
 
 /** The repositories the person can reach, asked of the daemon once as the dialog opens. */
-function useListing(): Listing {
+function useListing(): Asked<HostedRepository[]> {
   const app = useApp();
-  const [listing, setListing] = useState<Listing>({ state: "asking" });
-  useEffect(() => {
-    let current = true;
-    app.bridge.command("ListRepositories").then(
-      (reply) => {
-        if (!current) return;
-        if (typeof reply === "object" && "Repositories" in reply)
-          setListing({ state: "listed", repositories: reply.Repositories });
-        else setListing({ state: "failed", error: "The daemon answered something else." });
-      },
-      (error: unknown) => {
-        if (current) setListing({ state: "failed", error: said(error) });
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [app]);
-  return listing;
+  return useAsked(() => ask(app.bridge, "ListRepositories", "Repositories"), "repositories");
 }
 
 export default function CloneProject() {
@@ -61,7 +38,7 @@ export default function CloneProject() {
   /** Where to clone it, typed, where the app has no panel to ask in. */
   const [into, setInto] = useState<string | null>(null);
   const task = useTask();
-  const shown = listing.state === "listed" ? shownRepositories(listing.repositories, typed) : [];
+  const shown = listing.state === "answered" ? shownRepositories(listing.value, typed) : [];
   const chosen = at === null ? null : (shown[at] ?? null);
   const target = chosen?.name ?? repositoryName(typed);
 
@@ -74,10 +51,12 @@ export default function CloneProject() {
     setAt(next.trim() ? 0 : null);
   };
   const cloneInto = async (name: string, folder: string) => {
-    const reply = await app.bridge.command({ CloneProject: { repository: name, into: folder } });
-    if (typeof reply !== "object" || !("ProjectAdded" in reply))
-      throw new Error("The daemon answered something else; try again.");
-    const project = reply.ProjectAdded.id;
+    const reply = await ask(
+      app.bridge,
+      { CloneProject: { repository: name, into: folder } },
+      "ProjectAdded",
+    );
+    const project = reply.id;
     actions.openFlow(null);
     actions.show("all");
     whenKnown(app, "projects", project, () => {
@@ -122,26 +101,13 @@ export default function CloneProject() {
       onAccept={() => void submit()}
       onKeyDown={onKeyDown}
       actions={
-        <>
-          <Button
-            variant="secondary"
-            size="lg"
-            title="Cancel (⎋)"
-            disabled={task.busy}
-            onClick={close}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            title={`${start} (⏎)`}
-            busy={task.busy}
-            onClick={() => void submit()}
-          >
-            {task.busy ? `Cloning ${target ?? ""}…` : start}
-          </Button>
-        </>
+        <DialogAnswers
+          does={start}
+          doing={`Cloning ${target ?? ""}…`}
+          busy={task.busy}
+          onCancel={close}
+          onDo={() => void submit()}
+        />
       }
     >
       <TextField

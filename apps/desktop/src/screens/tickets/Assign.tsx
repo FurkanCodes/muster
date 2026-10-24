@@ -1,18 +1,19 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon } from "../../app/context";
+import { ask } from "../../ipc/ask";
 import type { Issue } from "../../ipc/generated/Issue";
-import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
-import { agentOf } from "../../lib/agents";
+import { useAsked } from "../../ipc/useAsked";
+import { agentOf, OWN } from "../../lib/agents";
+import { errorText } from "../../lib/text";
 import { whenKnown } from "../../state/whenKnown";
 import { AgentChoice } from "../../ui/AgentChoice";
-import { Button } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { Dialog, DialogAnswers } from "../../ui/Dialog";
 import { Select } from "../../ui/Select";
 import { BranchName, ErrorText } from "../../ui/status";
 import { Field } from "../../ui/TextField";
 import { shownKey, ticketBranch, worktreesFor } from "./agents";
-import { givenWords, message, TEXT_ALONE, type TicketsModel, ticketId } from "./data";
+import { givenWords, TEXT_ALONE, type TicketsModel, ticketId } from "./data";
 import { ticketText } from "./TicketText";
 
 export function Assign({
@@ -40,7 +41,7 @@ export function Assign({
   const names = useDaemon(useShallow((s) => projects.map((id) => s.projects[id]?.name ?? "?")));
   const last = model.store.getState().lastAgent;
   const offered = [
-    ...["claude", "codex", "gemini", "opencode", "copilot"].map((id) => ({
+    ...OWN.map((id) => ({
       id,
       name: agentOf(id).name,
     })),
@@ -66,24 +67,15 @@ export function Assign({
     return remembered && projects.includes(remembered) ? remembered : (projects[0] ?? "");
   });
   const [on, setOn] = useState("");
-  const [settings, setSettings] = useState<ProjectSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let current = true;
-    void bridge
-      .command({ ProjectSettings: { project } })
-      .then((reply) => {
-        if (current && typeof reply === "object" && "ProjectSettings" in reply)
-          setSettings(reply.ProjectSettings);
-      })
-      .catch((error) => {
-        if (current) setError(message(error));
-      });
-    return () => {
-      current = false;
-    };
-  }, [bridge, project]);
+  const read = useAsked(
+    () => ask(bridge, { ProjectSettings: { project } }, "ProjectSettings"),
+    project,
+  );
+  const settings = read.state === "answered" ? read.value : null;
+  // Why it cannot start, or why the project's settings could not be read.
+  const said = error ?? (read.state === "failed" ? read.error : null);
   const existing = worktreesFor(workspaces, [project], issue.key);
   const stacking = another || existing.length === 0;
   // The daemon gives another agent `…-2`, `…-3`: the first branch nobody has.
@@ -111,7 +103,6 @@ export function Assign({
   const chooseProject = (id: string) => {
     setProject(id);
     setOn("");
-    setSettings(null);
   };
   const step = <T,>(list: readonly T[], current: T, by: number) =>
     list[(list.indexOf(current) + by + list.length) % list.length] ?? current;
@@ -119,25 +110,30 @@ export function Assign({
     if (busy) return;
     setBusy(true);
     setError(null);
+    // Worked out before the daemon is asked, as the compiler wants it.
+    const startOn = stacking && on ? on : null;
     try {
-      const reply = await bridge.command({
-        StartFromIssue: {
-          project,
-          key: issue.key,
-          harness: agent,
-          size: { rows: 24, cols: 80 },
-          another: ownOne,
-          on: stacking && on ? on : null,
-          brief,
+      const reply = await ask(
+        bridge,
+        {
+          StartFromIssue: {
+            project,
+            key: issue.key,
+            harness: agent,
+            size: { rows: 24, cols: 80 },
+            another: ownOne,
+            on: startOn,
+            brief,
+          },
         },
-      });
-      if (typeof reply !== "object" || !("IssueStarted" in reply))
-        throw new Error("The daemon did not return its agent.");
+        "IssueStarted",
+        "The daemon did not return its agent.",
+      );
       model.store.setState((s) => ({
         lastAgent: agent,
         lastProjects: source ? { ...s.lastProjects, [source]: project } : s.lastProjects,
       }));
-      const session = reply.IssueStarted.session;
+      const session = reply.session;
       actions.show("all");
       // Selected once the daemon has told it, which it does after its answer.
       whenKnown(app, "sessions", session, () => {
@@ -148,7 +144,7 @@ export function Assign({
       actions.tell(`Started ${name} on ${shownKey(issue.key)}.`);
       onClose();
     } catch (error) {
-      setError(message(error));
+      setError(errorText(error));
       setBusy(false);
     }
   }
@@ -199,28 +195,15 @@ export function Assign({
         }
       }}
       actions={
-        <>
-          <Button
-            variant="secondary"
-            size="lg"
-            disabled={busy}
-            onClick={onClose}
-            title="Cancel (⎋)"
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            data-dialog-initial
-            disabled={busy}
-            busy={busy}
-            onClick={() => void start()}
-            title={`Start ${name} (⏎)`}
-          >
-            {busy ? "Starting…" : `Start ${name}`}
-          </Button>
-        </>
+        <DialogAnswers
+          does={`Start ${name}`}
+          doing="Starting…"
+          busy={busy}
+          disabled={busy}
+          initial
+          onCancel={onClose}
+          onDo={() => void start()}
+        />
       }
     >
       <Field label="Agent" hint="⇥ goes round the agents.">
@@ -272,7 +255,7 @@ export function Assign({
         {name} gets {brief ? givenWords(brief) : "the ticket"} as its first prompt, marked as a
         description of the work, never as instructions.
       </p>
-      {error ? <ErrorText>{error}</ErrorText> : null}
+      {said ? <ErrorText>{said}</ErrorText> : null}
     </Dialog>
   );
 }

@@ -31,44 +31,22 @@ pub fn set_flag(
     key: &str,
     value: bool,
 ) -> Result<String, EditError> {
-    set_flag_in(text, NEW_FILE, table, key, value)
+    set_in(text, NEW_FILE, table, key, value)
 }
 
-/// [`set_flag`] in a file of another kind: a new one starts with
-/// `new_file`, saying what it is.
-pub fn set_flag_in(
+/// [`set_flag`] in a file of another kind, which starts with `new_file`
+/// when there is none yet, and for any value: a flag, a number, a text.
+pub fn set_in(
     text: Option<&str>,
     new_file: &str,
     table: &str,
     key: &str,
-    value: bool,
+    value: impl Into<toml_edit::Value>,
 ) -> Result<String, EditError> {
-    set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
+    set_texts_or_values(text, new_file, table, [(key, Some(value.into()))])
 }
 
-/// [`set_flag_in`] for a whole number.
-pub fn set_number_in(
-    text: Option<&str>,
-    new_file: &str,
-    table: &str,
-    key: &str,
-    value: i64,
-) -> Result<String, EditError> {
-    set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
-}
-
-/// [`set_flag_in`] for a text.
-pub fn set_text_in(
-    text: Option<&str>,
-    new_file: &str,
-    table: &str,
-    key: &str,
-    value: &str,
-) -> Result<String, EditError> {
-    set_value_in(text, new_file, table, key, toml_edit::Value::from(value))
-}
-
-/// [`set_flag_in`] for a list of texts, written on one line.
+/// [`set_in`] for a list of texts, written on one line.
 pub fn set_list_in(
     text: Option<&str>,
     new_file: &str,
@@ -77,7 +55,7 @@ pub fn set_list_in(
     values: &[String],
 ) -> Result<String, EditError> {
     let list: toml_edit::Array = values.iter().map(String::as_str).collect();
-    set_value_in(text, new_file, table, key, toml_edit::Value::Array(list))
+    set_in(text, new_file, table, key, list)
 }
 
 /// `text` without `[table] key`, and without the table if nothing is left
@@ -86,9 +64,7 @@ pub fn remove_in(text: Option<&str>, table: &str, key: &str) -> Result<String, E
     let Some(text) = text else {
         return Ok(String::new());
     };
-    let mut document: toml_edit::DocumentMut = text
-        .parse()
-        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
+    let mut document = parse(text)?;
     let emptied = match document
         .get_mut(table)
         .and_then(|item| item.as_table_like_mut())
@@ -122,43 +98,6 @@ pub fn remove_table_in(text: Option<&str>, table: &str) -> Result<String, EditEr
     Ok(document.to_string())
 }
 
-/// `[table] key` set to `value` in `text`, as [`set_flag_in`] says.
-fn set_value_in(
-    text: Option<&str>,
-    new_file: &str,
-    table: &str,
-    key: &str,
-    value: toml_edit::Value,
-) -> Result<String, EditError> {
-    let mut document: toml_edit::DocumentMut = text
-        .unwrap_or_default()
-        .parse()
-        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
-    let item = document.entry(table).or_insert_with(toml_edit::table);
-    let Some(entries) = item.as_table_like_mut() else {
-        return Err(EditError::NotATable(table.to_owned()));
-    };
-    if let Some(existing) = entries.get_mut(key) {
-        let Some(written) = existing.as_value_mut() else {
-            return Err(EditError::NotAValue(format!("{table}.{key}")));
-        };
-        let decor = written.decor().clone();
-        *written = value;
-        *written.decor_mut() = decor;
-    } else {
-        entries.insert(key, toml_edit::Item::Value(value));
-        // A table written inline is spaced afresh, or its last value's
-        // spacing would come before the new one's comma.
-        if let Some(inline) = item.as_inline_table_mut() {
-            inline.fmt();
-        }
-    }
-    Ok(match text {
-        Some(_) => document.to_string(),
-        None => format!("{new_file}\n{document}"),
-    })
-}
-
 /// `text`, the overrides as they are (`None` when there is no file yet),
 /// with each `[table] key` of `values` set to its text, or taken out where
 /// it has none. Values already there keep their comments; a table left
@@ -179,26 +118,53 @@ pub fn set_texts_in(
     table: &str,
     values: &[(&str, Option<&str>)],
 ) -> Result<String, EditError> {
-    let mut document: toml_edit::DocumentMut = text
-        .unwrap_or_default()
-        .parse()
-        .map_err(|error: toml_edit::TomlError| EditError::Syntax(error.message().to_owned()))?;
+    let values = values
+        .iter()
+        .map(|(key, value)| (*key, value.map(toml_edit::Value::from)));
+    set_texts_or_values(text, new_file, table, values)
+}
+
+/// `text` with each `[table] key` of `values` set, or taken out where it
+/// has none, as [`set_texts`] says.
+fn set_texts_or_values<'a>(
+    text: Option<&str>,
+    new_file: &str,
+    table: &str,
+    values: impl IntoIterator<Item = (&'a str, Option<toml_edit::Value>)>,
+) -> Result<String, EditError> {
+    let mut document = parse(text.unwrap_or_default())?;
     let item = document.entry(table).or_insert_with(toml_edit::table);
     let Some(entries) = item.as_table_like_mut() else {
         return Err(EditError::NotATable(table.to_owned()));
     };
+    set_each(entries, table, values)?;
+    // A table written inline is spaced afresh, or a value's spacing would
+    // come before the next one's comma.
+    if let Some(inline) = item.as_inline_table_mut() {
+        inline.fmt();
+    }
+    Ok(written(text, new_file, &document))
+}
+
+/// Sets each key of `values` in `entries`, at `path`, or takes it out
+/// where it has none; a value already there keeps its comment.
+fn set_each<'a>(
+    entries: &mut dyn toml_edit::TableLike,
+    path: &str,
+    values: impl IntoIterator<Item = (&'a str, Option<toml_edit::Value>)>,
+) -> Result<(), EditError> {
     for (key, value) in values {
         match (entries.get_mut(key), value) {
             (Some(existing), Some(value)) => {
                 let Some(written) = existing.as_value_mut() else {
-                    return Err(EditError::NotAValue(format!("{table}.{key}")));
+                    return Err(EditError::NotAValue(format!("{path}.{key}")));
                 };
                 let decor = written.decor().clone();
-                *written = toml_edit::Value::from(*value);
+                *written = value;
                 *written.decor_mut() = decor;
             }
             (None, Some(value)) => {
-                entries.insert(key, toml_edit::value(*value));
+                entries.insert(key, toml_edit::Item::Value(value));
             }
             (Some(_), None) => {
                 entries.remove(key);
@@ -206,15 +172,16 @@ pub fn set_texts_in(
             (None, None) => {}
         }
     }
-    // A table written inline is spaced afresh, or a value's spacing would
-    // come before the next one's comma.
-    if let Some(inline) = item.as_inline_table_mut() {
-        inline.fmt();
-    }
-    Ok(match text {
+    Ok(())
+}
+
+/// The file as `document` writes it: after `new_file`'s first lines where
+/// there was none (`text`).
+fn written(text: Option<&str>, new_file: &str, document: &toml_edit::DocumentMut) -> String {
+    match text {
         Some(_) => document.to_string(),
         None => format!("{new_file}\n{document}"),
-    })
+    }
 }
 
 /// A value written into a table within a table.
@@ -267,25 +234,10 @@ pub fn set_entry_in(
     let Some(entry) = item.as_table_like_mut() else {
         return Err(EditError::NotATable(path));
     };
-    for (key, value) in values {
-        match (entry.get_mut(key), value) {
-            (Some(existing), Some(value)) => {
-                let Some(written) = existing.as_value_mut() else {
-                    return Err(EditError::NotAValue(format!("{path}.{key}")));
-                };
-                let decor = written.decor().clone();
-                *written = toml_edit::Value::from(*value);
-                *written.decor_mut() = decor;
-            }
-            (None, Some(value)) => {
-                entry.insert(key, toml_edit::Item::Value(toml_edit::Value::from(*value)));
-            }
-            (Some(_), None) => {
-                entry.remove(key);
-            }
-            (None, None) => {}
-        }
-    }
+    let values = values
+        .iter()
+        .map(|(key, value)| (*key, value.map(toml_edit::Value::from)));
+    set_each(entry, &path, values)?;
     // A table written inline is spaced afresh, or a value's spacing would
     // come before the next one's comma.
     if let Some(inline) = item.as_inline_table_mut() {
@@ -297,10 +249,7 @@ pub fn set_entry_in(
     {
         inline.fmt();
     }
-    Ok(match text {
-        Some(_) => document.to_string(),
-        None => format!("{new_file}\n{document}"),
-    })
+    Ok(written(text, new_file, &document))
 }
 
 /// `text` without `[table.name]` and all in it, and without `[table]` if

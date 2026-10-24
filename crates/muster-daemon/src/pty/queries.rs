@@ -100,6 +100,13 @@ enum State {
     OscEscape {
         poisoned: bool,
     },
+    /// Inside a DCS, APC, PM or SOS string, which asks nothing of the
+    /// terminal Muster answers and may carry another program's sequences
+    /// (tmux's passthrough, a picture's data): passed over to its end.
+    Str,
+    /// Saw ESC inside such a string: `\` ends it, a second ESC is one
+    /// doubled, as a passthrough writes it.
+    StrEscape,
 }
 
 #[derive(Debug)]
@@ -266,6 +273,7 @@ impl QueryScanner {
                 self.osc.clear();
                 State::Osc { poisoned: false }
             }
+            State::Escape if is_string_start(byte) => State::Str,
             State::Escape => {
                 // RIS (`ESC c`) puts every mode back to its default.
                 if byte == b'c' {
@@ -326,6 +334,15 @@ impl QueryScanner {
                     self.osc.push(byte);
                     State::Osc { poisoned }
                 }
+            },
+            State::Str => match byte {
+                ESC => State::StrEscape,
+                0x18 | 0x1a => State::Ground,
+                _ => State::Str,
+            },
+            State::StrEscape => match byte {
+                b'\\' => State::Ground,
+                _ => State::Str,
             },
             // Handled above.
             State::OscEscape { .. } => State::Ground,
@@ -488,6 +505,12 @@ pub(super) fn number(digits: &[u8]) -> Option<u32> {
     std::str::from_utf8(digits).ok()?.parse().ok()
 }
 
+/// Whether `byte`, after ESC, begins a string the terminal Muster answers
+/// for passes over: DCS (`P`), SOS (`X`), PM (`^`) or APC (`_`).
+pub(super) const fn is_string_start(byte: u8) -> bool {
+    matches!(byte, b'P' | b'X' | b'^' | b'_')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,6 +526,14 @@ mod tests {
         let version = concat!("\x1bP>|muster(", env!("CARGO_PKG_VERSION"), ")\x1b\\");
         let expected = [b"\x1b[?0u".as_slice(), b"\x1b[?6c", version.as_bytes()].concat();
         assert_eq!(answers.replies, bytes(&expected));
+    }
+
+    #[test]
+    fn a_question_inside_another_program_s_string_is_not_ours_to_answer() {
+        let mut scanner = QueryScanner::default();
+        let carried = scanner.scan(b"\x1bPtmux;\x1b\x1b[c\x1b\\\x1b_Ga=q;\x1b[c\x1b\\");
+        assert!(carried.replies.is_empty(), "{:?}", carried.replies);
+        assert_eq!(scanner.scan(b"\x1b[c").replies, bytes(b"\x1b[?6c"));
     }
 
     #[test]

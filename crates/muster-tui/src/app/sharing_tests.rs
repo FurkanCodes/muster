@@ -117,7 +117,7 @@ fn agent(app: &mut App, project: &Project, branch: &str, created: i64) {
 
 /// Selects `row` on the Tickets screen.
 fn select(app: &mut App, row: &TicketRow) {
-    while app.tickets_selected.as_ref() != Some(row) {
+    while app.tickets.selected.as_ref() != Some(row) {
         press(app, KeyCode::Down);
     }
 }
@@ -185,7 +185,7 @@ fn an_agent_on_a_shared_ticket_starts_in_the_project_chosen_offered_first_next_t
         [Command::StartFromIssue {
             project: api.id,
             key: key("APP-7"),
-            harness: HarnessChoice::Claude.id().to_owned(),
+            harness: HarnessChoice::CLAUDE.id().to_owned(),
             size: PANE,
             another: false,
             on: None,

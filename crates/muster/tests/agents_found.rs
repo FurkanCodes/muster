@@ -18,6 +18,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -138,11 +140,7 @@ async fn each_agent_is_found_on_the_daemon_s_path_and_asked_its_version_at_once_
     // And killed as the deadline passed.
     for slow in ["codex", "opencode"] {
         let pid = pid_of(&bin, slow);
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while runs(pid) && Instant::now() < deadline {
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-        assert!(!runs(pid), "{slow} still runs");
+        wait::until_async(&format!("{slow} to be killed"), async || !runs(pid)).await;
     }
     assert!(!bin.join("agents.ran").exists());
     // Asked again, they are asked again: nothing is kept or polled between.

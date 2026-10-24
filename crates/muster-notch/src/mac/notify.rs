@@ -33,8 +33,11 @@ define_class!(
     #[ivars = mpsc::Sender<FromScreen>]
     struct NotifyDelegate;
 
+    // SAFETY: an NSObject subclass conforms to NSObjectProtocol.
     unsafe impl NSObjectProtocol for NotifyDelegate {}
 
+    // SAFETY: the protocol's methods it implements keep their signatures,
+    // each below; the others are optional.
     unsafe impl UNUserNotificationCenterDelegate for NotifyDelegate {
         // SAFETY: the protocol's `userNotificationCenter:
         // didReceiveNotificationResponse:withCompletionHandler:`, its

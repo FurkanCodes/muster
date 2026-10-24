@@ -11,11 +11,12 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod cells;
 mod clipboard;
 mod colours;
 mod folders;
 mod input;
-mod keys;
+pub mod keys;
 mod layout;
 mod model;
 mod motion;

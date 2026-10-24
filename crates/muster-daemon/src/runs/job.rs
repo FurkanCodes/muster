@@ -306,20 +306,20 @@ pub(crate) mod tests {
 
     async fn until_over(job: &Job, docker: &Docker, container: &str) -> (Vec<u8>, i32) {
         let mut output = Vec::new();
-        for _ in 0..200 {
+        let code = crate::waiting::found("the job to end", async || {
             let progress = job
                 .look(docker, container, output.len() as u64)
                 .await
                 .unwrap();
             output.extend(progress.output);
             match progress.state {
-                JobState::Ended(code) => return (output, code),
+                JobState::Ended(code) => Some(code),
                 JobState::Lost => panic!("the job was lost"),
-                JobState::Running => {}
+                JobState::Running => None,
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        panic!("the job never ended");
+        })
+        .await;
+        (output, code)
     }
 
     /// The sleeps of `seconds` running in the container, not the shells
@@ -383,7 +383,10 @@ pub(crate) mod tests {
             .start(&docker, name, &naps, &[], b"", 0)
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        crate::waiting::until("both jobs' sleeps to start", async || {
+            sleeping(&docker, name, "600").await == 2 && sleeping(&docker, name, "500").await == 2
+        })
+        .await;
         stop_before(&docker, name, 3).await.unwrap();
         let (output, code) = until_over(&long, &docker, name).await;
         assert!(output.is_empty());
@@ -419,7 +422,10 @@ pub(crate) mod tests {
         job.start(&docker, name, &["sleep", "600"], &[], b"", 0)
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        crate::waiting::until("its sleep to start", async || {
+            sleeping(&docker, name, "600").await == 1
+        })
+        .await;
 
         // The container restarts under it: its files stay, its processes go,
         // and their ids may be anyone's now.

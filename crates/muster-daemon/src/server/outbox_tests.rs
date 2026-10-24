@@ -8,6 +8,7 @@ use muster_client::FramedRead;
 use muster_core::protocol::{DetachReason, Reply, TerminalModes};
 
 use super::*;
+use crate::waiting;
 
 fn output(session: SessionId, seq: u64, len: usize) -> ServerFrame {
     ServerFrame::Output {
@@ -315,7 +316,7 @@ async fn read_slowly(reader: tokio::io::DuplexStream, session: SessionId) -> See
             break;
         }
         if read < 300 {
-            tokio::time::sleep(Duration::from_millis(1)).await;
+            waiting::passes(Duration::from_millis(1), "a client slow to read").await;
         }
         let frame: ServerFrame = reader.next().await.unwrap().expect("the stream's end");
         match frame {
@@ -373,7 +374,7 @@ async fn a_client_reading_slowly_gets_every_reply_in_order_and_its_output_from_t
                 .send(ServerFrame::Reply { req_id, outcome })
                 .await
                 .unwrap();
-            tokio::time::sleep(Duration::from_millis(2)).await;
+            waiting::passes(Duration::from_millis(2), "replies apart in time").await;
         }
     });
 

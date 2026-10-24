@@ -16,7 +16,9 @@
 
 mod support;
 
-use std::time::{Duration, Instant};
+use support::wait;
+
+use std::time::Duration;
 
 use muster_client::Connection;
 use muster_core::protocol::{Command, Reply, TermSize};
@@ -59,15 +61,10 @@ async fn named(
     session: SessionId,
     wanted: impl Fn(&str) -> bool,
 ) -> String {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let now = name(connection, session).await;
-        if wanted(&now) {
-            return now;
-        }
-        assert!(Instant::now() < deadline, "named {now:?}");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait::found_async("the name wanted", async || {
+        Some(name(connection, session).await).filter(|now| wanted(now))
+    })
+    .await
 }
 
 #[tokio::test]
@@ -101,8 +98,12 @@ async fn a_shell_is_named_by_what_runs_in_it_until_the_person_names_it() {
         panic!("expected Done");
     };
     connection.input(shell, b"sleep 2\n").await.unwrap();
-    tokio::time::sleep(Duration::from_millis(800)).await;
-    assert_eq!(name(&mut connection, shell).await, "Dev server");
+    wait::holds_async(
+        "the person's name",
+        Duration::from_millis(800),
+        async || name(&mut connection, shell).await == "Dev server",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -149,16 +150,11 @@ async fn a_worktree_s_shell_ends_with_it_but_an_agent_at_work_keeps_it() {
     else {
         panic!("expected Done");
     };
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        match connection.command(remove.clone()).await {
-            Ok(_) => break,
-            Err(error) => {
-                assert!(Instant::now() < deadline, "{error}");
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        }
-    }
+    wait::until_async(
+        "the worktree to be removed once its agent stopped",
+        async || connection.command(remove.clone()).await.is_ok(),
+    )
+    .await;
     let snapshot = connection.subscribe().await.unwrap();
     assert!(snapshot.sessions.iter().all(|session| session.id != shell));
     assert!(snapshot.workspaces.iter().all(|found| found.id != worktree));

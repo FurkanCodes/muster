@@ -100,7 +100,7 @@ impl Supervisor {
             }
         };
         let overrides = place.overrides.clone();
-        let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
+        let (requests, trackers) = (self.requests.clone(), self.systems.trackers.clone());
         self.tasks.spawn(async move {
             let prepared = async {
                 let config = settings_for_runs(root.clone(), overrides).await?;
@@ -303,8 +303,9 @@ impl Supervisor {
     }
 
     /// Where the person's overrides of `project`'s settings live.
-    fn overrides_of(&self, project: ProjectId) -> PathBuf {
-        self.config_dir
+    pub(super) fn overrides_of(&self, project: ProjectId) -> PathBuf {
+        self.paths
+            .config_dir
             .join("projects")
             .join(format!("{project}.toml"))
     }
@@ -365,7 +366,9 @@ impl Supervisor {
                     };
                     let mut context = active.context.clone();
                     context.cost_micros = active.machine.cost_micros();
-                    self.work.start(context, work, self.run_reports.clone());
+                    self.systems
+                        .work
+                        .start(context, work, self.run_reports.clone());
                 }
             }
         }
@@ -470,7 +473,7 @@ impl Supervisor {
             if let Report::Container(container) = report {
                 // Made by work the run's end overtook: it goes too.
                 tracing::info!(%run, %container, "removing the container of a run that ended");
-                self.work.remove_containers_of(vec![run]);
+                self.systems.work.remove_containers_of(vec![run]);
             }
             return;
         };
@@ -497,7 +500,8 @@ impl Supervisor {
     pub(super) fn check_pull_requests(&self) {
         for active in self.active_runs.values() {
             if active.context.pr.is_some() {
-                self.work
+                self.systems
+                    .work
                     .check_pull_request(active.context.clone(), self.run_reports.clone());
             }
         }
@@ -541,10 +545,7 @@ impl Supervisor {
             let Some(root) = self.project_root(run.project) else {
                 continue;
             };
-            let overrides = self
-                .config_dir
-                .join("projects")
-                .join(format!("{}.toml", run.project));
+            let overrides = self.overrides_of(run.project);
             let (config, unusable) = match settings_for_runs(root.clone(), overrides).await {
                 Ok(config) => (config, None),
                 Err(error) => {
@@ -604,7 +605,7 @@ impl Supervisor {
             .filter(|run| run.stage.is_over())
             .map(|run| run.id)
             .collect();
-        self.work.remove_containers_of(ended);
+        self.systems.work.remove_containers_of(ended);
     }
 
     /// The run going on `number` in `project`, if one is.
@@ -630,14 +631,7 @@ impl Supervisor {
     /// The workspace whose work a run is to take over: one of the
     /// project's, on the host, on a branch no run has.
     fn hand_off(&self, project: ProjectId, workspace: WorkspaceId) -> Result<HandOff, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if found.project != project {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,

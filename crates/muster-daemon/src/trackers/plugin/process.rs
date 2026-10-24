@@ -219,6 +219,8 @@ impl Process {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            // A group of its own, so what it starts is stopped with it.
+            .process_group(0)
             .kill_on_drop(true);
         if let Some(folder) = &self.spec.folder {
             command.current_dir(folder);
@@ -391,6 +393,10 @@ async fn drive(
     let mut next_id: u64 = 1;
     let mut said = vec![0; 4096];
     let mut stderr_open = true;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-30: the plugin's process is let go after `idle` unused, a timer reset by each request"
+    )]
     let unused = tokio::time::sleep(driving.idle);
     tokio::pin!(unused);
     let end = loop {
@@ -446,7 +452,7 @@ async fn drive(
             .and_then(Result::ok)
     };
     if status.is_none() {
-        let _ = child.kill().await;
+        kill_group(&mut child).await;
     }
     if stderr_open {
         // The rest of what it said as it ended.
@@ -485,4 +491,15 @@ async fn write(stdin: &mut ChildStdin, id: u64, call: &Call) -> std::io::Result<
         .write_all(ticket_protocol::request_line(id, call).as_bytes())
         .await?;
     stdin.flush().await
+}
+
+/// Kills `child` and whatever it started, its process group.
+async fn kill_group(child: &mut Child) {
+    if let Some(group) = child.id().and_then(|pid| i32::try_from(pid).ok()) {
+        let _ = nix::sys::signal::killpg(
+            nix::unistd::Pid::from_raw(group),
+            nix::sys::signal::Signal::SIGKILL,
+        );
+    }
+    let _ = child.kill().await;
 }

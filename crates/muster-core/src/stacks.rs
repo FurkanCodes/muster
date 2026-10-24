@@ -7,9 +7,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The protocol version that knows stacked work.
-pub const STACKS_PROTOCOL: u32 = 28;
-
 /// The branch a workspace's branch is stacked on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -23,9 +20,8 @@ pub struct Stacked {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::Reply;
     use crate::time::Timestamp;
-    use crate::timeline::{Entry, EntryKind, Timeline, entry_message, parse_entry};
+    use crate::timeline::{Entry, EntryKind, entry_message, parse_entry};
 
     fn moved() -> Entry {
         Entry {
@@ -44,27 +40,5 @@ mod tests {
     #[test]
     fn a_move_is_kept_as_an_entry_and_read_back() {
         assert_eq!(parse_entry(&entry_message(&moved())), Some(moved()));
-    }
-
-    #[test]
-    fn an_older_client_is_told_a_move_as_edits_between_turns() {
-        let reply = || {
-            Reply::Timeline(Timeline {
-                entries: vec![moved()],
-            })
-        };
-        let kind = |reply: Reply| match reply {
-            Reply::Timeline(timeline) => timeline.entries[0].kind.clone(),
-            other => panic!("{other:?}"),
-        };
-        assert_eq!(
-            kind(reply().for_version(super::STACKS_PROTOCOL - 1)),
-            EntryKind::Between
-        );
-        assert_eq!(
-            kind(reply().for_version(super::STACKS_PROTOCOL)),
-            moved().kind
-        );
-        assert_eq!(Reply::Pong.for_version(1), Reply::Pong);
     }
 }

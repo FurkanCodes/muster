@@ -25,7 +25,7 @@ use muster_core::protocol::{Command, Reply, TermSize};
 use muster_core::{ProjectId, SessionId, SessionStatus, WorkspaceId};
 use muster_desktop::contract::{BridgeError, LinkState, Row, frame};
 use muster_desktop::link::{Link, Looking, Options, START_WAIT};
-use support::{Sandbox, Screen, Webview};
+use support::{Sandbox, Screen, Webview, wait};
 
 /// A link to `sandbox`'s daemon that never starts one, its webview open.
 fn link_to(sandbox: &Sandbox) -> (Link, Webview) {
@@ -203,7 +203,11 @@ async fn typing_into_a_terminal_reaches_its_program_and_its_output_comes_back_as
         None,
     )
     .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait::passes_async(
+        Duration::from_millis(200),
+        "the new size to reach the terminal, which nothing says",
+    )
+    .await;
     link.input(shell, b"stty size\r".to_vec()).unwrap();
     screen.until_shows("33 101").await;
 
@@ -260,12 +264,20 @@ async fn a_session_asking_the_person_shows_its_question_while_the_window_is_seen
         focused: None,
     })
     .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait::passes_async(
+        Duration::from_millis(200),
+        "the daemon told the window is hidden",
+    )
+    .await;
     webview.take_waiting();
     let patches = webview.patches;
     link.input(codex, b"echo more-$((1+1))\r".to_vec()).unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    assert_eq!(webview.take_waiting(), 0, "nothing while hidden");
+    wait::holds_async(
+        "nothing sent while hidden",
+        Duration::from_millis(500),
+        async || webview.take_waiting() == 0,
+    )
+    .await;
     assert_eq!(webview.patches, patches);
     link.looking(Looking::default()).unwrap();
     webview
@@ -319,8 +331,11 @@ async fn the_link_says_the_daemon_is_out_of_reach_and_comes_back_with_it() {
 
     // Retried every half second: once a daemon answers, the state comes
     // whole again.
-    tokio::time::sleep(Duration::from_millis(1200)).await;
-    webview.take_waiting();
+    wait::holds_async("down since then", Duration::from_millis(1200), async || {
+        webview.take_waiting();
+        matches!(&webview.link, Some(LinkState::Down { since: still, .. }) if *still == since)
+    })
+    .await;
     assert!(
         matches!(&webview.link, Some(LinkState::Down { since: still, .. }) if *still == since),
         "down since it was first lost"
@@ -396,17 +411,17 @@ async fn try_now_starts_the_daemon_again_at_once_however_lately_it_was_started_a
         .await;
     // Trying every half second, it starts the daemon once in each
     // START_AGAIN_AFTER: not again a second later.
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    wait::holds_async("started once", Duration::from_secs(1), async || {
+        starts.load(Ordering::SeqCst) == 1
+    })
+    .await;
     link.try_now();
-    let started_again = tokio::time::timeout(Duration::from_secs(2), async {
-        while starts.load(Ordering::SeqCst) < 2 {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+    let started_again = wait::within_async(Duration::from_secs(2), async || {
+        (starts.load(Ordering::SeqCst) >= 2).then_some(())
     })
     .await;
     assert!(
-        started_again.is_ok(),
+        started_again.is_some(),
         "Try now did not start the daemon again"
     );
 }
@@ -431,7 +446,11 @@ async fn a_daemon_that_will_not_start_is_said_so_while_it_stays_out_of_reach_arc
     // START_AGAIN_AFTER: the reason stays why it could not start, never
     // turning to the connection's own words between starts, longer than
     // a wait for a daemon starting (START_WAIT) would take.
-    tokio::time::sleep(START_WAIT + Duration::from_secs(1)).await;
+    wait::passes_async(
+        START_WAIT + Duration::from_secs(1),
+        "longer than a start would take",
+    )
+    .await;
     webview.take_waiting();
     let reasons: Vec<&str> = webview
         .links

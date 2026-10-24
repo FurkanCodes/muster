@@ -17,7 +17,7 @@ use super::{App, Tickets};
 impl App {
     /// Where a project's tickets come from, if they can be shared.
     fn source_of(&self, project: ProjectId) -> Option<&str> {
-        match self.tickets.get(&project)? {
+        match self.tickets.by_project.get(&project)? {
             Tickets::Loaded {
                 source: Some(source),
                 ..
@@ -64,7 +64,7 @@ impl App {
     pub(super) fn project_to_offer(&self, project: ProjectId) -> ProjectId {
         let sharing = self.sharing(project);
         self.source_of(project)
-            .and_then(|source| self.ticket_projects.get(source))
+            .and_then(|source| self.tickets.projects.get(source))
             .copied()
             .filter(|chosen| sharing.contains(chosen))
             .unwrap_or_else(|| self.lead(project))
@@ -74,7 +74,7 @@ impl App {
     /// tickets, to offer it first next time.
     pub(super) fn remember_project(&mut self, project: ProjectId, chosen: ProjectId) {
         if let Some(source) = self.source_of(project).map(str::to_owned) {
-            self.ticket_projects.insert(source, chosen);
+            self.tickets.projects.insert(source, chosen);
         }
     }
 

@@ -9,11 +9,13 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useBridge, useDaemon, useUi } from "../../app/context";
+import { replyAs } from "../../ipc/ask";
 import type { Command } from "../../ipc/generated/Command";
 import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import type { PluginPreview } from "../../ipc/generated/PluginPreview";
 import type { ProjectId } from "../../ipc/generated/ProjectId";
 import { useKeymap } from "../../keys/useKeymap";
+import { errorText, oneLine } from "../../lib/text";
 import { projectsInOrder } from "../../state/selectors";
 import { agentIds } from "./agentList";
 import {
@@ -26,25 +28,14 @@ import {
   type SettingsValue,
 } from "./context";
 import { keyEntries, narrowed } from "./keyRows";
-import {
-  DELEGATION_PROTOCOL,
-  keptRow,
-  movedRow,
-  rowKey,
-  rowName,
-  SHARED_BUILDS_PROTOCOL,
-  settingRows,
-} from "./model";
+import { keptRow, movedRow, rowKey, rowName, settingRows } from "./model";
 import { isFolder, pluginOrder } from "./pluginWords";
 import { chosenTracker, fieldsFor, offeredTrackers } from "./trackers";
-import { oneLine, problemText } from "./words";
+import { problemText } from "./words";
 
 const NO_AGENTS: never[] = [];
 
 /** The message of a refusal, as the daemon wrote it. */
-function said(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** What approving a preview is doing, for the note meanwhile. */
 function doing(preview: PluginPreview): string {
@@ -98,12 +89,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
   const added = useDaemon((state) => state.preferences?.agents ?? NO_AGENTS);
   const plugins = useDaemon((state) => state.plugins);
-  const sharedBuilds = useDaemon(
-    (state) => state.link.state === "up" && state.link.protocol >= SHARED_BUILDS_PROTOCOL,
-  );
-  const delegation = useDaemon(
-    (state) => state.link.state === "up" && state.link.protocol >= DELEGATION_PROTOCOL,
-  );
+  const sharedBuilds = useDaemon((state) => state.link.state === "up");
+  const delegation = useDaemon((state) => state.link.state === "up");
   const map = useKeymap();
   const [projects, setProjects] = useState<ReadonlyMap<ProjectId, Read>>(() => new Map());
   const [drafts, setDrafts] = useState<ReadonlyMap<ProjectId, Draft>>(() => new Map());
@@ -114,6 +101,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [reads, setReads] = useState(0);
   const registry = useRef(new Map<string, RefObject<RowBehaviour>>());
   const focusFollows = useRef(false);
+  // Made once, so a row's effect that asks follows the selection alone.
+  const [focus] = useState(() => ({
+    followFocus: () => {
+      focusFollows.current = true;
+    },
+    takesFocus: () => {
+      const takes = focusFollows.current;
+      focusFollows.current = false;
+      return takes;
+    },
+  }));
   // The preview waited for: an answer to any other is dropped.
   const asked = useRef(0);
   const settingsAsks = useRef<SettingsAsks>(new Map());
@@ -141,7 +139,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const selected = keptRow(rows, wanted);
 
   const send = (command: Command) => bridge.command(command);
-  const fail = (error: unknown) => ui.tell(said(error), true);
+  const fail = (error: unknown) => ui.tell(errorText(error), true);
   const hold = (row: string, held: boolean) =>
     setBusy((now) => {
       const next = new Set(now);
@@ -168,17 +166,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const number = asking(settingsAsks.current, project);
       bridge.command({ ProjectSettings: { project } }).then(
         (reply) => {
-          if (
-            typeof reply === "object" &&
-            "ProjectSettings" in reply &&
-            newest(settingsAsks.current, project, number)
-          ) {
-            const settings = reply.ProjectSettings;
+          const settings = replyAs(reply, "ProjectSettings");
+          if (settings && newest(settingsAsks.current, project, number)) {
             setProjects((now) => new Map(now).set(project, { state: "loaded", settings }));
           }
         },
         (error: unknown) =>
-          setProjects((now) => new Map(now).set(project, { state: "failed", error: said(error) })),
+          setProjects((now) =>
+            new Map(now).set(project, { state: "failed", error: errorText(error) }),
+          ),
       );
     }
   }, [bridge, projectIds, projects]);
@@ -201,19 +197,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     send(command).then(
       (reply) => {
         if (asked.current !== request) return;
-        if (typeof reply === "object" && "PluginPreview" in reply) {
-          setDialog({ step: "preview", preview: reply.PluginPreview });
-        }
+        const preview = replyAs(reply, "PluginPreview");
+        if (preview) setDialog({ step: "preview", preview });
       },
       (error: unknown) => {
-        if (asked.current === request) setDialog(refused(said(error)));
+        if (asked.current === request) setDialog(refused(errorText(error)));
       },
     );
   };
 
   const value: SettingsValue = {
     state: { rows, selected, busy, projects, drafts, find, waiting, dialog, reads },
-    meta: { focusFollows, registry },
+    meta: { ...focus, registry },
     actions: {
       select: (key) => {
         // A key waited for is the selected row's alone.
@@ -254,12 +249,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           .then(
             (reply) => {
               // Out of date, its words with it: a newer answer says how things stand.
-              if (
-                typeof reply === "object" &&
-                "ProjectSettings" in reply &&
-                newest(settingsAsks.current, project, number)
-              ) {
-                const settings = reply.ProjectSettings;
+              const settings = replyAs(reply, "ProjectSettings");
+              if (settings && newest(settingsAsks.current, project, number)) {
                 setProjects((now) => new Map(now).set(project, { state: "loaded", settings }));
                 setDrafts((now) => {
                   if (now.get(project) !== from) return now;

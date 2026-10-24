@@ -21,7 +21,7 @@ impl App {
         self.plugin_stream.session = None;
         // A new daemon knows nothing of where the keys are.
         self.focus_told = None;
-        self.pending.clear();
+        self.requests.pending.clear();
         // Asked of the last daemon, never answered: asked again.
         self.forget_unanswered();
         // A new connection is a new daemon, which numbers its terminals'
@@ -32,11 +32,11 @@ impl App {
         let mut actions = vec![Action::Send(ClientFrame::Subscribe)];
         actions.extend(self.looking());
         // Programs in sessions asking their terminal's colours are told the
-        // person's, by a daemon that knows how (`ARC-09`).
-        if self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL
-            && !self.colours.is_empty()
-        {
-            actions.push(Action::Send(ClientFrame::Colours(self.colours.clone())));
+        // person's.
+        if !self.person.colours.is_empty() {
+            actions.push(Action::Send(ClientFrame::Colours(
+                self.person.colours.clone(),
+            )));
         }
         actions
     }
@@ -47,10 +47,10 @@ impl App {
         self.shell_stream.session = None;
         self.plugin_stream.session = None;
         self.focus_told = None;
-        self.pending.clear();
+        self.requests.pending.clear();
         self.forget_unanswered();
         self.forget_plugin_fetch();
-        self.plugin_changing = None;
+        self.settings.plugin_changing = None;
         // The reason takes lines from the list.
         self.keep_in_view();
     }
@@ -66,6 +66,12 @@ impl App {
                 | ServerFrame::Delta(Delta::Preferences(_) | Delta::PluginsChanged(_))
         );
         let sources = settings.then(|| tickets::ticket_sources(self.model.plugins()));
+        // A terminal's output and modes change its screen alone: nothing
+        // to settle, and they come many times a second.
+        let screen_only = matches!(
+            frame,
+            ServerFrame::Output { .. } | ServerFrame::Modes { .. }
+        );
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
             ServerFrame::Delta(delta) => {
@@ -144,6 +150,9 @@ impl App {
             }
             actions.push(Action::Copy(text));
         }
+        if screen_only {
+            return actions;
+        }
         actions.extend(self.start_notch());
         actions.extend(self.settle());
         actions
@@ -171,7 +180,7 @@ impl App {
     /// they are looking elsewhere and want to be told.
     pub(super) fn news(&self, session: SessionId) -> Option<Action> {
         // Muster's helper tells the person with the Mac's own notifications.
-        if !self.notify || self.focused != Some(false) || self.model.notifier() {
+        if !self.alarms.notify || self.person.focused != Some(false) || self.model.notifier() {
             return None;
         }
         if !self.model.preferences().notifications {
@@ -198,7 +207,7 @@ impl App {
     /// news; looking back watches it again, and on the Tickets screen tries
     /// again what could not be fetched.
     pub(crate) fn on_focus(&mut self, focused: bool) -> Vec<Action> {
-        self.focused = Some(focused);
+        self.person.focused = Some(focused);
         let mut actions = match self.attached {
             Some(session) if matches!(self.link, Link::Connected { .. }) => {
                 vec![Action::Send(ClientFrame::Watch {
@@ -222,7 +231,7 @@ impl App {
         reason = "one arm for each reply the daemon can send"
     )]
     fn on_reply(&mut self, req_id: u64, outcome: Result<Reply, ErrorBody>) -> Vec<Action> {
-        let Some(then) = self.pending.remove(&req_id) else {
+        let Some(then) = self.requests.pending.remove(&req_id) else {
             return Vec::new();
         };
         match (outcome, then) {
@@ -265,7 +274,7 @@ impl App {
                 }),
                 Then::Tickets(project),
             ) => {
-                self.tickets.insert(
+                self.tickets.by_project.insert(
                     project,
                     Tickets::Loaded {
                         tickets: issues,
@@ -276,14 +285,18 @@ impl App {
                 );
             }
             (Err(error), Then::Tickets(project)) => {
-                self.tickets.insert(project, Tickets::Failed(error.message));
+                self.tickets
+                    .by_project
+                    .insert(project, Tickets::Failed(error.message));
             }
             (Ok(Reply::IssueViewed { body, comments, .. }), Then::TicketText(project, key)) => {
-                self.ticket_texts
+                self.tickets
+                    .texts
                     .insert((project, key), TicketText::Loaded { body, comments });
             }
             (Err(error), Then::TicketText(project, key)) => {
-                self.ticket_texts
+                self.tickets
+                    .texts
                     .insert((project, key), TicketText::Failed(error.message));
             }
             (Ok(_), Then::RemovedWorktree(_)) => {
@@ -361,10 +374,13 @@ impl App {
             ) => self.on_moved(workspace, Ok((onto, commits, entry))),
             (Err(error), Then::Moved(workspace)) => self.on_moved(workspace, Err(error.message)),
             (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
-                self.settings.insert(project, Settings::Loaded(settings));
+                self.settings
+                    .by_project
+                    .insert(project, Settings::Loaded(settings));
             }
             (Err(error), Then::Settings(project)) => {
                 self.settings
+                    .by_project
                     .insert(project, Settings::Failed(error.message));
             }
             (Ok(Reply::ProjectSettings(settings)), Then::SettingChanged(project)) => {
@@ -410,10 +426,39 @@ impl App {
     /// again once the screen wants it.
     fn forget_unanswered(&mut self) {
         self.tickets
+            .by_project
             .retain(|_, tickets| !matches!(tickets, Tickets::Loading));
-        self.ticket_texts
+        self.tickets
+            .texts
             .retain(|_, text| !matches!(text, TicketText::Loading));
         self.settings
+            .by_project
             .retain(|_, settings| !matches!(settings, Settings::Loading));
+    }
+
+    /// Whether an answer `then` waits for is on its way: asked, and the
+    /// connection not lost since (which forgets every one).
+    fn awaits(&self, then: impl Fn(&Then) -> bool) -> bool {
+        self.requests.pending.values().any(then)
+    }
+
+    /// The notch is being turned on or off.
+    pub(crate) fn notch_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::NotchChanged(_)))
+    }
+
+    /// The width a session sits beside the list from is being changed.
+    pub(crate) fn side_by_side_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::SideBySideChanged(_)))
+    }
+
+    /// The look is being changed: whose colours, or how many lines.
+    pub(crate) fn look_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::LookChanged(_)))
+    }
+
+    /// How a kind of notification is told is being changed.
+    pub(crate) fn telling_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::TellChanged(..)))
     }
 }

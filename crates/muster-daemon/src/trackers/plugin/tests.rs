@@ -8,6 +8,7 @@ use super::process::{Limits, MOST_IN_FLIGHT};
 use super::*;
 use crate::secrets::Token;
 use crate::trackers::{Hidden, Noun};
+use crate::waiting;
 
 /// The loop every stand-in runs: it counts its starts and ends, records
 /// each request, and answers with the functions before it, `hello`, `list`
@@ -117,15 +118,9 @@ impl Fake {
         self.read(file).lines().count()
     }
 
-    /// Waits, a few seconds at most, until `done`.
+    /// Waits until `done`.
     async fn until(&self, done: impl Fn(&Self) -> bool) {
-        for _ in 0..300 {
-            if done(self) {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("waited in vain; requests:\n{}", self.read("requests"));
+        waiting::until("the plugin's requests", async || done(self)).await;
     }
 }
 
@@ -217,6 +212,26 @@ async fn a_hang_hits_its_deadline_and_the_next_request_starts_it_again() {
     assert_eq!(hung, "the Fake plugin did not answer within 1 s");
     assert_eq!(tickets.list().await.unwrap(), []);
     assert_eq!(fake.count("starts"), 2);
+}
+
+#[tokio::test]
+async fn what_a_hung_plugin_started_is_stopped_with_it() {
+    let starts_and_hangs = r#"list() { sleep 30 & echo $! > "$dir/child"; sleep 30; }"#;
+    let fake = Fake::with_limits(
+        "",
+        starts_and_hangs,
+        "",
+        Limits {
+            hello: Duration::from_secs(5),
+            request: Duration::from_secs(1),
+            idle: Duration::from_secs(60),
+        },
+    );
+    unavailable(fake.tickets(false).list().await.unwrap_err());
+    let child: i32 = fake.read("child").trim().parse().unwrap();
+    let gone =
+        move |_: &Fake| nix::sys::signal::kill(nix::unistd::Pid::from_raw(child), None).is_err();
+    fake.until(gone).await;
 }
 
 #[tokio::test]
@@ -373,8 +388,12 @@ async fn at_most_eight_requests_wait_on_it() {
     }
     let lists = |fake: &Fake| fake.read("requests").matches(r#""method":"list""#).count();
     fake.until(|fake| lists(fake) >= MOST_IN_FLIGHT).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(lists(&fake), MOST_IN_FLIGHT, "the rest wait their turn");
+    waiting::holds(
+        "the rest waiting their turn",
+        Duration::from_millis(300),
+        async || lists(&fake) == MOST_IN_FLIGHT,
+    )
+    .await;
     // The eight let their deadline pass, the plugin is taken as hung, and
     // the four waiting go to its next process.
     let answered: Vec<bool> = asking.join_all().await;
@@ -436,12 +455,10 @@ async fn its_log_keeps_the_end_of_its_stderr_and_its_environment_is_a_session_s(
     let fake = Fake::new(loud, "", "");
     fake.tickets(false).list().await.unwrap();
     let process = fake.plugins.process(fake.spec());
-    for _ in 0..300 {
-        if process.log().ends_with("last words\n") {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    waiting::until("its last words in its log", async || {
+        process.log().ends_with("last words\n")
+    })
+    .await;
     let log = process.log();
     assert!(log.ends_with("x last words\n"));
     assert_eq!(log.len(), super::streams::MOST_LOG);

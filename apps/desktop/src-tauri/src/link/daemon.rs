@@ -153,7 +153,13 @@ fn login_path(shell: &Path) -> Option<OsString> {
     loop {
         match child.try_wait() {
             Ok(Some(_)) => break,
-            Ok(None) if monotonic() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            Ok(None) if monotonic() < deadline => {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "ARC-30: the login shell is waited on with a deadline, looked at every 10 ms"
+                )]
+                std::thread::sleep(Duration::from_millis(10));
+            }
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();

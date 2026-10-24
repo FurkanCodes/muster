@@ -9,13 +9,15 @@
 //! The first agent on a ticket works in its worktree (made, or found as it
 //! is); another works in a worktree of its own, `…-2`, `…-3`.
 
+use std::sync::Arc;
+
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::tickets::ticket_branch;
 use muster_core::{ProjectId, TicketBrief, TicketKey, WorkspaceId};
 use tokio::sync::oneshot;
 
 use super::{Request, Supervisor, worktrees};
-use crate::trackers::{self, IssueDetail, ProjectPlace, ServiceError};
+use crate::trackers::{self, IssueDetail, ProjectPlace, ServiceError, TicketSource};
 
 /// A ticket fetched for starting work, on its way back to the Supervisor.
 #[derive(Debug)]
@@ -78,10 +80,7 @@ impl Supervisor {
             .ok_or_else(|| no_project(project))?;
         Ok(ProjectPlace {
             root,
-            overrides: self
-                .config_dir
-                .join("projects")
-                .join(format!("{project}.toml")),
+            overrides: self.overrides_of(project),
         })
     }
 
@@ -91,31 +90,14 @@ impl Supervisor {
         project: ProjectId,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let place = match self.tracker_place(project) {
-            Ok(place) => place,
-            Err(error) => {
-                let _ = reply.send(Err(error));
-                return;
-            }
-        };
-        let trackers = self.trackers.clone();
-        self.tasks.spawn(async move {
-            let outcome = async {
-                let source = trackers.for_project(place).await?;
-                let issues = source.list().await?;
-                Ok::<_, ServiceError>(Reply::Issues {
-                    issues,
-                    tracker: source.describe(),
-                    mine: source.only_mine(),
-                    source: source.source(),
-                })
-            }
-            .await
-            .map_err(|error| error.body());
-            if let Err(error) = &outcome {
-                tracing::info!(command = "list issues", %error, "command refused");
-            }
-            let _ = reply.send(outcome);
+        self.ask_tickets(project, "list issues", reply, |source| async move {
+            let issues = source.list().await?;
+            Ok(Reply::Issues {
+                issues,
+                tracker: source.describe(),
+                mine: source.only_mine(),
+                source: source.source(),
+            })
         });
     }
 
@@ -126,26 +108,13 @@ impl Supervisor {
         key: TicketKey,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        let place = match self.tracker_place(project) {
-            Ok(place) => place,
-            Err(error) => {
-                let _ = reply.send(Err(error));
-                return;
-            }
-        };
-        let trackers = self.trackers.clone();
-        self.tasks.spawn(async move {
-            let outcome = async {
-                let detail = trackers.for_project(place).await?.view(&key).await?;
-                Ok::<_, ServiceError>(Reply::IssueViewed {
-                    issue: detail.issue,
-                    body: detail.body,
-                    comments: detail.comments,
-                })
-            }
-            .await
-            .map_err(|error| error.body());
-            let _ = reply.send(outcome);
+        self.ask_tickets(project, "view issue", reply, move |source| async move {
+            let detail = source.view(&key).await?;
+            Ok(Reply::IssueViewed {
+                issue: detail.issue,
+                body: detail.body,
+                comments: detail.comments,
+            })
         });
     }
 
@@ -156,6 +125,25 @@ impl Supervisor {
         key: TicketKey,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
+        self.ask_tickets(project, "close issue", reply, move |source| async move {
+            source.close(&key).await?;
+            tracing::info!(%project, %key, "closed a ticket");
+            Ok(Reply::Done)
+        });
+    }
+
+    /// Answers `reply` with what `ask` makes of `project`'s ticket source,
+    /// on a task of its own, as trackers are slow; `command` names it in
+    /// the log where it is refused.
+    fn ask_tickets<F>(
+        &self,
+        project: ProjectId,
+        command: &'static str,
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+        ask: impl FnOnce(Arc<dyn TicketSource>) -> F + Send + 'static,
+    ) where
+        F: Future<Output = Result<Reply, ServiceError>> + Send,
+    {
         let place = match self.tracker_place(project) {
             Ok(place) => place,
             Err(error) => {
@@ -163,17 +151,13 @@ impl Supervisor {
                 return;
             }
         };
-        let trackers = self.trackers.clone();
+        let trackers = self.systems.trackers.clone();
         self.tasks.spawn(async move {
-            let outcome = async {
-                trackers.for_project(place).await?.close(&key).await?;
-                Ok::<_, ServiceError>(Reply::Done)
-            }
-            .await
-            .map_err(|error| error.body());
-            match &outcome {
-                Ok(_) => tracing::info!(%project, %key, "closed a ticket"),
-                Err(error) => tracing::info!(command = "close issue", %error, "command refused"),
+            let outcome = async { ask(trackers.for_project(place).await?).await }
+                .await
+                .map_err(|error| error.body());
+            if let Err(error) = &outcome {
+                tracing::info!(command, %error, "command refused");
             }
             let _ = reply.send(outcome);
         });
@@ -216,7 +200,7 @@ impl Supervisor {
             let _ = reply.send(Err(self.no_harness(&harness)));
             return;
         }
-        let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
+        let (requests, trackers) = (self.requests.clone(), self.systems.trackers.clone());
         self.tasks.spawn(async move {
             let prefixed =
                 crate::config::muster_prefix(place.root.clone(), place.overrides.clone()).await;
@@ -295,15 +279,11 @@ impl Supervisor {
         };
         let branch = match (existing, another) {
             (Some(existing), false) => return self.start_ticket_agent(existing, ticket).await,
-            (None, false) => branch,
-            (_, true) => match self.unused_worktree_branch(project, &branch).await {
-                Ok(branch) => branch,
-                Err(error) => return ticket.refuse(error),
-            },
+            (None, false) => worktrees::Branch::Named(branch),
+            (_, true) => worktrees::Branch::Another(branch),
         };
         let then = worktrees::Then::Ticket(Box::new(ticket));
-        self.create_worktree(project, worktrees::Branch::Named(branch), on, then)
-            .await;
+        self.create_worktree(project, branch, on, then);
     }
 
     /// Starts the ticket's agent in `workspace`, with the ticket as its
@@ -418,32 +398,6 @@ impl Supervisor {
         let updated = found.clone();
         self.broadcast(muster_core::protocol::Delta::WorkspaceUpserted(updated));
         Ok(Reply::Done)
-    }
-
-    /// `branch-2`, `-3`… : the first no workspace has and the repository
-    /// does not have yet, for another agent's worktree.
-    async fn unused_worktree_branch(
-        &self,
-        project: ProjectId,
-        branch: &str,
-    ) -> Result<String, ErrorBody> {
-        let root = self
-            .project_root(project)
-            .ok_or_else(|| no_project(project))?;
-        for n in 2..100 {
-            let candidate = format!("{branch}-{n}");
-            let in_use = self.branch_taken(project, &candidate);
-            let exists = crate::git::branch_exists(&root, &candidate)
-                .await
-                .unwrap_or(true);
-            if !in_use && !exists {
-                return Ok(candidate);
-            }
-        }
-        Err(ErrorBody::new(
-            ErrorCode::Conflict,
-            format!("{branch} already has 99 worktrees"),
-        ))
     }
 
     pub(super) fn project_root(&self, project: ProjectId) -> Option<std::path::PathBuf> {

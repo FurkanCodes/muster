@@ -53,20 +53,26 @@ pub(crate) async fn run(
     paths: &Paths,
     what: Option<Listing>,
     all: bool,
+    project: Option<&str>,
     json: bool,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let what = what.unwrap_or(Listing::Sessions);
     if what == Listing::Workspaces {
-        return super::workspaces::list(paths, all, json).await;
+        return super::workspaces::list(paths, all, project, json).await;
     }
     if what == Listing::Machines {
         return crate::ssh::list(paths, json);
     }
     if what == Listing::Tickets {
-        return super::tickets::list(paths, json).await;
+        return super::tickets::list(paths, project, json).await;
     }
     let mut connection = match commands::connect(&paths.socket()).await {
         Ok(connection) => connection,
+        // As `muster status` says it, for a script too.
+        Err(ClientError::Unreachable { .. }) if json => {
+            crate::json::print(&crate::json::NotRunning::new())?;
+            return Ok(ExitCode::FAILURE);
+        }
         Err(ClientError::Unreachable { .. }) => {
             println!("The daemon is not running, so nothing is.");
             return Ok(ExitCode::SUCCESS);
@@ -77,7 +83,10 @@ pub(crate) async fn run(
     if what == Listing::Projects {
         return projects(&snapshot, json);
     }
-    let scope = scope(&snapshot, all);
+    let scope = match project {
+        Some(wanted) => Scope::Project(commands::find_project(&snapshot, wanted)?.id),
+        None => scope(&snapshot, all),
+    };
     let kept: Vec<&Session> = snapshot
         .sessions
         .iter()

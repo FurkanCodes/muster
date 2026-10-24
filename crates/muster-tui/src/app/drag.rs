@@ -90,7 +90,7 @@ impl App {
     /// it takes every event. `None` leaves the event to the mode.
     pub(super) fn drag_mouse(&mut self, event: MouseEvent) -> Option<Vec<Action>> {
         let at = Position::new(event.column, event.row);
-        if let Some(drag) = self.drag.clone() {
+        if let Some(drag) = self.panels.drag.clone() {
             return Some(match event.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
                     self.drag_to(drag, at);
@@ -104,7 +104,7 @@ impl App {
             return None;
         }
         // What is marked in a session is clicked away, as by any click.
-        self.drag = Some(match self.hold_at(at)? {
+        self.panels.drag = Some(match self.hold_at(at)? {
             Hold::Line { divider, on_it } => Drag::Divider {
                 divider,
                 was: self.panels().clone(),
@@ -125,7 +125,7 @@ impl App {
     fn drag_to(&mut self, drag: Drag, at: Position) {
         match drag {
             Drag::Panel { panel, .. } => {
-                self.drag = Some(Drag::Panel {
+                self.panels.drag = Some(Drag::Panel {
                     panel,
                     moved: true,
                     to: self.drop_place(panel, at),
@@ -150,8 +150,8 @@ impl App {
                     .clamp(1, i32::from(u16::MAX));
                 let first = u16::try_from(first).unwrap_or(1);
                 let resized = self.resized_at(&divider, first);
-                self.panels_kept = Some(resized);
-                self.drag = Some(Drag::Divider {
+                self.panels.kept = Some(resized);
+                self.panels.drag = Some(Drag::Divider {
                     divider,
                     was,
                     press,
@@ -165,7 +165,7 @@ impl App {
     fn drop_at(&mut self, drag: Drag, at: Position) -> Vec<Action> {
         match drag {
             Drag::Panel { panel, moved, to } => {
-                self.drag = None;
+                self.panels.drag = None;
                 match (moved, to) {
                     (false, _) => self.give_keys(panel),
                     (true, Some(place)) => {
@@ -182,7 +182,7 @@ impl App {
                 ..
             } if press.column.abs_diff(at.x) < 2 && press.row.abs_diff(at.y) < 2 => {
                 // Pressed beside the line and not moved: the click it was.
-                self.drag = None;
+                self.panels.drag = None;
                 let mut actions = self.mode_mouse(press);
                 actions.extend(self.mode_mouse(MouseEvent {
                     kind: MouseEventKind::Up(MouseButton::Left),
@@ -193,7 +193,7 @@ impl App {
             Drag::Divider { ref was, .. } => {
                 let was = was.clone();
                 self.drag_to(drag, at);
-                self.drag = None;
+                self.panels.drag = None;
                 let now = self.panels().clone();
                 if now == was {
                     return Vec::new();
@@ -205,8 +205,8 @@ impl App {
 
     /// Lets go of a drag under way, the layout as it was.
     pub(super) fn cancel_drag(&mut self) {
-        if let Some(Drag::Divider { was, .. }) = self.drag.take() {
-            self.panels_kept = Some(was);
+        if let Some(Drag::Divider { was, .. }) = self.panels.drag.take() {
+            self.panels.kept = Some(was);
         }
     }
 
@@ -336,19 +336,9 @@ impl App {
         layout.sized(&path, branch, size)
     }
 
-    /// Shows `layout` and has the daemon keep it: a daemon older than
-    /// plugins' panels, which reads no layout with one in it, without it
-    /// (`ARC-09`), its next reading putting it back where the default does.
+    /// Shows `layout` and has the daemon keep it.
     pub(super) fn keep_panels(&mut self, layout: Layout) -> Vec<Action> {
-        self.panels_kept = Some(layout.clone());
-        if !self.layout_known() {
-            return Vec::new();
-        }
-        let layout = if self.daemon_protocol < muster_core::plugins::PANELS_PROTOCOL {
-            layout.without(Panel::Plugin)
-        } else {
-            layout
-        };
+        self.panels.kept = Some(layout.clone());
         vec![self.command(
             Command::ChangePreference(PreferenceChange::Panels(layout)),
             Then::PanelsKept,
@@ -358,11 +348,11 @@ impl App {
     /// The daemon kept the layout, which its settings now say, or could
     /// not. Not while the person is moving the panels again.
     pub(super) fn panels_kept(&mut self, outcome: Result<(), muster_core::protocol::ErrorBody>) {
-        if self.drag.is_none() && self.arranging.is_none() {
-            self.panels_kept = None;
+        if self.panels.drag.is_none() && self.panels.arranging.is_none() {
+            self.panels.kept = None;
         }
         if let Err(error) = outcome {
-            self.panels_kept = None;
+            self.panels.kept = None;
             self.complain(error.message);
         }
     }
@@ -380,7 +370,7 @@ impl App {
             Mode::Changes => Panel::Changes,
             _ => Panel::List,
         };
-        self.arranging = Some(Arranging {
+        self.panels.arranging = Some(Arranging {
             panel,
             was: self.panels().clone(),
         });
@@ -388,12 +378,12 @@ impl App {
     }
 
     pub(super) fn arrange_key(&mut self, key: &KeyEvent) -> Vec<Action> {
-        let Some(arranging) = self.arranging.clone() else {
+        let Some(arranging) = self.panels.arranging.clone() else {
             return Vec::new();
         };
         let shown = self.shown_panels();
         let Some(&(_, area)) = shown.iter().find(|(panel, _)| *panel == arranging.panel) else {
-            self.arranging = None;
+            self.panels.arranging = None;
             return Vec::new();
         };
         match key.code {
@@ -407,7 +397,7 @@ impl App {
                 } else {
                     (at + shown.len() - 1) % shown.len()
                 };
-                self.arranging = Some(Arranging {
+                self.panels.arranging = Some(Arranging {
                     panel: shown[next].0,
                     ..arranging
                 });
@@ -421,25 +411,25 @@ impl App {
                 };
                 let place = neighbour(&shown, area, edge)
                     .map_or(Place::Window(edge), |next| Place::Beside(next, edge));
-                self.panels_kept = Some(self.panels().moved(arranging.panel, place));
+                self.panels.kept = Some(self.panels().moved(arranging.panel, place));
             }
             KeyCode::Char(c @ ('+' | '=' | '-')) => {
                 let grow = c != '-';
                 let areas = crate::view::browse_areas(self, self.window());
                 if let Some((divider, first)) = beside(&areas.dividers, area, grow) {
-                    self.panels_kept = Some(self.resized_at(divider, first));
+                    self.panels.kept = Some(self.resized_at(divider, first));
                 }
             }
             KeyCode::Enter => {
-                self.arranging = None;
+                self.panels.arranging = None;
                 let now = self.panels().clone();
                 if now != arranging.was {
                     return self.keep_panels(now);
                 }
             }
             KeyCode::Esc => {
-                self.arranging = None;
-                self.panels_kept = Some(arranging.was);
+                self.panels.arranging = None;
+                self.panels.kept = Some(arranging.was);
             }
             _ => {}
         }

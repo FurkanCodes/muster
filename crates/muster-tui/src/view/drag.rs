@@ -16,7 +16,7 @@ use crate::app::grab::Grab;
 
 pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas) {
     let theme = theme::of(app);
-    let held = match &app.hover {
+    let held = match &app.panels.hover {
         Some(Grab::Line(path)) => areas
             .dividers
             .iter()
@@ -35,7 +35,7 @@ pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas)
     }
     if let Some(Drag::Panel {
         to: Some(place), ..
-    }) = &app.drag
+    }) = &app.panels.drag
     {
         let landing = app.landing(*place);
         frame
@@ -43,7 +43,7 @@ pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas)
             .set_style(landing, Style::default().bg(theme.tint));
         outline(frame, landing, " here ", Style::default().fg(theme.accent));
     }
-    if let Some(arranging) = &app.arranging {
+    if let Some(arranging) = &app.panels.arranging {
         let area = area_of(areas, arranging.panel);
         if !area.is_empty() {
             outline(

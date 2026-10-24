@@ -73,8 +73,7 @@ pub(crate) fn defaults() -> String {
 /// What a payload means to the session machine, with the Gemini session it
 /// came from. Each field is read on its own: drift must mean "status stops
 /// updating", never a lost event.
-pub(crate) fn translate(body: &[u8]) -> Option<(Option<String>, HookEvent)> {
-    let value: Value = serde_json::from_slice(body).ok()?;
+pub(crate) fn translate(value: &Value) -> Option<(Option<String>, HookEvent)> {
     let text = |key: &str| value.get(key).and_then(Value::as_str);
     let is_question = text("tool_name") == Some(QUESTION_TOOL);
     let event = match text("hook_event_name")? {
@@ -160,7 +159,7 @@ mod tests {
         let body = format!(
             r#"{{"session_id":"{SESSION}","transcript_path":"/t.jsonl","cwd":"/work","timestamp":"2026-10-12T10:00:00Z",{extra}}}"#
         );
-        let (session, event) = translate(body.as_bytes())?;
+        let (session, event) = translate(&crate::harness::json(body.as_bytes()))?;
         assert_eq!(session.as_deref(), Some(SESSION));
         Some(event)
     }
@@ -240,7 +239,7 @@ mod tests {
             event(r#""hook_event_name":"Notification","notification_type":"Other""#),
             None
         );
-        assert_eq!(translate(b"[]"), None);
+        assert_eq!(translate(&crate::harness::json(b"[]")), None);
     }
 
     #[test]

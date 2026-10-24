@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Clash } from "../../ipc/generated/Clash";
 import { ulid, workingDay } from "../../ipc/mock/scenario";
-import {
-  clashWords,
-  commonFolder,
-  entryLabel,
-  oneLine,
-  placeName,
-  sameSummary,
-  summaryOf,
-} from "./labels";
+import { oneLine } from "../../lib/text";
+import { clashWords, commonFolder, entryLabel, placeName, sameSummary, summaryOf } from "./labels";
 
 const workspace = ulid(11);
 

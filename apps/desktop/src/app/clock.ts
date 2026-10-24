@@ -1,6 +1,6 @@
 // One clock for the whole window: it ticks every 15 seconds while the
 // window is seen, and not at all while it is hidden (`ARC-25`). Components
-// that show ages read it; nothing else keeps a timer.
+// that show ages read it; nothing else keeps a timer but a note's fade, once.
 
 import { useSyncExternalStore } from "react";
 import { NOW } from "../ipc/mock/now";

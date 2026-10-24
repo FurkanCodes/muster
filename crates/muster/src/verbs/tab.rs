@@ -23,7 +23,7 @@ use std::process::ExitCode;
 use muster_client::{ClientError, FrameSender};
 use muster_core::keys::{Action, Chord, Key, Keymap};
 use muster_core::protocol::{
-    ClientFrame, Command, ErrorCode, PixelSize, SWITCH_PROTOCOL, ServerFrame, Snapshot, TermSize,
+    ClientFrame, Command, ErrorCode, PixelSize, ServerFrame, Snapshot, TermSize,
 };
 use muster_core::{Paths, SessionId};
 use tokio::sync::mpsc;
@@ -53,6 +53,10 @@ const FOCUS_REPORTS: &[u8] = b"\x1b[?1004h";
 const FOCUS_IN: &[u8] = b"\x1b[I";
 const FOCUS_OUT: &[u8] = b"\x1b[O";
 
+/// How long the start of an escape sequence that one read ended in waits
+/// for its end in the next: a lone Esc is sent on after it.
+const HELD_FOR: std::time::Duration = std::time::Duration::from_millis(30);
+
 /// Shows `session` where the person is: inside a Muster session's
 /// terminal, in its place, wherever it is shown; anywhere else, straight in
 /// this tab.
@@ -62,19 +66,17 @@ pub(crate) async fn show(
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     if let Some(inside) = super::started_by().filter(|inside| *inside != session) {
         let mut connection = commands::connect(&paths.socket()).await?;
-        if connection.welcome().version >= SWITCH_PROTOCOL {
-            match connection
-                .command(Command::Switch {
-                    from: inside,
-                    to: session,
-                })
-                .await
-            {
-                Ok(_) => return Ok(ExitCode::SUCCESS),
-                // Shown nowhere: this terminal is a script's.
-                Err(ClientError::Daemon(error)) if error.code == ErrorCode::NotFound => {}
-                Err(error) => return Err(error.into()),
-            }
+        match connection
+            .command(Command::Switch {
+                from: inside,
+                to: session,
+            })
+            .await
+        {
+            Ok(_) => return Ok(ExitCode::SUCCESS),
+            // Shown nowhere: this terminal is a script's.
+            Err(ClientError::Daemon(error)) if error.code == ErrorCode::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
     }
     run(paths, session).await
@@ -98,26 +100,28 @@ pub(crate) async fn run(
     refuse_ended(&snapshot, first)?;
     let back = back_keys(&snapshot);
     let connection = commands::connect(&paths.socket()).await?;
-    let (sender, mut receiver, welcome) = connection.into_split();
+    let (sender, mut receiver, _) = connection.into_split();
     let mut tab = Tab {
         sender,
-        version: welcome.version,
         back,
         stack: Vec::new(),
         looked_at: true,
         ended: None,
+        held: Vec::new(),
     };
     let raw = Raw::enter()?;
     // Counted among the windows the person looks at, so a session started
     // from the one shown here comes here (`Command::Switch`).
-    if tab.version >= muster_core::settings::NOTCH_PROTOCOL {
-        tab.send(ClientFrame::Looking { looking: true }).await?;
-    }
+    tab.send(ClientFrame::Looking { looking: true }).await?;
     tab.push(first).await?;
     let (keys, mut typed) = mpsc::channel::<Vec<u8>>(64);
     read_keys(keys)?;
     let mut resized =
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-30: the start of a sequence split across reads is held `HELD_FOR`, and sent as it is if no more of it comes"
+    )]
     while let Some(&current) = tab.stack.last() {
         tokio::select! {
             frame = receiver.next() => {
@@ -133,6 +137,7 @@ pub(crate) async fn run(
                 None => return Ok(ExitCode::SUCCESS),
             },
             _ = resized.recv() => tab.fit(current).await?,
+            () = tokio::time::sleep(HELD_FOR), if !tab.held.is_empty() => tab.send_held().await?,
         }
     }
     drop(raw);
@@ -147,7 +152,7 @@ fn refuse_ended(snapshot: &Snapshot, session: SessionId) -> Result<(), String> {
     };
     if found.status.is_exited() {
         return Err(format!(
-            "{} has ended: `muster session restart {}` starts it again",
+            "{} has ended: `muster restart {}` starts it again",
             shown(&found.title),
             found.id
         ));
@@ -241,7 +246,6 @@ fn read_keys(keys: mpsc::Sender<Vec<u8>>) -> std::io::Result<()> {
 /// The tab's sessions and its link to the daemon.
 struct Tab {
     sender: FrameSender,
-    version: u32,
     /// The keys that go back.
     back: Vec<Chord>,
     /// The sessions shown here, the one shown now last.
@@ -250,6 +254,10 @@ struct Tab {
     looked_at: bool,
     /// The last session whose program ended while shown.
     ended: Option<SessionId>,
+    /// The start of an escape sequence the last read ended in, kept for
+    /// the read that ends it, so a focus report or a key that goes back is
+    /// found when a read cuts it in two.
+    held: Vec<u8>,
 }
 
 impl Tab {
@@ -320,9 +328,6 @@ impl Tab {
     /// Tells the daemon whose terminal has the person's keys: the one
     /// shown here while the tab has focus.
     async fn keys(&mut self, session: SessionId) -> Result<(), ClientError> {
-        if self.version < muster_core::colours::TERMINAL_PROTOCOL {
-            return Ok(());
-        }
         let session = self.looked_at.then_some(session);
         self.send(ClientFrame::Keys { session }).await
     }
@@ -368,6 +373,18 @@ impl Tab {
     /// go back, each to the session shown before: what follows one goes
     /// to that session.
     async fn on_keys(&mut self, keys: &[u8]) -> Result<(), ClientError> {
+        let mut keys = [std::mem::take(&mut self.held).as_slice(), keys].concat();
+        self.held = keys.split_off(unfinished_from(&keys));
+        self.take_keys(&keys).await
+    }
+
+    /// Sends on what was held, its end never having come.
+    async fn send_held(&mut self) -> Result<(), ClientError> {
+        let held = std::mem::take(&mut self.held);
+        self.take_keys(&held).await
+    }
+
+    async fn take_keys(&mut self, keys: &[u8]) -> Result<(), ClientError> {
         let (keys, focus) = take_focus(keys);
         if let Some(looking) = focus
             && looking != self.looked_at
@@ -406,6 +423,22 @@ fn write_out(bytes: &[u8]) {
     let mut out = std::io::stdout().lock();
     let _ = out.write_all(bytes);
     let _ = out.flush();
+}
+
+/// Where an escape sequence `keys` ends in before its end begins: a lone
+/// Esc, or a CSI with no final byte yet; `keys.len()` where none does.
+fn unfinished_from(keys: &[u8]) -> usize {
+    let Some(at) = keys.iter().rposition(|&byte| byte == 0x1b) else {
+        return keys.len();
+    };
+    let unfinished = match &keys[at + 1..] {
+        [] => true,
+        [b'[', rest @ ..] => rest
+            .iter()
+            .all(|b| b.is_ascii_digit() || matches!(b, b';' | b':' | b'?')),
+        _ => false,
+    };
+    if unfinished { at } else { keys.len() }
 }
 
 /// `keys` without the focus reports in them, and whether the last said the
@@ -498,6 +531,17 @@ mod tests {
 
     fn chord(text: &str) -> Chord {
         Chord::parse(text).unwrap()
+    }
+
+    #[test]
+    fn a_sequence_a_read_cuts_in_two_waits_for_its_end() {
+        assert_eq!(unfinished_from(b"ls"), 2);
+        assert_eq!(unfinished_from(b"ls\x1b"), 2);
+        assert_eq!(unfinished_from(b"ls\x1b[11"), 2);
+        assert_eq!(unfinished_from(b"ls\x1b[113;5"), 2);
+        assert_eq!(unfinished_from(b"\x1b[I"), 3, "a focus report is whole");
+        assert_eq!(unfinished_from(b"\x1b[113;5u"), 8);
+        assert_eq!(unfinished_from(b"\x1bq"), 2, "Alt+q is whole");
     }
 
     #[test]

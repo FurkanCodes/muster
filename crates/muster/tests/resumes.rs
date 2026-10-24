@@ -16,7 +16,7 @@
 
 mod support;
 
-use std::time::{Duration, Instant};
+use support::wait;
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame, TermSize};
@@ -121,17 +121,15 @@ async fn wait_for(
     session: SessionId,
     done: impl Fn(&Session) -> bool,
 ) -> Session {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    wait::found_async("the session wanted", async || {
         let snapshot = connection.subscribe().await.unwrap();
-        if let Some(found) = snapshot.sessions.iter().find(|s| s.id == session)
-            && done(found)
-        {
-            return found.clone();
-        }
-        assert!(Instant::now() < deadline, "{:?}", snapshot.sessions);
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+        snapshot
+            .sessions
+            .into_iter()
+            .find(|s| s.id == session)
+            .filter(|found| done(found))
+    })
+    .await
 }
 
 #[tokio::test]

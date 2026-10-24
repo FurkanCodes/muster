@@ -77,18 +77,6 @@ export interface ProjectRows {
   prefix: boolean;
 }
 
-/**
- * The first protocol whose daemon has a project's worktrees build into one
- * folder and takes `SharedBuilds` (`SHARED_BUILDS_PROTOCOL`).
- */
-export const SHARED_BUILDS_PROTOCOL = 47;
-
-/**
- * The first protocol whose daemon lets agents start agents within the
- * person's limits and takes `AgentsStartAgents` (`DELEGATION_PROTOCOL`).
- */
-export const DELEGATION_PROTOCOL = 51;
-
 export interface RowsInput {
   /** The agents, Muster's own then the person's, by id. */
   agents: readonly string[];

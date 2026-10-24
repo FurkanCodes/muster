@@ -5,9 +5,11 @@
 // can be, the TUI's words saying why, in the status bar.
 
 import type { App } from "../app/context";
+import { ask } from "../ipc/ask";
 import type { Project } from "../ipc/generated/Project";
 import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
+import { errorText } from "../lib/text";
 import { projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import { whenKnown } from "../state/whenKnown";
@@ -46,7 +48,7 @@ function complain(app: App, text: string): void {
 }
 
 function key(app: App, action: Parameters<typeof labelOf>[1]): string {
-  return labelOf(app.daemon.store.getState().preferences, action);
+  return labelOf(app.daemon.store.getState(), action);
 }
 
 /** Whether a session still runs: it has not ended. */
@@ -76,23 +78,12 @@ export function addProject(app: App): void {
   app.bridge.pickFolder().then((picked) => {
     if (picked.kind === "unavailable") return browse();
     if (picked.kind === "chosen")
-      addProjectAt(app, picked.path).catch((error: unknown) => complain(app, said(error)));
+      addProjectAt(app, picked.path).catch((error: unknown) => complain(app, errorText(error)));
   }, browse);
 }
 
-/** The first protocol whose daemon clones from GitHub (`REPOSITORIES_PROTOCOL`). */
-export const REPOSITORIES_PROTOCOL = 49;
-
 /** `g`: a project cloned from GitHub, into a folder the person chooses. */
 export function cloneProject(app: App): void {
-  const link = app.daemon.store.getState().link;
-  if (link.state === "up" && link.protocol < REPOSITORIES_PROTOCOL) {
-    complain(
-      app,
-      "The daemon runs an older muster that cannot clone from GitHub: Settings' Restart in place moves it onto this one, every session running on.",
-    );
-    return;
-  }
   app.actions.openFlow({ kind: "clone-project" });
 }
 
@@ -210,7 +201,7 @@ export function restart(app: App): void {
   }
   app.bridge.command({ RestartSession: { session: session.id, size: START_SIZE } }).then(
     () => app.actions.showTerminal(session.id),
-    (error: unknown) => complain(app, said(error)),
+    (error: unknown) => complain(app, errorText(error)),
   );
 }
 
@@ -252,10 +243,8 @@ export function moveBranch(app: App): void {
 
 /** Adds the project at `path`, says so, and selects it. */
 export async function addProjectAt(app: App, path: string): Promise<void> {
-  const reply = await app.bridge.command({ AddProject: { root: path, name: null } });
-  if (typeof reply !== "object" || !("ProjectAdded" in reply))
-    throw new Error("The daemon answered something else; try again.");
-  const id = reply.ProjectAdded.id;
+  const reply = await ask(app.bridge, { AddProject: { root: path, name: null } }, "ProjectAdded");
+  const id = reply.id;
   app.actions.show("all");
   whenKnown(app, "projects", id, () => {
     app.actions.select("all", id);
@@ -264,6 +253,3 @@ export async function addProjectAt(app: App, path: string): Promise<void> {
 }
 
 /** What a refused command says. */
-export function said(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

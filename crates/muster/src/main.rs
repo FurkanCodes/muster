@@ -15,6 +15,7 @@ mod launchd;
 #[cfg(target_os = "macos")]
 mod mac_app;
 mod output;
+mod person;
 mod plugins;
 mod reload;
 mod runs;
@@ -92,28 +93,28 @@ enum Commands {
     /// Manage the projects Muster tracks: git repositories, or any folder.
     #[command(subcommand)]
     Project(ProjectCommand),
-    /// Manage git worktrees.
-    #[command(subcommand)]
-    Worktree(WorktreeCommand),
-    /// Start and stop sessions.
-    #[command(subcommand)]
-    Session(SessionCommand),
-    /// Tickets: a project's open tickets, from its tracker's plugin
-    /// (GitHub, GitLab, Jira, Linear or one you added), and agents on them.
-    #[command(subcommand)]
-    Issue(IssueCommand),
     /// Run the project's checks (`[checks]` in its `muster.toml`) in
-    /// WORKTREE (its id or branch, or the project's name for its own
-    /// checkout), showing their output; exits as they did. The run stays
-    /// in the UI as a session; starting it again runs them again.
-    Check { worktree: String },
-    /// Have Claude Code review the change in WORKTREE against the branch it
-    /// is to merge into, in plan mode (it changes nothing), as a session
-    /// you read in `muster`.
-    Review { worktree: String },
-    /// Push WORKTREE's branch, as committed, with your own git, and open a
-    /// draft pull request from it with your `gh` (or show the one open).
-    Pr { worktree: String },
+    /// workspace WS (as `muster list workspaces` names it), showing their
+    /// output; exits as they did. The run stays in the UI as a session;
+    /// starting it again runs them again.
+    Check {
+        #[arg(value_name = "WS")]
+        workspace: String,
+    },
+    /// Have Claude Code review the change in workspace WS against the
+    /// branch it is to merge into, in plan mode (it changes nothing), as a
+    /// session you read in `muster`.
+    Review {
+        #[arg(value_name = "WS")]
+        workspace: String,
+    },
+    /// Push workspace WS's branch, as committed, with your own git, and
+    /// open a draft pull request from it with your `gh` (or show the one
+    /// open).
+    Pr {
+        #[arg(value_name = "WS")]
+        workspace: String,
+    },
     /// The autopilot, set aside: runs that take an issue to a reviewed pull
     /// request in a container. Hidden; its code is kept.
     #[command(subcommand, hide = true)]
@@ -199,48 +200,6 @@ enum DaemonCommand {
     Stop,
 }
 
-#[derive(Debug, Subcommand)]
-enum IssueCommand {
-    /// List PROJECT's open tickets (its name, id or path) from its tracker,
-    /// with the agents on each.
-    List {
-        project: String,
-        /// Print them as one JSON document, for scripts.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Start an agent on ticket KEY of PROJECT (`42`, `#42` or `APP-7`): a
-    /// worktree for it and a session with the ticket as its first prompt.
-    Start {
-        project: String,
-        #[arg(value_parser = ticket_key)]
-        key: muster_core::TicketKey,
-        /// What to run: `claude`, `codex`, `gemini`, `opencode`, `copilot`,
-        /// `shell`, or an agent you added as `[agents.<name>]` in Muster's
-        /// own settings (`~/.config/muster/settings.toml`).
-        #[arg(long, default_value = "claude")]
-        harness: String,
-        /// Another agent on the issue, in a worktree of its own, rather
-        /// than in the issue's worktree as it is.
-        #[arg(long)]
-        another: bool,
-    },
-    /// Close ticket KEY of PROJECT in its tracker. Its agents and worktrees
-    /// stay; close and remove them with `muster session` and `muster
-    /// worktree`.
-    Close {
-        project: String,
-        #[arg(value_parser = ticket_key)]
-        key: muster_core::TicketKey,
-    },
-}
-
-/// A ticket's key as written on the command line.
-fn ticket_key(text: &str) -> Result<muster_core::TicketKey, String> {
-    muster_core::TicketKey::parse(text)
-        .ok_or_else(|| format!("{text:?} is not a ticket: write `42`, `#42` or `APP-7`"))
-}
-
 /// RUN is a run's id, or its issue's number (`42` or `#42`): the run going
 /// on, else the latest.
 #[derive(Debug, Subcommand)]
@@ -303,63 +262,6 @@ enum ProjectCommand {
     /// Show PROJECT's settings for runs: its `muster.toml` with your
     /// overrides, or what is wrong with them.
     Config { project: String },
-}
-
-#[derive(Debug, Subcommand)]
-enum WorktreeCommand {
-    /// Create a worktree for PROJECT (its name, id or path).
-    Add {
-        project: String,
-        /// The branch to check out, created from the newest of the branch
-        /// it will merge into if it does not exist. Defaults to
-        /// `muster/<random>`.
-        #[arg(long)]
-        branch: Option<String>,
-    },
-    /// Remove WORKTREE (its id or branch). Its branch is kept.
-    Remove {
-        worktree: String,
-        /// Remove it even if it has uncommitted changes, discarding them.
-        #[arg(long)]
-        force: bool,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum SessionCommand {
-    /// List the sessions, in every project, with how each is doing.
-    List {
-        /// Print them as one JSON document, for scripts.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Start a session in WORKTREE (its id or branch, or a project's name
-    /// for the project's own checkout).
-    Start {
-        worktree: String,
-        /// What to run: `shell`, or a coding agent: `claude`, `codex`,
-        /// `gemini`, `opencode`, `copilot`, or one you added as
-        /// `[agents.<name>]` in Muster's own settings
-        /// (`~/.config/muster/settings.toml`).
-        #[arg(long, default_value = "shell")]
-        harness: String,
-        #[arg(long)]
-        title: Option<String>,
-        /// A first prompt, for harnesses that take one.
-        #[arg(long)]
-        prompt: Option<String>,
-    },
-    /// Stop SESSION (its id).
-    Stop { session: String },
-    /// Start ended SESSION's program again: Claude Code resumes its
-    /// conversation, a shell starts afresh.
-    Restart { session: String },
-    /// Take ended SESSION off the list; its history is kept.
-    Remove { session: String },
-    /// Say why SESSION (its id) has its status: whom it waits on and for
-    /// what, whether its turn is held for subagents, its next deadline,
-    /// and the last signals it received.
-    Explain { session: String },
 }
 
 /// Whether `command` asks a daemon, and so can ask another machine's
@@ -486,33 +388,6 @@ fn main() -> ExitCode {
             Some(Commands::Project(ProjectCommand::Config { project })) => {
                 commands::show_config(&socket, &paths, &project).await
             }
-            Some(Commands::Worktree(WorktreeCommand::Add { project, branch })) => {
-                commands::add_worktree(&socket, &project, branch).await
-            }
-            Some(Commands::Worktree(WorktreeCommand::Remove { worktree, force })) => {
-                commands::remove_worktree(&socket, &worktree, force).await
-            }
-            Some(Commands::Session(SessionCommand::List { json })) => {
-                commands::list_sessions(&socket, json).await
-            }
-            Some(Commands::Session(SessionCommand::Start {
-                worktree,
-                harness,
-                title,
-                prompt,
-            })) => commands::start_session(&socket, &worktree, harness, title, prompt).await,
-            Some(Commands::Session(SessionCommand::Stop { session })) => {
-                commands::stop_session(&socket, &session).await
-            }
-            Some(Commands::Session(SessionCommand::Restart { session })) => {
-                commands::restart_session(&socket, &session).await
-            }
-            Some(Commands::Session(SessionCommand::Remove { session })) => {
-                commands::remove_session(&socket, &session).await
-            }
-            Some(Commands::Session(SessionCommand::Explain { session })) => {
-                explain::explain_session(&socket, &session).await
-            }
             Some(Commands::Auth(AuthCommand::Claude)) => return commands::store_claude_token(),
             Some(Commands::Auth(AuthCommand::Bitbucket { host })) => {
                 return auth::bitbucket(&host).await;
@@ -530,23 +405,13 @@ fn main() -> ExitCode {
             Some(Commands::Notch { .. } | Commands::PluginRun { .. }) => Ok(()),
             Some(Commands::Run(command)) => run_command(&socket, command).await,
             Some(Commands::Plugin(command)) => plugins::run(&socket, command).await,
-            Some(Commands::Check { worktree }) => return commands::check(&socket, &worktree).await,
-            Some(Commands::Review { worktree }) => commands::review(&socket, &worktree).await,
-            Some(Commands::Pr { worktree }) => {
-                commands::open_pull_request(&socket, &worktree).await
+            Some(Commands::Check { workspace }) => {
+                return commands::check(&socket, &workspace).await;
             }
-            Some(Commands::Issue(IssueCommand::List { project, json })) => {
-                commands::list_issues(&socket, &project, json).await
+            Some(Commands::Review { workspace }) => commands::review(&socket, &workspace).await,
+            Some(Commands::Pr { workspace }) => {
+                commands::open_pull_request(&socket, &workspace).await
             }
-            Some(Commands::Issue(IssueCommand::Close { project, key })) => {
-                commands::close_issue(&socket, &project, key).await
-            }
-            Some(Commands::Issue(IssueCommand::Start {
-                project,
-                key,
-                harness,
-                another,
-            })) => commands::start_issue(&socket, &project, key, harness, another).await,
             Some(Commands::Verb(verb)) => {
                 return match verbs::run(&paths, verb).await {
                     verbs::Then::Exit(code) => code,

@@ -10,7 +10,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
-use muster_core::settings::{KEYS_PROTOCOL, PreferenceChange};
+use muster_core::settings::PreferenceChange;
 
 use super::{Action, App, Dialog, Mode, Then};
 
@@ -112,11 +112,6 @@ impl App {
         }
     }
 
-    /// Whether the daemon keeps the person's keys.
-    pub(crate) fn keys_known(&self) -> bool {
-        self.daemon_protocol >= KEYS_PROTOCOL
-    }
-
     /// ⏎ on *Keys*: the list of every action and its keys.
     pub(super) fn open_rebinding(&mut self) -> Vec<Action> {
         self.mode = Mode::Dialog(Dialog::Keys(Rebinding::default()));
@@ -161,20 +156,13 @@ impl App {
             KeyCode::Home => rebinding.chosen = 0,
             KeyCode::End => rebinding.chosen = last,
             KeyCode::Enter => {
-                if self.keys_known() {
-                    rebinding.waiting = true;
-                } else {
-                    self.complain(
-                        "The daemon runs an older muster that keeps no keys of yours: \
-                         `muster reload` moves it onto this one, every session running on.",
-                    );
-                }
+                rebinding.waiting = true;
             }
             KeyCode::Backspace | KeyCode::Delete if self.rebound_is_set(&rebound) => {
                 self.mode = Mode::Dialog(Dialog::Keys(rebinding));
                 return self.set_keys(&rebound, None);
             }
-            KeyCode::Char('R') if self.keys_known() => {
+            KeyCode::Char('R') => {
                 self.mode = Mode::Dialog(Dialog::Keys(rebinding));
                 return vec![self.command(
                     Command::ChangePreference(PreferenceChange::AllKeysBack),
@@ -194,9 +182,6 @@ impl App {
     /// Has the daemon keep `keys` as `rebound`'s, or Muster's (a panel's
     /// suggested) where `None`.
     fn set_keys(&mut self, rebound: &Rebound, keys: Option<Vec<String>>) -> Vec<Action> {
-        if !self.keys_known() {
-            return Vec::new();
-        }
         let said = if keys.is_some() {
             "The key is set."
         } else {

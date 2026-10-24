@@ -59,7 +59,3 @@
 .mu-prose > :last-child {
   margin-bottom: 0;
 }
-.mu-pane-title--wrap {
-  white-space: normal;
-  text-wrap: balance;
-}

@@ -8,9 +8,6 @@
   background: var(--surface-rail);
   border-right: var(--stroke-hairline) solid var(--line);
 }
-.mu-nav--folded {
-  width: var(--layout-sidebar-folded);
-}
 .mu-nav-label {
   padding: var(--space-16) var(--space-10) var(--space-6);
   color: var(--text-quiet);

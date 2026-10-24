@@ -59,7 +59,9 @@ export function Select({
   const byKeys = useRef(false);
   // Gone while its list is open (its dialog closed): the list is no longer open.
   const shown = useRef(false);
-  shown.current = open;
+  useEffect(() => {
+    shown.current = open;
+  }, [open]);
   useEffect(
     () => () => {
       if (shown.current) listClosed(false);

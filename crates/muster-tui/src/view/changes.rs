@@ -8,12 +8,14 @@ use muster_core::text::one_line;
 use muster_core::timeline::{Entry, Timeline};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use super::theme::Theme;
 use super::{look, panel, shorten};
 use crate::app::{App, ChangeRow, ChangesPane, DiffPane, Pick};
+use crate::cells;
 
 pub(super) fn draw_changes(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let Some(pane) = &app.changes else {
@@ -55,6 +57,7 @@ fn row_line(
     width: usize,
     selected: bool,
 ) -> Line<'static> {
+    let theme = super::theme::of(app);
     let line = match row {
         ChangeRow::Heading(text) => return Line::from(format!(" {text}")).bold(),
         ChangeRow::Note(text) => return Line::from(format!(" {}", one_line(text))).dim(),
@@ -63,20 +66,22 @@ fn row_line(
             line.spans.insert(0, Span::raw(" "));
             return line;
         }
-        ChangeRow::Error(text) => return Line::from(format!(" {}", one_line(text))).red(),
+        ChangeRow::Error(text) => {
+            return Line::from(format!(" {}", one_line(text))).fg(theme.waiting);
+        }
         ChangeRow::Clash(clash) => return super::clashes::pane_line(app, clash, width),
         ChangeRow::Commit(commit) => {
             return Line::from(vec![
                 Span::raw("   "),
-                Span::styled(one_line(&commit.id), Style::default().fg(Color::Yellow)),
+                Span::styled(one_line(&commit.id), Style::default().fg(theme.working)),
                 Span::raw(" "),
                 Span::raw(shorten(
                     &commit.subject,
-                    width.saturating_sub(commit.id.chars().count() + 4),
+                    width.saturating_sub(cells::width(&commit.id) + 4),
                 )),
             ]);
         }
-        ChangeRow::File(_, file) => file_line(file, width),
+        ChangeRow::File(_, file) => file_line(file, width, theme),
         ChangeRow::Entry(entry) => entry_line(app, timeline, entry, width),
     };
     if selected {
@@ -94,6 +99,7 @@ fn entry_line(
     entry: &Entry,
     width: usize,
 ) -> Line<'static> {
+    let theme = super::theme::of(app);
     let number = format!("#{}", entry.number);
     let when = app
         .now
@@ -104,15 +110,15 @@ fn entry_line(
         .unwrap_or_default();
     let mut tail = vec![Span::from(when).dim(), Span::raw("  ")];
     tail.extend(match entry.summary {
-        Some(changed) => summary(&changed),
+        Some(changed) => summary(&changed, theme),
         None => vec![Span::from("no files").dim()],
     });
     let tail_width: usize = tail.iter().map(Span::width).sum();
-    let lead = 3 + number.chars().count() + 2;
+    let lead = 3 + cells::width(&number) + 2;
     let room = width.saturating_sub(lead + tail_width + 2);
     let what = shorten(&crate::app::timeline::label(timeline, entry), room.max(4));
     let gap = width
-        .saturating_sub(lead + what.chars().count() + tail_width + 1)
+        .saturating_sub(lead + cells::width(&what) + tail_width + 1)
         .max(1);
     let mut spans = vec![
         Span::raw("   "),
@@ -127,10 +133,11 @@ fn entry_line(
 
 /// `  M  src/view.rs        +12 −3`: its kind, where it is (and was), and
 /// its lines at the end.
-fn file_line(file: &FileChange, width: usize) -> Line<'static> {
-    let counts = file
-        .lines
-        .map_or_else(|| vec![Span::from("binary").dim()], counts);
+fn file_line(file: &FileChange, width: usize, theme: Theme) -> Line<'static> {
+    let counts = file.lines.map_or_else(
+        || vec![Span::from("binary").dim()],
+        |lines| counts(lines, theme),
+    );
     let counts_width: usize = counts.iter().map(Span::width).sum();
     let name = match &file.from {
         Some(from) => format!("{} → {}", one_line(from), one_line(&file.path)),
@@ -140,11 +147,11 @@ fn file_line(file: &FileChange, width: usize) -> Line<'static> {
     let room = width.saturating_sub(lead + counts_width + 2);
     let name = shorten_start(&name, room.max(4));
     let gap = width
-        .saturating_sub(lead + name.chars().count() + counts_width + 1)
+        .saturating_sub(lead + cells::width(&name) + counts_width + 1)
         .max(1);
     let mut spans = vec![
         Span::raw("   "),
-        Span::styled(file.kind.letter().to_string(), kind_style(file)),
+        Span::styled(file.kind.letter().to_string(), kind_style(file, theme)),
         Span::raw("  "),
         Span::raw(name),
         Span::raw(" ".repeat(gap)),
@@ -153,28 +160,25 @@ fn file_line(file: &FileChange, width: usize) -> Line<'static> {
     Line::from(spans)
 }
 
-fn kind_style(file: &FileChange) -> Style {
+fn kind_style(file: &FileChange, theme: Theme) -> Style {
     use muster_core::ChangeKind;
     match file.kind {
         ChangeKind::Added | ChangeKind::Untracked | ChangeKind::Copied => {
-            Style::default().fg(Color::Green)
+            Style::default().fg(theme.done)
         }
-        ChangeKind::Deleted | ChangeKind::Conflicted => Style::default().fg(Color::Red),
-        ChangeKind::Renamed | ChangeKind::TypeChanged => Style::default().fg(Color::Cyan),
-        ChangeKind::Modified => Style::default().fg(Color::Yellow),
+        ChangeKind::Deleted | ChangeKind::Conflicted => Style::default().fg(theme.waiting),
+        ChangeKind::Renamed | ChangeKind::TypeChanged => Style::default().fg(theme.news),
+        ChangeKind::Modified => Style::default().fg(theme.working),
     }
 }
 
 /// `+12 −3`, the added in green and the removed in red; a side with
 /// nothing is left out, and nothing on either side is `±0`.
-pub(super) fn counts(lines: LineCounts) -> Vec<Span<'static>> {
-    let added = Span::styled(
-        format!("+{}", lines.added),
-        Style::default().fg(Color::Green),
-    );
+pub(super) fn counts(lines: LineCounts, theme: Theme) -> Vec<Span<'static>> {
+    let added = Span::styled(format!("+{}", lines.added), Style::default().fg(theme.done));
     let removed = Span::styled(
         format!("−{}", lines.removed),
-        Style::default().fg(Color::Red),
+        Style::default().fg(theme.waiting),
     );
     match (lines.added, lines.removed) {
         (0, 0) => vec![Span::from("±0").dim()],
@@ -186,28 +190,30 @@ pub(super) fn counts(lines: LineCounts) -> Vec<Span<'static>> {
 
 /// What a workspace's change comes to, for its line in the list: its
 /// lines, or how many files where none are counted.
-pub(super) fn summary(summary: &ChangeSummary) -> Vec<Span<'static>> {
+pub(super) fn summary(summary: &ChangeSummary, theme: Theme) -> Vec<Span<'static>> {
     if summary.added == 0 && summary.removed == 0 {
         return vec![Span::from(summary.words()).dim()];
     }
-    counts(LineCounts {
-        added: summary.added,
-        removed: summary.removed,
-    })
+    counts(
+        LineCounts {
+            added: summary.added,
+            removed: summary.removed,
+        },
+        theme,
+    )
 }
 
-/// `text`, cut to `max` characters from its start, as a path's end says
+/// `text`, cut to `max` columns from its start, as a path's end says
 /// most: `…/view/changes.rs`.
 fn shorten_start(text: &str, max: usize) -> String {
-    let count = text.chars().count();
-    if count <= max {
+    if cells::width(text) <= max {
         return text.to_owned();
     }
-    let kept: String = text.chars().skip(count - max.saturating_sub(1)).collect();
-    format!("…{kept}")
+    format!("…{}", cells::end_within(text, max.saturating_sub(1)))
 }
 
 fn draw_diff(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, diff: &DiffPane, area: Rect) {
+    let theme = super::theme::of(app);
     let title = match &diff.of {
         Pick::File(part, path) => {
             let part = match part {
@@ -246,7 +252,7 @@ fn draw_diff(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, diff: &DiffPa
             line.spans.insert(0, Span::raw(" "));
             vec![line]
         }
-        Some(Err(error)) => vec![Line::from(format!(" {}", one_line(error))).red()],
+        Some(Err(error)) => vec![Line::from(format!(" {}", one_line(error))).fg(theme.waiting)],
         Some(Ok(found)) if found.text.is_empty() => {
             vec![Line::from(" Git shows no difference in its text.").dim()]
         }
@@ -256,7 +262,7 @@ fn draw_diff(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, diff: &DiffPa
                 .lines()
                 .skip(diff.scroll)
                 .take(usize::from(inner.height))
-                .map(diff_line)
+                .map(|line| diff_line(line, theme))
                 .collect();
             let shown = diff.scroll + lines.len();
             if found.cut
@@ -274,16 +280,16 @@ fn draw_diff(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, diff: &DiffPa
 /// A line of a diff in its colours: added green, removed red, a hunk's
 /// place cyan, git's own headers dim. Tabs are drawn as spaces, as a
 /// terminal cell holds one character.
-fn diff_line(line: &str) -> Line<'static> {
+fn diff_line(line: &str, theme: Theme) -> Line<'static> {
     let text = line.replace('\t', "    ");
     let style = if line.starts_with("+++") || line.starts_with("---") {
         Style::default().bold()
     } else if line.starts_with('+') {
-        Style::default().fg(Color::Green)
+        Style::default().fg(theme.done)
     } else if line.starts_with('-') {
-        Style::default().fg(Color::Red)
+        Style::default().fg(theme.waiting)
     } else if line.starts_with("@@") {
-        Style::default().fg(Color::Cyan)
+        Style::default().fg(theme.news)
     } else if line.starts_with("diff ")
         || line.starts_with("index ")
         || line.starts_with("new file")
@@ -309,7 +315,12 @@ mod tests {
 
     #[test]
     fn counts_leave_out_an_empty_side() {
-        let lines = |added, removed| text(&counts(LineCounts { added, removed }));
+        let lines = |added, removed| {
+            text(&counts(
+                LineCounts { added, removed },
+                crate::view::theme::plain(),
+            ))
+        };
         assert_eq!(lines(12, 3), "+12 −3");
         assert_eq!(lines(12, 0), "+12");
         assert_eq!(lines(0, 3), "−3");

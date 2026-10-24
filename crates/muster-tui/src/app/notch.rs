@@ -6,7 +6,7 @@
 
 use muster_core::SessionId;
 use muster_core::protocol::{ClientFrame, Command, ErrorBody};
-use muster_core::settings::{NOTCH_PROTOCOL, NOTIFIER_PROTOCOL, PreferenceChange};
+use muster_core::settings::PreferenceChange;
 
 use super::{Action, App, Link, Then, View};
 use crate::model::Row;
@@ -14,24 +14,17 @@ use crate::model::Row;
 impl App {
     /// Whether the daemon knows the notch, and Muster's own settings.
     pub(crate) fn notch_known(&self) -> bool {
-        self.notch_here && self.daemon_protocol >= NOTCH_PROTOCOL
+        self.person.notch_here
     }
 
     /// Tells the daemon whether the person is looking at this window; a
     /// terminal that never says counts as looked at.
     pub(super) fn looking(&self) -> Option<Action> {
-        (self.daemon_protocol >= NOTCH_PROTOCOL && matches!(self.link, Link::Connected { .. }))
-            .then(|| {
-                Action::Send(ClientFrame::Looking {
-                    looking: self.focused != Some(false),
-                })
+        (matches!(self.link, Link::Connected { .. })).then(|| {
+            Action::Send(ClientFrame::Looking {
+                looking: self.person.focused != Some(false),
             })
-    }
-
-    /// Whether the daemon keeps whether the person is notified, and knows
-    /// Muster's helper's notifications.
-    pub(crate) fn notifications_known(&self) -> bool {
-        self.daemon_protocol >= NOTIFIER_PROTOCOL
+        })
     }
 
     /// Starts Muster's helper once the state says it is wanted, for the
@@ -39,7 +32,7 @@ impl App {
     /// itself, and is started again once turned back on.
     pub(super) fn start_notch(&mut self) -> Option<Action> {
         let preferences = self.model.preferences();
-        let notifies = self.notifications_known() && preferences.notifications;
+        let notifies = preferences.notifications;
         let wanted = self.notch_known() && self.model.loaded() && (preferences.notch || notifies);
         if !wanted {
             self.notch_started = false;
@@ -90,10 +83,9 @@ impl App {
 
     /// Turns the notch on or off.
     pub(super) fn toggle_notch(&mut self) -> Vec<Action> {
-        if !self.notch_known() || self.notch_changing {
+        if !self.notch_known() || self.notch_changing() {
             return Vec::new();
         }
-        self.notch_changing = true;
         let on = !self.model.preferences().notch;
         vec![self.command(
             Command::ChangePreference(PreferenceChange::Notch(on)),
@@ -105,7 +97,6 @@ impl App {
     /// settings as they are now come as a change to the state, which may
     /// come before this answer or after it.
     pub(super) fn notch_changed(&mut self, on: bool, outcome: Result<(), ErrorBody>) {
-        self.notch_changing = false;
         match outcome {
             Ok(()) if on => {
                 self.say("The notch shows your agents while you look elsewhere.");

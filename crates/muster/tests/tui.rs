@@ -14,11 +14,13 @@
 )]
 
 mod support;
+
+use support::wait;
 #[path = "tui/ui.rs"]
 mod ui;
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
@@ -282,24 +284,14 @@ fn a_daemon_the_ui_started_is_reaped_when_it_stops_and_another_takes_over() {
     // The daemon is not the UI's child, and the system reaps it, so no
     // zombie is left: signalling the pid fails once it is gone, which a
     // zombie's would not.
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while kill(pid, None).is_ok() {
-        assert!(
-            Instant::now() < deadline,
-            "daemon {first} lingers as a zombie"
-        );
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    wait::until(&format!("daemon {first} to be gone, not a zombie"), || {
+        kill(pid, None).is_err()
+    });
 
     // The UI notices and starts a new daemon.
-    let deadline = Instant::now() + Duration::from_secs(15);
-    loop {
-        match daemon_pid(&socket) {
-            Some(second) if second != first => break,
-            _ => assert!(Instant::now() < deadline, "no new daemon"),
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    wait::until("a new daemon", || {
+        daemon_pid(&socket).is_some_and(|second| second != first)
+    });
     ui.wait_for(DAEMON);
 }
 
@@ -359,8 +351,9 @@ fn the_daemon_the_ui_starts_outlives_the_ui_s_whole_process_tree_and_hang_ups() 
     for pid in tree_of(ui.pid()) {
         let _ = kill(Pid::from_raw(i32::try_from(pid).unwrap()), Signal::SIGKILL);
     }
-    std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(daemon_pid(&socket), Some(daemon), "the daemon lives on");
+    wait::holds("the daemon living on", Duration::from_millis(500), || {
+        daemon_pid(&socket) == Some(daemon)
+    });
 
     // A hang-up is someone else's: logged, and ignored.
     kill(
@@ -368,17 +361,17 @@ fn the_daemon_the_ui_starts_outlives_the_ui_s_whole_process_tree_and_hang_ups() 
         Signal::SIGHUP,
     )
     .unwrap();
-    std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(daemon_pid(&socket), Some(daemon), "a hang-up stops nothing");
+    wait::holds(
+        "a hang-up stopping nothing",
+        Duration::from_millis(500),
+        || daemon_pid(&socket) == Some(daemon),
+    );
     let log = sandbox.paths().runtime_dir.join("daemon.log");
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !std::fs::read_to_string(&log)
-        .unwrap_or_default()
-        .contains("ignored a hang-up")
-    {
-        assert!(Instant::now() < deadline, "the hang-up is not in the log");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    wait::until("the hang-up in the log", || {
+        std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .contains("ignored a hang-up")
+    });
 
     // Asked to stop, it says why as it goes.
     kill(
@@ -386,14 +379,11 @@ fn the_daemon_the_ui_starts_outlives_the_ui_s_whole_process_tree_and_hang_ups() 
         Signal::SIGTERM,
     )
     .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !std::fs::read_to_string(&log)
-        .unwrap_or_default()
-        .contains("daemon stopped")
-    {
-        assert!(Instant::now() < deadline, "it never stopped");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    wait::until("it to stop", || {
+        std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .contains("daemon stopped")
+    });
     let log = std::fs::read_to_string(&log).unwrap();
     assert!(log.contains("stopping: asked to stop"), "{log}");
 }
@@ -479,12 +469,10 @@ fn a_drag_over_a_session_copies_its_text_with_the_system_s_own_program() {
             ("DISPLAY", ":0"),
         ],
     );
-    let deadline = Instant::now() + Duration::from_secs(15);
     // The session's text, none of the list beside it.
-    while sandbox.clipboard().as_deref() != Some("copy-42\nnext-8") {
-        assert!(Instant::now() < deadline, "{:?}", sandbox.clipboard());
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    wait::until("the session's text on the clipboard", || {
+        sandbox.clipboard().as_deref() == Some("copy-42\nnext-8")
+    });
 }
 
 #[test]
@@ -552,11 +540,9 @@ fn the_mouse_reaches_what_it_points_at_around_a_copy() {
     ui.drag(PANE, (PANE.0 + 3, PANE.1 + 1));
     ui.wait_for("Copied 2 lines.");
     let wanted = format!("{first}\n{second}");
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while sandbox.clipboard().as_deref() != Some(wanted.as_str()) {
-        assert!(Instant::now() < deadline, "{:?}", sandbox.clipboard());
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    wait::until("the two lines on the clipboard", || {
+        sandbox.clipboard().as_deref() == Some(wanted.as_str())
+    });
 
     // A click on the project's line (on its name: its triangle, before
     // it, folds it) gives the list the keys and selects it; one on its
@@ -564,14 +550,15 @@ fn the_mouse_reaches_what_it_points_at_around_a_copy() {
     ui.click(6, 2);
     ui.wait_for("┌ Details");
     ui.click(80, 10);
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(!ui.text().contains("New worktree"), "{}", ui.text());
+    wait::holds("no dialog opened", Duration::from_millis(300), || {
+        !ui.text().contains("New worktree")
+    });
 
     // The session's line, then its pane: the session has the keys. A
     // shell is named by what runs in it; its mark finds it.
     let (column, row) = ui.position_of("❯").unwrap();
+    // The UI takes the clicks in the order they come.
     ui.click(column + 2, row);
-    std::thread::sleep(Duration::from_millis(300));
     ui.click(80, 10);
     ui.wait_for("keys go to the session");
     // The wheel, over the list, looks back in the session with the keys.
@@ -596,13 +583,11 @@ fn a_program_takes_the_mouse_and_lets_it_go_and_full_screen_is_left_by_a_click()
     // The alternate screen shown: the modes, sent after the output that
     // set them, have come too.
     ui.wait_without("seq-6");
-    std::thread::sleep(Duration::from_millis(100));
     ui.wheel_back(80, 10);
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(
-        !ui.text().contains("lines back"),
-        "the program's: {}",
-        ui.text()
+    wait::holds(
+        "the wheel the program's",
+        Duration::from_millis(300),
+        || !ui.text().contains("lines back"),
     );
     ui.keys(b"\r");
     ui.wait_for("back-42");
@@ -669,7 +654,7 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
     ui.keys(b"Q");
     ui.wait_for("muster/issue-42-fix-the-login-redirect-2");
 
-    let listed = sandbox.run(&["issue", "list", "app"]);
+    let listed = sandbox.run(&["list", "tickets", "-p", "app"]);
     let listed = String::from_utf8_lossy(&listed.stdout);
     assert!(
         listed.contains("#42") && listed.contains("2 agents"),
@@ -685,15 +670,10 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
     ui.keys(b"y");
     let closed = std::fs::read_to_string(gh.join("closed")).unwrap();
     assert_eq!(closed.trim(), "42");
-    let deadline = Instant::now() + Duration::from_secs(15);
-    loop {
+    wait::until("no worktree or session left", || {
         let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
-        if status.contains("0 worktrees") && status.contains("0 sessions") {
-            break;
-        }
-        assert!(Instant::now() < deadline, "{status}\n{}", ui.text());
-        std::thread::sleep(Duration::from_millis(100));
-    }
+        status.contains("0 worktrees") && status.contains("0 sessions")
+    });
     let branches = support::git(&root, &["branch", "--list", "--format=%(refname:short)"]);
     assert!(
         branches.contains("muster/issue-42-fix-the-login-redirect-2"),
@@ -811,11 +791,7 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     };
     let first = mark(&ui);
     assert!("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".contains(first), "{}", ui.text());
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while mark(&ui) == first {
-        assert!(Instant::now() < deadline, "it never moved: {}", ui.text());
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    wait::until("its mark to move", || mark(&ui) != first);
 
     // It finishes its turn: on the sessions list its line lights up in
     // green, then settles.
@@ -838,11 +814,9 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     assert_eq!(ui.background_of("✓ ✻ #42"), Some(DONE), "{}", ui.text());
     // Settled, it is the selected line: lit, as the selection is while
     // the list has the keys.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while ui.background_of("✓ ✻ #42") != Some(LIT) {
-        assert!(Instant::now() < deadline, "it never settled: {}", ui.text());
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    wait::until("it to settle, lit", || {
+        ui.background_of("✓ ✻ #42") == Some(LIT)
+    });
     ui.keys(b"q");
     assert!(ui.wait_for_exit());
 
@@ -855,8 +829,9 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     let mut ui = Ui::start_with(&sandbox, &root, &[("MUSTER_MOTION", "off")]);
     ui.keys(b"i");
     ui.wait_for(&format!("{LINE}●"));
-    std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(mark(&ui), '●', "{}", ui.text());
+    wait::holds("its mark still", Duration::from_millis(500), || {
+        mark(&ui) == '●'
+    });
     ui.keys(b"1");
     // Its prompt went in: it is thinking, as its hooks said.
     ui.wait_for("thinking");

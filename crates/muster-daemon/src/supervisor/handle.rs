@@ -115,8 +115,14 @@ pub(super) enum Request {
         project: muster_core::ProjectId,
         listed: Vec<crate::worktree_sync::Listed>,
     },
+    /// A worktree's plan, asked of git off the loop.
+    WorktreePlanned(Box<super::worktrees::Planned>),
     /// A worktree git made off the loop, or could not.
     WorktreeMade(Box<super::worktrees::Made>),
+    /// What a move of a branch onto its base was asked of git, off the loop.
+    MovePlanned(Box<super::stacks::MovePlanned>),
+    /// A session by hand's start, asked of git or the settings off the loop.
+    Prepared(Box<super::prepared::Prepared>),
     /// A worktree git removed off the loop, or could not.
     WorktreeRemoved(Box<super::worktrees::Removed>),
     /// A project cloned off the loop, or not, to be added.
@@ -139,6 +145,10 @@ pub(super) enum Request {
     HandOver(oneshot::Sender<Vec<crate::handoff::HandedSession>>),
     /// Take sessions over that were handed over.
     Adopt(Vec<crate::handoff::HandedSession>, oneshot::Sender<()>),
+    /// Stop, as the daemon's process ending stops it: for a test that
+    /// starts another on the same store. Told once it is gone.
+    #[cfg(test)]
+    Stop(oneshot::Sender<()>),
     /// Start a plugin's panel, as `Command::OpenPanel` will.
     #[cfg(test)]
     StartPanel {
@@ -186,7 +196,10 @@ impl std::fmt::Debug for Request {
             Self::Branches(_) => f.write_str("Branches"),
             Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
             Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
+            Self::WorktreePlanned(_) => f.write_str("WorktreePlanned"),
             Self::WorktreeMade(_) => f.write_str("WorktreeMade"),
+            Self::MovePlanned(_) => f.write_str("MovePlanned"),
+            Self::Prepared(_) => f.write_str("Prepared"),
             Self::WorktreeRemoved(_) => f.write_str("WorktreeRemoved"),
             Self::Cloned(_) => f.write_str("Cloned"),
             Self::Resources(_) => f.write_str("Resources"),
@@ -194,6 +207,8 @@ impl std::fmt::Debug for Request {
             Self::Spends(spends) => write!(f, "Spends({})", spends.len()),
             Self::Interrupted(turns) => write!(f, "Interrupted({})", turns.len()),
             Self::Stopped(stopped) => write!(f, "Stopped({})", stopped.len()),
+            #[cfg(test)]
+            Self::Stop(_) => f.write_str("Stop"),
             Self::HandOver(_) => f.write_str("HandOver"),
             Self::Adopt(sessions, _) => write!(f, "Adopt({})", sessions.len()),
             #[cfg(test)]
@@ -206,9 +221,17 @@ impl std::fmt::Debug for Request {
 #[derive(Clone, Debug)]
 pub(crate) struct SupervisorHandle {
     pub(super) requests: mpsc::Sender<Request>,
+    /// Cancelled as the Supervisor's task ends, which only a panic does.
+    pub(super) ended: tokio_util::sync::CancellationToken,
 }
 
 impl SupervisorHandle {
+    /// Waits until the Supervisor has ended: it keeps its own queue open,
+    /// so only a panic ends it, and a daemon without one answers nothing.
+    pub(crate) async fn ended(&self) {
+        self.ended.cancelled().await;
+    }
+
     /// The current state and every delta after it, or `None` once the
     /// Supervisor has stopped.
     pub(crate) async fn subscribe(&self) -> Option<Subscription> {
@@ -238,6 +261,18 @@ impl SupervisorHandle {
             .await
             .expect("the Supervisor runs");
         answer.await.expect("the Supervisor answers")
+    }
+
+    /// Stops the Supervisor, as the daemon's process ending would, once
+    /// it has done what it was asked before; back once it is gone.
+    #[cfg(test)]
+    pub(crate) async fn stop(self) {
+        let (done, gone) = oneshot::channel();
+        self.requests
+            .send(Request::Stop(done))
+            .await
+            .expect("the Supervisor runs");
+        gone.await.expect("the Supervisor stops");
     }
 
     /// Carries out a client's command.

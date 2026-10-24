@@ -8,12 +8,6 @@ use serde::{Deserialize, Serialize};
 use crate::entities::Session;
 use crate::ids::SessionId;
 
-/// The first protocol whose daemon keeps [`Session::started_by`], applies
-/// [`Delegation`], takes `StartSession::started_by`,
-/// `CreateWorktree::named_for` and `Command::ReadSession`, and keeps
-/// [`crate::settings::Preferences::delegation`] (`ARC-09`).
-pub const DELEGATION_PROTOCOL: u32 = 51;
-
 /// Where the limits are written: `[delegation] allowed`, `at_once` and
 /// `depth`.
 pub const DELEGATION: &str = "delegation";

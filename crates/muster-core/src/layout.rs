@@ -159,8 +159,12 @@ pub struct Layout {
 pub const DEFAULT: &str = "list | session 60% | (changes / shell / plugin)";
 
 impl Default for Layout {
+    #[expect(
+        clippy::expect_used,
+        reason = "Muster's own layout, which a test reads (`the_default_reads_and_writes_as_it_is_written`)"
+    )]
     fn default() -> Self {
-        Self::parse(DEFAULT).unwrap_or_else(|_| unreachable!("the default layout reads"))
+        Self::parse(DEFAULT).expect("the default layout reads")
     }
 }
 
@@ -359,7 +363,7 @@ fn completed(root: Node, panel: Panel) -> Node {
         part: Part::Panel(panel),
         size: None,
     };
-    let default = tree(DEFAULT).unwrap_or_else(|_| unreachable!("the default layout reads"));
+    let default = Layout::default().root;
     match place_in(&default, panel, &|other| contains(&root, other)) {
         Some((target, edge)) => beside(root, target, moving, edge),
         None => joined(moving, root, Edge::Right, None),
@@ -450,24 +454,26 @@ fn node(tokens: &[Token], at: &mut usize) -> Result<Node, LayoutError> {
         return Ok(first);
     };
     let split = *split;
-    let mut terms = vec![first];
+    let mut rest = Vec::new();
     while let Some(Token::Sign(sign)) = tokens.get(*at) {
         if *sign != split {
             return Err(LayoutError::Mixed);
         }
         *at += 1;
-        terms.push(term(tokens, at)?);
+        rest.push(term(tokens, at)?);
     }
-    let mut nested = terms
-        .pop()
-        .unwrap_or_else(|| unreachable!("two terms at least"));
-    while let Some(term) = terms.pop() {
-        nested = Node {
-            part: Part::Split(split, Box::new(term), Box::new(nested)),
-            size: None,
-        };
+    // `a | b | c` is `a | (b | c)`.
+    let joined = |left: Node, right: Node| Node {
+        part: Part::Split(split, Box::new(left), Box::new(right)),
+        size: None,
+    };
+    let Some(mut nested) = rest.pop() else {
+        return Ok(first);
+    };
+    while let Some(term) = rest.pop() {
+        nested = joined(term, nested);
     }
-    Ok(nested)
+    Ok(joined(first, nested))
 }
 
 fn term(tokens: &[Token], at: &mut usize) -> Result<Node, LayoutError> {

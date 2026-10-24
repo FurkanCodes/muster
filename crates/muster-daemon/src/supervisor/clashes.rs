@@ -58,7 +58,7 @@ impl Supervisor {
     /// Looks at where the work in `project`'s workspaces meets, off the
     /// loop, unless a look is under way, which another then follows.
     pub(super) fn check_clashes(&mut self, project: ProjectId) {
-        if let Some((_, again)) = self.clashes.under_way.get_mut(&project) {
+        if let Some((_, again)) = self.looks.clashes.under_way.get_mut(&project) {
             *again = true;
             return;
         }
@@ -85,10 +85,11 @@ impl Supervisor {
             self.settle_clashes(project, &[]);
             return;
         }
-        self.clashes
+        self.looks
+            .clashes
             .under_way
-            .insert(project, (self.clashes.ticks, false));
-        let dir = clashes::dir(&self.data_dir, project);
+            .insert(project, (self.looks.clashes.ticks, false));
+        let dir = clashes::dir(&self.paths.data_dir, project);
         let at = self.clock.now();
         let requests = self.requests.clone();
         self.tasks.spawn(async move {
@@ -125,6 +126,7 @@ impl Supervisor {
     /// one was asked meanwhile.
     pub(super) fn clashes_found(&mut self, found: Found) {
         let again = self
+            .looks
             .clashes
             .under_way
             .remove(&found.project)
@@ -208,9 +210,10 @@ impl Supervisor {
     /// The pull request timer's tick: every tenth, a look at every
     /// project; a look gone too long is taken as lost.
     pub(super) fn tick_clashes(&mut self) {
-        self.clashes.ticks = self.clashes.ticks.wrapping_add(1);
-        let ticks = self.clashes.ticks;
+        self.looks.clashes.ticks = self.looks.clashes.ticks.wrapping_add(1);
+        let ticks = self.looks.clashes.ticks;
         let lost: Vec<ProjectId> = self
+            .looks
             .clashes
             .under_way
             .iter()
@@ -219,7 +222,7 @@ impl Supervisor {
             .collect();
         for project in lost {
             tracing::warn!(%project, "a look at where workspaces' work meets never came back");
-            self.clashes.under_way.remove(&project);
+            self.looks.clashes.under_way.remove(&project);
         }
         if ticks.is_multiple_of(EVERY) {
             let projects: Vec<ProjectId> = self
@@ -252,8 +255,8 @@ impl Supervisor {
 
     /// A project went: its store of snapshots goes with it (`ARC-14`).
     pub(super) fn forget_clashes_of(&mut self, project: ProjectId) {
-        self.clashes.under_way.remove(&project);
-        let dir = clashes::dir(&self.data_dir, project);
+        self.looks.clashes.under_way.remove(&project);
+        let dir = clashes::dir(&self.paths.data_dir, project);
         self.tasks.spawn(async move { clashes::remove(&dir).await });
     }
 }

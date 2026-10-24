@@ -211,18 +211,20 @@ impl SessionMachine {
         let before = (self.status, self.unseen);
         let mut effects = Vec::new();
 
-        if let Signal::Watched { watching } = signal {
-            self.watched = watching;
-        } else if !self.status.is_exited() {
-            // Nothing changes an exited session except being looked at.
+        // What it does not heed (`heeds`) changes nothing.
+        if self.heeds(&signal) {
             match signal {
+                Signal::Watched { watching } => self.watched = watching,
                 Signal::Hook {
                     agent_session,
                     event,
                 } => {
                     // Any word from the harness means it has started.
                     self.started();
-                    self.on_hook(agent_session, event, now, &mut effects);
+                    if let Some(id) = agent_session {
+                        self.agent_session = Some(id);
+                    }
+                    self.on_hook(event, now, &mut effects);
                 }
                 Signal::Progress { busy } => self.on_progress(busy, now),
                 Signal::Waiting { waiting } => {
@@ -236,7 +238,6 @@ impl SessionMachine {
                 }
                 Signal::Exited { success, requested } => self.on_exit(success, requested),
                 Signal::Tick => self.on_tick(now),
-                Signal::Watched { .. } => {}
             }
         }
         if self.watched {
@@ -252,22 +253,7 @@ impl SessionMachine {
         effects
     }
 
-    fn on_hook(
-        &mut self,
-        agent_session: Option<String>,
-        event: HookEvent,
-        now: Instant,
-        effects: &mut Vec<Effect>,
-    ) {
-        if let Some(id) = agent_session {
-            match &self.agent_session {
-                // `/clear` starts a new harness session in the same process;
-                // only its start announcement may switch to it.
-                Some(current) if *current != id && event != HookEvent::SessionStarted => return,
-                _ => self.agent_session = Some(id),
-            }
-        }
-
+    fn on_hook(&mut self, event: HookEvent, now: Instant, effects: &mut Vec<Effect>) {
         match event {
             HookEvent::SessionStarted => {}
             HookEvent::PromptSubmitted => {

@@ -5,7 +5,8 @@
 //! this version's release for it, downloaded here and sent over ssh, so
 //! the machine needs only ssh), says what is missing
 //! for agents to work there, and opens its Muster through ssh: its UI, or
-//! one command (`muster ssh vm list agents`). Agents there keep working
+//! one command (`muster ssh vm claude auth login`), or Muster's own
+//! commands from here (`muster --on vm list agents`). Agents there keep working
 //! while the person's own computer sleeps.
 //!
 //! The machine is reached only through the `ssh` program on `PATH`, with
@@ -192,7 +193,7 @@ pub(crate) async fn run(
                 asked.machine
             ),
         };
-        if !asked.install && !agrees(&question)? {
+        if !asked.install && !crate::person::agrees(&question)? {
             if probe.muster.is_none() {
                 return Err(format!(
                     "Muster is not on {}: `muster ssh {} --install` installs it, or install it \
@@ -218,7 +219,7 @@ pub(crate) async fn run(
         );
         if report::claude_missing(&checked)
             && (asked.install_claude
-                || agrees(&format!(
+                || crate::person::agrees(&format!(
                     "Install Claude Code on {} with its own installer?",
                     asked.machine
                 ))?)
@@ -344,15 +345,15 @@ fn read_binary(path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Er
     std::fs::read(path).map_err(|error| format!("cannot read {}: {error}", path.display()).into())
 }
 
-/// Puts `bytes` on the machine as its muster, through ssh, and checks the
-/// copy there is them.
+/// Puts `bytes` on the machine as its muster, through ssh: copied beside
+/// it, checked to be them and to run there, then put in its place, so a
+/// copy changed on its way, or one the machine cannot run, replaces nothing.
 fn put(target: &str, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let ours = muster_core::hex::encode(&sha2::Sha256::digest(bytes));
-    let put = format!(
-        "mkdir -p \"$HOME/.local/bin\" && cat > \"{REMOTE_BIN}.part\" && chmod 755 \"{REMOTE_BIN}.part\" && mv \"{REMOTE_BIN}.part\" \"{REMOTE_BIN}\""
-    );
+    let part = format!("{REMOTE_BIN}.part");
+    let copy = format!("mkdir -p \"$HOME/.local/bin\" && cat > \"{part}\" && chmod 755 \"{part}\"");
     let mut child = ssh(target)
-        .arg(format!("sh -c {}", quoted(&put)))
+        .arg(format!("sh -c {}", quoted(&copy)))
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .spawn()?;
@@ -364,26 +365,37 @@ fn put(target: &str, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     if !child.wait()?.success() {
         return Err("could not copy muster there".into());
     }
-    let theirs = ask(
+    let said = ask(
         target,
         &format!(
-            "s=$(shasum -a 256 \"{REMOTE_BIN}\" 2>/dev/null || sha256sum \"{REMOTE_BIN}\"); \
-             echo \"muster-sha256:${{s%% *}}\"\n"
+            "s=$(shasum -a 256 \"{part}\" 2>/dev/null || sha256sum \"{part}\"); \
+             echo \"muster-sha256:${{s%% *}}\"; \
+             echo \"muster-runs:$(\"{part}\" --version 2>/dev/null)\"\n"
         ),
     )?;
-    let theirs = theirs
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("muster-sha256:"));
-    if theirs != Some(ours.as_str()) {
+    let line = |mark: &str| {
+        said.lines()
+            .find_map(|line| line.trim().strip_prefix(mark).map(str::to_owned))
+    };
+    if line("muster-sha256:").as_deref() != Some(ours.as_str()) {
         return Err("the copy there is not this muster: it was changed on its way".into());
     }
+    // A build of the person's own may be of another version.
+    if !line("muster-runs:").is_some_and(|version| version.starts_with("muster ")) {
+        return Err(
+            "the copy there does not run on that machine, so nothing was replaced: is it the \
+             machine's system and processor?"
+                .into(),
+        );
+    }
+    ask(target, &format!("mv \"{part}\" \"{REMOTE_BIN}\"\n"))?;
     Ok(())
 }
 
 /// Moves a daemon running there onto the new muster in place; none
 /// running is fine.
 fn reloaded(target: &str) {
-    let _ = ssh(target)
+    let reloaded = ssh(target)
         .arg(format!(
             "sh -c {}",
             quoted(&format!("\"{REMOTE_BIN}\" reload"))
@@ -391,8 +403,16 @@ fn reloaded(target: &str) {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status();
-    eprintln!("Installed muster {VERSION} there.");
+        .status()
+        .is_ok_and(|status| status.success());
+    if reloaded {
+        eprintln!("Installed muster {VERSION} there.");
+    } else {
+        eprintln!(
+            "Installed muster {VERSION} there, but its daemon could not be moved onto it: \
+             `muster ssh {target} muster reload` tries again."
+        );
+    }
 }
 
 /// Says who ssh signs in as where the target names no user and ssh's
@@ -451,17 +471,4 @@ fn install_claude(
          login` (open its link here, paste the code back)."
     );
     Ok(())
-}
-
-/// Whether the person, asked on their terminal, says yes; never, without
-/// a terminal to ask on.
-fn agrees(question: &str) -> std::io::Result<bool> {
-    if !std::io::stdin().is_terminal() {
-        return Ok(false);
-    }
-    eprint!("{question} [y/N] ");
-    std::io::stderr().flush()?;
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    Ok(matches!(answer.trim(), "y" | "Y" | "yes"))
 }

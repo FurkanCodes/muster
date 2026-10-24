@@ -48,7 +48,7 @@ fn each_chat_is_led_by_its_agent_s_mark_and_named() {
 #[test]
 fn where_the_terminal_draws_pictures_the_mark_is_one() {
     let mut world = world();
-    world.app.graphics = Graphics::Iterm;
+    world.app.person.graphics = Graphics::Iterm;
     with_harness(&mut world, "claude");
     let cells = buffer(&world);
     let (x, y) = (0..cells.area.height)
@@ -112,16 +112,12 @@ fn r_renames_the_selected_chat_once_the_person_says_what_to() {
 }
 
 #[test]
-fn r_needs_a_session_and_a_daemon_that_knows_names() {
+fn r_needs_a_session() {
     let mut world = world();
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     assert!(press(&mut world.app, KeyCode::Char('R')).is_empty());
     assert!(render(&world.app).contains("Select a session to rename it."));
 
     world.app.view = View::NeedsYou;
-    world.app.needs_selected = Some(world.session.id);
-    world.app.daemon_protocol = muster_core::stacks::STACKS_PROTOCOL;
-    assert!(press(&mut world.app, KeyCode::Char('R')).is_empty());
-    assert_eq!(world.app.mode, Mode::Browse);
-    assert!(render(&world.app).contains("`muster reload`"));
+    world.app.needs.selected = Some(world.session.id);
 }

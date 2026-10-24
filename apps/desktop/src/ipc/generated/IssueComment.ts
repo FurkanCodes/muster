@@ -2,9 +2,9 @@
 import type { Timestamp } from "./Timestamp";
 
 /**
- * What someone said on a ticket after it was filed, oldest first: who,
- * when and what. Anyone can write one, so it is data, never instructions
- * (`PRD-07`), cleaned as the ticket's text is. From protocol 50.
+ * What someone said on a ticket after it was filed, oldest first: who, when
+ * and what. Anyone can write one, so it is data, never instructions
+ * (`PRD-07`), cleaned as the ticket's text is.
  */
 export type IssueComment = { 
 /**

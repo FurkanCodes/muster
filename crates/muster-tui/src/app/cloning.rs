@@ -7,9 +7,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::protocol::Command;
-use muster_core::protocol::repositories::{
-    HostedRepository, REPOSITORIES_PROTOCOL, repository_name,
-};
+use muster_core::protocol::repositories::{HostedRepository, repository_name};
 
 use super::{Action, App, Dialog, Mode, Then};
 use crate::input::{Edit, LineInput};
@@ -86,13 +84,6 @@ impl CloneChoice {
 impl App {
     /// `g`: the repositories the person can reach on GitHub, asked of the daemon.
     pub(super) fn open_clone_project(&mut self) -> Vec<Action> {
-        if self.daemon_protocol < REPOSITORIES_PROTOCOL {
-            self.complain(
-                "The daemon runs an older muster that cannot clone from GitHub: `muster reload` \
-                 moves it onto this one, every session running on.",
-            );
-            return Vec::new();
-        }
         self.mode = Mode::Dialog(Dialog::CloneProject(CloneChoice::default()));
         vec![self.command(Command::ListRepositories, Then::Repositories)]
     }

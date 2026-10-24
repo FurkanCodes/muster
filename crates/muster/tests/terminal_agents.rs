@@ -18,8 +18,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::os::unix::fs::PermissionsExt as _;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use muster_client::Connection;
 use muster_core::protocol::{Command, Reply, TermSize};
@@ -99,20 +101,18 @@ async fn until(
     what: &str,
     wanted: impl Fn(&Session) -> bool,
 ) -> Session {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    wait::found_async(what, async || {
         let snapshot = connection.subscribe().await.unwrap();
-        let stored = snapshot
-            .sessions
-            .into_iter()
-            .find(|stored| stored.id == session)
-            .unwrap();
-        if wanted(&stored) {
-            return stored;
-        }
-        assert!(Instant::now() < deadline, "{what}: {stored:?}");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+        Some(
+            snapshot
+                .sessions
+                .into_iter()
+                .find(|stored| stored.id == session)
+                .unwrap(),
+        )
+        .filter(|stored| wanted(stored))
+    })
+    .await
 }
 
 fn agent(session: &Session) -> Option<&str> {
@@ -230,12 +230,15 @@ async fn a_reload_keeps_the_agent_in_a_terminal_and_its_status() {
     .await;
     assert_eq!(after.status, SessionStatus::Running, "not started over");
     // Found again by the next daemon, the same agent: nothing changes.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let later = until(&mut connection, terminal, "still", |_| true).await;
-    assert_eq!(
-        (agent(&later), later.status),
-        (Some("codex"), SessionStatus::Running)
-    );
+    wait::holds_async(
+        "the same agent at work",
+        Duration::from_millis(500),
+        async || {
+            let later = until(&mut connection, terminal, "still", |_| true).await;
+            (agent(&later), later.status) == (Some("codex"), SessionStatus::Running)
+        },
+    )
+    .await;
 }
 
 #[tokio::test]

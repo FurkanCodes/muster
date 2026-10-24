@@ -20,7 +20,7 @@ import { useTask } from "./useTask";
 export function Stop({ session }: { session: SessionId }) {
   const app = useApp();
   const title = useDaemon((state) => state.sessions[session]?.title ?? "the session");
-  const restart = useDaemon((state) => labelOf(state.preferences, "restart_session"));
+  const restart = useDaemon((state) => labelOf(state, "restart_session"));
   const task = useTask();
   const stop = () =>
     void task.run(async () => {

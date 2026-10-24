@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
 use muster_core::text::one_line;
 use muster_core::{ProjectId, TicketKey, WorkspaceId};
@@ -12,6 +12,7 @@ use muster_core::{ProjectId, TicketKey, WorkspaceId};
 use crate::app::cloning::{CLONE_ROWS, CloneChoice};
 use crate::app::tickets_from::Field;
 use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
+use crate::cells;
 use crate::input::LineInput;
 
 /// A harness offered in a dialog, the chosen one stood out.
@@ -88,19 +89,8 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
         rows => u16::try_from(rows + 1).unwrap_or(u16::MAX),
     };
     let height = 2 + text_height + if input.is_some() { 3 + below_height } else { 0 };
-    let rect = Rect {
-        x: area.x + (area.width.saturating_sub(width)) / 2,
-        y: area.y + (area.height.saturating_sub(height)) / 2,
-        width,
-        height: height.min(area.height),
-    };
-    frame.render_widget(Clear, rect);
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded);
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
+    let rect = super::floating::centred(area, width, height);
+    let inner = super::floating::draw(frame, rect, Some(title), super::theme::of(app));
     let [text_area, input_area] =
         Layout::vertical([Constraint::Length(text_height), Constraint::Min(0)]).areas(inner);
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), text_area);
@@ -214,6 +204,7 @@ fn naming_model<'a>(
     model: &'a LineInput,
     listed: Option<&Result<Vec<String>, String>>,
 ) -> Shape<'a> {
+    let theme = super::theme::of(app);
     let label = app
         .namers()
         .into_iter()
@@ -225,7 +216,7 @@ fn naming_model<'a>(
             Line::from(format!("{label} lists none: type one it knows.")).dim()
         }
         Some(Ok(models)) => Line::from(format!("It offers: {}", models.join(", "))).dim(),
-        Some(Err(error)) => Line::from(one_line(error)).red(),
+        Some(Err(error)) => Line::from(one_line(error)).fg(theme.waiting),
     };
     Shape {
         below: vec![offered],
@@ -335,6 +326,7 @@ fn new_session<'a>(
     harness: &HarnessChoice,
     prompt: &'a LineInput,
 ) -> Shape<'a> {
+    let theme = super::theme::of(app);
     // A branch, or, in a plain folder, which has none, the project.
     let place = match app.model.workspace(workspace) {
         Some(found) if !found.kind.in_git() => app
@@ -353,7 +345,7 @@ fn new_session<'a>(
         .then(|| app.model.second_agent_warning(workspace))
         .flatten();
     if let Some(warning) = warning {
-        lines.push(Line::from(warning).yellow());
+        lines.push(Line::from(warning).fg(theme.working));
     }
     lines.push(Line::from(run));
     let input = harness.takes_prompt().then(|| {
@@ -543,10 +535,11 @@ fn add_project<'a>(
 
 /// The repositories offered, the chosen one lit, and why ⏎ did nothing.
 fn repository_lines(app: &App, choice: &CloneChoice, columns: usize) -> Vec<Line<'static>> {
+    let theme = super::theme::of(app);
     let mut lines = match &choice.listed {
         None => vec![super::loading::rule(app, "Loading repositories", columns)],
         Some(Err(reason)) => vec![
-            Line::from(super::shorten(&format!("GitHub: {reason}"), columns)).red(),
+            Line::from(super::shorten(&format!("GitHub: {reason}"), columns)).fg(theme.waiting),
             Line::from("⏎ still clones one typed as owner/name.").dim(),
         ],
         Some(Ok(_)) => {
@@ -563,7 +556,7 @@ fn repository_lines(app: &App, choice: &CloneChoice, columns: usize) -> Vec<Line
                         let chosen = choice.selected == Some(at);
                         let mark = if repository.private { "  private" } else { "" };
                         let name = super::shorten(&repository.name, columns.saturating_sub(2));
-                        let room = columns.saturating_sub(4 + name.chars().count() + mark.len());
+                        let room = columns.saturating_sub(4 + cells::width(&name) + mark.len());
                         let about = repository
                             .description
                             .as_deref()
@@ -586,7 +579,7 @@ fn repository_lines(app: &App, choice: &CloneChoice, columns: usize) -> Vec<Line
     };
     lines.resize(CLONE_ROWS + 1, Line::from(""));
     if let Some(refused) = &choice.refused {
-        lines.push(Line::from(refused.clone()).red());
+        lines.push(Line::from(refused.clone()).fg(theme.waiting));
     }
     lines
 }
@@ -669,9 +662,14 @@ fn wrapped_height(width: usize, columns: u16) -> u16 {
 /// within it.
 pub(super) fn input_window(text: &str, before_cursor: &str, columns: u16) -> (String, u16) {
     let columns = usize::from(columns.max(1));
-    let cursor = before_cursor.chars().count();
+    let cursor = cells::width(before_cursor);
     // The cursor sits after the last character shown, so keep a column for it.
     let start = (cursor + 1).saturating_sub(columns);
-    let shown: String = text.chars().skip(start).take(columns).collect();
-    (shown, u16::try_from(cursor - start).unwrap_or(0))
+    let rest = cells::after(text, start);
+    let skipped = cells::width(text) - cells::width(rest);
+    let shown = cells::start_within(rest, columns).to_owned();
+    (
+        shown,
+        u16::try_from(cursor.saturating_sub(skipped)).unwrap_or(0),
+    )
 }

@@ -6,9 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use muster_core::Timestamp;
-use muster_core::protocol::{
-    Command, Delta, ErrorCode, PROTOCOL_VERSION, Reply, ServerFrame, TermSize,
-};
+use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame, TermSize};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
@@ -279,7 +277,7 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
         clippy::disallowed_methods,
         reason = "a test's task ends with the test"
     )]
-    tokio::spawn(pump_state(supervisor.clone(), outgoing, PROTOCOL_VERSION));
+    tokio::spawn(pump_state(supervisor.clone(), outgoing));
     assert!(matches!(
         frames.recv().await,
         Some(ServerFrame::Snapshot(_))
@@ -493,41 +491,6 @@ async fn a_session_takes_another_s_place_only_where_that_one_is_shown_arc_09() {
 }
 
 #[tokio::test]
-async fn a_client_of_an_older_protocol_is_sent_only_what_it_knows() {
-    let dir = tempfile::tempdir().unwrap();
-    let supervisor = start(16).await;
-    let (outgoing, mut frames) = mpsc::channel(16);
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a test's task ends with the test"
-    )]
-    tokio::spawn(pump_state(
-        supervisor.clone(),
-        outgoing,
-        muster_core::settings::NOTCH_PROTOCOL - 1,
-    ));
-    assert!(matches!(
-        frames.recv().await,
-        Some(ServerFrame::Snapshot(_))
-    ));
-    let window = supervisor.add_client().await.unwrap();
-    assert!(supervisor.add_looker(&window, mpsc::channel(4).0).await);
-    supervisor.looking(&window, true).await;
-    supervisor
-        .command(add(&repository(dir.path(), "app"), None))
-        .await
-        .unwrap();
-    let first = timeout(Duration::from_secs(5), frames.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(
-        matches!(first, ServerFrame::Delta(Delta::ProjectUpserted(_))),
-        "{first:?}"
-    );
-}
-
-#[tokio::test]
 async fn muster_s_own_settings_change_in_the_person_s_file_for_every_client() {
     let dir = tempfile::tempdir().unwrap();
     let supervisor = start_in(16, dir.path().to_owned()).await;
@@ -550,4 +513,16 @@ async fn muster_s_own_settings_change_in_the_person_s_file_for_every_client() {
     let written = std::fs::read_to_string(dir.path().join("settings.toml")).unwrap();
     assert!(written.contains("show = false"), "{written}");
     assert!(!supervisor.subscribe().await.unwrap().0.preferences.notch);
+}
+
+#[tokio::test]
+async fn the_supervisor_ending_by_a_panic_is_told_so_the_daemon_stops() {
+    let ended = tokio_util::sync::CancellationToken::new();
+    let task = crate::tasks::owned(supervisor::cancelling_as_it_ends(ended.clone(), async {
+        panic!("a bug in the Supervisor");
+    }));
+    timeout(Duration::from_secs(5), ended.cancelled())
+        .await
+        .expect("ended is cancelled as the task unwinds");
+    assert!(task.await.is_err_and(|error| error.is_panic()));
 }

@@ -38,7 +38,8 @@ impl App {
                 row => self.model.worktree_of(row),
             }),
             View::NeedsYou => self
-                .needs_selected
+                .needs
+                .selected
                 .and_then(|session| self.model.worktree_of(Row::Session(session))),
             View::Tickets | View::Settings => None,
         }

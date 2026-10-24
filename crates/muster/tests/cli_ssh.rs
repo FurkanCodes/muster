@@ -19,9 +19,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::PathBuf;
 use std::process::Output;
-use std::time::{Duration, Instant};
 
 use sha2::Digest as _;
 
@@ -262,16 +263,10 @@ async fn the_person_s_forwarded_ssh_agent_reaches_sessions_there_arc_27() {
         "echo",
         "agent=$SSH_AUTH_SOCK",
     ]);
-    let deadline = Instant::now() + Duration::from_secs(10);
     let wanted = format!("agent={}", link.display());
-    loop {
-        let shown = text(&setup.run(&["--on", "vm", "logs", "keys/1"]).stdout);
-        if shown.contains(&wanted) {
-            break;
-        }
-        assert!(Instant::now() < deadline, "no {wanted} in:\n{shown}");
-        std::thread::sleep(Duration::from_millis(100));
-    }
+    wait::until(&format!("{wanted} in its terminal"), || {
+        text(&setup.run(&["--on", "vm", "logs", "keys/1"]).stdout).contains(&wanted)
+    });
 }
 
 #[tokio::test]
@@ -295,6 +290,31 @@ async fn a_binary_the_person_names_is_the_one_put_there_arc_27() {
         std::fs::read(setup.home.join(".local/bin/muster")).unwrap(),
         std::fs::read(&given).unwrap()
     );
+}
+
+#[tokio::test]
+async fn a_binary_that_does_not_run_there_replaces_nothing_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    // As a build for another system would be, there.
+    let given = setup.sandbox.root().join("muster-for-another-system");
+    std::fs::write(&given, "#!/bin/sh\nexit 126\n").unwrap();
+    let installed = setup
+        .sandbox
+        .command()
+        .args(["ssh", "vm", "--install", "--check"])
+        .env("FAKE_SSH_HOME", &setup.home)
+        .env("MUSTER_REMOTE_BINARY", &given)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!installed.status.success());
+    assert!(
+        text(&installed.stderr).contains("does not run on that machine"),
+        "{}",
+        text(&installed.stderr)
+    );
+    assert!(!setup.home.join(".local/bin/muster").exists());
 }
 
 /// Serves `files` by path on a local port, as a release's downloads are;

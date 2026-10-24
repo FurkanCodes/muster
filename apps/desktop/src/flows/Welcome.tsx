@@ -14,8 +14,8 @@ import "./away.css";
 export function Welcome() {
   const app = useApp();
   const actions = useActions();
-  const key = useDaemon((state) => labelOf(state.preferences, "add_project"));
-  const cloneKey = useDaemon((state) => labelOf(state.preferences, "clone_project"));
+  const key = useDaemon((state) => labelOf(state, "add_project"));
+  const cloneKey = useDaemon((state) => labelOf(state, "clone_project"));
   useEffect(() => {
     if (key !== "none") actions.setHints([{ key, does: "add a project" }]);
     return () => actions.setHints([]);

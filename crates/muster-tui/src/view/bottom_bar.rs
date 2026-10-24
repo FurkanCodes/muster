@@ -11,6 +11,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::{settings, tickets, version};
 use crate::app::{App, Link, Mode, View};
+use crate::cells;
 
 /// The most lines a message gets under the list.
 const MAX_NOTE_LINES: u16 = 3;
@@ -50,7 +51,7 @@ fn stale(app: &App) -> Option<String> {
 /// UI is old, up to two over the hints.
 pub(crate) fn bottom_height(app: &App, width: u16) -> u16 {
     let lines = |text: &str| {
-        let length = u16::try_from(note_text(text).chars().count()).unwrap_or(u16::MAX);
+        let length = u16::try_from(cells::width(&note_text(text))).unwrap_or(u16::MAX);
         length.div_ceil(width.max(1))
     };
     match (message(app), stale(app)) {
@@ -61,12 +62,13 @@ pub(crate) fn bottom_height(app: &App, width: u16) -> u16 {
 }
 
 pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let theme = super::theme::of(app);
     if message(app).is_none()
         && let Some(warning) = stale(app)
     {
         let [above, hints_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
-        let warning = Line::from(note_text(&warning)).yellow();
+        let warning = Line::from(note_text(&warning)).fg(theme.working);
         frame.render_widget(Paragraph::new(warning).wrap(Wrap { trim: false }), above);
         draw_hints(frame, app, hints_area);
         return;
@@ -74,9 +76,9 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     if let Some((text, error)) = message(app) {
         let text = Line::from(note_text(text));
         let text = match (error, app.note_fading()) {
-            (true, _) => text.red(),
-            (false, true) => text.green().dim(),
-            (false, false) => text.green(),
+            (true, _) => text.fg(theme.waiting),
+            (false, true) => text.fg(theme.done).dim(),
+            (false, false) => text.fg(theme.done),
         };
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), area);
         return;
@@ -94,7 +96,7 @@ fn draw_hints(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let help = help_hint.is_some();
     let help_width = help_hint
         .as_ref()
-        .map_or(0, |hint| u16::try_from(hint.chars().count()).unwrap_or(0));
+        .map_or(0, |hint| u16::try_from(cells::width(hint)).unwrap_or(0));
     let [left, right] =
         Layout::horizontal([Constraint::Min(0), Constraint::Length(help_width)]).areas(area);
     // A space before them, and two before the help.
@@ -112,7 +114,7 @@ fn fitting(hints: &[String], room: usize) -> String {
     let mut text = String::new();
     for hint in hints {
         if !text.is_empty() {
-            if text.chars().count() + 2 + hint.chars().count() > room {
+            if cells::width(&text) + 2 + cells::width(hint) > room {
                 break;
             }
             text.push_str("  ");
@@ -132,7 +134,7 @@ pub(super) fn hint(app: &App, does: Does, what: &str) -> Option<String> {
 
 /// The keys that do something for what is selected, most used first.
 fn hints(app: &App) -> Vec<String> {
-    if app.arranging.is_some() {
+    if app.panels.arranging.is_some() {
         return vec![
             "←→↑↓ move it  + − wider or narrower  ⇥ another  ⏎ keep  esc put back".to_owned(),
         ];

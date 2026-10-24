@@ -32,9 +32,6 @@
 .queue-rename {
   padding: var(--space-8) var(--space-12);
 }
-.queue-none {
-  flex: 1;
-}
 /* As the column narrows, a row gives way: first the pull request's word,
    then the diff stat (design system: QueueRow). */
 @container (max-width: 400px) {

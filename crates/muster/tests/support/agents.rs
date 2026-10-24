@@ -4,7 +4,6 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
 
 use super::Sandbox;
 
@@ -146,19 +145,10 @@ impl Sandbox {
         session: muster_core::SessionId,
         count: usize,
     ) -> Vec<AgentLaunch> {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
+        super::wait::found(&format!("{agent} to start {count} times"), || {
             let launches = self.agent_launches(agent, session);
-            if launches.len() >= count {
-                return launches;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "{agent} started only {} times",
-                launches.len()
-            );
-            std::thread::sleep(Duration::from_millis(20));
-        }
+            (launches.len() >= count).then_some(launches)
+        })
     }
 }
 

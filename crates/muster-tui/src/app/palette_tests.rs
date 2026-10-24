@@ -4,7 +4,7 @@
 
 use crossterm::event::{KeyCode, MouseButton, MouseEventKind};
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame};
-use muster_core::settings::{LOOK_PROTOCOL, Palette, PreferenceChange, SessionLines};
+use muster_core::settings::{Palette, PreferenceChange, SessionLines};
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier};
 
@@ -99,7 +99,7 @@ fn the_terminal_s_own_colours_draw_as_they_always_did() {
 #[test]
 fn a_terminal_s_own_background_shades_the_selected_line() {
     let mut world = world();
-    world.app.colours.background = Some(muster_core::colours::Rgb {
+    world.app.person.colours.background = Some(muster_core::colours::Rgb {
         red: 0,
         green: 0,
         blue: 0,
@@ -118,7 +118,7 @@ fn a_terminal_s_own_background_shades_the_selected_line() {
 fn on_look_row(world: &mut World, row: SettingRow) {
     press(&mut world.app, KeyCode::Char('4'));
     assert_eq!(world.app.view, View::Settings);
-    world.app.settings_selected = Some(row);
+    world.app.settings.selected = Some(row);
 }
 
 #[test]
@@ -184,32 +184,6 @@ fn the_lines_a_session_takes_are_turned_there_too() {
     assert_eq!(world.app.session_height(), 1);
 }
 
-#[test]
-fn an_older_daemon_shows_no_look_to_change_and_keeps_muster_s_own() {
-    let mut world = world();
-    world.app.daemon_protocol = LOOK_PROTOCOL - 1;
-    let rows = world.app.setting_rows();
-    assert!(!rows.contains(&SettingRow::Colours), "{rows:?}");
-    assert!(!rows.contains(&SettingRow::SessionLines), "{rows:?}");
-    // Nothing to send it, whatever is selected.
-    world.app.settings_selected = Some(SettingRow::Colours);
-    world.app.view = View::Settings;
-    assert!(
-        press(&mut world.app, KeyCode::Enter)
-            .iter()
-            .all(|action| !matches!(
-                action,
-                Action::Send(ClientFrame::Command {
-                    command: Command::ChangePreference(_),
-                    ..
-                })
-            ))
-    );
-    // It says nothing of the look, so the look is Muster's own.
-    assert_eq!(theme::of(&world.app).palette, Palette::Muster);
-    assert_eq!(world.app.session_height(), 2);
-}
-
 /// The world with a second session under the first.
 fn two_sessions() -> (World, muster_core::SessionId) {
     let mut world = world();
@@ -241,7 +215,7 @@ fn a_click_on_either_line_of_a_session_selects_it() {
 #[test]
 fn a_picture_sits_on_each_session_s_first_line() {
     let (mut world, second) = two_sessions();
-    world.app.graphics = Graphics::Iterm;
+    world.app.person.graphics = Graphics::Iterm;
     for id in [world.session.id, second] {
         let mut claude = world.app.model.session(id).unwrap().clone();
         claude.harness = "claude".to_owned();
@@ -295,7 +269,7 @@ fn picture_on(cells: &Buffer, row: u16) -> Option<((u32, u32), Vec<u8>)> {
 #[test]
 fn a_logo_is_laid_on_the_colour_of_its_line_so_no_square_shows_around_it() {
     let (mut world, second) = two_sessions();
-    world.app.graphics = Graphics::Iterm;
+    world.app.person.graphics = Graphics::Iterm;
     for id in [world.session.id, second] {
         let mut claude = world.app.model.session(id).unwrap().clone();
         claude.harness = "claude".to_owned();
@@ -325,12 +299,12 @@ fn a_logo_is_laid_on_the_colour_of_its_line_so_no_square_shows_around_it() {
 
     // Said: every line's is laid, as wide as its two cells are, the
     // unselected on the terminal's own background.
-    world.app.colours.background = Some(muster_core::colours::Rgb {
+    world.app.person.colours.background = Some(muster_core::colours::Rgb {
         red: 0x1e1e,
         green: 0x1e1e,
         blue: 0x2e2e,
     });
-    world.app.cell_pixels = Some(muster_core::protocol::PixelSize {
+    world.app.person.cell_pixels = Some(muster_core::protocol::PixelSize {
         width: 8,
         height: 18,
     });

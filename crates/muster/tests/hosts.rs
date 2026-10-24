@@ -66,22 +66,22 @@ fn a_gitlab_project_s_tickets_come_through_glab() {
     let added = sandbox.run(&["project", "add", root.to_str().unwrap()]);
     assert!(added.status.success(), "{}", said(&added));
 
-    let listed = sandbox.run(&["issue", "list", "app"]);
+    let listed = sandbox.run(&["list", "tickets", "-p", "app"]);
     assert!(listed.status.success(), "{}", said(&listed));
     let listed = said(&listed);
     assert!(listed.contains("#12"), "{listed}");
     assert!(listed.contains("Fix the login redirect  [bug]"), "{listed}");
 
-    let started = sandbox.run(&["issue", "start", "app", "12", "--harness", "shell"]);
+    let started = sandbox.run(&["ticket", "12", "shell", "-p", "app"]);
     assert!(started.status.success(), "{}", said(&started));
-    assert!(said(&started).contains("for #12 in"), "{}", said(&started));
+    assert!(said(&started).contains("on #12 in"), "{}", said(&started));
     let status = said(&sandbox.run(&["status"]));
     assert!(
         status.contains("muster/issue-12-fix-the-login-redirect"),
         "{status}"
     );
 
-    let closed = sandbox.run(&["issue", "close", "app", "#12"]);
+    let closed = sandbox.run(&["ticket", "#12", "close", "-p", "app", "-y"]);
     assert!(closed.status.success(), "{}", said(&closed));
     assert!(said(&closed).contains("Closed #12."));
     let glab = sandbox.fake_glab();
@@ -144,7 +144,7 @@ fn a_merge_request_by_hand_is_a_draft_through_glab_and_found_again() {
     );
     assert!(
         sandbox
-            .run(&["worktree", "add", "app", "--branch", "feature"])
+            .run(&["workspace", "add", "-p", "app", "--branch", "feature"])
             .status
             .success()
     );
@@ -215,7 +215,7 @@ fn a_project_whose_remote_names_no_host_says_what_to_write() {
             .status
             .success()
     );
-    let listed = sandbox.run(&["issue", "list", "app"]);
+    let listed = sandbox.run(&["list", "tickets", "-p", "app"]);
     assert!(!listed.status.success());
     let listed = said(&listed);
     assert!(
@@ -290,7 +290,7 @@ fn a_bitbucket_pull_request_by_hand_is_a_draft_through_its_api_with_the_token() 
     );
     assert!(
         sandbox
-            .run(&["worktree", "add", "app", "--branch", "feature"])
+            .run(&["workspace", "add", "-p", "app", "--branch", "feature"])
             .status
             .success()
     );
@@ -368,7 +368,7 @@ fn without_a_bitbucket_token_it_says_how_to_give_one_before_pushing() {
     );
     assert!(
         sandbox
-            .run(&["worktree", "add", "app", "--branch", "feature"])
+            .run(&["workspace", "add", "-p", "app", "--branch", "feature"])
             .status
             .success()
     );
@@ -384,7 +384,7 @@ fn without_a_bitbucket_token_it_says_how_to_give_one_before_pushing() {
         "{refused}"
     );
     // Its tickets are not Bitbucket's, which keeps none any more.
-    let tickets = said(&sandbox.run(&["issue", "list", "app"]));
+    let tickets = said(&sandbox.run(&["list", "tickets", "-p", "app"]));
     assert!(
         tickets.contains("Bitbucket has no issue tracker"),
         "{tickets}"

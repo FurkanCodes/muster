@@ -14,6 +14,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::time::{Duration, Instant};
 
 use muster_client::Connection;
@@ -166,7 +168,7 @@ async fn looking_again_measures_at_once_not_at_the_next_tick() {
     let mut connection = daemon.connect().await;
     connection.subscribe().await.unwrap();
     connection.looking(false).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    wait::passes_async(Duration::from_millis(300), "a while not looked at").await;
     connection.looking(true).await.unwrap();
     let looked = Instant::now();
     expect_report(&mut connection, |_| true).await;

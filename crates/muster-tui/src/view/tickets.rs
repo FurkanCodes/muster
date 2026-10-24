@@ -10,6 +10,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 use super::{describe, list_block, loading, look, mark, markdown, panel, pull_request, shorten};
 use crate::app::{App, HarnessChoice, TicketRow, TicketText, Tickets};
+use crate::cells;
 
 /// The most agents shown on a ticket's line; the rest are counted.
 const AGENTS_SHOWN: usize = 4;
@@ -22,7 +23,7 @@ pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let rows = app.ticket_rows();
     if rows.is_empty() {
         frame.render_widget(
-            Paragraph::new("No projects yet: add one in the sessions view with a.")
+            Paragraph::new(super::no_projects(app))
                 .wrap(Wrap { trim: false })
                 .block(block)
                 .dim(),
@@ -36,9 +37,10 @@ pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .map(|row| ListItem::new(row_line(app, row, width)))
         .collect();
     let mut state = ListState::default()
-        .with_offset(app.tickets_offset)
+        .with_offset(app.tickets.offset)
         .with_selected(
-            app.tickets_selected
+            app.tickets
+                .selected
                 .as_ref()
                 .and_then(|selected| rows.iter().position(|row| row == selected)),
         );
@@ -57,7 +59,7 @@ fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
     let edge = look::edge(
         app,
         Some(project),
-        app.tickets_selected.as_ref() == Some(row),
+        app.tickets.selected.as_ref() == Some(row),
     );
     let width = width.saturating_sub(1);
     let mut line = row_text(app, row, width);
@@ -67,14 +69,15 @@ fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
 
 /// A row's line after its edge.
 fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
+    let theme = super::theme::of(app);
     match row {
         TicketRow::Project(project) => {
             let project = *project;
             let mut spans = names(app, project);
-            let state = match app.tickets.get(&project) {
+            let state = match app.tickets.by_project.get(&project) {
                 None | Some(Tickets::Loading) => {
                     // The rest of its heading is the wait.
-                    let named: usize = spans.iter().map(|span| span.content.chars().count()).sum();
+                    let named: usize = spans.iter().map(|span| cells::width(&span.content)).sum();
                     spans.push(Span::raw(" "));
                     spans.extend(
                         loading::rule(app, "Loading tickets", width.saturating_sub(named + 1))
@@ -95,7 +98,8 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                     Span::from(format!("  {}{yours} open", tickets.len())).dim()
                 }
                 Some(Tickets::Failed(error)) => {
-                    Span::from(format!("  {}", shorten(error, width.saturating_sub(4)))).red()
+                    Span::from(format!("  {}", shorten(error, width.saturating_sub(4))))
+                        .fg(theme.waiting)
                 }
             };
             spans.push(state);
@@ -124,16 +128,15 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
             }
             let number_text = format!("  {} ", key.shown());
             let room_beside = |marks: &[Span<'_>]| {
-                let marks_width: usize =
-                    marks.iter().map(|mark| mark.content.chars().count()).sum();
-                width.saturating_sub(number_text.chars().count() + marks_width + 1)
+                let marks_width: usize = marks.iter().map(|mark| cells::width(&mark.content)).sum();
+                width.saturating_sub(cells::width(&number_text) + marks_width + 1)
             };
             // Its pull request where the title keeps a readable length;
             // the ticket's details show it anyway.
             if let Some(found) = app.model.ticket_pull_request(&app.sharing(project), key) {
                 let mut with = marks.clone();
                 with.push(Span::raw("  "));
-                with.extend(pull_request::badge(found, true));
+                with.extend(pull_request::badge(found, true, theme));
                 if room_beside(&with) >= TITLE_KEPT {
                     marks = with;
                 }
@@ -183,7 +186,7 @@ pub(crate) fn details_height(app: &App, width: usize) -> usize {
 /// Where each part of the selected ticket starts in its details, wrapped
 /// at `width`: its text, then each comment; none where it has no comments.
 pub(crate) fn part_lines(app: &App, width: usize) -> Vec<usize> {
-    let Some(TicketRow::Ticket(project, key)) = &app.tickets_selected else {
+    let Some(TicketRow::Ticket(project, key)) = &app.tickets.selected else {
         return Vec::new();
     };
     let mut parts = Vec::new();
@@ -198,7 +201,7 @@ pub(crate) fn part_lines(app: &App, width: usize) -> Vec<usize> {
 }
 
 fn details_text(app: &App, width: usize) -> Text<'static> {
-    match &app.tickets_selected {
+    match &app.tickets.selected {
         Some(TicketRow::Ticket(project, key)) => {
             ticket_text(app, *project, key, width, &mut Vec::new())
         }
@@ -223,7 +226,7 @@ fn wrapped_height(text: &Text<'_>, width: usize) -> usize {
                 .map(|span| span.content.as_ref())
                 .collect();
             for word in content.split_inclusive(' ') {
-                let len = word.chars().count();
+                let len = cells::width(word);
                 if used + len.min(width) > width && used > 0 {
                     rows += 1;
                     used = 0;
@@ -258,6 +261,7 @@ fn names(app: &App, project: muster_core::ProjectId) -> Vec<Span<'static>> {
 }
 
 fn project_text(app: &App, project: muster_core::ProjectId, width: usize) -> Text<'static> {
+    let theme = super::theme::of(app);
     let sharing = app.sharing(project);
     let mut lines = Vec::new();
     for found in sharing.iter().filter_map(|id| app.model.project(*id)) {
@@ -268,9 +272,9 @@ fn project_text(app: &App, project: muster_core::ProjectId, width: usize) -> Tex
         return Text::default();
     }
     lines.push(Line::from(""));
-    match app.tickets.get(&project) {
+    match app.tickets.by_project.get(&project) {
         Some(Tickets::Failed(error)) => {
-            lines.push(Line::from("Its tickets could not be fetched:").red());
+            lines.push(Line::from("Its tickets could not be fetched:").fg(theme.waiting));
             lines.push(Line::from(error.clone()));
             lines.push(Line::from(""));
             lines.push(
@@ -325,6 +329,7 @@ fn ticket_text(
     width: usize,
     parts: &mut Vec<usize>,
 ) -> Text<'static> {
+    let theme = super::theme::of(app);
     let Some(ticket) = app.ticket(project, key) else {
         return Text::default();
     };
@@ -351,7 +356,7 @@ fn ticket_text(
         if !about.is_empty() {
             about.push(Span::from(" · ").dim());
         }
-        about.push(Span::from(ticket.labels.join(", ")).cyan());
+        about.push(Span::from(ticket.labels.join(", ")).fg(theme.news));
     }
     if !about.is_empty() {
         lines.push(Line::from(about));
@@ -410,7 +415,7 @@ fn ticket_text(
                 .and_then(|workspace| workspace.pull_request.as_ref())
             {
                 spans.push(Span::raw("  "));
-                spans.extend(pull_request::badge(found, false));
+                spans.extend(pull_request::badge(found, false, theme));
             }
             lines.push(Line::from(spans));
         }
@@ -423,10 +428,12 @@ fn ticket_text(
         lines.push(Line::from(another).dim());
     }
     lines.push(Line::from(""));
-    match app.ticket_texts.get(&(project, key.clone())) {
+    match app.tickets.texts.get(&(project, key.clone())) {
         None | Some(TicketText::Loading) => lines.push(loading::rule(app, "Loading ticket", width)),
         Some(TicketText::Failed(error)) => {
-            lines.push(Line::from(format!("Its text could not be fetched: {error}")).red());
+            lines.push(
+                Line::from(format!("Its text could not be fetched: {error}")).fg(theme.waiting),
+            );
         }
         Some(TicketText::Loaded { body, comments }) => {
             let theme = super::theme::of(app);
@@ -498,7 +505,7 @@ fn conversation(
         many => format!("{many} comments"),
     };
     let heading = format!("── {count} ");
-    let rest = width.saturating_sub(heading.chars().count());
+    let rest = width.saturating_sub(cells::width(&heading));
     lines.push(Line::from(vec![
         Span::styled(heading, theme.quiet),
         Span::styled("─".repeat(rest), Style::default().fg(theme.line)),
@@ -537,7 +544,7 @@ pub(super) fn hints(app: &App) -> Vec<String> {
     use super::bottom_bar::hint;
     use muster_core::keys::Action as Does;
     let mut hints = Vec::new();
-    if let Some(TicketRow::Ticket(project, key)) = &app.tickets_selected {
+    if let Some(TicketRow::Ticket(project, key)) = &app.tickets.selected {
         if app.ticket_agents(*project, key).is_empty() {
             hints.push("⏎ start an agent".to_owned());
         } else {
@@ -552,7 +559,7 @@ pub(super) fn hints(app: &App) -> Vec<String> {
         }
         hints.extend(hint(app, Does::CloseTicket, "close"));
         if matches!(
-            app.ticket_texts.get(&(*project, key.clone())),
+            app.tickets.texts.get(&(*project, key.clone())),
             Some(TicketText::Loaded { comments, .. }) if !comments.is_empty()
         ) {
             hints.extend(hint(app, Does::NextPart, "next part"));

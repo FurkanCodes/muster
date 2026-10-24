@@ -50,7 +50,7 @@ It downloads the prebuilt binary for your machine from the latest release, check
 
 On a Mac it asks whether to install the Muster app too, the window over the same daemon (`PRODUCT.md` §6a), from the same release, checked the same way, into `/Applications` (or `~/Applications`). Answer for it ahead with `sh -s -- --app` or `--no-app` (`MUSTER_APP=1` or `0`), as a script would; an app already there is simply updated. The app is not signed by Apple, only ad hoc: installed this way it carries no quarantine, so macOS opens it with no question. Copied from a browser download instead, macOS refuses it until you allow it once in System Settings › Privacy & Security › Open Anyway.
 
-Later, `muster upgrade` installs the newest release the same way, the Muster app too where it is installed, and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. When a new version changes how Muster's database is laid out, it first keeps a copy of the database as it was, in `backups/` in Muster's data folder (the newest three), and does not start if it cannot. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
+Later, `muster upgrade` installs the newest release the same way, but only once the attestation is checked (sign in to the GitHub CLI with `gh auth login`, or set `MUSTER_SKIP_ATTESTATION=1` to take the checksum alone), the Muster app too where it is installed, and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. When a new version changes how Muster's database is laid out, it first keeps a copy of the database as it was, in `backups/` in Muster's data folder (the newest three), and does not start if it cannot. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
 
 ```bash
 muster
@@ -197,27 +197,27 @@ muster project add ~/code/app
 ```
 
 ```bash
-muster worktree add app --branch fix-login
+muster workspace add -p app --branch fix-login
 ```
 
 ```bash
-muster session start fix-login --harness claude --prompt "Fix the login redirect"
+muster claude --in fix-login "Fix the login redirect"
 ```
 
 ```bash
-muster issue list app
+muster list tickets -p app
 ```
 
 ```bash
-muster issue start app 42
+muster ticket 42 claude -p app
 ```
 
 ```bash
-muster issue start app APP-7
+muster ticket APP-7 claude -p app
 ```
 
 ```bash
-muster issue close app 42
+muster ticket 42 close -p app
 ```
 
 ```bash
@@ -237,23 +237,23 @@ muster status
 ```
 
 ```bash
-muster session list
+muster list --all
 ```
 
 ```bash
-muster session restart <session-id>
+muster restart fix-login/1
 ```
 
 When a session's status looks wrong, ask why it has it: whom it waits on and for what, whether its turn is held for subagents, its next deadline, and the last signals it received, by kind and tool alone, never what was written.
 
 ```bash
-muster session explain <session-id>
+muster explain fix-login/1
 ```
 
-For your own scripts, `muster status`, `muster list`, `muster session list` and `muster issue list` take `--json` and print one JSON document instead of words. Each starts with `"format": 1`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
+For your own scripts, `muster status` and `muster list` (sessions, workspaces, projects, tickets) take `--json` and print one JSON document instead of words, a session given alike in each. Each starts with `"format": 2`, which changes only when the shape does; a ticket's credentials stay hidden, as on the screen, and no control character reaches your terminal raw.
 
 ```bash
-muster session list --json | jq -r '.sessions[] | select(.status == "needs_you") | .title'
+muster list --all --json | jq -r '.sessions[] | select(.status == "needs_you") | .title'
 ```
 
 ### Agents of your own

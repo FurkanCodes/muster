@@ -5,10 +5,10 @@
 
 import type { ReactNode } from "react";
 import type { PluginDetails } from "../../ipc/generated/PluginDetails";
+import { oneLine } from "../../lib/text";
 import { Detail, DetailList } from "../../ui/DetailList";
 import { Found, Missing } from "../../ui/status";
 import { missingPrograms, runsOf } from "./pluginWords";
-import { oneLine } from "./words";
 
 /** Its variables and secrets, by name: `YOUTRACK_SITE, and the secret YOUTRACK_TOKEN`. */
 function given(details: PluginDetails): ReactNode {

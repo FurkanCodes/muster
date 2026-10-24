@@ -17,9 +17,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::{Path, PathBuf};
 use std::process::Output;
-use std::time::{Duration, Instant};
 
 use muster_core::protocol::{Command, Reply, Snapshot};
 use muster_core::{TicketKey, Workspace};
@@ -110,20 +111,14 @@ impl Setup {
 
     /// The workspace on `branch`, once it is there.
     async fn workspace(&self, branch: &str) -> Workspace {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if let Some(found) = self
-                .snapshot()
+        wait::found_async(&format!("a workspace on {branch}"), async || {
+            self.snapshot()
                 .await
                 .workspaces
                 .into_iter()
                 .find(|w| w.kind.in_git() && w.kind.branch() == branch)
-            {
-                return found;
-            }
-            assert!(Instant::now() < deadline, "no workspace on {branch}");
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        })
+        .await
     }
 }
 

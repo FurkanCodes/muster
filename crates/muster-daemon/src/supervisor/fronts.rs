@@ -204,7 +204,7 @@ impl Supervisor {
         let hooks = token
             .filter(|_| harness.has_hooks())
             .map(|token| HookEndpoint {
-                socket: self.hook_socket.clone(),
+                socket: self.paths.hook_socket.clone(),
                 token,
             });
         let agent_session = (hooks.is_some() && harness.chooses_session_id())

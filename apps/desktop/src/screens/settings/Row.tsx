@@ -51,7 +51,7 @@ export function SettingRow({
   const element = useRef<HTMLDivElement>(null);
   const behaviour = useRef<RowBehaviour>({});
   const registry = meta.registry;
-  const focusFollows = meta.focusFollows;
+  const takesFocus = meta.takesFocus;
 
   useLayoutEffect(() => {
     behaviour.current = off ? {} : { act, step, back };
@@ -70,13 +70,12 @@ export function SettingRow({
     const row = element.current;
     if (!selected || !row) return;
     row.scrollIntoView?.({ block: "nearest" });
-    if (focusFollows.current) {
+    if (takesFocus()) {
       // The row itself, so ↑↓ go on moving; a field's own input, to type in
       // (not the hidden one a Base UI switch or select keeps for forms).
-      focusFollows.current = false;
       (row.querySelector<HTMLElement>('input:not([aria-hidden="true"])') ?? row).focus();
     }
-  }, [selected, focusFollows]);
+  }, [selected, takesFocus]);
 
   const sub = level === "sub" ? "mu-setting--sub" : "";
   return (

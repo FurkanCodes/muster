@@ -6,11 +6,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 
 use muster_core::protocol::{Command, ErrorCode, Reply, Snapshot};
 use muster_core::{Session, SessionId, SessionStatus, Timestamp, WorkspaceId};
-use tokio::time::timeout;
 
 use crate::clock::Clock;
 use crate::git::tests::{git, repository};
@@ -19,6 +17,7 @@ use crate::harness::PanelLaunch;
 use crate::spend::Places;
 use crate::store::{Store, StoreHandle};
 use crate::supervisor::{self, SupervisorHandle};
+use crate::waiting;
 
 #[derive(Debug)]
 pub(crate) struct FixedClock;
@@ -116,16 +115,10 @@ fn telling(out: &Path) -> PanelLaunch {
 
 /// What the panel writing into `out` was told, once it has written it.
 async fn told(out: &Path) -> HashMap<String, String> {
-    let env = timeout(Duration::from_secs(5), async {
-        loop {
-            if let Ok(env) = std::fs::read_to_string(out.join("env")) {
-                return env;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+    let env = waiting::found("the panel to run", async || {
+        std::fs::read_to_string(out.join("env")).ok()
     })
-    .await
-    .expect("the panel ran");
+    .await;
     env.lines()
         .filter_map(|line| line.split_once('='))
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
@@ -152,17 +145,10 @@ pub(crate) async fn until(
     supervisor: &SupervisorHandle,
     done: impl Fn(&Snapshot) -> bool,
 ) -> Snapshot {
-    timeout(Duration::from_secs(5), async {
-        loop {
-            let snapshot = state(supervisor).await;
-            if done(&snapshot) {
-                return snapshot;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+    waiting::found("the state to get there", async || {
+        Some(state(supervisor).await).filter(|snapshot| done(snapshot))
     })
     .await
-    .expect("the state never got there")
 }
 
 #[tokio::test]
@@ -335,13 +321,7 @@ async fn a_panel_ends_with_its_worktree_as_a_shell_does() {
             .all(|found| found.id != panel || found.ended_at.is_some())
     })
     .await;
-    timeout(Duration::from_secs(5), async {
-        while alive(&pid) {
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect("its program stopped");
+    waiting::until("its program to stop", async || !alive(&pid)).await;
 }
 
 #[tokio::test]

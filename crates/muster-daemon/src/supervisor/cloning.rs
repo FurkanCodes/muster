@@ -23,7 +23,7 @@ pub(super) struct Cloned {
 impl Supervisor {
     /// `ListRepositories`: answered from a task of its own, as `gh` talks to GitHub.
     pub(super) fn list_repositories(&self, reply: oneshot::Sender<Result<Reply, ErrorBody>>) {
-        let repositories = self.repositories.clone();
+        let repositories = self.systems.repositories.clone();
         self.tasks.spawn(async move {
             let listed = repositories.list().await;
             if let Err(error) = &listed {
@@ -54,7 +54,7 @@ impl Supervisor {
                 return;
             }
         };
-        let (repositories, requests) = (self.repositories.clone(), self.requests.clone());
+        let (repositories, requests) = (self.systems.repositories.clone(), self.requests.clone());
         self.tasks.spawn(async move {
             let outcome = repositories.clone_to(&name, &root).await;
             let cloned = Cloned {

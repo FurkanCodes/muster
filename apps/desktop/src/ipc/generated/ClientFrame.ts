@@ -16,8 +16,7 @@ export type ClientFrame = { "Hello": Hello } | "Subscribe" | { "Command": { req_
  */
 watching: boolean, } } | { "Detach": { session: SessionId, } } | { "Watch": { session: SessionId, watching: boolean, } } | { "Input": { session: SessionId, data: Array<number>, } } | { "Resize": { session: SessionId, size: TermSize, 
 /**
- * Its size in pixels, where the person's terminal says its own:
- * for programs that size pictures or a cursor by it. From protocol
- * 31; older daemons pass it over.
+ * Its size in pixels, where the person's terminal says its own: for
+ * programs that size pictures or a cursor by it.
  */
 pixels: PixelSize | null, } } | { "Looking": { looking: boolean, } } | { "Colours": TerminalColours } | { "Keys": { session: SessionId | null, } } | { "Notifier": { ready: boolean, } };

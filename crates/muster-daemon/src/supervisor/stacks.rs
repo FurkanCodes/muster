@@ -18,15 +18,13 @@ use crate::git;
 use crate::timeline::{MovePlan, Store, TimelineError};
 
 impl Supervisor {
-    /// What a new branch `branch` in `project` is stacked on when made on
-    /// top of `on`'s: that branch, at its newest commit.
-    pub(super) async fn stack_on(
+    /// The branch of `on`, a workspace of `project`, a new branch is to be
+    /// stacked on, and where it is checked out.
+    pub(super) fn stack_parent(
         &self,
         project: ProjectId,
         on: WorkspaceId,
-        branch: &str,
-        exists: bool,
-    ) -> Result<Stacked, ErrorBody> {
+    ) -> Result<(PathBuf, String), ErrorBody> {
         let parent = self
             .state
             .workspaces
@@ -56,37 +54,57 @@ impl Supervisor {
                 format!("there is no branch checked out there to stack on ({parent_branch})"),
             ));
         }
-        if exists {
-            return Err(ErrorBody::new(
-                ErrorCode::Conflict,
-                format!("{branch} exists already, so it cannot be made on top of {parent_branch}"),
-            ));
-        }
-        let at = git::checked(
-            &path,
-            &[
-                "rev-parse",
-                "--verify",
-                "--end-of-options",
-                &format!("refs/heads/{parent_branch}^{{commit}}"),
-            ],
-        )
-        .await
-        .map_err(|error| ErrorBody::new(ErrorCode::Internal, error.to_string()))?;
-        Ok(Stacked {
-            branch: parent_branch,
-            at,
-        })
+        Ok((path, parent_branch))
     }
 
     /// `MoveOnto`: refused while an agent works there, else done once the
-    /// workspace's timeline is free.
-    pub(super) async fn move_onto(
-        &mut self,
+    /// workspace's timeline is free. What it moves onto is asked of git and
+    /// the project's settings off the loop (`moved_planned`).
+    pub(super) fn move_onto(
+        &self,
         workspace: WorkspaceId,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
-        match self.move_plan(workspace).await {
+        let asked = match self.move_asked(workspace) {
+            Ok(asked) => asked,
+            Err(error) => {
+                tracing::info!(command = "move onto", %error, "command refused");
+                let _ = reply.send(Err(error));
+                return;
+            }
+        };
+        let requests = self.requests.clone();
+        self.tasks.spawn(async move {
+            let plan = match by_hand::load_settings(asked.path.clone(), asked.overrides).await {
+                Ok(settings) => Ok(MovePlan {
+                    base: by_hand::base_of(&asked.path, settings.base_branch.as_deref()).await,
+                    stacked: asked.stacked,
+                    parent_merged: asked.parent_merged,
+                }),
+                Err(error) => Err(error),
+            };
+            let planned = MovePlanned {
+                workspace,
+                plan,
+                reply,
+            };
+            let _ = requests.send(Request::MovePlanned(Box::new(planned))).await;
+        });
+    }
+
+    /// A move's plan came back: queued, unless an agent started there
+    /// meanwhile (`ARC-10`).
+    pub(super) fn move_planned(&mut self, planned: MovePlanned) {
+        let MovePlanned {
+            workspace,
+            plan,
+            reply,
+        } = planned;
+        let plan = plan.and_then(|plan| match self.busy_agent(workspace, MOVE) {
+            Some(busy) => Err(busy),
+            None => Ok(plan),
+        });
+        match plan {
             Ok(plan) => self.queue_timeline(workspace, Job::Move { plan, reply }),
             Err(error) => {
                 tracing::info!(command = "move onto", %error, "command refused");
@@ -95,22 +113,16 @@ impl Supervisor {
         }
     }
 
-    /// What moving `workspace`'s branch knows: its base, the branch it is
-    /// stacked on, and whether that branch's pull request has merged.
-    async fn move_plan(&self, workspace: WorkspaceId) -> Result<MovePlan, ErrorBody> {
+    /// What a move needs that the loop knows, checked: the workspace's
+    /// folder, its settings' file, the branch it is stacked on, and whether
+    /// that branch's pull request has merged.
+    fn move_asked(&self, workspace: WorkspaceId) -> Result<MoveAsked, ErrorBody> {
         let (path, _) = self.timeline_place(workspace)?;
         self.reviewable_branch(workspace)?;
         if let Some(busy) = self.busy_agent(workspace, MOVE) {
             return Err(busy);
         }
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         let stacked = found.stacked_on.clone();
         let parent_merged = stacked.as_ref().is_some_and(|stacked| {
             self.state.workspaces.iter().any(|other| {
@@ -122,10 +134,9 @@ impl Supervisor {
                         .is_some_and(|pull| pull.state == PullRequestState::Merged)
             })
         });
-        let configured = self.settings_in(workspace, &path).await?.base_branch;
-        let base = by_hand::base_of(&path, configured.as_deref()).await;
-        Ok(MovePlan {
-            base,
+        Ok(MoveAsked {
+            overrides: self.overrides_of(found.project),
+            path,
             stacked,
             parent_merged,
         })
@@ -221,4 +232,20 @@ fn move_error(error: &TimelineError) -> ErrorBody {
         _ => ErrorCode::Conflict,
     };
     ErrorBody::new(code, error.to_string())
+}
+
+/// What a move asks of git and the settings off the loop.
+struct MoveAsked {
+    path: PathBuf,
+    overrides: PathBuf,
+    stacked: Option<Stacked>,
+    parent_merged: bool,
+}
+
+/// A move's plan, asked off the loop, on its way back with its answer.
+#[derive(Debug)]
+pub(crate) struct MovePlanned {
+    workspace: WorkspaceId,
+    plan: Result<MovePlan, ErrorBody>,
+    reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }

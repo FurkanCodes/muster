@@ -25,10 +25,11 @@ import { DiffStat, MarkSpace } from "../../ui/status";
 import { ChangesList, type View } from "./ChangesList";
 import { ClashBanners } from "./ClashBanners";
 import { DiffPanel } from "./DiffPanel";
-import { entryLabel, oneLine } from "./labels";
+import { entryLabel } from "./labels";
 import { PutBack } from "./PutBack";
 import { useWorkspaceChanges } from "./useWorkspaceChanges";
 import "./changes.css";
+import { oneLine } from "../../lib/text";
 
 const VIEWS: readonly View[] = ["uncommitted", "branch", "turns"];
 const PART: Record<View, string> = {

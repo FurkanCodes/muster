@@ -64,10 +64,9 @@ fn command(cwd: &Path, args: &[&str], vars: Vars<'_>) -> Command {
         .args(args)
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        // Its errors are told apart by their words (`supervisor::worktrees`),
+        // so they must be git's own English whatever the person's locale.
+        .env("LC_ALL", "C");
     for variable in SCRUBBED {
         command.env_remove(variable);
     }
@@ -82,15 +81,19 @@ async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
 }
 
 async fn run_with(cwd: &Path, args: &[&str], vars: Vars<'_>) -> Result<Outcome, GitError> {
-    let mut command = command(cwd, args, vars);
-    let output = tokio::time::timeout(TIME_LIMIT, command.output())
+    let ran = crate::process::run(command(cwd, args, vars), None, TIME_LIMIT)
         .await
-        .map_err(|_| GitError::TimedOut(args.join(" ")))?
-        .map_err(GitError::Spawn)?;
+        .map_err(|error| match error {
+            crate::process::RunError::TimedOut(_) => GitError::TimedOut(args.join(" ")),
+            crate::process::RunError::NotFound => {
+                GitError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound))
+            }
+            crate::process::RunError::Spawn(error) => GitError::Spawn(error),
+        })?;
     Ok(Outcome {
-        success: output.status.success(),
-        stdout: String::from_utf8_lossy(&output.stdout).trim().to_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        success: ran.success(),
+        stdout: ran.stdout_text().trim().to_owned(),
+        stderr: ran.stderr_text(),
     })
 }
 
@@ -164,7 +167,13 @@ pub(crate) async fn capped_with(
     ok: &[i32],
     vars: Vars<'_>,
 ) -> Result<(Vec<u8>, bool), GitError> {
-    let mut child = command(cwd, args, vars).spawn().map_err(GitError::Spawn)?;
+    let mut command = command(cwd, args, vars);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = command.spawn().map_err(GitError::Spawn)?;
     let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
     let work = async {
         let printed = read_up_to(stdout, limit);
@@ -324,6 +333,17 @@ pub(crate) mod tests {
     use std::process::Command;
 
     use super::*;
+
+    #[test]
+    fn git_speaks_english_whatever_the_locale() {
+        let git = command(Path::new("."), &["status"], &[]);
+        let locale = git
+            .as_std()
+            .get_envs()
+            .find(|(name, _)| *name == "LC_ALL")
+            .and_then(|(_, value)| value);
+        assert_eq!(locale, Some(std::ffi::OsStr::new("C")));
+    }
 
     /// Runs git in `dir`, ignoring the user's own git configuration so tests
     /// behave the same everywhere; panics if it fails.

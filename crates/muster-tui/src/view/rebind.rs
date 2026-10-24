@@ -10,6 +10,7 @@ use ratatui::widgets::{Clear, Paragraph};
 
 use super::{panel, theme};
 use crate::app::{App, RebindRow, Rebinding, Rebound};
+use crate::cells;
 
 /// The cells the keys' column takes.
 const KEYS_WIDTH: usize = 18;
@@ -65,7 +66,7 @@ pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebin
 /// person's own.
 fn action_line(app: &App, rebound: &Rebound, chosen: bool) -> Line<'static> {
     let keys = format!("  {}", app.rebound_labels(rebound));
-    let gap = KEYS_WIDTH.saturating_sub(keys.chars().count()).max(1);
+    let gap = KEYS_WIDTH.saturating_sub(cells::width(&keys)).max(1);
     let mut spans = vec![
         Span::from(keys).bold(),
         Span::raw(" ".repeat(gap)),

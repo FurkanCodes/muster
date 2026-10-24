@@ -97,8 +97,10 @@ export interface SettingsValue {
   state: SettingsState;
   actions: SettingsActions;
   meta: {
-    /** Set as the keys move the selection while a control has the focus: the new row takes it. */
-    focusFollows: RefObject<boolean>;
+    /** The keys moved the selection while a control had the focus: the new row is to take it. */
+    followFocus: () => void;
+    /** Whether the row newly selected is to take the focus; told once. */
+    takesFocus: () => boolean;
     /** What each row shown does on the screen's keys, by its key. */
     registry: RefObject<Map<string, RefObject<RowBehaviour>>>;
   };

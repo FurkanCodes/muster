@@ -94,7 +94,7 @@ fn jira_s_tickets_are_listed_started_and_closed_with_a_token() {
             .success()
     );
 
-    let listed = sandbox.run(&["issue", "list", "app"]);
+    let listed = sandbox.run(&["list", "tickets", "-p", "app"]);
     assert!(listed.status.success(), "{}", said(&listed));
     let listed = said(&listed);
     assert!(
@@ -102,7 +102,7 @@ fn jira_s_tickets_are_listed_started_and_closed_with_a_token() {
         "{listed}"
     );
 
-    let started = sandbox.run(&["issue", "start", "app", "app-7", "--harness", "shell"]);
+    let started = sandbox.run(&["ticket", "app-7", "shell", "-p", "app"]);
     assert!(started.status.success(), "{}", said(&started));
     let status = said(&sandbox.run(&["status"]));
     assert!(
@@ -114,7 +114,7 @@ fn jira_s_tickets_are_listed_started_and_closed_with_a_token() {
         "the session is named for it: {status}"
     );
 
-    let closed = sandbox.run(&["issue", "close", "app", "APP-7"]);
+    let closed = sandbox.run(&["ticket", "APP-7", "close", "-p", "app", "-y"]);
     assert!(closed.status.success(), "{}", said(&closed));
     assert!(said(&closed).contains("Closed APP-7."));
 
@@ -158,7 +158,7 @@ fn without_a_jira_sign_in_it_says_how_to_sign_in() {
             .status
             .success()
     );
-    let refused = sandbox.run(&["issue", "list", "app"]);
+    let refused = sandbox.run(&["list", "tickets", "-p", "app"]);
     assert!(!refused.status.success());
     let refused = said(&refused);
     assert!(
@@ -205,14 +205,14 @@ fn a_plain_folder_s_linear_issues_are_listed_and_closed_with_a_key() {
             .success()
     );
 
-    let listed = sandbox.run(&["issue", "list", "notes"]);
+    let listed = sandbox.run(&["list", "tickets", "-p", "notes"]);
     assert!(listed.status.success(), "{}", said(&listed));
     assert!(
         said(&listed).contains("ENG-42  Fix the login redirect  [bug]"),
         "{}",
         said(&listed)
     );
-    let closed = sandbox.run(&["issue", "close", "notes", "ENG-42"]);
+    let closed = sandbox.run(&["ticket", "ENG-42", "close", "-p", "notes", "-y"]);
     assert!(closed.status.success(), "{}", said(&closed));
 
     let requests = asked.lock().unwrap().clone();
@@ -236,7 +236,7 @@ fn a_plain_folder_s_linear_issues_are_listed_and_closed_with_a_key() {
         json!({"id": "ENG-42", "state": "st-done"})
     );
     // Work on it needs a worktree, which a folder has not.
-    let refused = said(&sandbox.run(&["issue", "start", "notes", "ENG-42"]));
+    let refused = said(&sandbox.run(&["ticket", "ENG-42", "claude", "-p", "notes"]));
     assert!(
         refused.contains("worktrees for tickets need one"),
         "{refused}"
@@ -292,7 +292,7 @@ fn mine_narrows_every_tracker_to_the_person_s_own() {
         );
     }
     for name in ["onhub", "onlab", "onjira", "onlinear"] {
-        let listed = sandbox.run(&["issue", "list", name]);
+        let listed = sandbox.run(&["list", "tickets", "-p", name]);
         assert!(listed.status.success(), "{name}: {}", said(&listed));
     }
 
@@ -375,7 +375,7 @@ async fn projects_listing_the_same_jira_tickets_share_a_source() {
     assert!(!sources[0].contains("t0ken") && !sources[0].contains("me@example.com"));
 
     // The ticket goes to the repository the person chose.
-    let started = sandbox.run(&["issue", "start", "api", "APP-7", "--harness", "shell"]);
+    let started = sandbox.run(&["ticket", "APP-7", "shell", "-p", "api"]);
     assert!(started.status.success(), "{}", said(&started));
     let status = said(&sandbox.run(&["status"]));
     let api = status.split("\napi ").nth(1).expect(&status);

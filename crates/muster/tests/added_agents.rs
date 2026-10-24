@@ -281,9 +281,7 @@ async fn the_person_s_settings_are_read_again_on_asking_and_a_mistake_named_by_i
     .await;
     assert_eq!(agents.len(), 1, "{agents:?}");
     assert!(!agents[0].takes_prompt);
-    let started = setup
-        .sandbox
-        .run(&["session", "start", "work", "--harness", "my-agent"]);
+    let started = setup.sandbox.run(&["my-agent", "--in", "work"]);
     assert!(
         started.status.success(),
         "{}",

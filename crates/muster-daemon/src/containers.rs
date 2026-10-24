@@ -13,7 +13,6 @@
 //! (`ARC-04`); work runs in it with `exec`.
 
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -156,43 +155,31 @@ impl Docker {
 
     /// The containers carrying `label` with `value`, running or not.
     pub(crate) async fn find(&self, label: &str, value: &str) -> Result<Vec<Found>, RuntimeError> {
-        let filter = format!("label={label}={value}");
-        let output = self
-            .quick(
-                &[
-                    "ps",
-                    "--all",
-                    "--no-trunc",
-                    "--filter",
-                    &filter,
-                    "--format",
-                    "{{json .}}",
-                ],
-                &[],
-            )
-            .await?;
-        parse_ps(&output)
+        parse_ps(&self.listed(&format!("label={label}={value}")).await?)
     }
 
     /// The containers carrying `label`, whatever its value, with that
     /// value; running or not.
     pub(crate) async fn labelled(&self, label: &str) -> Result<Vec<(Found, String)>, RuntimeError> {
-        let filter = format!("label={label}");
-        let output = self
-            .quick(
-                &[
-                    "ps",
-                    "--all",
-                    "--no-trunc",
-                    "--filter",
-                    &filter,
-                    "--format",
-                    "{{json .}}",
-                ],
-                &[],
-            )
-            .await?;
-        parse_labelled(&output, label)
+        parse_labelled(&self.listed(&format!("label={label}")).await?, label)
+    }
+
+    /// What `docker ps` says, a line of JSON each, of the containers
+    /// `filter` takes, running or not.
+    async fn listed(&self, filter: &str) -> Result<Vec<u8>, RuntimeError> {
+        self.quick(
+            &[
+                "ps",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                filter,
+                "--format",
+                "{{json .}}",
+            ],
+            &[],
+        )
+        .await
     }
 
     /// Starts a container from `spec` and returns its id. Docker refuses a
@@ -370,39 +357,22 @@ impl Docker {
         input: Option<&[u8]>,
         limit: Duration,
     ) -> Result<std::process::Output, RuntimeError> {
-        use tokio::io::AsyncWriteExt;
         let mut command = Command::new(&self.program);
-        command
-            .args(args)
-            .stdin(if input.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+        command.args(args);
         for (name, value) in env {
             command.env(name, value);
         }
-        let work = async {
-            let mut child = command.spawn()?;
-            if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
-                // A process that stops reading early is its own business.
-                let _ = stdin.write_all(input).await;
-                drop(stdin);
-            }
-            child.wait_with_output().await
-        };
-        match tokio::time::timeout(limit, work).await {
-            Err(_) => Err(RuntimeError::TimedOut(
+        match crate::process::run(command, input, limit).await {
+            Err(crate::process::RunError::TimedOut(_)) => Err(RuntimeError::TimedOut(
                 args.first().copied().unwrap_or("").to_owned(),
             )),
-            Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-                Err(RuntimeError::Missing)
-            }
-            Ok(Err(error)) => Err(RuntimeError::Spawn(error)),
-            Ok(Ok(output)) => Ok(output),
+            Err(crate::process::RunError::NotFound) => Err(RuntimeError::Missing),
+            Err(crate::process::RunError::Spawn(error)) => Err(RuntimeError::Spawn(error)),
+            Ok(ran) => Ok(std::process::Output {
+                status: ran.status,
+                stdout: ran.stdout,
+                stderr: ran.stderr,
+            }),
         }
     }
 }

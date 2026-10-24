@@ -4,9 +4,10 @@ import { defineConfig } from "vitest/config";
 
 // The webview is WebKit on a Mac: build for it, small and without maps. The
 // React Compiler memoises every component, so a status change re-renders
-// only what reads it (`ARC-25`).
+// only what reads it (`ARC-25`); one it cannot compile fails the build and
+// the tests, rather than running unmemoised unseen.
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
+  plugins: [react(), babel({ presets: [reactCompilerPreset({ panicThreshold: "all_errors" })] })],
   clearScreen: false,
   server: { port: 1420, strictPort: true },
   define: {

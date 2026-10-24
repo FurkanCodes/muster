@@ -112,7 +112,7 @@ impl Supervisor {
     /// edited them. A file that does not read is no refusal: the clients
     /// are told why, and the defaults hold meanwhile.
     pub(super) async fn read_preferences(&mut self) -> Reply {
-        let read = settled(&self.config_dir);
+        let read = settled(&self.paths.config_dir);
         tracing::info!(
             agents = read.1.len(),
             reads = read.0.problem.is_none(),

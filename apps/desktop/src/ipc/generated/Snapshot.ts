@@ -17,20 +17,20 @@ export type Snapshot = { projects: Array<Project>, workspaces: Array<Workspace>,
 resources: ResourceReport | null, 
 /**
  * Whether the person is looking at any client's window
- * ([`super::ClientFrame::Looking`]). From protocol 23.
+ * ([`super::ClientFrame::Looking`]).
  */
 looked_at: boolean, 
 /**
- * Muster's own settings. From protocol 23.
+ * Muster's own settings.
  */
 preferences: Preferences, 
 /**
- * Whether Muster's helper on a Mac shows notifications of the Mac's
- * own now ([`super::ClientFrame::Notifier`]): the UIs then send their
- * terminals none. From protocol 39.
+ * Whether Muster's helper on a Mac shows notifications of the Mac's own
+ * now ([`super::ClientFrame::Notifier`]): the UIs then send their
+ * terminals none.
  */
 notifier: boolean, 
 /**
- * Every plugin. From protocol 41.
+ * Every plugin.
  */
 plugins: Array<PluginInfo>, };

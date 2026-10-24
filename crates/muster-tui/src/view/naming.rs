@@ -16,8 +16,9 @@ pub(super) const NAMING_MODEL: &str = "Its model";
 
 /// Whether an agent names chats.
 pub(super) fn by_agent_value(app: &App) -> Span<'static> {
+    let theme = super::theme::of(app);
     if app.model.preferences().naming.by_agent {
-        Span::from("on").green().bold()
+        Span::from("on").fg(theme.done).bold()
     } else {
         Span::from("off").dim()
     }

@@ -65,7 +65,7 @@ impl Events {
 impl Supervisor {
     /// `event` happened: each hook that takes it runs.
     fn raise(&self, event: &Event) {
-        let away = !*self.looked_at.borrow();
+        let away = !*self.clients.looked_at.borrow();
         let jobs = self.plugins.hook_jobs(event, away);
         if !jobs.is_empty() {
             self.events.hooks.raise(jobs);

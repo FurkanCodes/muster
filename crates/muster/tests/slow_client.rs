@@ -20,6 +20,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::time::Duration;
 
 use muster_client::FrameReceiver;
@@ -167,7 +169,7 @@ async fn a_client_that_reads_slowly_catches_up_from_the_ring_arc_14() {
         data: flood,
     };
     sender.send(&input).await.unwrap();
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    wait::passes_async(Duration::from_secs(1), "the flood, read by nobody").await;
     for req_id in 1..=REPLIES {
         let command = Command::Ping;
         sender
@@ -175,7 +177,7 @@ async fn a_client_that_reads_slowly_catches_up_from_the_ring_arc_14() {
             .await
             .unwrap();
     }
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    wait::passes_async(Duration::from_secs(1), "the replies, read by nobody").await;
 
     let mut screen = Screen::new();
     let mut replies = Vec::new();

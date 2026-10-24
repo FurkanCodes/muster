@@ -66,7 +66,7 @@ impl App {
         if self.welcome || !self.can_arrange() {
             return None;
         }
-        match &self.drag {
+        match &self.panels.drag {
             Some(Drag::Divider { divider, .. }) => Some(Grab::Line(divider.path.clone())),
             Some(Drag::Panel { .. }) => None,
             None => self.hold_at(at).map(|hold| match hold {
@@ -83,7 +83,7 @@ impl App {
             Split::Across => Shape::Columns,
             Split::Down => Shape::Rows,
         };
-        match (&self.drag, &self.hover) {
+        match (&self.panels.drag, &self.panels.hover) {
             (Some(Drag::Panel { moved: true, .. }), _) => Shape::Grabbing,
             (Some(Drag::Panel { .. }), _) => Shape::Grab,
             (Some(Drag::Divider { divider, .. }), _) => arrows(divider.split),

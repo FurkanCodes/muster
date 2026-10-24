@@ -94,7 +94,7 @@ fn text(words: &[String]) -> Result<String, Box<dyn std::error::Error>> {
 fn sendable(session: &Session, force: bool) -> Result<(), String> {
     match session.status {
         SessionStatus::Exited { .. } => Err(format!(
-            "{} has ended: `muster session restart` starts it again",
+            "{} has ended: `muster restart` starts it again",
             shown(&session.title)
         )),
         SessionStatus::NeedsYou {
@@ -123,8 +123,12 @@ pub(crate) async fn type_into(
         .map_err(|_| "the session's terminal did not answer")??;
     connection.input(session, &paste(text, modes)).await?;
     if enter {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: a program takes a paste and an Enter that follow at once as one paste; the time apart is what keeps them two"
+        )]
         tokio::time::sleep(BEFORE_ENTER).await;
-        connection.input(session, enter_key(modes)).await?;
+        connection.input(session, &enter_key(modes)).await?;
     }
     connection.detach(session).await?;
     Ok(())
@@ -148,25 +152,15 @@ pub(crate) async fn modes(
     }
 }
 
-/// The bytes for pasting `text`: bracketed where the program asked, so a
-/// line break in it is no Enter, with any bracket inside taken out so the
-/// paste cannot end itself early; as a terminal sends a paste otherwise.
+/// The bytes for pasting `text`, as the UI pastes (`muster_tui::keys`).
 pub(crate) fn paste(text: &str, modes: TerminalModes) -> Vec<u8> {
-    let text = text.replace("\r\n", "\r").replace('\n', "\r");
-    if !modes.bracketed_paste {
-        return text.into_bytes();
-    }
-    let inner = text.replace("\x1b[200~", "").replace("\x1b[201~", "");
-    [b"\x1b[200~".as_slice(), inner.as_bytes(), b"\x1b[201~"].concat()
+    muster_tui::keys::encode_paste(text, modes)
 }
 
-/// Enter, as the program takes keys: kitty's form where it asked for it.
-pub(crate) fn enter_key(modes: TerminalModes) -> &'static [u8] {
-    if modes.kitty_flags == 0 {
-        b"\r"
-    } else {
-        b"\x1b[13u"
-    }
+/// Enter, as the UI sends it (`muster_tui::keys`).
+pub(crate) fn enter_key(modes: TerminalModes) -> Vec<u8> {
+    let enter = crossterm::event::KeyEvent::from(crossterm::event::KeyCode::Enter);
+    muster_tui::keys::encode_key(&enter, modes).unwrap_or_else(|| b"\r".to_vec())
 }
 
 #[cfg(test)]
@@ -189,7 +183,8 @@ mod tests {
             b"\x1b[200~fixit\x1b[201~".to_vec()
         );
         assert_eq!(enter_key(modes(true, 0)), b"\r");
-        assert_eq!(enter_key(modes(true, 1)), b"\x1b[13u");
+        assert_eq!(enter_key(modes(true, 1)), b"\r");
+        assert_eq!(enter_key(modes(true, 1 | 8)), b"\x1b[13u");
     }
 
     #[test]

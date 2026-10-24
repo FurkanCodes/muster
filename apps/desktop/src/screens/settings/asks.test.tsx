@@ -65,22 +65,6 @@ describe("PRD §6 Settings › Agents, as the daemon finds each", () => {
     keys();
   });
 
-  it("says where each is installed is not known to a daemon older than 45, and never asks it", async () => {
-    const bridge = new MockBridge(workingDay());
-    const { app, keys } = renderSettings(bridge);
-    await screen.findByRole("heading", { name: "General" });
-    act(() => bridge.setLink({ state: "up", version: "0.4.0", protocol: 44 }));
-    act(() => app.actions.select("settings", "agents"));
-    await waitFor(() =>
-      expect(agentRow("Claude Code")).toHaveTextContent(
-        "where it is installed is not known: Muster's daemon is older than this app",
-      ),
-    );
-    expect(agentsAsked(bridge)).toBe(0);
-    expect(screen.queryByText("not found")).toBeNull();
-    keys();
-  });
-
   it("opens settings.toml in the person's editor from its button, and says so", async () => {
     const bridge = new MockBridge(workingDay());
     const { app, keys } = renderSettings(bridge);

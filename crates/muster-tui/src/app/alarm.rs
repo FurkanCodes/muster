@@ -23,11 +23,11 @@ impl App {
             return None;
         }
         if stored.status == SessionStatus::Finished {
-            self.held_news.retain(|(held, _)| *held != session);
-            self.held_news.push((session, self.step));
+            self.alarms.held.retain(|(held, _)| *held != session);
+            self.alarms.held.push((session, self.moving.step));
             return None;
         }
-        self.last_alarm = Some(session);
+        self.alarms.last = Some(session);
         self.news(session)
     }
 
@@ -35,38 +35,40 @@ impl App {
     /// finished and unseen; those at work again by then are dropped. The
     /// runtime asks after each step.
     pub(crate) fn due_news(&mut self) -> Vec<Action> {
-        let step = self.step;
-        let (due, held): (Vec<_>, Vec<_>) = std::mem::take(&mut self.held_news)
+        let step = self.moving.step;
+        let (due, held): (Vec<_>, Vec<_>) = std::mem::take(&mut self.alarms.held)
             .into_iter()
             .partition(|(_, at)| step.saturating_sub(*at) >= HOLD_STEPS);
-        self.held_news = held;
+        self.alarms.held = held;
         let mut actions = Vec::new();
         for (session, _) in due {
             let still = self.model.session(session).is_some_and(|stored| {
                 stored.status == SessionStatus::Finished && needs_attention(stored)
             });
             if still {
-                self.last_alarm = Some(session);
+                self.alarms.last = Some(session);
                 actions.extend(self.news(session));
             }
         }
         // One gone meanwhile is never told.
         let model = &self.model;
-        self.held_news
+        self.alarms
+            .held
             .retain(|(session, _)| model.session(*session).is_some());
         actions
     }
 
     /// Whether a finish is held, waiting on the steps to be told.
     pub(crate) fn news_held(&self) -> bool {
-        !self.held_news.is_empty()
+        !self.alarms.held.is_empty()
     }
 
     /// `l`: the session told of last, selected on the Sessions screen,
     /// whatever folds it.
     pub(super) fn go_to_last_alarm(&mut self) -> Vec<Action> {
         let Some(session) = self
-            .last_alarm
+            .alarms
+            .last
             .filter(|session| self.model.session(*session).is_some())
         else {
             self.complain("No session has needed you since Muster started.");

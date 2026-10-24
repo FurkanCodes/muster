@@ -9,8 +9,9 @@ use crate::app::App;
 
 /// What `kind`'s row says of it: on, with its sound, or off.
 pub(super) fn value(app: &App, kind: Kind) -> Span<'static> {
+    let theme = super::theme::of(app);
     let tell = app.model.preferences().telling.of(kind);
-    if app.telling_changing {
+    if app.telling_changing() {
         return Span::from("…").dim();
     }
     if !tell.on {
@@ -18,7 +19,7 @@ pub(super) fn value(app: &App, kind: Kind) -> Span<'static> {
     }
     let value = Span::from(format!("on · {}", sound(&tell.sound)));
     if app.model.preferences().notifications {
-        value.green().bold()
+        value.fg(theme.done).bold()
     } else {
         value.dim()
     }

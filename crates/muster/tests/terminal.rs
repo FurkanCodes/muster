@@ -14,6 +14,8 @@
 
 mod support;
 
+use support::wait;
+
 use muster_client::Connection;
 use muster_core::SessionId;
 use muster_core::colours::{Rgb, TerminalColours};
@@ -179,7 +181,11 @@ async fn a_program_that_asked_is_told_as_the_person_s_keys_come_and_go_in_any_cl
     keys(&mut one, None).await;
     // Out, as the last one goes, however it goes.
     drop(two);
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    wait::passes_async(
+        std::time::Duration::from_millis(300),
+        "the daemon to see the client gone, which no client is told",
+    )
+    .await;
     // And in again.
     keys(&mut one, Some(session)).await;
 
@@ -210,7 +216,11 @@ async fn claude_code_is_told_it_is_in_focus_and_never_out_of_it() {
     keys(&mut one, None).await;
     keys(&mut one, Some(session)).await;
     drop(one);
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    wait::passes_async(
+        std::time::Duration::from_millis(300),
+        "the daemon to see the client gone, which no client is told",
+    )
+    .await;
     watching.input(session, b"x").await.unwrap();
 
     let (text, _) = read_terminal(&mut watching, session, "=42").await;

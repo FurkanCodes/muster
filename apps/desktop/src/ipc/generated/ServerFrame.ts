@@ -19,7 +19,6 @@ export type ServerFrame = { "Welcome": Welcome } | { "Incompatible": Incompatibl
  * output the client was not sent as it came, so what the program
  * does in it (a copy) counts as in [`ServerFrame::Output`].
  * `None` in the replay that starts a stream: it is all history.
- * Protocol 33; an older daemon says nothing, read as `None`.
  */
 live_from: number | null, 
 /**
@@ -29,7 +28,6 @@ live_from: number | null,
  * as escape sequences. `data`, cut from the middle of the output
  * once the daemon no longer holds its start, cannot draw it on its
  * own: a client draws this after it, `data` then being history for
- * its scrollback. It takes no place in the output. Protocol 46; an
- * older daemon says nothing, read as `None`.
+ * its scrollback. It takes no place in the output.
  */
 screen: Array<number> | null, } } | { "Output": { session: SessionId, seq: number, data: Array<number>, } } | { "Modes": { session: SessionId, modes: TerminalModes, } } | { "Detached": { session: SessionId, reason: DetachReason, } } | { "Reveal": { session: SessionId, } };

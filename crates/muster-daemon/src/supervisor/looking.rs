@@ -52,17 +52,21 @@ impl Supervisor {
     /// Counts a client that will say whether the person is looking at it,
     /// at first not looked at.
     pub(super) fn add_looker(&mut self, client: u64, outgoing: mpsc::Sender<ServerFrame>) {
-        self.lookers.clients.entry(client).or_insert(Looker {
-            looking: false,
-            looked: 0,
-            outgoing,
-        });
+        self.clients
+            .lookers
+            .clients
+            .entry(client)
+            .or_insert(Looker {
+                looking: false,
+                looked: 0,
+                outgoing,
+            });
     }
 
     /// A client says whether the person is looking at it, which may change
     /// which client's size its sessions take (`sizing`).
     pub(super) async fn set_looking(&mut self, client: u64, looking: bool) {
-        let lookers = &mut self.lookers;
+        let lookers = &mut self.clients.lookers;
         let Some(looker) = lookers.clients.get_mut(&client) else {
             return;
         };
@@ -80,9 +84,9 @@ impl Supervisor {
 
     /// A client left.
     pub(super) fn remove_looker(&mut self, client: u64) {
-        self.lookers.clients.remove(&client);
+        self.clients.lookers.clients.remove(&client);
         self.publish_looked_at();
-        if self.lookers.notifier == Some(client) {
+        if self.clients.lookers.notifier == Some(client) {
             self.set_notifier(client, false);
         }
     }
@@ -91,11 +95,11 @@ impl Supervisor {
     /// longer can: the UIs send their terminals none while it can.
     pub(super) fn set_notifier(&mut self, client: u64, ready: bool) {
         if ready {
-            self.lookers.notifier = Some(client);
-        } else if self.lookers.notifier == Some(client) {
-            self.lookers.notifier = None;
+            self.clients.lookers.notifier = Some(client);
+        } else if self.clients.lookers.notifier == Some(client) {
+            self.clients.lookers.notifier = None;
         }
-        let notifier = self.lookers.notifier.is_some();
+        let notifier = self.clients.lookers.notifier.is_some();
         if notifier != self.state.notifier {
             self.state.notifier = notifier;
             self.broadcast(Delta::Notifier { ready: notifier });
@@ -105,10 +109,15 @@ impl Supervisor {
     /// Tells clients when the person began or stopped looking at every
     /// window.
     fn publish_looked_at(&mut self) {
-        let looked_at = self.lookers.clients.values().any(|looker| looker.looking);
+        let looked_at = self
+            .clients
+            .lookers
+            .clients
+            .values()
+            .any(|looker| looker.looking);
         if looked_at != self.state.looked_at {
             self.state.looked_at = looked_at;
-            self.looked_at.send_replace(looked_at);
+            self.clients.looked_at.send_replace(looked_at);
             self.broadcast(Delta::LookedAt { looked_at });
             if looked_at {
                 self.catch_up_changes();
@@ -129,6 +138,7 @@ impl Supervisor {
             return Err(ErrorBody::new(ErrorCode::NotFound, "no such session"));
         }
         let Some((_, window)) = self
+            .clients
             .lookers
             .clients
             .iter()
@@ -154,8 +164,8 @@ impl Supervisor {
             return Err(ErrorBody::new(ErrorCode::NotFound, "no such session"));
         }
         let mut shown = false;
-        for client in self.sizing.watchers(from) {
-            if let Some(looker) = self.lookers.clients.get(&client) {
+        for client in self.clients.sizing.watchers(from) {
+            if let Some(looker) = self.clients.lookers.clients.get(&client) {
                 // A client too busy to take it goes on showing `from`.
                 shown |= looker
                     .outgoing
@@ -181,8 +191,8 @@ impl Supervisor {
         let refused = |error: muster_core::config::ConfigError| {
             ErrorBody::new(ErrorCode::BadRequest, error.to_string())
         };
-        crate::config::change_preference(&self.config_dir, change).map_err(refused)?;
-        let own = crate::config::own_settings(&self.config_dir).map_err(refused)?;
+        crate::config::change_preference(&self.paths.config_dir, change).map_err(refused)?;
+        let own = crate::config::own_settings(&self.paths.config_dir).map_err(refused)?;
         tracing::info!(?change, "changed one of Muster's own settings");
         let agents = own.agents.into_iter().map(std::sync::Arc::new).collect();
         self.take_own_settings((own.preferences, agents));

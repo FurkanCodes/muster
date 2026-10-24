@@ -255,7 +255,11 @@ mod tests {
         assert_eq!(listed[0].path, tree.canonicalize().unwrap());
         assert_eq!(listed[0].branch, "side");
 
-        std::thread::sleep(Duration::from_millis(20));
+        crate::waiting::passes(
+            Duration::from_millis(20),
+            "the folder's change time, kept to the millisecond, to move on",
+        )
+        .await;
         git(&repo, &["worktree", "remove", tree.to_str().unwrap()]);
         assert_ne!(changed_at(&repo), Some(first));
         assert!(parse(&git::list_worktrees(&repo).await.unwrap()).is_empty());

@@ -91,8 +91,10 @@ pub(crate) fn report(machine: &str, system: &str, version: &str, output: &str) -
              with its own installer"
         );
     }
-    let others: Vec<&str> = ["codex", "gemini", "opencode", "copilot"]
+    let others: Vec<&str> = muster_core::harness::OwnAgent::ALL
         .into_iter()
+        .filter(|agent| *agent != muster_core::harness::OwnAgent::Claude)
+        .map(muster_core::harness::OwnAgent::program)
         .filter(|agent| has(agent))
         .collect();
     if !others.is_empty() {

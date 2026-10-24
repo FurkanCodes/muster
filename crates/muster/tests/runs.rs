@@ -17,9 +17,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::PathBuf;
 use std::process::Output;
-use std::time::{Duration, Instant};
 
 use muster_core::protocol::{Command, Reply};
 use muster_core::{Run, RunStage, RunTransition};
@@ -85,30 +86,22 @@ async fn wait_for_run(
     daemon: &Daemon,
     mut done: impl FnMut(&Run, &[RunTransition]) -> bool,
 ) -> (Run, Vec<RunTransition>) {
-    let deadline = Instant::now() + Duration::from_secs(10);
     let mut connection = daemon.connect().await;
-    loop {
+    wait::found_async("the run wanted", async || {
         let snapshot = connection.subscribe().await.unwrap();
-        if let [run] = snapshot.runs.as_slice() {
-            let Reply::RunHistory { transitions } = connection
-                .command(Command::RunHistory { run: run.id })
-                .await
-                .unwrap()
-            else {
-                panic!("expected RunHistory");
-            };
-            if done(run, &transitions) {
-                return (run.clone(), transitions);
-            }
-            assert!(
-                Instant::now() < deadline,
-                "the run stayed at {:?}: {transitions:?}",
-                run.stage
-            );
-        }
-        assert!(Instant::now() < deadline, "no run appeared");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+        let [run] = snapshot.runs.as_slice() else {
+            return None;
+        };
+        let Reply::RunHistory { transitions } = connection
+            .command(Command::RunHistory { run: run.id })
+            .await
+            .unwrap()
+        else {
+            panic!("expected RunHistory");
+        };
+        done(run, &transitions).then(|| (run.clone(), transitions))
+    })
+    .await
 }
 
 #[tokio::test]
@@ -263,7 +256,10 @@ async fn a_worktree_s_committed_work_is_handed_to_the_autopilot() {
     support::git(&root, &["commit", "--quiet", "--message", "Runs"]);
     let daemon = sandbox.start();
     ok(&sandbox, &["project", "add", root.to_str().unwrap()]);
-    ok(&sandbox, &["worktree", "add", "app", "--branch", "by-hand"]);
+    ok(
+        &sandbox,
+        &["workspace", "add", "-p", "app", "--branch", "by-hand"],
+    );
     let snapshot = daemon.connect().await.subscribe().await.unwrap();
     let tree = snapshot
         .workspaces
@@ -304,5 +300,5 @@ async fn a_worktree_s_committed_work_is_handed_to_the_autopilot() {
         &sandbox,
         &["run", "start", "app", "7", "--from", "elsewhere"],
     );
-    assert!(base.contains("no worktree matches \"elsewhere\""), "{base}");
+    assert!(base.contains("no workspace is \"elsewhere\""), "{base}");
 }

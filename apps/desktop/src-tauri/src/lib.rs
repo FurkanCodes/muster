@@ -65,7 +65,8 @@ pub fn run() {
             daemon_log::show_daemon_log,
             ticket_url::open_ticket_url,
             sounds::hear,
-            folders::list_folders,
+            #[cfg(feature = "e2e")]
+            folders::browse::list_folders,
             folders::pick_folder,
             settings_actions::restart_in_place,
             settings_actions::open_notification_settings,

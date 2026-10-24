@@ -1,6 +1,7 @@
 import { Dialog as Base } from "@base-ui/react/dialog";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef } from "react";
 import { useApp } from "../app/context";
+import { Button } from "./controls";
 import { listTakesEscape } from "./layers";
 import { type PartProps, usePart } from "./part";
 import { portalRoot } from "./portal";
@@ -205,4 +206,49 @@ export function DialogText({ busy = false, ...props }: PartProps<"p"> & { busy?:
     role: busy ? "status" : undefined,
     "aria-busy": busy || undefined,
   });
+}
+
+/**
+ * A dialog's two answers: Cancel (⎋), and what it does (⏎), `doing` while
+ * the daemon answers, which holds both.
+ */
+export function DialogAnswers({
+  does,
+  title,
+  doing,
+  busy = false,
+  disabled = false,
+  initial = false,
+  onCancel,
+  onDo,
+}: {
+  does: string;
+  /** The acting answer's tooltip, where it says more than its label. */
+  title?: string;
+  doing?: string;
+  busy?: boolean;
+  disabled?: boolean;
+  /** Where the focus starts, rather than the dialog's first field. */
+  initial?: boolean;
+  onCancel: () => void;
+  onDo: () => void;
+}) {
+  return (
+    <>
+      <Button variant="secondary" size="lg" title="Cancel (⎋)" disabled={busy} onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button
+        variant="primary"
+        size="lg"
+        title={title ?? `${does} (⏎)`}
+        busy={busy}
+        disabled={disabled}
+        data-dialog-initial={initial || undefined}
+        onClick={onDo}
+      >
+        {busy ? (doing ?? does) : does}
+      </Button>
+    </>
+  );
 }

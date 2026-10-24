@@ -2,56 +2,14 @@
 // the window's keymap (src/keys), read here as the key listener names a
 // press (`chord`) and as a key cap shows it (`label`).
 
-import type { PluginInfo } from "../ipc/generated/PluginInfo";
-import type { Preferences } from "../ipc/generated/Preferences";
+import type { ActionName } from "../ipc/generated/ActionName";
 import { chordLabel, domChord } from "../keys/chord";
-import { chordsOf } from "../keys/keymap";
+import { chordsOf, type Keymap } from "../keys/keymap";
 import { keymapFor } from "../keys/useKeymap";
+import type { DaemonState } from "../state/daemon";
 
 /** The actions, by their names in `[keys]`, whose keys the flows bind or show. */
-export type KeyAction =
-  | "help"
-  | "add_project"
-  | "clone_project"
-  | "new_worktree"
-  | "new_session"
-  | "show_tickets"
-  | "full_screen"
-  | "show_changes"
-  | "shell"
-  | "stop_session"
-  | "restart_session"
-  | "close"
-  | "rename"
-  | "fold"
-  | "checks"
-  | "review"
-  | "tidy"
-  | "move_branch"
-  | "open_pull_request"
-  | "pull_request_in_browser"
-  | "move_up"
-  | "move_down"
-  | "last_alarm"
-  | "fold_list"
-  | "next_tab"
-  | "previous_tab"
-  | "refresh_tickets"
-  | "another_agent"
-  | "ticket_in_browser"
-  | "close_ticket"
-  | "next_part"
-  | "previous_part"
-  | "choose_part"
-  | "read_settings"
-  | "add_plugin"
-  | "update_plugin"
-  | "remove_plugin"
-  | "put_back"
-  | "changes_again"
-  | "close_changes"
-  | "leave_session"
-  | "changes_help";
+export type KeyAction = ActionName;
 
 export interface Key {
   /** As `chordOf` names the key pressed: `R`, `⌃E`, `⇧Tab`. */
@@ -61,20 +19,30 @@ export interface Key {
 }
 
 const NO_KEYS: Readonly<Record<string, readonly string[]>> = {};
-// The flows' actions are Muster's own: plugins' panels never change their keys.
-const NO_PLUGINS: readonly PluginInfo[] = [];
 
-/** The keys of `action`: the person's, or Muster's where they set none. */
-export function keysOf(preferences: Preferences | null, action: KeyAction): Key[] {
-  const map = keymapFor(preferences?.keys ?? NO_KEYS, NO_PLUGINS);
+/** What a keymap is read from: the daemon's state, the person's keys and the plugins' panels. */
+export type Keyed = Pick<DaemonState, "preferences" | "plugins">;
+
+/** The window's keymap, as `useKeymap` gives it, from `state`. */
+function mapOf(state: Keyed): Keymap {
+  return keymapFor(state.preferences?.keys ?? NO_KEYS, state.plugins);
+}
+
+/** The keys of `action` in `map`. */
+export function keysIn(map: Keymap, action: KeyAction): Key[] {
   return chordsOf(map, action).map((chord) => ({
     chord: domChord(chord),
     label: chordLabel(chord),
   }));
 }
 
+/** The keys of `action`: the person's, or Muster's where they set none. */
+export function keysOf(state: Keyed, action: KeyAction): Key[] {
+  return keysIn(mapOf(state), action);
+}
+
 /** The keys of `action` as a hint shows them, `h ?`; `none` where the person took them away. */
-export function labelOf(preferences: Preferences | null, action: KeyAction): string {
-  const keys = keysOf(preferences, action);
+export function labelOf(state: Keyed, action: KeyAction): string {
+  const keys = keysOf(state, action);
   return keys.length > 0 ? keys.map((key) => key.label).join(" ") : "none";
 }

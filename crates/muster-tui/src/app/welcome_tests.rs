@@ -246,7 +246,7 @@ fn kep_s_face_says_how_the_sessions_stand() {
 #[test]
 fn with_motion_off_kep_neither_blinks_nor_cheers() {
     let mut world = world();
-    world.app.motion = false;
+    world.app.moving.on = false;
     let id = world.session.id;
     status(&mut world, id, SessionStatus::Running, false);
     world.app.on_step(38);

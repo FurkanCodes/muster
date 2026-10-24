@@ -6,6 +6,7 @@
 // otherwise, picking up from the last byte it had. Keys go to the program
 // while it has them; ⇧Q and ⌘ shortcuts stay Muster's.
 
+import type { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { useActions, useApp, useBridge, useUi } from "../app/context";
@@ -33,6 +34,11 @@ function themeFromTokens(element: Element) {
     cursorAccent: token("--surface-term"),
     selectionBackground: token("--text-selection"),
   };
+}
+
+/** Draws `xterm` in the colours the window's tokens give `element` now. */
+function drawIn(xterm: XTerm, element: Element) {
+  xterm.options.theme = themeFromTokens(element);
 }
 
 export function Terminal({ session, compact = false }: { session: SessionId; compact?: boolean }) {
@@ -159,7 +165,7 @@ export function Terminal({ session, compact = false }: { session: SessionId; com
   // the Mac: the tokens change with data-theme, set before `drawnIn` is.
   useEffect(() => {
     const element = host.current;
-    if (element && kept && drawnIn) kept.xterm.options.theme = themeFromTokens(element);
+    if (element && kept && drawnIn) drawIn(kept.xterm, element);
   }, [kept, drawnIn]);
 
   return (

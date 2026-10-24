@@ -20,7 +20,7 @@ fn t_asks_which_agent_tidies_and_only_then_starts_it() {
         world.app.mode,
         Mode::Dialog(Dialog::Tidy {
             workspace: world.worktree.id,
-            harness: HarnessChoice::Claude,
+            harness: HarnessChoice::CLAUDE,
         })
     );
     let screen = render(&world.app);
@@ -37,7 +37,7 @@ fn t_asks_which_agent_tidies_and_only_then_starts_it() {
     assert!(matches!(
         world.app.mode,
         Mode::Dialog(Dialog::Tidy {
-            harness: HarnessChoice::Copilot,
+            harness: HarnessChoice::Own(muster_core::harness::OwnAgent::Copilot),
             ..
         })
     ));
@@ -56,17 +56,12 @@ fn t_asks_which_agent_tidies_and_only_then_starts_it() {
 }
 
 #[test]
-fn esc_asks_nothing_and_an_older_daemon_is_not_asked() {
+fn esc_asks_nothing() {
     let mut world = world();
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     press(&mut world.app, KeyCode::Char('t'));
     assert!(press(&mut world.app, KeyCode::Esc).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);
-
-    world.app.daemon_protocol = muster_core::clashes::CLASHES_PROTOCOL;
-    assert!(press(&mut world.app, KeyCode::Char('t')).is_empty());
-    assert_eq!(world.app.mode, Mode::Browse);
-    assert!(render(&world.app).contains("`muster reload`"));
 }
 
 fn tidied(world: &mut World, status: SessionStatus, checked: Option<TidyCheck>) -> String {

@@ -1,13 +1,8 @@
 //! Where each coding agent Muster can start is installed, and the version
 //! it says it is (`PRODUCT.md` §6, *your agents*): the daemon's answer, as
-//! it is the daemon that runs them, with its own `PATH`. From protocol 45
-//! ([`AGENTS_FOUND_PROTOCOL`]).
+//! it is the daemon that runs them, with its own `PATH`.
 
 use serde::{Deserialize, Serialize};
-
-/// The first protocol whose daemon answers [`super::Command::Agents`]; a
-/// client sends it only to one of this or later.
-pub const AGENTS_FOUND_PROTOCOL: u32 = 45;
 
 /// One coding agent's program, as the daemon finds it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -39,7 +39,7 @@ impl App {
 
     /// How many lines each of the Needs you list's lines takes.
     pub(crate) fn needs_heights(&self) -> Vec<usize> {
-        vec![self.session_height(); self.needs_list.len()]
+        vec![self.session_height(); self.needs.list.len()]
     }
 }
 

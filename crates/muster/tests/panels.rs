@@ -21,8 +21,9 @@
 
 mod support;
 
+use support::wait;
+
 use std::os::unix::fs::PermissionsExt as _;
-use std::time::{Duration, Instant};
 
 use muster_client::Connection;
 use muster_core::protocol::plugins::{Beside, PluginCommand};
@@ -146,12 +147,8 @@ fn alive(pid: &str) -> bool {
 }
 
 /// Waits up to ten seconds for `done`.
-async fn until(what: &str, mut done: impl AsyncFnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !done().await {
-        assert!(Instant::now() < deadline, "{what}");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+async fn until(what: &str, done: impl AsyncFnMut() -> bool) {
+    wait::until_async(what, done).await;
 }
 
 #[tokio::test]
@@ -323,123 +320,4 @@ async fn a_plugin_turned_off_by_hand_in_muster_s_settings_stops_its_panels_arc_2
     assert!(stored.ended_at.is_some(), "the panel stays listed, ended");
     let chat = snapshot.sessions.iter().find(|s| s.id == chat).unwrap();
     assert_eq!(chat.ended_at, None, "its session runs on");
-}
-
-/// One whole frame from `stream`, header and all, as the daemon wrote it.
-async fn raw_frame(stream: &mut tokio::net::UnixStream) -> Vec<u8> {
-    use tokio::io::AsyncReadExt as _;
-    let read = async {
-        let mut header = [0; 4];
-        stream.read_exact(&mut header).await.unwrap();
-        let mut frame = vec![0; u32::from_le_bytes(header) as usize];
-        stream.read_exact(&mut frame).await.unwrap();
-        [header.to_vec(), frame].concat()
-    };
-    tokio::time::timeout(Duration::from_secs(5), read)
-        .await
-        .expect("the daemon answered in time")
-}
-
-/// Whether `bytes` say anything of a plugin's panel: its harness, its
-/// key's name, or its place in a layout.
-fn names_a_panel(bytes: &[u8]) -> bool {
-    ["plugin:", "plugin.", "/ plugin", "plugin)", "| plugin"]
-        .iter()
-        .any(|word| bytes.windows(word.len()).any(|at| at == word.as_bytes()))
-}
-
-#[tokio::test]
-async fn a_client_older_than_panels_is_sent_no_panel_and_a_layout_and_keys_it_reads_arc_09() {
-    use muster_core::frame::{FrameDecoder, encode};
-    use muster_core::protocol::{ClientFrame, Delta, Hello, MIN_PROTOCOL_VERSION, ServerFrame};
-    use muster_core::settings::PreferenceChange;
-    use tokio::io::AsyncWriteExt as _;
-
-    let sandbox = Sandbox::new();
-    let daemon = sandbox.start();
-    plugin(
-        &sandbox,
-        &["install", &plugin_repository(&sandbox, MANIFEST), "--yes"],
-    );
-    let mut connection = daemon.connect().await;
-    let (_, chat) = chat(&mut connection, &sandbox).await;
-    let Reply::SessionStarted { id: panel } = connection
-        .command(open(Beside::Session(chat)))
-        .await
-        .unwrap()
-    else {
-        panic!("expected SessionStarted");
-    };
-    connection
-        .command(Command::ChangePreference(PreferenceChange::Keys {
-            action: "plugin.zoe.context".to_owned(),
-            keys: Some(vec!["G".to_owned()]),
-        }))
-        .await
-        .unwrap();
-    // A client of panels is told of it all.
-    let snapshot = connection.subscribe().await.unwrap();
-    assert!(snapshot.sessions.iter().any(|session| session.id == panel));
-    assert!(snapshot.preferences.keys.contains_key("plugin.zoe.context"));
-
-    // A client of 42, as the UI before panels, reading the frames as sent:
-    // this build would complete a layout without the panel as it read it.
-    let mut stream = tokio::net::UnixStream::connect(daemon.socket())
-        .await
-        .unwrap();
-    let older = muster_core::plugins::PANELS_PROTOCOL - 1;
-    let hello = Hello {
-        min_version: MIN_PROTOCOL_VERSION,
-        max_version: older,
-        client: "before panels".to_owned(),
-        capabilities: Vec::new(),
-    };
-    for frame in [ClientFrame::Hello(hello), ClientFrame::Subscribe] {
-        stream.write_all(&encode(&frame).unwrap()).await.unwrap();
-    }
-    let read = |bytes: &[u8]| -> ServerFrame {
-        let mut decoder = FrameDecoder::new();
-        decoder.push(bytes);
-        decoder.next_frame().unwrap().unwrap()
-    };
-    let ServerFrame::Welcome(welcome) = read(&raw_frame(&mut stream).await) else {
-        panic!("expected Welcome");
-    };
-    assert_eq!(welcome.version, older);
-    let bytes = raw_frame(&mut stream).await;
-    assert!(
-        !names_a_panel(&bytes),
-        "{}",
-        String::from_utf8_lossy(&bytes)
-    );
-    let ServerFrame::Snapshot(snapshot) = read(&bytes) else {
-        panic!("expected Snapshot");
-    };
-    assert!(snapshot.sessions.iter().any(|session| session.id == chat));
-    assert!(snapshot.sessions.iter().all(|session| session.id != panel));
-    // Nor of a change to the panel; the chat's, as ever.
-    connection
-        .command(Command::StopSession { session: panel })
-        .await
-        .unwrap();
-    connection
-        .command(Command::RenameSession {
-            session: chat,
-            title: "Fix the login".to_owned(),
-        })
-        .await
-        .unwrap();
-    loop {
-        let bytes = raw_frame(&mut stream).await;
-        assert!(
-            !names_a_panel(&bytes),
-            "{}",
-            String::from_utf8_lossy(&bytes)
-        );
-        if let ServerFrame::Delta(Delta::SessionUpserted(session)) = read(&bytes)
-            && session.id == chat
-        {
-            break;
-        }
-    }
 }

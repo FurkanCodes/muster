@@ -4,10 +4,8 @@
 // A tidy takes only agents that take a first prompt, never a shell.
 
 import type { AddedAgent } from "../ipc/generated/AddedAgent";
-import { agentOf } from "../lib/agents";
+import { agentOf, OWN } from "../lib/agents";
 import type { AgentOption } from "../ui/AgentChoice";
-
-const OWN = ["claude", "codex", "gemini", "opencode", "copilot"] as const;
 
 export interface Offered extends AgentOption {
   /** It takes a first prompt: every agent of Muster's own, and one of the person's whose settings say how. */

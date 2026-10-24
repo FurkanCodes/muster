@@ -1,5 +1,5 @@
 //! What a session machine holds, for a person asking why a session has
-//! its status (`muster session explain`): its open prompts, its hold for
+//! its status (`muster explain`): its open prompts, its hold for
 //! subagents and its next deadline, each moment on the wall clock.
 
 use std::time::{Duration, Instant};
@@ -48,9 +48,11 @@ impl SessionMachine {
         }
     }
 
-    /// Whether `signal` would count: a hook from another agent session
-    /// (but its start) is ignored, as is everything but being watched once
-    /// the program has exited.
+    /// Whether `signal` counts, the one rule `step` follows: a hook from
+    /// another agent session is ignored but its start (`/clear` starts a new
+    /// harness session in the same process, and only its start announcement
+    /// may switch to it), as is everything but being watched once the
+    /// program has exited.
     pub fn heeds(&self, signal: &Signal) -> bool {
         match signal {
             Signal::Watched { .. } => true,

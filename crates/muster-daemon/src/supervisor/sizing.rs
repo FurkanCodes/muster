@@ -229,19 +229,19 @@ impl Supervisor {
         size: TermSize,
         pixels: Option<PixelSize>,
     ) {
-        self.sizing.resized(session, client, size, pixels);
+        self.clients.sizing.resized(session, client, size, pixels);
         self.fit(session).await;
     }
 
     /// The client typed into the session after another was active on it.
     pub(super) async fn active_on(&mut self, session: SessionId, client: u64) {
-        self.sizing.active(session, client);
+        self.clients.sizing.active(session, client);
         self.fit(session).await;
     }
 
     /// The client let the session's terminal go.
     pub(super) async fn leave_terminal(&mut self, session: SessionId, client: u64) {
-        self.sizing.leave(session, client);
+        self.clients.sizing.leave(session, client);
         self.fit(session).await;
     }
 
@@ -249,9 +249,9 @@ impl Supervisor {
     /// changes which client's size its sessions take; beginning is being
     /// active on each.
     pub(super) async fn looked_changed(&mut self, client: u64, looking: bool) {
-        for session in self.sizing.sessions_of(client) {
+        for session in self.clients.sizing.sessions_of(client) {
             if looking {
-                self.sizing.active(session, client);
+                self.clients.sizing.active(session, client);
             }
             self.fit(session).await;
         }
@@ -260,8 +260,9 @@ impl Supervisor {
     /// Gives the session's terminal the size of the client in charge of
     /// it, pixels and all, if that changed.
     pub(super) async fn fit(&mut self, session: SessionId) {
-        let lookers = &self.lookers;
+        let lookers = &self.clients.lookers;
         let Some((size, pixels)) = self
+            .clients
             .sizing
             .due(session, |client| lookers.is_looking(client))
         else {
@@ -275,9 +276,10 @@ impl Supervisor {
     /// Gives a terminal just started or taken over the size of the client
     /// in charge of the session, if it was started at another.
     pub(super) fn fit_new_terminal(&mut self, session: SessionId, size: TermSize) {
-        self.sizing.published(session, size);
-        let lookers = &self.lookers;
+        self.clients.sizing.published(session, size);
+        let lookers = &self.clients.lookers;
         if let Some((size, pixels)) = self
+            .clients
             .sizing
             .due(session, |client| lookers.is_looking(client))
             && let Some(live) = self.live.get(&session)

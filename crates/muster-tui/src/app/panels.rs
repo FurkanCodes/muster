@@ -8,7 +8,7 @@
 
 use muster_core::layout::{Layout, Panel};
 use muster_core::protocol::Command;
-use muster_core::settings::{LAYOUT_PROTOCOL, PreferenceChange};
+use muster_core::settings::PreferenceChange;
 use ratatui::layout::Rect;
 
 use super::{Action, App, Dialog, Help, Mode, Then};
@@ -17,14 +17,16 @@ use crate::layout::{Solved, needs, solve};
 impl App {
     /// Where the panels are: as changed in this window, or as kept.
     pub(crate) fn panels(&self) -> &Layout {
-        self.panels_kept
+        self.panels
+            .kept
             .as_ref()
             .unwrap_or(&self.model.preferences().panels)
     }
 
     /// Whether the list is folded away.
     pub(crate) fn list_folded(&self) -> bool {
-        self.folded_kept
+        self.panels
+            .folded_kept
             .unwrap_or(self.model.preferences().list_folded)
     }
 
@@ -95,23 +97,15 @@ impl App {
         }
     }
 
-    /// Whether the daemon keeps the layout and the fold.
-    pub(crate) fn layout_known(&self) -> bool {
-        self.daemon_protocol >= LAYOUT_PROTOCOL
-    }
-
     /// The fold key: folds the list away, so the session takes its place,
     /// or brings it back. It works as the person types in the session too.
     pub(super) fn toggle_list(&mut self) -> Vec<Action> {
         let folded = !self.list_folded();
-        self.folded_kept = Some(folded);
-        let mut actions = Vec::new();
-        if self.layout_known() {
-            actions.push(self.command(
-                Command::ChangePreference(PreferenceChange::ListFolded(folded)),
-                Then::ListFolded,
-            ));
-        }
+        self.panels.folded_kept = Some(folded);
+        let mut actions = vec![self.command(
+            Command::ChangePreference(PreferenceChange::ListFolded(folded)),
+            Then::ListFolded,
+        )];
         actions.extend(self.fit_attached());
         actions
     }
@@ -137,7 +131,7 @@ impl App {
         &mut self,
         outcome: Result<(), muster_core::protocol::ErrorBody>,
     ) {
-        self.folded_kept = None;
+        self.panels.folded_kept = None;
         if let Err(error) = outcome {
             self.complain(error.message);
         }

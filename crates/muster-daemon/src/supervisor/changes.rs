@@ -132,12 +132,12 @@ impl Supervisor {
     /// unless one is under way, or nobody looks at a client and it is not
     /// that tick's turn.
     pub(super) fn tick_changes(&mut self) {
-        self.changes.ticks = self.changes.ticks.wrapping_add(1);
+        self.looks.changes.ticks = self.looks.changes.ticks.wrapping_add(1);
         if self.changes_under_way() {
             return;
         }
-        if !self.state.looked_at && !self.changes.ticks.is_multiple_of(UNWATCHED_EVERY) {
-            self.changes.missed = true;
+        if !self.state.looked_at && !self.looks.changes.ticks.is_multiple_of(UNWATCHED_EVERY) {
+            self.looks.changes.missed = true;
             return;
         }
         self.look_at_changes(None);
@@ -146,16 +146,17 @@ impl Supervisor {
     /// The person looks at a client again: the look a tick let go by while
     /// nobody did is taken now, so what they see is recent.
     pub(super) fn catch_up_changes(&mut self) {
-        if self.changes.missed && !self.changes_under_way() {
+        if self.looks.changes.missed && !self.changes_under_way() {
             self.look_at_changes(None);
         }
     }
 
     /// Whether a look at every workspace is under way, and not lost.
     fn changes_under_way(&self) -> bool {
-        self.changes
+        self.looks
+            .changes
             .under_way
-            .is_some_and(|started| self.changes.ticks.wrapping_sub(started) < LOST_AFTER)
+            .is_some_and(|started| self.looks.changes.ticks.wrapping_sub(started) < LOST_AFTER)
     }
 
     /// A session's status changed from `before` to `after`: once its
@@ -201,8 +202,8 @@ impl Supervisor {
         }
         let whole = only.is_none();
         if whole {
-            self.changes.under_way = Some(self.changes.ticks);
-            self.changes.missed = false;
+            self.looks.changes.under_way = Some(self.looks.changes.ticks);
+            self.looks.changes.missed = false;
         }
         let requests = self.requests.clone();
         self.tasks.spawn(async move {
@@ -237,7 +238,7 @@ impl Supervisor {
     /// agent's turn or a client's asking.
     pub(super) fn changes_looked(&mut self, looked: Looked) {
         if looked.whole {
-            self.changes.under_way = None;
+            self.looks.changes.under_way = None;
         }
         let mut moved = Vec::new();
         for (workspace, branch, summary) in looked.found {
@@ -277,14 +278,7 @@ impl Supervisor {
     /// checkout's on the host, in a repository; not a run's container,
     /// whose clone is its own.
     pub(super) fn changes_place(&self, workspace: WorkspaceId) -> Result<Place, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if !found.kind.in_git() {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -305,10 +299,7 @@ impl Supervisor {
             workspace,
             branch: found.kind.branch().to_owned(),
             path: path.to_owned(),
-            overrides: self
-                .config_dir
-                .join("projects")
-                .join(format!("{}.toml", found.project)),
+            overrides: self.overrides_of(found.project),
             stacked: found.stacked_on.clone(),
         })
     }

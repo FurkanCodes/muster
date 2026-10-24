@@ -5,7 +5,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use muster_core::keys::Action as Does;
 use muster_core::protocol::{ClientFrame, Command};
-use muster_core::settings::{KEYS_PROTOCOL, PreferenceChange};
+use muster_core::settings::PreferenceChange;
 
 use super::tests::{World, preferences, press, render, world};
 use super::{Action, Dialog, Mode, SettingRow, View};
@@ -24,7 +24,7 @@ fn changed(actions: &[Action]) -> Option<PreferenceChange> {
 /// The Keys list open on `does`.
 fn on(world: &mut World, does: Does) {
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(SettingRow::Keys);
+    world.app.settings.selected = Some(SettingRow::Keys);
     press(&mut world.app, KeyCode::Enter);
     let Mode::Dialog(Dialog::Keys(rebinding)) = &mut world.app.mode else {
         panic!("{:?}", world.app.mode);
@@ -172,13 +172,6 @@ fn a_session_is_left_on_the_key_the_person_set_and_the_old_one_reaches_its_progr
 }
 
 #[test]
-fn a_daemon_that_keeps_no_keys_shows_no_keys_to_set() {
-    let mut world = world();
-    world.app.daemon_protocol = KEYS_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::Keys));
-}
-
-#[test]
 fn a_key_for_an_action_no_longer_there_leaves_the_rest_and_says_so() {
     let mut world = world();
     // A plugin's panel's key, its plugin removed, beside one of Muster's.
@@ -193,7 +186,7 @@ fn a_key_for_an_action_no_longer_there_leaves_the_rest_and_says_so() {
     );
     assert_eq!(world.app.keymap.aside().len(), 1);
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(SettingRow::Keys);
+    world.app.settings.selected = Some(SettingRow::Keys);
     world.app.on_resize(muster_core::protocol::TermSize {
         cols: 180,
         rows: 40,

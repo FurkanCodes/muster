@@ -8,6 +8,7 @@ import type { Palette } from "../../ipc/generated/Palette";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import type { SessionLines } from "../../ipc/generated/SessionLines";
 import { useKeyLabel } from "../../keys/useKeymap";
+import { errorText } from "../../lib/text";
 import { chats } from "../../state/selectors";
 import type { Theme } from "../../state/ui";
 import { Button, Segmented } from "../../ui/controls";
@@ -15,7 +16,7 @@ import { Select } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
 import { canAsk } from "./asks";
 import { useSettings } from "./context";
-import { rowKey, SHARED_BUILDS_PROTOCOL } from "./model";
+import { rowKey } from "./model";
 import {
   Control,
   Footnote,
@@ -90,9 +91,7 @@ export function General({ preferences }: { preferences: Preferences }) {
   const theme = useUi((window) => window.theme);
   const version = useDaemon((daemon) => (daemon.link.state === "up" ? daemon.link.version : null));
   const sessions = useDaemon((daemon) => chats(daemon).length);
-  const sharedBuilds = useDaemon(
-    (daemon) => daemon.link.state === "up" && daemon.link.protocol >= SHARED_BUILDS_PROTOCOL,
-  );
+  const sharedBuilds = useDaemon((daemon) => daemon.link.state === "up");
   const readKey = useKeyLabel("read_settings");
   const bridge = useBridge();
   const [restarting, setRestarting] = useState(false);
@@ -105,7 +104,7 @@ export function General({ preferences }: { preferences: Preferences }) {
       .restartInPlace()
       .then(
         (said) => ui.tell(said || "The daemon restarted in place."),
-        (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+        (error: unknown) => ui.tell(errorText(error), true),
       )
       .finally(() => setRestarting(false));
   };

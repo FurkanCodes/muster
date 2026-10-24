@@ -20,10 +20,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::ProjectId;
 use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
-use muster_core::settings::{
-    AGENTS_PROTOCOL, MUSTER_PREFIX_PROTOCOL, PreferenceChange, ProjectSettings,
-    SHARED_BUILDS_PROTOCOL, SettingChange,
-};
+use muster_core::settings::{PreferenceChange, ProjectSettings, SettingChange};
 
 use super::{Action, App, Mode, PluginKey, Then, View};
 
@@ -116,60 +113,50 @@ pub(crate) enum Settings {
 }
 
 impl App {
-    /// The settings list: each project, then its settings; the branches'
-    /// prefix only where the daemon can change it. Then Muster's own, those
-    /// the daemon keeps: the notch, on a Mac, the width a session sits
-    /// beside the list from, the look, and the person's agents, where the
-    /// daemon knows them. Then the plugins, where the daemon has them.
+    /// The settings list: each project, then its settings. Then Muster's
+    /// own, once the state has come: the notch, on a Mac, the
+    /// notifications, the width a session sits beside the list from, the
+    /// look, the layout, naming chats, keys, shared builds, delegation and
+    /// the person's agents. Then the plugins.
     pub(crate) fn setting_rows(&self) -> Vec<SettingRow> {
-        let prefix = self.daemon_protocol >= MUSTER_PREFIX_PROTOCOL;
         let mut rows: Vec<SettingRow> = self
             .model
             .projects()
             .iter()
             .flat_map(|project| {
                 [
-                    Some(SettingRow::Project(project.id)),
-                    Some(SettingRow::OnlyMine(project.id)),
-                    Some(SettingRow::TicketsFrom(project.id)),
-                    prefix.then_some(SettingRow::MusterPrefix(project.id)),
+                    SettingRow::Project(project.id),
+                    SettingRow::OnlyMine(project.id),
+                    SettingRow::TicketsFrom(project.id),
+                    SettingRow::MusterPrefix(project.id),
                 ]
             })
-            .flatten()
             .collect();
-        let told = self.telling_known();
-        let own = [
-            (self.notch_known(), SettingRow::Notch),
-            (self.notifications_known(), SettingRow::Notifications),
-            (told, SettingRow::Tell(muster_core::telling::Kind::Question)),
-            (told, SettingRow::Tell(muster_core::telling::Kind::Finish)),
-            (told, SettingRow::Tell(muster_core::telling::Kind::Error)),
-            (self.side_by_side_known(), SettingRow::SideBySide),
-            (self.look_known(), SettingRow::Colours),
-            (self.look_known(), SettingRow::SessionLines),
-            (self.layout_known(), SettingRow::Panels),
-            (self.naming_known(), SettingRow::NamesByAgent),
-            (self.naming_known(), SettingRow::NamedBy),
-            (self.naming_known(), SettingRow::NamingModel),
-            (self.keys_known(), SettingRow::Keys),
-            (self.shared_builds_known(), SettingRow::SharedBuilds),
-            (self.delegation_known(), SettingRow::Delegation),
-            (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
-        ];
-        if self.model.loaded() && own.iter().any(|(known, _)| *known) {
+        if self.model.loaded() {
             rows.push(SettingRow::Muster);
-            rows.extend(own.iter().filter(|(known, _)| *known).map(|(_, row)| *row));
+            rows.extend(self.notch_known().then_some(SettingRow::Notch));
+            rows.extend([
+                SettingRow::Notifications,
+                SettingRow::Tell(muster_core::telling::Kind::Question),
+                SettingRow::Tell(muster_core::telling::Kind::Finish),
+                SettingRow::Tell(muster_core::telling::Kind::Error),
+                SettingRow::SideBySide,
+                SettingRow::Colours,
+                SettingRow::SessionLines,
+                SettingRow::Panels,
+                SettingRow::NamesByAgent,
+                SettingRow::NamedBy,
+                SettingRow::NamingModel,
+                SettingRow::Keys,
+                SettingRow::SharedBuilds,
+                SettingRow::Delegation,
+                SettingRow::Agents,
+            ]);
         }
-        if self.model.loaded() && self.plugins_known() {
+        if self.model.loaded() {
             rows.extend(self.plugin_rows());
         }
         rows
-    }
-
-    /// Whether the daemon can have a project's worktrees build into one
-    /// folder.
-    pub(crate) fn shared_builds_known(&self) -> bool {
-        self.daemon_protocol >= SHARED_BUILDS_PROTOCOL
     }
 
     /// ⏎ on *Shared Rust builds*: on, or off.
@@ -184,11 +171,6 @@ impl App {
             Command::ChangePreference(PreferenceChange::SharedBuilds(on)),
             Then::Say(said),
         )]
-    }
-
-    /// Whether the daemon lets agents start agents within limits.
-    pub(crate) fn delegation_known(&self) -> bool {
-        self.daemon_protocol >= muster_core::delegation::DELEGATION_PROTOCOL
     }
 
     /// ⏎ on *Agents start agents*: on, or off.
@@ -210,7 +192,7 @@ impl App {
         match (key.code, does) {
             (KeyCode::Up, _) | (_, Some(Does::MoveUp)) => self.move_selection(-1),
             (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),
-            (KeyCode::Enter | KeyCode::Char(' '), _) => match self.settings_selected {
+            (KeyCode::Enter | KeyCode::Char(' '), _) => match self.settings.selected {
                 Some(SettingRow::TicketsFrom(project)) => return self.choose_tickets_from(project),
                 Some(SettingRow::Notch) => return self.toggle_notch(),
                 Some(SettingRow::SideBySide) => return self.step_side_by_side(1, true),
@@ -230,35 +212,32 @@ impl App {
                 _ => return self.toggle_setting(),
             },
             (_, Some(Does::AddPlugin)) => return self.open_add_plugin(),
-            (_, Some(Does::UpdatePlugin)) if self.plugins_known() => return self.update_plugin(),
-            (_, Some(Does::RemovePlugin)) if self.plugins_known() => {
+            (_, Some(Does::UpdatePlugin)) => return self.update_plugin(),
+            (_, Some(Does::RemovePlugin)) => {
                 return self.confirm_remove_plugin();
             }
             (KeyCode::Left | KeyCode::Right, _)
-                if self.settings_selected == Some(SettingRow::SideBySide) =>
+                if self.settings.selected == Some(SettingRow::SideBySide) =>
             {
                 let by = if key.code == KeyCode::Left { -1 } else { 1 };
                 return self.step_side_by_side(by, false);
             }
             (KeyCode::Left | KeyCode::Right, _) => {
-                if let Some(SettingRow::Tell(kind)) = self.settings_selected {
+                if let Some(SettingRow::Tell(kind)) = self.settings.selected {
                     let by = if key.code == KeyCode::Left { -1 } else { 1 };
                     return self.step_sound(kind, by);
                 }
             }
             (_, Some(Does::ReadSettings)) => {
-                // Read again as they are shown, edits by hand included:
-                // Muster's own too, where the daemon reads them on asking.
-                self.settings.clear();
-                if self.daemon_protocol >= AGENTS_PROTOCOL {
-                    let read = self.command(
-                        Command::ReadPreferences,
-                        Then::Say("Read the settings again."),
-                    );
-                    let mut actions = vec![read];
-                    actions.extend(self.settle());
-                    return actions;
-                }
+                // Read again as they are shown, edits by hand included,
+                // Muster's own too.
+                self.settings.by_project.clear();
+                let mut actions = vec![self.command(
+                    Command::ReadPreferences,
+                    Then::Say("Read the settings again."),
+                )];
+                actions.extend(self.settle());
+                return actions;
             }
             _ => {}
         }
@@ -267,12 +246,12 @@ impl App {
 
     /// Turns the selected setting on or off.
     fn toggle_setting(&mut self) -> Vec<Action> {
-        let (project, then) = match self.settings_selected {
+        let (project, then) = match self.settings.selected {
             Some(SettingRow::OnlyMine(project)) => (project, Then::SettingChanged(project)),
             Some(SettingRow::MusterPrefix(project)) => (project, Then::BranchesChanged(project)),
             _ => return Vec::new(),
         };
-        let change = match self.settings.get(&project) {
+        let change = match self.settings.by_project.get(&project) {
             Some(Settings::Loaded(settings)) => match then {
                 Then::BranchesChanged(_) => match settings.muster_prefix {
                     Some(prefix) => SettingChange::MusterPrefix(!prefix.on),
@@ -287,7 +266,7 @@ impl App {
             // Read or changed just now: the answer is on its way.
             Some(Settings::Loading) | None => return Vec::new(),
         };
-        self.settings.insert(project, Settings::Loading);
+        self.settings.by_project.insert(project, Settings::Loading);
         vec![self.command(Command::ChangeSetting { project, change }, then)]
     }
 
@@ -305,7 +284,9 @@ impl App {
                 "New branches in {name} go without muster/: issue-42-fix-the-login."
             )),
         }
-        self.settings.insert(project, Settings::Loaded(settings));
+        self.settings
+            .by_project
+            .insert(project, Settings::Loaded(settings));
     }
 
     /// A setting was changed: the project's tickets are fetched again, as
@@ -321,15 +302,17 @@ impl App {
             "every open ticket"
         };
         self.say(format!("Tickets for {name} now lists {lists}."));
-        self.settings.insert(project, Settings::Loaded(settings));
-        self.tickets.remove(&project);
-        self.ticket_texts.retain(|(of, _), _| *of != project);
+        self.settings
+            .by_project
+            .insert(project, Settings::Loaded(settings));
+        self.tickets.by_project.remove(&project);
+        self.tickets.texts.retain(|(of, _), _| *of != project);
     }
 
     /// A change that was refused: the reason is shown, and the settings
     /// read again, as they still are.
     pub(super) fn setting_refused(&mut self, project: ProjectId, reason: String) {
-        self.settings.remove(&project);
+        self.settings.by_project.remove(&project);
         self.complain(reason);
     }
 
@@ -344,12 +327,12 @@ impl App {
             .projects()
             .iter()
             .map(|project| project.id)
-            .filter(|project| !self.settings.contains_key(project))
+            .filter(|project| !self.settings.by_project.contains_key(project))
             .collect();
         wanted
             .into_iter()
             .map(|project| {
-                self.settings.insert(project, Settings::Loading);
+                self.settings.by_project.insert(project, Settings::Loading);
                 self.command(
                     Command::ProjectSettings { project },
                     Then::Settings(project),
@@ -363,26 +346,28 @@ impl App {
     /// installed once it is listed, and *add a plugin* for one removed.
     pub(super) fn keep_setting_selection(&mut self) {
         let rows = self.setting_rows();
-        if let Some(wanted) = self.plugin_wanted
+        if let Some(wanted) = self.settings.plugin_wanted
             && rows.contains(&SettingRow::Plugin(wanted))
         {
-            self.plugin_wanted = None;
-            self.settings_selected = Some(SettingRow::Plugin(wanted));
+            self.settings.plugin_wanted = None;
+            self.settings.selected = Some(SettingRow::Plugin(wanted));
             return;
         }
         if self
-            .settings_selected
+            .settings
+            .selected
             .is_some_and(|row| rows.contains(&row))
         {
             return;
         }
         // Chosen as the screen shows, so the first is a project's once
         // there is one, not Muster's own, listed before any project.
-        if self.settings_selected.is_none() && self.view != View::Settings {
+        if self.settings.selected.is_none() && self.view != View::Settings {
             return;
         }
-        self.settings_selected = self
-            .settings_selected
+        self.settings.selected = self
+            .settings
+            .selected
             .and_then(|row| match row {
                 SettingRow::Plugin(_) => Some(SettingRow::AddPlugin),
                 row => row.project().map(SettingRow::Project),

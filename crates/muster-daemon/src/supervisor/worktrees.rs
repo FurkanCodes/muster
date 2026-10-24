@@ -6,9 +6,10 @@
 //! out. Removing one deletes its directory but keeps its branch: the work
 //! on it is the person's.
 //!
-//! The checks run in the Supervisor's loop; git's own work, which takes
-//! seconds in a large repository, runs off it (`ARC-13`) and comes back as
-//! [`Made`] or [`Removed`]. Meanwhile [`Jobs`] holds the branch and the
+//! What the Supervisor's loop knows is checked on it; git's own work,
+//! which takes seconds in a large repository, runs off it (`ARC-13`): the
+//! plan, which comes back as [`Planned`] (`planning`), and the making or
+//! removing, which come back as [`Made`] or [`Removed`]. Meanwhile [`Jobs`] holds the branch and the
 //! folder, so nothing else takes them, the sync neither adopts nor forgets
 //! them, and nothing starts in a worktree going.
 
@@ -43,6 +44,14 @@ impl Jobs {
         self.making
             .iter()
             .any(|making| making.project == project && making.branch == branch)
+    }
+
+    /// The branches `project`'s worktrees are being made on.
+    fn making_branches(&self, project: ProjectId) -> impl Iterator<Item = String> + '_ {
+        self.making
+            .iter()
+            .filter(move |making| making.project == project)
+            .map(|making| making.branch.clone())
     }
 
     /// How many of `project`'s worktrees are being made.
@@ -138,6 +147,8 @@ pub(super) enum Branch {
     Named(String),
     /// A new branch named from a prompt's words, never one that exists.
     For(String),
+    /// A new branch after this one, which is taken: `name-2`, `-3`…
+    Another(String),
     /// A new branch of Muster's own name.
     Any,
 }
@@ -155,146 +166,6 @@ impl Branch {
 }
 
 impl Supervisor {
-    /// Makes a worktree of `project` on `branch`, stacked on `on`'s branch
-    /// if given; `then` follows once it is made.
-    pub(super) async fn create_worktree(
-        &mut self,
-        project: ProjectId,
-        branch: Branch,
-        on: Option<WorkspaceId>,
-        then: Then,
-    ) {
-        let ticket = match &then {
-            Then::Ticket(ticket) => Some(ticket.key().clone()),
-            Then::Reply(_) => None,
-        };
-        match self.plan_worktree(project, branch, on).await {
-            Ok(plan) => self.make_worktree(Plan { ticket, ..plan }, then),
-            Err(error) => then.refuse(error),
-        }
-    }
-
-    async fn plan_worktree(
-        &self,
-        project: ProjectId,
-        branch: Branch,
-        on: Option<WorkspaceId>,
-    ) -> Result<Plan, ErrorBody> {
-        self.repository_root(project, "worktrees")?;
-        let project = self
-            .state
-            .projects
-            .iter()
-            .find(|candidate| candidate.id == project)
-            .cloned()
-            .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no project {project}")))?;
-        let overrides = self
-            .config_dir
-            .join("projects")
-            .join(format!("{}.toml", project.id));
-        let prefixed = || crate::config::muster_prefix(project.root.clone(), overrides.clone());
-        let branch = match branch {
-            Branch::Named(name) => name,
-            Branch::For(words) => {
-                let prefixed = prefixed().await;
-                match muster_core::delegation::prompt_branch(&words, prefixed) {
-                    Some(name) => self.unused_branch(&project, name).await?,
-                    None => default_branch(prefixed),
-                }
-            }
-            Branch::Any => default_branch(prefixed().await),
-        };
-        if !git::is_valid_branch_name(&project.root, &branch)
-            .await
-            .map_err(git_failure)?
-        {
-            return Err(ErrorBody::new(
-                ErrorCode::BadRequest,
-                format!("{branch:?} is not a valid branch name"),
-            ));
-        }
-        if self.worktree_on(project.id, &branch).is_some() {
-            return Err(ErrorBody::new(
-                ErrorCode::Conflict,
-                format!("{branch} already has a worktree"),
-            ));
-        }
-        if self.worktree_jobs.making_branch(project.id, &branch) {
-            return Err(ErrorBody::new(
-                ErrorCode::Conflict,
-                format!("a worktree for {branch} is being made already"),
-            ));
-        }
-
-        let group = self.group_for(&project).await?;
-        self.share_builds_in(&group).await;
-        let path = unused_path(&group, &slug(&branch), &self.worktree_jobs).await;
-        let exists = git::branch_exists(&project.root, &branch)
-            .await
-            .map_err(git_failure)?;
-        let stacked_on = match on {
-            Some(on) => Some(self.stack_on(project.id, on, &branch, exists).await?),
-            None => None,
-        };
-        Ok(Plan {
-            project: project.id,
-            root: project.root,
-            overrides,
-            path,
-            branch,
-            exists,
-            stacked_on,
-            ticket: None,
-        })
-    }
-
-    /// The folder of the worktrees directory `project`'s worktrees go in,
-    /// made, by its real path, as git lists worktrees and the sync finds
-    /// them: the one they are in already, else one named for the
-    /// project's folder, unless another project's worktrees are there
-    /// (two repositories both called `app`), whose builds it would share,
-    /// when its id's end is added.
-    async fn group_for(&self, project: &muster_core::Project) -> Result<PathBuf, ErrorBody> {
-        let made = |folder: PathBuf| async move {
-            tokio::fs::create_dir_all(&folder).await.map_err(|error| {
-                ErrorBody::new(
-                    ErrorCode::Internal,
-                    format!("cannot create {}: {error}", folder.display()),
-                )
-            })?;
-            Ok::<_, ErrorBody>(tokio::fs::canonicalize(&folder).await.unwrap_or(folder))
-        };
-        let dir = made(self.worktrees_dir.clone()).await?;
-        let groups_of = |of: &dyn Fn(ProjectId) -> bool| -> Vec<PathBuf> {
-            self.state
-                .workspaces
-                .iter()
-                .filter(|workspace| workspace.kind.is_worktree() && of(workspace.project))
-                .filter_map(|workspace| workspace.kind.host_path()?.parent())
-                .chain(
-                    self.worktree_jobs
-                        .making_of(of)
-                        .filter_map(|path| path.parent()),
-                )
-                .filter(|group| group.parent() == Some(dir.as_path()))
-                .map(Path::to_path_buf)
-                .collect()
-        };
-        if let Some(own) = groups_of(&|of| of == project.id).into_iter().next() {
-            return made(own).await;
-        }
-        let name = slug(&project.root.file_name().map_or_else(
-            || project.name.clone(),
-            |name| name.to_string_lossy().into_owned(),
-        ));
-        let plain = dir.join(&name);
-        if !groups_of(&|of| of != project.id).contains(&plain) {
-            return made(plain).await;
-        }
-        let id = project.id.ulid().to_string().to_lowercase();
-        made(dir.join(format!("{name}-{}", &id[id.len() - 6..]))).await
-    }
-
     fn make_worktree(&mut self, plan: Plan, then: Then) {
         self.worktree_jobs.making.push(Making {
             project: plan.project,
@@ -529,15 +400,6 @@ impl Supervisor {
                 && matches!(&workspace.kind, WorkspaceKind::Worktree { branch: used, .. } if used == branch)
         })
     }
-
-    /// Whether a worktree of `project` is on `branch`, or being made on it.
-    pub(super) fn branch_taken(&self, project: ProjectId, branch: &str) -> bool {
-        self.state
-            .workspaces
-            .iter()
-            .any(|workspace| workspace.project == project && workspace.kind.branch() == branch)
-            || self.worktree_jobs.making_branch(project, branch)
-    }
 }
 
 /// Git's work for `plan`, off the loop: the worktree's folder by its real
@@ -647,29 +509,6 @@ async fn commit(root: &Path, reference: &str) -> Option<String> {
     .filter(|commit| !commit.is_empty())
 }
 
-impl Supervisor {
-    /// `name`, or `name-2`, `-3`… where a branch of that name is there
-    /// already, or a worktree is on it or being made on it.
-    async fn unused_branch(
-        &self,
-        project: &muster_core::Project,
-        name: String,
-    ) -> Result<String, ErrorBody> {
-        let mut branch = name.clone();
-        let mut suffix = 2;
-        while self.worktree_on(project.id, &branch).is_some()
-            || self.worktree_jobs.making_branch(project.id, &branch)
-            || git::branch_exists(&project.root, &branch)
-                .await
-                .map_err(git_failure)?
-        {
-            branch = format!("{name}-{suffix}");
-            suffix += 1;
-        }
-        Ok(branch)
-    }
-}
-
 /// `muster/` and six random characters; without `muster/` unless
 /// `prefixed`, `worktree-` and six, as six alone can read as a commit.
 fn default_branch(prefixed: bool) -> String {
@@ -693,18 +532,6 @@ fn slug(name: &str) -> String {
     } else {
         slug.to_owned()
     }
-}
-
-/// `group/name`, or `group/name-2`, `-3`… if that is taken on disk or by
-/// a worktree being made.
-async fn unused_path(group: &Path, name: &str, jobs: &Jobs) -> PathBuf {
-    let mut path = group.join(name);
-    let mut suffix = 2;
-    while jobs.is_making(&path) || tokio::fs::try_exists(&path).await.unwrap_or(true) {
-        path = group.join(format!("{name}-{suffix}"));
-        suffix += 1;
-    }
-    path
 }
 
 /// Git's refusal to create `branch` because another branch's name contains
@@ -745,6 +572,10 @@ fn git_failure(error: GitError) -> ErrorBody {
     };
     ErrorBody::new(code, error.to_string())
 }
+
+#[path = "worktree_planning.rs"]
+mod planning;
+pub(super) use planning::Planned;
 
 #[cfg(test)]
 #[path = "worktrees_tests.rs"]

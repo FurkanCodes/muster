@@ -75,9 +75,9 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     assert!(line.contains("• Shell  running npm"), "{line}");
     assert!(line.contains("4m12s││"), "{line}");
     // Still, it reads to the minute.
-    world.app.motion = false;
+    world.app.moving.on = false;
     assert!(line_with(&render(&world.app), "running npm").contains("4m││"));
-    world.app.motion = true;
+    world.app.moving.on = true;
     // Where it does not fit, what it does gives way; the time stays.
     doing(&mut world, id, Some("editing view_settings.rs"));
     let line = line_with(&render(&world.app), "editing");
@@ -97,7 +97,7 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     doing(&mut world, id, Some("wants to run rm"));
     world.app.selected = Some(Row::Session(id));
     // Past the flash its line gives as it comes to wait.
-    world.app.on_step(world.app.step + 20);
+    world.app.on_step(world.app.moving.step + 20);
     let screen = render(&world.app);
     assert!(line_with(&screen, "Shell  wants to").contains("2m11s││"));
     assert!(
@@ -319,7 +319,7 @@ fn the_clock_asks_for_drawing_only_as_a_time_on_screen_changes() {
     // One that runs counts its seconds.
     status(&mut world, id, SessionStatus::Running, 0);
     assert!(world.app.on_clock(Timestamp::from_millis(NOW + 61_000)));
-    world.app.motion = false;
+    world.app.moving.on = false;
     assert!(!world.app.on_clock(Timestamp::from_millis(NOW + 62_000)));
     assert!(world.app.on_clock(Timestamp::from_millis(NOW + 120_000)));
 }
@@ -370,7 +370,10 @@ fn a_ui_older_than_its_daemon_says_how_to_start_the_new_one() {
                 .contains("This window runs")
         })
         .unwrap();
-    assert_eq!(cells[(1, row)].fg, Color::Yellow);
+    assert_eq!(
+        cells[(1, row)].fg,
+        crate::view::theme::of(&world.app).working
+    );
 
     // In a session, the session keeps its size and the bar its one line.
     world.app.selected = Some(Row::Session(world.session.id));
@@ -411,4 +414,25 @@ fn another_machine_out_of_reach_stays_drawn_dimmed_and_says_so_arc_27() {
         !lost[(2, 0)].modifier.contains(Modifier::DIM),
         "the top bar"
     );
+}
+
+#[test]
+fn a_dialog_floats_in_a_border_of_the_accent_as_what_has_the_keys() {
+    let mut world = world();
+    world.app.selected = Some(Row::Session(world.session.id));
+    press(&mut world.app, KeyCode::Char('x'));
+    let screen = render(&world.app);
+    let cells = buffer(&world.app);
+    let accent = crate::view::theme::of(&world.app).accent;
+    // The dialog's title sits on its top border.
+    let (x, y) = (0..cells.area.height)
+        .find_map(|y| {
+            let line: String = (0..cells.area.width)
+                .map(|x| cells[(x, y)].symbol())
+                .collect();
+            let at = line.find("╭ Confirm")?;
+            Some((u16::try_from(line[..at].chars().count()).unwrap(), y))
+        })
+        .unwrap_or_else(|| panic!("no dialog: {screen}"));
+    assert_eq!(cells[(x, y)].fg, accent, "{screen}");
 }

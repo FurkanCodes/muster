@@ -164,7 +164,7 @@ fn a_project_s_tickets_are_listed_and_the_selected_one_shown_with_its_text() {
 fn a_ticket_s_text_reads_as_markdown_and_what_was_said_after_under_it() {
     let mut world = on_tickets();
     world.app.now = Some(Timestamp::from_millis(1_792_668_600_000));
-    world.app.ticket_texts.insert(
+    world.app.tickets.texts.insert(
         (world.project.id, key(42)),
         TicketText::Loaded {
             body: "## Steps\n- **open** [the page](https://x.y/login)\n- `sign in`".to_owned(),
@@ -205,7 +205,7 @@ fn a_ticket_s_text_reads_as_markdown_and_what_was_said_after_under_it() {
 #[test]
 fn a_long_conversation_pages_down_and_back_with_page_keys() {
     let mut world = on_tickets();
-    world.app.ticket_texts.insert(
+    world.app.tickets.texts.insert(
         (world.project.id, key(42)),
         TicketText::Loaded {
             body: "It fails.".to_owned(),
@@ -248,7 +248,7 @@ fn the_wheel_over_a_ticket_scrolls_its_details_and_over_the_list_moves_the_selec
 
     use super::pointer_tests::mouse;
     let mut world = on_tickets();
-    world.app.ticket_texts.insert(
+    world.app.tickets.texts.insert(
         (world.project.id, key(42)),
         TicketText::Loaded {
             body: "It fails.".to_owned(),
@@ -261,10 +261,10 @@ fn the_wheel_over_a_ticket_scrolls_its_details_and_over_the_list_moves_the_selec
                 .collect(),
         },
     );
-    let selected = world.app.tickets_selected.clone();
+    let selected = world.app.tickets.selected.clone();
     world.app.on_mouse(mouse(ScrollDown, 60, 10));
     assert_eq!(world.app.ticket_scrolled(), 3);
-    assert_eq!(world.app.tickets_selected, selected, "the selection stays");
+    assert_eq!(world.app.tickets.selected, selected, "the selection stays");
     for _ in 0..100 {
         world.app.on_mouse(mouse(ScrollDown, 60, 10));
     }
@@ -280,7 +280,7 @@ fn the_wheel_over_a_ticket_scrolls_its_details_and_over_the_list_moves_the_selec
     assert!(render(&world.app).contains("It fails."));
     // Over the list, the wheel goes on to the next line.
     world.app.on_mouse(mouse(ScrollDown, 5, 5));
-    assert_ne!(world.app.tickets_selected, selected);
+    assert_ne!(world.app.tickets.selected, selected);
 }
 
 #[test]
@@ -312,7 +312,7 @@ fn a_ticket_with_no_web_address_is_shown_without_one_and_offers_no_browser() {
 #[test]
 fn the_parts_chosen_with_the_keys_are_what_the_agent_is_given_prd_07() {
     let mut world = on_tickets();
-    world.app.ticket_texts.insert(
+    world.app.tickets.texts.insert(
         (world.project.id, key(42)),
         TicketText::Loaded {
             body: "It fails.".to_owned(),
@@ -456,7 +456,7 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
     else {
         panic!("{:?}", world.app.mode);
     };
-    assert_eq!((harness, *another), (&HarnessChoice::Claude, false));
+    assert_eq!((harness, *another), (&HarnessChoice::CLAUDE, false));
     let screen = render(&world.app);
     for shown in [
         "Assign an agent",
@@ -498,7 +498,13 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
     else {
         panic!("{:?}", world.app.mode);
     };
-    assert_eq!((harness, *another), (&HarnessChoice::Codex, true));
+    assert_eq!(
+        (harness, *another),
+        (
+            &HarnessChoice::Own(muster_core::harness::OwnAgent::Codex),
+            true
+        )
+    );
     assert!(render(&world.app).contains("In a worktree of its own"));
     assert!(press(&mut world.app, KeyCode::Esc).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);

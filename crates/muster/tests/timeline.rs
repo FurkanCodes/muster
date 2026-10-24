@@ -17,8 +17,9 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame, TermSize};
@@ -155,14 +156,9 @@ fn timeline_dir(sandbox: &Sandbox, workspace: WorkspaceId) -> PathBuf {
 /// Waits until a turn's start is kept, so the agent's edits come after.
 fn wait_for_start(sandbox: &Sandbox, workspace: WorkspaceId) {
     let open = timeline_dir(sandbox, workspace).join("refs/open");
-    let kept = (0..200).any(|_| {
-        let found = std::fs::read_dir(&open).is_ok_and(|mut entries| entries.next().is_some());
-        if !found {
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        found
+    wait::until("the turn's start kept", || {
+        std::fs::read_dir(&open).is_ok_and(|mut entries| entries.next().is_some())
     });
-    assert!(kept, "the turn's start was never kept");
 }
 
 fn read(path: &Path, file: &str) -> Option<String> {
@@ -309,9 +305,5 @@ async fn a_session_s_first_prompt_begins_a_turn_and_the_timeline_goes_with_its_w
         .await
         .unwrap();
     let store = timeline_dir(&sandbox, workspace);
-    let gone = (0..100).any(|_| {
-        std::thread::sleep(Duration::from_millis(50));
-        !store.exists()
-    });
-    assert!(gone, "{} is still there", store.display());
+    wait::until(&format!("{} to go", store.display()), || !store.exists());
 }

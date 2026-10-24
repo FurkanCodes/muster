@@ -156,7 +156,8 @@ impl Supervisor {
     /// forwarded one to this machine and `muster bridge` linked it in the
     /// runtime folder (`ARC-27`); a link that leads nowhere is none.
     pub(super) fn ssh_agent(&self, on_host: bool) -> Option<std::path::PathBuf> {
-        self.hook_socket
+        self.paths
+            .hook_socket
             .parent()
             .map(|dir| dir.join(muster_core::machines::AGENT_LINK))
             .filter(|link| on_host && link.exists())
@@ -276,14 +277,7 @@ impl Supervisor {
         workspace: WorkspaceId,
         harness: &Harness,
     ) -> Result<Place, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if self.worktree_jobs.is_removing(workspace) {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,
@@ -360,7 +354,7 @@ impl Supervisor {
         };
         let hooks = if hooked {
             Some(HookEndpoint {
-                socket: self.hook_socket.clone(),
+                socket: self.paths.hook_socket.clone(),
                 token: crate::secrets::Token::new(harness::new_token()?),
             })
         } else {
@@ -449,7 +443,7 @@ impl Supervisor {
         harness: &Harness,
         hooked: bool,
     ) -> Option<std::path::PathBuf> {
-        let dir = self.hook_socket.parent()?.join("harness");
+        let dir = self.paths.hook_socket.parent()?.join("harness");
         if !hooked {
             return None;
         }
@@ -497,7 +491,13 @@ impl Supervisor {
         let (mode, start) = match (&place, resumable(&harness, &stored)) {
             // The checks run again, as the workspace has them now.
             (Place::Host(path), _) if harness.is_checks() => (
-                Mode::Checks(self.checks_in(stored.workspace, path).await?),
+                Mode::Checks(
+                    super::by_hand::checks_at(
+                        path.clone(),
+                        self.overrides_of(self.workspace(stored.workspace)?.project),
+                    )
+                    .await?,
+                ),
                 Start::WithPrompt,
             ),
             (Place::Host(_), Some(agent_session)) => {

@@ -6,16 +6,20 @@ import codex from "../assets/agents/codex.svg";
 import copilot from "../assets/agents/copilot.svg";
 import gemini from "../assets/agents/gemini.svg";
 import opencode from "../assets/agents/opencode.svg";
+import type { OwnAgent } from "../ipc/generated/OwnAgent";
+
+/** Muster's own coding agents, in the order offered (`muster_core::harness::OwnAgent`). */
+export const OWN: readonly OwnAgent[] = ["claude", "codex", "gemini", "opencode", "copilot"];
 
 export interface Agent {
   name: string;
   logo: string | null;
   mark: string;
   /** The `mu-logo--*` modifier for its mark's colour. */
-  tone: "claude" | "codex" | "gemini" | "opencode" | "copilot" | "shell" | "added";
+  tone: OwnAgent | "shell" | "added";
 }
 
-const KNOWN: Record<string, Agent> = {
+const KNOWN: Record<OwnAgent | "shell", Agent> = {
   claude: { name: "Claude Code", logo: claude, mark: "✻", tone: "claude" },
   codex: { name: "Codex", logo: codex, mark: "◎", tone: "codex" },
   gemini: { name: "Gemini CLI", logo: gemini, mark: "✦", tone: "gemini" },
@@ -25,7 +29,7 @@ const KNOWN: Record<string, Agent> = {
 };
 
 export function agentOf(harness: string): Agent {
-  const known = KNOWN[harness];
+  const known = (KNOWN as Record<string, Agent | undefined>)[harness];
   if (known) return known;
   if (harness.startsWith("plugin:")) {
     const name = harness.slice("plugin:".length).split("/")[1] ?? harness;

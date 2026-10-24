@@ -24,20 +24,19 @@ pub struct ProjectSettings {
     /// The person's own settings file for the project, where changes go.
     pub file: PathBuf,
     /// Where its tickets are as written, the person's settings over the
-    /// repository's `muster.toml`; `None` where no tracker is written and
-    /// the git remote tells. From protocol 17.
+    /// repository's `muster.toml`; `None` where no tracker is written and the
+    /// git remote tells.
     #[serde(default)]
     pub tickets: Option<TicketsFrom>,
-    /// Which file names the tracker (`[tickets] tracker`). From protocol 17.
+    /// Which file names the tracker (`[tickets] tracker`).
     #[serde(default)]
     pub tickets_set_by: SettingSource,
     /// Nothing says where its tickets are, and its git remote cannot tell:
-    /// `tickets_from` says why, and the person has to choose. From protocol
-    /// 17.
+    /// `tickets_from` says why, and the person has to choose.
     #[serde(default)]
     pub tickets_untold: bool,
-    /// Whether the branches Muster makes start with `muster/`
-    /// (`[branches] muster_prefix`). From protocol 20.
+    /// Whether the branches Muster makes start with `muster/` (`[branches]
+    /// muster_prefix`).
     #[serde(default)]
     pub muster_prefix: Option<Toggle>,
 }
@@ -67,21 +66,14 @@ pub enum SettingSource {
 /// Where a project's tickets are, as `[tickets]` writes it: the ticket
 /// plugin, by its id, and what it needs to find them, as its manifest
 /// declares (`[[tickets.settings]]`).
-///
-/// On the wire from protocol 42 as `tracker` and `fields`. Until 41 a
-/// tracker was one of Muster's four, with Jira's and Linear's settings as
-/// fields of their own: those four keys are written beside `fields` too,
-/// and read where `fields` does not say them, so an older peer reads
-/// Muster's own trackers as it did (`ARC-09`); one of anyone else's never
-/// reaches it ([`crate::protocol::Reply::for_version`]).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, as = "WrittenTickets"))]
-#[serde(from = "WrittenTickets", into = "WrittenTickets")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TicketsFrom {
     /// The ticket plugin: `github`, `gitlab`, `jira`, `linear`, or
     /// anyone's.
     pub tracker: String,
     /// What `[tickets]` says for it, by key: Jira's `site` and `project`.
+    #[serde(default)]
     pub fields: BTreeMap<String, String>,
 }
 
@@ -99,158 +91,77 @@ impl TicketsFrom {
     }
 }
 
-/// The keys Jira and Linear had as fields of their own, until protocol 41.
-const OLD_KEYS: [&str; 4] = ["site", "project", "jql", "team"];
-
-/// [`TicketsFrom`] as the wire carries it.
-#[derive(Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
-struct WrittenTickets {
-    tracker: String,
-    #[serde(default)]
-    fields: BTreeMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    site: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    project: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    jql: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    team: Option<String>,
-}
-
-impl From<WrittenTickets> for TicketsFrom {
-    fn from(written: WrittenTickets) -> Self {
-        let mut fields = written.fields;
-        for (key, value) in
-            OLD_KEYS
-                .into_iter()
-                .zip([written.site, written.project, written.jql, written.team])
-        {
-            if let Some(value) = value {
-                fields.entry(key.to_owned()).or_insert(value);
-            }
-        }
-        Self {
-            tracker: written.tracker,
-            fields,
-        }
-    }
-}
-
-impl From<TicketsFrom> for WrittenTickets {
-    fn from(from: TicketsFrom) -> Self {
-        let old = |key: &str| from.fields.get(key).cloned();
-        Self {
-            site: old("site"),
-            project: old("project"),
-            jql: old("jql"),
-            team: old("team"),
-            tracker: from.tracker,
-            fields: from.fields,
-        }
-    }
-}
-
-/// The first protocol a daemon takes [`SettingChange::TicketsFrom`] in; an
-/// older one is never sent it (`ARC-09`).
-pub const TICKETS_FROM_PROTOCOL: u32 = 17;
-
 /// A change the person makes to a project's settings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum SettingChange {
     /// List only the tickets assigned to the person, or every open one.
     OnlyMyTickets(bool),
-    /// Where the tickets are; `None` follows the repository's `muster.toml`
-    /// and the git remote again. From protocol 17.
+    /// Where the tickets are; `None` follows the repository's `muster.toml` and
+    /// the git remote again.
     TicketsFrom(Option<TicketsFrom>),
-    /// Whether the branches Muster makes start with `muster/`. From
-    /// protocol 20.
+    /// Whether the branches Muster makes start with `muster/`.
     MusterPrefix(bool),
 }
-
-/// The first protocol whose daemon takes `SettingChange::MusterPrefix`.
-pub const MUSTER_PREFIX_PROTOCOL: u32 = 20;
 
 /// Where the branches' prefix is written: `[branches] muster_prefix`.
 pub const MUSTER_PREFIX: (&str, &str) = ("branches", "muster_prefix");
 
 /// Muster's own settings, the person's for all of Muster rather than a
-/// project's, as they stand. From protocol 23.
+/// project's, as they stand.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(default)]
 pub struct Preferences {
     /// Show the agents in the MacBook's notch while no Muster window has
     /// the person's eyes (`[notch] show`).
     pub notch: bool,
     /// Where they are written: the person's own file, never a repository.
     pub file: PathBuf,
-    /// The coding agents the person added there (`[agents.<name>]`), by
-    /// name, offered beside Muster's own. From protocol 29.
-    #[serde(default)]
+    /// The coding agents the person added there (`[agents.<name>]`), by name,
+    /// offered beside Muster's own.
     pub agents: Vec<AddedAgent>,
-    /// Why the file does not read, naming the key, while it does not: the
-    /// rest are then Muster's defaults. From protocol 29.
-    #[serde(default)]
+    /// Why the file does not read, naming the key, while it does not: the rest
+    /// are then Muster's defaults.
     pub problem: Option<String>,
-    /// The fewest columns a window has for a session's terminal to sit
-    /// beside the list; in a narrower one, the list or the session fills
-    /// it. 0 keeps them side by side at any width (`[layout]
-    /// side_by_side_from`). From protocol 32.
-    #[serde(default = "default_side_by_side_from")]
+    /// The fewest columns a window has for a session's terminal to sit beside
+    /// the list; in a narrower one, the list or the session fills it. 0 keeps
+    /// them side by side at any width (`[layout] side_by_side_from`).
     pub side_by_side_from: u16,
-    /// Whose colours the UI draws in (`[look] colours`). From protocol 35.
-    #[serde(default)]
+    /// Whose colours the UI draws in (`[look] colours`).
     pub palette: Palette,
     /// How many lines a session's line in the lists takes (`[look]
-    /// session_lines`). From protocol 35.
-    #[serde(default)]
+    /// session_lines`).
     pub session_lines: SessionLines,
-    /// Where the UI's panels are (`[layout] panels`). From protocol 36.
-    #[serde(default)]
+    /// Where the UI's panels are (`[layout] panels`).
     pub panels: Layout,
-    /// Whether the list is folded away, the session taking its place
-    /// (`[layout] list_folded`). From protocol 36.
-    #[serde(default)]
+    /// Whether the list is folded away, the session taking its place (`[layout]
+    /// list_folded`).
     pub list_folded: bool,
-    /// How chats are named by an agent (`[names]`). From protocol 37.
-    #[serde(default)]
+    /// How chats are named by an agent (`[names]`).
     pub naming: Naming,
     /// The keys the person set, by action, as written (`[keys]`,
-    /// `muster_core::keys`): the actions not named keep Muster's. From
-    /// protocol 38.
-    #[serde(default)]
+    /// `muster_core::keys`): the actions not named keep Muster's.
     pub keys: std::collections::BTreeMap<String, Vec<String>>,
-    /// Whether the person is told of what newly needs them while they look
-    /// away (`[notifications] show`); on unless they turn it off. From
-    /// protocol 39.
-    #[serde(default = "on")]
+    /// Whether the person is told of what newly needs them while they look away
+    /// (`[notifications] show`); on unless they turn it off.
     pub notifications: bool,
     /// Which kinds the person is told of, and how each sounds
     /// (`[notifications]` `questions`, `finishes`, `errors` and their
-    /// `_sound`s). From protocol 40.
-    #[serde(default)]
+    /// `_sound`s).
     pub telling: crate::telling::Telling,
-    /// Whether the worktrees Muster makes for a Rust project build into
-    /// one folder of the project's, so its dependencies are built and kept
-    /// once rather than once a worktree (`[worktrees] shared_builds`); on
-    /// unless the person turns it off. From protocol 47.
-    #[serde(default = "on")]
+    /// Whether the worktrees Muster makes for a Rust project build into one
+    /// folder of the project's, so its dependencies are built and kept once
+    /// rather than once a worktree (`[worktrees] shared_builds`); on unless the
+    /// person turns it off.
     pub shared_builds: bool,
     /// How far agents may set agents working through Muster's command line
-    /// (`[delegation]`, `PRD-01`). From protocol 51.
-    #[serde(default)]
+    /// (`[delegation]`, `PRD-01`).
     pub delegation: crate::delegation::Delegation,
 }
 
-fn on() -> bool {
-    true
-}
-
-/// How chats are named by an agent (`PRODUCT.md` §6): the first line of
-/// the first prompt at once, then a few words an agent writes. From
-/// protocol 37.
+/// How chats are named by an agent (`PRODUCT.md` §6): the first line of the
+/// first prompt at once, then a few words an agent writes.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Naming {
@@ -276,11 +187,6 @@ impl Default for Naming {
         }
     }
 }
-
-/// The first protocol whose daemon names chats by an agent, keeps
-/// [`Preferences::naming`] and takes [`PreferenceChange::NamesByAgent`]
-/// and [`PreferenceChange::NamedBy`] (`ARC-09`).
-pub const NAMING_PROTOCOL: u32 = 37;
 
 /// Where naming by an agent is written: `[names] by_agent`, `agent` and
 /// `model`.
@@ -308,7 +214,7 @@ impl Default for Preferences {
     }
 }
 
-/// Whose colours the UI draws in. From protocol 35.
+/// Whose colours the UI draws in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
@@ -343,7 +249,7 @@ impl Palette {
     }
 }
 
-/// How many lines a session's line in the lists takes. From protocol 35.
+/// How many lines a session's line in the lists takes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
@@ -377,20 +283,15 @@ impl SessionLines {
     }
 }
 
-/// The first protocol whose daemon keeps [`Preferences::palette`] and
-/// [`Preferences::session_lines`] and takes [`PreferenceChange::Palette`]
-/// and [`PreferenceChange::SessionLines`] (`ARC-09`).
-pub const LOOK_PROTOCOL: u32 = 35;
-
 /// Where the palette is written: `[look] colours`.
 pub const LOOK_COLOURS: (&str, &str) = ("look", "colours");
 
 /// Where the lines a session takes are written: `[look] session_lines`.
 pub const LOOK_SESSION_LINES: (&str, &str) = ("look", "session_lines");
 
-/// A coding agent the person added in Muster's own settings, as clients
-/// offer it beside Muster's own (`muster_core::config::agents`). Only what
-/// a client shows: never its program's environment. From protocol 29.
+/// A coding agent the person added in Muster's own settings, as clients offer
+/// it beside Muster's own (`muster_core::config::agents`). Only what a client
+/// shows: never its program's environment.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct AddedAgent {
@@ -407,16 +308,11 @@ pub struct AddedAgent {
     /// Whether it takes a first prompt, as a ticket's agent is given its
     /// ticket.
     pub takes_prompt: bool,
-    /// Whether it can be asked one question, and so name chats. From
-    /// protocol 37.
+    /// Whether it can be asked one question, and so name chats.
     #[serde(default)]
     pub asks: bool,
 }
 
-/// The first protocol whose daemon knows the agents the person added and
-/// reads Muster's own settings again when asked
-/// ([`crate::protocol::Command::ReadPreferences`]).
-pub const AGENTS_PROTOCOL: u32 = 29;
 /// From how many columns a session sits beside the list unless the person
 /// says otherwise: the 34 the list takes at least, its border and a
 /// session 64 columns wide, which still holds an agent's prompt and a
@@ -424,95 +320,64 @@ pub const AGENTS_PROTOCOL: u32 = 29;
 /// what it draws.
 pub const SIDE_BY_SIDE_FROM: u16 = 100;
 
-fn default_side_by_side_from() -> u16 {
-    SIDE_BY_SIDE_FROM
-}
-
 /// The widths the Settings screen offers for
 /// [`Preferences::side_by_side_from`], narrowest first: 0 for any width.
 pub const SIDE_BY_SIDE_CHOICES: [u16; 8] = [0, 80, 90, 100, 110, 120, 140, 160];
 
-/// A change the person makes to Muster's own settings. From protocol 23.
+/// A change the person makes to Muster's own settings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum PreferenceChange {
     /// Show the agents in the notch, or leave it alone.
     Notch(bool),
-    /// From how many columns a session sits beside the list; 0 at any
-    /// width. From protocol 32.
+    /// From how many columns a session sits beside the list; 0 at any width.
     SideBySideFrom(u16),
-    /// Whose colours the UI draws in. From protocol 35.
+    /// Whose colours the UI draws in.
     Palette(Palette),
-    /// How many lines a session's line in the lists takes. From protocol
-    /// 35.
+    /// How many lines a session's line in the lists takes.
     SessionLines(SessionLines),
-    /// Where the panels are. From protocol 36.
+    /// Where the panels are.
     Panels(Layout),
-    /// Fold the list away, or bring it back. From protocol 36.
+    /// Fold the list away, or bring it back.
     ListFolded(bool),
-    /// Have an agent name chats, or not. From protocol 37.
+    /// Have an agent name chats, or not.
     NamesByAgent(bool),
-    /// The agent that names chats (`None`: each session's own) and its
-    /// model (`None`: its own choice). From protocol 37.
+    /// The agent that names chats (`None`: each session's own) and its model
+    /// (`None`: its own choice).
     NamedBy {
         agent: Option<String>,
         model: Option<String>,
     },
     /// An action's keys, as written (`ctrl-]`), or `None` for Muster's own.
-    /// From protocol 38.
     Keys {
         action: String,
         keys: Option<Vec<String>>,
     },
-    /// Every key as Muster has it. From protocol 38.
+    /// Every key as Muster has it.
     AllKeysBack,
-    /// Tell the person of what newly needs them while they look away, or
-    /// not. From protocol 39.
+    /// Tell the person of what newly needs them while they look away, or not.
     Notifications(bool),
-    /// Whether `kind` is told, and how it sounds. From protocol 40.
+    /// Whether `kind` is told, and how it sounds.
     Tell {
         kind: crate::telling::Kind,
         tell: crate::telling::Tell,
     },
-    /// Have the worktrees of a Rust project build into one folder, or each
-    /// into its own. From protocol 47.
+    /// Have the worktrees of a Rust project build into one folder, or each into
+    /// its own.
     SharedBuilds(bool),
-    /// Let agents set agents working through Muster's command line, or
-    /// not (`PRD-01`). From protocol 51.
+    /// Let agents set agents working through Muster's command line, or not
+    /// (`PRD-01`).
     AgentsStartAgents(bool),
 }
-
-/// The first protocol whose daemon keeps [`Preferences::shared_builds`]
-/// and takes [`PreferenceChange::SharedBuilds`] (`ARC-09`).
-pub const SHARED_BUILDS_PROTOCOL: u32 = 47;
 
 /// Where sharing builds is written: `[worktrees] shared_builds`.
 pub const SHARED_BUILDS: (&str, &str) = ("worktrees", "shared_builds");
 
-/// The first protocol whose daemon keeps [`Preferences::notifications`]
-/// and whether Muster's helper shows notifications, and takes
-/// [`PreferenceChange::Notifications`] (`ARC-09`).
-pub const NOTIFIER_PROTOCOL: u32 = 39;
-
 /// Where telling the person is written: `[notifications] show`.
 pub const NOTIFICATIONS: (&str, &str) = ("notifications", "show");
 
-/// The first protocol whose daemon keeps [`Preferences::telling`] and
-/// takes [`PreferenceChange::Tell`] (`ARC-09`).
-pub const TELLING_PROTOCOL: u32 = 40;
-
-/// The first protocol whose daemon keeps [`Preferences::keys`] and takes
-/// [`PreferenceChange::Keys`] and [`PreferenceChange::AllKeysBack`]
-/// (`ARC-09`).
-pub const KEYS_PROTOCOL: u32 = 38;
-
 /// Where the person's keys are written: `[keys]`.
 pub const KEYS: &str = "keys";
-
-/// The first protocol whose daemon keeps [`Preferences::panels`] and
-/// [`Preferences::list_folded`] and takes [`PreferenceChange::Panels`] and
-/// [`PreferenceChange::ListFolded`] (`ARC-09`).
-pub const LAYOUT_PROTOCOL: u32 = 36;
 
 /// Where the panels are written: `[layout] panels`.
 pub const PANELS: (&str, &str) = ("layout", "panels");
@@ -520,17 +385,8 @@ pub const PANELS: (&str, &str) = ("layout", "panels");
 /// Where the list's folding is written: `[layout] list_folded`.
 pub const LIST_FOLDED: (&str, &str) = ("layout", "list_folded");
 
-/// The first protocol whose daemon keeps
-/// [`Preferences::side_by_side_from`] and takes
-/// [`PreferenceChange::SideBySideFrom`] (`ARC-09`).
-pub const SIDE_BY_SIDE_PROTOCOL: u32 = 32;
-
 /// Where it is written: `[layout] side_by_side_from`.
 pub const SIDE_BY_SIDE: (&str, &str) = ("layout", "side_by_side_from");
-
-/// The first protocol whose daemon knows who looks at its clients, shows
-/// a session in one, and keeps Muster's own settings (`ARC-09`).
-pub const NOTCH_PROTOCOL: u32 = 23;
 
 /// Where showing the notch is written: `[notch] show`.
 pub const NOTCH: (&str, &str) = ("notch", "show");
@@ -632,81 +488,6 @@ mod tests {
                 ("project", "APP"),
                 ("site", "acme.atlassian.net"),
             ]
-        );
-    }
-
-    /// `TicketsFrom` as protocol 41 had it.
-    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-    struct OldTicketsFrom {
-        tracker: String,
-        #[serde(default)]
-        site: Option<String>,
-        #[serde(default)]
-        project: Option<String>,
-        #[serde(default)]
-        jql: Option<String>,
-        #[serde(default)]
-        team: Option<String>,
-    }
-
-    #[test]
-    fn a_client_of_41_is_told_of_no_tracker_it_could_not_read_arc_09() {
-        use crate::protocol::Reply;
-        let settings = |tracker: &str| ProjectSettings {
-            tickets_from: "YouTrack, board APP".to_owned(),
-            only_mine: Toggle {
-                on: false,
-                from: SettingSource::Default,
-            },
-            file: PathBuf::from("/me/app.toml"),
-            tickets: Some(TicketsFrom {
-                tracker: tracker.to_owned(),
-                fields: BTreeMap::new(),
-            }),
-            tickets_set_by: SettingSource::Yours,
-            tickets_untold: false,
-            muster_prefix: None,
-        };
-        let told = |tracker: &str, version: u32| match Reply::ProjectSettings(settings(tracker))
-            .for_version(version)
-        {
-            Reply::ProjectSettings(settings) => settings.tickets.map(|from| from.tracker),
-            other => panic!("{other:?}"),
-        };
-        assert_eq!(told("youtrack", 41), None);
-        assert_eq!(told("youtrack", 42).as_deref(), Some("youtrack"));
-        assert_eq!(told("jira", 41).as_deref(), Some("jira"));
-    }
-
-    #[test]
-    fn a_peer_of_41_reads_and_writes_muster_s_own_trackers_as_it_did_arc_09() {
-        let bytes = rmp_serde::to_vec_named(&jira()).unwrap();
-        let old: OldTicketsFrom = rmp_serde::from_slice(&bytes).unwrap();
-        assert_eq!(
-            old,
-            OldTicketsFrom {
-                tracker: "jira".to_owned(),
-                site: Some("acme.atlassian.net".to_owned()),
-                project: Some("APP".to_owned()),
-                jql: None,
-                team: None,
-            }
-        );
-        let linear = OldTicketsFrom {
-            tracker: "linear".to_owned(),
-            site: None,
-            project: None,
-            jql: None,
-            team: Some("ENG".to_owned()),
-        };
-        let read: TicketsFrom =
-            rmp_serde::from_slice(&rmp_serde::to_vec_named(&linear).unwrap()).unwrap();
-        assert_eq!(
-            read,
-            TicketsFrom {
-                tracker: "linear".to_owned(),
-                fields: BTreeMap::from([("team".to_owned(), "ENG".to_owned())]),
-            }
         );
     }
 }

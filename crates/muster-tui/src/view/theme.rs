@@ -1,6 +1,6 @@
 //! The colours the UI draws in (`Preferences::palette`). Muster's own are
 //! full colour: soft text, one accent, the statuses' colours, and shades
-//! taken from the terminal's own background (`app.colours`, asked as the
+//! taken from the terminal's own background (`app.person.colours`, asked as the
 //! UI starts), so a selected line is a little lighter than whatever the
 //! terminal is, never a grey of Muster's choosing; light where that
 //! background is light. The terminal's own are its sixteen, so the UI
@@ -14,7 +14,7 @@ use crate::app::App;
 
 /// The colours `app` draws in: the person's palette on their terminal.
 pub(crate) fn of(app: &App) -> Theme {
-    Theme::new(app.model.preferences().palette, &app.colours)
+    Theme::new(app.model.preferences().palette, &app.person.colours)
 }
 
 /// The colours of every screen.
@@ -46,6 +46,8 @@ pub(crate) struct Theme {
     pub(crate) news: Color,
     /// A session that has not started, or has ended.
     pub(crate) still: Color,
+    /// A pull request merged.
+    pub(crate) merged: Color,
     /// The projects' colours, in the order they are listed: apart from the
     /// statuses' colours, so a project never reads as a status.
     pub(crate) projects: [Color; 6],
@@ -66,6 +68,7 @@ const DARK: Theme = Theme {
     done: rgb(0x93, 0xd6, 0xa3),
     news: rgb(0x8a, 0xd1, 0xe8),
     still: rgb(0x7e, 0x83, 0x98),
+    merged: rgb(0xc7, 0xa2, 0xf4),
     projects: [
         rgb(0x8c, 0xb3, 0xf7),
         rgb(0xc7, 0xa2, 0xf4),
@@ -91,6 +94,7 @@ const LIGHT: Theme = Theme {
     done: rgb(0x23, 0x87, 0x4a),
     news: rgb(0x1a, 0x7f, 0xa3),
     still: rgb(0x80, 0x84, 0x9a),
+    merged: rgb(0x8a, 0x45, 0xc6),
     projects: [
         rgb(0x2f, 0x62, 0xc9),
         rgb(0x8a, 0x45, 0xc6),
@@ -117,6 +121,7 @@ const TERMINAL: Theme = Theme {
     done: Color::Green,
     news: Color::Cyan,
     still: Color::Gray,
+    merged: Color::Magenta,
     projects: [
         Color::Blue,
         Color::Magenta,
@@ -134,6 +139,12 @@ const TINT_PERCENT: u16 = 9;
 /// How far the selected line's background goes from the terminal's
 /// towards the accent while its list has the keys.
 const LIT_PERCENT: u16 = 24;
+
+/// The terminal's own colours, for a test that draws without an app.
+#[cfg(test)]
+pub(crate) fn plain() -> Theme {
+    TERMINAL
+}
 
 impl Theme {
     /// The colours `palette` draws in, on a terminal of `colours`.

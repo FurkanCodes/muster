@@ -5,18 +5,13 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::protocol::Command;
-use muster_core::settings::{NAMING_PROTOCOL, PreferenceChange};
+use muster_core::settings::PreferenceChange;
 
 use super::harness_choice::HarnessChoice;
 use super::{Action, App, Dialog, Mode, Then};
 use crate::input::{Edit, LineInput};
 
 impl App {
-    /// Whether the daemon names chats by an agent, and keeps how.
-    pub(crate) fn naming_known(&self) -> bool {
-        self.daemon_protocol >= NAMING_PROTOCOL
-    }
-
     /// The agents that can name chats, by id and label: each session's own
     /// first (`None`), then Muster's own that can be asked one question,
     /// then the person's that say how.

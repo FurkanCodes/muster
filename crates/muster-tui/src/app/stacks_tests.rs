@@ -38,25 +38,6 @@ fn a_ticket_s_new_worktree_can_be_made_on_top_of_another_s_branch() {
     ));
 }
 
-#[test]
-fn an_older_daemon_is_never_asked_to_stack() {
-    let mut world = on_tickets();
-    world.app.daemon_protocol = muster_core::tidy::TIDY_PROTOCOL;
-    press(&mut world.app, KeyCode::Enter);
-    assert!(!render(&world.app).contains("On top of"));
-    // ← → choose the agent, as before.
-    press(&mut world.app, KeyCode::Right);
-    let actions = press(&mut world.app, KeyCode::Enter);
-    assert!(matches!(
-        &commands(&actions)[..],
-        [Command::StartFromIssue { harness, on: None, .. }] if harness == "codex"
-    ));
-    world.app.selected = Some(Row::Worktree(world.worktree.id));
-    world.app.view = super::super::View::Sessions;
-    assert!(press(&mut world.app, KeyCode::Char('u')).is_empty());
-    assert!(render(&world.app).contains("`muster reload`"));
-}
-
 /// The world with a second worktree on `child`, stacked on the world's
 /// worktree's branch; the parent's pull request in `state`.
 fn stacked(state: Option<PullRequestState>) -> (World, Workspace) {

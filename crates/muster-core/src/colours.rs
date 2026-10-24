@@ -11,12 +11,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The first protocol a session's terminal is told about the person's in:
-/// its colours (`ClientFrame::Colours`), and whether the person's keys are
-/// in it (`ClientFrame::Keys`). A daemon before it is never sent these
-/// (`ARC-09`).
-pub const TERMINAL_PROTOCOL: u32 = 31;
-
 /// How many of a palette's colours are asked for and answered: the sixteen
 /// ANSI colours, the ones the person's theme sets.
 pub const PALETTE: usize = 16;

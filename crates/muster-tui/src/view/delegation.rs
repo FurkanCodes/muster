@@ -11,8 +11,9 @@ pub(super) const LABEL: &str = "Agents start agents";
 
 /// On, or off.
 pub(super) fn value(app: &App) -> Span<'static> {
+    let theme = super::theme::of(app);
     if app.model.preferences().delegation.allowed {
-        Span::from("on").green().bold()
+        Span::from("on").fg(theme.done).bold()
     } else {
         Span::from("off").dim()
     }

@@ -18,7 +18,9 @@
 
 mod support;
 
-use std::time::{Duration, Instant};
+use support::wait;
+
+use std::time::Duration;
 
 use muster_client::Connection;
 use muster_core::protocol::{Command, Delta, Reply, ServerFrame, TermSize};
@@ -81,29 +83,30 @@ fn answers(sandbox: &Sandbox, name: &str) {
 
 /// Waits until the stand-in has been asked `count` questions.
 fn asked(sandbox: &Sandbox, count: usize) -> Vec<(String, Vec<String>)> {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    wait::found(&format!("Claude Code asked {count} times"), || {
         let asked = sandbox.claude_asked();
-        if asked.len() >= count {
-            return asked;
-        }
-        assert!(Instant::now() < deadline, "asked {asked:?}");
-        std::thread::sleep(Duration::from_millis(25));
-    }
+        (asked.len() >= count).then_some(asked)
+    })
 }
 
-/// `session`'s name as the state says, after a moment for anything on its
-/// way.
-async fn settled_name(connection: &mut Connection, session: SessionId) -> String {
-    tokio::time::sleep(Duration::from_millis(1_500)).await;
-    let snapshot = connection.subscribe().await.unwrap();
-    snapshot
-        .sessions
-        .iter()
-        .find(|stored| stored.id == session)
-        .unwrap()
-        .title
-        .clone()
+/// That `session` stays named `wanted` for a while, as anything on its way
+/// to name it comes.
+async fn stays_named(connection: &mut Connection, session: SessionId, wanted: &str) {
+    wait::holds_async(
+        &format!("it named {wanted:?}"),
+        Duration::from_secs(2),
+        async || {
+            let snapshot = connection.subscribe().await.unwrap();
+            snapshot
+                .sessions
+                .iter()
+                .find(|stored| stored.id == session)
+                .unwrap()
+                .title
+                == wanted
+        },
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -170,8 +173,7 @@ async fn a_name_the_person_gives_is_never_replaced_by_an_agent_s() {
         panic!("expected Done");
     };
     asked(&sandbox, 1);
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    assert_eq!(settled_name(&mut connection, session).await, "Mine");
+    stays_named(&mut connection, session, "Mine").await;
 }
 
 #[tokio::test]
@@ -189,10 +191,7 @@ async fn turned_off_no_agent_is_asked_and_an_agent_that_fails_leaves_the_first_l
         panic!("expected Done");
     };
     let session = start(&mut connection, checkout, "Add a dark mode to the settings").await;
-    assert_eq!(
-        settled_name(&mut connection, session).await,
-        "Add a dark mode to the settings"
-    );
+    stays_named(&mut connection, session, "Add a dark mode to the settings").await;
     assert!(sandbox.claude_asked().is_empty());
 
     let Reply::Done = connection
@@ -207,10 +206,7 @@ async fn turned_off_no_agent_is_asked_and_an_agent_that_fails_leaves_the_first_l
     std::fs::write(sandbox.fake_claude_flag("FAKE_CLAUDE_ASK_FAILS"), "").unwrap();
     let session = start(&mut connection, checkout, "Speed up the test suite").await;
     asked(&sandbox, 1);
-    assert_eq!(
-        settled_name(&mut connection, session).await,
-        "Speed up the test suite"
-    );
+    stays_named(&mut connection, session, "Speed up the test suite").await;
 }
 
 #[tokio::test]
@@ -249,8 +245,9 @@ async fn a_prompt_of_a_few_words_is_named_again_from_the_first_turn_s_answer() {
             "last_assistant_message": "Done again.",
         }),
     );
-    tokio::time::sleep(Duration::from_millis(1_500)).await;
-    assert_eq!(sandbox.claude_asked().len(), 2);
+    wait::holds("asked twice only", Duration::from_millis(1_500), || {
+        sandbox.claude_asked().len() == 2
+    });
 }
 
 #[tokio::test]

@@ -43,7 +43,7 @@ fn shell_as(world: &mut World, status: SessionStatus, unseen: bool) {
 #[test]
 fn unfolded_only_a_session_s_own_line_shows_its_mark() {
     let mut world = world();
-    world.app.motion = false;
+    world.app.moving.on = false;
     shell_as(&mut world, SessionStatus::Running, false);
     let screen = render(&world.app);
     assert!(screen.contains("● • Shell"), "{screen}");
@@ -54,7 +54,7 @@ fn unfolded_only_a_session_s_own_line_shows_its_mark() {
 #[test]
 fn a_folded_project_and_worktree_show_their_most_urgent_session_in_its_mark() {
     let mut world = world();
-    world.app.motion = false;
+    world.app.moving.on = false;
     world.app.fold(Row::Worktree(world.worktree.id));
     // Nothing at work: nothing to say but what it hides.
     let screen = render(&world.app);
@@ -113,7 +113,7 @@ fn a_finished_session_that_was_seen_says_nothing_on_its_worktree() {
 #[test]
 fn e_folds_a_worktree_which_keeps_its_mark_and_says_what_it_hides() {
     let mut world = world();
-    world.app.motion = false;
+    world.app.moving.on = false;
     shell_as(&mut world, SessionStatus::Running, false);
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     assert!(

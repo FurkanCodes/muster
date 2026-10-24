@@ -10,7 +10,7 @@
 //! command line too.
 
 use crossterm::event::{KeyCode, KeyEvent};
-use muster_core::plugins::{ID_MAX, PLUGINS_PROTOCOL, PluginSource};
+use muster_core::plugins::{ID_MAX, PluginSource};
 use muster_core::protocol::plugins::{
     ChangedBy, PluginCommand, PluginInfo, PluginOrigin, PluginPreview, PreviewKind,
 };
@@ -107,11 +107,6 @@ pub(crate) enum PluginDialog {
 }
 
 impl App {
-    /// Whether the daemon has plugins.
-    pub(crate) fn plugins_known(&self) -> bool {
-        self.daemon_protocol >= PLUGINS_PROTOCOL
-    }
-
     /// The Plugins section's rows: its heading, each plugin, and the row
     /// that adds one.
     pub(super) fn plugin_rows(&self) -> Vec<SettingRow> {
@@ -136,7 +131,7 @@ impl App {
 
     /// The plugin selected on the Settings screen.
     fn selected_plugin(&self) -> Option<&PluginInfo> {
-        match self.settings_selected {
+        match self.settings.selected {
             Some(SettingRow::Plugin(key)) => self.plugin(key),
             _ => None,
         }
@@ -145,15 +140,14 @@ impl App {
     /// Asks the daemon to read its plugins again as the Settings screen is
     /// shown, so a manifest edited by hand is seen: what changed comes as a
     /// change to the state.
-    pub(super) fn read_plugins(&mut self) -> Option<Action> {
-        self.plugins_known()
-            .then(|| self.command(Command::Plugin(PluginCommand::List), Then::PluginsRead))
+    pub(super) fn read_plugins(&mut self) -> Action {
+        self.command(Command::Plugin(PluginCommand::List), Then::PluginsRead)
     }
 
     /// Space or ⏎ on a plugin: off if it runs, else on, refused with why
     /// where it cannot run.
     pub(super) fn toggle_plugin(&mut self, key: PluginKey) -> Vec<Action> {
-        if self.plugin_changing.is_some() {
+        if self.settings.plugin_changing.is_some() {
             return Vec::new();
         }
         let Some(plugin) = self.plugin(key) else {
@@ -169,7 +163,7 @@ impl App {
             self.complain(refused);
             return Vec::new();
         }
-        self.plugin_changing = Some(key);
+        self.settings.plugin_changing = Some(key);
         let command = PluginCommand::SetEnabled {
             id: key.id().to_owned(),
             on,
@@ -186,7 +180,7 @@ impl App {
         on: bool,
         outcome: Result<(), ErrorBody>,
     ) {
-        self.plugin_changing = None;
+        self.settings.plugin_changing = None;
         match outcome {
             Ok(()) => self.say(format!(
                 "Turned {} {}.",
@@ -199,12 +193,10 @@ impl App {
 
     /// `a`, or ⏎ on *add a plugin*: where from.
     pub(super) fn open_add_plugin(&mut self) -> Vec<Action> {
-        if self.plugins_known() {
-            self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Add {
-                typed: Typed::default(),
-                refused: None,
-            }));
-        }
+        self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Add {
+            typed: Typed::default(),
+            refused: None,
+        }));
         Vec::new()
     }
 
@@ -219,7 +211,7 @@ impl App {
             self.complain(format!("{id} is Muster's own: it updates with Muster."));
             return Vec::new();
         }
-        let asked = self.next_req;
+        let asked = self.requests.next;
         let command = Command::Plugin(PluginCommand::Update { id: id.clone() });
         let action = self.command(command, Then::PluginPreview(asked));
         self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Fetching {
@@ -332,7 +324,7 @@ impl App {
                     PluginOrigin::Git { url, .. } => one_line(url),
                     PluginOrigin::Folder { path } => one_line(&path.display().to_string()),
                 };
-                let asked = self.next_req;
+                let asked = self.requests.next;
                 let command = Command::Plugin(PluginCommand::Preview { origin });
                 let action = self.command(command, Then::PluginPreview(asked));
                 self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Fetching {
@@ -367,7 +359,9 @@ impl App {
             _ => None,
         };
         if let Some(by) = scroll {
-            let last = crate::view::preview_lines(&preview).len().saturating_sub(1);
+            let last = crate::view::preview_lines(&preview, crate::view::theme::of(self))
+                .len()
+                .saturating_sub(1);
             let offset = offset.saturating_add_signed(by).min(last);
             self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Preview { preview, offset }));
             return Vec::new();
@@ -484,7 +478,7 @@ impl App {
                 format!("Updated {id} to {}.", one_line(&preview.details.version))
             }
         });
-        self.plugin_wanted = PluginKey::of(&preview.id);
+        self.settings.plugin_wanted = PluginKey::of(&preview.id);
     }
 }
 

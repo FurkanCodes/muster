@@ -19,6 +19,8 @@
 
 mod support;
 
+use support::wait;
+
 use muster_client::Connection;
 use muster_core::protocol::{Command, Delta, Reply, ServerFrame, TermSize};
 use muster_core::{SessionId, SessionStatus, WaitReason, WorkspaceId};
@@ -205,19 +207,12 @@ async fn codex_is_heard_through_its_title_and_turn_notices_and_resumes_its_threa
     .to_string();
     launch.run(&notify[2], &[&notify[3], &notice], "");
     // The notice is heard, and its thread kept, before the daemon stops.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
+    wait::until_async("its thread kept", async || {
         let snapshot = setup.daemon.connect().await.subscribe().await.unwrap();
         let kept = snapshot.sessions.iter().find(|stored| stored.id == session);
-        if kept.and_then(|stored| stored.resume_id.as_deref()) == Some("019a7c3e-thread") {
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the thread was never kept"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
+        kept.and_then(|stored| stored.resume_id.as_deref()) == Some("019a7c3e-thread")
+    })
+    .await;
 
     let (sandbox, daemon) = restarted(setup, connection);
     let launches = sandbox.wait_for_agent("codex", session, 2);

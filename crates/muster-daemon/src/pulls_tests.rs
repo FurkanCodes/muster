@@ -21,6 +21,7 @@ use crate::githost::{GitHost, PrState};
 use crate::service::{BoxFuture, ProjectPlace, ServiceError};
 use crate::store::{Store, StoreHandle};
 use crate::supervisor::{self, SupervisorHandle};
+use crate::waiting;
 
 #[derive(Debug)]
 struct FixedClock;
@@ -291,15 +292,13 @@ async fn a_branch_s_pull_request_is_shown_on_its_worktree_and_kept_through_a_fai
     host.fail(Some("could not reach github.com"));
     let asked = host.asked().len();
     assert!(supervisor.check_pull_requests().await);
-    timeout(Duration::from_secs(5), async {
-        while host.asked().len() == asked {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_eq!(shown_now(&supervisor, worktree).await, Some(draft));
+    waiting::until("the host to be asked", async || host.asked().len() != asked).await;
+    waiting::holds(
+        "what the last look found",
+        Duration::from_millis(100),
+        async || shown_now(&supervisor, worktree).await.as_ref() == Some(&draft),
+    )
+    .await;
     host.fail(None);
 
     // Then reviewed and passing; then gone from the host.
@@ -368,18 +367,14 @@ async fn while_nobody_looks_at_a_client_only_every_tenth_tick_looks() {
     for _ in 0..9 {
         assert!(supervisor.check_pull_requests().await);
     }
-    // Each tick handled, and anything they started given time to ask.
+    // Each tick handled, and nothing they started asks.
     supervisor.workspaces().await.unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    assert!(host.asked().is_empty(), "{:?}", host.asked());
-    assert!(supervisor.check_pull_requests().await);
-    timeout(Duration::from_secs(5), async {
-        while host.asked().is_empty() {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+    waiting::holds("nothing asked", Duration::from_millis(200), async || {
+        host.asked().is_empty()
     })
-    .await
-    .expect("the tenth tick looks");
+    .await;
+    assert!(supervisor.check_pull_requests().await);
+    waiting::until("the tenth tick looks", async || !host.asked().is_empty()).await;
 }
 
 #[tokio::test]
@@ -389,26 +384,22 @@ async fn looking_again_after_a_tick_went_by_looks_at_once_but_only_then() {
     } = setup().await;
     host.set("feature", Some(status(3, PullRequestState::Open)));
     let asked = || host.asked().len();
-    let settled = || async {
+    let none_asked = async |why: &str| {
         supervisor.workspaces().await.unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        waiting::holds(why, Duration::from_millis(200), async || asked() == 0).await;
     };
     // Looked at before any tick went by: nothing missed, nothing asked.
     let looking = supervisor.looked_at_client().await;
-    settled().await;
-    assert_eq!(asked(), 0);
+    none_asked("nothing missed").await;
     drop(looking);
     assert!(supervisor.check_pull_requests().await);
-    settled().await;
-    assert_eq!(asked(), 0, "nobody looks");
+    none_asked("nobody looks").await;
     let _looking = supervisor.looked_at_client().await;
-    timeout(Duration::from_secs(5), async {
-        while asked() == 0 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("the tick let go by is taken as the person looks");
+    waiting::until(
+        "the tick let go by is taken as the person looks",
+        async || asked() != 0,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -420,27 +411,19 @@ async fn a_look_that_never_comes_back_holds_the_next_ones_back_ten_ticks_only() 
     host.silent.store(true, std::sync::atomic::Ordering::SeqCst);
     let asked = || host.asked().len();
     assert!(supervisor.check_pull_requests().await);
-    timeout(Duration::from_secs(5), async {
-        while asked() == 0 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
+    waiting::until("the host to be asked", async || asked() != 0).await;
     // While it is under way, no other look starts beside it.
     for _ in 0..9 {
         assert!(supervisor.check_pull_requests().await);
     }
     supervisor.workspaces().await.unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(asked(), 1);
+    waiting::holds(
+        "one look under way",
+        Duration::from_millis(200),
+        async || asked() == 1,
+    )
+    .await;
     // Ten ticks on, it is taken as lost.
     assert!(supervisor.check_pull_requests().await);
-    timeout(Duration::from_secs(5), async {
-        while asked() == 1 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("a look after the lost one");
+    waiting::until("a look after the lost one", async || asked() != 1).await;
 }

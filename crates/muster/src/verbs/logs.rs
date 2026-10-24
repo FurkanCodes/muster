@@ -21,9 +21,6 @@ pub(crate) async fn run(
     lines: Option<usize>,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let mut connection = commands::connect(&paths.socket()).await?;
-    if connection.welcome().version < muster_core::delegation::DELEGATION_PROTOCOL {
-        return Err("the daemon running is older than this muster: `muster reload`".into());
-    }
     let snapshot = connection.subscribe().await?;
     let id = targets::find_session(&snapshot, session)?.id;
     let what = if reply {

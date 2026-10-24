@@ -443,7 +443,7 @@ fn a_new_session_starts_claude_with_a_prompt_and_opens_it() {
     assert!(matches!(
         world.app.mode,
         Mode::Dialog(Dialog::NewSession {
-            harness: HarnessChoice::Claude,
+            harness: HarnessChoice::CLAUDE,
             ..
         })
     ));
@@ -650,17 +650,17 @@ fn needs_you_holds_its_order_while_a_session_is_looked_at() {
     }
     world.app.on_key(ctrl('2'));
     assert_eq!(world.app.view, View::NeedsYou);
-    assert_eq!(world.app.needs_list, [other.id, world.session.id]);
-    assert_eq!(world.app.needs_selected, Some(other.id));
+    assert_eq!(world.app.needs.list, [other.id, world.session.id]);
+    assert_eq!(world.app.needs.selected, Some(other.id));
 
     // Looking at it clears it, yet it stays until the selection moves on.
     press(&mut world.app, KeyCode::Down);
-    assert_eq!(world.app.needs_selected, Some(world.session.id));
+    assert_eq!(world.app.needs.selected, Some(world.session.id));
     let id = world.session.id;
     set_status(&mut world, id, SessionStatus::Finished, false);
-    assert_eq!(world.app.needs_list, [other.id, world.session.id]);
+    assert_eq!(world.app.needs.list, [other.id, world.session.id]);
     press(&mut world.app, KeyCode::Up);
-    assert_eq!(world.app.needs_list, [other.id]);
+    assert_eq!(world.app.needs.list, [other.id]);
     assert!(render(&world.app).contains(" Needs you 1 "));
 }
 
@@ -693,7 +693,7 @@ fn a_session_answered_from_needs_you_is_shown_among_its_project_s() {
     set_status(&mut world, mine, SessionStatus::Finished, true);
     set_status(&mut world, theirs.id, asking, true);
     world.app.on_key(ctrl('2'));
-    assert_eq!(world.app.needs_list, [theirs.id, mine]);
+    assert_eq!(world.app.needs.list, [theirs.id, mine]);
 
     // Another question, or the same one asked again, keeps it in the queue.
     press(&mut world.app, KeyCode::Enter);
@@ -722,7 +722,7 @@ fn a_session_answered_from_needs_you_is_shown_among_its_project_s() {
     assert_eq!(world.app.selected, Some(Row::Session(theirs.id)));
     // The queue opens on what still waits.
     world.app.on_key(ctrl('2'));
-    assert_eq!(world.app.needs_list, [mine]);
+    assert_eq!(world.app.needs.list, [mine]);
 }
 
 #[test]
@@ -736,18 +736,18 @@ fn a_session_dealt_with_leaves_needs_you_once_the_person_is_back() {
 
     // News only looked at, then gone into and left: dealt with.
     set_status(&mut world, id, SessionStatus::Finished, true);
-    assert_eq!(world.app.needs_list, [id]);
+    assert_eq!(world.app.needs.list, [id]);
     set_status(&mut world, id, SessionStatus::Finished, false);
-    assert_eq!(world.app.needs_list, [id], "kept while looked at");
+    assert_eq!(world.app.needs.list, [id], "kept while looked at");
     press(&mut world.app, KeyCode::Enter);
     world.app.on_key(shift_q());
-    assert!(world.app.needs_list.is_empty());
+    assert!(world.app.needs.list.is_empty());
 
     // A question still open when they come back stays.
     set_status(&mut world, id, asking, true);
     press(&mut world.app, KeyCode::Enter);
     world.app.on_key(shift_q());
-    assert_eq!(world.app.needs_list, [id]);
+    assert_eq!(world.app.needs.list, [id]);
 }
 
 #[test]
@@ -757,19 +757,19 @@ fn needs_you_lets_go_of_a_session_back_at_work_or_left_behind() {
     set_status(&mut world, id, SessionStatus::Finished, true);
     world.app.on_key(ctrl('2'));
     set_status(&mut world, id, SessionStatus::Finished, false);
-    assert_eq!(world.app.needs_list, [id]);
+    assert_eq!(world.app.needs.list, [id]);
     // Back at work without the person in it: nothing waits on them.
     set_status(&mut world, id, SessionStatus::Running, false);
-    assert!(world.app.needs_list.is_empty());
+    assert!(world.app.needs.list.is_empty());
 
     // Kept while looked at, it is not kept for the next visit.
     set_status(&mut world, id, SessionStatus::Finished, true);
     set_status(&mut world, id, SessionStatus::Finished, false);
-    assert_eq!(world.app.needs_list, [id]);
+    assert_eq!(world.app.needs.list, [id]);
     world.app.on_key(ctrl('1'));
     world.app.on_key(ctrl('2'));
-    assert!(world.app.needs_list.is_empty());
-    assert_eq!(world.app.needs_selected, None);
+    assert!(world.app.needs.list.is_empty());
+    assert_eq!(world.app.needs.selected, None);
 }
 
 #[test]

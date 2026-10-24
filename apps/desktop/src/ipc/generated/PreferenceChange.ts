@@ -6,6 +6,6 @@ import type { SessionLines } from "./SessionLines";
 import type { Tell } from "./Tell";
 
 /**
- * A change the person makes to Muster's own settings. From protocol 23.
+ * A change the person makes to Muster's own settings.
  */
 export type PreferenceChange = { "Notch": boolean } | { "SideBySideFrom": number } | { "Palette": Palette } | { "SessionLines": SessionLines } | { "Panels": Layout } | { "ListFolded": boolean } | { "NamesByAgent": boolean } | { "NamedBy": { agent: string | null, model: string | null, } } | { "Keys": { action: string, keys: Array<string> | null, } } | "AllKeysBack" | { "Notifications": boolean } | { "Tell": { kind: Kind, tell: Tell, } } | { "SharedBuilds": boolean } | { "AgentsStartAgents": boolean };

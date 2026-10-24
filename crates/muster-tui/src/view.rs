@@ -10,6 +10,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders};
 
 use crate::app::{App, Link, Mode, View};
+use crate::cells;
 use crate::layout::{Divider, Solved};
 use crate::motion;
 
@@ -20,6 +21,7 @@ mod clashes;
 mod delegation;
 mod dialogs;
 mod drag;
+mod floating;
 mod help;
 pub(crate) mod kep;
 mod loading;
@@ -244,41 +246,34 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     draw_bottom_bar(frame, app, bottom);
     match &app.mode {
         Mode::Dialog(dialog) => dialogs::draw_dialog(frame, app, dialog, area),
-        Mode::Menu(open) => menu::draw_menu(frame, open, area),
+        Mode::Menu(open) => menu::draw_menu(frame, open, area, theme::of(app)),
         Mode::Help(open) => help::draw_help(frame, app, open, area),
         _ => {}
     }
 }
 
-/// `text`, cut to `max` characters with an ellipsis if it is longer.
+/// `text`, cut to `max` columns with an ellipsis if it is longer.
 pub(super) fn shorten(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
+    if cells::width(text) <= max {
         return text.to_owned();
     }
-    let kept: String = text.chars().take(max.saturating_sub(1)).collect();
-    format!("{kept}…")
+    format!("{}…", cells::start_within(text, max.saturating_sub(1)))
 }
 
-/// `text` in `max` characters, slid `by` characters to the left as a
-/// name cut short slides along (`motion::slide`): an ellipsis stands for
-/// what is out of view at either end. Slid by nothing, it is `text` as
-/// [`shorten`] cuts it.
+/// `text` in `max` columns, slid `by` columns to the left as a name cut
+/// short slides along (`motion::slide`): an ellipsis stands for what is
+/// out of view at either end. Slid by nothing, it is `text` as [`shorten`]
+/// cuts it.
 pub(super) fn slid(text: &str, max: usize, by: usize) -> String {
-    let len = text.chars().count();
+    let len = cells::width(text);
     if by == 0 || len <= max {
         return shorten(text, max);
     }
     let by = by.min(len - max);
-    let mut shown: Vec<char> = text.chars().skip(by).take(max).collect();
-    if let Some(first) = shown.first_mut() {
-        *first = '…';
-    }
-    if by + max < len
-        && let Some(last) = shown.last_mut()
-    {
-        *last = '…';
-    }
-    shown.into_iter().collect()
+    let more = by + max < len;
+    let room = max.saturating_sub(1 + usize::from(more));
+    let shown = cells::start_within(cells::after(text, by + 1), room);
+    format!("…{shown}{}", if more { "…" } else { "" })
 }
 
 /// The name on the selected line where the list cuts it short: how many
@@ -384,5 +379,35 @@ pub(crate) fn bytes(count: u64) -> String {
         format!("{:.1} GB", fraction(count) / fraction(GB))
     } else {
         format!("{} MB", count.div_ceil(MB))
+    }
+}
+
+/// What a screen that lists projects says while there are none.
+fn no_projects(app: &App) -> String {
+    format!(
+        "No projects yet: add one in the sessions view with {}.",
+        app.key(muster_core::keys::Action::AddProject)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{shorten, slid};
+    use crate::cells;
+
+    #[test]
+    fn a_name_is_cut_to_the_columns_it_is_given_wide_characters_and_all() {
+        assert_eq!(shorten("fix login", 20), "fix login");
+        assert_eq!(shorten("fix the login", 6), "fix t…");
+        let wide = "修正ログイン画面";
+        let cut = shorten(wide, 7);
+        assert_eq!(cut, "修正ロ…");
+        assert!(cells::width(&cut) <= 7);
+        for by in 0..10 {
+            let shown = slid(wide, 7, by);
+            assert!(cells::width(&shown) <= 7, "{by}: {shown}");
+        }
+        assert_eq!(slid("abcdefgh", 5, 1), "…cde…");
+        assert_eq!(slid("abcdefgh", 5, 3), "…efgh");
     }
 }

@@ -7,13 +7,14 @@ import type { RefObject } from "react";
 import type { Changes } from "../../ipc/generated/Changes";
 import type { FileChange } from "../../ipc/generated/FileChange";
 import type { Timeline } from "../../ipc/generated/Timeline";
+import { oneLine } from "../../lib/text";
 import { Button } from "../../ui/controls";
 import { List } from "../../ui/List";
 import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { TurnRow, turnLineId } from "../../ui/TurnRow";
 import { FileList } from "./FileList";
-import { commonFolder, entryLabel, oneLine } from "./labels";
+import { commonFolder, entryLabel } from "./labels";
 import type { Answer } from "./useReply";
 
 export type View = "uncommitted" | "branch" | "turns";
@@ -74,7 +75,7 @@ function Files({
         files={files}
         folder={folder}
         label={label}
-        rows={rows}
+        rowsRef={rows}
         selected={selected}
         resting={resting}
         onOpen={onOpen}

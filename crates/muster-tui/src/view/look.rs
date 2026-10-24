@@ -67,7 +67,7 @@ pub(crate) fn session_time(app: &App, session: &Session) -> Option<String> {
     let now = app.now?;
     let since = muster_core::time::between(session.status_since, now);
     Some(match session.status {
-        SessionStatus::Running | SessionStatus::NeedsYou { .. } => short_span(since, app.motion),
+        SessionStatus::Running | SessionStatus::NeedsYou { .. } => short_span(since, app.moving.on),
         _ => format!("{} ago", short_span(since, false)),
     })
 }
@@ -123,14 +123,12 @@ pub(crate) fn agent_mark(app: &App, harness: &str) -> Span<'static> {
 
 /// The letter an agent is known by on a ticket's line.
 pub(crate) fn harness_letter(harness: &str) -> String {
+    if let Some(agent) = muster_core::harness::OwnAgent::of(harness) {
+        return agent.letter().to_string();
+    }
     match harness {
-        "claude" => "C".to_owned(),
-        "codex" => "X".to_owned(),
-        "gemini" => "G".to_owned(),
-        "opencode" => "O".to_owned(),
-        "copilot" => "P".to_owned(),
-        "review" => "R".to_owned(),
-        "shell" => "$".to_owned(),
+        muster_core::harness::REVIEW => "R".to_owned(),
+        muster_core::harness::SHELL => "$".to_owned(),
         other => other
             .chars()
             .next()

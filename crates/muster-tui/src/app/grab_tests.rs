@@ -56,7 +56,7 @@ fn the_line_between_two_panels_and_a_title_light_up_under_the_pointer() {
     for column in [28, 29, 30] {
         assert!(moved(&mut world, (column, 10)).is_empty());
         assert!(
-            matches!(world.app.hover, Some(Grab::Line(_))),
+            matches!(world.app.panels.hover, Some(Grab::Line(_))),
             "at {column}"
         );
         assert!(
@@ -65,7 +65,7 @@ fn the_line_between_two_panels_and_a_title_light_up_under_the_pointer() {
         );
     }
     moved(&mut world, (5, 1));
-    assert_eq!(world.app.hover, Some(Grab::Title(Panel::List)));
+    assert_eq!(world.app.panels.hover, Some(Grab::Title(Panel::List)));
     assert!(lit(&world, (12, 1)), "the list's title row");
     assert!(!lit(&world, (29, 10)), "the line no longer");
 
@@ -73,7 +73,7 @@ fn the_line_between_two_panels_and_a_title_light_up_under_the_pointer() {
     // take hold of there, nor inside a panel.
     for at in [(31, 10), (50, 10), (10, 8)] {
         moved(&mut world, at);
-        assert_eq!(world.app.hover, None, "at {at:?}");
+        assert_eq!(world.app.panels.hover, None, "at {at:?}");
     }
 }
 
@@ -92,7 +92,7 @@ fn the_cell_before_a_line_moves_it_once_the_pointer_has_gone_two_cells() {
             Layout::parse("list 40 | session 60% | (changes / shell)").unwrap()
         )),
     })));
-    assert_eq!(world.app.drag, None);
+    assert_eq!(world.app.panels.drag, None);
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn a_press_beside_a_line_that_does_not_move_is_the_click_it_was() {
     let project = list(&world).y + 1;
     left(&mut world, MouseEventKind::Down, (28, project));
     let actions = left(&mut world, MouseEventKind::Up, (29, project));
-    assert_eq!(world.app.drag, None);
+    assert_eq!(world.app.panels.drag, None);
     assert_eq!(world.app.selected, Some(Row::Project(world.project.id)));
     assert!(
         !actions
@@ -130,7 +130,7 @@ fn a_program_that_asked_for_every_movement_gets_it_and_one_that_did_not_never() 
     world.app.welcome = true;
     moved(&mut world, (5, 1));
     assert!(world.app.welcome);
-    assert_eq!(world.app.hover, None);
+    assert_eq!(world.app.panels.hover, None);
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn the_pointer_shows_arrows_over_a_line_and_a_hand_over_a_title() {
     left(&mut world, MouseEventKind::Drag, (60, 12));
     assert_eq!(world.app.pointer_shape(), Shape::Grabbing);
     left(&mut world, MouseEventKind::Up, (60, 12));
-    assert_eq!(world.app.drag, None);
+    assert_eq!(world.app.panels.drag, None);
     assert_ne!(world.app.pointer_shape(), Shape::Grabbing);
 
     // A line being dragged keeps its arrows wherever the pointer goes.

@@ -1,14 +1,8 @@
 //! Repositories on GitHub the person can clone as a project (`PRODUCT.md`
 //! §6, §6a): listed, and cloned, by the daemon through the person's own
-//! `gh`, as it is the daemon that talks to GitHub. From protocol 49
-//! ([`REPOSITORIES_PROTOCOL`]). Pure (`ARC-01`).
+//! `gh`, as it is the daemon that talks to GitHub. Pure (`ARC-01`).
 
 use serde::{Deserialize, Serialize};
-
-/// The first protocol whose daemon answers [`super::Command::ListRepositories`]
-/// and [`super::Command::CloneProject`]; a client sends them only to one of
-/// this or later.
-pub const REPOSITORIES_PROTOCOL: u32 = 49;
 
 /// A repository the person can reach on GitHub, as `gh` lists it: their
 /// own, those they work on, and their organisations', the most recently

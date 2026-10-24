@@ -23,6 +23,7 @@
 //! The next daemon adopts it into a new actor.
 
 mod colours;
+mod input;
 mod osc;
 mod queries;
 mod ring;
@@ -436,14 +437,10 @@ fn start(
             let _ = read_done.send(());
         })?;
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "ARC-14: what the person types and pastes; the writer must not drop keys, and the actor must not wait on it"
-    )]
-    let (input, input_queue) = std::sync::mpsc::channel::<Vec<u8>>();
+    let (input, typed) = input::queue();
     std::thread::Builder::new()
         .name("muster-pty-write".to_owned())
-        .spawn(move || write_input(writer, &input_queue))?;
+        .spawn(move || write_input(writer, &typed))?;
 
     let (commands, queue) = mpsc::channel(256);
     let actor = Actor {
@@ -540,8 +537,8 @@ fn readable(reader: &File, stop: &PipeReader) -> nix::Result<Ready> {
     }
 }
 
-fn write_input(mut writer: File, input: &std::sync::mpsc::Receiver<Vec<u8>>) {
-    while let Ok(data) = input.recv() {
+fn write_input(mut writer: File, typed: &input::Typed) {
+    while let Some(data) = typed.next() {
         if writer
             .write_all(&data)
             .and_then(|()| writer.flush())
@@ -566,7 +563,7 @@ struct Actor {
     drawn_to: u64,
     /// Dropped once the process has exited, which ends live streams.
     live: Option<broadcast::Sender<Chunk>>,
-    input: Option<std::sync::mpsc::Sender<Vec<u8>>>,
+    input: Option<input::Input>,
     osc: OscScanner,
     queries: QueryScanner,
     /// The person's terminal's colours, for questions about its own.

@@ -31,6 +31,7 @@ use std::sync::Arc;
 
 use muster_core::SessionId;
 use muster_core::config::agents::{AgentDefinition, TitleSays};
+use muster_core::harness::OwnAgent;
 use muster_core::protocol::TermSize;
 use muster_state::session::HookEvent;
 
@@ -47,11 +48,8 @@ pub(crate) struct Harness {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Shell,
-    Claude,
-    Codex,
-    Gemini,
-    OpenCode,
-    Copilot,
+    /// One of Muster's own coding agents.
+    Own(OwnAgent),
     /// The project's checks, run by hand in a workspace.
     Checks,
     /// Claude Code reviewing a workspace's change in plan mode, which
@@ -63,24 +61,17 @@ pub(crate) enum Kind {
     Panel(Arc<PanelLaunch>),
 }
 
-/// Muster's own harnesses.
-const BUILT_IN: [Kind; 8] = [
-    Kind::Shell,
-    Kind::Claude,
-    Kind::Codex,
-    Kind::Gemini,
-    Kind::OpenCode,
-    Kind::Copilot,
-    Kind::Checks,
-    Kind::Review,
-];
+/// Muster's own harnesses, in the order they are offered.
+fn built_in() -> impl Iterator<Item = Harness> {
+    std::iter::once(Kind::Shell)
+        .chain(OwnAgent::ALL.map(Kind::Own))
+        .chain([Kind::Checks, Kind::Review])
+        .map(|kind| Harness { kind })
+}
 
 /// Muster's own harness called `id`, if there is one.
 pub(crate) fn find(id: &str) -> Option<Harness> {
-    BUILT_IN
-        .into_iter()
-        .map(|kind| Harness { kind })
-        .find(|harness| harness.id() == id)
+    built_in().find(|harness| harness.id() == id)
 }
 
 /// The harness called `id`: one of Muster's own, or else one of the agents
@@ -97,9 +88,7 @@ pub(crate) fn find_with(id: &str, added: &[Arc<AgentDefinition>]) -> Option<Harn
 /// The coding agents Muster can start, its own then those the person
 /// `added`: those with a program of their own ([`Harness::program`]).
 pub(crate) fn coding_agents(added: &[Arc<AgentDefinition>]) -> Vec<Harness> {
-    BUILT_IN
-        .into_iter()
-        .map(|kind| Harness { kind })
+    built_in()
         .chain(added.iter().cloned().map(Harness::added))
         .filter(|harness| harness.program().is_some())
         .collect()
@@ -175,14 +164,10 @@ impl Harness {
     /// What sessions name it by.
     pub(crate) fn id(&self) -> &str {
         match &self.kind {
-            Kind::Shell => "shell",
-            Kind::Claude => "claude",
-            Kind::Codex => "codex",
-            Kind::Gemini => "gemini",
-            Kind::OpenCode => "opencode",
-            Kind::Copilot => "copilot",
-            Kind::Checks => "checks",
-            Kind::Review => "review",
+            Kind::Shell => muster_core::harness::SHELL,
+            Kind::Own(agent) => agent.id(),
+            Kind::Checks => muster_core::harness::CHECKS,
+            Kind::Review => muster_core::harness::REVIEW,
             Kind::Added(agent) => &agent.name,
             Kind::Panel(launch) => launch.harness(),
         }
@@ -192,11 +177,7 @@ impl Harness {
     pub(crate) fn label(&self) -> &str {
         match &self.kind {
             Kind::Shell => "Shell",
-            Kind::Claude => "Claude Code",
-            Kind::Codex => "Codex",
-            Kind::Gemini => "Gemini CLI",
-            Kind::OpenCode => "OpenCode",
-            Kind::Copilot => "Copilot CLI",
+            Kind::Own(agent) => agent.label(),
             Kind::Checks => "Checks",
             Kind::Review => "Review",
             Kind::Added(agent) => &agent.label,
@@ -214,16 +195,7 @@ impl Harness {
 
     /// Whether it is a coding agent, rather than a shell.
     pub(crate) fn is_agent(&self) -> bool {
-        matches!(
-            self.kind,
-            Kind::Claude
-                | Kind::Review
-                | Kind::Codex
-                | Kind::Gemini
-                | Kind::OpenCode
-                | Kind::Copilot
-                | Kind::Added(_)
-        )
+        matches!(self.kind, Kind::Own(_) | Kind::Review | Kind::Added(_))
     }
 
     /// The program it starts, as it is named before `PATH` is searched:
@@ -231,11 +203,7 @@ impl Harness {
     /// for a shell, the checks, a review (Claude Code's own) and a panel.
     pub(crate) fn program(&self) -> Option<&str> {
         match &self.kind {
-            Kind::Claude => Some("claude"),
-            Kind::Codex => Some("codex"),
-            Kind::Gemini => Some("gemini"),
-            Kind::OpenCode => Some("opencode"),
-            Kind::Copilot => Some("copilot"),
+            Kind::Own(agent) => Some(agent.program()),
             Kind::Added(agent) => Some(&agent.program),
             Kind::Shell | Kind::Review | Kind::Checks | Kind::Panel(_) => None,
         }
@@ -259,7 +227,7 @@ impl Harness {
     pub(crate) fn chooses_session_id(&self) -> bool {
         matches!(
             self.kind,
-            Kind::Claude | Kind::Review | Kind::Gemini | Kind::Copilot
+            Kind::Own(OwnAgent::Claude | OwnAgent::Gemini | OwnAgent::Copilot) | Kind::Review
         )
     }
 
@@ -270,7 +238,8 @@ impl Harness {
     pub(crate) fn reports_start(&self) -> bool {
         matches!(
             self.kind,
-            Kind::Claude | Kind::Review | Kind::Codex | Kind::Gemini | Kind::OpenCode
+            Kind::Own(OwnAgent::Claude | OwnAgent::Codex | OwnAgent::Gemini | OwnAgent::OpenCode)
+                | Kind::Review
         )
     }
 
@@ -303,7 +272,7 @@ impl Harness {
     /// as a turn ends in focus, and the person mostly comes to a chat after
     /// its turn ended, from another chat, the list or another app.
     pub(crate) fn stays_in_focus(&self) -> bool {
-        matches!(self.kind, Kind::Claude | Kind::Review)
+        matches!(self.kind, Kind::Own(OwnAgent::Claude) | Kind::Review)
     }
 
     /// Whether the program suspends itself on Ctrl+Z and waits to be
@@ -317,11 +286,8 @@ impl Harness {
     /// The hook socket's address for its reports: `/hooks/<route>`.
     pub(crate) fn hook_route(&self) -> Option<&'static str> {
         match self.kind {
-            Kind::Claude | Kind::Review => Some("claude"),
-            Kind::Codex => Some("codex"),
-            Kind::Gemini => Some("gemini"),
-            Kind::OpenCode => Some("opencode"),
-            Kind::Copilot => Some("copilot"),
+            Kind::Own(agent) => Some(agent.id()),
+            Kind::Review => Some(OwnAgent::Claude.id()),
             Kind::Shell | Kind::Checks | Kind::Added(_) | Kind::Panel(_) => None,
         }
     }
@@ -332,14 +298,16 @@ impl Harness {
     pub(crate) fn translate(
         &self,
         event: Option<&str>,
-        body: &[u8],
+        payload: &serde_json::Value,
     ) -> Option<(Option<String>, HookEvent)> {
         match self.kind {
-            Kind::Claude | Kind::Review => claude::translate(&claude::HookPayload::parse(body)?),
-            Kind::Codex => codex::translate(body),
-            Kind::Gemini => gemini::translate(body),
-            Kind::OpenCode => opencode::translate(body),
-            Kind::Copilot => copilot::translate(event?, body),
+            Kind::Own(OwnAgent::Claude) | Kind::Review => {
+                claude::translate(&claude::HookPayload::of(payload)?)
+            }
+            Kind::Own(OwnAgent::Codex) => codex::translate(payload),
+            Kind::Own(OwnAgent::Gemini) => gemini::translate(payload),
+            Kind::Own(OwnAgent::OpenCode) => opencode::translate(payload),
+            Kind::Own(OwnAgent::Copilot) => copilot::translate(event?, payload),
             Kind::Shell | Kind::Checks | Kind::Added(_) | Kind::Panel(_) => None,
         }
     }
@@ -348,9 +316,11 @@ impl Harness {
     /// the conversation knows it by: Claude Code's prompt id, which its
     /// transcript carries, so an interruption written there can be matched
     /// to the turn it ended.
-    pub(crate) fn turn_begun(&self, body: &[u8]) -> Option<String> {
+    pub(crate) fn turn_begun(&self, payload: &serde_json::Value) -> Option<String> {
         match self.kind {
-            Kind::Claude | Kind::Review => claude::turn_begun(&claude::HookPayload::parse(body)?),
+            Kind::Own(OwnAgent::Claude) | Kind::Review => {
+                claude::turn_begun(&claude::HookPayload::of(payload)?)
+            }
             _ => None,
         }
     }
@@ -359,8 +329,7 @@ impl Harness {
     /// (and `event`) carries it: Claude Code's `UserPromptSubmit`, Gemini
     /// CLI's `BeforeAgent`, Copilot CLI's `userPromptSubmitted`. Codex,
     /// `OpenCode` and the agents the person added report none.
-    pub(crate) fn prompt(&self, event: Option<&str>, body: &[u8]) -> Option<String> {
-        let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    pub(crate) fn prompt(&self, event: Option<&str>, value: &serde_json::Value) -> Option<String> {
         let named = |name: &str| {
             value
                 .get("hook_event_name")
@@ -368,12 +337,11 @@ impl Harness {
                 == Some(name)
         };
         let carries = match &self.kind {
-            Kind::Claude | Kind::Review => named("UserPromptSubmit"),
-            Kind::Gemini => named("BeforeAgent"),
-            Kind::Copilot => event == Some("userPromptSubmitted"),
+            Kind::Own(OwnAgent::Claude) | Kind::Review => named("UserPromptSubmit"),
+            Kind::Own(OwnAgent::Gemini) => named("BeforeAgent"),
+            Kind::Own(OwnAgent::Copilot) => event == Some("userPromptSubmitted"),
             // An agent the person added has no hooks to report one.
-            Kind::Codex
-            | Kind::OpenCode
+            Kind::Own(OwnAgent::Codex | OwnAgent::OpenCode)
             | Kind::Shell
             | Kind::Checks
             | Kind::Added(_)
@@ -389,12 +357,11 @@ impl Harness {
     /// its route carries it: Claude Code's `Stop` (`last_assistant_message`)
     /// and Gemini CLI's `AfterAgent` (`prompt_response`); a chat whose
     /// first prompt said little is named by it too.
-    pub(crate) fn answer(&self, body: &[u8]) -> Option<String> {
-        let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    pub(crate) fn answer(&self, value: &serde_json::Value) -> Option<String> {
         let event = value.get("hook_event_name")?.as_str()?;
         let field = match (&self.kind, event) {
-            (Kind::Claude, "Stop") => "last_assistant_message",
-            (Kind::Gemini, "AfterAgent") => "prompt_response",
+            (Kind::Own(OwnAgent::Claude), "Stop") => "last_assistant_message",
+            (Kind::Own(OwnAgent::Gemini), "AfterAgent") => "prompt_response",
             _ => return None,
         };
         let answer = value.get(field)?.as_str()?;
@@ -408,15 +375,15 @@ impl Harness {
         match &self.kind {
             Kind::Added(agent) => agent.asking(),
             Kind::Shell | Kind::Checks | Kind::Review | Kind::Panel(_) => None,
-            _ => muster_core::ask::built_in(self.id()),
+            Kind::Own(agent) => muster_core::ask::built_in(agent.id()),
         }
     }
 
     /// What a report says the session has used, for a harness that reports
     /// it: `OpenCode`'s plugin, at each turn's end.
-    pub(crate) fn spend(&self, body: &[u8]) -> Option<muster_core::Spend> {
+    pub(crate) fn spend(&self, payload: &serde_json::Value) -> Option<muster_core::Spend> {
         match self.kind {
-            Kind::OpenCode => opencode::spend(body),
+            Kind::Own(OwnAgent::OpenCode) => opencode::spend(payload),
             _ => None,
         }
     }
@@ -426,8 +393,8 @@ impl Harness {
     /// names.
     pub(crate) fn read_title(&self, title: &str) -> Option<TitleState> {
         match &self.kind {
-            Kind::Codex => codex::read_title(title),
-            Kind::Gemini => gemini::read_title(title),
+            Kind::Own(OwnAgent::Codex) => codex::read_title(title),
+            Kind::Own(OwnAgent::Gemini) => gemini::read_title(title),
             Kind::Added(agent) => agent.title.read(title).map(|says| match says {
                 TitleSays::Working => TitleState::Working,
                 TitleSays::Ready => TitleState::Ready,
@@ -443,7 +410,7 @@ impl Harness {
     /// it waits with.
     pub(crate) fn title_reports_waits(&self) -> bool {
         match &self.kind {
-            Kind::Codex => true,
+            Kind::Own(OwnAgent::Codex) => true,
             Kind::Added(agent) => agent.title.waiting.is_some(),
             _ => false,
         }
@@ -453,7 +420,7 @@ impl Harness {
     /// `None` if it cannot tell, and the resume is tried.
     pub(crate) fn has_conversation(&self, agent_session: &str) -> Option<bool> {
         match self.kind {
-            Kind::Claude | Kind::Review => transcript::projects_dir()
+            Kind::Own(OwnAgent::Claude) | Kind::Review => transcript::projects_dir()
                 .and_then(|projects| transcript::exists(&projects, agent_session)),
             _ => None,
         }
@@ -463,6 +430,13 @@ impl Harness {
     pub(crate) fn prepare_support(&self, dir: &std::path::Path) -> std::io::Result<()> {
         support::prepare(&self.kind, dir)
     }
+}
+
+/// A hook's body as the receiver reads it (`hooks::HookDelivery`), for
+/// tests written with bodies as text.
+#[cfg(test)]
+pub(crate) fn json(body: &[u8]) -> serde_json::Value {
+    serde_json::from_slice(body).unwrap_or(serde_json::Value::Null)
 }
 
 /// Where a session's hooks report to, and the token that names the session.
@@ -659,15 +633,15 @@ fn on_host(
             own("SHELL").unwrap_or_else(|| "/bin/sh".to_owned()),
             Vec::new(),
         ),
-        Kind::Claude => ("claude".to_owned(), claude::arguments(launch)),
+        Kind::Own(OwnAgent::Claude) => ("claude".to_owned(), claude::arguments(launch)),
         Kind::Review => {
             // Plan mode, resumed or not: a review changes nothing.
             let mut args = vec!["--permission-mode".to_owned(), "plan".to_owned()];
             args.extend(claude::arguments(launch));
             ("claude".to_owned(), args)
         }
-        Kind::Codex => ("codex".to_owned(), codex::arguments(launch, &place)),
-        Kind::Gemini => {
+        Kind::Own(OwnAgent::Codex) => ("codex".to_owned(), codex::arguments(launch, &place)),
+        Kind::Own(OwnAgent::Gemini) => {
             // A defaults file the person named stays theirs.
             if let Some(dir) = support.filter(|_| own(gemini::DEFAULTS_VARIABLE).is_none()) {
                 let defaults = support::gemini_defaults(dir);
@@ -678,7 +652,7 @@ fn on_host(
             }
             ("gemini".to_owned(), gemini::arguments(launch))
         }
-        Kind::OpenCode => {
+        Kind::Own(OwnAgent::OpenCode) => {
             if let Some(dir) = support {
                 let plugin = support::opencode_plugin(dir);
                 let content = opencode::config_content(
@@ -691,7 +665,7 @@ fn on_host(
             }
             ("opencode".to_owned(), opencode::arguments(launch, &place))
         }
-        Kind::Copilot => {
+        Kind::Own(OwnAgent::Copilot) => {
             let plugin =
                 support.map(|dir| support::copilot_plugin(dir).to_string_lossy().into_owned());
             (
@@ -753,7 +727,7 @@ fn in_container(
     secret: Option<&Secret>,
     mut env: Vec<(String, String)>,
 ) -> SpawnSpec {
-    if let Some(secret) = secret.filter(|_| harness.kind == Kind::Claude) {
+    if let Some(secret) = secret.filter(|_| harness.kind == Kind::Own(OwnAgent::Claude)) {
         env.push((secret.variable.to_owned(), secret.value().to_owned()));
     }
     let mut args: Vec<String> = ["exec", "--interactive", "--tty"]
@@ -765,16 +739,13 @@ fn in_container(
     }
     let kind = match harness.kind {
         // A review never runs in a container (`place_for` refuses agents).
-        Kind::Claude | Kind::Review => "claude",
+        Kind::Own(OwnAgent::Claude) | Kind::Review => "claude",
         // Other agents never run in a container either (`place_for`), nor
         // a plugin's panel (`start_panel`), and checks never by hand: a run
         // checks its own work.
         Kind::Shell
         | Kind::Checks
-        | Kind::Codex
-        | Kind::Gemini
-        | Kind::OpenCode
-        | Kind::Copilot
+        | Kind::Own(OwnAgent::Codex | OwnAgent::Gemini | OwnAgent::OpenCode | OwnAgent::Copilot)
         | Kind::Added(_)
         | Kind::Panel(_) => "shell",
     };

@@ -61,6 +61,19 @@ thread_local! {
     static SCREEN: RefCell<Option<Screen>> = const { RefCell::new(None) };
 }
 
+/// Runs `then` on the notch on screen, if there is one and AppKit has not
+/// called in while it is in use: a panic here would cross into AppKit,
+/// so a call that comes back in finds it busy and does nothing.
+fn with_screen(then: impl FnOnce(&mut Screen)) {
+    SCREEN.with(|screen| {
+        if let Ok(mut screen) = screen.try_borrow_mut()
+            && let Some(screen) = screen.as_mut()
+        {
+            then(screen);
+        }
+    });
+}
+
 /// Shows the notch until the link ends, on this thread, which must be the
 /// program's main thread.
 pub(crate) fn run(
@@ -120,16 +133,14 @@ fn follow(
     if let Ended::NoDaemon(why) = &ended {
         eprintln!("muster notch: {why}");
     }
-    std::process::exit(0);
+    // On the main thread, once what it has queued is done: never in the
+    // middle of AppKit's work there.
+    DispatchQueue::main().exec_async(|| std::process::exit(0));
 }
 
 /// Hands an update to the screen; runs on the main queue.
 fn on_main(update: ToScreen) {
-    SCREEN.with(|screen| {
-        if let Some(screen) = screen.borrow_mut().as_mut() {
-            screen.update(update);
-        }
-    });
+    with_screen(|screen| screen.update(update));
 }
 
 /// What AppKit says of the screens now.
@@ -185,14 +196,7 @@ define_class!(
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, _event: &NSEvent) {
             let at = NSEvent::mouseLocation();
-            // Not borrowed now: AppKit calls this between updates.
-            SCREEN.with(|screen| {
-                if let Ok(mut screen) = screen.try_borrow_mut()
-                    && let Some(screen) = screen.as_mut()
-                {
-                    screen.clicked((at.x, at.y));
-                }
-            });
+            with_screen(|screen| screen.clicked((at.x, at.y)));
         }
     }
 );

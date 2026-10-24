@@ -20,6 +20,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
@@ -161,15 +163,9 @@ fn count(folder: &Path, hook: &str, event: &str) -> usize {
 /// Waits until `hook` has heard `event` `times` times, at most ten seconds;
 /// the event as it was given the last time.
 fn wait_heard(folder: &Path, hook: &str, event: &str, times: usize) -> Value {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while count(folder, hook, event) < times {
-        assert!(
-            Instant::now() < deadline,
-            "{hook} never heard {event} {times} times: {:#?}",
-            heard(folder)
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    wait::until(&format!("{hook} to hear {event} {times} times"), || {
+        count(folder, hook, event) >= times
+    });
     let start = format!("{hook} {event} ");
     let line = heard(folder)
         .into_iter()
@@ -313,13 +309,9 @@ async fn a_hook_hears_each_event_of_an_agent_s_session_and_its_worktree_once_as_
     fire("Stop", json!({ "stop_hook_active": false }));
     status(&mut connection, session, SessionStatus::Finished).await;
     let finished_at = Instant::now();
-    std::thread::sleep(Duration::from_millis(1_000));
-    assert_eq!(
-        count(&folder, "all", "session.finished"),
-        0,
-        "{:#?}",
-        heard(&folder)
-    );
+    wait::holds("no finish told yet", Duration::from_millis(1_000), || {
+        count(&folder, "all", "session.finished") == 0
+    });
     let finished = wait_heard(&folder, "all", "session.finished", 1);
     assert!(finished_at.elapsed() >= Duration::from_secs(2));
     assert_eq!(finished["session"]["status"], "finished");
@@ -339,8 +331,9 @@ async fn a_hook_hears_each_event_of_an_agent_s_session_and_its_worktree_once_as_
         .await
         .unwrap();
     wait_heard(&folder, "all", "session.ended", 2);
-    std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(count(&folder, "all", "session.error"), 1);
+    wait::holds("one error only", Duration::from_millis(300), || {
+        count(&folder, "all", "session.error") == 1
+    });
 
     connection
         .command(Command::RemoveWorktree {
@@ -354,8 +347,9 @@ async fn a_hook_hears_each_event_of_an_agent_s_session_and_its_worktree_once_as_
 
     // Each once; none for a project the filter does not name, and the
     // shell's start never.
-    std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(count(&folder, "all", "session.started"), 2);
+    wait::holds("each told once", Duration::from_millis(300), || {
+        count(&folder, "all", "session.started") == 2
+    });
     assert_eq!(count(&folder, "all", "session.needs_you"), 2);
     assert_eq!(count(&folder, "away", "session.needs_you"), 1);
     assert_eq!(count(&folder, "looking", "session.needs_you"), 1);
@@ -385,8 +379,11 @@ async fn a_plugin_turned_off_hears_nothing_and_turned_on_hears_again() {
     let project = project(&mut connection, &sandbox).await;
     ok(&sandbox, &["disable", "recorder"]);
     worktree(&mut connection, project, "quiet").await;
-    std::thread::sleep(Duration::from_millis(1_000));
-    assert_eq!(heard(&folder), Vec::<String>::new());
+    wait::holds(
+        "a hook turned off hears nothing",
+        Duration::from_millis(1_000),
+        || heard(&folder).is_empty(),
+    );
     ok(&sandbox, &["enable", "recorder", "--yes"]);
     worktree(&mut connection, project, "heard").await;
     let created = wait_heard(&folder, "all", "worktree.created", 1);
@@ -396,8 +393,11 @@ async fn a_plugin_turned_off_hears_nothing_and_turned_on_hears_again() {
     let changed = std::fs::read_to_string(&manifest).unwrap() + "\n# changed\n";
     std::fs::write(&manifest, changed).unwrap();
     worktree(&mut connection, project, "changed").await;
-    std::thread::sleep(Duration::from_millis(1_000));
-    assert_eq!(count(&folder, "all", "worktree.created"), 1);
+    wait::holds(
+        "a changed manifest hears nothing",
+        Duration::from_millis(1_000),
+        || count(&folder, "all", "worktree.created") == 1,
+    );
     let log = ok(&sandbox, &["log", "recorder"]);
     assert!(
         log.contains("not run: its manifest changed since you approved it"),
@@ -483,13 +483,9 @@ async fn a_finish_still_held_as_muster_reloads_is_told_once_by_the_daemon_that_t
     assert!(reloaded.status.success(), "{}", said(&reloaded));
     let finished = wait_heard(&folder, "all", "session.finished", 1);
     assert_eq!(finished["session"]["id"], session.to_string());
-    std::thread::sleep(Duration::from_secs(3));
-    assert_eq!(
-        count(&folder, "all", "session.finished"),
-        1,
-        "{:#?}",
-        heard(&folder)
-    );
+    wait::holds("the finish told only once", Duration::from_secs(3), || {
+        count(&folder, "all", "session.finished") == 1
+    });
 }
 
 #[tokio::test]
@@ -506,11 +502,7 @@ async fn a_reload_gives_a_hook_under_way_its_grace_then_cuts_it() {
     let project = project(&mut connection, &sandbox).await;
     worktree(&mut connection, project, "work").await;
     let pid_file = folder.join("pid");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !pid_file.exists() {
-        assert!(Instant::now() < deadline, "the hook never started");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    wait::until("the hook to start", || pid_file.exists());
     let pid: i32 = std::fs::read_to_string(&pid_file)
         .unwrap()
         .trim()
@@ -521,11 +513,9 @@ async fn a_reload_gives_a_hook_under_way_its_grace_then_cuts_it() {
     let reloaded = sandbox.run(&["reload"]);
     assert!(reloaded.status.success(), "{}", said(&reloaded));
     assert!(reloading.elapsed() >= Duration::from_secs(2));
-    let gone = Instant::now() + Duration::from_secs(5);
-    while nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok() {
-        assert!(Instant::now() < gone, "the hook outlived the reload");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    wait::until("the hook to go with the reload", || {
+        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_err()
+    });
     assert!(!folder.join("finished").exists());
     let log = daemon.log();
     assert!(log.contains("cut a hook's run"), "{log}");
@@ -573,26 +563,15 @@ async fn the_notify_webhook_example_posts_each_event_to_its_webhook() {
         "PermissionRequest",
         &payload(&agent, "PermissionRequest", &tool),
     );
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let text = loop {
+    let text = wait::found("the permission posted", || {
         let last = posted
             .lock()
             .unwrap()
             .last()
             .map(support::http::Request::json);
-        if let Some(text) = last
-            .and_then(|body| body["text"].as_str().map(str::to_owned))
+        last.and_then(|body| body["text"].as_str().map(str::to_owned))
             .filter(|text| text.ends_with("needs your permission"))
-        {
-            break text;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "nothing posted: {:?}",
-            posted.lock().unwrap()
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    };
+    });
     assert!(text.starts_with("app · work · "), "{text}");
     // Its secret, the webhook's address, never in its log.
     let log = ok(&sandbox, &["log", "notify-webhook"]);

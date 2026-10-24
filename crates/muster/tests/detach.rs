@@ -16,9 +16,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::{Duration, Instant};
 
 use muster_client::Connection;
 use muster_core::protocol::{Command, Reply, TermSize};
@@ -78,17 +79,12 @@ fn detach(sandbox: &Sandbox, before: &str, env: &[(&str, &str)]) -> (u32, String
         std::fs::read_to_string(&said).unwrap()
     );
     let socket = sandbox.paths().socket();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !answers_hello(&socket) {
-        assert!(
-            Instant::now() < deadline,
-            "the daemon did not start; the starter said:\n{}\nits log:\n{}",
-            std::fs::read_to_string(&said).unwrap(),
-            std::fs::read_to_string(sandbox.paths().runtime_dir.join("daemon.log"))
-                .unwrap_or_default()
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    assert!(
+        wait::within(wait::WAIT, || answers_hello(&socket).then_some(())).is_some(),
+        "the daemon did not start; the starter said:\n{}\nits log:\n{}",
+        std::fs::read_to_string(&said).unwrap(),
+        std::fs::read_to_string(sandbox.paths().runtime_dir.join("daemon.log")).unwrap_or_default()
+    );
     (
         daemon_pid(&socket).unwrap(),
         std::fs::read_to_string(&said).unwrap(),

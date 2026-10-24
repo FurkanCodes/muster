@@ -30,14 +30,14 @@ impl App {
         // Moving, the pointer only lights what it could take hold of, and
         // reaches the program in a session that asked for it.
         if event.kind == MouseEventKind::Moved {
-            self.hover = self.grab_under(at);
+            self.panels.hover = self.grab_under(at);
             return match self.mode {
                 Mode::Terminal(session) if !self.welcome => self.terminal_mouse(session, event),
                 _ => Vec::new(),
             };
         }
         let actions = self.pointer(event);
-        self.hover = self.grab_under(at);
+        self.panels.hover = self.grab_under(at);
         actions
     }
 
@@ -278,22 +278,22 @@ impl App {
             }
             View::NeedsYou => {
                 let heights = self.needs_heights();
-                if let Some(index) = line_at(list, row, &heights, self.needs_offset) {
-                    self.needs_selected = Some(self.needs_list[index]);
+                if let Some(index) = line_at(list, row, &heights, self.needs.offset) {
+                    self.needs.selected = Some(self.needs.list[index]);
                 }
             }
             View::Tickets => {
                 let rows = self.ticket_rows();
                 let heights = vec![1; rows.len()];
-                if let Some(index) = line_at(list, row, &heights, self.tickets_offset) {
-                    self.tickets_selected = Some(rows[index].clone());
+                if let Some(index) = line_at(list, row, &heights, self.tickets.offset) {
+                    self.tickets.selected = Some(rows[index].clone());
                 }
             }
             View::Settings => {
                 let rows = self.setting_rows();
                 let heights = vec![1; rows.len()];
-                if let Some(index) = line_at(list, row, &heights, self.settings_offset) {
-                    self.settings_selected = Some(rows[index]);
+                if let Some(index) = line_at(list, row, &heights, self.settings.offset) {
+                    self.settings.selected = Some(rows[index]);
                 }
             }
         }

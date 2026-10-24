@@ -11,7 +11,7 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
@@ -149,48 +149,39 @@ impl Ui {
 
     /// Waits until the screen shows `wanted`.
     pub(crate) fn wait_for(&self, wanted: &str) {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while !self.text().contains(wanted) {
-            assert!(
-                Instant::now() < deadline,
-                "never saw {wanted:?}; the screen:\n{}",
-                self.text()
-            );
-            std::thread::sleep(Duration::from_millis(25));
+        if crate::support::wait::within(crate::support::wait::WAIT, || {
+            self.text().contains(wanted).then_some(())
+        })
+        .is_none()
+        {
+            panic!("never saw {wanted:?}; the screen:\n{}", self.text());
         }
     }
 
     /// Waits until the screen no longer shows `gone`.
     pub(crate) fn wait_without(&self, gone: &str) {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while self.text().contains(gone) {
-            assert!(
-                Instant::now() < deadline,
-                "still showing {gone:?}; the screen:\n{}",
-                self.text()
-            );
-            std::thread::sleep(Duration::from_millis(25));
+        if crate::support::wait::within(crate::support::wait::WAIT, || {
+            (!self.text().contains(gone)).then_some(())
+        })
+        .is_none()
+        {
+            panic!("still showing {gone:?}; the screen:\n{}", self.text());
         }
     }
 
     /// Waits until the UI has written `wanted` to its terminal, escape
     /// sequences and all.
     pub(crate) fn wait_for_written(&self, wanted: &[u8]) {
-        let deadline = Instant::now() + Duration::from_secs(15);
-        while !self
-            .written
-            .lock()
-            .unwrap()
-            .windows(wanted.len())
-            .any(|window| window == wanted)
-        {
-            assert!(
-                Instant::now() < deadline,
-                "never wrote {:?}",
-                String::from_utf8_lossy(wanted)
-            );
-            std::thread::sleep(Duration::from_millis(25));
-        }
+        crate::support::wait::until(
+            &format!("it to write {:?}", String::from_utf8_lossy(wanted)),
+            || {
+                self.written
+                    .lock()
+                    .unwrap()
+                    .windows(wanted.len())
+                    .any(|window| window == wanted)
+            },
+        );
     }
 
     /// Where `text` first starts on screen, as (column, row).
@@ -218,8 +209,10 @@ impl Ui {
 
     pub(crate) fn keys(&mut self, bytes: &[u8]) {
         self.input.send(bytes.to_vec()).unwrap();
-        // Let the UI read one burst at a time, as typing would.
-        std::thread::sleep(Duration::from_millis(60));
+        crate::support::wait::passes(
+            Duration::from_millis(60),
+            "the UI reading one burst at a time, as typing comes",
+        );
     }
 
     /// A left click at `column`, `row` of the screen (from 0), as the
@@ -253,14 +246,7 @@ impl Ui {
     }
 
     pub(crate) fn wait_for_exit(&mut self) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if let Some(status) = self.child.try_wait().unwrap() {
-                return status.success();
-            }
-            assert!(Instant::now() < deadline, "the UI did not quit");
-            std::thread::sleep(Duration::from_millis(25));
-        }
+        crate::support::wait::found("the UI to quit", || self.child.try_wait().unwrap()).success()
     }
 }
 

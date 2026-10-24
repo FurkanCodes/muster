@@ -17,7 +17,9 @@ use ratatui::text::{Line, Span, Text};
 
 use super::settings::detail;
 use super::shorten;
+use super::theme::Theme;
 use crate::app::{App, PluginKey, SettingRow};
+use crate::cells;
 
 /// A row of the section after its edge: the heading, a plugin, or *add a
 /// plugin*.
@@ -36,11 +38,12 @@ pub(super) fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static
 /// columns lined up with the others', and those that do not fit left out,
 /// the version first, then where it is from.
 fn plugin_line(app: &App, plugin: &PluginInfo, width: usize) -> Line<'static> {
+    let theme = super::theme::of(app);
     let plugins = app.model.plugins();
     let widest = |of: &dyn Fn(&PluginInfo) -> String, most: usize| {
         plugins
             .iter()
-            .map(|plugin| of(plugin).chars().count())
+            .map(|plugin| cells::width(&of(plugin)))
             .max()
             .unwrap_or(0)
             .min(most)
@@ -54,10 +57,13 @@ fn plugin_line(app: &App, plugin: &PluginInfo, width: usize) -> Line<'static> {
     let show_source = width >= base + 1 + source_width;
     let show_version = width >= base + 1 + source_width + 1 + version_width;
 
-    let (mark, state) = if app.plugin_changing == PluginKey::of(&plugin.id) {
+    let (mark, state) = if app.settings.plugin_changing == PluginKey::of(&plugin.id) {
         (Span::from("○ ").dim(), Span::from("…  ").dim())
     } else if plugin.runs() {
-        (Span::from("● ").green(), Span::from("on ").green().bold())
+        (
+            Span::from("● ").fg(theme.done),
+            Span::from("on ").fg(theme.done).bold(),
+        )
     } else {
         (Span::from("○ ").dim(), Span::from("off").dim())
     };
@@ -80,7 +86,7 @@ fn plugin_line(app: &App, plugin: &PluginInfo, width: usize) -> Line<'static> {
     }
     spans.push(Span::raw(" "));
     spans.push(state);
-    let used: usize = spans.iter().map(|span| span.content.chars().count()).sum();
+    let used: usize = spans.iter().map(|span| cells::width(&span.content)).sum();
     let room = width.saturating_sub(used + 2);
     if room >= 4 {
         spans.push(Span::raw("  "));
@@ -93,8 +99,9 @@ fn plugin_line(app: &App, plugin: &PluginInfo, width: usize) -> Line<'static> {
 /// run; else a change made from the command line, with when; else what it
 /// brings.
 fn tail(app: &App, plugin: &PluginInfo, room: usize) -> Span<'static> {
+    let theme = super::theme::of(app);
     if let Some(problem) = &plugin.problem {
-        return Span::from(shorten(problem_word(problem), room)).red();
+        return Span::from(shorten(problem_word(problem), room)).fg(theme.waiting);
     }
     if let Some(change) = plugin
         .changed
@@ -105,9 +112,9 @@ fn tail(app: &App, plugin: &PluginInfo, room: usize) -> Span<'static> {
             format!("{} {}", change.what.words(), change.by.words()),
         ]
         .into_iter()
-        .find(|text| text.chars().count() <= room)
+        .find(|text| cells::width(text) <= room)
         .unwrap_or_else(|| change.by.words().to_owned());
-        return Span::from(shorten(&text, room)).yellow();
+        return Span::from(shorten(&text, room)).fg(theme.working);
     }
     Span::from(shorten(&brings(app, plugin), room)).dim()
 }
@@ -234,6 +241,7 @@ pub(super) fn details(app: &App, row: SettingRow) -> Text<'static> {
 
 /// What plugins are, and how one is added.
 fn section_text(app: &App) -> Text<'static> {
+    let theme = super::theme::of(app);
     let mut lines = vec![
         Line::from("Plugins").bold(),
         Line::from(
@@ -260,7 +268,8 @@ fn section_text(app: &App) -> Text<'static> {
     if let Some(problem) = &app.model.preferences().problem {
         lines.extend([
             Line::from(""),
-            Line::from("Muster's own settings do not read, so no plugin of yours runs:").red(),
+            Line::from("Muster's own settings do not read, so no plugin of yours runs:")
+                .fg(theme.waiting),
             Line::from(one_line(problem)),
         ]);
     }
@@ -279,6 +288,7 @@ fn section_text(app: &App) -> Text<'static> {
 /// where it is from, everything it runs, what it needs and is given, and
 /// its last change.
 fn plugin_text(app: &App, plugin: &PluginInfo) -> Text<'static> {
+    let theme = super::theme::of(app);
     let mut lines = vec![Line::from(format!("{} {}", name(plugin), version(plugin))).bold()];
     if let Some(description) = plugin.details.as_ref().and_then(|d| d.description.as_ref()) {
         lines.push(Line::from(one_line(description)));
@@ -286,7 +296,7 @@ fn plugin_text(app: &App, plugin: &PluginInfo) -> Text<'static> {
     lines.push(Line::from(""));
     lines.push(match (&plugin.problem, plugin.enabled) {
         (None, true) => Line::from(vec![
-            Span::from("On").green().bold(),
+            Span::from("On").fg(theme.done).bold(),
             Span::raw(": it runs."),
         ]),
         (None, false) => Line::from(vec![Span::from("Off").bold(), Span::raw(".")]),
@@ -297,7 +307,7 @@ fn plugin_text(app: &App, plugin: &PluginInfo) -> Text<'static> {
                 "Off, and cannot be turned on: "
             })
             .bold(),
-            Span::from(format!("{}.", problem.to_string().trim_end_matches('.'))).red(),
+            Span::from(format!("{}.", problem.to_string().trim_end_matches('.'))).fg(theme.waiting),
         ]),
     });
     lines.push(Line::from(""));
@@ -311,7 +321,7 @@ fn plugin_text(app: &App, plugin: &PluginInfo) -> Text<'static> {
             format!("Muster {} or later", one_line(&details.muster)),
         ));
         lines.push(Line::from(""));
-        lines.extend(runs_lines(details));
+        lines.extend(runs_lines(details, theme));
     } else {
         lines.push(Line::from(""));
         lines.push(Line::from("Its manifest does not read, so what it runs is not known.").dim());
@@ -325,7 +335,7 @@ fn plugin_text(app: &App, plugin: &PluginInfo) -> Text<'static> {
             .unwrap_or_default();
         lines.push(Line::from(""));
         lines.push(match change.by {
-            ChangedBy::CommandLine => Line::from(words).yellow(),
+            ChangedBy::CommandLine => Line::from(words).fg(theme.working),
             ChangedBy::Ui => Line::from(words).dim(),
         });
     }
@@ -357,7 +367,7 @@ pub(super) fn source_text(source: &PluginSource) -> String {
 /// Everything a plugin runs, the programs it needs and whether each is
 /// found, and the variables and secrets it is given: for its details and
 /// its preview.
-pub(super) fn runs_lines(details: &PluginDetails) -> Vec<Line<'static>> {
+pub(super) fn runs_lines(details: &PluginDetails, theme: Theme) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from("It runs").bold()];
     for panel in &details.panels {
         let beside = match panel.on {
@@ -372,14 +382,14 @@ pub(super) fn runs_lines(details: &PluginDetails) -> Vec<Line<'static>> {
             "  panel {} ({beside}{key})",
             one_line(&panel.title)
         )));
-        lines.push(Line::from(format!("    {}", command_line(&panel.command))).cyan());
+        lines.push(Line::from(format!("    {}", command_line(&panel.command))).fg(theme.news));
     }
     if let Some(tickets) = &details.tickets {
         lines.push(Line::from(format!(
             "  ticket source {}",
             one_line(&tickets.name)
         )));
-        lines.push(Line::from(format!("    {}", command_line(&tickets.command))).cyan());
+        lines.push(Line::from(format!("    {}", command_line(&tickets.command))).fg(theme.news));
     }
     for hook in &details.hooks {
         lines.push(Line::from(format!(
@@ -394,7 +404,7 @@ pub(super) fn runs_lines(details: &PluginDetails) -> Vec<Line<'static>> {
                 one_line(&hook.when.words())
             )));
         }
-        lines.push(Line::from(format!("    {}", command_line(&hook.command))).cyan());
+        lines.push(Line::from(format!("    {}", command_line(&hook.command))).fg(theme.news));
     }
     if !details.requires.is_empty() {
         lines.push(Line::from(""));
@@ -403,9 +413,9 @@ pub(super) fn runs_lines(details: &PluginDetails) -> Vec<Line<'static>> {
             lines.push(Line::from(vec![
                 Span::raw(format!("  {}  ", one_line(&required.program))),
                 if required.found {
-                    Span::from("found").green()
+                    Span::from("found").fg(theme.done)
                 } else {
-                    Span::from("not found").red()
+                    Span::from("not found").fg(theme.waiting)
                 },
             ]));
         }
@@ -440,7 +450,7 @@ pub(super) fn hints(app: &App, row: SettingRow) -> Vec<String> {
     match row {
         SettingRow::Plugin(key) => {
             if let Some(plugin) = app.plugin(key)
-                && app.plugin_changing.is_none()
+                && app.settings.plugin_changing.is_none()
             {
                 hints.push(if plugin.runs() {
                     "space turn off".to_owned()

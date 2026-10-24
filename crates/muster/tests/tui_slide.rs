@@ -16,10 +16,10 @@
 )]
 
 mod support;
+
+use support::wait;
 #[path = "tui/ui.rs"]
 mod ui;
-
-use std::time::{Duration, Instant};
 
 use support::Sandbox;
 use ui::{StopDaemon, Ui};
@@ -40,15 +40,11 @@ fn list(ui: &Ui) -> String {
 
 /// Waits for the list to show `wanted`.
 fn wait_in_list(ui: &Ui, wanted: &str) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while !list(ui).contains(wanted) {
-        assert!(
-            Instant::now() < deadline,
-            "never {wanted:?} in the list: {}",
-            ui.text()
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    assert!(
+        wait::within(wait::WAIT, || list(ui).contains(wanted).then_some(())).is_some(),
+        "never {wanted:?} in the list: {}",
+        ui.text()
+    );
 }
 
 #[test]

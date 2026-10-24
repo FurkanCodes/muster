@@ -18,11 +18,12 @@
 
 mod support;
 
+use support::wait;
+
 use std::io::{Read as _, Write as _};
 use std::path::PathBuf;
 use std::process::Output;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use muster_core::protocol::{Command, Reply, Snapshot};
 use muster_core::{Session, SessionStatus, WorkspaceId};
@@ -85,26 +86,20 @@ impl Setup {
 
     /// The workspace on `branch`, once it is there.
     async fn workspace(&self, branch: &str) -> WorkspaceId {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let found = self
-                .snapshot()
+        wait::found_async(&format!("a workspace on {branch}"), async || {
+            self.snapshot()
                 .await
                 .workspaces
                 .into_iter()
-                .find(|workspace| workspace.kind.in_git() && workspace.kind.branch() == branch);
-            if let Some(found) = found {
-                return found.id;
-            }
-            assert!(Instant::now() < deadline, "no workspace on {branch}");
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+                .find(|workspace| workspace.kind.in_git() && workspace.kind.branch() == branch)
+                .map(|found| found.id)
+        })
+        .await
     }
 
     /// The sessions in `workspace`, oldest first, once `count` are there.
     async fn sessions_in(&self, workspace: WorkspaceId, count: usize) -> Vec<Session> {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
+        wait::found_async(&format!("{count} sessions in {workspace}"), async || {
             let mut found: Vec<Session> = self
                 .snapshot()
                 .await
@@ -113,26 +108,17 @@ impl Setup {
                 .filter(|session| session.workspace == workspace)
                 .collect();
             found.sort_by_key(|session| (session.created_at, session.id));
-            if found.len() >= count {
-                return found;
-            }
-            assert!(Instant::now() < deadline, "{found:?}");
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+            (found.len() >= count).then_some(found)
+        })
+        .await
     }
 
     /// What `session` shows, until it shows `wanted`.
     fn until_shown(&self, session: &Session, wanted: &str) {
         let id = session.id.to_string();
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let shown = text(&self.run(&["logs", &id]).stdout);
-            if shown.contains(wanted) {
-                return;
-            }
-            assert!(Instant::now() < deadline, "no {wanted:?} in:\n{shown}");
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        wait::until(&format!("{wanted:?} in the session"), || {
+            text(&self.run(&["logs", &id]).stdout).contains(wanted)
+        });
     }
 }
 
@@ -199,27 +185,19 @@ impl Tab {
 
     /// Waits until the screen shows `wanted`.
     fn shows(&self, wanted: &str) {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let contents = self.screen.lock().unwrap().screen().contents();
-            if contents.contains(wanted) {
-                return;
-            }
-            assert!(Instant::now() < deadline, "no {wanted:?} on:\n{contents}");
-            std::thread::sleep(Duration::from_millis(30));
-        }
+        wait::until(&format!("{wanted:?} on the screen"), || {
+            self.screen
+                .lock()
+                .unwrap()
+                .screen()
+                .contents()
+                .contains(wanted)
+        });
     }
 
     /// Waits for `muster` to end, saying whether it succeeded.
     fn ends(&mut self) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if let Some(status) = self.child.try_wait().unwrap() {
-                return status.success();
-            }
-            assert!(Instant::now() < deadline, "the tab is still open");
-            std::thread::sleep(Duration::from_millis(30));
-        }
+        wait::found("the tab to close", || self.child.try_wait().unwrap()).success()
     }
 }
 
@@ -377,7 +355,7 @@ async fn an_agent_started_in_a_workspace_s_terminal_belongs_to_it_and_takes_the_
 async fn init_s_functions_run_a_bare_agent_in_its_terminal_prd_13_arc_28() {
     let setup = setup().await;
     let printed = text(&setup.run(&["init", "bash"]).stdout);
-    assert!(printed.contains("claude() {"), "{printed}");
+    assert!(printed.contains("function claude {"), "{printed}");
     let script = setup.sandbox.root().join("muster-init.sh");
     std::fs::write(&script, &printed).unwrap();
 
@@ -385,32 +363,29 @@ async fn init_s_functions_run_a_bare_agent_in_its_terminal_prd_13_arc_28() {
     let workspace = setup.workspace("muster/fix-login").await;
     let mut tab = Tab::open(&setup, &["enter", "fix-login"]);
     setup.sessions_in(workspace, 1).await;
+    // Read by bash, whose functions they are, as its rc file would.
+    tab.type_in(b"exec bash --norc --noprofile\r");
     let source = format!(". '{}'; echo sourced-$((5+5))\r", script.display());
     tab.type_in(source.as_bytes());
     tab.shows("sourced-10");
     // `claude` runs in this terminal, its chat named by its prompt: no
     // other session.
     tab.type_in(b"claude Fix it\r");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let terminal = loop {
+    let terminal = wait::found_async("Claude Code in the terminal, named", async || {
         let sessions = setup.sessions_in(workspace, 1).await;
         assert_eq!(sessions.len(), 1, "{sessions:?}");
         let terminal = sessions.into_iter().next().unwrap();
         let claude = terminal.agent.as_ref().map(|agent| agent.harness.as_str());
-        if claude == Some("claude") && terminal.title == "Fix it" {
-            break terminal;
-        }
-        assert!(Instant::now() < deadline, "{terminal:?}");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    };
+        (claude == Some("claude") && terminal.title == "Fix it").then_some(terminal)
+    })
+    .await;
     assert_eq!(terminal.harness, "shell");
     // It ends (the stand-in is a shell by now): the terminal again.
     tab.type_in(b"exit\r");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while setup.sessions_in(workspace, 1).await[0].agent.is_some() {
-        assert!(Instant::now() < deadline, "the agent never left");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait::until_async("the agent to leave", async || {
+        setup.sessions_in(workspace, 1).await[0].agent.is_none()
+    })
+    .await;
     tab.type_in(b"\x11");
     assert!(tab.ends());
 }

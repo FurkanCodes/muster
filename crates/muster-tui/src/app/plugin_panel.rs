@@ -8,7 +8,7 @@
 //! it gives it the keys, and a click elsewhere or Shift-Q takes them back.
 
 use muster_core::keys::PanelAction;
-use muster_core::plugins::{PANELS_PROTOCOL, Panel, PanelOn};
+use muster_core::plugins::{Panel, PanelOn};
 use muster_core::protocol::plugins::{Beside, PluginCommand};
 use muster_core::protocol::{Command, TermSize};
 use muster_core::{SessionId, harness};
@@ -24,7 +24,7 @@ impl App {
                 Some(Row::Session(session)) => Some(session),
                 _ => None,
             },
-            View::NeedsYou => self.needs_selected,
+            View::NeedsYou => self.needs.selected,
             View::Tickets | View::Settings => None,
         }
     }
@@ -80,7 +80,7 @@ impl App {
         };
         let opened = match self.view {
             View::Sessions => self.selected == Some(Row::Session(session)),
-            View::NeedsYou => self.needs_selected == Some(session),
+            View::NeedsYou => self.needs.selected == Some(session),
             View::Tickets | View::Settings => true,
         };
         let panel = self
@@ -150,13 +150,6 @@ impl App {
         let Some(on) = self.manifest_panel(&action).map(|panel| panel.on) else {
             return Vec::new();
         };
-        if self.daemon_protocol < PANELS_PROTOCOL {
-            self.complain(
-                "The daemon runs an older muster that opens no plugin's panel: `muster reload` \
-                 moves it onto this one, every session running on.",
-            );
-            return Vec::new();
-        }
         let beside = match (on, self.selected_line_session(), self.selected_workspace()) {
             (PanelOn::Session, Some(session), _) => Beside::Session(session),
             (PanelOn::Workspace, _, Some(workspace)) => Beside::Workspace(workspace),

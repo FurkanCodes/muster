@@ -99,6 +99,10 @@ impl Launchd for System {
                     ),
                 ));
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "ARC-30: launchctl is waited on with a deadline, looked at every 5 ms"
+            )]
             std::thread::sleep(Duration::from_millis(5));
         };
         let (mut out, mut err) = (String::new(), String::new());
@@ -116,6 +120,10 @@ impl Launchd for System {
     }
 
     fn pause(&self, moment: Duration) {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: launchd is given a moment between booting a job out and in again, which it asks for"
+        )]
         std::thread::sleep(moment);
     }
 

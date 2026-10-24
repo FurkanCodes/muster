@@ -1,6 +1,5 @@
 //! What the read commands print with `--json`: one JSON document per
-//! command, for the person's own scripts (`muster status`, `muster session
-//! list`, `muster issue list`).
+//! command, for the person's own scripts (`muster status`, `muster list`).
 //!
 //! The shape is the command line's own, built from the daemon's typed
 //! replies rather than copied from the protocol, so the protocol can change
@@ -23,7 +22,7 @@ use muster_core::{
 use serde::Serialize;
 
 /// The shape of every document, as its `format` says.
-pub(crate) const FORMAT: u32 = 1;
+pub(crate) const FORMAT: u32 = 2;
 
 /// Prints `document` as JSON on standard output.
 pub(crate) fn print(document: &impl Serialize) -> Result<(), serde_json::Error> {
@@ -103,7 +102,7 @@ struct Memory {
 struct ProjectEntry {
     id: String,
     name: String,
-    root: String,
+    path: String,
     workspaces: Vec<WorkspaceEntry>,
 }
 
@@ -206,7 +205,7 @@ impl Status {
             .map(|project| ProjectEntry {
                 id: project.id.to_string(),
                 name: project.name.clone(),
-                root: project.root.display().to_string(),
+                path: project.root.display().to_string(),
                 workspaces: snapshot
                     .workspaces
                     .iter()
@@ -361,7 +360,7 @@ pub(crate) fn session_entry(snapshot: &Snapshot, session: &Session) -> SessionEn
     }
 }
 
-/// `muster session list --json`.
+/// `muster list --json`.
 #[derive(Debug, Serialize)]
 pub(crate) struct SessionList {
     format: u32,
@@ -381,7 +380,7 @@ impl SessionList {
     }
 }
 
-/// `muster issue list --json`: a project's open tickets, with the agents
+/// `muster list tickets --json`: a project's open tickets, with the agents
 /// on each.
 #[derive(Debug, Serialize)]
 pub(crate) struct TicketList {
@@ -396,7 +395,7 @@ pub(crate) struct TicketList {
 
 #[derive(Debug, Serialize)]
 struct TicketEntry {
-    /// `#42` or `APP-7`, as `muster issue start` takes it.
+    /// `#42` or `APP-7`, as `muster ticket` takes it.
     key: String,
     title: String,
     url: String,
@@ -483,6 +482,9 @@ mod tests {
         assert!(!text.contains(token), "{text}");
         assert!(text.contains(muster_core::credentials::HIDDEN), "{text}");
         assert!(text.contains("\"key\":\"#4\""), "{text}");
-        assert!(text.starts_with("{\"format\":1,"), "{text}");
+        assert!(
+            text.starts_with(&format!("{{\"format\":{FORMAT},")),
+            "{text}"
+        );
     }
 }

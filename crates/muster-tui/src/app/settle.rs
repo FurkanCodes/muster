@@ -101,7 +101,7 @@ impl App {
         // is given the size it is shown at now; not while a line between
         // panels is dragged, but as it is let go.
         if self.attached.is_some()
-            && self.drag.is_none()
+            && self.panels.drag.is_none()
             && self.fitted != Some(self.session_size())
         {
             actions.extend(self.fit_attached());
@@ -137,7 +137,7 @@ impl App {
             }
         }
         if let Some(session) = stream.session
-            && self.drag.is_none()
+            && self.panels.drag.is_none()
             && stream.fitted != Some(size)
         {
             self.screen(session).resize(size.cols, size.rows);
@@ -173,7 +173,7 @@ impl App {
             session,
             from_seq,
             // Attached while the window is out of focus: nobody looks.
-            watching: self.focused != Some(false),
+            watching: self.person.focused != Some(false),
         }));
         actions
     }
@@ -238,7 +238,7 @@ impl App {
         {
             self.view = View::Sessions;
             self.selected = Some(Row::Session(session));
-            self.needs_selected = None;
+            self.needs.selected = None;
         }
     }
 
@@ -263,21 +263,22 @@ impl App {
         // it was dealt with: kept, it would stay there with nothing left to
         // move to.
         let mut list = self.model.needs_you();
-        if let Some(selected) = self.needs_selected
+        if let Some(selected) = self.needs.selected
             && !list.contains(&selected)
             && let Some(stored) = self.model.session(selected)
             && stored.status != muster_core::SessionStatus::Running
-            && let Some(was) = self.needs_list.iter().position(|s| *s == selected)
+            && let Some(was) = self.needs.list.iter().position(|s| *s == selected)
         {
             list.insert(was.min(list.len()), selected);
         }
         if !self
-            .needs_selected
+            .needs
+            .selected
             .is_some_and(|session| list.contains(&session))
         {
-            self.needs_selected = list.first().copied();
+            self.needs.selected = list.first().copied();
         }
-        self.needs_list = list;
+        self.needs.list = list;
     }
 
     /// Scrolls the lists just enough to show their selections.
@@ -298,22 +299,25 @@ impl App {
         let heights = self.row_heights(&rows);
         self.list_offset = in_view(self.list_offset, selected, &heights, height);
         let needs = self
-            .needs_selected
-            .and_then(|session| self.needs_list.iter().position(|s| *s == session));
+            .needs
+            .selected
+            .and_then(|session| self.needs.list.iter().position(|s| *s == session));
         let heights = self.needs_heights();
-        self.needs_offset = in_view(self.needs_offset, needs, &heights, height);
+        self.needs.offset = in_view(self.needs.offset, needs, &heights, height);
         let tickets = self.ticket_rows();
         let ticket = self
-            .tickets_selected
+            .tickets
+            .selected
             .as_ref()
             .and_then(|row| tickets.iter().position(|r| r == row));
-        self.tickets_offset = in_view(self.tickets_offset, ticket, &vec![1; tickets.len()], height);
+        self.tickets.offset = in_view(self.tickets.offset, ticket, &vec![1; tickets.len()], height);
         let settings = self.setting_rows();
         let setting = self
-            .settings_selected
+            .settings
+            .selected
             .and_then(|row| settings.iter().position(|r| *r == row));
-        self.settings_offset = in_view(
-            self.settings_offset,
+        self.settings.offset = in_view(
+            self.settings.offset,
             setting,
             &vec![1; settings.len()],
             height,

@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { useApp, useDaemon } from "../app/context";
+import { errorText } from "../lib/text";
 import { Layout } from "./layout";
 
 export interface PanelsLayout {
@@ -34,7 +35,7 @@ export function useLayout(): PanelsLayout {
       setKept({ layout: next, over: written });
       app.bridge.command({ ChangePreference: { Panels: next.toString() } }).catch((error) => {
         setKept(null);
-        app.actions.tell(error instanceof Error ? error.message : String(error), true);
+        app.actions.tell(errorText(error), true);
       });
     },
   };

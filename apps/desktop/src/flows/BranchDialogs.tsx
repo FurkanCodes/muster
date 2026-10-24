@@ -8,6 +8,7 @@
 import type { KeyboardEvent } from "react";
 import { useState } from "react";
 import { useApp, useDaemon, useUi } from "../app/context";
+import { ask } from "../ipc/ask";
 import type { AddedAgent } from "../ipc/generated/AddedAgent";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { whenKnown } from "../state/whenKnown";
@@ -41,12 +42,14 @@ export function Tidy({ workspace }: { workspace: WorkspaceId }) {
   const task = useTask();
   const tidy = () =>
     void task.run(async () => {
-      const reply = await app.bridge.command({
-        TidyCommits: { workspace, harness, size: START_SIZE },
-      });
-      if (typeof reply !== "object" || !("SessionStarted" in reply))
-        throw new Error("The daemon answered something else; try again.");
-      const session = reply.SessionStarted.id;
+      const reply = await ask(
+        app.bridge,
+        {
+          TidyCommits: { workspace, harness, size: START_SIZE },
+        },
+        "SessionStarted",
+      );
+      const session = reply.id;
       app.actions.choseAgent(harness);
       app.actions.openFlow(null);
       app.actions.show("all");
@@ -130,12 +133,10 @@ export function Move({ workspace }: { workspace: WorkspaceId }) {
     : "commits";
   const move = () =>
     void task.run(async () => {
-      const reply = await app.bridge.command({ MoveOnto: { workspace } });
-      if (typeof reply !== "object" || !("Moved" in reply))
-        throw new Error("The daemon answered something else; try again.");
-      const { onto: moved, commits: replayed, entry } = reply.Moved;
+      const reply = await ask(app.bridge, { MoveOnto: { workspace } }, "Moved");
+      const { onto: moved, commits: replayed, entry } = reply;
       const state = app.daemon.store.getState();
-      const keys = (action: "put_back" | "show_changes") => labelOf(state.preferences, action);
+      const keys = (action: "put_back" | "show_changes") => labelOf(state, action);
       const open = state.workspaces[workspace]?.pull_request;
       const push =
         open && (open.state === "open" || open.state === "draft")

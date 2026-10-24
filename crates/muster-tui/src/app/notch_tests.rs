@@ -6,7 +6,7 @@ use crossterm::event::KeyCode;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame, Snapshot,
 };
-use muster_core::settings::{NOTCH_PROTOCOL, PreferenceChange, Preferences};
+use muster_core::settings::{PreferenceChange, Preferences};
 
 use super::tests::{World, command, press, render, world};
 use super::{Action, App, Mode, SettingRow, View};
@@ -20,7 +20,7 @@ fn looking(looking: bool) -> Action {
 /// The world's app, on a Mac, connected anew with Muster's own settings.
 fn mac(notch: bool) -> World {
     let mut world = world();
-    world.app.notch_here = true;
+    world.app.person.notch_here = true;
     world.app.on_connected("0.1.0".to_owned());
     world.app.on_frame(ServerFrame::Snapshot(Snapshot {
         projects: vec![world.project.clone()],
@@ -68,14 +68,6 @@ fn the_daemon_is_told_whether_the_person_looks_at_this_window() {
         app.on_connected("0.1.0".to_owned())
             .contains(&looking(false))
     );
-
-    // A daemon before the notch is never sent it.
-    app.daemon_protocol = NOTCH_PROTOCOL - 1;
-    assert_eq!(
-        app.on_connected("0.1.0".to_owned()),
-        [Action::Send(ClientFrame::Subscribe)]
-    );
-    assert!(app.on_focus(true).is_empty());
 }
 
 #[test]
@@ -153,7 +145,7 @@ fn the_notch_is_started_once_wanted_and_again_once_turned_back_on() {
 #[test]
 fn the_snapshot_on_a_mac_starts_the_notch() {
     let mut world = world();
-    world.app.notch_here = true;
+    world.app.person.notch_here = true;
     world.app.on_connected("0.1.0".to_owned());
     let actions = world.app.on_frame(ServerFrame::Snapshot(Snapshot {
         projects: vec![world.project.clone()],
@@ -175,21 +167,13 @@ fn the_snapshot_on_a_mac_starts_the_notch() {
     };
     let actions = world.app.on_frame(ServerFrame::Snapshot(off));
     assert!(!actions.contains(&Action::StartNotch), "{actions:?}");
-
-    // A daemon before the notch: no.
-    world.app.daemon_protocol = NOTCH_PROTOCOL - 1;
-    world.app.on_connected("0.1.0".to_owned());
-    let actions = world
-        .app
-        .on_frame(ServerFrame::Snapshot(Snapshot::default()));
-    assert!(!actions.contains(&Action::StartNotch), "{actions:?}");
 }
 
 #[test]
 fn the_notch_is_turned_on_and_off_on_the_settings_screen() {
     let mut world = mac(true);
     world.app.view = View::Settings;
-    world.app.settings_selected = Some(SettingRow::Notch);
+    world.app.settings.selected = Some(SettingRow::Notch);
     let screen = render(&world.app);
     assert!(screen.contains("Muster"), "{screen}");
     assert!(screen.contains("Agents in the notch"), "{screen}");
@@ -229,6 +213,24 @@ fn the_notch_is_turned_on_and_off_on_the_settings_screen() {
 }
 
 #[test]
+fn a_change_whose_answer_the_lost_connection_took_can_be_asked_again() {
+    let mut world = mac(true);
+    world.app.view = View::Settings;
+    world.app.settings.selected = Some(SettingRow::Notch);
+    command(&press(&mut world.app, KeyCode::Enter));
+    assert!(world.app.notch_changing());
+    world.app.on_disconnected("the daemon restarted".to_owned());
+    assert!(!world.app.notch_changing(), "no answer is coming");
+    world.app.on_connected("0.1.0".to_owned());
+    world.app.on_frame(preferences(true));
+    let (_, sent) = command(&press(&mut world.app, KeyCode::Enter));
+    assert_eq!(
+        sent,
+        Command::ChangePreference(PreferenceChange::Notch(false))
+    );
+}
+
+#[test]
 fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_agents() {
     let mut world = world();
     world.app.view = View::Settings;
@@ -253,7 +255,7 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Plugins,
         SettingRow::AddPlugin
     ]));
-    world.app.notch_here = true;
+    world.app.person.notch_here = true;
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::Notch,
@@ -275,7 +277,4 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Plugins,
         SettingRow::AddPlugin
     ]));
-    world.app.daemon_protocol = NOTCH_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::Notch));
-    assert!(!world.app.setting_rows().contains(&SettingRow::Agents));
 }

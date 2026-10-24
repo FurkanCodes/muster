@@ -22,7 +22,7 @@ const REPORT_ALL: u8 = 0x8;
 /// The bytes for `key`, or `None` for a key the program has no encoding for
 /// (better swallowed than leaked as a bare character: Cmd+C must not type
 /// `c`).
-pub(crate) fn encode_key(key: &KeyEvent, modes: TerminalModes) -> Option<Vec<u8>> {
+pub fn encode_key(key: &KeyEvent, modes: TerminalModes) -> Option<Vec<u8>> {
     if modes.kitty_flags & DISAMBIGUATE != 0 {
         encode_kitty(key, modes.kitty_flags)
     } else {
@@ -33,7 +33,7 @@ pub(crate) fn encode_key(key: &KeyEvent, modes: TerminalModes) -> Option<Vec<u8>
 /// The bytes for pasted `text`: bracketed if the program asked for it, so it
 /// can tell a paste from typing, with any bracket markers inside the text
 /// removed so a paste cannot end itself early.
-pub(crate) fn encode_paste(text: &str, modes: TerminalModes) -> Vec<u8> {
+pub fn encode_paste(text: &str, modes: TerminalModes) -> Vec<u8> {
     // Terminals send pasted newlines as carriage returns.
     let text = text.replace("\r\n", "\r").replace('\n', "\r");
     if !modes.bracketed_paste {

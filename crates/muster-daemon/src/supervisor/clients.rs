@@ -56,11 +56,11 @@ impl Drop for ClientGuard {
 impl Supervisor {
     /// A key for a new connection, and its guard.
     pub(super) fn add_client(&mut self) -> ClientGuard {
-        self.next_client += 1;
+        self.clients.next_client += 1;
         ClientGuard {
-            client: self.next_client,
+            client: self.clients.next_client,
             looking: None,
-            gone: self.client_gone.clone(),
+            gone: self.clients.client_gone.clone(),
         }
     }
 
@@ -68,7 +68,7 @@ impl Supervisor {
     /// at, nor a client of any session's terminal.
     pub(super) async fn remove_client(&mut self, client: u64) {
         self.remove_looker(client);
-        for session in self.sizing.gone(client) {
+        for session in self.clients.sizing.gone(client) {
             self.fit(session).await;
         }
     }

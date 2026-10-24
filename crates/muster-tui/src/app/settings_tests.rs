@@ -112,7 +112,7 @@ fn the_screen_reads_each_project_s_settings_and_starts_on_the_first() {
     );
     // The first setting is selected, so ⏎ does something at once.
     assert_eq!(
-        world.app.settings_selected,
+        world.app.settings.selected,
         Some(SettingRow::OnlyMine(project))
     );
     let screen = render(&world.app);
@@ -189,7 +189,7 @@ fn enter_turns_it_on_and_the_tickets_are_fetched_again_as_chosen() {
     );
     assert!(screen.contains(&value_at_end("on")), "{screen}");
     assert!(screen.contains("Set by        your settings"), "{screen}");
-    assert!(!world.app.tickets.contains_key(&project));
+    assert!(!world.app.tickets.by_project.contains_key(&project));
 
     // The Tickets screen fetches them again, and says they are yours.
     let actions = press(&mut world.app, KeyCode::Char('3'));
@@ -285,7 +285,7 @@ fn settings_that_cannot_be_read_say_why_and_are_not_changed() {
             .is_some_and(|note| note.error && note.text.contains("expected `=`"))
     );
     assert!(matches!(
-        world.app.settings.get(&project),
+        world.app.settings.by_project.get(&project),
         Some(Settings::Failed(_))
     ));
 }
@@ -326,10 +326,6 @@ fn settings_are_read_afresh_each_time_the_screen_is_shown_and_on_r() {
             Command::ProjectSettings { project }
         ]
     );
-    // An older daemon is never asked what it does not know (`ARC-09`).
-    world.app.daemon_protocol = muster_core::settings::AGENTS_PROTOCOL - 1;
-    let actions = press(&mut world.app, KeyCode::Char('r'));
-    assert_eq!(commands(&actions), [Command::ProjectSettings { project }]);
 }
 
 #[test]
@@ -337,7 +333,7 @@ fn the_project_s_line_tells_where_its_settings_are_and_enter_there_does_nothing(
     let mut world = on_settings(false);
     press(&mut world.app, KeyCode::Up);
     assert_eq!(
-        world.app.settings_selected,
+        world.app.settings.selected,
         Some(SettingRow::Project(world.project.id))
     );
     let screen = render(&world.app);
@@ -366,12 +362,12 @@ fn a_click_picks_a_setting_and_the_details_are_only_to_read() {
     // The list's first line is below the top bar and its border.
     world.app.on_mouse(click(3, 2));
     assert_eq!(
-        world.app.settings_selected,
+        world.app.settings.selected,
         Some(SettingRow::Project(project))
     );
     world.app.on_mouse(click(3, 3));
     assert_eq!(
-        world.app.settings_selected,
+        world.app.settings.selected,
         Some(SettingRow::OnlyMine(project))
     );
     // A click on the details changes nothing and opens no dialog, there
@@ -383,19 +379,19 @@ fn a_click_picks_a_setting_and_the_details_are_only_to_read() {
     world.app.on_mouse(click(60, 10));
     assert_eq!(world.app.mode, Mode::Browse);
     assert!(matches!(
-        world.app.tickets.get(&project),
+        world.app.tickets.by_project.get(&project),
         Some(Tickets::Loading)
     ));
 }
 
 #[test]
-fn branches_go_without_muster_once_turned_off_where_the_daemon_can_say() {
+fn branches_go_without_muster_once_turned_off() {
     let mut world = on_settings(false);
     let project = world.project.id;
     press(&mut world.app, KeyCode::Down);
     press(&mut world.app, KeyCode::Down);
     assert_eq!(
-        world.app.settings_selected,
+        world.app.settings.selected,
         Some(SettingRow::MusterPrefix(project))
     );
     let screen = render(&world.app);
@@ -444,22 +440,13 @@ fn branches_go_without_muster_once_turned_off_where_the_daemon_can_say() {
     assert!(row.contains("off") && !row.contains('…'), "{row}");
     assert!(screen.contains("worktree-4f2k9q for a"), "{screen}");
     assert!(screen.contains("⏎ or space turns it on"), "{screen}");
-
-    // A daemon from before the setting cannot change it: no row for it.
-    world.app.daemon_protocol = 19;
-    assert!(
-        !world
-            .app
-            .setting_rows()
-            .contains(&SettingRow::MusterPrefix(project))
-    );
 }
 
 #[test]
 fn shared_rust_builds_are_on_by_default_and_turned_off_on_the_settings_screen() {
     let mut world = world();
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(SettingRow::SharedBuilds);
+    world.app.settings.selected = Some(SettingRow::SharedBuilds);
     let screen = render(&world.app);
     assert!(screen.contains("Shared Rust builds"), "{screen}");
     assert!(screen.contains("Cargo"), "what it writes is said: {screen}");
@@ -479,17 +466,10 @@ fn shared_rust_builds_are_on_by_default_and_turned_off_on_the_settings_screen() 
 }
 
 #[test]
-fn a_daemon_that_shares_no_builds_shows_no_row_for_it() {
-    let mut world = world();
-    world.app.daemon_protocol = muster_core::settings::SHARED_BUILDS_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::SharedBuilds));
-}
-
-#[test]
 fn prd_01_agents_start_agents_until_turned_off_on_the_settings_screen() {
     let mut world = world();
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(SettingRow::Delegation);
+    world.app.settings.selected = Some(SettingRow::Delegation);
     let screen = render(&world.app);
     assert!(screen.contains("Agents start agents"), "{screen}");
     assert!(
@@ -509,11 +489,4 @@ fn prd_01_agents_start_agents_until_turned_off_on_the_settings_screen() {
         )),
         "{actions:?}"
     );
-}
-
-#[test]
-fn a_daemon_older_than_delegation_shows_no_row_for_it() {
-    let mut world = world();
-    world.app.daemon_protocol = muster_core::delegation::DELEGATION_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::Delegation));
 }

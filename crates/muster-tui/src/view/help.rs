@@ -3,25 +3,22 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
+use super::theme::Theme;
 use crate::app::{App, Help, HelpLine, View};
+use crate::cells;
 
 /// The cells a key's column takes, before what it does.
 const KEYS_WIDTH: usize = 22;
 
 pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: Rect) {
+    let theme = super::theme::of(app);
     let width = window.width.saturating_sub(4).min(76);
     let height = window.height.saturating_sub(2).min(30);
-    let area = Rect::new(
-        window.x + window.width.saturating_sub(width) / 2,
-        window.y + window.height.saturating_sub(height) / 2,
-        width,
-        height,
-    );
-    frame.render_widget(Clear, area);
+    let area = super::floating::centred(window, width, height);
     let screen = if help.over_changes {
         "Changes"
     } else {
@@ -32,13 +29,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
             View::Settings => "Settings",
         }
     };
-    let block = Block::default()
-        .title(format!(" Keys · {screen} "))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().cyan());
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = super::floating::draw(frame, area, Some(format!(" Keys · {screen} ")), theme);
     if inner.height < 3 {
         return;
     }
@@ -55,7 +46,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
     let room = usize::from(inner.height.saturating_sub(3));
     let width = usize::from(inner.width);
     for line in shown.iter().skip(help.offset) {
-        let rows = help_rows(line, width);
+        let rows = help_rows(line, width, theme);
         if lines.len() - 2 + rows.len() > room {
             break;
         }
@@ -71,19 +62,21 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
         Line::from("type to narrow   ↑↓ scroll   esc close").dim(),
         hint,
     );
-    let cursor = u16::try_from(5 + help.filter.before_cursor().chars().count()).unwrap_or(0);
+    let cursor = u16::try_from(5 + cells::width(help.filter.before_cursor())).unwrap_or(0);
     frame.set_cursor_position(Position::new(inner.x + cursor.min(inner.width), inner.y));
 }
 
 /// The rows `line` takes `width` cells wide: what a key does wraps under
 /// itself, clear of the keys' column.
-fn help_rows(line: &HelpLine, width: usize) -> Vec<Line<'static>> {
+fn help_rows(line: &HelpLine, width: usize, theme: Theme) -> Vec<Line<'static>> {
     match line {
-        HelpLine::Heading(heading) => vec![Line::from(Span::from(*heading).cyan().bold())],
+        HelpLine::Heading(heading) => {
+            vec![Line::from(Span::from(*heading).fg(theme.accent).bold())]
+        }
         HelpLine::Key(keys, what) => {
             let keys = format!("  {keys}");
-            let gap = KEYS_WIDTH.saturating_sub(keys.chars().count()).max(1);
-            let indent = keys.chars().count() + gap;
+            let gap = KEYS_WIDTH.saturating_sub(cells::width(&keys)).max(1);
+            let indent = cells::width(&keys) + gap;
             let mut rows = wrapped(what, width.saturating_sub(indent).max(12)).into_iter();
             let first = rows.next().unwrap_or_default();
             let mut lines = vec![Line::from(vec![
@@ -102,7 +95,7 @@ fn wrapped(text: &str, width: usize) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let mut line = String::new();
     for word in text.split(' ') {
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+        if !line.is_empty() && cells::width(&line) + 1 + cells::width(word) > width {
             lines.push(std::mem::take(&mut line));
         }
         if !line.is_empty() {

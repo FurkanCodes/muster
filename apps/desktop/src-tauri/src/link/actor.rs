@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use muster_client::{ClientError, Connection, FrameReceiver, FrameSender};
+use muster_client::{ClientError, Connection};
 use muster_core::colours::TerminalColours;
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame, Welcome};
 use muster_core::{SessionId, SessionStatus};
@@ -39,9 +39,6 @@ const LINK_EVENTS: usize = 64;
 
 /// How the app names itself to the daemon.
 const CLIENT: &str = concat!("muster-desktop ", env!("CARGO_PKG_VERSION"));
-
-/// The first protocol that knows `ClientFrame::Looking`.
-const LOOKING_PROTOCOL: u32 = muster_core::settings::NOTCH_PROTOCOL;
 
 /// A task that ends when its owner drops it (`ARC-13`).
 struct Owned(JoinHandle<()>);
@@ -275,32 +272,25 @@ impl Actor {
     }
 
     /// Tells the daemon whether the person looks at the window, and which
-    /// terminal is in focus in it, when either changed: each only to a
-    /// daemon that knows it (`ARC-09`).
+    /// terminal is in focus in it, when either changed.
     fn tell_looking(&mut self) {
-        let Some(version) = self.linked.as_ref().map(|linked| linked.version) else {
+        if self.linked.is_none() {
             return;
-        };
+        }
         let now = (self.looking.looking, self.looking.focused);
         let before = self.told.replace(now);
-        if version >= LOOKING_PROTOCOL && before.map(|(looking, _)| looking) != Some(now.0) {
+        if before.map(|(looking, _)| looking) != Some(now.0) {
             self.send(ClientFrame::Looking { looking: now.0 });
         }
-        if version >= muster_core::colours::TERMINAL_PROTOCOL
-            && before.map(|(_, focused)| focused) != Some(now.1)
-        {
+        if before.map(|(_, focused)| focused) != Some(now.1) {
             self.send(ClientFrame::Keys { session: now.1 });
         }
     }
 
-    /// Tells the daemon the terminals' colours, if the webview has said
-    /// them and the daemon knows them (`ARC-09`).
+    /// Tells the daemon the terminals' colours, once the webview has said
+    /// them.
     fn tell_colours(&self) {
-        let knows = self
-            .linked
-            .as_ref()
-            .is_some_and(|linked| linked.version >= muster_core::colours::TERMINAL_PROTOCOL);
-        if let (true, Some(colours)) = (knows, &self.colours) {
+        if let (true, Some(colours)) = (self.linked.is_some(), &self.colours) {
             self.send(ClientFrame::Colours(colours.clone()));
         }
     }
@@ -497,7 +487,7 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: A
                     clippy::disallowed_methods,
                     reason = "ARC-13: the Owned handle holds it, for as long as the connection"
                 )]
-                let _writer = Owned(tokio::spawn(write_frames(sender, frames)));
+                let _writer = Owned(tokio::spawn(sender.send_all(frames)));
                 if events
                     .send(LinkEvent::Connected { outgoing, welcome })
                     .await
@@ -505,7 +495,11 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: A
                 {
                     return;
                 }
-                let Some(reason) = read_frames(receiver, &events).await else {
+                let events = &events;
+                let forwarded = receiver.forward(|frame| async move {
+                    events.send(LinkEvent::Frame(Box::new(frame))).await.is_ok()
+                });
+                let Some(reason) = forwarded.await else {
                     return;
                 };
                 if events.send(LinkEvent::Lost(reason)).await.is_err() {
@@ -518,43 +512,14 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: A
                 }
             }
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: a daemon gone says nothing as it comes back, so the link tries again every `RETRY_EVERY`, or at once when asked"
+        )]
+        let retry = tokio::time::sleep(RETRY_EVERY);
         tokio::select! {
-            () = tokio::time::sleep(RETRY_EVERY) => {}
+            () = retry => {}
             () = again.notified() => last_start = None,
-        }
-    }
-}
-
-/// Hands the loop each frame from the daemon, waiting for room: why the
-/// connection ended, or `None` once the loop has.
-async fn read_frames(
-    mut receiver: FrameReceiver,
-    events: &mpsc::Sender<LinkEvent>,
-) -> Option<String> {
-    loop {
-        match receiver.next().await {
-            Ok(Some(frame)) => {
-                if events
-                    .send(LinkEvent::Frame(Box::new(frame)))
-                    .await
-                    .is_err()
-                {
-                    return None;
-                }
-            }
-            Ok(None) => return Some("the daemon closed the connection".to_owned()),
-            Err(error) => return Some(error.to_string()),
-        }
-    }
-}
-
-/// Writes the loop's frames in order until the connection or the loop
-/// goes.
-async fn write_frames(mut sender: FrameSender, mut frames: mpsc::UnboundedReceiver<ClientFrame>) {
-    while let Some(frame) = frames.recv().await {
-        if sender.send(&frame).await.is_err() {
-            // The reader notices too, and the link connects again.
-            return;
         }
     }
 }
@@ -614,8 +579,13 @@ async fn connect(
         loop {
             match Connection::connect(socket, CLIENT).await {
                 Err(ClientError::Unreachable { .. }) if Instant::now() < deadline => {
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "ARC-30: a daemon starting says nothing until its socket answers, tried every 50 ms"
+                    )]
+                    let look_again = tokio::time::sleep(Duration::from_millis(50));
                     tokio::select! {
-                        () = tokio::time::sleep(Duration::from_millis(50)) => {}
+                        () = look_again => {}
                         () = again.notified() => break,
                     }
                 }

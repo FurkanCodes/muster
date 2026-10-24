@@ -149,8 +149,7 @@ export const MusterStatus = async ({ client } = {}) => {
 
 /// What a turn's end said the session has used: every token, and its cost
 /// in dollars, kept to millionths.
-pub(crate) fn spend(body: &[u8]) -> Option<Spend> {
-    let value: Value = serde_json::from_slice(body).ok()?;
+pub(crate) fn spend(value: &Value) -> Option<Spend> {
     if value.get("type")?.as_str()? != "muster.spend" {
         return None;
     }
@@ -168,8 +167,7 @@ pub(crate) fn spend(body: &[u8]) -> Option<Spend> {
 
 /// What a report means to the session machine, with the root session it
 /// came from.
-pub(crate) fn translate(body: &[u8]) -> Option<(Option<String>, HookEvent)> {
-    let value: Value = serde_json::from_slice(body).ok()?;
+pub(crate) fn translate(value: &Value) -> Option<(Option<String>, HookEvent)> {
     let text = |key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
     let session = text("session");
     let child = text("child");
@@ -241,7 +239,7 @@ mod tests {
     }
 
     fn event(json: &str) -> Option<(Option<String>, HookEvent)> {
-        translate(json.as_bytes())
+        translate(&crate::harness::json(json.as_bytes()))
     }
 
     #[test]
@@ -291,7 +289,8 @@ mod tests {
     #[test]
     fn a_turn_s_end_says_what_the_session_used_tokens_and_cost() {
         let spend = |json: &str| {
-            super::spend(json.as_bytes()).map(|spend| (spend.tokens, spend.cost_micros))
+            super::spend(&crate::harness::json(json.as_bytes()))
+                .map(|spend| (spend.tokens, spend.cost_micros))
         };
         assert_eq!(
             spend(

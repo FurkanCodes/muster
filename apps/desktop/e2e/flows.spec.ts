@@ -273,6 +273,7 @@ test.describe("PRD-03 work starts on the project's page", () => {
             title: null,
             size: { cols: 100, rows: 30 },
             prompt: "Add a Not seen filter\nto the sidebar",
+            started_by: null,
           },
         },
       ]);
@@ -292,7 +293,16 @@ test.describe("PRD-03 work starts on the project's page", () => {
     await box.getByRole("button", { name: "Start a shell" }).click();
     await expect
       .poll(() => sent(page, "CreateWorktree"))
-      .toEqual([{ CreateWorktree: { project: MUSTER, branch: "spike/xterm-webgl", on: null } }]);
+      .toEqual([
+        {
+          CreateWorktree: {
+            project: MUSTER,
+            branch: "spike/xterm-webgl",
+            on: null,
+            named_for: null,
+          },
+        },
+      ]);
     await expect
       .poll(async () => {
         const started = (await sent(page, "StartSession")) as {
@@ -333,7 +343,7 @@ test.describe("PRD-03 work starts on the project's page", () => {
     await expect(dialog).toBeHidden();
     await expect(statusBar(page)).toContainText("Made the worktree.");
     expect(await sent(page, "CreateWorktree")).toEqual([
-      { CreateWorktree: { project: MUSTER, branch: null, on: null } },
+      { CreateWorktree: { project: MUSTER, branch: null, on: null, named_for: null } },
     ]);
 
     await page.evaluate(() =>

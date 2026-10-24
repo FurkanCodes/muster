@@ -21,15 +21,15 @@ pub(super) struct Slide {
 impl App {
     /// The step of the motion to draw, or `None` to draw everything still.
     pub(crate) fn motion_step(&self) -> Option<u64> {
-        self.motion.then_some(self.step)
+        self.moving.on.then_some(self.moving.step)
     }
 
     /// Whether something on screen moves: a running session, something
     /// waiting on the person, a line flashing or Kep glad. Nothing else
     /// asks for drawing.
     pub(crate) fn animating(&self) -> bool {
-        self.motion
-            && (!self.flashes.is_empty()
+        self.moving.on
+            && (!self.moving.flashes.is_empty()
                 || self.kep_glad()
                 || self.waiting_shown()
                 || self.model.sessions().iter().any(|session| {
@@ -58,15 +58,17 @@ impl App {
                     // Each heading's, as `ticket_rows` lists them.
                     .filter(|project| self.lead(project.id) == project.id)
                     .any(|project| {
-                        matches!(self.tickets.get(&project.id), None | Some(Tickets::Loading))
+                        matches!(self.tickets.by_project.get(&project.id), None | Some(Tickets::Loading))
                     })
                     || self
-                        .ticket_texts
+                        .tickets
+                        .texts
                         .values()
                         .any(|text| matches!(text, TicketText::Loading))
             }
             View::Settings => self
                 .settings
+                .by_project
                 .values()
                 .any(|settings| matches!(settings, Settings::Loading)),
             View::Sessions | View::NeedsYou => false,
@@ -81,8 +83,8 @@ impl App {
     pub(crate) fn wants_steps(&self) -> bool {
         self.animating()
             || self.welcome
-            || self.glad_at.is_some()
-            || !self.flashes.is_empty()
+            || self.moving.glad_at.is_some()
+            || !self.moving.flashes.is_empty()
             || self.note_age().is_some()
             || self.news_held()
             || (self.sliding_line().is_some() && crate::view::cut_name(self).is_some())
@@ -91,22 +93,22 @@ impl App {
     /// The runtime's next step. Whether to draw for it: something moves,
     /// or a flash has just ended and its line must settle.
     pub(crate) fn on_step(&mut self, step: u64) -> bool {
-        self.step = step;
+        self.moving.step = step;
         let slid = self.slide_on(step);
-        let flashing = self.flashes.len();
+        let flashing = self.moving.flashes.len();
         let model = &self.model;
-        self.flashes.retain(|session, began| {
+        self.moving.flashes.retain(|session, began| {
             step.saturating_sub(*began) < FLASH_STEPS && model.session(*session).is_some()
         });
         let welcomed = self.end_welcome_when_due();
-        let glad_over = self.glad_at.is_some() && !self.kep_glad();
+        let glad_over = self.moving.glad_at.is_some() && !self.kep_glad();
         if glad_over {
-            self.glad_at = None;
+            self.moving.glad_at = None;
         }
         welcomed
             || glad_over
             || slid
-            || self.flashes.len() < flashing
+            || self.moving.flashes.len() < flashing
             || self.fade_note()
             || self.animating()
     }
@@ -115,13 +117,16 @@ impl App {
     /// *Needs you*, while the list has the keys and the person looks at
     /// the window. Nothing slides with motion off.
     fn sliding_line(&self) -> Option<(View, Row)> {
-        if !self.motion || self.welcome || self.mode != Mode::Browse || self.focused == Some(false)
+        if !self.moving.on
+            || self.welcome
+            || self.mode != Mode::Browse
+            || self.person.focused == Some(false)
         {
             return None;
         }
         let row = match self.view {
             View::Sessions => self.selected,
-            View::NeedsYou => self.needs_selected.map(Row::Session),
+            View::NeedsYou => self.needs.selected.map(Row::Session),
             View::Tickets | View::Settings => None,
         }?;
         Some((self.view, row))
@@ -133,10 +138,10 @@ impl App {
     /// back to is seen to have gone, and starts again.
     fn slide_on(&mut self, step: u64) -> bool {
         let Some(line) = self.sliding_line() else {
-            self.slide = None;
+            self.moving.slide = None;
             return false;
         };
-        let slide = match self.slide {
+        let slide = match self.moving.slide {
             Some(slide) if slide.line == line => slide,
             _ => Slide {
                 line,
@@ -147,24 +152,26 @@ impl App {
         let by = crate::view::cut_name(self).map_or(0, |(len, room)| {
             crate::motion::slide(len, room, step.saturating_sub(slide.since))
         });
-        self.slide = Some(Slide { by, ..slide });
+        self.moving.slide = Some(Slide { by, ..slide });
         by != slide.by
     }
 
     /// How far the name on `row` of `view` has slid, as drawn now: only
     /// the line that slides has.
     pub(crate) fn slid_by(&self, view: View, row: Row) -> usize {
-        self.slide
+        self.moving
+            .slide
             .filter(|slide| slide.line == (view, row) && self.sliding_line() == Some(slide.line))
             .map_or(0, |slide| slide.by)
     }
 
     /// Whether Kep is glad of a session that has just finished.
     pub(crate) fn kep_glad(&self) -> bool {
-        self.motion
+        self.moving.on
             && self
+                .moving
                 .glad_at
-                .is_some_and(|at| self.step.saturating_sub(at) < GLAD_STEPS)
+                .is_some_and(|at| self.moving.step.saturating_sub(at) < GLAD_STEPS)
     }
 
     /// Lets a note go once it has been read, dimming it first; an error
@@ -179,18 +186,18 @@ impl App {
             self.keep_in_view();
             return true;
         }
-        self.motion && age >= NOTE_DIMS
+        self.moving.on && age >= NOTE_DIMS
     }
 
     /// How many steps a note that fades has been shown, while it is.
     pub(crate) fn note_age(&self) -> Option<u64> {
         let note = self.note.as_ref().filter(|note| !note.error)?;
-        Some(self.step.saturating_sub(note.shown_at))
+        Some(self.moving.step.saturating_sub(note.shown_at))
     }
 
     /// Whether a note is fading out now.
     pub(crate) fn note_fading(&self) -> bool {
-        self.motion && self.note_age().is_some_and(|age| age >= NOTE_DIMS)
+        self.moving.on && self.note_age().is_some_and(|age| age >= NOTE_DIMS)
     }
 
     /// The runtime read the clock. Whether a time on screen reads
@@ -217,15 +224,22 @@ impl App {
                 SessionStatus::Running | SessionStatus::NeedsYou { .. }
             )
         });
-        Some(if live && self.motion { 1_000 } else { 60_000 })
+        Some(if live && self.moving.on {
+            1_000
+        } else {
+            60_000
+        })
     }
 
     /// How many steps ago `session`'s line began to flash, while it does.
     pub(crate) fn flash_age(&self, session: SessionId) -> Option<u64> {
-        if !self.motion {
+        if !self.moving.on {
             return None;
         }
-        let age = self.step.saturating_sub(*self.flashes.get(&session)?);
+        let age = self
+            .moving
+            .step
+            .saturating_sub(*self.moving.flashes.get(&session)?);
         (age < FLASH_STEPS).then_some(age)
     }
 
@@ -240,10 +254,10 @@ impl App {
             stored.status,
             SessionStatus::Finished | SessionStatus::NeedsYou { .. } | SessionStatus::Exited { .. }
         );
-        if self.motion && worth_a_look && stored.status != before {
-            self.flashes.insert(session, self.step);
+        if self.moving.on && worth_a_look && stored.status != before {
+            self.moving.flashes.insert(session, self.moving.step);
             if stored.status == SessionStatus::Finished {
-                self.glad_at = Some(self.step);
+                self.moving.glad_at = Some(self.moving.step);
             }
         }
     }

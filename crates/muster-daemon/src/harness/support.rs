@@ -7,6 +7,8 @@
 
 use std::path::{Path, PathBuf};
 
+use muster_core::harness::OwnAgent;
+
 use super::{Kind, copilot, gemini, opencode};
 
 /// The `OpenCode` plugin in `dir`.
@@ -27,9 +29,9 @@ pub(crate) fn copilot_plugin(dir: &Path) -> PathBuf {
 /// The files `kind` needs, with what each holds.
 fn files(kind: &Kind, dir: &Path) -> Vec<(PathBuf, String)> {
     match kind {
-        Kind::OpenCode => vec![(opencode_plugin(dir), opencode::PLUGIN.to_owned())],
-        Kind::Gemini => vec![(gemini_defaults(dir), gemini::defaults())],
-        Kind::Copilot => {
+        Kind::Own(OwnAgent::OpenCode) => vec![(opencode_plugin(dir), opencode::PLUGIN.to_owned())],
+        Kind::Own(OwnAgent::Gemini) => vec![(gemini_defaults(dir), gemini::defaults())],
+        Kind::Own(OwnAgent::Copilot) => {
             let plugin = copilot_plugin(dir);
             vec![
                 (plugin.join("plugin.json"), copilot::manifest()),
@@ -37,8 +39,7 @@ fn files(kind: &Kind, dir: &Path) -> Vec<(PathBuf, String)> {
             ]
         }
         Kind::Shell
-        | Kind::Claude
-        | Kind::Codex
+        | Kind::Own(OwnAgent::Claude | OwnAgent::Codex)
         | Kind::Checks
         | Kind::Review
         | Kind::Added(_)
@@ -71,12 +72,12 @@ mod tests {
     #[test]
     fn each_harness_gets_its_files_and_only_those_once() {
         let dir = tempfile::tempdir().unwrap();
-        prepare(&Kind::Claude, dir.path()).unwrap();
+        prepare(&Kind::Own(OwnAgent::Claude), dir.path()).unwrap();
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 
-        prepare(&Kind::OpenCode, dir.path()).unwrap();
-        prepare(&Kind::Gemini, dir.path()).unwrap();
-        prepare(&Kind::Copilot, dir.path()).unwrap();
+        prepare(&Kind::Own(OwnAgent::OpenCode), dir.path()).unwrap();
+        prepare(&Kind::Own(OwnAgent::Gemini), dir.path()).unwrap();
+        prepare(&Kind::Own(OwnAgent::Copilot), dir.path()).unwrap();
         let read = |path: PathBuf| std::fs::read_to_string(path).unwrap();
         assert_eq!(read(opencode_plugin(dir.path())), opencode::PLUGIN);
         assert_eq!(read(gemini_defaults(dir.path())), gemini::defaults());
@@ -89,8 +90,8 @@ mod tests {
         std::fs::write(opencode_plugin(dir.path()), "changed").unwrap();
         let defaults = gemini_defaults(dir.path());
         let before = std::fs::metadata(&defaults).unwrap().modified().unwrap();
-        prepare(&Kind::OpenCode, dir.path()).unwrap();
-        prepare(&Kind::Gemini, dir.path()).unwrap();
+        prepare(&Kind::Own(OwnAgent::OpenCode), dir.path()).unwrap();
+        prepare(&Kind::Own(OwnAgent::Gemini), dir.path()).unwrap();
         assert_eq!(read(opencode_plugin(dir.path())), opencode::PLUGIN);
         assert_eq!(
             std::fs::metadata(&defaults).unwrap().modified().unwrap(),

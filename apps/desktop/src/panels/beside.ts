@@ -7,12 +7,14 @@
 // panel ends and leaves the list, as closing does.
 
 import type { App } from "../app/context";
+import { replyAs } from "../ipc/ask";
 import type { Beside } from "../ipc/generated/Beside";
 import type { Session } from "../ipc/generated/Session";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { TermSize } from "../ipc/generated/TermSize";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import type { PanelAction } from "../keys/keymap";
+import { errorText } from "../lib/text";
 import type { DaemonState } from "../state/daemon";
 import { shownHarness } from "../state/selectors";
 
@@ -57,7 +59,7 @@ export function panelBeside(state: DaemonState, shown: SessionId): SessionId | n
 }
 
 function refused(app: App, error: unknown): void {
-  app.actions.tell(error instanceof Error ? error.message : String(error), true);
+  app.actions.tell(errorText(error), true);
 }
 
 /** Gives a terminal beside the session the keys. */
@@ -139,8 +141,8 @@ export async function toggleShell(
         started_by: null,
       },
     });
-    if (typeof reply !== "object" || !("SessionStarted" in reply)) return null;
-    const id = reply.SessionStarted.id;
+    const id = replyAs(reply, "SessionStarted")?.id;
+    if (id === undefined) return null;
     app.actions.showShell(id);
     giveKeys(app, id);
     return id;

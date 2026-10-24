@@ -4,6 +4,13 @@
 //! escape sequence and make it do things (retitle a window, rewrite the
 //! screen, answer queries as keystrokes), so these are taken out.
 
+/// Whether `text` is one line a person wrote: something besides blanks,
+/// and no control character (a line break, a tab, a NUL) in it, as a
+/// setting or a manifest's field must be.
+pub fn is_one_line(text: &str) -> bool {
+    !text.trim().is_empty() && !text.chars().any(char::is_control)
+}
+
 /// `text` on one line, for titles, names and labels: line breaks and tabs
 /// become spaces, every other control character is dropped.
 pub fn one_line(text: &str) -> String {

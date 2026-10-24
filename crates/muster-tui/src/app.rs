@@ -27,6 +27,7 @@ pub(crate) mod plugins;
 mod pointer;
 mod rebind;
 mod rename;
+pub(crate) mod screens;
 pub(crate) mod selection;
 mod settings;
 mod settle;
@@ -139,7 +140,6 @@ mod welcome_tests;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use muster_core::layout::Layout;
 use muster_core::protocol::{ClientFrame, Command, PixelSize, TermSize};
 use muster_core::{ProjectId, SessionId, TicketKey, WorkspaceId};
 
@@ -439,37 +439,17 @@ pub(crate) struct App {
     /// Where the selected line was, so the selection stays nearby when
     /// that line goes away.
     selected_at: usize,
-    /// The first line shown of the sessions list and of the Needs you
-    /// queue: the view moves only when the selection would leave it.
+    /// The first line shown of the sessions list: the view moves only
+    /// when the selection would leave it.
     pub(crate) list_offset: usize,
-    pub(crate) needs_offset: usize,
-    /// The Needs you queue as shown: a session stays in place while it is
-    /// selected, even once looking at it has cleared it, so the list does
-    /// not move under the person.
-    pub(crate) needs_list: Vec<SessionId>,
-    /// The selected session of the Needs you queue.
-    pub(crate) needs_selected: Option<SessionId>,
-    /// Each project's tickets, as last fetched; fetched again on `r`.
-    pub(crate) tickets: HashMap<ProjectId, Tickets>,
-    /// The selected line of the tickets list, and its first line shown.
-    pub(crate) tickets_selected: Option<TicketRow>,
-    pub(crate) tickets_offset: usize,
-    /// How far the selected ticket's details are paged down, and for which
-    /// line: another line selected shows its own from the top.
-    pub(crate) ticket_scroll: Option<(TicketRow, usize)>,
-    /// The part of the selected ticket the keys are on (`]`, `[`), for
-    /// which line, as `ticket_scroll`.
-    pub(crate) ticket_part: Option<(TicketRow, usize)>,
-    /// What of each ticket an agent is given, as the person chose (`space`).
-    pub(crate) ticket_briefs: HashMap<(ProjectId, TicketKey), muster_core::TicketBrief>,
-    /// Tickets' text, fetched as each is first shown.
-    pub(crate) ticket_texts: HashMap<(ProjectId, TicketKey), TicketText>,
-    /// Each project's settings, as last read; read again each time the
-    /// Settings screen is shown, and on `r`.
-    pub(crate) settings: HashMap<ProjectId, Settings>,
-    /// The selected line of the settings list, and its first line shown.
-    pub(crate) settings_selected: Option<SettingRow>,
-    pub(crate) settings_offset: usize,
+    pub(crate) needs: screens::NeedsScreen,
+    pub(crate) tickets: screens::TicketsScreen,
+    pub(crate) settings: screens::SettingsScreen,
+    pub(crate) panels: screens::Panels,
+    pub(crate) alarms: screens::Alarms,
+    pub(crate) moving: screens::Moving,
+    pub(crate) person: screens::Person,
+    requests: screens::Requests,
     pub(crate) screens: HashMap<SessionId, Screen>,
     /// A workspace's changes, shown beside the list while open (`d`).
     pub(crate) changes: Option<ChangesPane>,
@@ -484,8 +464,6 @@ pub(crate) struct App {
     /// deltas travel separately, so either can arrive first. Selected (and,
     /// for a new session, opened) as soon as it appears.
     wanted: Option<(Row, bool)>,
-    pending: HashMap<u64, Then>,
-    next_req: u64,
     /// The window below the top bar: a session filling the window is drawn
     /// at this size; beside the list, at the pane's (`session_size`).
     pub(crate) terminal_size: TermSize,
@@ -500,90 +478,22 @@ pub(crate) struct App {
     removing: Vec<WorkspaceId>,
     /// Where `muster` was started, offered when adding a project.
     cwd: PathBuf,
-    /// Whether the person's terminal window has focus, once it has said;
-    /// terminals that never say count as looking.
-    pub(crate) focused: Option<bool>,
-    /// Whether to notify the person of news while they look elsewhere.
-    pub(crate) notify: bool,
-    /// Whether anything moves: running sessions' marks spin and what
-    /// needs the person pulses.
-    pub(crate) motion: bool,
-    /// The step of the motion to draw, counted out by the runtime.
-    pub(crate) step: u64,
     /// The time now, as the runtime last read it, for how long sessions
     /// have run, waited or sat finished; `None` until it has.
     pub(crate) now: Option<muster_core::Timestamp>,
-    /// Sessions whose lines flash for a change of status, with the step
-    /// each flash began.
-    flashes: HashMap<SessionId, u64>,
-    /// The step a session last finished at, while Kep is glad of it.
-    glad_at: Option<u64>,
-    /// Finishes not told yet, each with the step it came at: held a
-    /// moment, in case the session goes straight back to work
-    /// (`app::alarm`). One for each session, gone once told or dropped.
-    held_news: Vec<(SessionId, u64)>,
-    /// The session told of last, which `l` goes to.
-    last_alarm: Option<SessionId>,
-    /// The selected line whose name, cut short, slides along.
-    slide: Option<motion::Slide>,
     /// Whether the welcome fills the window, as the UI starts.
     pub(crate) welcome: bool,
     /// The harness last started from the new-session dialog, which it
     /// offers first next time.
     last_harness: HarnessChoice,
-    /// The agent last started on a ticket, which the next ticket is
-    /// offered first.
-    ticket_agent: HarnessChoice,
-    /// The project last chosen for an agent on a ticket that several
-    /// projects share, by where their tickets come from: offered first
-    /// next time.
-    ticket_projects: HashMap<String, ProjectId>,
-    /// The protocol the daemon agreed to speak: a change it does not know
-    /// is never sent to it (`ARC-09`).
-    pub(crate) daemon_protocol: u32,
-    /// What the person's terminal draws: the agents' logos as pictures,
-    /// or their marks in text.
-    pub(crate) graphics: crate::view::logos::Graphics,
-    /// Whether Muster's notch can show here: a Mac, with a program to
-    /// start it.
-    pub(crate) notch_here: bool,
     /// The machine whose Muster this UI shows, reached through ssh
     /// (`muster --on vm`); `None` for this one's.
     pub(crate) machine: Option<String>,
     /// Whether this UI has started the notch since it connected, or seen
     /// it turned off since.
     notch_started: bool,
-    /// The notch is being turned on or off: the answer is on its way.
-    pub(crate) notch_changing: bool,
-    /// The colours of the person's terminal, as it said them as the UI
-    /// started, told to each daemon the UI connects to.
-    pub(crate) colours: muster_core::colours::TerminalColours,
-    /// One cell of the person's terminal in pixels, as its size says,
-    /// read as the UI starts and as the window is resized.
-    pub(crate) cell_pixels: Option<PixelSize>,
-    /// The width a session sits beside the list from is being changed.
-    pub(crate) side_by_side_changing: bool,
-    /// The look is being changed: whose colours, or how many lines.
-    pub(crate) look_changing: bool,
-    /// How a kind of notification is told is being changed.
-    pub(crate) telling_changing: bool,
-    /// The plugin being turned on or off: the answer is on its way.
-    pub(crate) plugin_changing: Option<PluginKey>,
-    /// A plugin just installed, selected once the list has it.
-    plugin_wanted: Option<PluginKey>,
-    /// The panels as the person moved them, until the daemon keeps them,
-    /// or for as long as the window lasts where it cannot.
-    panels_kept: Option<Layout>,
-    /// The list folded away or brought back, the same way.
-    folded_kept: Option<bool>,
     /// The size the streamed session's program was last given.
     fitted: Option<TermSize>,
-    /// A panel or the line between two being dragged.
-    pub(crate) drag: Option<drag::Drag>,
-    /// What the pointer is over that a drag would move, lit.
-    pub(crate) hover: Option<grab::Grab>,
-    /// The panels being moved with the keys.
-    pub(crate) arranging: Option<drag::Arranging>,
     /// What each key does, Muster's own with the person's over them.
     pub(crate) keymap: muster_core::keys::Keymap,
     /// The shell beside the session, while it is shown.
@@ -614,66 +524,32 @@ impl App {
             folded: HashSet::new(),
             selected_at: 0,
             list_offset: 0,
-            needs_offset: 0,
-            needs_list: Vec::new(),
-            needs_selected: None,
-            tickets: HashMap::new(),
-            tickets_selected: None,
-            tickets_offset: 0,
-            ticket_scroll: None,
-            ticket_part: None,
-            ticket_briefs: HashMap::new(),
-            ticket_texts: HashMap::new(),
-            settings: HashMap::new(),
-            settings_selected: None,
-            settings_offset: 0,
+            needs: screens::NeedsScreen::default(),
+            tickets: screens::TicketsScreen::default(),
+            settings: screens::SettingsScreen::default(),
+            panels: screens::Panels::default(),
+            alarms: screens::Alarms::default(),
+            moving: screens::Moving::default(),
+            person: screens::Person::default(),
+            requests: screens::Requests::default(),
             screens: HashMap::new(),
             changes: None,
             selection: None,
             attached: None,
             focus_told: None,
             wanted: None,
-            pending: HashMap::new(),
-            next_req: 1,
             terminal_size,
             full_screen: false,
             closing: Vec::new(),
             removing: Vec::new(),
             cwd,
-            focused: None,
-            notify: true,
-            motion: true,
-            step: 0,
             now: None,
-            flashes: HashMap::new(),
-            glad_at: None,
-            held_news: Vec::new(),
-            last_alarm: None,
-            slide: None,
             welcome: false,
-            last_harness: HarnessChoice::Claude,
-            ticket_agent: HarnessChoice::Claude,
-            ticket_projects: HashMap::new(),
-            daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
-            graphics: crate::view::logos::Graphics::Text,
-            notch_here: false,
+            last_harness: HarnessChoice::CLAUDE,
             machine: None,
             notch_started: false,
-            notch_changing: false,
-            colours: muster_core::colours::TerminalColours::default(),
-            cell_pixels: None,
-            side_by_side_changing: false,
-            look_changing: false,
-            telling_changing: false,
-            plugin_changing: None,
-            plugin_wanted: None,
             areas_cache: std::cell::RefCell::default(),
-            panels_kept: None,
-            folded_kept: None,
             fitted: None,
-            drag: None,
-            hover: None,
-            arranging: None,
             keymap: muster_core::keys::Keymap::default(),
             shell: None,
             wanted_shell: None,
@@ -685,9 +561,9 @@ impl App {
     // Commands.
 
     fn command(&mut self, command: Command, then: Then) -> Action {
-        let req_id = self.next_req;
-        self.next_req += 1;
-        self.pending.insert(req_id, then);
+        let req_id = self.requests.next;
+        self.requests.next += 1;
+        self.requests.pending.insert(req_id, then);
         Action::Send(ClientFrame::Command { req_id, command })
     }
 
@@ -695,7 +571,7 @@ impl App {
         self.note = Some(Note {
             text: text.into(),
             error: false,
-            shown_at: self.step,
+            shown_at: self.moving.step,
         });
     }
 
@@ -703,7 +579,7 @@ impl App {
         self.note = Some(Note {
             text: text.into(),
             error: true,
-            shown_at: self.step,
+            shown_at: self.moving.step,
         });
     }
 
@@ -734,7 +610,7 @@ impl App {
             {
                 Some(*session)
             }
-            (_, View::NeedsYou) => self.needs_selected,
+            (_, View::NeedsYou) => self.needs.selected,
             (_, View::Sessions) => match self.selected {
                 Some(Row::Session(session)) => Some(session),
                 _ => None,
@@ -793,16 +669,14 @@ impl App {
         } else {
             self.shown_session()
         };
-        shown.filter(|_| self.focused != Some(false))
+        shown.filter(|_| self.person.focused != Some(false))
     }
 
     /// Tells the daemon which session is in focus now, if that changed, so
-    /// a program that asked learns it gained or lost focus. Not to a
-    /// daemon before it knew how (`ARC-09`).
+    /// a program that asked learns it gained or lost focus.
     pub(super) fn tell_focus(&mut self) -> Option<Action> {
         let wanted = self.focus_session();
-        let knows = matches!(self.link, Link::Connected { .. })
-            && self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL;
+        let knows = matches!(self.link, Link::Connected { .. });
         if !knows || wanted == self.focus_told {
             return None;
         }
@@ -813,7 +687,7 @@ impl App {
     /// A session's terminal of `size` in pixels, scaled from a cell of the
     /// person's terminal; `None` where that terminal does not say its own.
     pub(crate) fn session_pixels(&self, size: TermSize) -> Option<PixelSize> {
-        let cell = self.cell_pixels?;
+        let cell = self.person.cell_pixels?;
         Some(PixelSize {
             width: size.cols.saturating_mul(cell.width),
             height: size.rows.saturating_mul(cell.height),

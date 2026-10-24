@@ -14,128 +14,99 @@
 
 use std::path::{Path, PathBuf};
 
+use muster_core::WorkspaceId;
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
-use muster_core::{SessionStatus, WorkspaceId};
-use muster_state::session::Start;
+use muster_core::stacks::Stacked;
 use tokio::sync::oneshot;
 
 use super::Supervisor;
+use super::prepared::{Asked, Purpose, Ready};
 use super::sessions::Mode;
-use crate::harness::{self, CheckCommands, Place};
+use crate::harness::{self, CheckCommands};
 
 impl Supervisor {
-    /// Starts a session running the project's checks in `workspace`.
-    pub(super) async fn check_workspace(
-        &mut self,
+    /// Starts a session running the project's checks in `workspace`, with
+    /// its settings read off the loop (`prepared`).
+    pub(super) fn check_workspace(
+        &self,
         workspace: WorkspaceId,
         size: TermSize,
-    ) -> Result<Reply, ErrorBody> {
-        let harness = harness::find("checks").ok_or_else(|| {
-            ErrorBody::new(ErrorCode::Internal, "the checks are not a known harness")
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    ) {
+        let asked = (|| {
+            let asked = self.asked(workspace, "checks", size, Purpose::Checks)?;
+            let path =
+                asked.host_path("checks by hand run in a worktree or the project's checkout")?;
+            let overrides = self.overrides_of(self.workspace(workspace)?.project);
+            Ok((asked, async move {
+                checks_at(path, overrides)
+                    .await
+                    .map(|checks| Ready::with(Mode::Checks(checks)))
+            }))
+        })();
+        self.prepare(asked, reply);
+    }
+
+    /// Starts Claude Code reviewing the change in `workspace`, with what it
+    /// merges into asked of git off the loop (`prepared`).
+    pub(super) fn review_workspace(
+        &self,
+        workspace: WorkspaceId,
+        size: TermSize,
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    ) {
+        let asked = (|| {
+            let asked = self.asked(workspace, "review", size, Purpose::Review)?;
+            let path =
+                asked.host_path("a review by hand runs in a worktree or the project's checkout")?;
+            let branch = self.reviewable_branch(workspace)?;
+            let (overrides, stacked) = self.base_asked(workspace)?;
+            Ok((asked, async move {
+                let base = branch_base(&path, stacked.as_ref(), overrides).await?;
+                let prompt = crate::runs::prompts::review_by_hand(&branch, &base);
+                Ok(Ready::with(Mode::Fresh {
+                    prompt: Some(prompt),
+                }))
+            }))
+        })();
+        self.prepare(asked, reply);
+    }
+
+    /// A session by hand of the built-in harness `harness` in `workspace`,
+    /// where it can run.
+    fn asked(
+        &self,
+        workspace: WorkspaceId,
+        harness: &str,
+        size: TermSize,
+        purpose: Purpose,
+    ) -> Result<Asked, ErrorBody> {
+        let harness = harness::find(harness).ok_or_else(|| {
+            ErrorBody::new(
+                ErrorCode::Internal,
+                format!("{harness} is not a known harness"),
+            )
         })?;
         let place = self.place_for(workspace, &harness)?;
-        let Place::Host(path) = &place else {
-            return Err(ErrorBody::new(
-                ErrorCode::BadRequest,
-                "checks by hand run in a worktree or the project's checkout",
-            ));
-        };
-        let checks = self.checks_in(workspace, path).await?;
-        let id = self
-            .add_session(workspace, &harness, None, Start::WithPrompt)
-            .await?;
-        if let Err(error) = self.launch(
-            id,
+        Ok(Asked {
+            workspace,
             harness,
             place,
             size,
-            Mode::Checks(checks),
-            Start::WithPrompt,
-            false,
-        ) {
-            self.end_session(id, SessionStatus::Exited { success: false }, true)
-                .await;
-            return Err(ErrorBody::new(
-                ErrorCode::Internal,
-                format!("could not start the checks: {error}"),
-            ));
-        }
-        Ok(Reply::SessionStarted { id })
-    }
-
-    /// The checks the settings in the workspace at `path` name.
-    pub(super) async fn checks_in(
-        &self,
-        workspace: WorkspaceId,
-        path: &Path,
-    ) -> Result<CheckCommands, ErrorBody> {
-        let project = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .map(|found| found.project)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
-        let overrides: PathBuf = self
-            .config_dir
-            .join("projects")
-            .join(format!("{project}.toml"));
-        let root = path.to_owned();
-        let loaded = tokio::task::spawn_blocking(move || crate::config::load(&root, &overrides))
-            .await
-            .map_err(|error| ErrorBody::new(ErrorCode::Internal, error.to_string()))?
-            .map_err(|error| ErrorBody::new(ErrorCode::BadRequest, error.to_string()))?;
-        let checks = loaded.config.checks;
-        if checks.commands.is_empty() {
-            return Err(ErrorBody::new(
-                ErrorCode::BadRequest,
-                "the project names no checks: add `[checks] commands = [\"…\"]` to muster.toml",
-            ));
-        }
-        Ok(CheckCommands {
-            commands: checks.commands,
-            limit: checks.timeout,
+            title: None,
+            purpose,
         })
     }
-}
 
-impl Supervisor {
-    /// Starts Claude Code reviewing the change in `workspace`.
-    pub(super) async fn review_workspace(
-        &mut self,
+    /// What finding the base `workspace`'s branch merges into needs that
+    /// the loop knows: the settings' overrides, and the branch it is
+    /// stacked on.
+    pub(super) fn base_asked(
+        &self,
         workspace: WorkspaceId,
-        size: TermSize,
-    ) -> Result<Reply, ErrorBody> {
-        let harness = harness::find("review").ok_or_else(|| {
-            ErrorBody::new(ErrorCode::Internal, "the review is not a known harness")
-        })?;
-        let place = self.place_for(workspace, &harness)?;
-        let Place::Host(path) = &place else {
-            return Err(ErrorBody::new(
-                ErrorCode::BadRequest,
-                "a review by hand runs in a worktree or the project's checkout",
-            ));
-        };
-        let branch = self.reviewable_branch(workspace)?;
-        let base = self.base_for(workspace, path).await?;
-        let prompt = crate::runs::prompts::review_by_hand(&branch, &base);
-        let id = self
-            .add_session(workspace, &harness, None, Start::WithPrompt)
-            .await?;
-        let mode = Mode::Fresh {
-            prompt: Some(prompt),
-        };
-        if let Err(error) = self.launch(id, harness, place, size, mode, Start::WithPrompt, false) {
-            self.end_session(id, SessionStatus::Exited { success: false }, true)
-                .await;
-            return Err(ErrorBody::new(
-                ErrorCode::Internal,
-                format!("could not start the review: {error}"),
-            ));
-        }
-        Ok(Reply::SessionStarted { id })
+    ) -> Result<(PathBuf, Option<Stacked>), ErrorBody> {
+        let found = self.workspace(workspace)?;
+        Ok((self.overrides_of(found.project), found.stacked_on.clone()))
     }
 
     /// Pushes `workspace`'s branch and opens a draft pull request from it,
@@ -146,14 +117,7 @@ impl Supervisor {
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         let prepared = (|| {
-            let found = self
-                .state
-                .workspaces
-                .iter()
-                .find(|candidate| candidate.id == workspace)
-                .ok_or_else(|| {
-                    ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-                })?;
+            let found = self.workspace(workspace)?;
             let path = found.kind.host_path().map(Path::to_owned).ok_or_else(|| {
                 ErrorBody::new(
                     ErrorCode::BadRequest,
@@ -161,11 +125,8 @@ impl Supervisor {
                 )
             })?;
             let branch = self.reviewable_branch(workspace)?;
-            let overrides = self
-                .config_dir
-                .join("projects")
-                .join(format!("{}.toml", found.project));
-            Ok::<_, ErrorBody>((path, branch, overrides, found.stacked_on.clone()))
+            let (overrides, stacked) = self.base_asked(workspace)?;
+            Ok::<_, ErrorBody>((path, branch, overrides, stacked))
         })();
         let (path, branch, overrides, stacked) = match prepared {
             Ok(prepared) => prepared,
@@ -174,7 +135,7 @@ impl Supervisor {
                 return;
             }
         };
-        let (hosts, requests) = (self.hosts.clone(), self.requests.clone());
+        let (hosts, requests) = (self.systems.hosts.clone(), self.requests.clone());
         let place = crate::service::ProjectPlace {
             root: path.clone(),
             overrides: overrides.clone(),
@@ -189,14 +150,7 @@ impl Supervisor {
                     .map_err(|error| error.body())?;
                 // A stacked branch's pull request merges into the branch
                 // it is stacked on.
-                let base = if let Some(stacked) =
-                    super::stacks::stacked_base(&path, stacked.as_ref()).await
-                {
-                    stacked
-                } else {
-                    let configured = load_settings(path.clone(), overrides).await?.base_branch;
-                    base_of(&path, configured.as_deref()).await
-                };
+                let base = branch_base(&path, stacked.as_ref(), overrides).await?;
                 let base = base.strip_prefix("origin/").unwrap_or(&base).to_owned();
                 if base == branch {
                     return Err(ErrorBody::new(
@@ -240,14 +194,7 @@ impl Supervisor {
     /// The branch checked out in `workspace`, if it can go anywhere: not
     /// detached, and not a run's container.
     pub(super) fn reviewable_branch(&self, workspace: WorkspaceId) -> Result<String, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if !found.kind.in_git() {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -263,49 +210,39 @@ impl Supervisor {
         }
         Ok(branch)
     }
+}
 
-    /// What `workspace`'s branch, at `path`, is to merge into: the branch
-    /// it is stacked on while there is one, else its base.
-    pub(super) async fn base_for(
-        &self,
-        workspace: WorkspaceId,
-        path: &Path,
-    ) -> Result<String, ErrorBody> {
-        let stacked = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .and_then(|found| found.stacked_on.clone());
-        if let Some(stacked) = super::stacks::stacked_base(path, stacked.as_ref()).await {
-            return Ok(stacked);
-        }
-        let configured = self.settings_in(workspace, path).await?.base_branch;
-        Ok(base_of(path, configured.as_deref()).await)
+/// What the branch at `path` is to merge into: the branch it is
+/// `stacked` on while there is one, else its base.
+pub(super) async fn branch_base(
+    path: &Path,
+    stacked: Option<&Stacked>,
+    overrides: PathBuf,
+) -> Result<String, ErrorBody> {
+    if let Some(stacked) = super::stacks::stacked_base(path, stacked).await {
+        return Ok(stacked);
     }
+    let configured = load_settings(path.to_owned(), overrides).await?.base_branch;
+    Ok(base_of(path, configured.as_deref()).await)
+}
 
-    /// The settings in the workspace at `path`, with the person's
-    /// overrides.
-    pub(super) async fn settings_in(
-        &self,
-        workspace: WorkspaceId,
-        path: &Path,
-    ) -> Result<muster_core::config::ProjectConfig, ErrorBody> {
-        let project = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .map(|found| found.project)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
-        let overrides = self
-            .config_dir
-            .join("projects")
-            .join(format!("{project}.toml"));
-        load_settings(path.to_owned(), overrides).await
+/// The checks the settings of the repository at `root` name, with the
+/// overrides.
+pub(super) async fn checks_at(
+    root: PathBuf,
+    overrides: PathBuf,
+) -> Result<CheckCommands, ErrorBody> {
+    let checks = load_settings(root, overrides).await?.checks;
+    if checks.commands.is_empty() {
+        return Err(ErrorBody::new(
+            ErrorCode::BadRequest,
+            "the project names no checks: add `[checks] commands = [\"…\"]` to muster.toml",
+        ));
     }
+    Ok(CheckCommands {
+        commands: checks.commands,
+        limit: checks.timeout,
+    })
 }
 
 /// The settings of the repository at `root`, with the overrides.

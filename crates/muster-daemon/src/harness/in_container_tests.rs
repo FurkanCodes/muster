@@ -7,6 +7,7 @@ use std::time::Duration;
 use super::{IN_CONTAINER, START_IN_CONTAINER, STOP_IN_CONTAINER};
 use crate::containers::Docker;
 use crate::runs::job::tests::container;
+use crate::waiting;
 
 const QUICK: Duration = Duration::from_secs(60);
 
@@ -43,19 +44,16 @@ async fn alive(docker: &Docker, container: &str, pid: &str) -> bool {
 
 /// The pid recorded for `session`, once it is there.
 async fn recorded(docker: &Docker, container: &str, session: &str) -> String {
-    for _ in 0..100 {
+    waiting::found(&format!("a pid recorded for {session}"), async || {
         let pid = sh(
             docker,
             container,
             &format!("cat /tmp/muster/sessions/{session}.pid 2>/dev/null"),
         )
         .await;
-        if !pid.is_empty() {
-            return pid;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("no pid recorded for {session}");
+        (!pid.is_empty()).then_some(pid)
+    })
+    .await
 }
 
 async fn stop(docker: &Docker, container: &str, session: &str) {
@@ -83,15 +81,10 @@ async fn real_docker_stops_a_session_s_program_and_nothing_that_reused_its_pid()
     // Started again (a daemon restart, a person starting it again), the
     // program from before is stopped first.
     start_shell(name, "ses_one");
-    let mut second = recorded(&docker, name, "ses_one").await;
-    for _ in 0..100 {
-        if second != first {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        second = recorded(&docker, name, "ses_one").await;
-    }
-    assert_ne!(first, second);
+    let second = waiting::found("the new program's pid", async || {
+        Some(recorded(&docker, name, "ses_one").await).filter(|second| *second != first)
+    })
+    .await;
     assert!(!alive(&docker, name, &first).await, "the old program went");
     assert!(alive(&docker, name, &second).await);
 
@@ -117,13 +110,7 @@ async fn real_docker_stops_a_session_s_program_and_nothing_that_reused_its_pid()
     );
 
     stop(&docker, name, "ses_one").await;
-    for _ in 0..100 {
-        if !alive(&docker, name, &second).await {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(!alive(&docker, name, &second).await, "stopped");
+    waiting::until("it to stop", async || !alive(&docker, name, &second).await).await;
     // Stopping again, with nothing left, is fine.
     stop(&docker, name, "ses_one").await;
 }

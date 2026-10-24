@@ -89,25 +89,27 @@ impl Supervisor {
             return;
         }
         colours.palette.truncate(muster_core::colours::PALETTE);
-        self.colours.send_replace(colours);
+        self.clients.colours.send_replace(colours);
     }
 
     /// What a new terminal answers its program's questions about its
     /// colours from.
     pub(super) fn colours(&self) -> crate::pty::Colours {
-        self.colours.subscribe()
+        self.clients.colours.subscribe()
     }
 
     /// Makes `pty`, started at `size`, the session's current terminal,
     /// moving its clients to it; it takes the size of the client in charge
     /// of the session.
     pub(super) fn publish_terminal(&mut self, session: SessionId, pty: PtyHandle, size: TermSize) {
-        match self.terminals.get(&session) {
+        match self.clients.terminals.get(&session) {
             Some(current) => {
                 current.send_replace(Some(pty));
             }
             None => {
-                self.terminals.insert(session, watch::channel(Some(pty)).0);
+                self.clients
+                    .terminals
+                    .insert(session, watch::channel(Some(pty)).0);
             }
         }
         self.fit_new_terminal(session, size);
@@ -119,11 +121,11 @@ impl Supervisor {
     pub(super) fn release_terminal(&mut self, session: SessionId) {
         self.forget_token(session);
         self.live.remove(&session);
-        self.sizing.released(session);
+        self.clients.sizing.released(session);
         // A closed channel keeps its last value for receivers still held,
         // which would keep the terminal's output in memory; empty it, then
         // close it, which tells every client's stream it is gone.
-        if let Some(current) = self.terminals.remove(&session) {
+        if let Some(current) = self.clients.terminals.remove(&session) {
             current.send_replace(None);
         }
     }
@@ -137,19 +139,24 @@ impl Supervisor {
         watch: bool,
         client: u64,
     ) -> Option<TerminalLink> {
-        let Some(current) = self.terminals.get(&session).map(watch::Sender::subscribe) else {
+        let Some(current) = self
+            .clients
+            .terminals
+            .get(&session)
+            .map(watch::Sender::subscribe)
+        else {
             if watch {
                 self.seen_without_terminal(session).await;
             }
             return None;
         };
-        let latest = self.sizing.join(session, client);
+        let latest = self.clients.sizing.join(session, client);
         let watching = if watch {
             self.watch(session, client).await;
             Some(WatchGuard {
                 session,
                 client,
-                unwatched: self.unwatched.clone(),
+                unwatched: self.clients.unwatched.clone(),
             })
         } else {
             None
@@ -163,9 +170,9 @@ impl Supervisor {
 
     async fn watch(&mut self, session: SessionId, client: u64) {
         // Beginning to watch is being active, so its size may now apply.
-        self.sizing.watching(session, client, true);
+        self.clients.sizing.watching(session, client, true);
         self.fit(session).await;
-        let watchers = self.watchers.entry(session).or_insert(0);
+        let watchers = self.clients.watchers.entry(session).or_insert(0);
         *watchers += 1;
         if let Some(live) = self.live.get(&session)
             && live.heard().suspends_itself()
@@ -173,7 +180,7 @@ impl Supervisor {
             // Looking at a suspended agent brings it back.
             live.pty.resume_if_suspended().await;
         }
-        if *self.watchers.get(&session).unwrap_or(&0) == 1 {
+        if *self.clients.watchers.get(&session).unwrap_or(&0) == 1 {
             self.step_session(session, Signal::Watched { watching: true })
                 .await;
         }
@@ -181,14 +188,14 @@ impl Supervisor {
 
     /// One watch of `session` by `client` ended.
     pub(super) async fn unwatch(&mut self, session: SessionId, client: u64) {
-        self.sizing.watching(session, client, false);
+        self.clients.sizing.watching(session, client, false);
         self.fit(session).await;
-        let Some(watchers) = self.watchers.get_mut(&session) else {
+        let Some(watchers) = self.clients.watchers.get_mut(&session) else {
             return;
         };
         *watchers = watchers.saturating_sub(1);
         if *watchers == 0 {
-            self.watchers.remove(&session);
+            self.clients.watchers.remove(&session);
             self.step_session(session, Signal::Watched { watching: false })
                 .await;
         }
@@ -221,7 +228,7 @@ impl Supervisor {
         {
             return None;
         }
-        let typing = self.typing.entry(session).or_insert(0);
+        let typing = self.clients.typing.entry(session).or_insert(0);
         *typing += 1;
         if *typing == 1
             && let Some(live) = self.live.get(&session)
@@ -230,19 +237,19 @@ impl Supervisor {
         }
         Some(KeysGuard {
             session,
-            gone: self.keys_gone.clone(),
+            gone: self.clients.keys_gone.clone(),
         })
     }
 
     /// One client let go of the person's keys in `session`'s terminal: the
     /// last tells its program it is out of focus, unless it stays in focus.
     pub(super) async fn let_go_keys(&mut self, session: SessionId) {
-        let Some(typing) = self.typing.get_mut(&session) else {
+        let Some(typing) = self.clients.typing.get_mut(&session) else {
             return;
         };
         *typing = typing.saturating_sub(1);
         if *typing == 0 {
-            self.typing.remove(&session);
+            self.clients.typing.remove(&session);
             if let Some(live) = self.live.get(&session)
                 && !live.heard().stays_in_focus()
             {
@@ -253,7 +260,7 @@ impl Supervisor {
 
     /// Whether anyone is watching `session`.
     pub(super) fn is_watched(&self, session: SessionId) -> bool {
-        self.watchers.contains_key(&session)
+        self.clients.watchers.contains_key(&session)
     }
 
     /// Tells a newly started machine that its session is being watched, so

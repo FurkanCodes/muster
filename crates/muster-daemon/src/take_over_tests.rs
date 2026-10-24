@@ -2,14 +2,13 @@
 //! in the run's container, through a stand-in `docker`.
 
 use std::path::Path;
-use std::time::Duration;
 
 use muster_core::protocol::{Command, ErrorCode, Reply, Snapshot, TermSize};
 use muster_core::{RunId, RunStage, SessionId, WorkspaceId, WorkspaceKind};
 use muster_state::run::{RunEffect, RunEvent};
-use tokio::time::timeout;
 
 use super::*;
+use crate::waiting;
 
 /// One start of the stand-in docker: its arguments, and the credential its
 /// environment carried.
@@ -55,35 +54,26 @@ fn launches(dir: &Path) -> Vec<Launch> {
 
 /// Waits for `count` starts of the stand-in docker for `session`.
 async fn wait_for_launches(dir: &Path, session: SessionId, count: usize) -> Vec<Launch> {
-    timeout(Duration::from_secs(5), async {
-        loop {
+    waiting::found(
+        &format!("docker to be started {count} time(s) for {session}"),
+        async || {
             let found: Vec<Launch> = launches(dir)
                 .into_iter()
                 .filter(|launch| launch.session() == session.to_string())
                 .collect();
-            if found.len() >= count {
-                return found;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
+            (found.len() >= count).then_some(found)
+        },
+    )
     .await
-    .unwrap_or_else(|_| panic!("docker was not started {count} time(s) for {session}"))
 }
 
 /// Waits until the snapshot satisfies `done`.
 async fn wait_for(setup: &Setup, mut done: impl FnMut(&Snapshot) -> bool) -> Snapshot {
-    timeout(Duration::from_secs(5), async {
-        loop {
-            let (snapshot, _) = setup.supervisor.subscribe().await.unwrap();
-            if done(&snapshot) {
-                return snapshot;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+    waiting::found("the state to get there", async || {
+        let (snapshot, _) = setup.supervisor.subscribe().await.unwrap();
+        done(&snapshot).then_some(snapshot)
     })
     .await
-    .expect("the state never got there")
 }
 
 fn ended(snapshot: &Snapshot, session: SessionId) -> bool {
@@ -350,8 +340,7 @@ async fn a_daemon_restart_starts_the_person_s_agent_again_and_ends_their_shells(
         supervisor,
         ..
     } = setup;
-    drop(supervisor);
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    supervisor.stop().await;
     let work = Arc::new(FakeWork::default());
     let supervisor = spawn(&database, work.clone(), kept.path()).await;
 
@@ -403,8 +392,7 @@ async fn a_container_left_by_a_run_that_ended_goes_when_the_daemon_starts() {
         project,
         ..
     } = setup;
-    drop(supervisor);
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    supervisor.stop().await;
     let left = muster_core::Workspace {
         id: WorkspaceId::new(),
         project,

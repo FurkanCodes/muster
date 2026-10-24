@@ -149,21 +149,8 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
     let config = MusterConfig::parse(read(&file)?.as_deref(), &file.display().to_string())?;
     Ok(OwnSettings {
         preferences: Preferences {
-            notch: config.notch,
             file,
-            agents: config.agents.iter().map(AgentDefinition::added).collect(),
-            problem: None,
-            side_by_side_from: config.side_by_side_from,
-            palette: config.palette,
-            session_lines: config.session_lines,
-            panels: config.panels,
-            list_folded: config.list_folded,
-            naming: config.naming,
-            keys: config.keys,
-            notifications: config.notifications,
-            telling: config.telling,
-            shared_builds: config.shared_builds,
-            delegation: config.delegation,
+            ..config.preferences
         },
         agents: config.agents,
         warnings: config.warnings,
@@ -173,7 +160,7 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
 /// The settings `text` with agents let start agents, or not (`PRD-01`).
 fn agents_start_agents(text: Option<&str>, on: bool) -> Result<String, edit::EditError> {
     let table = muster_core::delegation::DELEGATION;
-    edit::set_flag_in(text, preferences::NEW_FILE, table, "allowed", on)
+    edit::set_in(text, preferences::NEW_FILE, table, "allowed", on)
 }
 
 /// Makes `change` in Muster's own settings in `config_dir`, keeping the
@@ -190,33 +177,33 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
     let changed = match change {
         PreferenceChange::Notch(on) => {
             let (table, key) = NOTCH;
-            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
         }
         PreferenceChange::SideBySideFrom(columns) => {
             let (table, key) = SIDE_BY_SIDE;
             let columns = i64::from(*columns);
-            edit::set_number_in(text.as_deref(), preferences::NEW_FILE, table, key, columns)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, columns)
         }
         PreferenceChange::Palette(palette) => {
             let (table, key) = LOOK_COLOURS;
             let value = palette.key();
-            edit::set_text_in(text.as_deref(), preferences::NEW_FILE, table, key, value)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, value)
         }
         PreferenceChange::SessionLines(lines) => {
             let (table, key) = LOOK_SESSION_LINES;
             let count = i64::from(lines.count());
-            edit::set_number_in(text.as_deref(), preferences::NEW_FILE, table, key, count)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, count)
         }
         PreferenceChange::Panels(layout) => {
             let (table, key) = PANELS;
             let value = layout.to_string();
-            edit::set_text_in(text.as_deref(), preferences::NEW_FILE, table, key, &value)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, &value)
         }
         PreferenceChange::ListFolded(folded) => {
             let (table, key) = LIST_FOLDED;
-            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *folded)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, *folded)
         }
-        PreferenceChange::NamesByAgent(on) => edit::set_flag_in(
+        PreferenceChange::NamesByAgent(on) => edit::set_in(
             text.as_deref(),
             preferences::NEW_FILE,
             NAMES,
@@ -246,17 +233,17 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
         PreferenceChange::AllKeysBack => edit::remove_table_in(text.as_deref(), KEYS),
         PreferenceChange::Notifications(on) => {
             let (table, key) = NOTIFICATIONS;
-            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
         }
         PreferenceChange::SharedBuilds(on) => {
             let (table, key) = SHARED_BUILDS;
-            edit::set_flag_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
+            edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, *on)
         }
         PreferenceChange::AgentsStartAgents(on) => agents_start_agents(text.as_deref(), *on),
         PreferenceChange::Tell { kind, tell } => {
             let (table, _) = NOTIFICATIONS;
             let sound = format!("{}_sound", kind.key());
-            edit::set_flag_in(
+            edit::set_in(
                 text.as_deref(),
                 preferences::NEW_FILE,
                 table,
@@ -264,7 +251,7 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
                 tell.on,
             )
             .and_then(|flagged| {
-                edit::set_text_in(
+                edit::set_in(
                     Some(&flagged),
                     preferences::NEW_FILE,
                     table,
@@ -342,7 +329,12 @@ fn write(path: &Path, text: &str) -> std::io::Result<()> {
         |name| name.to_string_lossy().into_owned(),
     );
     let temporary = parent.join(format!(".{name}.{}.new", std::process::id()));
-    std::fs::write(&temporary, text)?;
+    // On disk before it takes the file's place, so a crash leaves the old
+    // file or the new one, never an empty one.
+    let mut file = std::fs::File::create(&temporary)?;
+    std::io::Write::write_all(&mut file, text.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
     std::fs::rename(&temporary, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&temporary);
     })

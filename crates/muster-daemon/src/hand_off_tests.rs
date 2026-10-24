@@ -145,8 +145,7 @@ async fn a_worktree_s_committed_work_goes_to_the_checks_first() {
         supervisor,
         ..
     } = setup;
-    drop(supervisor);
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    supervisor.stop().await;
     let work = Arc::new(FakeWork::default());
     let _supervisor = spawn(&database, work.clone(), dir.path()).await;
     let (context, effect) = work.asked(1).await;

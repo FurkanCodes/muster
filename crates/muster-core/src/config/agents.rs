@@ -38,12 +38,6 @@ use std::fmt;
 
 use crate::settings::AddedAgent;
 
-/// The names Muster's own harnesses go by, which no agent of the person's
-/// can take.
-pub const BUILT_IN: [&str; 8] = [
-    "shell", "claude", "codex", "gemini", "opencode", "copilot", "checks", "review",
-];
-
 /// Where a first prompt goes in [`AgentDefinition::prompt`].
 pub const PROMPT: &str = "{prompt}";
 
@@ -296,7 +290,7 @@ pub fn parse(agents: &toml::Value) -> Result<Vec<AgentDefinition>, AgentError> {
 
 /// One agent's table, under `name`.
 fn definition(name: &str, value: &toml::Value) -> Result<AgentDefinition, AgentError> {
-    if BUILT_IN.contains(&name) {
+    if crate::harness::is_built_in(name) {
         return Err(AgentError::BuiltIn {
             name: name.to_owned(),
         });
@@ -424,7 +418,9 @@ impl Read<'_> {
     fn text(&self, key: &str) -> Result<Option<String>, AgentError> {
         match self.table.get(key) {
             None => Ok(None),
-            Some(toml::Value::String(text)) if single_line(text) => Ok(Some(text.clone())),
+            Some(toml::Value::String(text)) if crate::text::is_one_line(text) => {
+                Ok(Some(text.clone()))
+            }
             Some(toml::Value::String(_)) => Err(self.invalid(key, "one line of text, not empty")),
             Some(_) => Err(self.invalid(key, "text")),
         }
@@ -520,7 +516,9 @@ impl Read<'_> {
         self.known(title, &TITLE_KEYS, "title.")?;
         let words = |key: &str| match title.get(key) {
             None => Ok(None),
-            Some(toml::Value::String(text)) if single_line(text) => Ok(Some(text.clone())),
+            Some(toml::Value::String(text)) if crate::text::is_one_line(text) => {
+                Ok(Some(text.clone()))
+            }
             Some(_) => Err(self.invalid(&format!("title.{key}"), "one line of text, not empty")),
         };
         Ok(TitleWords {
@@ -533,10 +531,6 @@ impl Read<'_> {
 
 /// Whether `text` is one line with something on it, and no other control
 /// character.
-fn single_line(text: &str) -> bool {
-    !text.trim().is_empty() && !text.chars().any(char::is_control)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -704,7 +698,8 @@ mod tests {
 
     #[test]
     fn a_built_in_s_name_is_refused() {
-        for name in BUILT_IN {
+        let own = crate::harness::OwnAgent::ALL.map(crate::harness::OwnAgent::id);
+        for name in own.into_iter().chain(["shell", "checks", "review"]) {
             let text = format!("[agents.{name}]\nprogram = \"x\"\n");
             let said = error(&text);
             assert!(

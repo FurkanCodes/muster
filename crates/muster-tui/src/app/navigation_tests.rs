@@ -160,7 +160,7 @@ fn tab_goes_round_the_tabs_and_in_a_session_reaches_the_program() {
 fn esc_in_a_dialog_closes_it_and_the_screen_stays() {
     let mut world = world();
     at(&mut world, View::NeedsYou);
-    world.app.needs_selected = Some(world.session.id);
+    world.app.needs.selected = Some(world.session.id);
     press(&mut world.app, KeyCode::Char('s'));
     assert!(matches!(world.app.mode, Mode::Dialog(_)));
     press(&mut world.app, KeyCode::Esc);

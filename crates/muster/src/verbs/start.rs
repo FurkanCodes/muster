@@ -4,13 +4,13 @@
 //! a workspace's terminal (`muster enter`), it starts in that workspace
 //! instead, and takes the terminal's place where the person is.
 
-use std::io::{IsTerminal, Read as _, Write as _};
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser;
 use muster_client::Connection;
-use muster_core::delegation::DELEGATION_PROTOCOL;
+
 use muster_core::protocol::{Command, Reading, Reply, Snapshot, TermSize};
 use muster_core::{Paths, SessionId, WorkspaceId};
 use serde::Serialize;
@@ -99,13 +99,6 @@ struct Started {
 async fn start(paths: &Paths, args: Args) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let prompt = prompt(&args.prompt)?;
     let mut connection = crate::daemon_start::connect(paths).await?;
-    if connection.welcome().version < DELEGATION_PROTOCOL {
-        return Err(
-            "the daemon running is older than this muster: move it onto this one with \
-             `muster reload`, then start the agent again"
-                .into(),
-        );
-    }
     let snapshot = connection.subscribe().await?;
     let terminal = in_terminal(&snapshot, &args);
     let snapshot = match terminal {
@@ -217,7 +210,9 @@ async fn with_project(
         return Ok(snapshot);
     }
     let root = top_level(&cwd);
-    if !args.add && !agrees(&root)? {
+    if !args.add
+        && !crate::person::agrees(&format!("Add {} as a project in Muster?", root.display()))?
+    {
         return Err(format!(
             "{} is not one of Muster's projects: add it with `--add` or `muster project add`, \
              or name one with `--project`",
@@ -248,19 +243,6 @@ fn top_level(folder: &Path) -> PathBuf {
         .map_or_else(|| folder.to_path_buf(), |top| PathBuf::from(top.trim_end()))
 }
 
-/// Whether the person, asked on their terminal, adds `root` as a project;
-/// never, without a terminal to ask on.
-fn agrees(root: &Path) -> std::io::Result<bool> {
-    if !std::io::stdin().is_terminal() {
-        return Ok(false);
-    }
-    eprint!("Add {} as a project in Muster? [y/N] ", root.display());
-    std::io::stderr().flush()?;
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    Ok(matches!(answer.trim(), "y" | "Y" | "yes"))
-}
-
 /// The workspace the agent works in, and whether it was made for it.
 async fn workspace_for(
     connection: &mut Connection,
@@ -269,7 +251,10 @@ async fn workspace_for(
     prompt: Option<&str>,
 ) -> Result<(WorkspaceId, bool), Box<dyn std::error::Error>> {
     if let Some(worktree) = &args.in_worktree {
-        return Ok((commands::find_worktree(snapshot, worktree)?.id, false));
+        return Ok((
+            crate::verbs::targets::find_workspace(snapshot, worktree, None)?.id,
+            false,
+        ));
     }
     let cwd = std::env::current_dir()?;
     let here = match &args.project {

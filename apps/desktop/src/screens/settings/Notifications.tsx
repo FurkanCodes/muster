@@ -6,6 +6,7 @@ import { useActions, useBridge, useDaemon } from "../../app/context";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import type { Sound } from "../../ipc/generated/Sound";
 import type { Tell } from "../../ipc/generated/Tell";
+import { errorText } from "../../lib/text";
 import { Button } from "../../ui/controls";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
@@ -110,7 +111,7 @@ export function Notifications({ preferences }: { preferences: Preferences }) {
     if (!canAsk(bridge)) return ui.tell("This window cannot open System Settings.", true);
     bridge.openNotificationSettings().then(
       () => ui.tell("Opened System Settings at Muster's notifications."),
-      (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+      (error: unknown) => ui.tell(errorText(error), true),
     );
   };
 

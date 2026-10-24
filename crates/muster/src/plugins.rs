@@ -12,9 +12,7 @@ use std::io::{BufRead as _, IsTerminal as _, Write as _};
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
-use muster_core::plugins::{
-    EventKind, HOOKS_PROTOCOL, PLUGINS_PROTOCOL, PluginSource, TICKET_PLUGINS_PROTOCOL,
-};
+use muster_core::plugins::{EventKind, PluginSource};
 use muster_core::protocol::plugins::{
     ChangedBy, PluginCommand as Asked, PluginInfo, PluginList, PluginOrigin, PreviewKind,
 };
@@ -119,7 +117,7 @@ pub(crate) async fn run(socket: &Path, command: PluginCommand) -> Outcome {
             enable(socket, &id, yes).await
         }
         PluginCommand::Disable { id } => {
-            let mut connection = open(socket).await?;
+            let mut connection = connect(socket).await?;
             let asked = Asked::SetEnabled {
                 id: id.clone(),
                 on: false,
@@ -145,15 +143,7 @@ async fn try_hooks(socket: &Path, id: &str, event: &str) -> Outcome {
         )
         .into());
     };
-    let mut connection = open(socket).await?;
-    let version = connection.welcome().version;
-    if version < HOOKS_PROTOCOL {
-        return Err(format!(
-            "the daemon speaks protocol {version} and runs no hooks, which need \
-             {HOOKS_PROTOCOL}; `muster reload` moves it onto the version installed now"
-        )
-        .into());
-    }
+    let mut connection = connect(socket).await?;
     let asked = Asked::TryHooks {
         id: id.to_owned(),
         event: kind,
@@ -176,15 +166,7 @@ async fn try_hooks(socket: &Path, id: &str, event: &str) -> Outcome {
 
 /// `muster plugin log`.
 async fn log(socket: &Path, id: &str) -> Outcome {
-    let mut connection = open(socket).await?;
-    let version = connection.welcome().version;
-    if version < TICKET_PLUGINS_PROTOCOL {
-        return Err(format!(
-            "the daemon speaks protocol {version} and keeps no plugin's log, which needs \
-             {TICKET_PLUGINS_PROTOCOL}; `muster reload` moves it onto the version installed now"
-        )
-        .into());
-    }
+    let mut connection = connect(socket).await?;
     let asked = Asked::Log { id: id.to_owned() };
     match connection.command(Command::Plugin(asked)).await? {
         Reply::PluginLog { log, .. } if log.trim().is_empty() => {
@@ -241,20 +223,6 @@ fn address(source: &str) -> Result<String, String> {
     Ok(source.to_owned())
 }
 
-/// Connected to a daemon that knows plugins.
-async fn open(socket: &Path) -> Result<muster_client::Connection, Box<dyn std::error::Error>> {
-    let connection = connect(socket).await?;
-    let version = connection.welcome().version;
-    if version < PLUGINS_PROTOCOL {
-        return Err(format!(
-            "the daemon speaks protocol {version} and knows no plugins, which need \
-             {PLUGINS_PROTOCOL}; `muster reload` moves it onto the version installed now"
-        )
-        .into());
-    }
-    Ok(connection)
-}
-
 async fn plugins(
     connection: &mut muster_client::Connection,
 ) -> Result<PluginList, Box<dyn std::error::Error>> {
@@ -273,7 +241,7 @@ fn done(reply: Reply) -> Outcome {
 
 /// `muster plugin list`.
 async fn list(socket: &Path, as_json: bool) -> Outcome {
-    let mut connection = open(socket).await?;
+    let mut connection = connect(socket).await?;
     let list = plugins(&mut connection).await?;
     if as_json {
         json::print(&list)?;
@@ -286,7 +254,7 @@ async fn list(socket: &Path, as_json: bool) -> Outcome {
 /// Asks the daemon for a preview with `asked`, shows it, asks the person
 /// (unless `yes`), and installs, links or updates what it showed.
 async fn approve(socket: &Path, asked: Asked, yes: bool) -> Outcome {
-    let mut connection = open(socket).await?;
+    let mut connection = connect(socket).await?;
     let preview = match connection.command(Command::Plugin(asked)).await? {
         Reply::PluginPreview(preview) => *preview,
         reply => return Err(unexpected(&reply)),
@@ -315,7 +283,7 @@ async fn approve(socket: &Path, asked: Asked, yes: bool) -> Outcome {
 
 /// `muster plugin enable`.
 async fn enable(socket: &Path, id: &str, yes: bool) -> Outcome {
-    let mut connection = open(socket).await?;
+    let mut connection = connect(socket).await?;
     let list = plugins(&mut connection).await?;
     let plugin = find(&list, id)?;
     if let Some(problem) = &plugin.problem {
@@ -343,7 +311,7 @@ async fn enable(socket: &Path, id: &str, yes: bool) -> Outcome {
 /// `muster plugin remove`.
 async fn remove(socket: &Path, id: &str, yes: bool) -> Outcome {
     may_ask(yes)?;
-    let mut connection = open(socket).await?;
+    let mut connection = connect(socket).await?;
     let list = plugins(&mut connection).await?;
     let plugin = find(&list, id)?;
     let question = match &plugin.source {

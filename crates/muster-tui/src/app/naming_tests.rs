@@ -3,14 +3,14 @@
 
 use crossterm::event::KeyCode;
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame};
-use muster_core::settings::{AddedAgent, NAMING_PROTOCOL, Naming, PreferenceChange};
+use muster_core::settings::{AddedAgent, Naming, PreferenceChange};
 
 use super::tests::{World, command, preferences, press, render, typed, world};
 use super::{Action, Dialog, Mode, SettingRow};
 
 fn on_row(world: &mut World, row: SettingRow) {
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(row);
+    world.app.settings.selected = Some(row);
 }
 
 fn changed(actions: &[Action]) -> Option<PreferenceChange> {
@@ -46,20 +46,6 @@ fn naming_by_an_agent_is_on_by_default_and_says_what_it_costs() {
         changed(&press(&mut world.app, KeyCode::Enter)),
         Some(PreferenceChange::NamesByAgent(false))
     );
-}
-
-#[test]
-fn a_daemon_that_names_no_chats_shows_none_of_it() {
-    let mut world = world();
-    world.app.daemon_protocol = NAMING_PROTOCOL - 1;
-    let rows = world.app.setting_rows();
-    for row in [
-        SettingRow::NamesByAgent,
-        SettingRow::NamedBy,
-        SettingRow::NamingModel,
-    ] {
-        assert!(!rows.contains(&row), "{row:?}");
-    }
 }
 
 #[test]

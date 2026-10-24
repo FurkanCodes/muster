@@ -4,46 +4,26 @@
 // folder, and ⏎ adds the chosen folder, or the path as typed. The folders
 // come from the app's own `list_folders`; the daemon's AddProject adds it.
 
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useId, useState } from "react";
 import { useActions, useApp } from "../app/context";
 import type { Folders } from "../ipc/generated/desktop/Folders";
-import { Button } from "../ui/controls";
-import { Dialog } from "../ui/Dialog";
+import { Dialog, DialogAnswers } from "../ui/Dialog";
 import { FolderOption } from "../ui/FolderOption";
 import { Label } from "../ui/Label";
 import { Loading } from "../ui/Loading";
 import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
-import { addProjectAt, said } from "./actions";
+import { addProjectAt } from "./actions";
 import { root, shown, split, step, up } from "./folders";
 import { found } from "./match";
 import { useTask } from "./useTask";
 import "./flows.css";
+import { type Asked, useAsked } from "../ipc/useAsked";
 
-/** The folder typed so far, listed: its folders, or why not; null while asked. */
-function useListing(folder: string) {
+/** The folder typed so far, listed: its folders, or why not. */
+function useListing(folder: string): Asked<Folders> {
   const app = useApp();
-  const [listing, setListing] = useState<{
-    folder: string;
-    folders?: Folders;
-    error?: string;
-  } | null>(null);
-  useEffect(() => {
-    if (!folder) return;
-    let current = true;
-    app.bridge.listFolders(folder).then(
-      (folders) => {
-        if (current) setListing({ folder, folders });
-      },
-      (error: unknown) => {
-        if (current) setListing({ folder, error: said(error) });
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [app, folder]);
-  return listing?.folder === folder ? listing : null;
+  return useAsked(folder ? () => app.bridge.listFolders(folder) : null, folder);
 }
 
 export default function AddProject() {
@@ -53,9 +33,9 @@ export default function AddProject() {
   const [at, setAt] = useState<number | null>(null);
   const [folder, name] = split(typed);
   const listing = useListing(folder);
-  const folders = listing?.folders ? shown(listing.folders.folders, name) : [];
+  const folders = listing.state === "answered" ? shown(listing.value.folders, name) : [];
   const chosen = at === null ? null : (folders[at] ?? null);
-  const listed = listing?.folders?.path ?? null;
+  const listed = listing.state === "answered" ? listing.value.path : null;
   const task = useTask();
   const id = useId();
   const close = () => {
@@ -98,27 +78,14 @@ export default function AddProject() {
       onAccept={() => void submit()}
       onKeyDown={onKeyDown}
       actions={
-        <>
-          <Button
-            variant="secondary"
-            size="lg"
-            title="Cancel (⎋)"
-            disabled={task.busy}
-            onClick={close}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            title={`Add ${adding} (⏎)`}
-            busy={task.busy}
-            disabled={!typed.trim()}
-            onClick={() => void submit()}
-          >
-            {task.busy ? "Adding…" : `Add ${adding}`}
-          </Button>
-        </>
+        <DialogAnswers
+          does={`Add ${adding}`}
+          doing="Adding…"
+          busy={task.busy}
+          disabled={!typed.trim()}
+          onCancel={close}
+          onDo={() => void submit()}
+        />
       }
     >
       <TextField
@@ -158,9 +125,9 @@ export default function AddProject() {
         </div>
         {!folder ? (
           <span className="mu-meta">Start the path with / or ~/.</span>
-        ) : !listing ? (
+        ) : listing.state === "asking" ? (
           <Loading text="Loading folder" layout="rule" />
-        ) : listing.error ? (
+        ) : listing.state === "failed" ? (
           <ErrorText size="meta">{listing.error}</ErrorText>
         ) : folders.length === 0 ? (
           <span className="mu-meta">

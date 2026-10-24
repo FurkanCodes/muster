@@ -43,6 +43,6 @@ stacked_on: Stacked | null,
 /**
  * The ticket it was made for, when an agent was started on one:
  * whatever its branch is called later, its agents are the ticket's.
- * Stored; from protocol 48, a field older clients pass over.
+ * Stored.
  */
 ticket: TicketKey | null, };

@@ -32,7 +32,7 @@ impl Supervisor {
                     .filter_map(|path| path.parent().map(Path::to_path_buf)),
             )
             .collect();
-        let Ok(mut entries) = tokio::fs::read_dir(&self.worktrees_dir).await else {
+        let Ok(mut entries) = tokio::fs::read_dir(&self.paths.worktrees_dir).await else {
             return;
         };
         while let Ok(Some(entry)) = entries.next_entry().await {
@@ -66,18 +66,11 @@ impl Supervisor {
         }
     }
 
-    /// Before a worktree is made in `group`: its builds go to the shared
-    /// folder from the first, while the person shares them.
-    pub(super) async fn share_builds_in(&self, group: &Path) {
-        if !self.state.preferences.shared_builds {
-            return;
-        }
-        if let Err(error) = shared_builds::share(group).await {
-            tracing::warn!(
-                %error,
-                folder = %group.display(),
-                "could not share the builds of a project's worktrees"
-            );
+    /// After the person's settings were taken again: settled if sharing
+    /// builds, which `was` before, changed.
+    pub(super) async fn settle_shared_builds_if(&mut self, was: bool) {
+        if self.state.preferences.shared_builds != was {
+            self.settle_shared_builds(false).await;
         }
     }
 }

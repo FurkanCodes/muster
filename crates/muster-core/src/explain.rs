@@ -1,4 +1,4 @@
-//! Why a session has its status (`muster session explain`): what its
+//! Why a session has its status (`muster explain`): what its
 //! status machine holds, and the signals it last received. Only kinds of
 //! signal and tools' names, never what an agent or the person wrote, a
 //! payload's body or terminal output (`PRD-06`).
@@ -8,10 +8,6 @@ use serde::{Deserialize, Serialize};
 use crate::ids::SessionId;
 use crate::session::{Origin, SessionStatus, WaitReason};
 use crate::time::Timestamp;
-
-/// The first protocol that asks a daemon to explain a session
-/// ([`crate::protocol::Command::ExplainSession`]).
-pub const EXPLAIN_PROTOCOL: u32 = 30;
 
 /// A session's status and why it has it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

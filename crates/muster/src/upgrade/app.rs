@@ -29,7 +29,7 @@ pub(super) enum App {
 /// only ever put in `MUSTER_APP_DIR`, never in the person's own folders.
 fn installed_app() -> Option<PathBuf> {
     let named = std::env::var_os("MUSTER_APP_DIR").map(PathBuf::from);
-    let own: Vec<PathBuf> = if std::env::var_os("MUSTER_RELEASES").is_some() {
+    let own: Vec<PathBuf> = if super::stand_in_releases().is_some() {
         Vec::new()
     } else {
         let home = std::env::var_os("HOME").map(PathBuf::from);

@@ -18,6 +18,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Output, Stdio};
@@ -121,41 +123,30 @@ impl Setup {
 
     /// Waits until `session` has `status`.
     async fn until(&self, session: SessionId, status: SessionStatus) {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let now = self
-                .snapshot()
+        wait::until_async(&format!("{session} to be {status:?}"), async || {
+            self.snapshot()
                 .await
                 .sessions
                 .into_iter()
                 .find(|found| found.id == session)
-                .map(|found| found.status);
-            if now == Some(status) {
-                return;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "{session} is {now:?}, not {status:?}"
-            );
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+                .map(|found| found.status)
+                == Some(status)
+        })
+        .await;
     }
 }
 
 /// Waits for `child`, ten seconds at most.
 fn finish(mut child: Child, args: &[&str]) -> Output {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while child.try_wait().unwrap().is_none() {
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let output = child.wait_with_output().unwrap();
-            panic!(
-                "`muster {}` still ran after 10 s; stderr:\n{}",
-                args.join(" "),
-                text(&output.stderr)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
+    if wait::within(wait::WAIT, || child.try_wait().unwrap()).is_none() {
+        let _ = child.kill();
+        let output = child.wait_with_output().unwrap();
+        panic!(
+            "`muster {}` still ran after {:?}; stderr:\n{}",
+            args.join(" "),
+            wait::WAIT,
+            text(&output.stderr)
+        );
     }
     child.wait_with_output().unwrap()
 }
@@ -256,7 +247,7 @@ async fn here_reads_the_prompt_from_standard_input_and_works_in_the_checkout() {
     );
     assert!(output.status.success(), "{}", text(&output.stderr));
     let started: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(started["format"], 1);
+    assert_eq!(started["format"], 2);
     assert_eq!(started["branch"], "main");
     let session: SessionId = started["session"].as_str().unwrap().parse().unwrap();
     assert_eq!(
@@ -296,8 +287,9 @@ async fn wait_exits_as_the_agent_rested_and_prints_its_answer() {
     let short = session.ulid().to_string().to_lowercase()[20..].to_owned();
     let launch = setup.launch(session);
 
+    // Whether it is waiting already or not: a session that has finished
+    // its turn has rested.
     let waiting = setup.spawn(&["wait", &short]);
-    std::thread::sleep(Duration::from_millis(300));
     fire(
         &launch,
         "Stop",
@@ -339,15 +331,9 @@ async fn send_types_into_a_session_and_logs_shows_its_screen() {
     let id = session.to_string();
     let output = setup.run(&["send", &id, "echo", "sent-$((40+2))"]);
     assert!(output.status.success(), "{}", text(&output.stderr));
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let shown = setup.run(&["logs", &id]);
-        if text(&shown.stdout).contains("sent-42") {
-            break;
-        }
-        assert!(Instant::now() < deadline, "{}", text(&shown.stdout));
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    wait::until("sent-42 in its terminal", || {
+        text(&setup.run(&["logs", &id]).stdout).contains("sent-42")
+    });
     let last = setup.run(&["logs", "-n", "1", &id]);
     assert_eq!(text(&last.stdout).lines().count(), 1);
 }
@@ -366,9 +352,12 @@ async fn prompt_sends_and_waits_for_the_answer() {
 
     let id = session.to_string();
     let prompting = setup.spawn(&["prompt", &id, "Second"]);
-    std::thread::sleep(Duration::from_millis(500));
+    // The stand-in echoes what it is given: the prompt went in.
+    wait::until("the prompt in its terminal", || {
+        text(&setup.run(&["logs", &id]).stdout).contains("Second")
+    });
     fire(&launch, "UserPromptSubmit", json!({ "prompt": "Second" }));
-    std::thread::sleep(Duration::from_millis(200));
+    setup.until(session, SessionStatus::Running).await;
     fire(
         &launch,
         "Stop",

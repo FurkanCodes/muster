@@ -5,9 +5,8 @@
 // `muster_core::keys` says it in, and the keys no setting changes. The
 // window's own keys (⌘1, ⌘K…) go to the tabs too.
 
-import type { Preferences } from "../ipc/generated/Preferences";
 import type { ScreenId } from "../state/ui";
-import { type KeyAction, labelOf } from "./keymap";
+import { type KeyAction, type Keyed, labelOf } from "./keymap";
 
 export interface HelpEntry {
   keys: string;
@@ -22,7 +21,8 @@ export interface HelpSection {
 /** An action, said as `muster_core::keys` says it, or otherwise here; or fixed keys. */
 type Entry = KeyAction | [KeyAction, string] | { fixed: string; what: string };
 
-const WHAT: Record<KeyAction, string> = {
+/** What each action the help lists does, as the help says it. */
+const WHAT: Partial<Record<KeyAction, string>> = {
   help: "these keys",
   next_tab: "the next tab: Sessions, Needs you, Tickets, Settings",
   previous_tab: "the tab before",
@@ -239,15 +239,12 @@ const BY_SCREEN: Record<ScreenId | "changes", HelpSectionOf[]> = {
  * hold `typed`, ignoring case: a heading with none goes, and so does an
  * action the person took every key from.
  */
-export function helpFor(
-  screen: ScreenId | "changes",
-  preferences: Preferences | null,
-  typed = "",
-): HelpSection[] {
+export function helpFor(screen: ScreenId | "changes", keyed: Keyed, typed = ""): HelpSection[] {
   const wanted = typed.trim().toLowerCase();
   const said = (entry: Entry): HelpEntry => {
-    if (typeof entry === "string") return { keys: labelOf(preferences, entry), what: WHAT[entry] };
-    if (Array.isArray(entry)) return { keys: labelOf(preferences, entry[0]), what: entry[1] };
+    if (typeof entry === "string")
+      return { keys: labelOf(keyed, entry), what: WHAT[entry] ?? entry };
+    if (Array.isArray(entry)) return { keys: labelOf(keyed, entry[0]), what: entry[1] };
     return { keys: entry.fixed, what: entry.what };
   };
   return BY_SCREEN[screen]

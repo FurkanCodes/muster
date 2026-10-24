@@ -3,11 +3,13 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
+use super::theme::Theme;
 use crate::app::Menu;
+use crate::cells;
 
 /// Where `menu` is drawn in `window`: just below the cell clicked, or
 /// above it where there is no room below, and inside the window. The
@@ -16,7 +18,7 @@ pub(crate) fn menu_area(menu: &Menu, window: Rect) -> Rect {
     let widest = menu
         .items
         .iter()
-        .map(|item| item.key_name().chars().count() + 2 + item.what.chars().count())
+        .map(|item| cells::width(&item.key_name()) + 2 + cells::width(&item.what))
         .max()
         .unwrap_or(0);
     let width = u16::try_from(widest + 4)
@@ -36,13 +38,9 @@ pub(crate) fn menu_area(menu: &Menu, window: Rect) -> Rect {
     Rect::new(x, y, width, height)
 }
 
-pub(super) fn draw_menu(frame: &mut Frame<'_>, menu: &Menu, window: Rect) {
+pub(super) fn draw_menu(frame: &mut Frame<'_>, menu: &Menu, window: Rect, theme: Theme) {
     let area = menu_area(menu, window);
-    frame.render_widget(Clear, area);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().cyan());
+    let inner = super::floating::draw(frame, area, None::<&str>, theme);
     let lines: Vec<Line<'_>> = menu
         .items
         .iter()
@@ -59,5 +57,5 @@ pub(super) fn draw_menu(frame: &mut Frame<'_>, menu: &Menu, window: Rect) {
             }
         })
         .collect();
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    frame.render_widget(Paragraph::new(lines), inner);
 }
