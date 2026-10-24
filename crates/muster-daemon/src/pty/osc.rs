@@ -48,6 +48,11 @@ enum State {
     Osc,
     /// Saw ESC inside an OSC: a `\` ends it.
     OscEscape,
+    /// Inside a DCS, APC, PM or SOS string, passed over to its end, as
+    /// what it carries is another program's (`queries::is_string_start`).
+    Str,
+    /// Saw ESC inside such a string: `\` ends it, a second is one doubled.
+    StrEscape,
 }
 
 impl OscScanner {
@@ -58,7 +63,16 @@ impl OscScanner {
             self.state = match (self.state, byte) {
                 (State::Text | State::Escape, 0x1b) => State::Escape,
                 (State::Escape | State::OscEscape, b']') => self.start_osc(),
+                (State::Escape | State::OscEscape, byte)
+                    if super::queries::is_string_start(byte) =>
+                {
+                    State::Str
+                }
                 (State::Text | State::Escape, _) => State::Text,
+                (State::Str, 0x1b) => State::StrEscape,
+                (State::Str | State::StrEscape | State::Osc, 0x18 | 0x1a)
+                | (State::StrEscape, b'\\') => State::Text,
+                (State::Str | State::StrEscape, _) => State::Str,
                 (State::Osc, 0x07) | (State::OscEscape, b'\\') => {
                     self.finish(&mut reports);
                     State::Text
@@ -122,5 +136,26 @@ impl OscScanner {
                 reports.push(Report::Title(title));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn what_a_string_carries_and_what_is_cancelled_is_no_report() {
+        let mut scanner = OscScanner::default();
+        // A title inside tmux's passthrough, its ESCs doubled, is another
+        // terminal's; a picture's data in an APC is no sequence at all.
+        assert_eq!(
+            scanner.scan(b"\x1bPtmux;\x1b\x1b]0;theirs\x07\x1b\\\x1b_Gf=100;\x1b]0;no\x07\x1b\\"),
+            []
+        );
+        // CAN cuts an OSC off; what follows is read afresh.
+        assert_eq!(
+            scanner.scan(b"\x1b]0;cut\x18\x1b]0;ours\x07"),
+            [Report::Title("ours".to_owned())]
+        );
     }
 }
