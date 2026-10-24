@@ -108,7 +108,7 @@ mod tests {
         assert!(!panel.can_resume() && !panel.takes_prompt() && !panel.reports_start());
         assert!(!panel.chooses_session_id() && !panel.suspends_itself());
         assert!(panel.asking().is_none());
-        assert_eq!(panel.translate(None, b"{}"), None);
+        assert_eq!(panel.translate(None, &crate::harness::json(b"{}")), None);
     }
 
     #[test]

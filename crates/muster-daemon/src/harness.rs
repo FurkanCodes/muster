@@ -298,16 +298,16 @@ impl Harness {
     pub(crate) fn translate(
         &self,
         event: Option<&str>,
-        body: &[u8],
+        payload: &serde_json::Value,
     ) -> Option<(Option<String>, HookEvent)> {
         match self.kind {
             Kind::Own(OwnAgent::Claude) | Kind::Review => {
-                claude::translate(&claude::HookPayload::parse(body)?)
+                claude::translate(&claude::HookPayload::of(payload)?)
             }
-            Kind::Own(OwnAgent::Codex) => codex::translate(body),
-            Kind::Own(OwnAgent::Gemini) => gemini::translate(body),
-            Kind::Own(OwnAgent::OpenCode) => opencode::translate(body),
-            Kind::Own(OwnAgent::Copilot) => copilot::translate(event?, body),
+            Kind::Own(OwnAgent::Codex) => codex::translate(payload),
+            Kind::Own(OwnAgent::Gemini) => gemini::translate(payload),
+            Kind::Own(OwnAgent::OpenCode) => opencode::translate(payload),
+            Kind::Own(OwnAgent::Copilot) => copilot::translate(event?, payload),
             Kind::Shell | Kind::Checks | Kind::Added(_) | Kind::Panel(_) => None,
         }
     }
@@ -316,10 +316,10 @@ impl Harness {
     /// the conversation knows it by: Claude Code's prompt id, which its
     /// transcript carries, so an interruption written there can be matched
     /// to the turn it ended.
-    pub(crate) fn turn_begun(&self, body: &[u8]) -> Option<String> {
+    pub(crate) fn turn_begun(&self, payload: &serde_json::Value) -> Option<String> {
         match self.kind {
             Kind::Own(OwnAgent::Claude) | Kind::Review => {
-                claude::turn_begun(&claude::HookPayload::parse(body)?)
+                claude::turn_begun(&claude::HookPayload::of(payload)?)
             }
             _ => None,
         }
@@ -329,8 +329,7 @@ impl Harness {
     /// (and `event`) carries it: Claude Code's `UserPromptSubmit`, Gemini
     /// CLI's `BeforeAgent`, Copilot CLI's `userPromptSubmitted`. Codex,
     /// `OpenCode` and the agents the person added report none.
-    pub(crate) fn prompt(&self, event: Option<&str>, body: &[u8]) -> Option<String> {
-        let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    pub(crate) fn prompt(&self, event: Option<&str>, value: &serde_json::Value) -> Option<String> {
         let named = |name: &str| {
             value
                 .get("hook_event_name")
@@ -358,8 +357,7 @@ impl Harness {
     /// its route carries it: Claude Code's `Stop` (`last_assistant_message`)
     /// and Gemini CLI's `AfterAgent` (`prompt_response`); a chat whose
     /// first prompt said little is named by it too.
-    pub(crate) fn answer(&self, body: &[u8]) -> Option<String> {
-        let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    pub(crate) fn answer(&self, value: &serde_json::Value) -> Option<String> {
         let event = value.get("hook_event_name")?.as_str()?;
         let field = match (&self.kind, event) {
             (Kind::Own(OwnAgent::Claude), "Stop") => "last_assistant_message",
@@ -383,9 +381,9 @@ impl Harness {
 
     /// What a report says the session has used, for a harness that reports
     /// it: `OpenCode`'s plugin, at each turn's end.
-    pub(crate) fn spend(&self, body: &[u8]) -> Option<muster_core::Spend> {
+    pub(crate) fn spend(&self, payload: &serde_json::Value) -> Option<muster_core::Spend> {
         match self.kind {
-            Kind::Own(OwnAgent::OpenCode) => opencode::spend(body),
+            Kind::Own(OwnAgent::OpenCode) => opencode::spend(payload),
             _ => None,
         }
     }
@@ -432,6 +430,13 @@ impl Harness {
     pub(crate) fn prepare_support(&self, dir: &std::path::Path) -> std::io::Result<()> {
         support::prepare(&self.kind, dir)
     }
+}
+
+/// A hook's body as the receiver reads it (`hooks::HookDelivery`), for
+/// tests written with bodies as text.
+#[cfg(test)]
+pub(crate) fn json(body: &[u8]) -> serde_json::Value {
+    serde_json::from_slice(body).unwrap_or(serde_json::Value::Null)
 }
 
 /// Where a session's hooks report to, and the token that names the session.

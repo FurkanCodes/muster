@@ -81,8 +81,7 @@ pub(crate) fn hooks() -> String {
 
 /// What hook `event`'s payload means to the session machine, with the
 /// Copilot session it came from.
-pub(crate) fn translate(event: &str, body: &[u8]) -> Option<(Option<String>, HookEvent)> {
-    let value: Value = serde_json::from_slice(body).ok()?;
+pub(crate) fn translate(event: &str, value: &Value) -> Option<(Option<String>, HookEvent)> {
     // camelCase as documented, or snake_case as written for hooks named
     // the way Claude Code names them.
     let text = |camel: &str, snake: &str| {
@@ -204,7 +203,7 @@ mod tests {
     fn hooks_translate_in_either_case() {
         let event = |name: &str, extra: &str| {
             let body = format!(r#"{{"sessionId":"{SESSION}","timestamp":1,"cwd":"/work"{extra}}}"#);
-            let (session, event) = translate(name, body.as_bytes())?;
+            let (session, event) = translate(name, &crate::harness::json(body.as_bytes()))?;
             assert_eq!(session.as_deref(), Some(SESSION));
             Some(event)
         };
@@ -262,7 +261,7 @@ mod tests {
         assert_eq!(event("preCompact", ""), None);
         let snake = br#"{"session_id":"s1","hook_event_name":"Stop"}"#;
         assert_eq!(
-            translate("agentStop", snake),
+            translate("agentStop", &crate::harness::json(snake)),
             Some((Some("s1".to_owned()), HookEvent::TurnEnded))
         );
     }

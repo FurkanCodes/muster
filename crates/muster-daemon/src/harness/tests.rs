@@ -210,16 +210,22 @@ fn each_agent_reports_the_way_it_allows() {
 fn a_report_is_read_by_its_own_harness() {
     let stop = br#"{"session_id":"s1","hook_event_name":"Stop"}"#;
     assert_eq!(
-        CLAUDE.translate(None, stop),
+        CLAUDE.translate(None, &crate::harness::json(stop)),
         Some((Some("s1".to_owned()), HookEvent::TurnEnded))
     );
     assert_eq!(
-        COPILOT.translate(Some("agentStop"), br#"{"sessionId":"s2"}"#),
+        COPILOT.translate(
+            Some("agentStop"),
+            &crate::harness::json(br#"{"sessionId":"s2"}"#)
+        ),
         Some((Some("s2".to_owned()), HookEvent::TurnEnded))
     );
     // Copilot names its events in the address only.
-    assert_eq!(COPILOT.translate(None, br#"{"sessionId":"s2"}"#), None);
-    assert_eq!(SHELL.translate(None, stop), None);
+    assert_eq!(
+        COPILOT.translate(None, &crate::harness::json(br#"{"sessionId":"s2"}"#)),
+        None
+    );
+    assert_eq!(SHELL.translate(None, &crate::harness::json(stop)), None);
 }
 
 /// Shaped like what Claude Code 2.1.296 sent for an MCP server's form the
@@ -238,7 +244,7 @@ fn claude_s_mcp_form_is_a_question_until_the_person_responds() {
         .iter()
         .map(|body| {
             CLAUDE
-                .translate(None, body.as_bytes())
+                .translate(None, &crate::harness::json(body.as_bytes()))
                 .map(|(_, event)| event)
         })
         .collect();
@@ -259,7 +265,9 @@ fn claude_s_mcp_form_is_a_question_until_the_person_responds() {
     // A subagent's form is its own question, answered by its own result.
     let theirs = br#"{"session_id":"s1","agent_id":"a1","hook_event_name":"Elicitation","mcp_server_name":"probe"}"#;
     assert_eq!(
-        CLAUDE.translate(None, theirs).map(|(_, event)| event),
+        CLAUDE
+            .translate(None, &crate::harness::json(theirs))
+            .map(|(_, event)| event),
         Some(HookEvent::QuestionAsked {
             origin: Origin::Subagent("a1".to_owned()),
             deferred: false,
@@ -402,8 +410,9 @@ fn without_muster_s_files_an_agent_still_runs() {
 
 #[test]
 fn the_prompt_a_report_carries_is_read_where_the_agent_sends_one() {
-    let prompt =
-        |harness: Harness, event: Option<&str>, body: &str| harness.prompt(event, body.as_bytes());
+    let prompt = |harness: Harness, event: Option<&str>, body: &str| {
+        harness.prompt(event, &crate::harness::json(body.as_bytes()))
+    };
     assert_eq!(
         prompt(
             CLAUDE,
@@ -501,7 +510,7 @@ fn an_added_agent_is_heard_without_hooks() {
     assert!(mine.resumes_without_id() && mine.suspends_itself());
     assert!(!mine.has_hooks() && !mine.chooses_session_id() && !mine.reports_start());
     assert_eq!(mine.hook_route(), None);
-    assert_eq!(mine.translate(None, b"{}"), None);
+    assert_eq!(mine.translate(None, &crate::harness::json(b"{}")), None);
     assert_eq!(mine.has_conversation("x"), None);
     // Its title, by the words its definition names.
     assert!(mine.title_reports_waits());
@@ -556,7 +565,8 @@ fn an_added_agent_runs_as_its_settings_say() {
 
 #[test]
 fn a_turn_s_answer_is_read_where_the_agent_reports_it() {
-    let answer = |harness: Harness, body: &str| harness.answer(body.as_bytes());
+    let answer =
+        |harness: Harness, body: &str| harness.answer(&crate::harness::json(body.as_bytes()));
     assert_eq!(
         answer(
             CLAUDE,

@@ -26,18 +26,18 @@ const MAX_NAME: usize = 40;
 
 /// What `event`, from a hook whose payload is `body`, says the agent is
 /// doing; `None` if it changes nothing.
-pub(crate) fn change(event: &HookEvent, body: &[u8]) -> Option<ActivityChange> {
+pub(crate) fn change(event: &HookEvent, payload: &Value) -> Option<ActivityChange> {
     let set = |text: &str| Some(ActivityChange::Set(text.to_owned()));
     match event {
         HookEvent::ToolStarted { .. } => {
-            let (tool, input) = tool_of(body)?;
+            let (tool, input) = tool_of(payload)?;
             Some(ActivityChange::Set(doing(&tool, &input).0))
         }
         HookEvent::PermissionRequested {
             deferred: false, ..
         } => {
             // A request names its tool; the notice after it does not.
-            let (tool, input) = tool_of(body)?;
+            let (tool, input) = tool_of(payload)?;
             Some(ActivityChange::Set(format!(
                 "wants to {}",
                 doing(&tool, &input).1
@@ -57,14 +57,13 @@ pub(crate) fn change(event: &HookEvent, body: &[u8]) -> Option<ActivityChange> {
 
 /// The tool a hook's payload names, by its name alone, if that is one
 /// plain word: what a signal's record keeps, never the tool's input.
-pub(crate) fn tool_named(body: &[u8]) -> Option<String> {
-    let (tool, _) = tool_of(body)?;
+pub(crate) fn tool_named(payload: &Value) -> Option<String> {
+    let (tool, _) = tool_of(payload)?;
     clean_word(&tool)
 }
 
 /// The tool a payload names and its input, as each harness writes them.
-fn tool_of(body: &[u8]) -> Option<(String, Value)> {
-    let payload: Value = serde_json::from_slice(body).ok()?;
+fn tool_of(payload: &Value) -> Option<(String, Value)> {
     let tool = ["tool_name", "toolName", "tool"]
         .iter()
         .find_map(|key| payload.get(*key).and_then(Value::as_str))?
@@ -201,7 +200,7 @@ mod tests {
             &HookEvent::ToolStarted {
                 origin: Origin::Main,
             },
-            body.as_bytes(),
+            &crate::harness::json(body.as_bytes()),
         )
     }
 
@@ -291,20 +290,26 @@ mod tests {
             deferred: false,
         };
         let body = br#"{"tool_name":"Bash","tool_input":{"command":"rm -rf build"}}"#;
-        assert_eq!(change(&ask, body), set("wants to run rm"));
+        assert_eq!(
+            change(&ask, &crate::harness::json(body)),
+            set("wants to run rm")
+        );
         let notice = HookEvent::PermissionRequested {
             origin: Origin::Main,
             deferred: true,
         };
-        assert_eq!(change(&notice, b"{}"), None);
-        assert_eq!(change(&HookEvent::PromptSubmitted, b"{}"), set("thinking"));
+        assert_eq!(change(&notice, &crate::harness::json(b"{}")), None);
+        assert_eq!(
+            change(&HookEvent::PromptSubmitted, &crate::harness::json(b"{}")),
+            set("thinking")
+        );
         assert_eq!(
             change(
                 &HookEvent::ToolFinished {
                     origin: Origin::Main,
                     question: false
                 },
-                b"{}"
+                &crate::harness::json(b"{}")
             ),
             set("thinking")
         );
@@ -314,7 +319,7 @@ mod tests {
                     origin: Origin::Main,
                     deferred: false,
                 },
-                b"{}"
+                &crate::harness::json(b"{}")
             ),
             set("has a question for you")
         );
@@ -324,10 +329,16 @@ mod tests {
             HookEvent::SessionStarted,
             HookEvent::Idle,
         ] {
-            assert_eq!(change(&ended, b"{}"), Some(ActivityChange::Clear));
+            assert_eq!(
+                change(&ended, &crate::harness::json(b"{}")),
+                Some(ActivityChange::Clear)
+            );
         }
         assert_eq!(
-            change(&HookEvent::SubagentStarted { id: "a".into() }, b"{}"),
+            change(
+                &HookEvent::SubagentStarted { id: "a".into() },
+                &crate::harness::json(b"{}")
+            ),
             None
         );
     }
@@ -356,7 +367,7 @@ mod tests {
 
     #[test]
     fn a_signal_s_record_keeps_a_tool_s_name_alone() {
-        let named = |body: &str| tool_named(body.as_bytes());
+        let named = |body: &str| tool_named(&crate::harness::json(body.as_bytes()));
         assert_eq!(
             named(r#"{"tool_name":"Bash","tool_input":{"command":"TOKEN=s3cret make"}}"#)
                 .as_deref(),

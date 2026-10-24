@@ -23,30 +23,30 @@ impl Supervisor {
             tracing::debug!("ignored a hook posted for another harness");
             return;
         }
-        if let Some(spend) = harness.spend(&delivery.body) {
+        if let Some(spend) = harness.spend(&delivery.payload) {
             self.set_spend(session, spend);
             return;
         }
-        if let Some(turn) = harness.turn_begun(&delivery.body)
+        if let Some(turn) = harness.turn_begun(&delivery.payload)
             && let Some(live) = self.live.get_mut(&session)
         {
             live.turn = Some(turn);
         }
         let event = delivery.event.as_deref();
-        if let Some(prompt) = harness.prompt(event, &delivery.body) {
+        if let Some(prompt) = harness.prompt(event, &delivery.payload) {
             self.name_from_prompt(session, &prompt).await;
         }
-        if let Some(answer) = harness.answer(&delivery.body) {
+        if let Some(answer) = harness.answer(&delivery.payload) {
             self.name_after_turn(session, &answer);
             if let Some(live) = self.live.get_mut(&session) {
                 live.last_reply = Some(answer);
             }
         }
-        if let Some((agent_session, event)) = harness.translate(event, &delivery.body) {
-            if let Some(change) = crate::harness::activity::change(&event, &delivery.body) {
+        if let Some((agent_session, event)) = harness.translate(event, &delivery.payload) {
+            if let Some(change) = crate::harness::activity::change(&event, &delivery.payload) {
                 self.set_activity(session, change);
             }
-            let tool = crate::harness::activity::tool_named(&delivery.body);
+            let tool = crate::harness::activity::tool_named(&delivery.payload);
             self.step_noted(
                 session,
                 Signal::Hook {

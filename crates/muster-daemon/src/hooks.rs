@@ -5,8 +5,8 @@
 //! It listens on its own Unix socket in the private runtime directory, so it
 //! is reachable only by this user and never over the network. It does not
 //! decide which session a hook belongs to, nor read it: it passes the bearer
-//! token and the body along, and the Supervisor, which issued the tokens,
-//! looks the session up (`ARC-11`) and has its harness read the body. It
+//! token and the body, read as JSON, along, and the Supervisor, which issued
+//! the tokens, looks the session up (`ARC-11`) and has its harness read it. It
 //! answers at once whatever happens, so a hook never holds up an agent.
 
 use std::future::Future;
@@ -31,7 +31,9 @@ pub(crate) struct HookDelivery {
     pub(crate) harness: String,
     /// The event the address names, for a harness that names it there.
     pub(crate) event: Option<String>,
-    pub(crate) body: Bytes,
+    /// The body, read as JSON here, off the Supervisor's loop, once; `null`
+    /// where it is none.
+    pub(crate) payload: serde_json::Value,
 }
 
 /// Serves hooks on `listener` until `shutdown` completes.
@@ -59,7 +61,7 @@ async fn hook(
     headers: HeaderMap,
     body: Bytes,
 ) -> StatusCode {
-    deliver(&deliveries, &headers, harness, None, body)
+    deliver(&deliveries, &headers, harness, None, &body)
 }
 
 async fn hook_with_event(
@@ -68,7 +70,7 @@ async fn hook_with_event(
     headers: HeaderMap,
     body: Bytes,
 ) -> StatusCode {
-    deliver(&deliveries, &headers, harness, Some(event), body)
+    deliver(&deliveries, &headers, harness, Some(event), &body)
 }
 
 fn deliver(
@@ -76,7 +78,7 @@ fn deliver(
     headers: &HeaderMap,
     harness: String,
     event: Option<String>,
-    body: Bytes,
+    body: &[u8],
 ) -> StatusCode {
     let Some(token) = bearer(headers) else {
         return StatusCode::UNAUTHORIZED;
@@ -85,7 +87,7 @@ fn deliver(
         token: crate::secrets::Token::new(token),
         harness,
         event,
-        body,
+        payload: serde_json::from_slice(body).unwrap_or(serde_json::Value::Null),
     };
     if deliveries.try_send(delivery).is_err() {
         tracing::warn!("dropped a hook: the daemon is behind");

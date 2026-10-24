@@ -126,8 +126,7 @@ pub(crate) struct HookPayload {
 impl HookPayload {
     /// Reads a payload. A field of an unexpected type counts as missing;
     /// only a body that is not a JSON object is refused.
-    pub(crate) fn parse(body: &[u8]) -> Option<Self> {
-        let value: Value = serde_json::from_slice(body).ok()?;
+    pub(crate) fn of(value: &Value) -> Option<Self> {
         let object = value.as_object()?;
         let text = |key: &str| object.get(key).and_then(Value::as_str).map(str::to_owned);
         Some(Self {
@@ -234,7 +233,7 @@ mod tests {
     const SESSION: &str = "6f3c2a10-8b1e-4c5d-9a7f-0123456789ab";
 
     fn payload(json: &str) -> HookPayload {
-        HookPayload::parse(json.as_bytes()).unwrap()
+        HookPayload::of(&crate::harness::json(json.as_bytes())).unwrap()
     }
 
     fn event(json: &str) -> HookEvent {
@@ -347,8 +346,8 @@ mod tests {
         let drifted = payload(r#"{"hook_event_name":"Stop","session_id":"x","tool_name":7}"#);
         assert_eq!(drifted.tool_name, None);
         assert!(translate(&drifted).is_some());
-        assert_eq!(HookPayload::parse(b"[1, 2]"), None);
-        assert_eq!(HookPayload::parse(b"not json"), None);
+        assert_eq!(HookPayload::of(&crate::harness::json(b"[1, 2]")), None);
+        assert_eq!(HookPayload::of(&crate::harness::json(b"not json")), None);
     }
 
     #[test]
