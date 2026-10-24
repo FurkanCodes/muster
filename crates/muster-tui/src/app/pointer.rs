@@ -101,38 +101,31 @@ impl App {
                 actions.extend(self.settle());
                 return actions;
             }
-            // A press on another of the session, its shell and a plugin's
-            // panel gives it the keys.
-            let in_shell = self.typing_in_shell();
-            let in_plugin = self.typing_in_plugin();
-            if pressed && (in_shell || in_plugin) && areas.preview.contains(at) {
+            // A press on another of the session and the terminals beside
+            // it (its shell, a plugin's panel, a session pinned) gives that
+            // one the keys.
+            let beside = self.terminals_beside();
+            let typing_beside = beside
+                .iter()
+                .find(|(_, other)| *other == session)
+                .map(|(panel, _)| *panel);
+            if pressed && typing_beside.is_some() && areas.preview.contains(at) {
                 let mut actions = self.leave_terminal(session);
                 self.open_selected();
                 actions.extend(self.settle());
                 return actions;
             }
             if pressed
-                && !in_shell
-                && areas.shell.contains(at)
-                && let Some(shell) = self.shell_beside()
+                && let Some((_, other)) = beside
+                    .iter()
+                    .find(|(panel, other)| *other != session && areas.of(*panel).contains(at))
             {
-                self.mode = Mode::Terminal(shell);
+                self.mode = Mode::Terminal(*other);
                 return self.settle();
             }
-            if pressed
-                && !in_plugin
-                && areas.plugin.contains(at)
-                && let Some(panel) = self.plugin_beside()
-            {
-                self.mode = Mode::Terminal(panel);
-                return self.settle();
-            }
-            if in_shell {
-                crate::view::shell_area(self, window)
-            } else if in_plugin {
-                crate::view::plugin_area(self, window)
-            } else {
-                crate::view::session_area(self, window)
+            match typing_beside {
+                Some(panel) => crate::view::panel_area(self, window, panel),
+                None => crate::view::session_area(self, window),
             }
         };
         let modes = self.screen(session).modes;
@@ -216,16 +209,14 @@ impl App {
                 self.open_menu(areas.list, at);
             }
             MouseEventKind::Down(MouseButton::Left) => {
+                let beside = self
+                    .terminals_beside()
+                    .into_iter()
+                    .find(|(panel, _)| areas.of(*panel).contains(at));
                 if areas.list.contains(at) {
                     self.click_list(areas.list, at);
-                } else if areas.shell.contains(at)
-                    && let Some(shell) = self.shell_beside()
-                {
-                    self.mode = Mode::Terminal(shell);
-                } else if areas.plugin.contains(at)
-                    && let Some(panel) = self.plugin_beside()
-                {
-                    self.mode = Mode::Terminal(panel);
+                } else if let Some((_, session)) = beside {
+                    self.mode = Mode::Terminal(session);
                 } else if areas.preview.contains(at)
                     && matches!(self.view, View::Sessions | View::NeedsYou)
                     && self.focused_session().is_some()

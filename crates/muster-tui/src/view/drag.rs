@@ -3,7 +3,6 @@
 //! that is the accent already; where a panel dragged would land,
 //! lit; and the one being moved with the keys, framed in the accent.
 
-use muster_core::layout::Panel;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -24,7 +23,7 @@ pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas)
             .map(crate::layout::Divider::line),
         Some(Grab::Title(panel)) => Some(Rect {
             height: 1,
-            ..area_of(areas, *panel)
+            ..areas.of(*panel)
         }),
         None => None,
     };
@@ -44,7 +43,7 @@ pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas)
         outline(frame, landing, " here ", Style::default().fg(theme.accent));
     }
     if let Some(arranging) = &app.panels.arranging {
-        let area = area_of(areas, arranging.panel);
+        let area = areas.of(arranging.panel);
         if !area.is_empty() {
             outline(
                 frame,
@@ -53,16 +52,6 @@ pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas)
                 Style::default().fg(theme.accent).bold(),
             );
         }
-    }
-}
-
-fn area_of(areas: &BrowseAreas, panel: Panel) -> Rect {
-    match panel {
-        Panel::List => areas.list,
-        Panel::Session => areas.preview,
-        Panel::Changes => areas.changes,
-        Panel::Shell => areas.shell,
-        Panel::Plugin => areas.plugin,
     }
 }
 

@@ -1,8 +1,9 @@
 // Each panel of the session's pane (design system: Panel, as the AllSessions
 // and PluginPanel boards draw them): the agent's, its logo, name and how it
-// stands; the shell's, `❯ Shell` and the program in front in it; a plugin's,
-// its plugin's name and its own title; and the line between two, which a drag or the
-// arrows on it resize.
+// stands; a session pinned in a panel of its own, the same with its title and
+// a way to unpin it; the shell's, `❯ Shell` and the program in front in it; a
+// plugin's, its plugin's name and its own title; and the line between two,
+// which a drag or the arrows on it resize.
 
 import { type CSSProperties, type KeyboardEvent, lazy, type PointerEvent, Suspense } from "react";
 import { useApp, useDaemon, useUi } from "../app/context";
@@ -12,9 +13,11 @@ import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { doing, statusKind } from "../lib/status";
 import { branchOf, shownHarness } from "../state/selectors";
+import { EmptyState, EmptyStateText } from "../ui/EmptyState";
 import { Panel, PanelClose, PanelHead, PanelTitle } from "../ui/Panel";
 import { AgentLogo, BranchName, StatusMark } from "../ui/status";
 import { putPanelAway, putShellAway } from "./beside";
+import { type PanelName, pinnedSession } from "./layout";
 import type { Divider } from "./solve";
 
 // xterm is the heaviest part of the window: loaded once a terminal shows (ARC-25).
@@ -54,12 +57,8 @@ export function TerminalAlone({ session }: { session: SessionId }) {
   );
 }
 
-export function SessionPanel({
-  session,
-  style,
-  lifted,
-  onHeadDown,
-}: BoxProps & { session: SessionId }) {
+/** The agent's logo, name, how it stands and what it is doing, as its panel's head says them. */
+function useAgentHead(session: SessionId) {
   const harness = useDaemon((state) => {
     const stored = state.sessions[session];
     return stored ? shownHarness(stored) : "";
@@ -72,7 +71,48 @@ export function SessionPanel({
     const stored = state.sessions[session];
     return stored ? doing(stored) : "";
   });
-  const name = agentOf(harness).name;
+  const title = useDaemon((state) => state.sessions[session]?.title ?? "");
+  return { harness, kind, words, title, name: agentOf(harness).name };
+}
+
+/** A session pinned in a panel of its own: its title as its head says it, and a way to unpin it. */
+export function PinnedPanel({
+  session,
+  style,
+  lifted,
+  onHeadDown,
+  onUnpin,
+}: BoxProps & { session: SessionId; onUnpin: () => void }) {
+  const { harness, kind, words, title } = useAgentHead(session);
+  const key = useKeyLabel("pin_session");
+  return (
+    <Panel
+      label={title}
+      hasKeys={useHasKeys(session)}
+      className={`panels-box ${lifted ? "is-lifted" : ""}`}
+      style={style}
+    >
+      <PanelHead onPointerDown={onHeadDown} title="Drag to move it">
+        <AgentLogo harness={harness} size="sm" />
+        <PanelTitle>{title}</PanelTitle>
+        <StatusMark kind={kind} />
+        <span className="mu-cut">{words}</span>
+        <PanelClose label={`Unpin ${title}`} keyHint={key} onClose={onUnpin} />
+      </PanelHead>
+      <Body session={session} compact={false} />
+    </Panel>
+  );
+}
+
+export function SessionPanel({
+  session,
+  pinned,
+  style,
+  lifted,
+  onHeadDown,
+}: BoxProps & { session: SessionId; pinned: boolean }) {
+  const { harness, kind, words, name } = useAgentHead(session);
+  const key = useKeyLabel("pin_session");
   return (
     <Panel
       label={name}
@@ -86,7 +126,16 @@ export function SessionPanel({
         <StatusMark kind={kind} />
         <span className="mu-cut">{words}</span>
       </PanelHead>
-      <Body session={session} compact={false} />
+      {pinned ? (
+        // Drawn in its own panel: once only, as a terminal is one.
+        <EmptyState className="panels-body">
+          <EmptyStateText>
+            It is in a panel of its own. {key === "none" ? "" : `${key} unpins it.`}
+          </EmptyStateText>
+        </EmptyState>
+      ) : (
+        <Body session={session} compact={false} />
+      )}
     </Panel>
   );
 }
@@ -180,6 +229,11 @@ const NAMES = {
   plugin: "the plugin's panel",
 } as const;
 
+/** `panel` as a screen reader says it. */
+function nameOf(panel: PanelName): string {
+  return pinnedSession(panel) === null ? NAMES[panel as keyof typeof NAMES] : "a pinned agent";
+}
+
 /** The step the arrows move a line by, in percent. */
 const STEP = 5;
 
@@ -218,7 +272,7 @@ export function PanelLine({
       aria-valuenow={share}
       aria-valuemin={10}
       aria-valuemax={90}
-      aria-label={`Between ${divider.first.map((one) => NAMES[one]).join(" and ")} and ${divider.second.map((one) => NAMES[one]).join(" and ")}`}
+      aria-label={`Between ${divider.first.map(nameOf).join(" and ")} and ${divider.second.map(nameOf).join(" and ")}`}
       title="Drag to share the place between them"
       className={`panels-line panels-line--${divider.split} ${dragged ? "is-dragged" : ""}`}
       style={style}

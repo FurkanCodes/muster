@@ -44,7 +44,7 @@ fn what_does_not_read_is_named() {
     let error = |text: &str| Layout::parse(text).unwrap_err();
     assert_eq!(
         error("list | list | session | (changes / shell)"),
-        LayoutError::Twice("list")
+        LayoutError::Twice("list".to_owned())
     );
     assert_eq!(
         error("list | terminal | changes | shell"),
@@ -285,4 +285,34 @@ fn a_layout_travels_as_its_text() {
     assert_eq!(older, layout);
     assert_eq!(serde_json::from_str::<Layout>(&json).unwrap(), layout);
     assert!(serde_json::from_str::<Layout>("\"list | terminal\"").is_err());
+}
+
+#[test]
+fn a_session_pinned_reads_writes_moves_and_goes_as_any_panel() {
+    let one = SessionId::new();
+    let two = SessionId::new();
+    let pinned = Layout::default().pinning(one, Place::Beside(Panel::Session, Edge::Left));
+    assert_eq!(
+        pinned.to_string(),
+        format!("list | (session:{one} | session) 60% | (changes / shell / plugin)")
+    );
+    // It reads back as it was written, any number of them, each once.
+    assert_eq!(read(&pinned.to_string()), pinned);
+    let both = pinned.pinning(two, Place::Window(Edge::Bottom));
+    assert_eq!(both.pinned(), [one, two]);
+    assert_eq!(read(&both.to_string()), both);
+    assert_eq!(
+        Layout::parse(&format!("session:{one} | {pinned}")).unwrap_err(),
+        LayoutError::Twice(format!("session:{one}"))
+    );
+    // Pinned again, it moves.
+    let moved = both.pinning(one, Place::Window(Edge::Right));
+    assert_eq!(moved.pinned(), [two, one]);
+    // Unpinned, its place goes to the other of its two.
+    assert_eq!(moved.unpinned(one).unpinned(two), Layout::default());
+    // A session's id that does not read is no panel.
+    assert!(matches!(
+        Layout::parse("list | session:ses_nope | session | changes | shell | plugin"),
+        Err(LayoutError::NotAPanel(_))
+    ));
 }

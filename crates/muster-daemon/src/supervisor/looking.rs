@@ -198,4 +198,31 @@ impl Supervisor {
         self.take_own_settings((own.preferences, agents));
         Ok(Reply::Done)
     }
+
+    /// Takes out of the layout the sessions pinned there that are gone
+    /// (removed, or with their workspace), so a pinned panel never stays
+    /// for a session no client can show (`PRODUCT.md` §6).
+    pub(super) fn unpin_gone(&mut self) {
+        let panels = &self.state.preferences.panels;
+        let gone: Vec<_> = panels
+            .pinned()
+            .into_iter()
+            .filter(|pinned| {
+                !self
+                    .state
+                    .sessions
+                    .iter()
+                    .any(|session| session.id == *pinned)
+            })
+            .collect();
+        if gone.is_empty() {
+            return;
+        }
+        let kept = gone
+            .iter()
+            .fold(panels.clone(), |layout, session| layout.unpinned(*session));
+        if let Err(error) = self.change_preference(&PreferenceChange::Panels(kept)) {
+            tracing::warn!(%error, "could not take sessions gone out of the layout");
+        }
+    }
 }

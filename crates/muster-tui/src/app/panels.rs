@@ -53,6 +53,8 @@ impl App {
             Panel::Shell
         } else if self.typing_in_plugin() {
             Panel::Plugin
+        } else if let Some(pinned) = self.typing_in_pinned() {
+            Panel::Pinned(pinned)
         } else {
             Panel::Session
         }
@@ -67,12 +69,14 @@ impl App {
     pub(crate) fn solve_panels(&self, body: Rect, list: u16) -> Solved {
         let with_list = !self.list_folded();
         let keys = self.panel_with_keys();
+        let pinned = self.pinned_beside();
         let showing = |panel: Panel| match panel {
             Panel::List => with_list,
             Panel::Session => true,
             Panel::Changes => self.changes_shown(),
             Panel::Shell => self.shell_beside().is_some(),
             Panel::Plugin => self.plugin_beside().is_some(),
+            Panel::Pinned(session) => pinned.contains(&session),
         };
         let layout = self.panels();
         let fits = |shown: &dyn Fn(Panel) -> bool| {
@@ -80,8 +84,10 @@ impl App {
                 .shown(shown)
                 .filter(|node| needs(node, list).0 <= body.width)
         };
-        let more =
-            self.changes_shown() || self.shell_beside().is_some() || self.plugin_beside().is_some();
+        let more = self.changes_shown()
+            || self.shell_beside().is_some()
+            || self.plugin_beside().is_some()
+            || !pinned.is_empty();
         let tree = fits(&showing)
             .or_else(|| {
                 more.then(|| fits(&|panel| panel != Panel::List && showing(panel)))

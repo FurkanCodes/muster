@@ -24,6 +24,7 @@ export type ActionName =
   | "full_screen"
   | "show_changes"
   | "shell"
+  | "pin_session"
   | "stop_session"
   | "restart_session"
   | "close"

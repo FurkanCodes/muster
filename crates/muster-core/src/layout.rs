@@ -1,11 +1,13 @@
 //! How the UI's panels are laid out (`PRODUCT.md` §6 Sessions): the list,
 //! the session (or what the screen shows beside the list), a workspace's
 //! changes, its shell and a plugin's panel, each where the person put it,
-//! side by side or one above the other. It is a small tree of the five,
-//! kept as one line of text in Muster's own settings (`[layout] panels`):
+//! side by side or one above the other; and beside them any sessions the
+//! person pinned there, each its own panel, one agent's terminal. It is a
+//! small tree of them, kept as one line of text in Muster's own settings
+//! (`[layout] panels`):
 //!
 //! ```text
-//! list | session 60% | (changes / shell / plugin)
+//! session:ses_01J… | list | session 60% | (changes / shell / plugin)
 //! ```
 //!
 //! `|` puts two side by side and `/` one above the other; a run of one of
@@ -22,6 +24,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::SessionId;
+
 /// The panels a window lays out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Panel {
@@ -37,10 +41,15 @@ pub enum Panel {
     Shell,
     /// A plugin's panel in the session's workspace.
     Plugin,
+    /// One session's terminal, pinned there by the person whatever the
+    /// list selects: `session:<its id>` in the layout's text. Any number
+    /// of them, each once.
+    Pinned(SessionId),
 }
 
 impl Panel {
-    /// Every panel, in the order the default layout names them.
+    /// Muster's own panels, in the order the default layout names them;
+    /// every layout has each once. Sessions pinned are the person's.
     pub const ALL: [Self; 5] = [
         Self::List,
         Self::Session,
@@ -49,20 +58,43 @@ impl Panel {
         Self::Plugin,
     ];
 
-    /// As the layout's text names it.
+    /// As the layout's text names one of Muster's own; a session pinned
+    /// is named by its id (`Display`).
     #[must_use]
     pub const fn word(self) -> &'static str {
         match self {
             Self::List => "list",
-            Self::Session => "session",
+            Self::Session | Self::Pinned(_) => "session",
             Self::Changes => "changes",
             Self::Shell => "shell",
             Self::Plugin => "plugin",
         }
     }
 
+    /// The session pinned there, if it is a pinned session's panel.
+    #[must_use]
+    pub const fn pinned(self) -> Option<SessionId> {
+        match self {
+            Self::Pinned(session) => Some(session),
+            _ => None,
+        }
+    }
+
     fn from_word(word: &str) -> Option<Self> {
+        if let Some(id) = word.strip_prefix("session:") {
+            return id.parse().ok().map(Self::Pinned);
+        }
+        let word = word.to_ascii_lowercase();
         Self::ALL.into_iter().find(|panel| panel.word() == word)
+    }
+}
+
+impl fmt::Display for Panel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Pinned(session) => write!(f, "session:{session}"),
+            _ => f.write_str(self.word()),
+        }
     }
 }
 
@@ -171,10 +203,12 @@ impl Default for Layout {
 /// Why a layout does not read: said for the person, naming what is wrong.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum LayoutError {
-    #[error("{0:?} is not a panel: the panels are list, session, changes, shell and plugin")]
+    #[error(
+        "{0:?} is not a panel: the panels are list, session, changes, shell and plugin, and a session pinned, session:<its id>"
+    )]
     NotAPanel(String),
     #[error("{0} is in the layout twice")]
-    Twice(&'static str),
+    Twice(String),
     #[error("{0:?} is not a size: a size is a share like 60% or a width like 30")]
     NotASize(String),
     #[error("| and / are mixed without brackets around one of them")]
@@ -193,9 +227,9 @@ impl Layout {
         let root = tree(text)?;
         let mut seen = Vec::new();
         collect(&root, &mut seen);
-        for panel in Panel::ALL {
-            if seen.iter().filter(|seen| **seen == panel).count() > 1 {
-                return Err(LayoutError::Twice(panel.word()));
+        for (at, panel) in seen.iter().enumerate() {
+            if seen[..at].contains(panel) {
+                return Err(LayoutError::Twice(panel.to_string()));
             }
         }
         let mut root = Node { size: None, ..root };
@@ -219,6 +253,45 @@ impl Layout {
             },
             None => self.clone(),
         }
+    }
+
+    /// The sessions pinned, in the layout's order.
+    #[must_use]
+    pub fn pinned(&self) -> Vec<SessionId> {
+        let mut panels = Vec::new();
+        collect(&self.root, &mut panels);
+        panels.into_iter().filter_map(Panel::pinned).collect()
+    }
+
+    /// The layout with `session` pinned at `place`, or moved there where it
+    /// is pinned already.
+    #[must_use]
+    pub fn pinning(&self, session: SessionId, place: Place) -> Self {
+        let panel = Panel::Pinned(session);
+        if contains(&self.root, panel) {
+            return self.moved(panel, place);
+        }
+        let moving = Node {
+            part: Part::Panel(panel),
+            size: None,
+        };
+        let root = match place {
+            Place::Window(edge) => joined(moving, self.root.clone(), edge, None),
+            Place::Beside(target, edge) if contains(&self.root, target) => {
+                beside(self.root.clone(), target, moving, edge)
+            }
+            Place::Beside(..) => joined(moving, self.root.clone(), Edge::Right, None),
+        };
+        Self {
+            root: Node { size: None, ..root },
+        }
+    }
+
+    /// The layout with `session` no longer pinned: its place goes to the
+    /// other of its two.
+    #[must_use]
+    pub fn unpinned(&self, session: SessionId) -> Self {
+        self.without(Panel::Pinned(session))
     }
 
     /// The tree, from the whole window down.
@@ -423,7 +496,7 @@ fn tokens(text: &str) -> Result<Vec<Token>, LayoutError> {
                 tokens.push(if word.starts_with(|c: char| c.is_ascii_digit()) {
                     Token::Size(size(&word)?)
                 } else {
-                    Token::Word(word.to_ascii_lowercase())
+                    Token::Word(word)
                 });
             }
         }
@@ -633,7 +706,7 @@ fn kept(node: &Node, shown: impl Fn(Panel) -> bool + Copy) -> Option<Node> {
 /// Writes `node`, inside a run of `within`'s sign if it is one.
 fn write_node(f: &mut fmt::Formatter<'_>, node: &Node, within: Option<Split>) -> fmt::Result {
     match &node.part {
-        Part::Panel(panel) => f.write_str(panel.word())?,
+        Part::Panel(panel) => write!(f, "{panel}")?,
         Part::Split(split, first, second) => {
             // A run of one sign, nesting to the right, needs no brackets.
             let bracketed = within.is_some();

@@ -22,6 +22,7 @@ mod narrow;
 mod notch;
 mod panels;
 mod picker;
+mod pinned;
 mod plugin_panel;
 pub(crate) mod plugins;
 mod pointer;
@@ -98,6 +99,8 @@ mod panel_keys_tests;
 mod panels_tests;
 #[cfg(test)]
 mod picker_tests;
+#[cfg(test)]
+mod pinned_tests;
 #[cfg(test)]
 mod plugin_hooks_tests;
 #[cfg(test)]
@@ -603,10 +606,13 @@ impl App {
     /// The session shown: open in the terminal, or selected in a list.
     pub(crate) fn focused_session(&self) -> Option<SessionId> {
         match (&self.mode, self.view) {
-            // The shell or a plugin's panel beside the session has the
-            // keys, the session beside the list stays the one selected.
+            // The shell, a plugin's panel or a session pinned beside the
+            // session has the keys: the session beside the list stays the
+            // one selected.
             (Mode::Terminal(session), _)
-                if self.shell != Some(*session) && !self.is_plugin_panel(*session) =>
+                if self.shell != Some(*session)
+                    && !self.is_plugin_panel(*session)
+                    && !self.pinned_beside().contains(session) =>
             {
                 Some(*session)
             }
@@ -652,6 +658,8 @@ impl App {
     pub(crate) fn shown_session(&self) -> Option<SessionId> {
         self.focused_session()
             .filter(|session| self.model.session(*session).is_some())
+            // One pinned is drawn, and streamed, in its own panel.
+            .filter(|session| !self.pinned_beside().contains(session))
             .filter(|_| self.session_drawn())
     }
 
@@ -666,6 +674,8 @@ impl App {
             self.shell_beside()
         } else if self.typing_in_plugin() {
             self.plugin_beside()
+        } else if let Some(pinned) = self.typing_in_pinned() {
+            Some(pinned)
         } else {
             self.shown_session()
         };

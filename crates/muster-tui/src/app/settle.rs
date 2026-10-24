@@ -3,6 +3,7 @@
 //! the terminal streamed to this client in line with what is shown.
 
 use muster_core::SessionId;
+use muster_core::layout::Panel;
 use muster_core::protocol::{ClientFrame, Command, TermSize};
 
 /// A session streamed beside the one the list shows, a shell or a plugin's
@@ -63,8 +64,9 @@ impl App {
     }
 
     /// Streams what is shown: the session the list shows or types in
-    /// (`attached`), and beside it the shell (`shell_stream`) and a
-    /// plugin's panel (`plugin_stream`), each at its panel's size. A
+    /// (`attached`), and beside it the shell (`shell_stream`), a plugin's
+    /// panel (`plugin_stream`) and the sessions pinned in panels of their
+    /// own (`panels.pinned`), each at its panel's size. A
     /// session that moves from one to another keeps its stream: it is
     /// detached only where none shows it, and attached only where none
     /// streamed it, so a Detach never follows its own Attach.
@@ -76,14 +78,22 @@ impl App {
         let plugin = self
             .plugin_beside()
             .filter(|_| !self.narrow() || self.typing_in_plugin());
-        let had = [
+        let pinned = self.pinned_beside();
+        let had: Vec<Option<SessionId>> = [
             self.attached,
             self.shell_stream.session,
             self.plugin_stream.session,
-        ];
-        let wanted = [main, shell, plugin];
-        let mut actions: Vec<Action> = had
+        ]
+        .into_iter()
+        .chain(self.panels.pinned.iter().map(|stream| stream.session))
+        .collect();
+        let wanted: Vec<Option<SessionId>> = [main, shell, plugin]
             .into_iter()
+            .chain(pinned.iter().copied().map(Some))
+            .collect();
+        let mut actions: Vec<Action> = had
+            .iter()
+            .copied()
             .flatten()
             .filter(|old| !wanted.contains(&Some(*old)))
             .map(|old| Action::Send(ClientFrame::Detach { session: old }))
@@ -113,6 +123,18 @@ impl App {
             self.settle_beside(self.plugin_stream, plugin, &had, self.plugin_size());
         self.plugin_stream = stream;
         actions.extend(more);
+        let streamed = std::mem::take(&mut self.panels.pinned);
+        for session in pinned {
+            let stream = streamed
+                .iter()
+                .find(|stream| stream.session == Some(session))
+                .copied()
+                .unwrap_or_default();
+            let size = self.panel_size(Panel::Pinned(session));
+            let (stream, more) = self.settle_beside(stream, Some(session), &had, size);
+            self.panels.pinned.push(stream);
+            actions.extend(more);
+        }
         actions
     }
 

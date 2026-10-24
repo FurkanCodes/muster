@@ -300,6 +300,18 @@
     {
       "group": "Sessions and Needs you",
       "keys": [
+        "P"
+      ],
+      "name": "pin_session",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "pin the session in a panel of its own, beside the one with the keys (again: unpin it; or drag its line)"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
         "s"
       ],
       "name": "stop_session",

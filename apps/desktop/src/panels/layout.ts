@@ -1,8 +1,9 @@
 // The panels' layout, as the terminal UI keeps it (`muster_core::layout`,
-// `ARCHITECTURE.md` §5a Panels): a small tree of the five panels, kept as
-// one line of Muster's own settings (`preferences.panels`):
+// `ARCHITECTURE.md` §5a Panels): a small tree of the five panels and the
+// sessions the person pinned in panels of their own (`session:<its id>`),
+// kept as one line of Muster's own settings (`preferences.panels`):
 //
-//   list | session 60% | (changes / shell / plugin)
+//   session:ses_01J… | list | session 60% | (changes / shell / plugin)
 //
 // `|` puts two side by side and `/` one above the other; a run of one of
 // them nests to the right, and brackets mix them. A part may say its size
@@ -12,7 +13,11 @@
 // what it is sent the same way; this reads, moves and sizes it in the window
 // so the two UIs write the same line.
 
-export type PanelName = "list" | "session" | "changes" | "shell" | "plugin";
+/** One of Muster's own panels. */
+export type OwnPanel = "list" | "session" | "changes" | "shell" | "plugin";
+/** A session pinned in a panel of its own, by its id. */
+export type PinnedPanel = `session:${string}`;
+export type PanelName = OwnPanel | PinnedPanel;
 export type Split = "across" | "down";
 export type Size = { share: number } | { cells: number };
 export type Edge = "left" | "right" | "top" | "bottom";
@@ -28,8 +33,22 @@ export interface LayoutNode {
   size: Size | null;
 }
 
-/** Every panel, in the order the default layout names them. */
-export const PANELS: readonly PanelName[] = ["list", "session", "changes", "shell", "plugin"];
+/** Muster's own panels, in the order the default layout names them; every layout has each once. */
+export const PANELS: readonly OwnPanel[] = ["list", "session", "changes", "shell", "plugin"];
+
+const PINNED = "session:";
+/** How a session's id is printed in the layout's text (`SessionId`'s `Display`); the wire has the bare ULID. */
+const PRINTED = "ses_";
+
+/** The panel of `session` (its id as the wire has it), pinned. */
+export function pinnedPanel(session: string): PinnedPanel {
+  return `${PINNED}${PRINTED}${session}`;
+}
+
+/** The session pinned in `panel`, by its id as the wire has it, if it is a pinned session's panel. */
+export function pinnedSession(panel: PanelName): string | null {
+  return panel.startsWith(PINNED + PRINTED) ? panel.slice(PINNED.length + PRINTED.length) : null;
+}
 
 /** What the person sees first. */
 export const DEFAULT_LAYOUT = "list | session 60% | (changes / shell / plugin)";
@@ -49,6 +68,8 @@ type Token =
   | { kind: "close" };
 
 function isPanel(word: string): word is PanelName {
+  if (word.startsWith(PINNED))
+    return /^ses_[0-9A-HJKMNP-TV-Z]{26}$/i.test(word.slice(PINNED.length));
   return (PANELS as readonly string[]).includes(word);
 }
 
@@ -126,10 +147,10 @@ class Reader {
     let part: Part;
     if (token?.kind === "word") {
       this.at += 1;
-      const word = token.word.toLowerCase();
+      const word = token.word.startsWith(PINNED) ? token.word : token.word.toLowerCase();
       if (!isPanel(word))
         throw new LayoutError(
-          `"${word}" is not a panel: the panels are list, session, changes, shell and plugin`,
+          `"${word}" is not a panel: the panels are list, session, changes, shell and plugin, and a session pinned, session:<its id>`,
         );
       part = { kind: "panel", panel: word };
     } else if (token?.kind === "open") {
@@ -318,9 +339,8 @@ export class Layout {
   static parse(text: string): Layout {
     let root = tree(text);
     const seen = panelsIn(root);
-    for (const panel of PANELS) {
-      if (seen.filter((one) => one === panel).length > 1)
-        throw new LayoutError(`${panel} is in the layout twice`);
+    for (const [at, panel] of seen.entries()) {
+      if (seen.indexOf(panel) !== at) throw new LayoutError(`${panel} is in the layout twice`);
     }
     root = { part: root.part, size: null };
     for (const panel of PANELS) {
@@ -348,6 +368,30 @@ export class Layout {
 
   equals(other: Layout): boolean {
     return this.toString() === other.toString();
+  }
+
+  /** The sessions pinned, in the layout's order. */
+  pinned(): string[] {
+    return panelsIn(this.root).flatMap((panel) => pinnedSession(panel) ?? []);
+  }
+
+  /** The layout with `session` pinned at `place`, or moved there where it is pinned already. */
+  pinning(session: string, place: Place): Layout {
+    const panel = pinnedPanel(session);
+    if (contains(this.root, panel)) return this.moved(panel, place);
+    const moving: LayoutNode = { part: { kind: "panel", panel }, size: null };
+    const root =
+      "window" in place
+        ? joined(moving, this.root, place.window, null)
+        : contains(this.root, place.beside)
+          ? beside(this.root, place.beside, moving, place.edge)
+          : joined(moving, this.root, "right", null);
+    return new Layout({ part: root.part, size: null });
+  }
+
+  /** The layout with `session` no longer pinned: its place goes to the other of its two. */
+  unpinned(session: string): Layout {
+    return this.without(pinnedPanel(session));
   }
 
   /** The layout without `panel`, its place gone to the other of its two. */

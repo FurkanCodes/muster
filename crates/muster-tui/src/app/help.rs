@@ -121,6 +121,7 @@ const NEEDS_YOU: &[Section] = &[
             DoesAs(Does::ShowChanges, "what its workspace has changed"),
             DoesAs(Does::NewSession, "a new session in its worktree"),
             D(Does::Shell),
+            D(Does::PinSession),
             D(Does::StopSession),
             D(Does::RestartSession),
             D(Does::Rename),
