@@ -4,6 +4,7 @@
 // opened, its terminal with the keys.
 
 import type { App } from "../app/context";
+import { ask } from "../ipc/ask";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
@@ -16,12 +17,14 @@ export async function makeWorktree(
   project: ProjectId,
   branch: string | null,
 ): Promise<WorkspaceId> {
-  const reply = await app.bridge.command({
-    CreateWorktree: { project, branch: branch?.trim() || null, on: null, named_for: null },
-  });
-  if (typeof reply !== "object" || !("WorktreeCreated" in reply))
-    throw new Error("The daemon answered something else; try again.");
-  return reply.WorktreeCreated.id;
+  const reply = await ask(
+    app.bridge,
+    {
+      CreateWorktree: { project, branch: branch?.trim() || null, on: null, named_for: null },
+    },
+    "WorktreeCreated",
+  );
+  return reply.id;
 }
 
 /** `harness` started in `workspace`, with `prompt` first where it takes one. */
@@ -31,19 +34,21 @@ export async function startSession(
   harness: string,
   prompt: string | null,
 ): Promise<SessionId> {
-  const reply = await app.bridge.command({
-    StartSession: {
-      workspace,
-      harness,
-      title: null,
-      size: START_SIZE,
-      prompt,
-      started_by: null,
+  const reply = await ask(
+    app.bridge,
+    {
+      StartSession: {
+        workspace,
+        harness,
+        title: null,
+        size: START_SIZE,
+        prompt,
+        started_by: null,
+      },
     },
-  });
-  if (typeof reply !== "object" || !("SessionStarted" in reply))
-    throw new Error("The daemon answered something else; try again.");
-  return reply.SessionStarted.id;
+    "SessionStarted",
+  );
+  return reply.id;
 }
 
 /** The session just started, selected in the list with its terminal and the keys. */

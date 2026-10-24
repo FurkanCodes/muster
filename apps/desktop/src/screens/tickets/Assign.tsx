@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon } from "../../app/context";
+import { ask, replyAs } from "../../ipc/ask";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
 import { agentOf, OWN } from "../../lib/agents";
@@ -75,8 +76,8 @@ export function Assign({
     void bridge
       .command({ ProjectSettings: { project } })
       .then((reply) => {
-        if (current && typeof reply === "object" && "ProjectSettings" in reply)
-          setSettings(reply.ProjectSettings);
+        const settings = replyAs(reply, "ProjectSettings");
+        if (current && settings) setSettings(settings);
       })
       .catch((error) => {
         if (current) setError(errorText(error));
@@ -121,24 +122,27 @@ export function Assign({
     setBusy(true);
     setError(null);
     try {
-      const reply = await bridge.command({
-        StartFromIssue: {
-          project,
-          key: issue.key,
-          harness: agent,
-          size: { rows: 24, cols: 80 },
-          another: ownOne,
-          on: stacking && on ? on : null,
-          brief,
+      const reply = await ask(
+        bridge,
+        {
+          StartFromIssue: {
+            project,
+            key: issue.key,
+            harness: agent,
+            size: { rows: 24, cols: 80 },
+            another: ownOne,
+            on: stacking && on ? on : null,
+            brief,
+          },
         },
-      });
-      if (typeof reply !== "object" || !("IssueStarted" in reply))
-        throw new Error("The daemon did not return its agent.");
+        "IssueStarted",
+        "The daemon did not return its agent.",
+      );
       model.store.setState((s) => ({
         lastAgent: agent,
         lastProjects: source ? { ...s.lastProjects, [source]: project } : s.lastProjects,
       }));
-      const session = reply.IssueStarted.session;
+      const session = reply.session;
       actions.show("all");
       // Selected once the daemon has told it, which it does after its answer.
       whenKnown(app, "sessions", session, () => {

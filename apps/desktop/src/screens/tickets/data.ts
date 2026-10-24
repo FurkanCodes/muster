@@ -1,4 +1,5 @@
 import { createStore } from "zustand/vanilla";
+import { ask } from "../../ipc/ask";
 import type { Bridge } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { PluginInfo } from "../../ipc/generated/PluginInfo";
@@ -94,19 +95,22 @@ function createTickets(bridge: Bridge) {
   async function fetch(project: string, again = false) {
     const was = store.getState().lists[project];
     if (!again && was) return;
-    const ask = (asked[project] ?? 0) + 1;
-    asked[project] = ask;
+    const turn = (asked[project] ?? 0) + 1;
+    asked[project] = turn;
     setList(
       project,
       was?.state === "loaded" ? { ...was, refreshing: true } : ({ state: "loading" } as const),
     );
     try {
-      const reply = await bridge.command({ ListIssues: { project } });
-      if (typeof reply !== "object" || !("Issues" in reply))
-        throw new Error("The daemon did not return its tickets.");
-      if (asked[project] === ask) setList(project, { state: "loaded", value: reply.Issues });
+      const reply = await ask(
+        bridge,
+        { ListIssues: { project } },
+        "Issues",
+        "The daemon did not return its tickets.",
+      );
+      if (asked[project] === turn) setList(project, { state: "loaded", value: reply });
     } catch (error) {
-      if (asked[project] === ask) setList(project, { state: "failed", error: errorText(error) });
+      if (asked[project] === turn) setList(project, { state: "failed", error: errorText(error) });
     }
   }
   async function view(project: string, issue: Issue) {
@@ -115,11 +119,13 @@ function createTickets(bridge: Bridge) {
     const loading = { state: "loading" } as const;
     setText(id, loading);
     try {
-      const reply = await bridge.command({ ViewIssue: { project, key: issue.key } });
-      if (typeof reply !== "object" || !("IssueViewed" in reply))
-        throw new Error("The daemon did not return its text.");
-      if (store.getState().texts[id] === loading)
-        setText(id, { state: "loaded", value: reply.IssueViewed });
+      const reply = await ask(
+        bridge,
+        { ViewIssue: { project, key: issue.key } },
+        "IssueViewed",
+        "The daemon did not return its text.",
+      );
+      if (store.getState().texts[id] === loading) setText(id, { state: "loaded", value: reply });
     } catch (error) {
       if (store.getState().texts[id] === loading)
         setText(id, { state: "failed", error: errorText(error) });
@@ -187,11 +193,14 @@ function createTickets(bridge: Bridge) {
       store.setState((s) => ({ changing: { ...s.changing, [lead]: true } }));
       try {
         for (const project of projects) {
-          const reply = await bridge.command({
-            ChangeSetting: { project, change: { OnlyMyTickets: mine } },
-          });
-          if (typeof reply !== "object" || !("ProjectSettings" in reply))
-            throw new Error("The daemon did not return its settings.");
+          await ask(
+            bridge,
+            {
+              ChangeSetting: { project, change: { OnlyMyTickets: mine } },
+            },
+            "ProjectSettings",
+            "The daemon did not return its settings.",
+          );
         }
       } finally {
         await Promise.all(projects.map((project) => fetch(project, true)));

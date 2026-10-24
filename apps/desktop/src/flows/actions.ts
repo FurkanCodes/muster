@@ -5,6 +5,7 @@
 // can be, the TUI's words saying why, in the status bar.
 
 import type { App } from "../app/context";
+import { ask } from "../ipc/ask";
 import type { Project } from "../ipc/generated/Project";
 import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
@@ -242,10 +243,8 @@ export function moveBranch(app: App): void {
 
 /** Adds the project at `path`, says so, and selects it. */
 export async function addProjectAt(app: App, path: string): Promise<void> {
-  const reply = await app.bridge.command({ AddProject: { root: path, name: null } });
-  if (typeof reply !== "object" || !("ProjectAdded" in reply))
-    throw new Error("The daemon answered something else; try again.");
-  const id = reply.ProjectAdded.id;
+  const reply = await ask(app.bridge, { AddProject: { root: path, name: null } }, "ProjectAdded");
+  const id = reply.id;
   app.actions.show("all");
   whenKnown(app, "projects", id, () => {
     app.actions.select("all", id);

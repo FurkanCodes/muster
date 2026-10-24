@@ -9,6 +9,7 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useBridge, useDaemon, useUi } from "../../app/context";
+import { replyAs } from "../../ipc/ask";
 import type { Command } from "../../ipc/generated/Command";
 import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import type { PluginPreview } from "../../ipc/generated/PluginPreview";
@@ -154,12 +155,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const number = asking(settingsAsks.current, project);
       bridge.command({ ProjectSettings: { project } }).then(
         (reply) => {
-          if (
-            typeof reply === "object" &&
-            "ProjectSettings" in reply &&
-            newest(settingsAsks.current, project, number)
-          ) {
-            const settings = reply.ProjectSettings;
+          const settings = replyAs(reply, "ProjectSettings");
+          if (settings && newest(settingsAsks.current, project, number)) {
             setProjects((now) => new Map(now).set(project, { state: "loaded", settings }));
           }
         },
@@ -189,9 +186,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     send(command).then(
       (reply) => {
         if (asked.current !== request) return;
-        if (typeof reply === "object" && "PluginPreview" in reply) {
-          setDialog({ step: "preview", preview: reply.PluginPreview });
-        }
+        const preview = replyAs(reply, "PluginPreview");
+        if (preview) setDialog({ step: "preview", preview });
       },
       (error: unknown) => {
         if (asked.current === request) setDialog(refused(errorText(error)));
@@ -242,12 +238,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           .then(
             (reply) => {
               // Out of date, its words with it: a newer answer says how things stand.
-              if (
-                typeof reply === "object" &&
-                "ProjectSettings" in reply &&
-                newest(settingsAsks.current, project, number)
-              ) {
-                const settings = reply.ProjectSettings;
+              const settings = replyAs(reply, "ProjectSettings");
+              if (settings && newest(settingsAsks.current, project, number)) {
                 setProjects((now) => new Map(now).set(project, { state: "loaded", settings }));
                 setDrafts((now) => {
                   if (now.get(project) !== from) return now;

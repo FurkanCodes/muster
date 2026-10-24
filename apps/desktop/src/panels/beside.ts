@@ -7,6 +7,7 @@
 // panel ends and leaves the list, as closing does.
 
 import type { App } from "../app/context";
+import { replyAs } from "../ipc/ask";
 import type { Beside } from "../ipc/generated/Beside";
 import type { Session } from "../ipc/generated/Session";
 import type { SessionId } from "../ipc/generated/SessionId";
@@ -140,8 +141,8 @@ export async function toggleShell(
         started_by: null,
       },
     });
-    if (typeof reply !== "object" || !("SessionStarted" in reply)) return null;
-    const id = reply.SessionStarted.id;
+    const id = replyAs(reply, "SessionStarted")?.id;
+    if (id === undefined) return null;
     app.actions.showShell(id);
     giveKeys(app, id);
     return id;

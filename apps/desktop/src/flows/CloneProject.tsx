@@ -20,6 +20,7 @@ import { TextField } from "../ui/TextField";
 import { folderOf, repositoryName, shownRepositories } from "./repositories";
 import { useTask } from "./useTask";
 import "./flows.css";
+import { ask, replyAs } from "../ipc/ask";
 import { errorText } from "../lib/text";
 
 type Listing =
@@ -36,8 +37,8 @@ function useListing(): Listing {
     app.bridge.command("ListRepositories").then(
       (reply) => {
         if (!current) return;
-        if (typeof reply === "object" && "Repositories" in reply)
-          setListing({ state: "listed", repositories: reply.Repositories });
+        const repositories = replyAs(reply, "Repositories");
+        if (repositories) setListing({ state: "listed", repositories });
         else setListing({ state: "failed", error: "The daemon answered something else." });
       },
       (error: unknown) => {
@@ -74,10 +75,12 @@ export default function CloneProject() {
     setAt(next.trim() ? 0 : null);
   };
   const cloneInto = async (name: string, folder: string) => {
-    const reply = await app.bridge.command({ CloneProject: { repository: name, into: folder } });
-    if (typeof reply !== "object" || !("ProjectAdded" in reply))
-      throw new Error("The daemon answered something else; try again.");
-    const project = reply.ProjectAdded.id;
+    const reply = await ask(
+      app.bridge,
+      { CloneProject: { repository: name, into: folder } },
+      "ProjectAdded",
+    );
+    const project = reply.id;
     actions.openFlow(null);
     actions.show("all");
     whenKnown(app, "projects", project, () => {

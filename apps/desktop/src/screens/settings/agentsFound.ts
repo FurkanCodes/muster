@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useBridge, useDaemon } from "../../app/context";
+import { replyAs } from "../../ipc/ask";
 import type { AgentFound } from "../../ipc/generated/AgentFound";
 import { errorText } from "../../lib/text";
 
@@ -28,10 +29,11 @@ export function useAgentsFound(again: number): Found {
     bridge.command("Agents").then(
       (reply) => {
         if (!current) return;
-        if (typeof reply === "object" && "Agents" in reply)
+        const agents = replyAs(reply, "Agents");
+        if (agents)
           setFound({
             state: "found",
-            agents: Object.fromEntries(reply.Agents.map((agent) => [agent.harness, agent])),
+            agents: Object.fromEntries(agents.map((agent) => [agent.harness, agent])),
           });
         else setFound({ state: "not-known", why: "The daemon answered something else." });
       },

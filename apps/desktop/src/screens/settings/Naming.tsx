@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useActions, useBridge } from "../../app/context";
+import { replyAs } from "../../ipc/ask";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { agentOf } from "../../lib/agents";
 import { errorText, oneLine } from "../../lib/text";
@@ -87,9 +88,8 @@ export function Naming({ preferences }: { preferences: Preferences }) {
     setListed({ agent, models: null, error: null });
     bridge.command({ ListModels: { agent } }).then(
       (reply) => {
-        if (typeof reply === "object" && "Models" in reply) {
-          setListed({ agent, models: reply.Models, error: null });
-        }
+        const models = replyAs(reply, "Models");
+        if (models) setListed({ agent, models, error: null });
       },
       (error: unknown) =>
         setListed({

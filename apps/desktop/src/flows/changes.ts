@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { useApp } from "../app/context";
+import { replyAs } from "../ipc/ask";
 import type { Changes } from "../ipc/generated/Changes";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 
@@ -15,7 +16,8 @@ export function useChanges(workspace: WorkspaceId): Changes | null {
     let current = true;
     app.bridge.command({ WorkspaceChanges: { workspace } }).then(
       (reply) => {
-        if (current && typeof reply === "object" && "Changes" in reply) setChanges(reply.Changes);
+        const changes = replyAs(reply, "Changes");
+        if (current && changes) setChanges(changes);
       },
       () => {},
     );

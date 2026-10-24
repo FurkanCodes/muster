@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNow } from "../../app/clock";
 import { useActions, useBridge } from "../../app/context";
+import { replyAs } from "../../ipc/ask";
 import type { Entry } from "../../ipc/generated/Entry";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import type { UndoPlan } from "../../ipc/generated/UndoPlan";
@@ -67,7 +68,8 @@ export function PutBack({
     bridge.command({ UndoPlan: { workspace, number } }).then(
       (reply) => {
         if (!current) return;
-        if (typeof reply !== "string" && "UndoPlan" in reply) setPlan(reply.UndoPlan);
+        const plan = replyAs(reply, "UndoPlan");
+        if (plan) setPlan(plan);
         else {
           closing.current.actions.tell("The daemon did not say what putting back would do.", true);
           closing.current.onClose();
@@ -132,13 +134,13 @@ function PlanDialog({
         Undo: { workspace, number: plan.number, move_branch: moveBranch },
       });
       if (!mounted.current) return;
-      if (typeof reply === "string" || !("Undone" in reply))
-        throw new Error("The daemon did not say the files were put back.");
-      const branch = reply.Undone.moved_branch ? ", and the branch with them" : "";
+      const undone = replyAs(reply, "Undone");
+      if (!undone) throw new Error("The daemon did not say the files were put back.");
+      const branch = undone.moved_branch ? ", and the branch with them" : "";
       actions.tell(
-        `The files are as they were before #${plan.number}${branch}. ${putBackKey} on #${reply.Undone.entry} brings them back.`,
+        `The files are as they were before #${plan.number}${branch}. ${putBackKey} on #${undone.entry} brings them back.`,
       );
-      onDone(reply.Undone.entry);
+      onDone(undone.entry);
     } catch (error) {
       if (!mounted.current) return;
       actions.tell(errorText(error), true);

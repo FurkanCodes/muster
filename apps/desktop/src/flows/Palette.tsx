@@ -18,6 +18,7 @@ import { helpFor } from "./help";
 import { labelOf } from "./keymap";
 import { found } from "./match";
 import "./flows.css";
+import { replyAs } from "../ipc/ask";
 import { shownHarness } from "../state/selectors";
 
 const PAGE = 10;
@@ -48,8 +49,9 @@ function useTickets(asked: boolean): { tickets: Ticket[]; asking: boolean } {
     void Promise.allSettled(
       projects.map(async (project) => {
         const reply = await app.bridge.command({ ListIssues: { project: project.id } });
-        return typeof reply === "object" && "Issues" in reply
-          ? reply.Issues.issues.map((issue) => ({
+        const listed = replyAs(reply, "Issues");
+        return listed
+          ? listed.issues.map((issue) => ({
               project: project.id,
               projectName: project.name,
               issue,
