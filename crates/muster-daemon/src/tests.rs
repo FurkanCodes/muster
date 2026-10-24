@@ -551,3 +551,15 @@ async fn muster_s_own_settings_change_in_the_person_s_file_for_every_client() {
     assert!(written.contains("show = false"), "{written}");
     assert!(!supervisor.subscribe().await.unwrap().0.preferences.notch);
 }
+
+#[tokio::test]
+async fn the_supervisor_ending_by_a_panic_is_told_so_the_daemon_stops() {
+    let ended = tokio_util::sync::CancellationToken::new();
+    let task = crate::tasks::owned(supervisor::cancelling_as_it_ends(ended.clone(), async {
+        panic!("a bug in the Supervisor");
+    }));
+    timeout(Duration::from_secs(5), ended.cancelled())
+        .await
+        .expect("ended is cancelled as the task unwinds");
+    assert!(task.await.is_err_and(|error| error.is_panic()));
+}

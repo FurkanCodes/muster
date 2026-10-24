@@ -220,6 +220,26 @@ async fn a_hang_hits_its_deadline_and_the_next_request_starts_it_again() {
 }
 
 #[tokio::test]
+async fn what_a_hung_plugin_started_is_stopped_with_it() {
+    let starts_and_hangs = r#"list() { sleep 30 & echo $! > "$dir/child"; sleep 30; }"#;
+    let fake = Fake::with_limits(
+        "",
+        starts_and_hangs,
+        "",
+        Limits {
+            hello: Duration::from_secs(5),
+            request: Duration::from_secs(1),
+            idle: Duration::from_secs(60),
+        },
+    );
+    unavailable(fake.tickets(false).list().await.unwrap_err());
+    let child: i32 = fake.read("child").trim().parse().unwrap();
+    let gone =
+        move |_: &Fake| nix::sys::signal::kill(nix::unistd::Pid::from_raw(child), None).is_err();
+    fake.until(gone).await;
+}
+
+#[tokio::test]
 async fn a_crash_answers_with_why_and_the_next_request_starts_it_again() {
     let crashes_first = r#"list() { if [ "$starts" -eq 1 ]; then echo "panic: the tracker went away" >&2; exit 3; else printf '{"jsonrpc":"2.0","id":%s,"result":{"tickets":[]}}\n' "$id"; fi; }"#;
     let fake = Fake::new("", crashes_first, "");

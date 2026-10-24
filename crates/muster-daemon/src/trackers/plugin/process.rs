@@ -219,6 +219,8 @@ impl Process {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            // A group of its own, so what it starts is stopped with it.
+            .process_group(0)
             .kill_on_drop(true);
         if let Some(folder) = &self.spec.folder {
             command.current_dir(folder);
@@ -446,7 +448,7 @@ async fn drive(
             .and_then(Result::ok)
     };
     if status.is_none() {
-        let _ = child.kill().await;
+        kill_group(&mut child).await;
     }
     if stderr_open {
         // The rest of what it said as it ended.
@@ -485,4 +487,15 @@ async fn write(stdin: &mut ChildStdin, id: u64, call: &Call) -> std::io::Result<
         .write_all(ticket_protocol::request_line(id, call).as_bytes())
         .await?;
     stdin.flush().await
+}
+
+/// Kills `child` and whatever it started, its process group.
+async fn kill_group(child: &mut Child) {
+    if let Some(group) = child.id().and_then(|pid| i32::try_from(pid).ok()) {
+        let _ = nix::sys::signal::killpg(
+            nix::unistd::Pid::from_raw(group),
+            nix::sys::signal::Signal::SIGKILL,
+        );
+    }
+    let _ = child.kill().await;
 }

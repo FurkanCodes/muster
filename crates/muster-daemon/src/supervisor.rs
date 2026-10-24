@@ -216,11 +216,8 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         events: events::Events::new(settings.hooks),
     };
     supervisor.start_up(settings.adopted, stored_runs).await;
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "ARC-13: the Supervisor keeps its own queue open, so it runs as long as the daemon"
-    )]
-    tokio::spawn(supervisor.run(Queues {
+    let ended = tokio_util::sync::CancellationToken::new();
+    let queues = Queues {
         requests: queue,
         pty: pty_queue,
         hooks: settings.hook_queue,
@@ -228,8 +225,23 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         keys_gone: keys_gone_queue,
         client_gone: client_gone_queue,
         run_reports: run_report_queue,
-    }));
-    Ok(SupervisorHandle { requests })
+    };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-13: the Supervisor keeps its own queue open, so it runs as long as the daemon, \
+                  which stops if it ends (`SupervisorHandle::ended`)"
+    )]
+    tokio::spawn(cancelling_as_it_ends(ended.clone(), supervisor.run(queues)));
+    Ok(SupervisorHandle { requests, ended })
+}
+
+/// Runs `work`, cancelling `ended` as it ends, by a panic's unwinding too.
+pub(crate) async fn cancelling_as_it_ends(
+    ended: tokio_util::sync::CancellationToken,
+    work: impl Future,
+) {
+    let _cancels = ended.drop_guard();
+    work.await;
 }
 
 /// What the Supervisor listens to.

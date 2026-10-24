@@ -64,6 +64,9 @@ fn command(cwd: &Path, args: &[&str], vars: Vars<'_>) -> Command {
         .args(args)
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
+        // Its errors are told apart by their words (`supervisor::worktrees`),
+        // so they must be git's own English whatever the person's locale.
+        .env("LC_ALL", "C")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -324,6 +327,17 @@ pub(crate) mod tests {
     use std::process::Command;
 
     use super::*;
+
+    #[test]
+    fn git_speaks_english_whatever_the_locale() {
+        let git = command(Path::new("."), &["status"], &[]);
+        let locale = git
+            .as_std()
+            .get_envs()
+            .find(|(name, _)| *name == "LC_ALL")
+            .and_then(|(_, value)| value);
+        assert_eq!(locale, Some(std::ffi::OsStr::new("C")));
+    }
 
     /// Runs git in `dir`, ignoring the user's own git configuration so tests
     /// behave the same everywhere; panics if it fails.

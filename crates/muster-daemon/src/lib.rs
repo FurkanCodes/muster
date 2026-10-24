@@ -224,6 +224,8 @@ pub enum DaemonError {
     AlreadyRunning(PathBuf),
     #[error(transparent)]
     Store(#[from] StoreError),
+    #[error("the daemon's Supervisor stopped unexpectedly; see daemon.log")]
+    SupervisorEnded,
 }
 
 fn io_error(context: &'static str, path: &Path) -> impl FnOnce(io::Error) -> DaemonError {
@@ -321,13 +323,11 @@ pub async fn run(
 
     tracing::info!(socket = %socket.display(), pid = std::process::id(), "daemon ready");
     let mut listener = serving(&socket_listener, &socket)?;
+    let mut broken;
     loop {
-        let mut stop = None;
-        server::serve(listener, supervisor.clone(), &tasks, async {
-            stop = stops.recv().await;
-        })
-        .await;
-        if stop != Some(Stop::Reload) {
+        let told = serve_until_told(listener, &supervisor, &tasks, &mut stops).await;
+        broken = told.is_err();
+        if told.ok().flatten() != Some(Stop::Reload) {
             break;
         }
         // The program that follows starts its own; these would outlive the
@@ -365,7 +365,37 @@ pub async fn run(
     let _ = std::fs::remove_file(&socket);
     drop(lock);
     tracing::info!("daemon stopped");
+    if broken {
+        return Err(DaemonError::SupervisorEnded);
+    }
     Ok(())
+}
+
+/// The Supervisor ended while the daemon served.
+struct SupervisorEnded;
+
+/// Serves clients on `listener` until told to stop or reload. If the
+/// Supervisor ends meanwhile, only a panic does it: its sessions would run
+/// on unsupervised and every command be refused, so the daemon had better
+/// stop, and the next client start one that resumes them from the store.
+async fn serve_until_told(
+    listener: tokio::net::UnixListener,
+    supervisor: &supervisor::SupervisorHandle,
+    tasks: &Tasks,
+    stops: &mut tokio::sync::mpsc::UnboundedReceiver<Stop>,
+) -> Result<Option<Stop>, SupervisorEnded> {
+    let mut told = Ok(None);
+    server::serve(listener, supervisor.clone(), tasks, async {
+        tokio::select! {
+            stop = stops.recv() => told = Ok(stop),
+            () = supervisor.ended() => {
+                tracing::error!("the Supervisor ended; stopping the daemon");
+                told = Err(SupervisorEnded);
+            }
+        }
+    })
+    .await;
+    told
 }
 
 /// What the daemon holds for its whole life, across a restart in place

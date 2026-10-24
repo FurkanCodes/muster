@@ -206,9 +206,17 @@ impl std::fmt::Debug for Request {
 #[derive(Clone, Debug)]
 pub(crate) struct SupervisorHandle {
     pub(super) requests: mpsc::Sender<Request>,
+    /// Cancelled as the Supervisor's task ends, which only a panic does.
+    pub(super) ended: tokio_util::sync::CancellationToken,
 }
 
 impl SupervisorHandle {
+    /// Waits until the Supervisor has ended: it keeps its own queue open,
+    /// so only a panic ends it, and a daemon without one answers nothing.
+    pub(crate) async fn ended(&self) {
+        self.ended.cancelled().await;
+    }
+
     /// The current state and every delta after it, or `None` once the
     /// Supervisor has stopped.
     pub(crate) async fn subscribe(&self) -> Option<Subscription> {
