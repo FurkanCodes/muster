@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon } from "../../app/context";
-import { ask, replyAs } from "../../ipc/ask";
+import { ask } from "../../ipc/ask";
 import type { Issue } from "../../ipc/generated/Issue";
-import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
+import { useAsked } from "../../ipc/useAsked";
 import { agentOf, OWN } from "../../lib/agents";
 import { errorText } from "../../lib/text";
 import { whenKnown } from "../../state/whenKnown";
@@ -68,24 +68,15 @@ export function Assign({
     return remembered && projects.includes(remembered) ? remembered : (projects[0] ?? "");
   });
   const [on, setOn] = useState("");
-  const [settings, setSettings] = useState<ProjectSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let current = true;
-    void bridge
-      .command({ ProjectSettings: { project } })
-      .then((reply) => {
-        const settings = replyAs(reply, "ProjectSettings");
-        if (current && settings) setSettings(settings);
-      })
-      .catch((error) => {
-        if (current) setError(errorText(error));
-      });
-    return () => {
-      current = false;
-    };
-  }, [bridge, project]);
+  const read = useAsked(
+    () => ask(bridge, { ProjectSettings: { project } }, "ProjectSettings"),
+    project,
+  );
+  const settings = read.state === "answered" ? read.value : null;
+  // Why it cannot start, or why the project's settings could not be read.
+  const said = error ?? (read.state === "failed" ? read.error : null);
   const existing = worktreesFor(workspaces, [project], issue.key);
   const stacking = another || existing.length === 0;
   // The daemon gives another agent `…-2`, `…-3`: the first branch nobody has.
@@ -113,7 +104,6 @@ export function Assign({
   const chooseProject = (id: string) => {
     setProject(id);
     setOn("");
-    setSettings(null);
   };
   const step = <T,>(list: readonly T[], current: T, by: number) =>
     list[(list.indexOf(current) + by + list.length) % list.length] ?? current;
@@ -277,7 +267,7 @@ export function Assign({
         {name} gets {brief ? givenWords(brief) : "the ticket"} as its first prompt, marked as a
         description of the work, never as instructions.
       </p>
-      {error ? <ErrorText>{error}</ErrorText> : null}
+      {said ? <ErrorText>{said}</ErrorText> : null}
     </Dialog>
   );
 }

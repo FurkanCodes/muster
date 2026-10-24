@@ -6,7 +6,7 @@
 // daemon clones it into a folder of its name there and adds it; where the
 // app has no panel (its tests' build, the mock), a field asks instead.
 
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useId, useState } from "react";
 import { useActions, useApp } from "../app/context";
 import type { HostedRepository } from "../ipc/generated/HostedRepository";
 import { whenKnown } from "../state/whenKnown";
@@ -20,36 +20,13 @@ import { TextField } from "../ui/TextField";
 import { folderOf, repositoryName, shownRepositories } from "./repositories";
 import { useTask } from "./useTask";
 import "./flows.css";
-import { ask, replyAs } from "../ipc/ask";
-import { errorText } from "../lib/text";
-
-type Listing =
-  | { state: "asking" }
-  | { state: "listed"; repositories: HostedRepository[] }
-  | { state: "failed"; error: string };
+import { ask } from "../ipc/ask";
+import { type Asked, useAsked } from "../ipc/useAsked";
 
 /** The repositories the person can reach, asked of the daemon once as the dialog opens. */
-function useListing(): Listing {
+function useListing(): Asked<HostedRepository[]> {
   const app = useApp();
-  const [listing, setListing] = useState<Listing>({ state: "asking" });
-  useEffect(() => {
-    let current = true;
-    app.bridge.command("ListRepositories").then(
-      (reply) => {
-        if (!current) return;
-        const repositories = replyAs(reply, "Repositories");
-        if (repositories) setListing({ state: "listed", repositories });
-        else setListing({ state: "failed", error: "The daemon answered something else." });
-      },
-      (error: unknown) => {
-        if (current) setListing({ state: "failed", error: errorText(error) });
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [app]);
-  return listing;
+  return useAsked(() => ask(app.bridge, "ListRepositories", "Repositories"), "repositories");
 }
 
 export default function CloneProject() {
@@ -62,7 +39,7 @@ export default function CloneProject() {
   /** Where to clone it, typed, where the app has no panel to ask in. */
   const [into, setInto] = useState<string | null>(null);
   const task = useTask();
-  const shown = listing.state === "listed" ? shownRepositories(listing.repositories, typed) : [];
+  const shown = listing.state === "answered" ? shownRepositories(listing.value, typed) : [];
   const chosen = at === null ? null : (shown[at] ?? null);
   const target = chosen?.name ?? repositoryName(typed);
 

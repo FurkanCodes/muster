@@ -18,7 +18,8 @@ import { helpFor } from "./help";
 import { labelOf } from "./keymap";
 import { found } from "./match";
 import "./flows.css";
-import { replyAs } from "../ipc/ask";
+import { ask } from "../ipc/ask";
+import { useAsked } from "../ipc/useAsked";
 import { shownHarness } from "../state/selectors";
 
 const PAGE = 10;
@@ -31,44 +32,39 @@ export default function Palette() {
 /** The tickets of the projects that are repositories, asked for once the person types. */
 function useTickets(asked: boolean): { tickets: Ticket[]; asking: boolean } {
   const app = useApp();
-  const [tickets, setTickets] = useState<Ticket[] | null>(null);
-  useEffect(() => {
-    if (!asked) return;
-    let current = true;
-    const state = app.daemon.store.getState();
-    const projects = Object.values(state.projects).filter((project) =>
-      Object.values(state.workspaces).some(
-        (workspace) =>
-          workspace.project === project.id &&
-          workspace.kind.kind === "checkout" &&
-          workspace.kind.branch !== "",
-      ),
-    );
-    // Asked of the daemon once per palette; a project whose tickets it cannot
-    // reach shows none here, and says why on the Tickets screen.
-    void Promise.allSettled(
-      projects.map(async (project) => {
-        const reply = await app.bridge.command({ ListIssues: { project: project.id } });
-        const listed = replyAs(reply, "Issues");
-        return listed
-          ? listed.issues.map((issue) => ({
-              project: project.id,
-              projectName: project.name,
-              issue,
-            }))
-          : [];
-      }),
-    ).then((results) => {
-      if (current)
-        setTickets(
-          results.flatMap((result) => (result.status === "fulfilled" ? result.value : [])),
-        );
-    });
-    return () => {
-      current = false;
-    };
-  }, [app, asked]);
-  return { tickets: tickets ?? [], asking: asked && tickets === null };
+  const listed = useAsked(asked ? () => repositoriesTickets(app) : null, "tickets");
+  return {
+    tickets: listed.state === "answered" ? listed.value : [],
+    asking: asked && listed.state === "asking",
+  };
+}
+
+/**
+ * The tickets of each project that is a repository. Asked of the daemon
+ * once per palette; a project whose tickets it cannot reach shows none
+ * here, and says why on the Tickets screen.
+ */
+async function repositoriesTickets(app: ReturnType<typeof useApp>): Promise<Ticket[]> {
+  const state = app.daemon.store.getState();
+  const projects = Object.values(state.projects).filter((project) =>
+    Object.values(state.workspaces).some(
+      (workspace) =>
+        workspace.project === project.id &&
+        workspace.kind.kind === "checkout" &&
+        workspace.kind.branch !== "",
+    ),
+  );
+  const results = await Promise.allSettled(
+    projects.map(async (project) => {
+      const listed = await ask(app.bridge, { ListIssues: { project: project.id } }, "Issues");
+      return listed.issues.map((issue) => ({
+        project: project.id,
+        projectName: project.name,
+        issue,
+      }));
+    }),
+  );
+  return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
 }
 
 function Commands() {

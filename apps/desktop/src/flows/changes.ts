@@ -3,29 +3,19 @@
 // person answers. Asked once, as the dialog opens; a refusal leaves the
 // dialog saying less, never wrong.
 
-import { useEffect, useState } from "react";
 import { useApp } from "../app/context";
-import { replyAs } from "../ipc/ask";
+import { ask } from "../ipc/ask";
 import type { Changes } from "../ipc/generated/Changes";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import { useAsked } from "../ipc/useAsked";
 
 export function useChanges(workspace: WorkspaceId): Changes | null {
   const app = useApp();
-  const [changes, setChanges] = useState<Changes | null>(null);
-  useEffect(() => {
-    let current = true;
-    app.bridge.command({ WorkspaceChanges: { workspace } }).then(
-      (reply) => {
-        const changes = replyAs(reply, "Changes");
-        if (current && changes) setChanges(changes);
-      },
-      () => {},
-    );
-    return () => {
-      current = false;
-    };
-  }, [app, workspace]);
-  return changes;
+  const asked = useAsked(
+    () => ask(app.bridge, { WorkspaceChanges: { workspace } }, "Changes"),
+    workspace,
+  );
+  return asked.state === "answered" ? asked.value : null;
 }
 
 /** `n thing`, or `n things`. */

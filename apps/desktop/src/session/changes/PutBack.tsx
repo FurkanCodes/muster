@@ -8,10 +8,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNow } from "../../app/clock";
 import { useActions, useBridge } from "../../app/context";
-import { replyAs } from "../../ipc/ask";
+import { ask, replyAs } from "../../ipc/ask";
 import type { Entry } from "../../ipc/generated/Entry";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import type { UndoPlan } from "../../ipc/generated/UndoPlan";
+import { useAsked } from "../../ipc/useAsked";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { ago } from "../../lib/format";
 import { errorText, oneLine } from "../../lib/text";
@@ -60,31 +61,26 @@ export function PutBack({
 }) {
   const actions = useActions();
   const bridge = useBridge();
-  const [plan, setPlan] = useState<UndoPlan | null>(null);
+  const asked = useAsked(
+    () =>
+      ask(
+        bridge,
+        { UndoPlan: { workspace, number } },
+        "UndoPlan",
+        "The daemon did not say what putting back would do.",
+      ),
+    `${workspace}:${number}`,
+  );
   const closing = useRef({ onClose, actions });
   closing.current = { onClose, actions };
+  // What cannot be put back is said, and the dialog goes.
+  const failed = asked.state === "failed" ? asked.error : null;
   useEffect(() => {
-    let current = true;
-    bridge.command({ UndoPlan: { workspace, number } }).then(
-      (reply) => {
-        if (!current) return;
-        const plan = replyAs(reply, "UndoPlan");
-        if (plan) setPlan(plan);
-        else {
-          closing.current.actions.tell("The daemon did not say what putting back would do.", true);
-          closing.current.onClose();
-        }
-      },
-      (error: unknown) => {
-        if (!current) return;
-        closing.current.actions.tell(errorText(error), true);
-        closing.current.onClose();
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [bridge, workspace, number]);
+    if (failed === null) return;
+    closing.current.actions.tell(failed, true);
+    closing.current.onClose();
+  }, [failed]);
+  const plan = asked.state === "answered" ? asked.value : null;
   return plan ? (
     <PlanDialog
       workspace={workspace}

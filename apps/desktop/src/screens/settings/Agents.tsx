@@ -61,7 +61,7 @@ function homely(path: string): string {
 
 /** The agent `harness` as the daemon finds it, if it said. */
 function foundOf(found: Found, harness: string): AgentFound | null {
-  return found.state === "found" ? (found.agents[harness] ?? null) : null;
+  return found.state === "answered" ? (found.value[harness] ?? null) : null;
 }
 
 /** Where the agent's program is, or that it is not found, or not known. */
@@ -75,9 +75,9 @@ function Where({
   install: ReactNode;
 }): ReactNode {
   if (found.state === "asking") return <Loading text="Looking for it" layout="rule" />;
-  if (found.state === "not-known")
+  if (found.state === "failed")
     return (
-      <span className="mu-quiet">{`where it is installed is not known: ${oneLine(found.why)}`}</span>
+      <span className="mu-quiet">{`where it is installed is not known: ${oneLine(found.error)}`}</span>
     );
   const path = foundOf(found, harness)?.path;
   if (!path)
