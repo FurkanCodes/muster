@@ -8,6 +8,7 @@
 use std::process::ExitCode;
 use std::time::Duration;
 
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use muster_core::protocol::{Command, Reading, Reply, Snapshot, TerminalModes};
 use muster_core::{Paths, Session, SessionStatus};
 
@@ -70,84 +71,64 @@ fn drivable(snapshot: &Snapshot, session: &Session) -> Result<(), String> {
 
 /// The bytes a terminal sends for the key `name` (`enter`, `esc`, `tab`,
 /// `backspace`, `up`, `f5`, `ctrl+c`, `alt+x`, `shift+tab`, or one
-/// character), as `modes` ask: application cursor keys, and the kitty
-/// keyboard protocol for what it tells apart.
+/// character), as `modes` ask, encoded as the UI encodes what the person
+/// types (`muster_tui::keys`).
 pub(crate) fn key_bytes(name: &str, modes: TerminalModes) -> Result<Vec<u8>, String> {
+    named_key(name)
+        .and_then(|key| muster_tui::keys::encode_key(&key, modes))
+        .ok_or_else(|| not_a_key(name))
+}
+
+/// The key `name` names, or `None`.
+fn named_key(name: &str) -> Option<KeyEvent> {
     let lower = name.to_lowercase();
-    let kitty = modes.kitty_flags != 0;
-    let cursor = |letter: char| {
-        if modes.application_cursor {
-            format!("\x1bO{letter}").into_bytes()
-        } else {
-            format!("\x1b[{letter}").into_bytes()
-        }
-    };
-    let modified = |rest: &str, prefix: &str| {
-        rest.strip_prefix(prefix)
-            .or_else(|| rest.strip_prefix(&prefix.replace('+', "-")))
-            .map(str::to_owned)
-    };
-    if let Some(letter) = modified(&lower, "ctrl+").or_else(|| modified(&lower, "c-")) {
-        let Some(c) = one_letter(&letter) else {
-            return Err(not_a_key(name));
-        };
-        return Ok(if kitty {
-            format!("\x1b[{};5u", u32::from(c)).into_bytes()
-        } else {
-            vec![(c as u8) & 0x1f]
-        });
-    }
-    if let Some(letter) = modified(&lower, "alt+") {
-        let Some(c) = one_letter(&letter) else {
-            return Err(not_a_key(name));
-        };
-        return Ok(if kitty {
-            format!("\x1b[{};3u", u32::from(c)).into_bytes()
-        } else {
-            vec![0x1b, c as u8]
-        });
-    }
-    let bytes = match lower.as_str() {
-        "enter" | "return" => send::enter_key(modes).to_vec(),
-        "tab" => b"\t".to_vec(),
-        "shift+tab" | "shift-tab" | "backtab" => b"\x1b[Z".to_vec(),
-        "esc" | "escape" if kitty => b"\x1b[27u".to_vec(),
-        "esc" | "escape" => b"\x1b".to_vec(),
-        "backspace" => b"\x7f".to_vec(),
-        "delete" | "del" => b"\x1b[3~".to_vec(),
-        "space" => b" ".to_vec(),
-        "up" => cursor('A'),
-        "down" => cursor('B'),
-        "right" => cursor('C'),
-        "left" => cursor('D'),
-        "home" => cursor('H'),
-        "end" => cursor('F'),
-        "pageup" => b"\x1b[5~".to_vec(),
-        "pagedown" => b"\x1b[6~".to_vec(),
-        function if function.starts_with('f') && function.len() > 1 => {
-            match function[1..].parse::<u8>() {
-                Ok(n @ 1..=4) => format!("\x1bO{}", char::from(b'P' + n - 1)).into_bytes(),
-                Ok(n @ 5..=12) => {
-                    let code = [15, 17, 18, 19, 20, 21, 23, 24][usize::from(n - 5)];
-                    format!("\x1b[{code}~").into_bytes()
+    for (prefixes, modifier) in [
+        (["ctrl+", "ctrl-", "c-"], KeyModifiers::CONTROL),
+        (["alt+", "alt-", "m-"], KeyModifiers::ALT),
+    ] {
+        if let Some(rest) = prefixes
+            .iter()
+            .find_map(|prefix| lower.strip_prefix(prefix))
+        {
+            let mut chars = rest.chars();
+            return match (chars.next(), chars.next()) {
+                (Some(c), None) if c.is_ascii_lowercase() => {
+                    Some(KeyEvent::new(KeyCode::Char(c), modifier))
                 }
-                _ => return Err(not_a_key(name)),
+                _ => None,
+            };
+        }
+    }
+    let code = match lower.as_str() {
+        "enter" | "return" => KeyCode::Enter,
+        "tab" => KeyCode::Tab,
+        "shift+tab" | "shift-tab" | "backtab" => {
+            return Some(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+        }
+        "esc" | "escape" => KeyCode::Esc,
+        "backspace" => KeyCode::Backspace,
+        "delete" | "del" => KeyCode::Delete,
+        "space" => KeyCode::Char(' '),
+        "up" => KeyCode::Up,
+        "down" => KeyCode::Down,
+        "right" => KeyCode::Right,
+        "left" => KeyCode::Left,
+        "home" => KeyCode::Home,
+        "end" => KeyCode::End,
+        "pageup" => KeyCode::PageUp,
+        "pagedown" => KeyCode::PageDown,
+        function if function.len() > 1 && function.starts_with('f') => {
+            match function[1..].parse::<u8>() {
+                Ok(n @ 1..=12) => KeyCode::F(n),
+                _ => return None,
             }
         }
         _ => match name.chars().collect::<Vec<_>>().as_slice() {
-            [c] if !c.is_control() => c.to_string().into_bytes(),
-            _ => return Err(not_a_key(name)),
+            [c] if !c.is_control() => KeyCode::Char(*c),
+            _ => return None,
         },
     };
-    Ok(bytes)
-}
-
-fn one_letter(text: &str) -> Option<char> {
-    let mut chars = text.chars();
-    match (chars.next(), chars.next()) {
-        (Some(c), None) if c.is_ascii_lowercase() => Some(c),
-        _ => None,
-    }
+    Some(KeyEvent::new(code, KeyModifiers::NONE))
 }
 
 fn not_a_key(name: &str) -> String {
@@ -284,7 +265,12 @@ mod tests {
         let kitty = modes(1, false);
         assert_eq!(key_bytes("esc", kitty).unwrap(), b"\x1b[27u");
         assert_eq!(key_bytes("ctrl+c", kitty).unwrap(), b"\x1b[99;5u");
-        assert_eq!(key_bytes("enter", kitty).unwrap(), b"\x1b[13u");
+        // Kitty's form only for what is ambiguous, unless every key was asked.
+        assert_eq!(key_bytes("enter", kitty).unwrap(), b"\r");
+        assert_eq!(
+            key_bytes("enter", modes(1 | 8, false)).unwrap(),
+            b"\x1b[13u"
+        );
         for not in ["ctrl+", "ctrl+ab", "f13", "hello", "\u{7}"] {
             assert!(key_bytes(not, legacy).is_err(), "{not:?}");
         }

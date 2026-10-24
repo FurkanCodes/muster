@@ -73,8 +73,11 @@ fn functions(shell: Shell, names: &[String]) -> String {
     );
     for name in names.iter().filter(|name| usable(name)) {
         let function = match shell {
+            // An alias of the name, as some installers write, would be read
+            // in place of the name in `name() {`, and would still shadow the
+            // function; so it goes first, and `function` names it.
             Shell::Zsh | Shell::Bash => format!(
-                "{name}() {{\n  case \"${{1-}}\" in\n    -*) command {name} \"$@\" ;;\n    *) if [ -n \"${{MUSTER_TERMINAL-}}\" ] && [ -t 0 ]; then\n         command muster exec {name} \"$@\"\n       else\n         command {name} \"$@\"\n       fi ;;\n  esac\n}}\n"
+                "unalias {name} 2>/dev/null || true\nfunction {name} {{\n  case \"${{1-}}\" in\n    -*) command {name} \"$@\" ;;\n    *) if [ -n \"${{MUSTER_TERMINAL-}}\" ] && [ -t 0 ]; then\n         command muster exec {name} \"$@\"\n       else\n         command {name} \"$@\"\n       fi ;;\n  esac\n}}\n"
             ),
             Shell::Fish => format!(
                 "function {name}\n  if set -q MUSTER_TERMINAL; and isatty stdin; and not string match -q -- '-*' \"$argv[1]\"\n    command muster exec {name} $argv\n  else\n    command {name} $argv\n  end\nend\n"
@@ -93,7 +96,7 @@ mod tests {
     fn each_agent_is_a_function_that_asks_muster_only_in_its_terminals_prd_13() {
         let names = vec!["claude".to_owned(), "my agent".to_owned()];
         let zsh = functions(Shell::Zsh, &names);
-        assert!(zsh.contains("claude() {"));
+        assert!(zsh.contains("function claude {"));
         assert!(zsh.contains("command muster exec claude \"$@\""));
         assert!(zsh.contains("command claude \"$@\""));
         assert!(zsh.contains("${MUSTER_TERMINAL-}"));
@@ -101,5 +104,37 @@ mod tests {
         let fish = functions(Shell::Fish, &names);
         assert!(fish.contains("function claude"));
         assert!(fish.contains("command muster exec claude $argv"));
+    }
+
+    /// The functions read in each shell there is, an alias of an agent's
+    /// name already set, and the name is the function then.
+    #[test]
+    fn the_functions_read_in_each_shell_over_an_alias_of_the_name() {
+        let names = vec!["claude".to_owned(), "my-agent".to_owned()];
+        // Bash expands aliases outside an interactive shell only if asked.
+        let shells = [
+            (Shell::Bash, "/bin/bash", "shopt -s expand_aliases\n"),
+            (Shell::Zsh, "/bin/zsh", ""),
+        ];
+        for (shell, program, first) in shells {
+            if !std::path::Path::new(program).exists() {
+                continue;
+            }
+            let script = format!(
+                "{first}alias claude='echo aliased'\n{}\ntype claude; type my-agent",
+                functions(shell, &names)
+            );
+            let output = std::process::Command::new(program)
+                .args(["-c", &script])
+                .env("BASH_ENV", "/dev/null")
+                .output()
+                .unwrap();
+            let said = String::from_utf8_lossy(&output.stdout);
+            let errors = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{program}: {errors}");
+            assert!(errors.is_empty(), "{program}: {errors}");
+            assert_eq!(said.matches("function").count(), 2, "{program}: {said}");
+            assert!(!said.contains("alias"), "{program}: {said}");
+        }
     }
 }

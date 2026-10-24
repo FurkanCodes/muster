@@ -297,6 +297,31 @@ async fn a_binary_the_person_names_is_the_one_put_there_arc_27() {
     );
 }
 
+#[tokio::test]
+async fn a_binary_that_does_not_run_there_replaces_nothing_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    // As a build for another system would be, there.
+    let given = setup.sandbox.root().join("muster-for-another-system");
+    std::fs::write(&given, "#!/bin/sh\nexit 126\n").unwrap();
+    let installed = setup
+        .sandbox
+        .command()
+        .args(["ssh", "vm", "--install", "--check"])
+        .env("FAKE_SSH_HOME", &setup.home)
+        .env("MUSTER_REMOTE_BINARY", &given)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!installed.status.success());
+    assert!(
+        text(&installed.stderr).contains("does not run on that machine"),
+        "{}",
+        text(&installed.stderr)
+    );
+    assert!(!setup.home.join(".local/bin/muster").exists());
+}
+
 /// Serves `files` by path on a local port, as a release's downloads are;
 /// its address.
 fn serve(files: Vec<(String, Vec<u8>)>) -> String {

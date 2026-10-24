@@ -74,11 +74,21 @@ pub(crate) async fn run(socket: &Path, runtime_dir: &Path) -> ExitCode {
     crate::reload::reload_daemon(socket, runtime_dir).await
 }
 
-/// The client releases are downloaded with, and where they are:
-/// `MUSTER_RELEASES` points elsewhere, for tests.
+/// Where a stand-in release is, for tests: `MUSTER_RELEASES`, read by a
+/// debug build only, so a shipped one always downloads from GitHub and
+/// checks what it downloads (`ARC-21`).
+pub(crate) fn stand_in_releases() -> Option<String> {
+    if cfg!(debug_assertions) {
+        std::env::var("MUSTER_RELEASES").ok()
+    } else {
+        None
+    }
+}
+
+/// The client releases are downloaded with, and where they are.
 fn client() -> Result<(reqwest::Client, String), String> {
-    let base = std::env::var("MUSTER_RELEASES")
-        .unwrap_or_else(|_| format!("{REPOSITORY}/releases/latest/download"));
+    let base =
+        stand_in_releases().unwrap_or_else(|| format!("{REPOSITORY}/releases/latest/download"));
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .user_agent(concat!("muster/", env!("CARGO_PKG_VERSION")))
@@ -98,21 +108,40 @@ fn matches(bytes: &[u8], published: &[u8]) -> bool {
 }
 
 /// Checks the archive at `saved` against its build attestation, saying how
-/// it went; a stand-in release, as tests use, has none.
+/// it went (`checked`); a stand-in release, as tests use, has none.
 async fn say_attested(saved: &Path) -> Result<(), String> {
-    if std::env::var_os("MUSTER_RELEASES").is_some() {
+    if stand_in_releases().is_some() {
         return Ok(());
     }
-    if attested(saved).await? {
-        println!("Checked: built by {REPOSITORY}'s release workflow.");
-    } else {
-        println!(
-            "Not checked against its build attestation: the GitHub CLI (gh) is not installed, too \
-             old, or not signed in."
-        );
-    }
+    let skip = std::env::var_os("MUSTER_SKIP_ATTESTATION").is_some();
+    let attested = !skip && attested(saved).await?;
+    println!("{}", checked(skip, attested)?);
     Ok(())
 }
+
+/// What is said of a download as its attestation was checked (`attested`),
+/// or not as `MUSTER_SKIP_ATTESTATION` asks (`skip`): one that could not be
+/// checked otherwise is refused (`ARC-21`).
+fn checked(skip: bool, attested: bool) -> Result<String, String> {
+    match (skip, attested) {
+        (true, _) => Ok(
+            "Not checked against its build attestation, as MUSTER_SKIP_ATTESTATION \
+                         asks: its checksum only."
+                .to_owned(),
+        ),
+        (false, true) => Ok(format!(
+            "Checked: built by {REPOSITORY}'s release workflow."
+        )),
+        (false, false) => Err(UNCHECKED.to_owned()),
+    }
+}
+
+/// Why a download whose build attestation could not be checked is not
+/// installed.
+const UNCHECKED: &str = "the download could not be checked against the attestation GitHub made \
+     as it was built, as the GitHub CLI (gh) is not installed, too old, or not signed in (`gh \
+     auth login`); so nothing was installed (MUSTER_SKIP_ATTESTATION=1 installs it with its \
+     checksum checked only)";
 
 /// Unpacks the archive at `archive` into `into`.
 fn untar(archive: &Path, into: &Path) -> Result<(), String> {
@@ -193,11 +222,11 @@ async fn install(http: &reqwest::Client, base: &str) -> Result<Installed, String
 /// Release `version`'s muster for `target` (`x86_64-unknown-linux-gnu`),
 /// downloaded here and checked as an upgrade's is, for another machine
 /// (`muster ssh --install`), which then downloads nothing itself
-/// (`ARC-21`, `ARC-27`). `MUSTER_RELEASES` points elsewhere, for tests.
+/// (`ARC-21`, `ARC-27`).
 pub(crate) async fn release_binary(version: &str, target: &str) -> Result<Vec<u8>, String> {
     let (http, _) = client()?;
-    let base = std::env::var("MUSTER_RELEASES")
-        .unwrap_or_else(|_| format!("{REPOSITORY}/releases/download/v{version}"));
+    let base =
+        stand_in_releases().unwrap_or_else(|| format!("{REPOSITORY}/releases/download/v{version}"));
     let archive = format!("muster-{target}.tar.gz");
     eprintln!("Downloading {base}/{archive}");
     let Some(bytes) = fetch_if_there(&http, &format!("{base}/{archive}")).await? else {
@@ -244,9 +273,6 @@ async fn attested(path: &Path) -> Result<bool, String> {
                 .and_then(Result::ok)
         }
     };
-    if std::env::var_os("MUSTER_SKIP_ATTESTATION").is_some() {
-        return Ok(false);
-    }
     // A gh too old to have attestations, or not signed in, cannot check.
     for able in [
         &["attestation".as_ref(), "verify".as_ref(), "--help".as_ref()][..],
@@ -336,6 +362,20 @@ fn version_of(program: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_download_that_cannot_be_checked_is_refused_but_where_asked_arc_21() {
+        assert!(
+            checked(false, true)
+                .unwrap()
+                .starts_with("Checked: built by")
+        );
+        let refused = checked(false, false).unwrap_err();
+        assert!(refused.contains("nothing was installed"), "{refused}");
+        assert!(refused.contains("gh auth login"), "{refused}");
+        assert!(refused.contains("MUSTER_SKIP_ATTESTATION=1"), "{refused}");
+        assert!(checked(true, false).unwrap().contains("checksum only"));
+    }
 
     #[test]
     fn this_machine_has_a_release_name() {

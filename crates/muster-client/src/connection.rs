@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 use muster_core::SessionId;
 use muster_core::protocol::{
@@ -37,6 +38,25 @@ pub enum ClientError {
     /// could not, said in its words.
     #[error("{0}")]
     Carrier(String),
+    /// A daemon that works answers a hello, and sends its state, at once:
+    /// one that does neither within [`ANSWER_WITHIN`] is stuck.
+    #[error("the daemon did not {0} within {secs} s; it may be stuck (`muster daemon stop` ends it)", secs = ANSWER_WITHIN.as_secs())]
+    Silent(&'static str),
+}
+
+/// How long a daemon has to answer a hello, or to send its state: long
+/// enough for one reached over `ssh` on a slow link.
+pub const ANSWER_WITHIN: Duration = Duration::from_secs(30);
+
+/// `step`, or [`ClientError::Silent`] saying what the daemon did not do if
+/// it takes longer than [`ANSWER_WITHIN`].
+async fn within<T>(
+    what: &'static str,
+    step: impl Future<Output = Result<T, ClientError>>,
+) -> Result<T, ClientError> {
+    tokio::time::timeout(ANSWER_WITHIN, step)
+        .await
+        .unwrap_or(Err(ClientError::Silent(what)))
 }
 
 /// The stream a connection reads the daemon from: its socket, or a
@@ -93,19 +113,21 @@ impl Connection {
         let reader: Reader = Box::new(reader);
         let writer: Writer = Box::new(writer);
         let (mut reader, mut writer) = (FramedRead::new(reader), FramedWrite::new(writer));
-
-        writer
-            .send(&ClientFrame::Hello(Hello::current(client)))
-            .await?;
-        let welcome = match reader.next::<ServerFrame>().await? {
-            Some(ServerFrame::Welcome(welcome)) => welcome,
-            Some(ServerFrame::Incompatible(incompatible)) => {
-                return Err(ClientError::Incompatible(incompatible));
+        let welcome = within("answer its hello", async {
+            writer
+                .send(&ClientFrame::Hello(Hello::current(client)))
+                .await?;
+            match reader.next::<ServerFrame>().await? {
+                Some(ServerFrame::Welcome(welcome)) => Ok(welcome),
+                Some(ServerFrame::Incompatible(incompatible)) => {
+                    Err(ClientError::Incompatible(incompatible))
+                }
+                Some(ServerFrame::Error(error)) => Err(ClientError::Daemon(error)),
+                Some(other) => Err(ClientError::Unexpected(format!("{other:?}"))),
+                None => Err(ClientError::Closed),
             }
-            Some(ServerFrame::Error(error)) => return Err(ClientError::Daemon(error)),
-            Some(other) => return Err(ClientError::Unexpected(format!("{other:?}"))),
-            None => return Err(ClientError::Closed),
-        };
+        })
+        .await?;
         Ok(Self {
             reader,
             writer,
@@ -133,16 +155,20 @@ impl Connection {
     /// Later deltas, and fresh snapshots, arrive through
     /// [`next_event`](Self::next_event).
     pub async fn subscribe(&mut self) -> Result<Snapshot, ClientError> {
-        self.writer.send(&ClientFrame::Subscribe).await?;
-        loop {
-            match self.receive().await? {
-                ServerFrame::Snapshot(snapshot) => return Ok(snapshot),
-                other => self.hold(other)?,
+        within("send its state", async {
+            self.writer.send(&ClientFrame::Subscribe).await?;
+            loop {
+                match self.receive().await? {
+                    ServerFrame::Snapshot(snapshot) => return Ok(snapshot),
+                    other => self.hold(other)?,
+                }
             }
-        }
+        })
+        .await
     }
 
-    /// Sends a command and waits for its answer.
+    /// Sends a command and waits for its answer, which may take as long as
+    /// the work does (a clone, a wait on an agent): no time limit here.
     pub async fn command(&mut self, command: Command) -> Result<Reply, ClientError> {
         let req_id = self.next_req_id;
         self.next_req_id += 1;
@@ -315,8 +341,16 @@ pub async fn daemon_identity(socket: &Path, client: &str) -> Result<(u32, String
         min_version: FIRST_PROTOCOL_VERSION,
         ..Hello::current(client)
     };
-    writer.send(&ClientFrame::Hello(hello)).await?;
-    match reader.next::<ServerFrame>().await? {
+    within("answer its hello", async {
+        writer.send(&ClientFrame::Hello(hello)).await?;
+        identity(reader.next::<ServerFrame>().await?)
+    })
+    .await
+}
+
+/// The process id and version a daemon's answer to a hello names.
+fn identity(answer: Option<ServerFrame>) -> Result<(u32, String), ClientError> {
+    match answer {
         Some(ServerFrame::Welcome(welcome)) => Ok((welcome.daemon_pid, welcome.daemon_version)),
         Some(ServerFrame::Incompatible(incompatible)) if incompatible.daemon_pid != 0 => {
             Ok((incompatible.daemon_pid, incompatible.daemon_version))
@@ -396,5 +430,25 @@ impl Connection {
             },
             self.welcome,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_daemon_that_never_answers_its_hello_is_said_to_be_stuck() {
+        // Keeps the daemon's ends open, so it is silent, not gone.
+        let (_daemon_reads, client_writes) = tokio::io::duplex(1024);
+        let (_daemon_writes, client_reads) = tokio::io::duplex(1024);
+        let error = Connection::over(client_reads, client_writes, "test")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, ClientError::Silent("answer its hello")),
+            "{error}"
+        );
+        assert!(error.to_string().contains("within 30 s"), "{error}");
     }
 }

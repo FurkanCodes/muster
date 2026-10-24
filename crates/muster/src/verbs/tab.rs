@@ -53,6 +53,10 @@ const FOCUS_REPORTS: &[u8] = b"\x1b[?1004h";
 const FOCUS_IN: &[u8] = b"\x1b[I";
 const FOCUS_OUT: &[u8] = b"\x1b[O";
 
+/// How long the start of an escape sequence that one read ended in waits
+/// for its end in the next: a lone Esc is sent on after it.
+const HELD_FOR: std::time::Duration = std::time::Duration::from_millis(30);
+
 /// Shows `session` where the person is: inside a Muster session's
 /// terminal, in its place, wherever it is shown; anywhere else, straight in
 /// this tab.
@@ -106,6 +110,7 @@ pub(crate) async fn run(
         stack: Vec::new(),
         looked_at: true,
         ended: None,
+        held: Vec::new(),
     };
     let raw = Raw::enter()?;
     // Counted among the windows the person looks at, so a session started
@@ -133,6 +138,7 @@ pub(crate) async fn run(
                 None => return Ok(ExitCode::SUCCESS),
             },
             _ = resized.recv() => tab.fit(current).await?,
+            () = tokio::time::sleep(HELD_FOR), if !tab.held.is_empty() => tab.send_held().await?,
         }
     }
     drop(raw);
@@ -250,6 +256,10 @@ struct Tab {
     looked_at: bool,
     /// The last session whose program ended while shown.
     ended: Option<SessionId>,
+    /// The start of an escape sequence the last read ended in, kept for
+    /// the read that ends it, so a focus report or a key that goes back is
+    /// found when a read cuts it in two.
+    held: Vec<u8>,
 }
 
 impl Tab {
@@ -368,6 +378,18 @@ impl Tab {
     /// go back, each to the session shown before: what follows one goes
     /// to that session.
     async fn on_keys(&mut self, keys: &[u8]) -> Result<(), ClientError> {
+        let mut keys = [std::mem::take(&mut self.held).as_slice(), keys].concat();
+        self.held = keys.split_off(unfinished_from(&keys));
+        self.take_keys(&keys).await
+    }
+
+    /// Sends on what was held, its end never having come.
+    async fn send_held(&mut self) -> Result<(), ClientError> {
+        let held = std::mem::take(&mut self.held);
+        self.take_keys(&held).await
+    }
+
+    async fn take_keys(&mut self, keys: &[u8]) -> Result<(), ClientError> {
         let (keys, focus) = take_focus(keys);
         if let Some(looking) = focus
             && looking != self.looked_at
@@ -406,6 +428,22 @@ fn write_out(bytes: &[u8]) {
     let mut out = std::io::stdout().lock();
     let _ = out.write_all(bytes);
     let _ = out.flush();
+}
+
+/// Where an escape sequence `keys` ends in before its end begins: a lone
+/// Esc, or a CSI with no final byte yet; `keys.len()` where none does.
+fn unfinished_from(keys: &[u8]) -> usize {
+    let Some(at) = keys.iter().rposition(|&byte| byte == 0x1b) else {
+        return keys.len();
+    };
+    let unfinished = match &keys[at + 1..] {
+        [] => true,
+        [b'[', rest @ ..] => rest
+            .iter()
+            .all(|b| b.is_ascii_digit() || matches!(b, b';' | b':' | b'?')),
+        _ => false,
+    };
+    if unfinished { at } else { keys.len() }
 }
 
 /// `keys` without the focus reports in them, and whether the last said the
@@ -498,6 +536,17 @@ mod tests {
 
     fn chord(text: &str) -> Chord {
         Chord::parse(text).unwrap()
+    }
+
+    #[test]
+    fn a_sequence_a_read_cuts_in_two_waits_for_its_end() {
+        assert_eq!(unfinished_from(b"ls"), 2);
+        assert_eq!(unfinished_from(b"ls\x1b"), 2);
+        assert_eq!(unfinished_from(b"ls\x1b[11"), 2);
+        assert_eq!(unfinished_from(b"ls\x1b[113;5"), 2);
+        assert_eq!(unfinished_from(b"\x1b[I"), 3, "a focus report is whole");
+        assert_eq!(unfinished_from(b"\x1b[113;5u"), 8);
+        assert_eq!(unfinished_from(b"\x1bq"), 2, "Alt+q is whole");
     }
 
     #[test]

@@ -114,7 +114,8 @@ pub(crate) enum Verb {
     Machine(crate::ssh::MachineCommand),
     /// Muster on MACHINE (saved with `muster machine add`, or any host your
     /// ssh knows): checks it, installs Muster there after asking, and opens
-    /// its Muster, or runs one command there (`muster ssh vm list agents`).
+    /// its Muster, or runs one shell command there (`muster ssh vm claude
+    /// auth login`); `muster --on vm …` runs Muster's own commands there.
     /// Its agents keep working while this computer sleeps.
     Ssh {
         machine: String,

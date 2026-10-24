@@ -460,7 +460,9 @@ impl Sandbox {
 
     /// Runs `muster` with `args` and waits for it. A command still running
     /// after ten seconds is killed and fails the test, so a regression shows
-    /// up as a failure rather than a hung test run.
+    /// up as a failure rather than a hung test run. What it prints is read
+    /// as it prints, so a command that prints much never waits on a full
+    /// pipe.
     pub(crate) fn run(&self, args: &[&str]) -> Output {
         let mut child = self
             .command()
@@ -469,20 +471,36 @@ impl Sandbox {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
+        let read = |mut stream: Box<dyn std::io::Read + Send>| {
+            std::thread::spawn(move || {
+                let mut bytes = Vec::new();
+                let _ = stream.read_to_end(&mut bytes);
+                bytes
+            })
+        };
+        let stdout = read(Box::new(child.stdout.take().unwrap()));
+        let stderr = read(Box::new(child.stderr.take().unwrap()));
         let deadline = Instant::now() + Duration::from_secs(10);
-        while child.try_wait().unwrap().is_none() {
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
             if Instant::now() >= deadline {
                 let _ = child.kill();
-                let output = child.wait_with_output().unwrap();
+                let _ = child.wait();
                 panic!(
                     "`muster {}` was still running after 10 s; stderr:\n{}",
                     args.join(" "),
-                    String::from_utf8_lossy(&output.stderr)
+                    String::from_utf8_lossy(&stderr.join().unwrap())
                 );
             }
             std::thread::sleep(Duration::from_millis(20));
+        };
+        Output {
+            status,
+            stdout: stdout.join().unwrap(),
+            stderr: stderr.join().unwrap(),
         }
-        child.wait_with_output().unwrap()
     }
 
     pub(crate) fn start(&self) -> Daemon {

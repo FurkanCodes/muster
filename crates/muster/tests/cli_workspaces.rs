@@ -377,7 +377,7 @@ async fn an_agent_started_in_a_workspace_s_terminal_belongs_to_it_and_takes_the_
 async fn init_s_functions_run_a_bare_agent_in_its_terminal_prd_13_arc_28() {
     let setup = setup().await;
     let printed = text(&setup.run(&["init", "bash"]).stdout);
-    assert!(printed.contains("claude() {"), "{printed}");
+    assert!(printed.contains("function claude {"), "{printed}");
     let script = setup.sandbox.root().join("muster-init.sh");
     std::fs::write(&script, &printed).unwrap();
 
@@ -385,6 +385,8 @@ async fn init_s_functions_run_a_bare_agent_in_its_terminal_prd_13_arc_28() {
     let workspace = setup.workspace("muster/fix-login").await;
     let mut tab = Tab::open(&setup, &["enter", "fix-login"]);
     setup.sessions_in(workspace, 1).await;
+    // Read by bash, whose functions they are, as its rc file would.
+    tab.type_in(b"exec bash --norc --noprofile\r");
     let source = format!(". '{}'; echo sourced-$((5+5))\r", script.display());
     tab.type_in(source.as_bytes());
     tab.shows("sourced-10");
