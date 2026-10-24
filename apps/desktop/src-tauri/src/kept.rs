@@ -80,8 +80,8 @@ pub(crate) fn kept(kept: State<'_, Kept>) -> Values {
 }
 
 /// Keeps `value` under `key` (forgets it where `value` is null), in the file
-/// before it returns.
-#[tauri::command]
+/// before it returns: off the main thread, which a write must not hold up.
+#[tauri::command(async)]
 pub(crate) fn keep(
     kept: State<'_, Kept>,
     key: String,
