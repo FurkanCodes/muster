@@ -341,15 +341,26 @@ fn serve(files: Vec<(String, Vec<u8>)>) -> String {
     address
 }
 
-/// A machine that says it is Linux on x86-64, whatever runs the tests,
-/// and a release of this version for it served on a local port, its
-/// checksum file saying `checksum` (the right one if `None`): the release's
-/// address and its program.
+/// A system other than the one the tests run on, as `uname -sm` says it,
+/// and its release's target: the machine needs a release, never a copy of
+/// this muster.
+fn other_system() -> (&'static str, &'static str) {
+    if (std::env::consts::OS, std::env::consts::ARCH) == ("linux", "x86_64") {
+        ("Linux aarch64", "aarch64-unknown-linux-gnu")
+    } else {
+        ("Linux x86_64", "x86_64-unknown-linux-gnu")
+    }
+}
+
+/// A machine of [`other_system`], and a release of this version for it
+/// served on a local port, its checksum file saying `checksum` (the right
+/// one if `None`): the release's address and its program.
 fn linux_release(setup: &Setup, checksum: Option<&str>) -> (String, Vec<u8>) {
     use std::os::unix::fs::PermissionsExt as _;
     let bin = setup.home.join(".local/bin");
     std::fs::create_dir_all(&bin).unwrap();
-    std::fs::write(bin.join("uname"), "#!/bin/sh\necho 'Linux x86_64'\n").unwrap();
+    let (system, target) = other_system();
+    std::fs::write(bin.join("uname"), format!("#!/bin/sh\necho '{system}'\n")).unwrap();
     std::fs::set_permissions(bin.join("uname"), std::fs::Permissions::from_mode(0o755)).unwrap();
     let version = text(
         &setup
@@ -360,7 +371,8 @@ fn linux_release(setup: &Setup, checksum: Option<&str>) -> (String, Vec<u8>) {
             .unwrap()
             .stdout,
     );
-    let name = "muster-x86_64-unknown-linux-gnu";
+    let name = format!("muster-{target}");
+    let name = name.as_str();
     let dir = setup.sandbox.root().join("release");
     std::fs::create_dir_all(dir.join(name)).unwrap();
     let program = format!("#!/bin/sh\necho '{}'\n", version.trim());
