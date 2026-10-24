@@ -71,27 +71,20 @@ async fn keychain() -> Option<String> {
     if !cfg!(target_os = "macos") || std::env::var("MUSTER_KEYCHAIN").as_deref() == Ok("off") {
         return None;
     }
-    let output = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        tokio::process::Command::new("security")
-            .args([
-                "find-generic-password",
-                "-s",
-                KEYCHAIN_SERVICE,
-                "-a",
-                KEYCHAIN_ACCOUNT,
-                "-w",
-            ])
-            .stdin(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .ok()?
-    .ok()?;
-    let token = String::from_utf8(output.stdout).ok()?.trim().to_owned();
-    (output.status.success() && !token.is_empty()).then_some(token)
+    let mut command = tokio::process::Command::new("security");
+    command.args([
+        "find-generic-password",
+        "-s",
+        KEYCHAIN_SERVICE,
+        "-a",
+        KEYCHAIN_ACCOUNT,
+        "-w",
+    ]);
+    let ran = crate::process::run(command, None, std::time::Duration::from_secs(10))
+        .await
+        .ok()?;
+    let token = String::from_utf8(ran.stdout).ok()?.trim().to_owned();
+    (ran.status.success() && !token.is_empty()).then_some(token)
 }
 
 /// A credential fixed in advance, or none: for tests.

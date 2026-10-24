@@ -68,21 +68,14 @@ pub(crate) async fn image_for(
 /// The Claude Code version on the person's machine, to match in images;
 /// `latest` if it cannot be told, in time or at all (`ARC-13`).
 pub(crate) async fn claude_version() -> String {
-    let output = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        tokio::process::Command::new("claude")
-            .arg("--version")
-            .stdin(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await;
-    output
+    let mut command = tokio::process::Command::new("claude");
+    command.arg("--version");
+    crate::process::run(command, None, std::time::Duration::from_secs(10))
+        .await
         .ok()
-        .and_then(Result::ok)
-        .filter(|output| output.status.success())
-        .and_then(|output| {
-            String::from_utf8_lossy(&output.stdout)
+        .filter(crate::process::Ran::success)
+        .and_then(|ran| {
+            String::from_utf8_lossy(&ran.stdout)
                 .split_whitespace()
                 .next()
                 .filter(|version| version.chars().all(|c| c.is_ascii_digit() || c == '.'))

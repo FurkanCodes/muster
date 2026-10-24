@@ -12,8 +12,6 @@
 use std::fmt;
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
-
 use crate::service::BoxFuture;
 
 /// The Keychain items' service.
@@ -118,40 +116,19 @@ impl Keychain {
         if let Some(file) = &self.file {
             command.arg(file);
         }
-        let output = tokio::time::timeout(
-            TIME_LIMIT,
-            command
-                .stdin(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .kill_on_drop(true)
-                .output(),
-        )
-        .await
-        .ok()?
-        .ok()?;
-        let value = String::from_utf8(output.stdout).ok()?.trim().to_owned();
-        (output.status.success() && !value.is_empty()).then_some(value)
+        let ran = crate::process::run(command, None, TIME_LIMIT).await.ok()?;
+        let value = String::from_utf8(ran.stdout).ok()?.trim().to_owned();
+        (ran.status.success() && !value.is_empty()).then_some(value)
     }
 
     /// Runs `lines` through `security -i`, on its standard input.
     async fn run(&self, lines: &str) -> std::io::Result<bool> {
-        let mut child = tokio::process::Command::new("security")
-            .arg("-i")
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .spawn()?;
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| std::io::Error::other("no stdin for security"))?;
-        stdin.write_all(lines.as_bytes()).await?;
-        drop(stdin);
-        let status = tokio::time::timeout(TIME_LIMIT, child.wait())
+        let mut command = tokio::process::Command::new("security");
+        command.arg("-i");
+        crate::process::run(command, Some(lines.as_bytes()), TIME_LIMIT)
             .await
-            .map_err(|_| std::io::Error::other("security did not finish"))??;
-        Ok(status.success())
+            .map(|ran| ran.success())
+            .map_err(std::io::Error::other)
     }
 }
 

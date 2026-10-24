@@ -24,6 +24,7 @@ mod mcp;
 mod oauth;
 mod plugin_run;
 mod plugins;
+mod process;
 mod pty;
 mod repositories;
 mod resources;

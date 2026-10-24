@@ -66,11 +66,7 @@ fn command(cwd: &Path, args: &[&str], vars: Vars<'_>) -> Command {
         .env("GIT_TERMINAL_PROMPT", "0")
         // Its errors are told apart by their words (`supervisor::worktrees`),
         // so they must be git's own English whatever the person's locale.
-        .env("LC_ALL", "C")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+        .env("LC_ALL", "C");
     for variable in SCRUBBED {
         command.env_remove(variable);
     }
@@ -85,15 +81,19 @@ async fn run(cwd: &Path, args: &[&str]) -> Result<Outcome, GitError> {
 }
 
 async fn run_with(cwd: &Path, args: &[&str], vars: Vars<'_>) -> Result<Outcome, GitError> {
-    let mut command = command(cwd, args, vars);
-    let output = tokio::time::timeout(TIME_LIMIT, command.output())
+    let ran = crate::process::run(command(cwd, args, vars), None, TIME_LIMIT)
         .await
-        .map_err(|_| GitError::TimedOut(args.join(" ")))?
-        .map_err(GitError::Spawn)?;
+        .map_err(|error| match error {
+            crate::process::RunError::TimedOut(_) => GitError::TimedOut(args.join(" ")),
+            crate::process::RunError::NotFound => {
+                GitError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound))
+            }
+            crate::process::RunError::Spawn(error) => GitError::Spawn(error),
+        })?;
     Ok(Outcome {
-        success: output.status.success(),
-        stdout: String::from_utf8_lossy(&output.stdout).trim().to_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        success: ran.success(),
+        stdout: ran.stdout_text().trim().to_owned(),
+        stderr: ran.stderr_text(),
     })
 }
 
@@ -167,7 +167,13 @@ pub(crate) async fn capped_with(
     ok: &[i32],
     vars: Vars<'_>,
 ) -> Result<(Vec<u8>, bool), GitError> {
-    let mut child = command(cwd, args, vars).spawn().map_err(GitError::Spawn)?;
+    let mut command = command(cwd, args, vars);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = command.spawn().map_err(GitError::Spawn)?;
     let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
     let work = async {
         let printed = read_up_to(stdout, limit);

@@ -4,7 +4,6 @@
 //! `trackers::github`, pull requests in `githost`.
 
 use std::path::Path;
-use std::process::Stdio;
 use std::time::Duration;
 
 use tokio::process::Command;
@@ -46,41 +45,22 @@ pub(crate) async fn gh_within(
     input: Option<&str>,
     limit: Duration,
 ) -> Result<String, GitHubError> {
-    use tokio::io::AsyncWriteExt;
     let mut command = Command::new("gh");
     command
         .args(args)
         .current_dir(repo)
         // Never prompt: there is no one at this terminal.
         .env("GH_PROMPT_DISABLED", "1")
-        .env("NO_COLOR", "1")
-        .stdin(if input.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let work = async {
-        let mut child = command.spawn()?;
-        if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
-            let _ = stdin.write_all(input.as_bytes()).await;
-            drop(stdin);
-        }
-        child.wait_with_output().await
-    };
-    let output = match tokio::time::timeout(limit, work).await {
-        Err(_) => return Err(GitHubError::TimedOut(limit)),
-        Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(GitHubError::Missing);
-        }
-        Ok(Err(error)) => return Err(GitHubError::Spawn(error)),
-        Ok(Ok(output)) => output,
-    };
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(GitHubError::Failed(stderr));
+        .env("NO_COLOR", "1");
+    let ran = crate::process::run(command, input.map(str::as_bytes), limit)
+        .await
+        .map_err(|error| match error {
+            crate::process::RunError::TimedOut(limit) => GitHubError::TimedOut(limit),
+            crate::process::RunError::NotFound => GitHubError::Missing,
+            crate::process::RunError::Spawn(error) => GitHubError::Spawn(error),
+        })?;
+    if !ran.success() {
+        return Err(GitHubError::Failed(ran.stderr_text()));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok(ran.stdout_text())
 }

@@ -9,7 +9,6 @@
 //! `mr create` pushing nothing without `--push` or `--fill`.
 
 use std::path::Path;
-use std::process::Stdio;
 use std::time::Duration;
 
 use tokio::process::Command;
@@ -35,35 +34,30 @@ pub(crate) async fn glab(repo: &Path, args: &[&str]) -> Result<String, ServiceEr
         // A stray editor fails rather than waits.
         .env("GLAB_EDITOR", "false")
         .env("VISUAL", "false")
-        .env("EDITOR", "false")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let output = match tokio::time::timeout(TIME_LIMIT, command.output()).await {
-        Err(_) => {
+        .env("EDITOR", "false");
+    let ran = match crate::process::run(command, None, TIME_LIMIT).await {
+        Ok(ran) => ran,
+        Err(crate::process::RunError::TimedOut(_)) => {
             return Err(ServiceError::Unavailable(format!(
                 "glab did not answer within {TIME_LIMIT:?}"
             )));
         }
-        Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+        Err(crate::process::RunError::NotFound) => {
             return Err(ServiceError::Unavailable(
                 "the GitLab CLI (glab) is not installed; install it and run `glab auth login`"
                     .to_owned(),
             ));
         }
-        Ok(Err(error)) => {
+        Err(crate::process::RunError::Spawn(error)) => {
             return Err(ServiceError::Unavailable(format!(
                 "could not run glab: {error}"
             )));
         }
-        Ok(Ok(output)) => output,
     };
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(complaint(&stderr));
+    if !ran.success() {
+        return Err(complaint(&ran.stderr_text()));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok(ran.stdout_text())
 }
 
 /// What `glab`'s complaint means.
