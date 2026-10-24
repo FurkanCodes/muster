@@ -168,8 +168,8 @@ Run agents on a machine of your own (a server, a cloud VM such as a DigitalOcean
 ```bash
 muster machine add vm you@203.0.113.7   # a name for it; your ssh keys stay ssh's
 muster ssh vm                           # check, install after asking, open its Muster
-muster ssh vm list agents               # or one command there
-muster ssh vm enter fix-login
+muster ssh vm claude auth login         # a command there, as ssh runs one (sign Claude Code in there)
+muster ssh vm --install-claude          # Claude Code there, with its own installer
 muster --on vm list agents              # your own muster, asking vm's
 muster --on vm attach fix-login/2       # a session there, straight in this tab
 muster --on vm                          # your own UI, on vm's agents; reconnects if the link drops

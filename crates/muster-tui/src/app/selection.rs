@@ -62,13 +62,28 @@ impl Selection {
             (start_row.min(last.0), start_col.min(last.1)),
             (end_row.min(last.0), end_col.min(last.1)),
         );
-        screen
+        let text = screen
             .contents_between(start.0, start.1, end.0, end.1 + 1)
             .lines()
             .map(str::trim_end)
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n");
+        one_link(&text).unwrap_or(text)
     }
+}
+
+/// `text` as the one link it is where a program broke it over lines
+/// itself, as an agent prints a sign-in link wider than its window: every
+/// line one piece of it, no spaces inside, the first beginning `http://`
+/// or `https://`. A link broken so pastes into a browser whole.
+fn one_link(text: &str) -> Option<String> {
+    let pieces: Vec<&str> = text.lines().map(str::trim).collect();
+    let joined: String = pieces.concat();
+    let link = pieces.len() > 1
+        && (joined.starts_with("https://") || joined.starts_with("http://"))
+        && pieces.iter().all(|piece| !piece.is_empty())
+        && !joined.contains(char::is_whitespace);
+    link.then_some(joined)
 }
 
 /// The cell of `screen` (an area of the window) under `event`, as (row,

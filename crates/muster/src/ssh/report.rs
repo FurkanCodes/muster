@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 pub(crate) fn script() -> String {
     format!(
         "{path}; echo \"muster-check:system=$(uname -s)\"; \
-for a in claude codex gemini opencode copilot git gh; do echo \"muster-check:$a=$(command -v $a 2>/dev/null)\"; done; \
+for a in claude codex gemini opencode copilot git gh curl; do echo \"muster-check:$a=$(command -v $a 2>/dev/null)\"; done; \
 if [ -f \"$HOME/.claude/.credentials.json\" ]; then echo muster-check:claude-signed-in=yes; \
 elif command -v security >/dev/null 2>&1; then \
   if security find-generic-password -s 'Claude Code-credentials' >/dev/null 2>&1; then echo muster-check:claude-signed-in=yes; \
@@ -27,9 +27,8 @@ true\n",
     )
 }
 
-/// What the machine has for agents, from the check's marked lines, and
-/// what to do about what is missing.
-pub(crate) fn report(machine: &str, system: &str, version: &str, output: &str) -> String {
+/// The check's marked lines, by key.
+fn found(output: &str) -> BTreeMap<String, String> {
     let mut found = BTreeMap::new();
     for line in output.lines() {
         if let Some((key, value)) = line
@@ -40,6 +39,25 @@ pub(crate) fn report(machine: &str, system: &str, version: &str, output: &str) -
             found.insert(key.to_owned(), value.trim().to_owned());
         }
     }
+    found
+}
+
+/// Whether the check found `program` on the machine.
+pub(crate) fn has(output: &str, program: &str) -> bool {
+    found(output)
+        .get(program)
+        .is_some_and(|path| !path.is_empty())
+}
+
+/// Whether Claude Code is not on the machine, as the check says.
+pub(crate) fn claude_missing(output: &str) -> bool {
+    !has(output, "claude")
+}
+
+/// What the machine has for agents, from the check's marked lines, and
+/// what to do about what is missing.
+pub(crate) fn report(machine: &str, system: &str, version: &str, output: &str) -> String {
+    let found = found(output);
     let has = |key: &str| found.get(key).is_some_and(|value| !value.is_empty());
     let said = |key: &str| found.get(key).map(String::as_str);
     let mac = said("system") == Some("Darwin");
@@ -51,10 +69,13 @@ pub(crate) fn report(machine: &str, system: &str, version: &str, output: &str) -
                 "  ? Claude Code is there; whether it is signed in cannot be told from here: \
                  run `claude` once there\n",
             ),
-            _ => out.push_str(
-                "  ! Claude Code is there but not signed in: run `claude` once there to sign in \
-                 (Muster never copies your sign-in)\n",
-            ),
+            _ => {
+                let _ = writeln!(
+                    out,
+                    "  ! Claude Code is there but not signed in: sign in there once with `muster \
+                     ssh {machine} claude auth login` (Muster never copies your sign-in)"
+                );
+            }
         }
         if mac {
             out.push_str(
@@ -64,8 +85,10 @@ pub(crate) fn report(machine: &str, system: &str, version: &str, output: &str) -
             );
         }
     } else {
-        out.push_str(
-            "  ✗ Claude Code is not there: install it there, then run `claude` once to sign in\n",
+        let _ = writeln!(
+            out,
+            "  ✗ Claude Code is not there: `muster ssh {machine} --install-claude` installs it \
+             with its own installer"
         );
     }
     let others: Vec<&str> = ["codex", "gemini", "opencode", "copilot"]
@@ -110,7 +133,7 @@ mod tests {
              muster-check:claude-signed-in=no\nmuster-check:codex=\nmuster-check:git=/usr/bin/git\n\
              muster-check:gh=/usr/bin/gh\nmuster-check:linger=no\n",
         );
-        assert!(said.contains("not signed in: run `claude`"), "{said}");
+        assert!(said.contains("`muster ssh vm claude auth login`"), "{said}");
         assert!(said.contains("✓ git"), "{said}");
         assert!(said.contains("gh auth login"), "{said}");
         assert!(said.contains("enable-linger"), "{said}");

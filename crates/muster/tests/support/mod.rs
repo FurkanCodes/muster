@@ -145,6 +145,8 @@ cat > "$FAKE_CLIPBOARD_DIR/copied"
 /// ssh does. `SSH_AUTH_SOCK` passes through, as a forwarded agent would.
 pub(crate) const FAKE_SSH: &str = r#"#!/bin/sh
 echo "$*" >> "$FAKE_SSH_HOME/../ssh-calls"
+# What ssh's settings say for a host: the person's own name here.
+if [ "$1" = "-G" ]; then echo "user $USER"; exit 0; fi
 if [ -f "$FAKE_SSH_HOME/../ssh-fails" ]; then
   cat "$FAKE_SSH_HOME/../ssh-fails" >&2
   exit 255
@@ -159,7 +161,16 @@ while [ $# -gt 0 ]; do
 done
 shift
 echo "Welcome to the stand-in machine"
-HOME="$FAKE_SSH_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" exec sh -c "$*"
+# The machine is not this computer: its Homebrew (the person's own agents)
+# is none of the machine's.
+hide='s#/opt/homebrew/bin#/nonexistent#g; s#/usr/local/bin#/nonexistent#g'
+command=$(printf '%s' "$*" | sed "$hide")
+if [ "$command" = "sh -s" ]; then
+  # A script on standard input, Muster's: read the same way.
+  sed "$hide" | HOME="$FAKE_SSH_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" sh -s
+  exit $?
+fi
+HOME="$FAKE_SSH_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" exec sh -c "$command"
 "#;
 
 impl Sandbox {
