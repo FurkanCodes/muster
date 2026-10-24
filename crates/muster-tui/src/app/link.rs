@@ -64,6 +64,12 @@ impl App {
                 | ServerFrame::Delta(Delta::Preferences(_) | Delta::PluginsChanged(_))
         );
         let sources = settings.then(|| tickets::ticket_sources(self.model.plugins()));
+        // A terminal's output and modes change its screen alone: nothing
+        // to settle, and they come many times a second.
+        let screen_only = matches!(
+            frame,
+            ServerFrame::Output { .. } | ServerFrame::Modes { .. }
+        );
         match frame {
             ServerFrame::Snapshot(snapshot) => self.model.replace(snapshot),
             ServerFrame::Delta(delta) => {
@@ -141,6 +147,9 @@ impl App {
                 lines => self.say(format!("The session copied {lines} lines.")),
             }
             actions.push(Action::Copy(text));
+        }
+        if screen_only {
+            return actions;
         }
         actions.extend(self.start_notch());
         actions.extend(self.settle());

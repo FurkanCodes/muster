@@ -87,6 +87,17 @@ fn copies(actions: &[Action]) -> Vec<&str> {
 const NONE: [&str; 0] = [];
 
 #[test]
+fn a_terminal_s_output_changes_its_screen_and_asks_for_nothing() {
+    let mut world = opened(b"$ ");
+    // Output comes many times a second: none of it settles the window,
+    // which tells the daemon nothing and fetches nothing.
+    for _ in 0..3 {
+        assert!(output(&mut world, b"working\r\n").is_empty());
+    }
+    assert!(render(&world.app).contains("working"));
+}
+
+#[test]
 fn a_program_s_copy_in_its_live_output_reaches_the_clipboard() {
     let mut world = opened(b"$ ");
     // "copy-42\nok", ended with BEL, then "next-8" with ST.
