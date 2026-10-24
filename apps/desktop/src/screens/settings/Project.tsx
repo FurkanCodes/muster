@@ -223,7 +223,7 @@ function Loaded({
     }
     actions.setDraft(project, next);
     ui.tell(`${trackerName(chosen)} needs its ${oneLine(missing.setting.label)}.`, true);
-    meta.focusFollows.current = true;
+    meta.followFocus();
     actions.select(row(`field.${missing.setting.key}`));
   };
   const typedNow = (): Draft["typed"] =>

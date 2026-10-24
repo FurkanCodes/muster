@@ -18,10 +18,10 @@ export function useTask() {
       await task();
     } catch (failure) {
       setError(errorText(failure));
-    } finally {
-      pending.current = false;
-      setBusy(false);
     }
+    // Whatever came of it: every failure is caught above.
+    pending.current = false;
+    setBusy(false);
   };
   return { busy, error, setError, run };
 }

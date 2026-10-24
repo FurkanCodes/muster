@@ -101,6 +101,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [reads, setReads] = useState(0);
   const registry = useRef(new Map<string, RefObject<RowBehaviour>>());
   const focusFollows = useRef(false);
+  // Made once, so a row's effect that asks follows the selection alone.
+  const [focus] = useState(() => ({
+    followFocus: () => {
+      focusFollows.current = true;
+    },
+    takesFocus: () => {
+      const takes = focusFollows.current;
+      focusFollows.current = false;
+      return takes;
+    },
+  }));
   // The preview waited for: an answer to any other is dropped.
   const asked = useRef(0);
   const settingsAsks = useRef<SettingsAsks>(new Map());
@@ -197,7 +208,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const value: SettingsValue = {
     state: { rows, selected, busy, projects, drafts, find, waiting, dialog, reads },
-    meta: { focusFollows, registry },
+    meta: { ...focus, registry },
     actions: {
       select: (key) => {
         // A key waited for is the selected row's alone.

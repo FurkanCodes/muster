@@ -9,6 +9,7 @@ import {
   type ReactNode,
   use,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -72,7 +73,10 @@ export function KeysHeld({ children }: { children: ReactNode }) {
  */
 export function useKeys(handlers: KeyHandlers, { beneath = false } = {}): void {
   const ref = useRef(handlers);
-  ref.current = handlers;
+  // The newest handlers, once drawn: a key comes after.
+  useLayoutEffect(() => {
+    ref.current = handlers;
+  });
   const hold = use(HoldContext);
   useEffect(() => {
     const entry = { ref, hold };

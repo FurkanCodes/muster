@@ -2,7 +2,7 @@
 // the screen needs it, asked again when what it asks changes, and an
 // answer to what is no longer asked dropped.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { errorText } from "../lib/text";
 
 export type Asked<T> =
@@ -15,13 +15,12 @@ export type Asked<T> =
  * earlier key is dropped); nothing is asked while `ask` is null.
  */
 export function useAsked<T>(ask: (() => Promise<T>) | null, key: string): Asked<T> {
-  const latest = useRef(ask);
-  latest.current = ask;
   const asking = ask !== null;
+  const newest = useEffectEvent(() => ask);
   const [answer, setAnswer] = useState<{ key: string; asked: Asked<T> } | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: asked again as `key` says, with the newest `ask`.
   useEffect(() => {
-    const ask = latest.current;
+    const ask = newest();
     if (!ask) return;
     let current = true;
     ask().then(

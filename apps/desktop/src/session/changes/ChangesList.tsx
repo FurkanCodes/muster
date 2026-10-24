@@ -75,7 +75,7 @@ function Files({
         files={files}
         folder={folder}
         label={label}
-        rows={rows}
+        rowsRef={rows}
         selected={selected}
         resting={resting}
         onOpen={onOpen}

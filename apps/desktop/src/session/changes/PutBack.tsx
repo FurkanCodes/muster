@@ -5,10 +5,10 @@
 // chooses it (b). A refusal, of the plan or of the undo,
 // is said in the status bar, as the TUI says it.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useNow } from "../../app/clock";
 import { useActions, useBridge } from "../../app/context";
-import { ask, replyAs } from "../../ipc/ask";
+import { ask, type ReplyOf } from "../../ipc/ask";
 import type { Entry } from "../../ipc/generated/Entry";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import type { UndoPlan } from "../../ipc/generated/UndoPlan";
@@ -71,14 +71,14 @@ export function PutBack({
       ),
     `${workspace}:${number}`,
   );
-  const closing = useRef({ onClose, actions });
-  closing.current = { onClose, actions };
   // What cannot be put back is said, and the dialog goes.
   const failed = asked.state === "failed" ? asked.error : null;
+  const fail = useEffectEvent((why: string) => {
+    actions.tell(why, true);
+    onClose();
+  });
   useEffect(() => {
-    if (failed === null) return;
-    closing.current.actions.tell(failed, true);
-    closing.current.onClose();
+    if (failed !== null) fail(failed);
   }, [failed]);
   const plan = asked.state === "answered" ? asked.value : null;
   return plan ? (
@@ -122,21 +122,26 @@ function PlanDialog({
   const later = timeline.entries
     .filter((other) => other.number > plan.number && other.summary !== null)
     .sort((a, b) => a.number - b.number);
+  /** Says what was put back, and how to bring it back. */
+  const putBack = (undone: ReplyOf<"Undone">) => {
+    const branch = undone.moved_branch ? ", and the branch with them" : "";
+    actions.tell(
+      `The files are as they were before #${plan.number}${branch}. ${putBackKey} on #${undone.entry} brings them back.`,
+    );
+    onDone(undone.entry);
+  };
   const undo = async (moveBranch: boolean) => {
     if (busy || (moveBranch && !canMove)) return;
     setBusy(moveBranch ? "branch" : "files");
     try {
-      const reply = await bridge.command({
-        Undo: { workspace, number: plan.number, move_branch: moveBranch },
-      });
-      if (!mounted.current) return;
-      const undone = replyAs(reply, "Undone");
-      if (!undone) throw new Error("The daemon did not say the files were put back.");
-      const branch = undone.moved_branch ? ", and the branch with them" : "";
-      actions.tell(
-        `The files are as they were before #${plan.number}${branch}. ${putBackKey} on #${undone.entry} brings them back.`,
+      const undone = await ask(
+        bridge,
+        { Undo: { workspace, number: plan.number, move_branch: moveBranch } },
+        "Undone",
+        "The daemon did not say the files were put back.",
       );
-      onDone(undone.entry);
+      if (!mounted.current) return;
+      putBack(undone);
     } catch (error) {
       if (!mounted.current) return;
       actions.tell(errorText(error), true);

@@ -3,7 +3,7 @@
 // again when the workspace's newest entry moves, the listing when its
 // summary says other than the listing does, both on `r`. Nothing polls.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useDaemon } from "../../app/context";
 import type { ChangeSummary } from "../../ipc/generated/ChangeSummary";
 import type { Changes } from "../../ipc/generated/Changes";
@@ -31,12 +31,11 @@ export function useWorkspaceChanges(workspace: WorkspaceId, again: number) {
         ? { state: "ready", value: timelineReply.value.Timeline }
         : { state: "error", error: "The daemon did not send the timeline." };
   const seen = useRef<ChangeSummary | null>(summary);
-  const shown = useRef(listing);
-  shown.current = listing;
+  const shown = useEffectEvent(() => listing);
   useEffect(() => {
     if (sameSummary(seen.current, summary)) return;
     seen.current = summary;
-    const now = shown.current;
+    const now = shown();
     // The daemon tells the state the listing's own summary as it answers:
     // only another says something changed since.
     if (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useActions, useApp, useBridge } from "../../app/context";
-import { BridgeFailure } from "../../ipc/bridge";
+import { type Bridge, BridgeFailure } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
 import { errorText } from "../../lib/text";
@@ -13,6 +13,12 @@ import { shownKey } from "./agents";
 import type { TicketsModel } from "./data";
 import { ticketText } from "./TicketText";
 import { repositoryOf, trackerName } from "./words";
+
+/** Closes the ticket `key` in `project`'s tracker, or throws why not. */
+async function closeTicket(bridge: Bridge, project: string, key: Issue["key"]): Promise<void> {
+  const reply = await bridge.command({ CloseIssue: { project, key } });
+  if (reply !== "Done") throw new Error("The daemon did not close the ticket.");
+}
 
 export function CloseTicket({
   issue,
@@ -44,11 +50,9 @@ export function CloseTicket({
     if (busy) return;
     setBusy(true);
     setError(null);
+    const project = projects[0] ?? "";
     try {
-      const reply = await bridge.command({
-        CloseIssue: { project: projects[0] ?? "", key: issue.key },
-      });
-      if (reply !== "Done") throw new Error("The daemon did not close the ticket.");
+      await closeTicket(bridge, project, issue.key);
       model.closed(projects, issue.key);
       if (!worktrees.length) {
         actions.tell(`Closed ${key} in ${tracker}.`);
@@ -221,9 +225,9 @@ function Cleanup({
               if (alive.current) setDirty((current) => current ?? dirtyQueue.current[0] ?? null);
             }
           } else if (alive.current) setError(errorText(error));
-        } finally {
-          inFlight.current.delete(id);
         }
+        // Whatever came of it: every failure is caught above.
+        inFlight.current.delete(id);
       }
       finish();
     }
@@ -262,9 +266,8 @@ function Cleanup({
       next(false);
     } catch (error) {
       setError(errorText(error));
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   }
   return (
     <Dialog

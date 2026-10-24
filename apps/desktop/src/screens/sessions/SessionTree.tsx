@@ -58,14 +58,13 @@ export function SessionTree({
   const list = useRef<HTMLDivElement>(null);
   const lines = useDaemon((state) => state.preferences?.session_lines ?? "two");
   // Each line's height as drawn, by its id and what it was drawn as; the rest are estimated.
-  const measured = useRef(new Map<string, number>());
-  const [, remeasured] = useState(0);
+  const [measured, setMeasured] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [top, setTop] = useState(0);
   const [height, setHeight] = useState(UNMEASURED);
 
   const keyOf = (row: TreeRow, first: boolean) => `${row.id} ${first} ${lines}`;
   const heights = rows.map(
-    (row, at) => measured.current.get(keyOf(row, at === 0)) ?? estimate(row, at === 0, lines),
+    (row, at) => measured.get(keyOf(row, at === 0)) ?? estimate(row, at === 0, lines),
   );
   const places = placesOf(heights);
   const [start, end] = drawn(places, top, height);
@@ -74,19 +73,19 @@ export function SessionTree({
   useLayoutEffect(() => {
     const box = list.current;
     if (!box) return;
-    let changed = false;
+    let remeasured: Map<string, number> | null = null;
     for (const node of box.querySelectorAll<HTMLElement>("[data-line]")) {
       const at = Number(node.dataset.line);
       const row = rows[at];
       const tall = node.offsetHeight;
       if (!row || tall === 0) continue;
       const key = keyOf(row, at === 0);
-      if (measured.current.get(key) !== tall) {
-        measured.current.set(key, tall);
-        changed = true;
+      if (measured.get(key) !== tall) {
+        if (!remeasured) remeasured = new Map(measured);
+        remeasured.set(key, tall);
       }
     }
-    if (changed) remeasured((count) => count + 1);
+    if (remeasured) setMeasured(remeasured);
   });
 
   useLayoutEffect(() => {

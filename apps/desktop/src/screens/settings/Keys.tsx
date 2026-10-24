@@ -157,7 +157,7 @@ export function Keys({ preferences }: { preferences: Preferences }) {
   const toFirst = () => {
     const first = entries[0];
     if (!first) return;
-    meta.focusFollows.current = true;
+    meta.followFocus();
     actions.select(rowKey("keys", `key.${first.name}`));
   };
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useBridge, useUi } from "../../app/context";
 import type { Command } from "../../ipc/generated/Command";
 import type { Reply } from "../../ipc/generated/Reply";
@@ -17,13 +17,13 @@ export type Answer<T> =
 export function useReply(command: Command | null, revision: string): Answer<Reply> {
   const bridge = useBridge();
   const visible = useUi((state) => state.visible);
-  const request = useRef(command);
-  request.current = command;
+  const newest = useEffectEvent(() => command);
   const tag = `${JSON.stringify(command)}:${revision}`;
   const [answer, setAnswer] = useState<{ tag: string; answer: Answer<Reply> }>();
   const asked = useRef<string | null>(null);
   useEffect(() => {
-    if (!visible || !request.current || asked.current === tag) return;
+    const request = newest();
+    if (!visible || !request || asked.current === tag) return;
     asked.current = tag;
     let current = true;
     let settled = false;
@@ -31,7 +31,7 @@ export function useReply(command: Command | null, revision: string): Answer<Repl
       settled = true;
       if (current) setAnswer({ tag, answer: result });
     };
-    bridge.command(request.current).then(
+    bridge.command(request).then(
       (value) => settle({ state: "ready", value }),
       (error: unknown) => settle({ state: "error", error: errorText(error) }),
     );

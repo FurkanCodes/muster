@@ -111,6 +111,8 @@ export function Assign({
     if (busy) return;
     setBusy(true);
     setError(null);
+    // Worked out before the daemon is asked, as the compiler wants it.
+    const startOn = stacking && on ? on : null;
     try {
       const reply = await ask(
         bridge,
@@ -121,7 +123,7 @@ export function Assign({
             harness: agent,
             size: { rows: 24, cols: 80 },
             another: ownOne,
-            on: stacking && on ? on : null,
+            on: startOn,
             brief,
           },
         },

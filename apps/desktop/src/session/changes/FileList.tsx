@@ -29,7 +29,7 @@ export function FileList({
   files,
   folder,
   label,
-  rows,
+  rowsRef,
   selected,
   resting,
   onOpen,
@@ -39,7 +39,7 @@ export function FileList({
   folder: string;
   label: string;
   /** The list: the keys move through it, and it scrolls. */
-  rows: RefObject<HTMLDivElement | null>;
+  rowsRef: RefObject<HTMLDivElement | null>;
   selected: string | null;
   /** The diff has the keys: the selected file is tinted, not lit. */
   resting: boolean;
@@ -54,27 +54,27 @@ export function FileList({
   // scroll first and what is drawn after it, so the keys can focus it at once.
   const followed = useRef<number | null>(null);
   useLayoutEffect(() => {
-    const box = rows.current;
+    const box = rowsRef.current;
     if (!box || followed.current === at) return;
     followed.current = at;
     const next = inSight(box.scrollTop, box.clientHeight || UNMEASURED, at);
     if (box.scrollTop !== next) box.scrollTop = next;
     setTop(next);
-  }, [rows, at]);
+  }, [rowsRef, at]);
   // Each time rows are drawn, the view may give the selected one the focus.
   useLayoutEffect(() => onDrawn?.());
   useEffect(() => {
-    const box = rows.current;
+    const box = rowsRef.current;
     if (!box) return;
     const observer = new ResizeObserver(() => setHeight(box.clientHeight || UNMEASURED));
     observer.observe(box);
     return () => observer.disconnect();
-  }, [rows]);
+  }, [rowsRef]);
   const start = Math.max(0, Math.floor(top / ROW) - OVERSCAN);
   const end = Math.min(files.length, Math.ceil((top + height) / ROW) + OVERSCAN);
   return (
     <List
-      ref={rows}
+      ref={rowsRef}
       label={label}
       className="changes-list changes-files"
       activeId={selected === null ? undefined : fileLineId(selected)}
@@ -83,7 +83,7 @@ export function FileList({
       sight="list"
       // Read as the update is applied: a scroll's update can come after a
       // key's that moved the list since, and must not put it back.
-      onScroll={() => setTop((was) => rows.current?.scrollTop ?? was)}
+      onScroll={() => setTop((was) => rowsRef.current?.scrollTop ?? was)}
     >
       <div aria-hidden="true" style={{ height: start * ROW }} />
       {files.slice(start, end).map((file) => (
