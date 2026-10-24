@@ -77,6 +77,7 @@ async fn connection(stream: UnixStream, supervisor: SupervisorHandle, tasks: Tas
         client: None,
         keys: None,
         version: MIN_PROTOCOL_VERSION,
+        commands: Arc::new(tokio::sync::Semaphore::new(COMMANDS_AT_ONCE)),
     };
     if let Err(error) = session.run().await {
         // The writer sends this last, then closes.
@@ -117,7 +118,13 @@ struct Connection {
     keys: Option<(SessionId, KeysGuard)>,
     /// The protocol agreed with the client.
     version: u32,
+    /// Its commands under way: past [`COMMANDS_AT_ONCE`], the connection
+    /// reads no more of its frames until one is answered (`ARC-14`).
+    commands: Arc<tokio::sync::Semaphore>,
 }
+
+/// The most of one client's commands under way at once.
+const COMMANDS_AT_ONCE: usize = 64;
 
 /// A session's terminal as this connection uses it.
 struct Linked {
@@ -152,7 +159,11 @@ impl Connection {
                 }
                 ClientFrame::Command { req_id, command } => {
                     let (supervisor, outgoing) = (self.supervisor.clone(), self.outgoing.clone());
+                    let Ok(under_way) = self.commands.clone().acquire_owned().await else {
+                        return Ok(());
+                    };
                     self.tasks.spawn(async move {
+                        let _under_way = under_way;
                         let outcome = supervisor.command(command).await;
                         let _ = outgoing.send(ServerFrame::Reply { req_id, outcome }).await;
                     });
