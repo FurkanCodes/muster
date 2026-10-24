@@ -13,9 +13,6 @@ use crate::changes::ChangeSummary;
 use crate::ids::SessionId;
 use crate::time::Timestamp;
 
-/// The protocol version that knows workspaces' timelines.
-pub const TIMELINE_PROTOCOL: u32 = 25;
-
 /// The most entries a workspace's timeline keeps; older ones go
 /// (`ARC-14`).
 pub const MAX_ENTRIES: usize = 100;

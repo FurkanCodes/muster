@@ -46,18 +46,18 @@ spend: Spend | null,
  */
 tidy: Tidy | null, 
 /**
- * The chat a plugin's panel was opened beside, which it is shown
- * beside and told of; `None` for every other session, and for a
- * panel opened on its workspace. From protocol 43.
+ * The chat a plugin's panel was opened beside, which it is shown beside
+ * and told of; `None` for every other session, and for a panel opened on
+ * its workspace.
  */
 beside: SessionId | null, 
 /**
  * The agent's session that started it, through Muster's command line
- * (`PRD-01`); `None` for one the person started. From protocol 51.
+ * (`PRD-01`); `None` for one the person started.
  */
 started_by: SessionId | null, 
 /**
- * The coding agent running in front in it, where it is a terminal
- * one runs in (`ARC-28`); shown, never stored. From protocol 53.
+ * The coding agent running in front in it, where it is a terminal one runs
+ * in (`ARC-28`); shown, never stored.
  */
 agent: AgentNow | null, };

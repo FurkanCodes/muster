@@ -4,17 +4,12 @@
 //! Mac. Kept in Muster's own settings by a daemon of protocol 40 or later.
 
 use muster_core::protocol::{Command, ErrorBody};
-use muster_core::settings::{PreferenceChange, TELLING_PROTOCOL};
+use muster_core::settings::PreferenceChange;
 use muster_core::telling::{Kind, Sound, Tell};
 
 use super::{Action, App, Then};
 
 impl App {
-    /// Whether the daemon keeps which notifications, and their sounds.
-    pub(crate) fn telling_known(&self) -> bool {
-        self.daemon_protocol >= TELLING_PROTOCOL
-    }
-
     /// ⏎ on `kind`'s row: told, or not, with the sound it has.
     pub(super) fn toggle_tell(&mut self, kind: Kind) -> Vec<Action> {
         let tell = self.model.preferences().telling.of(kind).clone();
@@ -47,7 +42,7 @@ impl App {
     }
 
     fn change_tell(&mut self, kind: Kind, tell: Tell) -> Vec<Action> {
-        if !self.telling_known() || self.telling_changing() {
+        if self.telling_changing() {
             return Vec::new();
         }
         vec![self.command(

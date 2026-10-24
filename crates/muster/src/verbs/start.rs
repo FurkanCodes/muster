@@ -10,7 +10,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use muster_client::Connection;
-use muster_core::delegation::DELEGATION_PROTOCOL;
+
 use muster_core::protocol::{Command, Reading, Reply, Snapshot, TermSize};
 use muster_core::{Paths, SessionId, WorkspaceId};
 use serde::Serialize;
@@ -99,13 +99,6 @@ struct Started {
 async fn start(paths: &Paths, args: Args) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let prompt = prompt(&args.prompt)?;
     let mut connection = crate::daemon_start::connect(paths).await?;
-    if connection.welcome().version < DELEGATION_PROTOCOL {
-        return Err(
-            "the daemon running is older than this muster: move it onto this one with \
-             `muster reload`, then start the agent again"
-                .into(),
-        );
-    }
     let snapshot = connection.subscribe().await?;
     let terminal = in_terminal(&snapshot, &args);
     let snapshot = match terminal {

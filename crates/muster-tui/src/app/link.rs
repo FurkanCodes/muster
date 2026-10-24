@@ -32,10 +32,8 @@ impl App {
         let mut actions = vec![Action::Send(ClientFrame::Subscribe)];
         actions.extend(self.looking());
         // Programs in sessions asking their terminal's colours are told the
-        // person's, by a daemon that knows how (`ARC-09`).
-        if self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL
-            && !self.colours.is_empty()
-        {
+        // person's.
+        if !self.colours.is_empty() {
             actions.push(Action::Send(ClientFrame::Colours(self.colours.clone())));
         }
         actions

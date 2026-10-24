@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use crossterm::event::KeyCode;
 use muster_core::Timestamp;
-use muster_core::plugins::{Manifest, PLUGINS_PROTOCOL, PluginSource};
+use muster_core::plugins::{Manifest, PluginSource};
 use muster_core::protocol::plugins::{
     ChangedBy, PluginAction, PluginChange, PluginCommand, PluginDetails, PluginInfo, PluginOrigin,
     PluginPreview, PluginProblem, PreviewKind,
@@ -191,17 +191,6 @@ fn each_plugin_has_a_line_under_muster_s_own_saying_what_it_brings_or_why_it_is_
     assert!(screen.contains("space turn off"), "{screen}");
     assert!(screen.contains("u update"), "{screen}");
     assert!(screen.contains("x remove"), "{screen}");
-}
-
-#[test]
-fn a_daemon_before_41_shows_no_plugins_and_a_does_nothing() {
-    let mut world = on(SettingRow::Notch);
-    world.app.daemon_protocol = PLUGINS_PROTOCOL - 1;
-    let rows = world.app.setting_rows();
-    assert!(!rows.contains(&SettingRow::Plugins), "{rows:?}");
-    assert!(!render(&world).contains("add a plugin"));
-    assert_eq!(press(&mut world.app, KeyCode::Char('a')), []);
-    assert_eq!(world.app.mode, Mode::Browse);
 }
 
 #[test]

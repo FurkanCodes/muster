@@ -5,18 +5,13 @@
 //! its base once that has merged, or of its base where it is not stacked.
 
 use muster_core::protocol::Command;
-use muster_core::stacks::STACKS_PROTOCOL;
+
 use muster_core::text::one_line;
 use muster_core::{ProjectId, PullRequestState, TicketKey, WorkspaceId};
 
 use super::{Action, App, Confirmed, Dialog, Mode, Then};
 
 impl App {
-    /// Whether the daemon knows stacked work.
-    pub(crate) fn knows_stacks(&self) -> bool {
-        self.daemon_protocol >= STACKS_PROTOCOL
-    }
-
     /// The worktrees of `project` a new one can be made on top of.
     pub(crate) fn stack_choices(&self, project: ProjectId) -> Vec<WorkspaceId> {
         self.model
@@ -34,8 +29,7 @@ impl App {
     /// offers to make its worktree on top of another's: only where it
     /// makes one.
     pub(crate) fn offers_stack(&self, into: ProjectId, key: &TicketKey, another: bool) -> bool {
-        self.knows_stacks()
-            && (another || self.model.worktrees_for(&[into], key).is_empty())
+        (another || self.model.worktrees_for(&[into], key).is_empty())
             && !self.stack_choices(into).is_empty()
     }
 
@@ -92,13 +86,6 @@ impl App {
         let Some(workspace) = self.hands_on_workspace("move its branch onto its base") else {
             return Vec::new();
         };
-        if !self.knows_stacks() {
-            self.complain(
-                "The daemon runs an older muster that cannot move a branch: `muster reload` \
-                 moves it onto this one, every session running on.",
-            );
-            return Vec::new();
-        }
         let Some(found) = self.model.workspace(workspace) else {
             return Vec::new();
         };

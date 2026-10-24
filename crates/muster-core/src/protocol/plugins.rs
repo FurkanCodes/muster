@@ -1,14 +1,11 @@
 //! Plugins on the wire (`ARCHITECTURE.md` §7a): what a client asks of the
-//! daemon's registry, and what it is told of each plugin. From protocol 41
-//! ([`crate::plugins::PLUGINS_PROTOCOL`]); a plugin's panel opened from 43
-//! ([`crate::plugins::PANELS_PROTOCOL`]); its hooks shown and tried from 44
-//! ([`crate::plugins::HOOKS_PROTOCOL`]).
+//! daemon's registry, and what it is told of each plugin.
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::{ErrorBody, ErrorCode, Reply, TermSize};
+use super::TermSize;
 use crate::ids::{SessionId, WorkspaceId};
 use crate::plugins::{EventKind, Hook, Manifest, Panel, PluginSource, TicketSource};
 use crate::time::Timestamp;
@@ -45,8 +42,7 @@ pub enum PluginCommand {
     Remove { id: String },
     /// The end of the plugin `id`'s log: the last 64 KiB its process wrote
     /// on stderr while this daemon ran, across its restarts, its secrets
-    /// hidden. Answered with [`super::Reply::PluginLog`]. From protocol 42
-    /// ([`crate::plugins::TICKET_PLUGINS_PROTOCOL`]).
+    /// hidden. Answered with [`super::Reply::PluginLog`].
     Log { id: String },
     /// Opens the panel `panel` of the plugin `plugin` beside a session or
     /// on a workspace, as its manifest's `on` says, in a terminal of
@@ -55,7 +51,7 @@ pub enum PluginCommand {
     /// is off or cannot run, a program it needs is not found, or a
     /// placeholder has no value. Answered with
     /// [`super::Reply::SessionStarted`], naming the one already open there
-    /// if it is. From protocol 43 ([`crate::plugins::PANELS_PROTOCOL`]).
+    /// if it is.
     OpenPanel {
         plugin: String,
         panel: String,
@@ -67,21 +63,8 @@ pub enum PluginCommand {
     /// run for a real one, and waits for them: for an author trying one
     /// (`muster plugin hook`). Refused, saying why, where the plugin is off
     /// or cannot run, or none of its hooks takes such events. Answered
-    /// with [`super::Reply::HooksTried`]. From protocol 44
-    /// ([`crate::plugins::HOOKS_PROTOCOL`]).
+    /// with [`super::Reply::HooksTried`].
     TryHooks { id: String, event: EventKind },
-}
-
-impl PluginCommand {
-    /// The first protocol whose daemon takes it (`ARC-09`).
-    pub fn since(&self) -> u32 {
-        match self {
-            Self::Log { .. } => crate::plugins::TICKET_PLUGINS_PROTOCOL,
-            Self::OpenPanel { .. } => crate::plugins::PANELS_PROTOCOL,
-            Self::TryHooks { .. } => crate::plugins::HOOKS_PROTOCOL,
-            _ => crate::plugins::PLUGINS_PROTOCOL,
-        }
-    }
 }
 
 /// Where a plugin's panel opens.
@@ -220,9 +203,7 @@ pub struct PluginDetails {
     pub panels: Vec<Panel>,
     #[serde(default)]
     pub tickets: Option<TicketSource>,
-    /// What it runs as something happens. From protocol 44: an older
-    /// client passes over it, and is never shown a preview with one
-    /// ([`shown_to`]).
+    /// What it runs as something happens.
     #[serde(default)]
     pub hooks: Vec<Hook>,
     /// The SHA-256 of its manifest, which approving it binds.
@@ -271,28 +252,6 @@ impl PluginDetails {
             .iter()
             .map(|hook| (format!("hook {}", hook.id), hook.command.as_slice()));
         panels.chain(tickets).chain(hooks).collect()
-    }
-}
-
-/// `reply` as a client that agreed to `version` may be sent it: a preview
-/// of a plugin with hooks is refused to one older than 44, which could not
-/// show them, so nobody approves what they were not shown (`PRD-15`,
-/// `ARC-09`).
-pub fn shown_to(reply: Reply, version: u32) -> Result<Reply, ErrorBody> {
-    match reply {
-        Reply::PluginPreview(preview)
-            if version < crate::plugins::HOOKS_PROTOCOL && !preview.details.hooks.is_empty() =>
-        {
-            Err(ErrorBody::new(
-                ErrorCode::Conflict,
-                format!(
-                    "{} runs hooks, which this Muster's UI cannot show you before you approve \
-                     it: update the UI to the daemon's version, then add it again",
-                    crate::text::one_line(&preview.id)
-                ),
-            ))
-        }
-        reply => Ok(reply),
     }
 }
 
@@ -510,16 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn only_a_client_of_41_or_later_is_told_of_the_plugins_arc_09() {
-        assert_eq!(
-            super::super::Delta::PluginsChanged(Vec::new()).since(),
-            crate::plugins::PLUGINS_PROTOCOL
-        );
-        assert_eq!(crate::plugins::PLUGINS_PROTOCOL, 41);
-    }
-
-    #[test]
-    fn a_preview_with_hooks_is_never_shown_to_a_client_that_could_not_show_them_arc_09() {
+    fn every_command_a_plugin_would_run_is_named_with_where_it_is_written() {
         let manifest = crate::plugins::Manifest::parse(
             "id = \"p\"\nname = \"P\"\nversion = \"1.0\"\nmuster = \"0.3\"\n\n[[hooks]]\n\
              id = \"ping\"\non = [\"session.finished\"]\ncommand = [\"./ping\", \"{branch}\"]\n",
@@ -528,32 +478,6 @@ mod tests {
         let details = PluginDetails::of(&manifest, "ab".repeat(32), |_| true);
         let commands: Vec<String> = details.commands().into_iter().map(|(at, _)| at).collect();
         assert_eq!(commands, ["hook ping"]);
-        let preview = |details: PluginDetails| {
-            Reply::PluginPreview(Box::new(PluginPreview {
-                preview: "cd".repeat(16),
-                kind: PreviewKind::Link,
-                id: "p".to_owned(),
-                source: PluginSource::Folder {
-                    path: PathBuf::from("/p"),
-                },
-                details,
-                current: None,
-            }))
-        };
-        let refused = shown_to(preview(details.clone()), 43).unwrap_err();
-        assert_eq!(refused.code, ErrorCode::Conflict);
-        assert!(
-            refused.message.starts_with("p runs hooks"),
-            "{}",
-            refused.message
-        );
-        assert!(shown_to(preview(details.clone()), crate::plugins::HOOKS_PROTOCOL).is_ok());
-        let without = PluginDetails {
-            hooks: Vec::new(),
-            ..details
-        };
-        assert!(shown_to(preview(without), 41).is_ok());
-        assert!(shown_to(Reply::Done, 41).is_ok());
     }
 
     #[test]

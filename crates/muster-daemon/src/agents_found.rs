@@ -1,5 +1,5 @@
 //! Where each coding agent is installed, and the version it says it is
-//! (`Command::Agents`, protocol 45), for Settings › Agents. The daemon
+//! (`Command::Agents`), for Settings › Agents. The daemon
 //! answers, as it is what runs the agents: each program is looked for on
 //! its own `PATH`, as a session's would be, and run with `--version`.
 //!

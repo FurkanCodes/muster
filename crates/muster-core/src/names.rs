@@ -5,10 +5,6 @@
 use crate::credentials;
 use crate::text::one_line;
 
-/// The protocol version that names chats by their first prompt and lets
-/// the person rename them.
-pub const NAMES_PROTOCOL: u32 = 34;
-
 /// The most characters a name taken from a prompt keeps.
 pub const FROM_PROMPT: usize = 60;
 

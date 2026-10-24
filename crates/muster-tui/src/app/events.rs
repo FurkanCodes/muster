@@ -280,7 +280,7 @@ impl App {
         if view == View::Settings && self.view != View::Settings {
             self.settings
                 .retain(|_, settings| matches!(settings, super::Settings::Loading));
-            read = self.read_plugins();
+            read = Some(self.read_plugins());
         }
         self.view = view;
         let mut actions = self.settle();

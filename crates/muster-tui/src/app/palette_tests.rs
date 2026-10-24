@@ -4,7 +4,7 @@
 
 use crossterm::event::{KeyCode, MouseButton, MouseEventKind};
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame};
-use muster_core::settings::{LOOK_PROTOCOL, Palette, PreferenceChange, SessionLines};
+use muster_core::settings::{Palette, PreferenceChange, SessionLines};
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier};
 
@@ -182,32 +182,6 @@ fn the_lines_a_session_takes_are_turned_there_too() {
     });
     assert!(render(&world.app).contains("Each session takes one line."));
     assert_eq!(world.app.session_height(), 1);
-}
-
-#[test]
-fn an_older_daemon_shows_no_look_to_change_and_keeps_muster_s_own() {
-    let mut world = world();
-    world.app.daemon_protocol = LOOK_PROTOCOL - 1;
-    let rows = world.app.setting_rows();
-    assert!(!rows.contains(&SettingRow::Colours), "{rows:?}");
-    assert!(!rows.contains(&SettingRow::SessionLines), "{rows:?}");
-    // Nothing to send it, whatever is selected.
-    world.app.settings_selected = Some(SettingRow::Colours);
-    world.app.view = View::Settings;
-    assert!(
-        press(&mut world.app, KeyCode::Enter)
-            .iter()
-            .all(|action| !matches!(
-                action,
-                Action::Send(ClientFrame::Command {
-                    command: Command::ChangePreference(_),
-                    ..
-                })
-            ))
-    );
-    // It says nothing of the look, so the look is Muster's own.
-    assert_eq!(theme::of(&world.app).palette, Palette::Muster);
-    assert_eq!(world.app.session_height(), 2);
 }
 
 /// The world with a second session under the first.

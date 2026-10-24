@@ -10,7 +10,7 @@
 //! command line too.
 
 use crossterm::event::{KeyCode, KeyEvent};
-use muster_core::plugins::{ID_MAX, PLUGINS_PROTOCOL, PluginSource};
+use muster_core::plugins::{ID_MAX, PluginSource};
 use muster_core::protocol::plugins::{
     ChangedBy, PluginCommand, PluginInfo, PluginOrigin, PluginPreview, PreviewKind,
 };
@@ -107,11 +107,6 @@ pub(crate) enum PluginDialog {
 }
 
 impl App {
-    /// Whether the daemon has plugins.
-    pub(crate) fn plugins_known(&self) -> bool {
-        self.daemon_protocol >= PLUGINS_PROTOCOL
-    }
-
     /// The Plugins section's rows: its heading, each plugin, and the row
     /// that adds one.
     pub(super) fn plugin_rows(&self) -> Vec<SettingRow> {
@@ -145,9 +140,8 @@ impl App {
     /// Asks the daemon to read its plugins again as the Settings screen is
     /// shown, so a manifest edited by hand is seen: what changed comes as a
     /// change to the state.
-    pub(super) fn read_plugins(&mut self) -> Option<Action> {
-        self.plugins_known()
-            .then(|| self.command(Command::Plugin(PluginCommand::List), Then::PluginsRead))
+    pub(super) fn read_plugins(&mut self) -> Action {
+        self.command(Command::Plugin(PluginCommand::List), Then::PluginsRead)
     }
 
     /// Space or ⏎ on a plugin: off if it runs, else on, refused with why
@@ -199,12 +193,10 @@ impl App {
 
     /// `a`, or ⏎ on *add a plugin*: where from.
     pub(super) fn open_add_plugin(&mut self) -> Vec<Action> {
-        if self.plugins_known() {
-            self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Add {
-                typed: Typed::default(),
-                refused: None,
-            }));
-        }
+        self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Add {
+            typed: Typed::default(),
+            refused: None,
+        }));
         Vec::new()
     }
 

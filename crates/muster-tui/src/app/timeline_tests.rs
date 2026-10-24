@@ -328,14 +328,3 @@ fn a_new_entry_in_the_state_asks_for_the_timeline_again() {
     // Told again of the same, it does not ask again.
     assert!(commands(&upsert(&mut world, |worktree| worktree.timeline = Some(4))).is_empty());
 }
-
-#[test]
-fn an_older_daemon_is_not_asked_for_a_timeline() {
-    let mut world = world();
-    world.app.daemon_protocol = muster_core::changes::CHANGES_PROTOCOL;
-    world.app.selected = Some(Row::Worktree(world.worktree.id));
-    let asked = commands(&press(&mut world.app, KeyCode::Char('d')));
-    assert_eq!(asked.len(), 1, "{asked:?}");
-    assert!(commands(&press(&mut world.app, KeyCode::Char('z'))).is_empty());
-    assert!(render(&world.app).contains("`muster reload`"));
-}

@@ -13,9 +13,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::WorkspaceId;
 
-/// The protocol version that says where workspaces' work meets.
-pub const CLASHES_PROTOCOL: u32 = 26;
-
 /// The most files of one clash sent; [`Clash::files`] counts them all.
 pub const MAX_SHOWN: usize = 20;
 

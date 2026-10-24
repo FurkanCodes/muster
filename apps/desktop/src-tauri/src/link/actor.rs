@@ -40,9 +40,6 @@ const LINK_EVENTS: usize = 64;
 /// How the app names itself to the daemon.
 const CLIENT: &str = concat!("muster-desktop ", env!("CARGO_PKG_VERSION"));
 
-/// The first protocol that knows `ClientFrame::Looking`.
-const LOOKING_PROTOCOL: u32 = muster_core::settings::NOTCH_PROTOCOL;
-
 /// A task that ends when its owner drops it (`ARC-13`).
 struct Owned(JoinHandle<()>);
 
@@ -275,32 +272,25 @@ impl Actor {
     }
 
     /// Tells the daemon whether the person looks at the window, and which
-    /// terminal is in focus in it, when either changed: each only to a
-    /// daemon that knows it (`ARC-09`).
+    /// terminal is in focus in it, when either changed.
     fn tell_looking(&mut self) {
-        let Some(version) = self.linked.as_ref().map(|linked| linked.version) else {
+        if self.linked.is_none() {
             return;
-        };
+        }
         let now = (self.looking.looking, self.looking.focused);
         let before = self.told.replace(now);
-        if version >= LOOKING_PROTOCOL && before.map(|(looking, _)| looking) != Some(now.0) {
+        if before.map(|(looking, _)| looking) != Some(now.0) {
             self.send(ClientFrame::Looking { looking: now.0 });
         }
-        if version >= muster_core::colours::TERMINAL_PROTOCOL
-            && before.map(|(_, focused)| focused) != Some(now.1)
-        {
+        if before.map(|(_, focused)| focused) != Some(now.1) {
             self.send(ClientFrame::Keys { session: now.1 });
         }
     }
 
-    /// Tells the daemon the terminals' colours, if the webview has said
-    /// them and the daemon knows them (`ARC-09`).
+    /// Tells the daemon the terminals' colours, once the webview has said
+    /// them.
     fn tell_colours(&self) {
-        let knows = self
-            .linked
-            .as_ref()
-            .is_some_and(|linked| linked.version >= muster_core::colours::TERMINAL_PROTOCOL);
-        if let (true, Some(colours)) = (knows, &self.colours) {
+        if let (true, Some(colours)) = (self.linked.is_some(), &self.colours) {
             self.send(ClientFrame::Colours(colours.clone()));
         }
     }

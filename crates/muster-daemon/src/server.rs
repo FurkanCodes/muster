@@ -12,7 +12,7 @@ use muster_client::{FramedRead, FramedWrite, TransportError};
 use muster_core::SessionId;
 use muster_core::protocol::{
     ClientFrame, DetachReason, ErrorBody, ErrorCode, Incompatible, MIN_PROTOCOL_VERSION,
-    PROTOCOL_VERSION, ServerFrame, Welcome, negotiate, plugins,
+    PROTOCOL_VERSION, ServerFrame, Welcome, negotiate,
 };
 use tokio::net::unix::OwnedReadHalf;
 use tokio::net::{UnixListener, UnixStream};
@@ -146,22 +146,14 @@ impl Connection {
                     ));
                 }
                 ClientFrame::Subscribe => {
-                    let pump =
-                        pump_state(self.supervisor.clone(), self.outgoing.clone(), self.version);
+                    let pump = pump_state(self.supervisor.clone(), self.outgoing.clone());
                     // Dropping the old one ends it.
                     self.pump = Some(tasks::owned(pump));
                 }
                 ClientFrame::Command { req_id, command } => {
                     let (supervisor, outgoing) = (self.supervisor.clone(), self.outgoing.clone());
-                    let version = self.version;
                     self.tasks.spawn(async move {
-                        // As the client's protocol can read it, and never a
-                        // plugin it could not show whole (`ARC-09`).
-                        let outcome = supervisor
-                            .command(command)
-                            .await
-                            .and_then(|reply| plugins::shown_to(reply, version))
-                            .map(|reply| reply.for_version(version));
+                        let outcome = supervisor.command(command).await;
                         let _ = outgoing.send(ServerFrame::Reply { req_id, outcome }).await;
                     });
                 }
@@ -453,17 +445,13 @@ impl Connection {
     }
 }
 
-/// Sends the client a snapshot and then every delta its protocol `version`
-/// knows, each as it can read it (`ARC-09`). A client that falls behind
-/// the broadcast is sent a fresh snapshot instead of the deltas it missed.
-pub(crate) async fn pump_state(
-    supervisor: SupervisorHandle,
-    outgoing: mpsc::Sender<ServerFrame>,
-    version: u32,
-) {
+/// Sends the client a snapshot and then every delta. A client that falls
+/// behind the broadcast is sent a fresh snapshot instead of the deltas it
+/// missed.
+pub(crate) async fn pump_state(supervisor: SupervisorHandle, outgoing: mpsc::Sender<ServerFrame>) {
     while let Some((snapshot, mut deltas)) = supervisor.subscribe().await {
         if outgoing
-            .send(ServerFrame::Snapshot(snapshot.for_version(version)))
+            .send(ServerFrame::Snapshot(snapshot))
             .await
             .is_err()
         {
@@ -472,9 +460,6 @@ pub(crate) async fn pump_state(
         loop {
             match deltas.recv().await {
                 Ok(delta) => {
-                    let Some(delta) = delta.for_version(version) else {
-                        continue;
-                    };
                     if outgoing.send(ServerFrame::Delta(delta)).await.is_err() {
                         return;
                     }

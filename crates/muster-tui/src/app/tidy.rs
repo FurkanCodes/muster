@@ -6,7 +6,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::WorkspaceId;
 use muster_core::protocol::Command;
-use muster_core::tidy::TIDY_PROTOCOL;
 
 use super::{Action, App, Dialog, HarnessChoice, Mode, Then};
 
@@ -16,13 +15,6 @@ impl App {
         let Some(workspace) = self.hands_on_workspace("tidy its commits") else {
             return Vec::new();
         };
-        if self.daemon_protocol < TIDY_PROTOCOL {
-            self.complain(
-                "The daemon runs an older muster that cannot tidy commits: `muster reload` moves \
-                 it onto this one, every session running on.",
-            );
-            return Vec::new();
-        }
         if self
             .model
             .workspace(workspace)

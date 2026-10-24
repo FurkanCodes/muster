@@ -245,7 +245,6 @@ fn linked(app: &mut App, sender: &mut Option<Outgoing>, event: LinkEvent) -> Vec
             welcome,
         } => {
             *sender = Some(connected);
-            app.daemon_protocol = welcome.version;
             app.on_connected(welcome.daemon_version)
         }
         LinkEvent::Frame(frame) => app.on_frame(*frame),

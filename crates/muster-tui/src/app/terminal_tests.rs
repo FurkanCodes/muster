@@ -25,7 +25,7 @@ fn dark() -> TerminalColours {
 }
 
 #[test]
-fn the_person_s_colours_are_told_to_each_daemon_that_knows_them() {
+fn the_person_s_colours_are_told_to_each_daemon() {
     let mut app = App::new(PathBuf::from("/src"), SIZE);
     app.colours = dark();
     let told = Action::Send(ClientFrame::Colours(dark()));
@@ -33,9 +33,6 @@ fn the_person_s_colours_are_told_to_each_daemon_that_knows_them() {
     // Again on every connection: a daemon started since knows none.
     app.on_disconnected("gone".to_owned());
     assert!(app.on_connected("0.4.0".to_owned()).contains(&told));
-    // Never to a daemon before them, which could not read it (`ARC-09`).
-    app.daemon_protocol = muster_core::colours::TERMINAL_PROTOCOL - 1;
-    assert!(!app.on_connected("0.3.25".to_owned()).contains(&told));
 }
 
 #[test]
@@ -216,7 +213,7 @@ fn a_narrow_window_s_list_shows_no_session_in_focus_until_one_is_open() {
 }
 
 #[test]
-fn a_daemon_connected_again_is_told_the_keys_and_an_older_one_never() {
+fn a_daemon_connected_again_is_told_the_keys() {
     let mut world = world();
     let id = world.session.id;
     world.app.selected = Some(Row::Session(id));
@@ -231,15 +228,6 @@ fn a_daemon_connected_again_is_told_the_keys_and_an_older_one_never() {
     };
     let actions = world.app.on_frame(ServerFrame::Snapshot(snapshot.clone()));
     assert_eq!(focus_told(&actions), [Some(id)]);
-
-    // A daemon before it could not read the frame (`ARC-09`).
-    world.app.on_disconnected("gone".to_owned());
-    world.app.daemon_protocol = muster_core::colours::TERMINAL_PROTOCOL - 1;
-    world.app.on_connected("0.3.25".to_owned());
-    let mut actions = world.app.on_frame(ServerFrame::Snapshot(snapshot));
-    actions.extend(world.app.on_focus(false));
-    actions.extend(world.app.on_key(shift_q()));
-    assert_eq!(focus_told(&actions), []);
 }
 
 #[test]

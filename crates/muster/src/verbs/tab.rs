@@ -23,7 +23,7 @@ use std::process::ExitCode;
 use muster_client::{ClientError, FrameSender};
 use muster_core::keys::{Action, Chord, Key, Keymap};
 use muster_core::protocol::{
-    ClientFrame, Command, ErrorCode, PixelSize, SWITCH_PROTOCOL, ServerFrame, Snapshot, TermSize,
+    ClientFrame, Command, ErrorCode, PixelSize, ServerFrame, Snapshot, TermSize,
 };
 use muster_core::{Paths, SessionId};
 use tokio::sync::mpsc;
@@ -66,19 +66,17 @@ pub(crate) async fn show(
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     if let Some(inside) = super::started_by().filter(|inside| *inside != session) {
         let mut connection = commands::connect(&paths.socket()).await?;
-        if connection.welcome().version >= SWITCH_PROTOCOL {
-            match connection
-                .command(Command::Switch {
-                    from: inside,
-                    to: session,
-                })
-                .await
-            {
-                Ok(_) => return Ok(ExitCode::SUCCESS),
-                // Shown nowhere: this terminal is a script's.
-                Err(ClientError::Daemon(error)) if error.code == ErrorCode::NotFound => {}
-                Err(error) => return Err(error.into()),
-            }
+        match connection
+            .command(Command::Switch {
+                from: inside,
+                to: session,
+            })
+            .await
+        {
+            Ok(_) => return Ok(ExitCode::SUCCESS),
+            // Shown nowhere: this terminal is a script's.
+            Err(ClientError::Daemon(error)) if error.code == ErrorCode::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
     }
     run(paths, session).await
@@ -102,10 +100,9 @@ pub(crate) async fn run(
     refuse_ended(&snapshot, first)?;
     let back = back_keys(&snapshot);
     let connection = commands::connect(&paths.socket()).await?;
-    let (sender, mut receiver, welcome) = connection.into_split();
+    let (sender, mut receiver, _) = connection.into_split();
     let mut tab = Tab {
         sender,
-        version: welcome.version,
         back,
         stack: Vec::new(),
         looked_at: true,
@@ -115,9 +112,7 @@ pub(crate) async fn run(
     let raw = Raw::enter()?;
     // Counted among the windows the person looks at, so a session started
     // from the one shown here comes here (`Command::Switch`).
-    if tab.version >= muster_core::settings::NOTCH_PROTOCOL {
-        tab.send(ClientFrame::Looking { looking: true }).await?;
-    }
+    tab.send(ClientFrame::Looking { looking: true }).await?;
     tab.push(first).await?;
     let (keys, mut typed) = mpsc::channel::<Vec<u8>>(64);
     read_keys(keys)?;
@@ -247,7 +242,6 @@ fn read_keys(keys: mpsc::Sender<Vec<u8>>) -> std::io::Result<()> {
 /// The tab's sessions and its link to the daemon.
 struct Tab {
     sender: FrameSender,
-    version: u32,
     /// The keys that go back.
     back: Vec<Chord>,
     /// The sessions shown here, the one shown now last.
@@ -330,9 +324,6 @@ impl Tab {
     /// Tells the daemon whose terminal has the person's keys: the one
     /// shown here while the tab has focus.
     async fn keys(&mut self, session: SessionId) -> Result<(), ClientError> {
-        if self.version < muster_core::colours::TERMINAL_PROTOCOL {
-            return Ok(());
-        }
         let session = self.looked_at.then_some(session);
         self.send(ClientFrame::Keys { session }).await
     }

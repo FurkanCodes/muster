@@ -53,7 +53,7 @@ pub struct Workspace {
     pub stacked_on: Option<crate::stacks::Stacked>,
     /// The ticket it was made for, when an agent was started on one:
     /// whatever its branch is called later, its agents are the ticket's.
-    /// Stored; from protocol 48, a field older clients pass over.
+    /// Stored.
     #[serde(default)]
     pub ticket: Option<TicketKey>,
 }
@@ -149,9 +149,9 @@ pub struct Issue {
     pub author: Option<String>,
 }
 
-/// What someone said on a ticket after it was filed, oldest first: who,
-/// when and what. Anyone can write one, so it is data, never instructions
-/// (`PRD-07`), cleaned as the ticket's text is. From protocol 50.
+/// What someone said on a ticket after it was filed, oldest first: who, when
+/// and what. Anyone can write one, so it is data, never instructions
+/// (`PRD-07`), cleaned as the ticket's text is.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct IssueComment {
@@ -162,10 +162,10 @@ pub struct IssueComment {
     pub body: String,
 }
 
-/// What of a ticket an agent is given as its first prompt: its text, and
-/// the comments the person chose, by their place among the ticket's
-/// comments as [`IssueComment`]s come, oldest first. The person chooses
-/// at least one of them. From protocol 50.
+/// What of a ticket an agent is given as its first prompt: its text, and the
+/// comments the person chose, by their place among the ticket's comments as
+/// [`IssueComment`]s come, oldest first. The person chooses at least one of
+/// them.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct TicketBrief {
@@ -253,17 +253,17 @@ pub struct Session {
     /// Muster found once its agent stopped; never stored.
     #[serde(default)]
     pub tidy: Option<crate::tidy::Tidy>,
-    /// The chat a plugin's panel was opened beside, which it is shown
-    /// beside and told of; `None` for every other session, and for a
-    /// panel opened on its workspace. From protocol 43.
+    /// The chat a plugin's panel was opened beside, which it is shown beside
+    /// and told of; `None` for every other session, and for a panel opened on
+    /// its workspace.
     #[serde(default)]
     pub beside: Option<SessionId>,
     /// The agent's session that started it, through Muster's command line
-    /// (`PRD-01`); `None` for one the person started. From protocol 51.
+    /// (`PRD-01`); `None` for one the person started.
     #[serde(default)]
     pub started_by: Option<SessionId>,
-    /// The coding agent running in front in it, where it is a terminal
-    /// one runs in (`ARC-28`); shown, never stored. From protocol 53.
+    /// The coding agent running in front in it, where it is a terminal one runs
+    /// in (`ARC-28`); shown, never stored.
     #[serde(default)]
     pub agent: Option<crate::session::AgentNow>,
 }

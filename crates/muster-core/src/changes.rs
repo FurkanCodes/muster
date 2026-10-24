@@ -15,12 +15,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::text::{multi_line, one_line};
 
-/// The first protocol that knows a workspace's changes
-/// ([`Workspace::changes`](crate::Workspace::changes), the
-/// `WorkspaceChanges` and `FileDiff` commands): they are asked only of a
-/// daemon that agreed to it (`ARC-09`).
-pub const CHANGES_PROTOCOL: u32 = 24;
-
 /// The most commits listed; the rest are counted.
 pub const MAX_COMMITS: usize = 50;
 

@@ -20,28 +20,6 @@ pub use manifest::{Manifest, ManifestError, Panel, PanelOn, TicketSetting, Ticke
 pub use placeholders::{Context, Missing, Placeholder};
 pub use registry::{PluginEntry, PluginSource, RegistryError};
 
-/// The first protocol whose daemon keeps a registry of plugins and takes
-/// [`crate::protocol::Command::Plugin`] (`ARC-09`).
-pub const PLUGINS_PROTOCOL: u32 = 41;
-
-/// The first protocol whose daemon finds tickets through plugins: a
-/// project's tracker is a ticket plugin's id, with what its `[tickets]`
-/// says for it ([`crate::settings::TicketsFrom`]), and a plugin's log is
-/// read with [`crate::protocol::plugins::PluginCommand::Log`] (`ARC-09`).
-pub const TICKET_PLUGINS_PROTOCOL: u32 = 42;
-
-/// The first protocol whose daemon opens a plugin's panel
-/// ([`crate::protocol::plugins::PluginCommand::OpenPanel`]) and says which
-/// chat each is beside (`Session::beside`), and whose clients read a
-/// layout and keys with a panel's in them (`ARC-09`).
-pub const PANELS_PROTOCOL: u32 = 43;
-
-/// The first protocol whose daemon runs plugins' hooks, says what each
-/// plugin's are (`PluginDetails::hooks`) and tries them
-/// ([`crate::protocol::plugins::PluginCommand::TryHooks`]), and whose
-/// clients show them before a plugin is approved (`ARC-09`).
-pub const HOOKS_PROTOCOL: u32 = 44;
-
 /// The Muster reading manifests, which a manifest's `muster` must not be
 /// newer than.
 pub const MUSTER_VERSION: &str = env!("CARGO_PKG_VERSION");

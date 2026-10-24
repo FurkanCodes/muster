@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use muster_core::explain::{DeadlineKind, EXPLAIN_PROTOCOL, Explanation, MachineView};
+use muster_core::explain::{DeadlineKind, Explanation, MachineView};
 use muster_core::protocol::{Command, Reply};
 use muster_core::session::Origin;
 use muster_core::time::{between, span};
@@ -16,14 +16,6 @@ use crate::commands::{Outcome, connect, describe, shown, unexpected};
 pub(crate) async fn explain_session(socket: &Path, session: &str) -> Outcome {
     let session: SessionId = session.parse()?;
     let mut connection = connect(socket).await?;
-    let version = connection.welcome().version;
-    if version < EXPLAIN_PROTOCOL {
-        return Err(format!(
-            "the daemon speaks protocol {version} and cannot explain a session, which needs \
-             {EXPLAIN_PROTOCOL}; `muster reload` moves it onto the version installed now"
-        )
-        .into());
-    }
     let reply = connection
         .command(Command::ExplainSession { session })
         .await?;

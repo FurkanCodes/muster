@@ -9,10 +9,6 @@ use crate::ids::SessionId;
 use crate::session::{Origin, SessionStatus, WaitReason};
 use crate::time::Timestamp;
 
-/// The first protocol that asks a daemon to explain a session
-/// ([`crate::protocol::Command::ExplainSession`]).
-pub const EXPLAIN_PROTOCOL: u32 = 30;
-
 /// A session's status and why it has it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]

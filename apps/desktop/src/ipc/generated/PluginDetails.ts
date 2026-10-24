@@ -29,9 +29,7 @@ env: Array<string>,
  */
 secrets: Array<string>, panels: Array<Panel>, tickets: TicketSource | null, 
 /**
- * What it runs as something happens. From protocol 44: an older
- * client passes over it, and is never shown a preview with one
- * ([`shown_to`]).
+ * What it runs as something happens.
  */
 hooks: Array<Hook>, 
 /**

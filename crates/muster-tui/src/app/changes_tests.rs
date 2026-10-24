@@ -228,42 +228,6 @@ fn a_failure_is_shown_in_the_pane_and_r_asks_again() {
 }
 
 #[test]
-fn d_is_refused_where_git_cannot_tell_and_by_an_older_daemon() {
-    let mut world = world();
-    world.app.selected = Some(Row::Worktree(world.worktree.id));
-    world.app.daemon_protocol = 23;
-    assert!(press(&mut world.app, KeyCode::Char('d')).is_empty());
-    assert!(
-        world
-            .app
-            .note
-            .as_ref()
-            .unwrap()
-            .text
-            .contains("muster reload")
-    );
-    assert_eq!(world.app.mode, Mode::Browse);
-
-    world.app.daemon_protocol = muster_core::protocol::PROTOCOL_VERSION;
-    upsert(&mut world, |worktree| {
-        worktree.kind = WorkspaceKind::Checkout {
-            path: "/src/notes".into(),
-            branch: String::new(),
-        };
-    });
-    assert!(press(&mut world.app, KeyCode::Char('d')).is_empty());
-    assert!(
-        world
-            .app
-            .note
-            .as_ref()
-            .unwrap()
-            .text
-            .contains("not a git repository")
-    );
-}
-
-#[test]
 fn d_on_a_session_shows_the_changes_of_its_workspace() {
     let mut world = world();
     world.app.selected = Some(Row::Session(world.session.id));
@@ -350,4 +314,26 @@ fn list_line(screen: &str, text: &str) -> String {
         .find(|line| line.contains(text))
         .unwrap_or_else(|| panic!("no line with {text:?} in\n{screen}"));
     line.chars().take(34).collect()
+}
+
+#[test]
+fn d_is_refused_where_git_cannot_tell() {
+    let mut world = world();
+    world.app.selected = Some(Row::Worktree(world.worktree.id));
+    upsert(&mut world, |worktree| {
+        worktree.kind = WorkspaceKind::Checkout {
+            path: "/src/notes".into(),
+            branch: String::new(),
+        };
+    });
+    assert!(press(&mut world.app, KeyCode::Char('d')).is_empty());
+    assert!(
+        world
+            .app
+            .note
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("not a git repository")
+    );
 }

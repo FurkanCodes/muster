@@ -37,12 +37,12 @@ mine: boolean,
  * Where they are, the same for every project that lists the same
  * tickets from a tracker that is no repository's own: a Jira
  * site's query, a Linear team's issues. `None` for a repository's
- * own issues (GitHub's, GitLab's), and from a daemon before
- * protocol 21. Projects with the same are offered together.
+ * own issues (GitHub's, GitLab's). Projects with the same are offered
+ * together.
  */
 source: string | null, } } | { "IssueStarted": { workspace: WorkspaceId, session: SessionId, } } | { "IssueViewed": { issue: Issue, body: string, 
 /**
  * What was said on it after, oldest first: none from a tracker
- * that gives none, and from a daemon before protocol 50.
+ * that gives none.
  */
 comments: Array<IssueComment>, } } | { "RunStarted": { id: RunId, } } | { "RunHistory": { transitions: Array<RunTransition>, } } | { "PullRequestOpened": { pr: PullRequest, } } | { "ProjectSettings": ProjectSettings } | { "Health": Health } | { "Explanation": Explanation } | { "Models": Array<string> } | { "Agents": Array<AgentFound> } | { "Repositories": Array<HostedRepository> } | { "Changes": Changes } | { "FileDiff": FileDiff } | { "Timeline": Timeline } | { "UndoPlan": UndoPlan } | { "Undone": { entry: number, moved_branch: boolean, } } | { "Moved": { onto: string, commits: number, entry: number, } } | { "RunTakenOver": { workspace: WorkspaceId, session: SessionId, } } | { "Plugins": PluginList } | { "PluginPreview": PluginPreview } | { "PluginLog": { id: string, log: string, } } | { "HooksTried": HooksTried } | { "SessionText": { text: string | null, } } | { "AgentCommand": { program: string, args: Array<string>, env: Array<[string, string]>, } } | "Done";

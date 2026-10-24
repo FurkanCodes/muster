@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use muster_core::front::{AGENT_ENDED, AGENT_VARIABLE};
-use muster_core::protocol::{Command, EXEC_PROTOCOL, Reply};
+use muster_core::protocol::{Command, Reply};
 use muster_core::{Paths, SessionId};
 use nix::sys::signal::{Signal, raise};
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
@@ -94,9 +94,6 @@ async fn command_line(
     let mut connection = commands::connect(&paths.socket())
         .await
         .map_err(|error| error.to_string())?;
-    if connection.welcome().version < EXEC_PROTOCOL {
-        return Err("the daemon running is older than this muster".to_owned());
-    }
     let reply = connection
         .command(Command::ExecAgent {
             session,

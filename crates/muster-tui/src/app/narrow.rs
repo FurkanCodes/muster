@@ -7,7 +7,7 @@
 //! list does not show is not streamed, so nothing it does counts as seen.
 
 use muster_core::protocol::Command;
-use muster_core::settings::{PreferenceChange, SIDE_BY_SIDE_CHOICES, SIDE_BY_SIDE_PROTOCOL};
+use muster_core::settings::{PreferenceChange, SIDE_BY_SIDE_CHOICES};
 
 use super::{Action, App, Dialog, Help, Mode, Then};
 
@@ -51,17 +51,11 @@ impl App {
         !crate::view::browse_areas(self, window).preview.is_empty()
     }
 
-    /// Whether the daemon keeps the width a session sits beside the list
-    /// from.
-    pub(crate) fn side_by_side_known(&self) -> bool {
-        self.daemon_protocol >= SIDE_BY_SIDE_PROTOCOL
-    }
-
     /// The width a session sits beside the list from, `by` choices on
     /// (`SIDE_BY_SIDE_CHOICES`), round from the widest to any width with
     /// `round`, else no further than either end.
     pub(super) fn step_side_by_side(&mut self, by: isize, round: bool) -> Vec<Action> {
-        if !self.side_by_side_known() || self.side_by_side_changing() {
+        if self.side_by_side_changing() {
             return Vec::new();
         }
         let now = self.model.preferences().side_by_side_from;

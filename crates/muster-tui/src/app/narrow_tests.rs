@@ -236,13 +236,3 @@ fn from_the_widest_the_next_width_is_any() {
     let change = asked(&press(&mut world.app, KeyCode::Enter)).unwrap().1;
     assert_eq!(change, PreferenceChange::SideBySideFrom(0));
 }
-
-#[test]
-fn a_daemon_that_does_not_keep_the_width_is_not_asked_to_change_it() {
-    let mut world = world();
-    world.app.daemon_protocol = muster_core::settings::SIDE_BY_SIDE_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::SideBySide));
-    // The window still follows the width it has, by default.
-    world.app.on_resize(NARROW);
-    assert!(world.app.narrow());
-}

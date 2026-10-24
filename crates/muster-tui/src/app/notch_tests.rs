@@ -6,7 +6,7 @@ use crossterm::event::KeyCode;
 use muster_core::protocol::{
     ClientFrame, Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame, Snapshot,
 };
-use muster_core::settings::{NOTCH_PROTOCOL, PreferenceChange, Preferences};
+use muster_core::settings::{PreferenceChange, Preferences};
 
 use super::tests::{World, command, press, render, world};
 use super::{Action, App, Mode, SettingRow, View};
@@ -68,14 +68,6 @@ fn the_daemon_is_told_whether_the_person_looks_at_this_window() {
         app.on_connected("0.1.0".to_owned())
             .contains(&looking(false))
     );
-
-    // A daemon before the notch is never sent it.
-    app.daemon_protocol = NOTCH_PROTOCOL - 1;
-    assert_eq!(
-        app.on_connected("0.1.0".to_owned()),
-        [Action::Send(ClientFrame::Subscribe)]
-    );
-    assert!(app.on_focus(true).is_empty());
 }
 
 #[test]
@@ -174,14 +166,6 @@ fn the_snapshot_on_a_mac_starts_the_notch() {
         ..Snapshot::default()
     };
     let actions = world.app.on_frame(ServerFrame::Snapshot(off));
-    assert!(!actions.contains(&Action::StartNotch), "{actions:?}");
-
-    // A daemon before the notch: no.
-    world.app.daemon_protocol = NOTCH_PROTOCOL - 1;
-    world.app.on_connected("0.1.0".to_owned());
-    let actions = world
-        .app
-        .on_frame(ServerFrame::Snapshot(Snapshot::default()));
     assert!(!actions.contains(&Action::StartNotch), "{actions:?}");
 }
 
@@ -293,7 +277,4 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Plugins,
         SettingRow::AddPlugin
     ]));
-    world.app.daemon_protocol = NOTCH_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::Notch));
-    assert!(!world.app.setting_rows().contains(&SettingRow::Agents));
 }

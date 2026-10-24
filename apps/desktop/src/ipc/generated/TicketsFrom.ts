@@ -4,12 +4,14 @@
  * Where a project's tickets are, as `[tickets]` writes it: the ticket
  * plugin, by its id, and what it needs to find them, as its manifest
  * declares (`[[tickets.settings]]`).
- *
- * On the wire from protocol 42 as `tracker` and `fields`. Until 41 a
- * tracker was one of Muster's four, with Jira's and Linear's settings as
- * fields of their own: those four keys are written beside `fields` too,
- * and read where `fields` does not say them, so an older peer reads
- * Muster's own trackers as it did (`ARC-09`); one of anyone else's never
- * reaches it ([`crate::protocol::Reply::for_version`]).
  */
-export type TicketsFrom = { tracker: string, fields: { [key in string]: string }, site?: string | null, project?: string | null, jql?: string | null, team?: string | null, };
+export type TicketsFrom = { 
+/**
+ * The ticket plugin: `github`, `gitlab`, `jira`, `linear`, or
+ * anyone's.
+ */
+tracker: string, 
+/**
+ * What `[tickets]` says for it, by key: Jira's `site` and `project`.
+ */
+fields: { [key in string]: string }, };

@@ -38,6 +38,13 @@ pub enum ClientError {
     /// could not, said in its words.
     #[error("{0}")]
     Carrier(String),
+    /// A frame the daemon's protocol does not have (`ClientFrame::since`):
+    /// it was never sent.
+    #[error(
+        "the running daemon (protocol {daemon}) is older than this asks for (protocol {needs}): \
+         `muster reload` moves it onto the muster installed now"
+    )]
+    DaemonTooOld { needs: u32, daemon: u32 },
     /// A daemon that works answers a hello, and sends its state, at once:
     /// one that does neither within [`ANSWER_WITHIN`] is stuck.
     #[error("the daemon did not {0} within {secs} s; it may be stuck (`muster daemon stop` ends it)", secs = ANSWER_WITHIN.as_secs())]
@@ -156,7 +163,7 @@ impl Connection {
     /// [`next_event`](Self::next_event).
     pub async fn subscribe(&mut self) -> Result<Snapshot, ClientError> {
         within("send its state", async {
-            self.writer.send(&ClientFrame::Subscribe).await?;
+            self.send(ClientFrame::Subscribe).await?;
             loop {
                 match self.receive().await? {
                     ServerFrame::Snapshot(snapshot) => return Ok(snapshot),
@@ -172,9 +179,7 @@ impl Connection {
     pub async fn command(&mut self, command: Command) -> Result<Reply, ClientError> {
         let req_id = self.next_req_id;
         self.next_req_id += 1;
-        self.writer
-            .send(&ClientFrame::Command { req_id, command })
-            .await?;
+        self.send(ClientFrame::Command { req_id, command }).await?;
         loop {
             match self.receive().await? {
                 ServerFrame::Reply {
@@ -280,6 +285,7 @@ impl Connection {
     }
 
     async fn send(&mut self, frame: ClientFrame) -> Result<(), ClientError> {
+        sendable(&frame, self.welcome.version)?;
         Ok(self.writer.send(&frame).await?)
     }
 
@@ -368,6 +374,8 @@ fn identity(answer: Option<ServerFrame>) -> Result<(u32, String), ClientError> {
 /// connection held alive.
 pub struct FrameSender {
     writer: FramedWrite<Writer>,
+    /// The protocol agreed with the daemon.
+    version: u32,
     _held: Option<Held>,
 }
 
@@ -381,8 +389,23 @@ impl FrameSender {
     /// Sends one frame. The caller numbers its commands and matches the
     /// replies the receiving half delivers.
     pub async fn send(&mut self, frame: &ClientFrame) -> Result<(), ClientError> {
+        sendable(frame, self.version)?;
         Ok(self.writer.send(frame).await?)
     }
+}
+
+/// Refuses `frame` where the daemon's protocol, `version`, does not have
+/// it (`ARC-09`): the one check every client makes, as all send through
+/// here.
+fn sendable(frame: &ClientFrame, version: u32) -> Result<(), ClientError> {
+    let needs = frame.since();
+    if needs > version {
+        return Err(ClientError::DaemonTooOld {
+            needs,
+            daemon: version,
+        });
+    }
+    Ok(())
 }
 
 /// The receiving half of a split [`Connection`].
@@ -422,6 +445,7 @@ impl Connection {
         (
             FrameSender {
                 writer: self.writer,
+                version: self.welcome.version,
                 _held: self.held,
             },
             FrameReceiver {
@@ -436,6 +460,32 @@ impl Connection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_frame_the_daemon_s_protocol_lacks_is_never_sent_arc_09() {
+        let exec = ClientFrame::Command {
+            req_id: 1,
+            command: Command::ExecAgent {
+                session: SessionId::new(),
+                harness: "claude".to_owned(),
+                prompt: None,
+            },
+        };
+        assert!(sendable(&exec, 54).is_ok());
+        let refused = sendable(&exec, 53).unwrap_err();
+        assert!(
+            matches!(
+                refused,
+                ClientError::DaemonTooOld {
+                    needs: 54,
+                    daemon: 53
+                }
+            ),
+            "{refused}"
+        );
+        assert!(refused.to_string().contains("muster reload"));
+        assert!(sendable(&ClientFrame::Subscribe, MIN_PROTOCOL_VERSION).is_ok());
+    }
 
     #[tokio::test(start_paused = true)]
     async fn a_daemon_that_never_answers_its_hello_is_said_to_be_stuck() {

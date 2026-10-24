@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::ProjectId;
-use muster_core::plugins::{PluginSource, TICKET_PLUGINS_PROTOCOL, TicketSetting};
+use muster_core::plugins::{PluginSource, TicketSetting};
 use muster_core::protocol::Command;
 use muster_core::protocol::plugins::PluginInfo;
 use muster_core::settings::{ProjectSettings, SettingChange, TicketsFrom};
@@ -98,13 +98,6 @@ impl App {
             // Read or changed just now: the answer is on its way.
             Some(Settings::Loading) | None => return Vec::new(),
         };
-        if self.daemon_protocol < TICKET_PLUGINS_PROTOCOL {
-            self.complain(
-                "The daemon runs an older muster that cannot change this: `muster reload` moves \
-                 it onto this one, every session running on.",
-            );
-            return Vec::new();
-        }
         let tracker = settings.tickets.as_ref().map(|from| from.tracker.clone());
         let fields = self.fields_for(project, tracker.as_deref(), &BTreeMap::new());
         self.mode = Mode::Dialog(Dialog::TicketsFrom {

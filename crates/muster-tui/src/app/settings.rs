@@ -20,10 +20,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use muster_core::ProjectId;
 use muster_core::keys::Action as Does;
 use muster_core::protocol::Command;
-use muster_core::settings::{
-    AGENTS_PROTOCOL, MUSTER_PREFIX_PROTOCOL, PreferenceChange, ProjectSettings,
-    SHARED_BUILDS_PROTOCOL, SettingChange,
-};
+use muster_core::settings::{PreferenceChange, ProjectSettings, SettingChange};
 
 use super::{Action, App, Mode, PluginKey, Then, View};
 
@@ -116,60 +113,50 @@ pub(crate) enum Settings {
 }
 
 impl App {
-    /// The settings list: each project, then its settings; the branches'
-    /// prefix only where the daemon can change it. Then Muster's own, those
-    /// the daemon keeps: the notch, on a Mac, the width a session sits
-    /// beside the list from, the look, and the person's agents, where the
-    /// daemon knows them. Then the plugins, where the daemon has them.
+    /// The settings list: each project, then its settings. Then Muster's
+    /// own, once the state has come: the notch, on a Mac, the
+    /// notifications, the width a session sits beside the list from, the
+    /// look, the layout, naming chats, keys, shared builds, delegation and
+    /// the person's agents. Then the plugins.
     pub(crate) fn setting_rows(&self) -> Vec<SettingRow> {
-        let prefix = self.daemon_protocol >= MUSTER_PREFIX_PROTOCOL;
         let mut rows: Vec<SettingRow> = self
             .model
             .projects()
             .iter()
             .flat_map(|project| {
                 [
-                    Some(SettingRow::Project(project.id)),
-                    Some(SettingRow::OnlyMine(project.id)),
-                    Some(SettingRow::TicketsFrom(project.id)),
-                    prefix.then_some(SettingRow::MusterPrefix(project.id)),
+                    SettingRow::Project(project.id),
+                    SettingRow::OnlyMine(project.id),
+                    SettingRow::TicketsFrom(project.id),
+                    SettingRow::MusterPrefix(project.id),
                 ]
             })
-            .flatten()
             .collect();
-        let told = self.telling_known();
-        let own = [
-            (self.notch_known(), SettingRow::Notch),
-            (self.notifications_known(), SettingRow::Notifications),
-            (told, SettingRow::Tell(muster_core::telling::Kind::Question)),
-            (told, SettingRow::Tell(muster_core::telling::Kind::Finish)),
-            (told, SettingRow::Tell(muster_core::telling::Kind::Error)),
-            (self.side_by_side_known(), SettingRow::SideBySide),
-            (self.look_known(), SettingRow::Colours),
-            (self.look_known(), SettingRow::SessionLines),
-            (self.layout_known(), SettingRow::Panels),
-            (self.naming_known(), SettingRow::NamesByAgent),
-            (self.naming_known(), SettingRow::NamedBy),
-            (self.naming_known(), SettingRow::NamingModel),
-            (self.keys_known(), SettingRow::Keys),
-            (self.shared_builds_known(), SettingRow::SharedBuilds),
-            (self.delegation_known(), SettingRow::Delegation),
-            (self.daemon_protocol >= AGENTS_PROTOCOL, SettingRow::Agents),
-        ];
-        if self.model.loaded() && own.iter().any(|(known, _)| *known) {
+        if self.model.loaded() {
             rows.push(SettingRow::Muster);
-            rows.extend(own.iter().filter(|(known, _)| *known).map(|(_, row)| *row));
+            rows.extend(self.notch_known().then_some(SettingRow::Notch));
+            rows.extend([
+                SettingRow::Notifications,
+                SettingRow::Tell(muster_core::telling::Kind::Question),
+                SettingRow::Tell(muster_core::telling::Kind::Finish),
+                SettingRow::Tell(muster_core::telling::Kind::Error),
+                SettingRow::SideBySide,
+                SettingRow::Colours,
+                SettingRow::SessionLines,
+                SettingRow::Panels,
+                SettingRow::NamesByAgent,
+                SettingRow::NamedBy,
+                SettingRow::NamingModel,
+                SettingRow::Keys,
+                SettingRow::SharedBuilds,
+                SettingRow::Delegation,
+                SettingRow::Agents,
+            ]);
         }
-        if self.model.loaded() && self.plugins_known() {
+        if self.model.loaded() {
             rows.extend(self.plugin_rows());
         }
         rows
-    }
-
-    /// Whether the daemon can have a project's worktrees build into one
-    /// folder.
-    pub(crate) fn shared_builds_known(&self) -> bool {
-        self.daemon_protocol >= SHARED_BUILDS_PROTOCOL
     }
 
     /// ⏎ on *Shared Rust builds*: on, or off.
@@ -184,11 +171,6 @@ impl App {
             Command::ChangePreference(PreferenceChange::SharedBuilds(on)),
             Then::Say(said),
         )]
-    }
-
-    /// Whether the daemon lets agents start agents within limits.
-    pub(crate) fn delegation_known(&self) -> bool {
-        self.daemon_protocol >= muster_core::delegation::DELEGATION_PROTOCOL
     }
 
     /// ⏎ on *Agents start agents*: on, or off.
@@ -230,8 +212,8 @@ impl App {
                 _ => return self.toggle_setting(),
             },
             (_, Some(Does::AddPlugin)) => return self.open_add_plugin(),
-            (_, Some(Does::UpdatePlugin)) if self.plugins_known() => return self.update_plugin(),
-            (_, Some(Does::RemovePlugin)) if self.plugins_known() => {
+            (_, Some(Does::UpdatePlugin)) => return self.update_plugin(),
+            (_, Some(Does::RemovePlugin)) => {
                 return self.confirm_remove_plugin();
             }
             (KeyCode::Left | KeyCode::Right, _)
@@ -247,18 +229,15 @@ impl App {
                 }
             }
             (_, Some(Does::ReadSettings)) => {
-                // Read again as they are shown, edits by hand included:
-                // Muster's own too, where the daemon reads them on asking.
+                // Read again as they are shown, edits by hand included,
+                // Muster's own too.
                 self.settings.clear();
-                if self.daemon_protocol >= AGENTS_PROTOCOL {
-                    let read = self.command(
-                        Command::ReadPreferences,
-                        Then::Say("Read the settings again."),
-                    );
-                    let mut actions = vec![read];
-                    actions.extend(self.settle());
-                    return actions;
-                }
+                let mut actions = vec![self.command(
+                    Command::ReadPreferences,
+                    Then::Say("Read the settings again."),
+                )];
+                actions.extend(self.settle());
+                return actions;
             }
             _ => {}
         }

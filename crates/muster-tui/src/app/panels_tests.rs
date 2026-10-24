@@ -6,7 +6,7 @@
 use crossterm::event::{KeyCode, MouseButton, MouseEventKind};
 use muster_core::layout::{Edge, Layout, Place};
 use muster_core::protocol::{ClientFrame, Command, Delta, Reply, ServerFrame, TermSize};
-use muster_core::settings::{LAYOUT_PROTOCOL, PreferenceChange};
+use muster_core::settings::PreferenceChange;
 use muster_core::time::Timestamp;
 use ratatui::layout::Rect;
 
@@ -127,21 +127,6 @@ fn ctrl_backslash_folds_the_list_away_and_the_session_takes_its_place() {
     );
     assert_eq!(resized(&actions), Some(PANE));
     assert_eq!(areas(&world).list.width, 30);
-}
-
-#[test]
-fn from_a_daemon_that_keeps_no_layout_the_fold_lasts_as_long_as_the_window() {
-    let mut world = shown();
-    world.app.daemon_protocol = LAYOUT_PROTOCOL - 1;
-    let actions = world.app.on_key(ctrl('\\'));
-    assert_eq!(
-        changed(&actions),
-        None,
-        "not sent to a daemon that cannot keep it"
-    );
-    assert!(world.app.list_folded());
-    assert!(areas(&world).list.is_empty());
-    assert!(!world.app.setting_rows().contains(&SettingRow::Panels));
 }
 
 #[test]

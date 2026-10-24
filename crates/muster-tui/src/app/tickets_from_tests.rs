@@ -357,15 +357,6 @@ fn a_jira_site_in_use_is_offered_to_the_next_project() {
 }
 
 #[test]
-fn an_older_daemon_is_never_sent_the_change() {
-    let mut world = on_tickets_from(untold());
-    world.app.daemon_protocol = muster_core::plugins::TICKET_PLUGINS_PROTOCOL - 1;
-    assert!(press(&mut world.app, KeyCode::Enter).is_empty());
-    assert_eq!(world.app.mode, Mode::Browse);
-    assert!(render(&world.app).contains("muster reload"));
-}
-
-#[test]
 fn turning_a_ticket_plugin_off_or_on_fetches_the_tickets_again_prd_15() {
     let mut world = super::tickets_tests::on_tickets();
     let project = world.project.id;

@@ -1,7 +1,6 @@
-//! What the person chooses to be told of, and how it sounds (`PRODUCT.md`
-//! §6): questions, finishes and errors, each on or off with a sound of its
-//! own (`[notifications]` in Muster's own settings). From protocol 40.
-//! Pure (`ARC-01`).
+//! What the person chooses to be told of, and how it sounds (`PRODUCT.md` §6):
+//! questions, finishes and errors, each on or off with a sound of its own
+//! (`[notifications]` in Muster's own settings). Pure (`ARC-01`).
 
 use std::fmt;
 

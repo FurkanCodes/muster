@@ -3,7 +3,10 @@
 //! Versioning rules (`ARC-09`):
 //! - every change to these types bumps [`PROTOCOL_VERSION`];
 //! - a new optional field carries `#[serde(default)]`;
-//! - a new variant is sent only to a peer whose agreed version knows it;
+//! - a new variant is sent only to a peer whose agreed version knows it:
+//!   a client's frame says its version in [`ClientFrame::since`], which
+//!   `muster-client` checks once for every client; the first delta that
+//!   needs it adds a `Delta::since` the daemon checks as it sends;
 //! - removing or renaming anything also raises [`MIN_PROTOCOL_VERSION`];
 //! - the handshake ([`Hello`], [`Welcome`], [`Incompatible`], the error for
 //!   a frame before the hello) and the frame header never change shape:
@@ -11,156 +14,7 @@
 //!   raising [`PROTOCOL_VERSION`] adds that version's (see
 //!   `tests/frozen_protocol.rs`).
 //!
-//! Until the first release the protocol may change in ways older peers
-//! cannot read, but each such change still bumps both versions, so a daemon
-//! left running by an older build and a newer client say they do not match
-//! instead of misreading each other. Version 2 added restarting and removing
-//! sessions; version 3 projects' own checkouts as workspaces, removing
-//! projects, mouse modes, and watching that follows the client's focus;
-//! version 4 the wait on a harness asking before it starts; version 5 runs;
-//! version 6 the person's request for changes on a run; version 7 runs'
-//! containers as workspaces, and taking a run over; version 8 handing a
-//! person's branch to the autopilot; version 9 the checks by hand; version
-//! 10 a review and a draft pull request by hand; version 11 a ticket's
-//! text, and another agent on a ticket; version 12 closing a ticket; version
-//! 13 more harnesses, and a wait their own display reports (`WaitReason::Action`);
-//! version 14 tickets by key from more trackers; version 15 the settings a
-//! person changes on the Settings screen, and whether a listing of tickets
-//! has only theirs; version 16 when each session came to its status, and
-//! what it is doing now.
-//!
-//! Since the first release, a change keeps older peers working where it
-//! can: version 17 (from 16) is where a project's tickets are chosen on the
-//! Settings screen (`SettingChange::TicketsFrom`, sent only to a daemon of
-//! 17 or later), and the settings saying where they are written; version
-//! 18 the pull request from each workspace's branch
-//! (`Workspace::pull_request`, an optional field older clients pass over);
-//! version 19 what each session's agent has used (`Session::spend`, the
-//! same); version 20 whether a project's branches start with `muster/`
-//! (`SettingChange::MusterPrefix`, sent only to a daemon of 20 or later, and
-//! `ProjectSettings::muster_prefix`); version 21 where a listing's tickets
-//! are, so projects sharing them are offered together
-//! (`Reply::Issues::source`); version 22 how the daemon is doing inside,
-//! for `muster status` (`Command::Health`, sent only to a daemon of 22 or
-//! later); version 23 the notch: whether the person looks at any client
-//! (`ClientFrame::Looking`, sent only to a daemon of 23 or later;
-//! `Snapshot::looked_at`, and `Delta::LookedAt`, sent only to a client of
-//! 23 or later), showing a session in the client looked at last
-//! (`Command::Reveal`, `ServerFrame::Reveal`), and Muster's own settings
-//! (`Snapshot::preferences`, `Delta::Preferences`,
-//! `Command::ChangePreference`); version 24 what a workspace's work has
-//! changed (`Workspace::changes`, an optional field older clients pass
-//! over; `Command::WorkspaceChanges` and `Command::FileDiff`, sent only to
-//! a daemon of 24 or later); version 25 each workspace's timeline of turns
-//! and putting its files back from one (`Workspace::timeline`, the same;
-//! `Command::Timeline`, `Command::EntryDiff`, `Command::UndoPlan` and
-//! `Command::Undo`, sent only to a daemon of 25 or later); version 26 where
-//! the work in a project's workspaces meets (`Workspace::clashes`, a field
-//! older clients pass over); version 27 tidying a branch's commits
-//! (`Command::TidyCommits`, sent only to a daemon of 27 or later, and
-//! `Session::tidy`, a field older clients pass over); version 28 stacked
-//! work (`Workspace::stacked_on`, the same; `CreateWorktree::on` and
-//! `StartFromIssue::on`, and `Command::MoveOnto`, sent only to a daemon of
-//! 28 or later; a timeline's entries of `EntryKind::Moved` reach an older
-//! client as `EntryKind::Between`, [`Reply::for_version`]); version 29 the
-//! coding agents the person added in Muster's own settings
-//! (`Preferences::agents`, and why those settings do not read,
-//! `Preferences::problem`, fields older clients pass over), and reading
-//! those settings again (`Command::ReadPreferences`, sent only to a daemon
-//! of 29 or later); version 30 why a session has its status
-//! (`Command::ExplainSession`, sent only to a daemon of 30 or later,
-//! answered with `Reply::Explanation`); version 31 a
-//! session's terminal as in a real one: the colours of the person's
-//! terminal, which programs in sessions are told when they ask
-//! (`ClientFrame::Colours`, sent only to a daemon of 31 or later), and
-//! which session has the person's keys, for programs that asked to be
-//! told as their terminal gains and loses focus (`ClientFrame::Keys`, the
-//! same), and the size of a session's terminal in pixels
-//! (`ClientFrame::Resize::pixels`, a field older daemons pass over);
-//! version 32 the width from which a session sits beside the list
-//! (`Preferences::side_by_side_from`, a field older clients pass over;
-//! `PreferenceChange::SideBySideFrom`, sent only to a daemon of 32 or
-//! later); version 33 where a replay's output was written while the client
-//! was attached (`ServerFrame::Replay::live_from`, a field older clients
-//! pass over), so a program's copy there reaches the clipboard; version 34
-//! chats named by their first prompt and renamed by the person
-//! (`Command::RenameSession`, sent only to a daemon of 34 or later);
-//! version 35 the UI's look, whose colours it draws in and how many lines a
-//! session's line takes (`Preferences::palette` and
-//! `Preferences::session_lines`, fields older clients pass over;
-//! `PreferenceChange::Palette` and `PreferenceChange::SessionLines`, sent
-//! only to a daemon of 35 or later); version 36 where the UI's panels are
-//! and whether its list is folded away (`Preferences::panels` and
-//! `Preferences::list_folded`, fields older clients pass over;
-//! `PreferenceChange::Panels` and `PreferenceChange::ListFolded`, sent only
-//! to a daemon of 36 or later); version 37 chats named by an agent
-//! (`Preferences::naming` and `AddedAgent::asks`, fields older clients pass
-//! over; `PreferenceChange::NamesByAgent` and `PreferenceChange::NamedBy`,
-//! and `Command::ListModels`, answered with `Reply::Models`, sent only to a
-//! daemon of 37 or later); version 38 the person's own keys
-//! (`Preferences::keys`, a field older clients pass over;
-//! `PreferenceChange::Keys` and `PreferenceChange::AllKeysBack`, sent only
-//! to a daemon of 38 or later); version 39 notifications of the Mac's own
-//! (`Preferences::notifications` and `Snapshot::notifier`, fields older
-//! clients pass over; `ClientFrame::Notifier`, `PreferenceChange::
-//! Notifications`, sent only to a daemon of 39 or later; `Delta::Notifier`,
-//! sent only to a client of 39 or later); version 40 which notifications
-//! and their sounds (`Preferences::telling`, a field older clients pass
-//! over; `PreferenceChange::Tell`, sent only to a daemon of 40 or later);
-//! version 41 plugins (`Command::Plugin`, sent only to a daemon of 41 or
-//! later, answered with `Reply::Plugins` and `Reply::PluginPreview`;
-//! `Snapshot::plugins`, a field older clients pass over; and
-//! `Delta::PluginsChanged`, sent only to a client of 41 or later); version
-//! 42 tickets through plugins: a project's tracker is a ticket plugin's id
-//! with what its `[tickets]` says for it (`TicketsFrom::tracker` and
-//! `TicketsFrom::fields`, with Jira's and Linear's keys written beside
-//! them as older peers read them, sent only to a daemon of 42 or later; a
-//! project's settings naming anyone else's plugin reach an older client
-//! without it, [`Reply::for_version`]), and a plugin's log
-//! (`PluginCommand::Log`, sent only to a daemon of 42 or later, answered
-//! with `Reply::PluginLog`); version
-//! 43 plugins' panels (`PluginCommand::OpenPanel`, sent only to a daemon
-//! of 43 or later; `Session::beside`, a field older clients pass over; an
-//! older client is sent no panel's session, and a layout and keys without
-//! a panel's, [`Snapshot::for_version`] and [`Delta::for_version`]);
-//! version 44 plugins' hooks (`PluginDetails::hooks`, a field older
-//! clients pass over, and a preview with hooks refused to them,
-//! `plugins::shown_to`; `PluginCommand::TryHooks`, sent only to a daemon
-//! of 44 or later, answered with `Reply::HooksTried`); version 45 where
-//! each coding agent is installed and its version (`Command::Agents`, sent
-//! only to a daemon of 45 or later, answered with `Reply::Agents`); version
-//! 46 the screen a replay that starts over ends on, drawn whole
-//! (`ServerFrame::Replay::screen`, a field older clients pass over);
-//! version 47 a Rust project's worktrees building into one folder
-//! (`Preferences::shared_builds`, a field older clients pass over;
-//! `PreferenceChange::SharedBuilds`, sent only to a daemon of 47 or
-//! later); version 48 the ticket a worktree was made for
-//! (`Workspace::ticket`, a field older clients pass over); version 49
-//! cloning a project from GitHub (`Command::ListRepositories` and
-//! `Command::CloneProject`, sent only to a daemon of 49 or later, answered
-//! with `Reply::Repositories` and `Reply::ProjectAdded`); version 50 what
-//! was said on a ticket after it was filed (`Reply::IssueViewed::comments`,
-//! a field older clients pass over), and which of it an agent is given
-//! (`Command::StartFromIssue::brief`, sent only to a daemon of 50 or
-//! later); version 51 agents setting agents working through the command
-//! line (`PRD-01`): the session that started one (`Session::started_by`, a
-//! field older clients pass over; `StartSession::started_by`), a worktree's
-//! branch named from a prompt (`CreateWorktree::named_for`), what a
-//! session shows and its agent's last answer, as text (`Command::ReadSession`,
-//! answered with `Reply::SessionText`) and
-//! the limits the person sets (`Preferences::delegation`, a field older
-//! clients pass over; `PreferenceChange::AgentsStartAgents`), each sent
-//! only to a daemon of 51 or later
-//! ([`crate::delegation::DELEGATION_PROTOCOL`]); version 52 a session shown
-//! in place of another where the person watches it, as a terminal tab of
-//! the command line follows a session started from inside it
-//! (`Command::Switch`), and a ticket made a worktree's as the person asks
-//! (`Command::AssignTicket`), each sent only to a daemon of 52 or later;
-//! version 53 the coding agent running in front in a terminal
-//! (`Session::agent`, a field older clients pass over); version 54 an
-//! agent run in a terminal's foreground with Muster's hooks
-//! (`Command::ExecAgent`, answered with `Reply::AgentCommand`, sent only
-//! to a daemon of 54 or later).
+//! What each version added is in git's history, not here.
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -170,7 +24,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod agents;
-mod older;
 pub mod plugins;
 pub mod repositories;
 mod state;
@@ -190,13 +43,10 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 54;
-/// The first protocol whose daemon takes [`Command::Switch`].
-pub const SWITCH_PROTOCOL: u32 = 52;
-/// The first protocol whose daemon takes [`Command::ExecAgent`].
-pub const EXEC_PROTOCOL: u32 = 54;
-/// The oldest protocol this build still speaks.
-pub const MIN_PROTOCOL_VERSION: u32 = 16;
+pub const PROTOCOL_VERSION: u32 = 55;
+/// The oldest protocol this build still speaks: v0.5.7's, the first of
+/// Muster on other machines. Older clients and daemons are told to update.
+pub const MIN_PROTOCOL_VERSION: u32 = 54;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -299,34 +149,46 @@ pub enum ClientFrame {
     Resize {
         session: SessionId,
         size: TermSize,
-        /// Its size in pixels, where the person's terminal says its own:
-        /// for programs that size pictures or a cursor by it. From protocol
-        /// 31; older daemons pass it over.
+        /// Its size in pixels, where the person's terminal says its own: for
+        /// programs that size pictures or a cursor by it.
         #[serde(default)]
         pixels: Option<PixelSize>,
     },
-    /// Whether the person is looking at this client's window: a UI says
-    /// so as it connects and whenever its window gains or loses focus. A
-    /// client that never says is not looked at. Sent only to a daemon of
-    /// 23 or later.
+    /// Whether the person is looking at this client's window: a UI says so as
+    /// it connects and whenever its window gains or loses focus. A client that
+    /// never says is not looked at.
     Looking { looking: bool },
     /// The colours of the person's terminal, as the UI found them as it
     /// started: a program in a session asking its terminal for its colours
-    /// (OSC 10, 11 and 4) is told these, the last a UI said. Sent only to a
-    /// daemon of 31 or later, and only with a colour in it.
+    /// (OSC 10, 11 and 4) is told these, the last a UI said. Sent only with
+    /// a colour in it.
     Colours(TerminalColours),
     /// Which session's terminal is in focus in this client, if any: the
     /// one shown, beside the list or filling the window, in a window the
     /// person looks at, whether or not it has the keys. A program that
     /// asked to be told its terminal's focus (`CSI ? 1004 h`) is sent
     /// `CSI I` as its session comes into focus in any client and `CSI O`
-    /// as it leaves it in every one. Sent whenever it changes, only to a
-    /// daemon of 31 or later.
+    /// as it leaves it in every one. Sent whenever it changes.
     Keys { session: Option<SessionId> },
-    /// Muster's helper on a Mac can show notifications of the Mac's own,
-    /// the person having allowed them, or no longer can. Sent only to a
-    /// daemon of 39 or later.
+    /// Muster's helper on a Mac can show notifications of the Mac's own, the
+    /// person having allowed them, or no longer can.
     Notifier { ready: bool },
+}
+
+impl ClientFrame {
+    /// The first protocol whose daemon reads this frame (`ARC-09`), which
+    /// `muster-client` checks before it sends one: a frame added after
+    /// [`MIN_PROTOCOL_VERSION`] says its version here.
+    #[must_use]
+    pub fn since(&self) -> u32 {
+        match self {
+            Self::Command {
+                command: Command::ExecAgent { .. },
+                ..
+            } => 54,
+            _ => MIN_PROTOCOL_VERSION,
+        }
+    }
 }
 
 fn watching_by_default() -> bool {
@@ -367,7 +229,6 @@ pub enum ServerFrame {
         /// output the client was not sent as it came, so what the program
         /// does in it (a copy) counts as in [`ServerFrame::Output`].
         /// `None` in the replay that starts a stream: it is all history.
-        /// Protocol 33; an older daemon says nothing, read as `None`.
         #[serde(default)]
         live_from: Option<u64>,
         /// With `reset`, the program's screen as it stands at the end of
@@ -376,8 +237,7 @@ pub enum ServerFrame {
         /// as escape sequences. `data`, cut from the middle of the output
         /// once the daemon no longer holds its start, cannot draw it on its
         /// own: a client draws this after it, `data` then being history for
-        /// its scrollback. It takes no place in the output. Protocol 46; an
-        /// older daemon says nothing, read as `None`.
+        /// its scrollback. It takes no place in the output.
         #[serde(default, with = "serde_bytes")]
         #[cfg_attr(feature = "ts", ts(type = "Array<number> | null"))]
         screen: Option<Vec<u8>>,
@@ -432,15 +292,13 @@ pub enum Command {
     CreateWorktree {
         project: ProjectId,
         branch: Option<String>,
-        /// The workspace whose branch a new branch is made on top of,
-        /// rather than on what the checkout has. Sent only to a daemon of
-        /// 28 or later.
+        /// The workspace whose branch a new branch is made on top of, rather
+        /// than on what the checkout has.
         #[serde(default)]
         on: Option<WorkspaceId>,
-        /// With no `branch`, a new branch named from these words (a
-        /// prompt's: `muster/fix-the-login`), `-2`, `-3`… where that is
-        /// taken, never an existing branch. Sent only to a daemon of 51 or
-        /// later.
+        /// With no `branch`, a new branch named from these words (a prompt's:
+        /// `muster/fix-the-login`), `-2`, `-3`… where that is taken, never an
+        /// existing branch.
         #[serde(default)]
         named_for: Option<String>,
     },
@@ -459,9 +317,9 @@ pub enum Command {
         /// A first prompt, for harnesses that take one.
         #[serde(default)]
         prompt: Option<String>,
-        /// The agent's session asking, where an agent runs the command
-        /// line (`PRD-01`): the daemon refuses past the person's limits
-        /// and marks what it starts. Sent only to a daemon of 51 or later.
+        /// The agent's session asking, where an agent runs the command line
+        /// (`PRD-01`): the daemon refuses past the person's limits and marks
+        /// what it starts.
         #[serde(default)]
         started_by: Option<SessionId>,
     },
@@ -489,12 +347,11 @@ pub enum Command {
         harness: String,
         size: TermSize,
     },
-    /// Move a workspace's branch onto the newest commit of the branch it
-    /// is stacked on, or of its base once that has merged, or of its base
-    /// where it is not stacked, as the person asked (`PRD-14`): its own
-    /// commits replayed there, and nothing changed where one would
-    /// conflict; refused while an agent works there. Answered with
-    /// [`Reply::Moved`]. Sent only to a daemon of 28 or later.
+    /// Move a workspace's branch onto the newest commit of the branch it is
+    /// stacked on, or of its base once that has merged, or of its base where it
+    /// is not stacked, as the person asked (`PRD-14`): its own commits replayed
+    /// there, and nothing changed where one would conflict; refused while an
+    /// agent works there. Answered with [`Reply::Moved`].
     MoveOnto { workspace: WorkspaceId },
     /// Push a workspace's branch, as committed, with the person's own git,
     /// and open a draft pull request from it, or find the one open;
@@ -508,7 +365,6 @@ pub enum Command {
     /// Take an ended session off the list. Its history is kept.
     RemoveSession { session: SessionId },
     /// Give a session the name `title` (`muster_core::names::given`).
-    /// Sent only to a daemon of 34 or later.
     RenameSession { session: SessionId, title: String },
     /// List a project's open tickets, newest first, from its tracker.
     ListIssues { project: ProjectId },
@@ -522,35 +378,29 @@ pub enum Command {
     /// The project's settings that the person can change, as they stand;
     /// answered with [`Reply::ProjectSettings`].
     ProjectSettings { project: ProjectId },
-    /// What a workspace's work has changed: what is not committed, and
-    /// the branch's commits since it left the branch it is to merge into,
-    /// with their files; answered with [`Reply::Changes`]. Sent only to a
-    /// daemon of 24 or later.
+    /// What a workspace's work has changed: what is not committed, and the
+    /// branch's commits since it left the branch it is to merge into, with
+    /// their files; answered with [`Reply::Changes`].
     WorkspaceChanges { workspace: WorkspaceId },
-    /// One changed file's diff, in one part of a workspace's change;
-    /// answered with [`Reply::FileDiff`]. Sent only to a daemon of 24 or
-    /// later.
+    /// One changed file's diff, in one part of a workspace's change; answered
+    /// with [`Reply::FileDiff`].
     FileDiff {
         workspace: WorkspaceId,
         part: ChangePart,
         path: String,
     },
-    /// A workspace's timeline: each agent's turn there, what changed
-    /// between them, and each undoing, newest first; answered with
-    /// [`Reply::Timeline`]. Sent only to a daemon of 25 or later.
+    /// A workspace's timeline: each agent's turn there, what changed between
+    /// them, and each undoing, newest first; answered with [`Reply::Timeline`].
     Timeline { workspace: WorkspaceId },
-    /// What one entry of a workspace's timeline changed, as a diff;
-    /// answered with [`Reply::FileDiff`]. Sent only to a daemon of 25 or
-    /// later.
+    /// What one entry of a workspace's timeline changed, as a diff; answered
+    /// with [`Reply::FileDiff`].
     EntryDiff { workspace: WorkspaceId, number: u64 },
     /// What putting the files back as they were before an entry would do;
-    /// answered with [`Reply::UndoPlan`]. Sent only to a daemon of 25 or
-    /// later.
+    /// answered with [`Reply::UndoPlan`].
     UndoPlan { workspace: WorkspaceId, number: u64 },
-    /// Put a workspace's files back as they were before an entry, as the
-    /// person asked, and with `move_branch` its branch too where it can
-    /// go (`PRD-14`); refused while an agent works there. Answered with
-    /// [`Reply::Undone`]. Sent only to a daemon of 25 or later.
+    /// Put a workspace's files back as they were before an entry, as the person
+    /// asked, and with `move_branch` its branch too where it can go (`PRD-14`);
+    /// refused while an agent works there. Answered with [`Reply::Undone`].
     Undo {
         workspace: WorkspaceId,
         number: u64,
@@ -558,79 +408,65 @@ pub enum Command {
         move_branch: bool,
     },
     /// How the daemon is doing inside, answered with [`Reply::Health`].
-    /// Sent only to a daemon of protocol 22 or later.
     Health,
-    /// Why a session has its status: what its machine holds and the
-    /// signals it last received; answered with [`Reply::Explanation`].
-    /// Sent only to a daemon of 30 or later.
+    /// Why a session has its status: what its machine holds and the signals it
+    /// last received; answered with [`Reply::Explanation`].
     ExplainSession { session: SessionId },
-    /// A session's screen as it stands, or the answer its agent's last
-    /// turn ended with, as text; answered with [`Reply::SessionText`]. Sent
-    /// only to a daemon of 51 or later.
+    /// A session's screen as it stands, or the answer its agent's last turn
+    /// ended with, as text; answered with [`Reply::SessionText`].
     ReadSession { session: SessionId, what: Reading },
     /// Show a session in the Muster window the person looked at last
-    /// ([`ServerFrame::Reveal`]); refused when no window is open. Sent
-    /// only to a daemon of 23 or later.
+    /// ([`ServerFrame::Reveal`]); refused when no window is open.
     Reveal { session: SessionId },
-    /// Show `to` instead of `from` wherever the person is watching `from`
-    /// now: a terminal tab of the command line attached to it, or a window
-    /// showing it, is sent [`ServerFrame::Reveal`] for `to`. So a session
-    /// started from inside a session's terminal (`muster claude` typed in a
-    /// workspace's shell) takes the place the person typed in. Answered
-    /// with [`Reply::Done`], or refused when nothing shows `from`. Sent only
-    /// to a daemon of 52 or later ([`SWITCH_PROTOCOL`]).
+    /// Show `to` instead of `from` wherever the person is watching `from` now:
+    /// a terminal tab of the command line attached to it, or a window showing
+    /// it, is sent [`ServerFrame::Reveal`] for `to`. So a session started from
+    /// inside a session's terminal (`muster claude` typed in a workspace's
+    /// shell) takes the place the person typed in. Answered with
+    /// [`Reply::Done`], or refused when nothing shows `from`.
     Switch { from: SessionId, to: SessionId },
-    /// Make `workspace` (a worktree) the one ticket `key` is worked on in,
-    /// as the person asked; `None` makes it no ticket's. Its agents are then
-    /// the ticket's, and starting work on the ticket goes there. Refused for
-    /// a project's own checkout, and where another worktree of the project
-    /// has the ticket. Answered with [`Reply::Done`]. Sent only to a daemon
-    /// of 52 or later ([`SWITCH_PROTOCOL`]).
+    /// Make `workspace` (a worktree) the one ticket `key` is worked on in, as
+    /// the person asked; `None` makes it no ticket's. Its agents are then the
+    /// ticket's, and starting work on the ticket goes there. Refused for a
+    /// project's own checkout, and where another worktree of the project has
+    /// the ticket. Answered with [`Reply::Done`].
     AssignTicket {
         workspace: WorkspaceId,
         key: Option<TicketKey>,
     },
-    /// Run coding agent `harness` in the foreground of terminal `session`,
-    /// as `muster exec` asks from inside it (`muster init`'s functions):
-    /// with the terminal's hooks and a session id the daemon chooses, and
-    /// `prompt` to start on, heard from now as the terminal's agent
-    /// (`ARC-28`). Answered with [`Reply::AgentCommand`], which the asker
-    /// runs. Sent only to a daemon of 54 or later ([`EXEC_PROTOCOL`]).
+    /// Run coding agent `harness` in the foreground of terminal `session`, as
+    /// `muster exec` asks from inside it (`muster init`'s functions): with the
+    /// terminal's hooks and a session id the daemon chooses, and `prompt` to
+    /// start on, heard from now as the terminal's agent (`ARC-28`). Answered
+    /// with [`Reply::AgentCommand`], which the asker runs.
     ExecAgent {
         session: SessionId,
         harness: String,
         #[serde(default)]
         prompt: Option<String>,
     },
-    /// Change one of Muster's own settings, in the person's own file;
-    /// answered with [`Reply::Done`], every client told by
-    /// [`Delta::Preferences`]. Sent only to a daemon of 23 or later.
+    /// Change one of Muster's own settings, in the person's own file; answered
+    /// with [`Reply::Done`], every client told by [`Delta::Preferences`].
     ChangePreference(PreferenceChange),
-    /// Read Muster's own settings again, after the person edited them by
-    /// hand: the agents they added among them. Answered with
-    /// [`Reply::Done`], every client told by [`Delta::Preferences`]. Sent
-    /// only to a daemon of 29 or later.
+    /// Read Muster's own settings again, after the person edited them by hand:
+    /// the agents they added among them. Answered with [`Reply::Done`], every
+    /// client told by [`Delta::Preferences`].
     ReadPreferences,
-    /// The models the coding agent `agent` (a harness's id) offers for
-    /// naming chats: those it lists, where it can, else those Muster
-    /// suggests for it. Answered with [`Reply::Models`]. Sent only to a
-    /// daemon of 37 or later.
+    /// The models the coding agent `agent` (a harness's id) offers for naming
+    /// chats: those it lists, where it can, else those Muster suggests for it.
+    /// Answered with [`Reply::Models`].
     ListModels { agent: String },
-    /// Where each coding agent Muster can start is installed, on the
-    /// daemon's own `PATH`, and the version it says it is: Muster's own and
-    /// those the person added, each program run with `--version`, never
-    /// anything else. Answered with [`Reply::Agents`]. Sent only to a
-    /// daemon of 45 or later ([`agents::AGENTS_FOUND_PROTOCOL`]).
+    /// Where each coding agent Muster can start is installed, on the daemon's
+    /// own `PATH`, and the version it says it is: Muster's own and those the
+    /// person added, each program run with `--version`, never anything else.
+    /// Answered with [`Reply::Agents`].
     Agents,
-    /// The repositories the person can reach on GitHub, through their own
-    /// `gh`, to clone one as a project. Answered with
-    /// [`Reply::Repositories`]. Sent only to a daemon of 49 or later
-    /// ([`repositories::REPOSITORIES_PROTOCOL`]).
+    /// The repositories the person can reach on GitHub, through their own `gh`,
+    /// to clone one as a project. Answered with [`Reply::Repositories`].
     ListRepositories,
     /// Clone `repository` (`owner/name`, or its github.com address) into a
-    /// folder of its name in `into`, through the person's own `gh`, and add
-    /// it as a project. Answered with [`Reply::ProjectAdded`] once cloned.
-    /// Sent only to a daemon of 49 or later.
+    /// folder of its name in `into`, through the person's own `gh`, and add it
+    /// as a project. Answered with [`Reply::ProjectAdded`] once cloned.
     CloneProject { repository: String, into: PathBuf },
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
@@ -685,20 +521,18 @@ pub enum Command {
         /// than in the issue's worktree as it is.
         #[serde(default)]
         another: bool,
-        /// The workspace whose branch a worktree made for the issue is
-        /// made on top of; a worktree found as it is stays as it is. Sent
-        /// only to a daemon of 28 or later.
+        /// The workspace whose branch a worktree made for the issue is made on
+        /// top of; a worktree found as it is stays as it is.
         #[serde(default)]
         on: Option<WorkspaceId>,
         /// What of the ticket the agent is given: its text and the comments
-        /// the person chose; none for its text alone, as before protocol 50.
+        /// the person chose; none for its text alone.
         #[serde(default)]
         brief: Option<crate::TicketBrief>,
     },
     /// Ask of the daemon's plugins: list them, preview, install, update,
     /// turn on or off, or remove one (`ARCHITECTURE.md` §7a), or open one's
-    /// panel. Sent only to a daemon of 41 or later; `OpenPanel` only to one
-    /// of 43 or later.
+    /// panel.
     Plugin(plugins::PluginCommand),
 }
 
@@ -728,8 +562,8 @@ pub enum Reply {
         /// Where they are, the same for every project that lists the same
         /// tickets from a tracker that is no repository's own: a Jira
         /// site's query, a Linear team's issues. `None` for a repository's
-        /// own issues (GitHub's, GitLab's), and from a daemon before
-        /// protocol 21. Projects with the same are offered together.
+        /// own issues (GitHub's, GitLab's). Projects with the same are offered
+        /// together.
         #[serde(default)]
         source: Option<String>,
     },
@@ -743,7 +577,7 @@ pub enum Reply {
         issue: Issue,
         body: String,
         /// What was said on it after, oldest first: none from a tracker
-        /// that gives none, and from a daemon before protocol 50.
+        /// that gives none.
         #[serde(default)]
         comments: Vec<crate::IssueComment>,
     },
@@ -763,14 +597,12 @@ pub enum Reply {
     Health(Health),
     /// Why a session has its status.
     Explanation(Box<crate::explain::Explanation>),
-    /// The models an agent offers, as it listed them or as Muster
-    /// suggests. From protocol 37.
+    /// The models an agent offers, as it listed them or as Muster suggests.
     Models(Vec<String>),
-    /// Where each coding agent is installed, and its version. From
-    /// protocol 45.
+    /// Where each coding agent is installed, and its version.
     Agents(Vec<agents::AgentFound>),
     /// The repositories the person can reach on GitHub, the most recently
-    /// pushed first. From protocol 49.
+    /// pushed first.
     Repositories(Vec<repositories::HostedRepository>),
     /// What a workspace's work has changed.
     Changes(Changes),
@@ -799,27 +631,26 @@ pub enum Reply {
         workspace: WorkspaceId,
         session: SessionId,
     },
-    /// Every plugin. From protocol 41.
+    /// Every plugin.
     Plugins(plugins::PluginList),
-    /// What installing, linking or updating a plugin would do. From
-    /// protocol 41.
+    /// What installing, linking or updating a plugin would do.
     PluginPreview(Box<plugins::PluginPreview>),
-    /// The end of a plugin's log. From protocol 42.
+    /// The end of a plugin's log.
     PluginLog {
         id: String,
         log: String,
     },
-    /// What a plugin's hooks did with a sample event. From protocol 44.
+    /// What a plugin's hooks did with a sample event.
     HooksTried(plugins::HooksTried),
-    /// What a session shows or its agent last answered, as text; `None`
-    /// where there is none: a terminal let go of, no turn ended yet, or an
-    /// agent whose hooks do not tell its answer. From protocol 51.
+    /// What a session shows or its agent last answered, as text; `None` where
+    /// there is none: a terminal let go of, no turn ended yet, or an agent
+    /// whose hooks do not tell its answer.
     SessionText {
         text: Option<String>,
     },
     /// The command line to run an agent in a terminal with
-    /// ([`Command::ExecAgent`]): its program, arguments and the variables
-    /// to add. From protocol 54.
+    /// ([`Command::ExecAgent`]): its program, arguments and the variables to
+    /// add.
     AgentCommand {
         program: String,
         args: Vec<String>,
@@ -827,40 +658,6 @@ pub enum Reply {
     },
     /// The command was carried out and has nothing to report.
     Done,
-}
-
-impl Reply {
-    /// The reply as a client that agreed to `version` can read it: a
-    /// timeline's entries of kinds it does not know are told as edits
-    /// between turns, and a project's tickets from a plugin not Muster's
-    /// own are left out of its settings, as in words they are still said
-    /// (`ARC-09`).
-    #[must_use]
-    pub fn for_version(self, version: u32) -> Self {
-        match self {
-            Self::ProjectSettings(mut settings)
-                if version < crate::plugins::TICKET_PLUGINS_PROTOCOL =>
-            {
-                if settings
-                    .tickets
-                    .as_ref()
-                    .is_some_and(|from| crate::plugins::own::manifest(&from.tracker).is_none())
-                {
-                    settings.tickets = None;
-                }
-                Self::ProjectSettings(settings)
-            }
-            Self::Timeline(mut timeline) if version < crate::stacks::STACKS_PROTOCOL => {
-                for entry in &mut timeline.entries {
-                    if matches!(entry.kind, crate::timeline::EntryKind::Moved { .. }) {
-                        entry.kind = crate::timeline::EntryKind::Between;
-                    }
-                }
-                Self::Timeline(timeline)
-            }
-            other => other,
-        }
-    }
 }
 
 /// What of a session [`Command::ReadSession`] reads.

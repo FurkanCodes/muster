@@ -27,7 +27,7 @@ import { OWN_AGENTS, type OwnAgent } from "./agentList";
 import { type Found, useAgentsFound } from "./agentsFound";
 import { canAsk } from "./asks";
 import { useSettings } from "./context";
-import { DELEGATION_PROTOCOL, rowKey } from "./model";
+import { rowKey } from "./model";
 import { Control, Footnote, Group, Page, SettingRow, SettingText, Unreadable } from "./Row";
 import { oneLine } from "./words";
 
@@ -77,11 +77,7 @@ function Where({
   if (found.state === "asking") return <Loading text="Looking for it" layout="rule" />;
   if (found.state === "not-known")
     return (
-      <span className="mu-quiet">
-        {found.why === "older"
-          ? "where it is installed is not known: Muster's daemon is older than this app"
-          : `where it is installed is not known: ${oneLine(found.why)}`}
-      </span>
+      <span className="mu-quiet">{`where it is installed is not known: ${oneLine(found.why)}`}</span>
     );
   const path = foundOf(found, harness)?.path;
   if (!path)
@@ -235,9 +231,7 @@ export function Agents({ preferences }: { preferences: Preferences }) {
 /** Whether agents may start agents through the command line, and its limits (`PRD-01`). */
 function Delegation({ preferences }: { preferences: Preferences }) {
   const { state, actions } = useSettings();
-  const known = useDaemon(
-    (daemon) => daemon.link.state === "up" && daemon.link.protocol >= DELEGATION_PROTOCOL,
-  );
+  const known = useDaemon((daemon) => daemon.link.state === "up");
   if (!known) return null;
   const id = rowKey("agents", "delegation");
   const { allowed, at_once, depth } = preferences.delegation;

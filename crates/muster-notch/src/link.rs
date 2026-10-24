@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{ClientFrame, Command, ServerFrame, Snapshot};
-use muster_core::settings::{NOTCH_PROTOCOL, NOTIFIER_PROTOCOL};
+
 use muster_core::{SessionId, Timestamp};
 use tokio::sync::mpsc;
 use tokio::time::Instant;
@@ -83,12 +83,6 @@ pub(crate) async fn run(
             Ok(connection) => {
                 gone_since = None;
                 let welcome = connection.welcome().clone();
-                if welcome.version < NOTCH_PROTOCOL {
-                    return Ended::NoDaemon(format!(
-                        "the daemon (muster {}) knows no notch",
-                        welcome.daemon_version
-                    ));
-                }
                 if !same_version(&welcome.daemon_version) {
                     return Ended::NewVersion(welcome.daemon_version);
                 }
@@ -123,7 +117,6 @@ async fn serve(
     can_notify: &mut Option<bool>,
     screen: &impl Fn(ToScreen),
 ) -> Option<Ended> {
-    let notifies = connection.welcome().version >= NOTIFIER_PROTOCOL;
     let (mut sender, mut receiver, _) = connection.into_split();
     sender.send(&ClientFrame::Subscribe).await.ok()?;
     let mut news = News::default();
@@ -189,7 +182,7 @@ async fn serve(
             continue;
         }
         let ready = state.preferences.notifications && *can_notify == Some(true);
-        if notifies && told_ready != Some(ready) {
+        if told_ready != Some(ready) {
             sender.send(&ClientFrame::Notifier { ready }).await.ok()?;
             told_ready = Some(ready);
         }

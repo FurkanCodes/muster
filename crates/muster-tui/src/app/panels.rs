@@ -8,7 +8,7 @@
 
 use muster_core::layout::{Layout, Panel};
 use muster_core::protocol::Command;
-use muster_core::settings::{LAYOUT_PROTOCOL, PreferenceChange};
+use muster_core::settings::PreferenceChange;
 use ratatui::layout::Rect;
 
 use super::{Action, App, Dialog, Help, Mode, Then};
@@ -95,23 +95,15 @@ impl App {
         }
     }
 
-    /// Whether the daemon keeps the layout and the fold.
-    pub(crate) fn layout_known(&self) -> bool {
-        self.daemon_protocol >= LAYOUT_PROTOCOL
-    }
-
     /// The fold key: folds the list away, so the session takes its place,
     /// or brings it back. It works as the person types in the session too.
     pub(super) fn toggle_list(&mut self) -> Vec<Action> {
         let folded = !self.list_folded();
         self.folded_kept = Some(folded);
-        let mut actions = Vec::new();
-        if self.layout_known() {
-            actions.push(self.command(
-                Command::ChangePreference(PreferenceChange::ListFolded(folded)),
-                Then::ListFolded,
-            ));
-        }
+        let mut actions = vec![self.command(
+            Command::ChangePreference(PreferenceChange::ListFolded(folded)),
+            Then::ListFolded,
+        )];
         actions.extend(self.fit_attached());
         actions
     }

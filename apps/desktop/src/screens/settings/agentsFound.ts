@@ -8,13 +8,10 @@ import { useEffect, useState } from "react";
 import { useBridge, useDaemon } from "../../app/context";
 import type { AgentFound } from "../../ipc/generated/AgentFound";
 
-/** The first protocol whose daemon answers `Agents` (`AGENTS_FOUND_PROTOCOL`). */
-export const AGENTS_FOUND_PROTOCOL = 45;
-
 export type Found =
   | { state: "asking" }
   | { state: "found"; agents: Readonly<Record<string, AgentFound>> }
-  /** The daemon is older, or could not say: not known. */
+  /** The daemon could not say: not known. */
   | { state: "not-known"; why: string };
 
 /** What the daemon says of each agent; asked again each time `again` changes. */
@@ -25,10 +22,6 @@ export function useAgentsFound(again: number): Found {
   // biome-ignore lint/correctness/useExhaustiveDependencies: asked again each time `again` changes, on the person's word.
   useEffect(() => {
     if (protocol === null) return;
-    if (protocol < AGENTS_FOUND_PROTOCOL) {
-      setFound({ state: "not-known", why: "older" });
-      return;
-    }
     let current = true;
     setFound({ state: "asking" });
     bridge.command("Agents").then(

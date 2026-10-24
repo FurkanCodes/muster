@@ -112,7 +112,7 @@ fn r_renames_the_selected_chat_once_the_person_says_what_to() {
 }
 
 #[test]
-fn r_needs_a_session_and_a_daemon_that_knows_names() {
+fn r_needs_a_session() {
     let mut world = world();
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     assert!(press(&mut world.app, KeyCode::Char('R')).is_empty());
@@ -120,8 +120,4 @@ fn r_needs_a_session_and_a_daemon_that_knows_names() {
 
     world.app.view = View::NeedsYou;
     world.app.needs_selected = Some(world.session.id);
-    world.app.daemon_protocol = muster_core::stacks::STACKS_PROTOCOL;
-    assert!(press(&mut world.app, KeyCode::Char('R')).is_empty());
-    assert_eq!(world.app.mode, Mode::Browse);
-    assert!(render(&world.app).contains("`muster reload`"));
 }

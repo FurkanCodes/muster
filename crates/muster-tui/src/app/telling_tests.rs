@@ -5,7 +5,7 @@
 
 use crossterm::event::KeyCode;
 use muster_core::protocol::{Command, Delta, ErrorBody, ErrorCode, Reply, ServerFrame};
-use muster_core::settings::{PreferenceChange, TELLING_PROTOCOL};
+use muster_core::settings::PreferenceChange;
 use muster_core::telling::{Kind, Sound, Tell};
 use muster_core::{SessionStatus, WaitReason};
 
@@ -36,8 +36,8 @@ fn done(world: &mut World, req_id: u64) {
 }
 
 #[test]
-fn each_kind_has_a_row_under_notifications_where_the_daemon_keeps_them() {
-    let mut world = on(Kind::Finish);
+fn each_kind_has_a_row_under_notifications() {
+    let world = on(Kind::Finish);
     let screen = render(&world.app);
     for row in ["Questions", "Finishes", "Errors"] {
         let line = screen
@@ -52,14 +52,6 @@ fn each_kind_has_a_row_under_notifications_where_the_daemon_keeps_them() {
         "{screen}"
     );
     assert!(screen.contains("← → sound"), "{screen}");
-
-    world.app.daemon_protocol = TELLING_PROTOCOL - 1;
-    assert!(
-        !world
-            .app
-            .setting_rows()
-            .contains(&SettingRow::Tell(Kind::Finish))
-    );
 }
 
 #[test]

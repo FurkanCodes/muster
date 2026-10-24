@@ -50,12 +50,8 @@ pub(crate) fn label(timeline: Option<&Timeline>, entry: &Entry) -> String {
 }
 
 impl App {
-    /// Asks for the open pane's timeline, from a daemon that keeps them,
-    /// unless an answer is on its way.
+    /// Asks for the open pane's timeline, unless an answer is on its way.
     pub(super) fn ask_timeline(&mut self) -> Option<Action> {
-        if !self.knows_timelines() {
-            return None;
-        }
         let pane = self.changes.as_mut()?;
         if pane.asking_timeline {
             return None;
@@ -68,13 +64,6 @@ impl App {
     /// `z`: asks what putting the files back from the selected entry would
     /// do, to ask the person.
     pub(super) fn ask_undo_plan(&mut self) -> Option<Action> {
-        if !self.knows_timelines() {
-            self.complain(
-                "The daemon runs an older muster that keeps no turns: `muster reload` moves it \
-                 onto this one, every session running on.",
-            );
-            return None;
-        }
         let pane = self.changes.as_ref()?;
         let Some(number) = pane.selected_entry() else {
             self.complain(

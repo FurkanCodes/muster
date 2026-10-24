@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{FIRST_PROTOCOL_VERSION, plugins};
+use super::plugins;
 use crate::entities::{Project, Session, Workspace};
 use crate::ids::{ProjectId, SessionId, WorkspaceId};
 use crate::session::SessionStatus;
@@ -40,18 +40,18 @@ pub struct Snapshot {
     #[serde(default)]
     pub resources: Option<ResourceReport>,
     /// Whether the person is looking at any client's window
-    /// ([`super::ClientFrame::Looking`]). From protocol 23.
+    /// ([`super::ClientFrame::Looking`]).
     #[serde(default)]
     pub looked_at: bool,
-    /// Muster's own settings. From protocol 23.
+    /// Muster's own settings.
     #[serde(default)]
     pub preferences: Preferences,
-    /// Whether Muster's helper on a Mac shows notifications of the Mac's
-    /// own now ([`super::ClientFrame::Notifier`]): the UIs then send their
-    /// terminals none. From protocol 39.
+    /// Whether Muster's helper on a Mac shows notifications of the Mac's own
+    /// now ([`super::ClientFrame::Notifier`]): the UIs then send their
+    /// terminals none.
     #[serde(default)]
     pub notifier: bool,
-    /// Every plugin. From protocol 41.
+    /// Every plugin.
     #[serde(default)]
     pub plugins: Vec<plugins::PluginInfo>,
 }
@@ -112,31 +112,15 @@ pub enum Delta {
     /// A run was picked up or changed.
     RunUpserted(crate::Run),
     /// The person began or stopped looking at every client's window.
-    /// Sent only to a client of 23 or later.
     LookedAt {
         looked_at: bool,
     },
-    /// Muster's own settings changed. Sent only to a client of 23 or later.
+    /// Muster's own settings changed.
     Preferences(Preferences),
-    /// Muster's helper shows notifications now, or no longer does. Sent
-    /// only to a client of 39 or later.
+    /// Muster's helper shows notifications now, or no longer does.
     Notifier {
         ready: bool,
     },
-    /// The plugins changed: each, as it is now. Sent only to a client of
-    /// 41 or later.
+    /// The plugins changed: each, as it is now.
     PluginsChanged(Vec<plugins::PluginInfo>),
-}
-
-impl Delta {
-    /// The first protocol that knows this delta: a client that agreed to
-    /// an older one is never sent it (`ARC-09`).
-    pub fn since(&self) -> u32 {
-        match self {
-            Self::LookedAt { .. } | Self::Preferences(_) => crate::settings::NOTCH_PROTOCOL,
-            Self::Notifier { .. } => crate::settings::NOTIFIER_PROTOCOL,
-            Self::PluginsChanged(_) => crate::plugins::PLUGINS_PROTOCOL,
-            _ => FIRST_PROTOCOL_VERSION,
-        }
-    }
 }

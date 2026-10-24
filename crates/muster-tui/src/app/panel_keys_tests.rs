@@ -7,7 +7,6 @@
 //! without one.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use muster_core::layout::{Layout, Panel};
 use muster_core::plugins::{Manifest, PluginSource};
 use muster_core::protocol::plugins::{Beside, PluginCommand, PluginDetails, PluginInfo};
 use muster_core::protocol::{Command, Delta, ServerFrame, TermSize};
@@ -163,34 +162,6 @@ fn a_panel_beside_another_chat_is_not_shown_beside_this_one() {
     );
     world.app.selected = Some(Row::Session(other.id));
     assert_eq!(world.app.plugin_beside(), Some(theirs.id));
-}
-
-#[test]
-fn a_daemon_older_than_panels_is_asked_to_open_none_and_kept_a_layout_without_one() {
-    let mut world = with_zoe();
-    world.app.daemon_protocol = muster_core::plugins::PANELS_PROTOCOL - 1;
-    let actions = world.app.on_key(shift('Z'));
-    assert!(
-        !actions
-            .iter()
-            .any(|action| matches!(action, Action::Send(_))),
-        "{actions:?}"
-    );
-    let said = world.app.note.as_ref().map(|note| note.text.clone());
-    assert!(said.unwrap_or_default().contains("muster reload"));
-    let actions = world.app.keep_panels(Layout::default());
-    let Command::ChangePreference(PreferenceChange::Panels(kept)) = command(&actions).1 else {
-        panic!("the layout is kept");
-    };
-    assert_eq!(kept, Layout::default().without(Panel::Plugin));
-    assert!(!kept.to_string().contains("plugin"));
-    // A daemon of panels keeps it whole.
-    world.app.daemon_protocol = muster_core::plugins::PANELS_PROTOCOL;
-    let actions = world.app.keep_panels(Layout::default());
-    let Command::ChangePreference(PreferenceChange::Panels(kept)) = command(&actions).1 else {
-        panic!("the layout is kept");
-    };
-    assert_eq!(kept, Layout::default());
 }
 
 #[test]

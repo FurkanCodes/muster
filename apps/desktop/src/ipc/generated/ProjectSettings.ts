@@ -24,22 +24,21 @@ only_mine: Toggle,
 file: string, 
 /**
  * Where its tickets are as written, the person's settings over the
- * repository's `muster.toml`; `None` where no tracker is written and
- * the git remote tells. From protocol 17.
+ * repository's `muster.toml`; `None` where no tracker is written and the
+ * git remote tells.
  */
 tickets: TicketsFrom | null, 
 /**
- * Which file names the tracker (`[tickets] tracker`). From protocol 17.
+ * Which file names the tracker (`[tickets] tracker`).
  */
 tickets_set_by: SettingSource, 
 /**
  * Nothing says where its tickets are, and its git remote cannot tell:
- * `tickets_from` says why, and the person has to choose. From protocol
- * 17.
+ * `tickets_from` says why, and the person has to choose.
  */
 tickets_untold: boolean, 
 /**
- * Whether the branches Muster makes start with `muster/`
- * (`[branches] muster_prefix`). From protocol 20.
+ * Whether the branches Muster makes start with `muster/` (`[branches]
+ * muster_prefix`).
  */
 muster_prefix: Toggle | null, };

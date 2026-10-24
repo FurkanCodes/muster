@@ -4,7 +4,7 @@
 
 use crossterm::event::KeyEvent;
 use muster_core::SessionId;
-use muster_core::names::NAMES_PROTOCOL;
+
 use muster_core::protocol::Command;
 
 use super::{Action, App, Dialog, Mode, Then, View};
@@ -25,13 +25,6 @@ impl App {
             self.complain("Select a session to rename it.");
             return Vec::new();
         };
-        if self.daemon_protocol < NAMES_PROTOCOL {
-            self.complain(
-                "The daemon runs an older muster that cannot rename sessions: `muster reload` \
-                 moves it onto this one, every session running on.",
-            );
-            return Vec::new();
-        }
         self.mode = Mode::Dialog(Dialog::Rename {
             session: session.id,
             name: LineInput::with(&session.title),

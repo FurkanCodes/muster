@@ -538,9 +538,6 @@ pub(crate) struct App {
     /// projects share, by where their tickets come from: offered first
     /// next time.
     ticket_projects: HashMap<String, ProjectId>,
-    /// The protocol the daemon agreed to speak: a change it does not know
-    /// is never sent to it (`ARC-09`).
-    pub(crate) daemon_protocol: u32,
     /// What the person's terminal draws: the agents' logos as pictures,
     /// or their marks in text.
     pub(crate) graphics: crate::view::logos::Graphics,
@@ -646,7 +643,6 @@ impl App {
             last_harness: HarnessChoice::Claude,
             ticket_agent: HarnessChoice::Claude,
             ticket_projects: HashMap::new(),
-            daemon_protocol: muster_core::protocol::PROTOCOL_VERSION,
             graphics: crate::view::logos::Graphics::Text,
             notch_here: false,
             machine: None,
@@ -785,12 +781,10 @@ impl App {
     }
 
     /// Tells the daemon which session is in focus now, if that changed, so
-    /// a program that asked learns it gained or lost focus. Not to a
-    /// daemon before it knew how (`ARC-09`).
+    /// a program that asked learns it gained or lost focus.
     pub(super) fn tell_focus(&mut self) -> Option<Action> {
         let wanted = self.focus_session();
-        let knows = matches!(self.link, Link::Connected { .. })
-            && self.daemon_protocol >= muster_core::colours::TERMINAL_PROTOCOL;
+        let knows = matches!(self.link, Link::Connected { .. });
         if !knows || wanted == self.focus_told {
             return None;
         }

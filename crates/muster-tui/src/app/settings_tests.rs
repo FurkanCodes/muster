@@ -326,10 +326,6 @@ fn settings_are_read_afresh_each_time_the_screen_is_shown_and_on_r() {
             Command::ProjectSettings { project }
         ]
     );
-    // An older daemon is never asked what it does not know (`ARC-09`).
-    world.app.daemon_protocol = muster_core::settings::AGENTS_PROTOCOL - 1;
-    let actions = press(&mut world.app, KeyCode::Char('r'));
-    assert_eq!(commands(&actions), [Command::ProjectSettings { project }]);
 }
 
 #[test]
@@ -389,7 +385,7 @@ fn a_click_picks_a_setting_and_the_details_are_only_to_read() {
 }
 
 #[test]
-fn branches_go_without_muster_once_turned_off_where_the_daemon_can_say() {
+fn branches_go_without_muster_once_turned_off() {
     let mut world = on_settings(false);
     let project = world.project.id;
     press(&mut world.app, KeyCode::Down);
@@ -444,15 +440,6 @@ fn branches_go_without_muster_once_turned_off_where_the_daemon_can_say() {
     assert!(row.contains("off") && !row.contains('…'), "{row}");
     assert!(screen.contains("worktree-4f2k9q for a"), "{screen}");
     assert!(screen.contains("⏎ or space turns it on"), "{screen}");
-
-    // A daemon from before the setting cannot change it: no row for it.
-    world.app.daemon_protocol = 19;
-    assert!(
-        !world
-            .app
-            .setting_rows()
-            .contains(&SettingRow::MusterPrefix(project))
-    );
 }
 
 #[test]
@@ -479,13 +466,6 @@ fn shared_rust_builds_are_on_by_default_and_turned_off_on_the_settings_screen() 
 }
 
 #[test]
-fn a_daemon_that_shares_no_builds_shows_no_row_for_it() {
-    let mut world = world();
-    world.app.daemon_protocol = muster_core::settings::SHARED_BUILDS_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::SharedBuilds));
-}
-
-#[test]
 fn prd_01_agents_start_agents_until_turned_off_on_the_settings_screen() {
     let mut world = world();
     press(&mut world.app, KeyCode::Char('4'));
@@ -509,11 +489,4 @@ fn prd_01_agents_start_agents_until_turned_off_on_the_settings_screen() {
         )),
         "{actions:?}"
     );
-}
-
-#[test]
-fn a_daemon_older_than_delegation_shows_no_row_for_it() {
-    let mut world = world();
-    world.app.daemon_protocol = muster_core::delegation::DELEGATION_PROTOCOL - 1;
-    assert!(!world.app.setting_rows().contains(&SettingRow::Delegation));
 }

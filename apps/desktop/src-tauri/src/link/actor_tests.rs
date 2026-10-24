@@ -425,7 +425,7 @@ fn colours(background: u16) -> TerminalColours {
 
 #[tokio::test(start_paused = true)]
 async fn the_terminals_colours_are_told_as_they_change_and_on_each_connection() {
-    let (mut actor, _told, mut frames) = connected(muster_core::colours::TERMINAL_PROTOCOL);
+    let (mut actor, _told, mut frames) = connected(muster_core::protocol::PROTOCOL_VERSION);
     let _ = sent(&mut frames);
     actor.on_request(Request::Colours(colours(0x1313)));
     assert_eq!(sent(&mut frames), [ClientFrame::Colours(colours(0x1313))]);
@@ -440,7 +440,7 @@ async fn the_terminals_colours_are_told_as_they_change_and_on_each_connection() 
     actor.on_event(LinkEvent::Connected {
         outgoing,
         welcome: Welcome {
-            version: muster_core::colours::TERMINAL_PROTOCOL,
+            version: muster_core::protocol::PROTOCOL_VERSION,
             daemon_pid: 2,
             daemon_version: "0.4.1".to_owned(),
         },
@@ -448,10 +448,3 @@ async fn the_terminals_colours_are_told_as_they_change_and_on_each_connection() 
     assert!(sent(&mut again).contains(&ClientFrame::Colours(colours(0xffff))));
 }
 
-#[tokio::test(start_paused = true)]
-async fn a_daemon_before_the_terminals_protocol_is_never_told_colours() {
-    let (mut actor, _told, mut frames) = connected(muster_core::colours::TERMINAL_PROTOCOL - 1);
-    let _ = sent(&mut frames);
-    actor.on_request(Request::Colours(colours(0x1313)));
-    assert_eq!(sent(&mut frames), []);
-}

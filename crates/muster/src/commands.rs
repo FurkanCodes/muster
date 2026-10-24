@@ -42,14 +42,10 @@ pub(crate) async fn status(socket: &Path, json: bool) -> ExitCode {
     };
     let welcome = connection.welcome().clone();
     // Counts that fall back as work and clients end; one that only grows
-    // is a leak (`ARC-13`, `ARC-14`). Older daemons do not know to answer.
-    let health = if welcome.version >= 22 {
-        match connection.command(Command::Health).await {
-            Ok(Reply::Health(health)) => Some(health),
-            _ => None,
-        }
-    } else {
-        None
+    // is a leak (`ARC-13`, `ARC-14`).
+    let health = match connection.command(Command::Health).await {
+        Ok(Reply::Health(health)) => Some(health),
+        _ => None,
     };
     if json {
         return match crate::json::print(&crate::json::Status::new(&welcome, health, &snapshot)) {

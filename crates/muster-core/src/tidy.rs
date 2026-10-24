@@ -6,9 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The protocol version that knows tidying a branch's commits.
-pub const TIDY_PROTOCOL: u32 = 27;
-
 /// A tidy an agent was asked for.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]

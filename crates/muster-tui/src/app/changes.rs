@@ -9,13 +9,11 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::WorkspaceId;
-use muster_core::changes::{
-    CHANGES_PROTOCOL, ChangePart, ChangeSummary, Changes, Commit, FileChange, FileDiff,
-};
+use muster_core::changes::{ChangePart, ChangeSummary, Changes, Commit, FileChange, FileDiff};
 use muster_core::clashes::Clash;
 use muster_core::keys::{Action as Does, Screen};
 use muster_core::protocol::Command;
-use muster_core::timeline::{Entry, TIMELINE_PROTOCOL, Timeline};
+use muster_core::timeline::{Entry, Timeline};
 use ratatui::layout::{Margin, Position, Rect};
 
 use super::events::screen_key;
@@ -241,13 +239,6 @@ impl App {
             self.complain("A run's container keeps its own clone; its changes are the run's.");
             return Vec::new();
         }
-        if self.daemon_protocol < CHANGES_PROTOCOL {
-            self.complain(
-                "The daemon runs an older muster that cannot show changes: `muster reload` moves \
-                 it onto this one, every session running on.",
-            );
-            return Vec::new();
-        }
         let workspace = found.id;
         self.changes = Some(ChangesPane {
             workspace,
@@ -267,11 +258,6 @@ impl App {
         let mut actions: Vec<Action> = self.ask_changes().into_iter().collect();
         actions.extend(self.ask_timeline());
         actions
-    }
-
-    /// Whether the daemon keeps workspaces' timelines.
-    pub(super) fn knows_timelines(&self) -> bool {
-        self.daemon_protocol >= TIMELINE_PROTOCOL
     }
 
     /// Asks for the open pane's listing, unless an answer is on its way.
