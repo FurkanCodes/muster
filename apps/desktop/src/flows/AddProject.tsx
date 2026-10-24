@@ -7,8 +7,7 @@
 import { type KeyboardEvent, useId, useState } from "react";
 import { useActions, useApp } from "../app/context";
 import type { Folders } from "../ipc/generated/desktop/Folders";
-import { Button } from "../ui/controls";
-import { Dialog } from "../ui/Dialog";
+import { Dialog, DialogAnswers } from "../ui/Dialog";
 import { FolderOption } from "../ui/FolderOption";
 import { Label } from "../ui/Label";
 import { Loading } from "../ui/Loading";
@@ -79,27 +78,14 @@ export default function AddProject() {
       onAccept={() => void submit()}
       onKeyDown={onKeyDown}
       actions={
-        <>
-          <Button
-            variant="secondary"
-            size="lg"
-            title="Cancel (⎋)"
-            disabled={task.busy}
-            onClick={close}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            title={`Add ${adding} (⏎)`}
-            busy={task.busy}
-            disabled={!typed.trim()}
-            onClick={() => void submit()}
-          >
-            {task.busy ? "Adding…" : `Add ${adding}`}
-          </Button>
-        </>
+        <DialogAnswers
+          does={`Add ${adding}`}
+          doing="Adding…"
+          busy={task.busy}
+          disabled={!typed.trim()}
+          onCancel={close}
+          onDo={() => void submit()}
+        />
       }
     >
       <TextField

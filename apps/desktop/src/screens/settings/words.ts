@@ -6,6 +6,7 @@ import { oneLine } from "../../lib/text";
 import type { EventKind } from "../../ipc/generated/EventKind";
 import type { Hook } from "../../ipc/generated/Hook";
 import type { Kind } from "../../ipc/generated/Kind";
+import { MAC_SOUNDS } from "../../ipc/generated/MacSounds";
 import type { PluginAction } from "../../ipc/generated/PluginAction";
 import type { PluginChange } from "../../ipc/generated/PluginChange";
 import type { PluginProblem } from "../../ipc/generated/PluginProblem";
@@ -50,23 +51,8 @@ export function sideBySideSaid(columns: number): string {
     : `A session sits beside the list in a window of ${columns} columns or more.`;
 }
 
-/** The sounds every Mac has, which Settings offers (`telling::MAC_SOUNDS`). */
-export const MAC_SOUNDS: readonly string[] = [
-  "Basso",
-  "Blow",
-  "Bottle",
-  "Frog",
-  "Funk",
-  "Glass",
-  "Hero",
-  "Morse",
-  "Ping",
-  "Pop",
-  "Purr",
-  "Sosumi",
-  "Submarine",
-  "Tink",
-];
+/** The sounds every Mac has, which Settings offers, as muster-core lists them. */
+export { MAC_SOUNDS };
 
 /** A sound as its choice is shown: `The Mac's default`, `None`, `Glass`. */
 export function soundLabel(sound: Sound): string {

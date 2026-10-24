@@ -10,8 +10,7 @@ import { type KeyboardEvent, useId, useState } from "react";
 import { useActions, useApp } from "../app/context";
 import type { HostedRepository } from "../ipc/generated/HostedRepository";
 import { whenKnown } from "../state/whenKnown";
-import { Button } from "../ui/controls";
-import { Dialog } from "../ui/Dialog";
+import { Dialog, DialogAnswers } from "../ui/Dialog";
 import { FolderOption } from "../ui/FolderOption";
 import { Label } from "../ui/Label";
 import { Loading } from "../ui/Loading";
@@ -102,26 +101,13 @@ export default function CloneProject() {
       onAccept={() => void submit()}
       onKeyDown={onKeyDown}
       actions={
-        <>
-          <Button
-            variant="secondary"
-            size="lg"
-            title="Cancel (⎋)"
-            disabled={task.busy}
-            onClick={close}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            title={`${start} (⏎)`}
-            busy={task.busy}
-            onClick={() => void submit()}
-          >
-            {task.busy ? `Cloning ${target ?? ""}…` : start}
-          </Button>
-        </>
+        <DialogAnswers
+          does={start}
+          doing={`Cloning ${target ?? ""}…`}
+          busy={task.busy}
+          onCancel={close}
+          onDo={() => void submit()}
+        />
       }
     >
       <TextField

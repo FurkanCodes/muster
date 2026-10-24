@@ -13,7 +13,7 @@
 
 use std::time::{Duration, Instant};
 
-use muster_client::{ClientError, Connection, FrameReceiver, FrameSender};
+use muster_client::{ClientError, Connection};
 use muster_core::protocol::{ClientFrame, ServerFrame, Welcome};
 use tokio::sync::mpsc;
 use tokio_util::task::AbortOnDropHandle;
@@ -82,7 +82,7 @@ pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent
                     clippy::disallowed_methods,
                     reason = "ARC-13: the AbortOnDropHandle owns it, for as long as the connection"
                 )]
-                let _writer = AbortOnDropHandle::new(tokio::spawn(write_frames(sender, frames)));
+                let _writer = AbortOnDropHandle::new(tokio::spawn(sender.send_all(frames)));
                 let sender = Outgoing(outgoing);
                 if events
                     .send(LinkEvent::Connected { sender, welcome })
@@ -91,7 +91,11 @@ pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent
                 {
                     return;
                 }
-                let Some(reason) = read_frames(receiver, &events).await else {
+                let events = &events;
+                let forwarded = receiver.forward(|frame| async move {
+                    events.send(LinkEvent::Frame(Box::new(frame))).await.is_ok()
+                });
+                let Some(reason) = forwarded.await else {
                     return;
                 };
                 failed = if monotonic().saturating_duration_since(since) >= HEALTHY {
@@ -140,39 +144,6 @@ fn retry_after(remote: bool, failed: u32) -> Duration {
     first
         .saturating_mul(2_u32.saturating_pow(failed.saturating_sub(1)))
         .min(FARTHEST_RETRY)
-}
-
-/// Hands the loop each frame from the daemon, waiting for room: why the
-/// connection ended, or `None` once the UI has.
-async fn read_frames(
-    mut receiver: FrameReceiver,
-    events: &mpsc::Sender<LinkEvent>,
-) -> Option<String> {
-    loop {
-        match receiver.next().await {
-            Ok(Some(frame)) => {
-                if events
-                    .send(LinkEvent::Frame(Box::new(frame)))
-                    .await
-                    .is_err()
-                {
-                    return None;
-                }
-            }
-            Ok(None) => return Some("the daemon closed the connection".to_owned()),
-            Err(error) => return Some(error.to_string()),
-        }
-    }
-}
-
-/// Writes the UI's frames in order until the connection or the UI goes.
-async fn write_frames(mut sender: FrameSender, mut frames: mpsc::UnboundedReceiver<ClientFrame>) {
-    while let Some(frame) = frames.recv().await {
-        if sender.send(&frame).await.is_err() {
-            // The reader notices too, and the link connects again.
-            return;
-        }
-    }
 }
 
 /// Connects to the daemon, starting it if nothing answers and it was not

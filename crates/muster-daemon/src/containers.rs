@@ -155,43 +155,31 @@ impl Docker {
 
     /// The containers carrying `label` with `value`, running or not.
     pub(crate) async fn find(&self, label: &str, value: &str) -> Result<Vec<Found>, RuntimeError> {
-        let filter = format!("label={label}={value}");
-        let output = self
-            .quick(
-                &[
-                    "ps",
-                    "--all",
-                    "--no-trunc",
-                    "--filter",
-                    &filter,
-                    "--format",
-                    "{{json .}}",
-                ],
-                &[],
-            )
-            .await?;
-        parse_ps(&output)
+        parse_ps(&self.listed(&format!("label={label}={value}")).await?)
     }
 
     /// The containers carrying `label`, whatever its value, with that
     /// value; running or not.
     pub(crate) async fn labelled(&self, label: &str) -> Result<Vec<(Found, String)>, RuntimeError> {
-        let filter = format!("label={label}");
-        let output = self
-            .quick(
-                &[
-                    "ps",
-                    "--all",
-                    "--no-trunc",
-                    "--filter",
-                    &filter,
-                    "--format",
-                    "{{json .}}",
-                ],
-                &[],
-            )
-            .await?;
-        parse_labelled(&output, label)
+        parse_labelled(&self.listed(&format!("label={label}")).await?, label)
+    }
+
+    /// What `docker ps` says, a line of JSON each, of the containers
+    /// `filter` takes, running or not.
+    async fn listed(&self, filter: &str) -> Result<Vec<u8>, RuntimeError> {
+        self.quick(
+            &[
+                "ps",
+                "--all",
+                "--no-trunc",
+                "--filter",
+                filter,
+                "--format",
+                "{{json .}}",
+            ],
+            &[],
+        )
+        .await
     }
 
     /// Starts a container from `spec` and returns its id. Docker refuses a

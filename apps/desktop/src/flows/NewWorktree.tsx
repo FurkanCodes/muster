@@ -10,8 +10,7 @@ import { useActions, useApp, useDaemon } from "../app/context";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import { projectsInOrder } from "../state/selectors";
 import { whenKnown } from "../state/whenKnown";
-import { Button } from "../ui/controls";
-import { Dialog } from "../ui/Dialog";
+import { Dialog, DialogAnswers } from "../ui/Dialog";
 import { Select } from "../ui/Select";
 import { ErrorText } from "../ui/status";
 import { Field, TextField } from "../ui/TextField";
@@ -48,27 +47,14 @@ export default function NewWorktree({ flow }: { flow: Extract<Flow, { kind: "new
       onClose={close}
       onAccept={() => void submit()}
       actions={
-        <>
-          <Button
-            variant="secondary"
-            size="lg"
-            title="Cancel (⎋)"
-            disabled={task.busy}
-            onClick={close}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            title="Make the worktree (⏎)"
-            busy={task.busy}
-            data-dialog-initial
-            onClick={() => void submit()}
-          >
-            {task.busy ? "Making…" : "Make the worktree"}
-          </Button>
-        </>
+        <DialogAnswers
+          does="Make the worktree"
+          doing="Making…"
+          busy={task.busy}
+          initial
+          onCancel={close}
+          onDo={() => void submit()}
+        />
       }
     >
       <Field label="Project">

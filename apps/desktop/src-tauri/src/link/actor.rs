@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use muster_client::{ClientError, Connection, FrameReceiver, FrameSender};
+use muster_client::{ClientError, Connection};
 use muster_core::colours::TerminalColours;
 use muster_core::protocol::{ClientFrame, Command, Reply, ServerFrame, Welcome};
 use muster_core::{SessionId, SessionStatus};
@@ -487,7 +487,7 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: A
                     clippy::disallowed_methods,
                     reason = "ARC-13: the Owned handle holds it, for as long as the connection"
                 )]
-                let _writer = Owned(tokio::spawn(write_frames(sender, frames)));
+                let _writer = Owned(tokio::spawn(sender.send_all(frames)));
                 if events
                     .send(LinkEvent::Connected { outgoing, welcome })
                     .await
@@ -495,7 +495,11 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: A
                 {
                     return;
                 }
-                let Some(reason) = read_frames(receiver, &events).await else {
+                let events = &events;
+                let forwarded = receiver.forward(|frame| async move {
+                    events.send(LinkEvent::Frame(Box::new(frame))).await.is_ok()
+                });
+                let Some(reason) = forwarded.await else {
                     return;
                 };
                 if events.send(LinkEvent::Lost(reason)).await.is_err() {
@@ -516,40 +520,6 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: A
         tokio::select! {
             () = retry => {}
             () = again.notified() => last_start = None,
-        }
-    }
-}
-
-/// Hands the loop each frame from the daemon, waiting for room: why the
-/// connection ended, or `None` once the loop has.
-async fn read_frames(
-    mut receiver: FrameReceiver,
-    events: &mpsc::Sender<LinkEvent>,
-) -> Option<String> {
-    loop {
-        match receiver.next().await {
-            Ok(Some(frame)) => {
-                if events
-                    .send(LinkEvent::Frame(Box::new(frame)))
-                    .await
-                    .is_err()
-                {
-                    return None;
-                }
-            }
-            Ok(None) => return Some("the daemon closed the connection".to_owned()),
-            Err(error) => return Some(error.to_string()),
-        }
-    }
-}
-
-/// Writes the loop's frames in order until the connection or the loop
-/// goes.
-async fn write_frames(mut sender: FrameSender, mut frames: mpsc::UnboundedReceiver<ClientFrame>) {
-    while let Some(frame) = frames.recv().await {
-        if sender.send(&frame).await.is_err() {
-            // The reader notices too, and the link connects again.
-            return;
         }
     }
 }

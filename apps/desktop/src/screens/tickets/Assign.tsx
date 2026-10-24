@@ -8,8 +8,7 @@ import { agentOf, OWN } from "../../lib/agents";
 import { errorText } from "../../lib/text";
 import { whenKnown } from "../../state/whenKnown";
 import { AgentChoice } from "../../ui/AgentChoice";
-import { Button } from "../../ui/controls";
-import { Dialog } from "../../ui/Dialog";
+import { Dialog, DialogAnswers } from "../../ui/Dialog";
 import { Select } from "../../ui/Select";
 import { BranchName, ErrorText } from "../../ui/status";
 import { Field } from "../../ui/TextField";
@@ -196,28 +195,15 @@ export function Assign({
         }
       }}
       actions={
-        <>
-          <Button
-            variant="secondary"
-            size="lg"
-            disabled={busy}
-            onClick={onClose}
-            title="Cancel (⎋)"
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            data-dialog-initial
-            disabled={busy}
-            busy={busy}
-            onClick={() => void start()}
-            title={`Start ${name} (⏎)`}
-          >
-            {busy ? "Starting…" : `Start ${name}`}
-          </Button>
-        </>
+        <DialogAnswers
+          does={`Start ${name}`}
+          doing="Starting…"
+          busy={busy}
+          disabled={busy}
+          initial
+          onCancel={onClose}
+          onDo={() => void start()}
+        />
       }
     >
       <Field label="Agent" hint="⇥ goes round the agents.">

@@ -59,6 +59,9 @@ jobs:
       - name: Tests wait on what happens, never a guess (ARC-30)
         if: runner.os == 'Linux'
         run: scripts/check-test-sleeps.sh
+      - name: Nothing written twice (ARC-31)
+        if: runner.os == 'Linux'
+        run: python3 scripts/check-duplication.py
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all --check

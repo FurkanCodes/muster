@@ -392,6 +392,16 @@ impl FrameSender {
         sendable(frame, self.version)?;
         Ok(self.writer.send(frame).await?)
     }
+
+    /// Sends `frames` in order until they end or the connection does; the
+    /// receiving half notices a connection gone.
+    pub async fn send_all(mut self, mut frames: tokio::sync::mpsc::UnboundedReceiver<ClientFrame>) {
+        while let Some(frame) = frames.recv().await {
+            if self.send(&frame).await.is_err() {
+                return;
+            }
+        }
+    }
 }
 
 /// Refuses `frame` where the daemon's protocol, `version`, does not have
@@ -433,6 +443,27 @@ impl FrameReceiver {
         match self.reader.next::<ServerFrame>().await? {
             Some(ServerFrame::Error(error)) => Err(ClientError::Daemon(error)),
             frame => Ok(frame),
+        }
+    }
+
+    /// Hands `take` each frame from the daemon, waiting for it, until it
+    /// says it takes no more (`false`) or the connection ends: why it
+    /// ended, or `None` where `take` stopped it.
+    pub async fn forward<F, Took>(mut self, mut take: F) -> Option<String>
+    where
+        F: FnMut(ServerFrame) -> Took,
+        Took: Future<Output = bool>,
+    {
+        loop {
+            match self.next().await {
+                Ok(Some(frame)) => {
+                    if !take(frame).await {
+                        return None;
+                    }
+                }
+                Ok(None) => return Some("the daemon closed the connection".to_owned()),
+                Err(error) => return Some(error.to_string()),
+            }
         }
     }
 }

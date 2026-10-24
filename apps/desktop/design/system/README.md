@@ -31,7 +31,7 @@ The app's screens compose these (`ARC-26`): a component's classes are written on
 | Controls | `Button`, `IconButton`, `Pressable` (a press with a look of its place's own) on Base UI Button; `Segmented` (with counts) on its ToggleGroup; `Switch` on its Switch; `Kbd`, `Hint` (one key or several), `Spacer`, `Spinner` | `src/ui` |
 | Fields | `TextField`, `TextArea`, `Field` (a label over any control, a hint or an error under it), `Input`, `PlainInput`, `PlainTextArea` (Base UI Field and Input) | `src/ui/TextField.tsx` |
 | AgentChoice | the agents as cards, one chosen (Base UI RadioGroup) | `src/ui/AgentChoice.tsx` |
-| Dialog | `Dialog`, `DialogText`; `Modal`, what a dialog and the palette float on (Base UI Dialog) | `src/ui/Dialog.tsx` |
+| Dialog | `Dialog`, `DialogText`, `DialogAnswers` (Cancel and what it does); `Modal`, what a dialog and the palette float on (Base UI Dialog) | `src/ui/Dialog.tsx` |
 | Label | `Label`, `Labels` | `src/ui/Label.tsx` |
 | Status | `StatusMark`, `MarkSpace`, `NewsDot`, `AgentLogo`, `AgentMark`, `Badge`, `PullRequest`, `DiffStat`, `Branch`, `BranchName`, `Clash`, `Found`, `Missing`, `Version`, `ErrorText`, `Swatch` | `src/ui/status.tsx` |
 | Diff | `DiffView`, `DiffFrame`, `DiffHead`, `DiffWaiting`; `FileRow`, `FileKind`; `TurnRow` | `src/ui` |

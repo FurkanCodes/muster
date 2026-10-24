@@ -10,7 +10,7 @@ import type { PluginPreview } from "../../ipc/generated/PluginPreview";
 import { errorText, oneLine } from "../../lib/text";
 import { Banner, BannerBody } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
-import { Dialog, DialogText } from "../../ui/Dialog";
+import { Dialog, DialogAnswers, DialogText } from "../../ui/Dialog";
 import { Loading } from "../../ui/Loading";
 import { ErrorText } from "../../ui/status";
 import { TextField } from "../../ui/TextField";
@@ -31,14 +31,12 @@ function AddPlugin({ dialog }: { dialog: Extract<PluginDialog, { step: "add" }> 
       onClose={cancel}
       onAccept={fetch}
       actions={
-        <>
-          <Button variant="secondary" size="lg" title="Cancel (⎋)" onClick={cancel}>
-            Cancel
-          </Button>
-          <Button variant="primary" size="lg" title="Fetch it (⏎)" onClick={fetch}>
-            Fetch and show what it runs
-          </Button>
-        </>
+        <DialogAnswers
+          does="Fetch and show what it runs"
+          title="Fetch it (⏎)"
+          onCancel={cancel}
+          onDo={fetch}
+        />
       }
     >
       <TextField
