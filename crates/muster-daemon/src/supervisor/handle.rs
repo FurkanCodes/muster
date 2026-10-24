@@ -264,7 +264,8 @@ impl SupervisorHandle {
     }
 
     /// Stops the Supervisor, as the daemon's process ending would, once
-    /// it has done what it was asked before; back once it is gone.
+    /// it has taken what it was asked and told before (its runs' reports,
+    /// hooks and terminals' events among them); back once it is gone.
     #[cfg(test)]
     pub(crate) async fn stop(self) {
         let (done, gone) = oneshot::channel();

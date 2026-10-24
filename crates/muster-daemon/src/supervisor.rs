@@ -383,6 +383,17 @@ impl Supervisor {
                 request = queues.requests.recv() => match request {
                     #[cfg(test)]
                     Some(Request::Stop(done)) => {
+                        // What came before the stop is taken first, as a
+                        // daemon ending takes what it was told.
+                        while let Ok((run, report)) = queues.run_reports.try_recv() {
+                            self.on_run_report(run, report).await;
+                        }
+                        while let Ok(delivery) = queues.hooks.try_recv() {
+                            self.on_hook(delivery).await;
+                        }
+                        while let Ok((session, event)) = queues.pty.try_recv() {
+                            self.on_pty_event(session, event).await;
+                        }
                         drop(self);
                         let _ = done.send(());
                         return;
