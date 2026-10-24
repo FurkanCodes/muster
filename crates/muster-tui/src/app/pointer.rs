@@ -188,7 +188,7 @@ impl App {
                 } else if areas.preview.contains(at) && self.view == View::Tickets {
                     self.scroll_ticket(if up { -WHEEL_LINES } else { WHEEL_LINES });
                 } else if areas.preview.contains(at)
-                    && let Some(session) = self.focused_session()
+                    && let Some(session) = self.session_beside_list()
                 {
                     let modes = self.screen(session).modes;
                     if modes.mouse != MouseTracking::Off {
@@ -225,7 +225,7 @@ impl App {
                     // a ticket's or a setting's details are only to read:
                     // a click there never opens a dialog, which would take
                     // no clicks.
-                    self.open_selected();
+                    self.open_beside_list();
                     if let Mode::Terminal(session) = self.mode {
                         let screen = crate::view::session_area(self, full);
                         self.select_from_preview(session, event, screen);
@@ -299,7 +299,7 @@ impl App {
             .saturating_sub(3)
             .max(1);
         let lines = isize::from(i16::try_from(page).unwrap_or(i16::MAX));
-        if let Some(session) = self.focused_session() {
+        if let Some(session) = self.session_beside_list() {
             self.screen(session)
                 .scroll(if back { lines } else { -lines });
         }
@@ -307,7 +307,7 @@ impl App {
 
     /// Returns the selected session's preview to the newest output.
     pub(super) fn preview_to_bottom(&mut self) {
-        if let Some(session) = self.focused_session() {
+        if let Some(session) = self.session_beside_list() {
             self.screen(session).scroll_to_bottom();
         }
     }

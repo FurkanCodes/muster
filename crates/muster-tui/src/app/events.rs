@@ -356,6 +356,19 @@ impl App {
         }
     }
 
+    /// A click on the session's panel: the session drawn there gets the
+    /// keys, the one kept while a pinned one is selected, else the selected.
+    pub(super) fn open_beside_list(&mut self) {
+        match self.session_beside_list() {
+            Some(session) if Some(session) != self.focused_session() => {
+                self.mode = Mode::Terminal(session);
+                self.full_screen = false;
+                self.note = None;
+            }
+            _ => self.open_selected(),
+        }
+    }
+
     /// `f`: the selected session's terminal, with the keys, over the whole
     /// window.
     fn open_full_screen(&mut self) -> Vec<Action> {

@@ -120,7 +120,20 @@ export function Panels({ session }: { session: SessionId }) {
   const [dropping, setDropping] = useState<Landing | null>(null);
   usePanelKeys(session, plugin, panels);
 
-  const sessionOf: Partial<Record<PanelName, SessionId>> = { session };
+  // The session shown, where it is pinned, is seen in its own panel; the
+  // agent's panel keeps the last one shown that is not, or goes, so every
+  // terminal on the pane is drawn and none twice. Two are kept, the latest
+  // first, as a line carried from the sidebar may be shown as it is taken up.
+  const shownPinned = pinned.includes(session);
+  const [kept, setKept] = useState<SessionId[]>([session]);
+  if (!shownPinned && kept[0] !== session) setKept([session, ...kept.slice(0, 1)]);
+  const keptAgent = useDaemon(
+    (state) => kept.find((id) => id in state.sessions && !pinned.includes(id)) ?? null,
+  );
+  const agent = shownPinned ? keptAgent : session;
+
+  const sessionOf: Partial<Record<PanelName, SessionId>> = {};
+  if (agent) sessionOf.session = agent;
   if (shell) sessionOf.shell = shell;
   if (plugin) sessionOf.plugin = plugin;
   for (const id of pinned) sessionOf[pinnedPanel(id)] = id;
@@ -131,7 +144,9 @@ export function Panels({ session }: { session: SessionId }) {
         ? "plugin"
         : typingIn && pinned.includes(typingIn)
           ? pinnedPanel(typingIn)
-          : "session";
+          : shownPinned
+            ? pinnedPanel(session)
+            : "session";
   const area = { x: 0, y: 0, width: size.width, height: size.height };
   const solved = laidOut(panels.layout, (panel) => Boolean(sessionOf[panel]), withKeys, area);
   const alone = !shell && !plugin && pinned.length === 0;
@@ -269,13 +284,14 @@ export function Panels({ session }: { session: SessionId }) {
         <TerminalAlone session={session} />
       ) : (
         <>
-          <SessionPanel
-            session={session}
-            pinned={pinned.includes(session)}
-            style={style(placed("session"))}
-            lifted={dragging === "session"}
-            onHeadDown={headDown("session")}
-          />
+          {agent ? (
+            <SessionPanel
+              session={agent}
+              style={style(placed("session"))}
+              lifted={dragging === "session"}
+              onHeadDown={headDown("session")}
+            />
+          ) : null}
           {shell ? (
             <ShellPanel
               shell={shell}

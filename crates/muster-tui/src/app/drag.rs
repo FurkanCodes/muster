@@ -267,7 +267,7 @@ impl App {
                     && self.focused_session().is_some() =>
             {
                 self.close_changes();
-                self.open_selected();
+                self.open_beside_list();
                 Vec::new()
             }
             (Panel::Pinned(session), _) => {
