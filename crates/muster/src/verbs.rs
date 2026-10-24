@@ -85,7 +85,7 @@ pub(crate) enum Verb {
     Ticket {
         #[arg(value_parser = tickets::ticket_key)]
         key: muster_core::TicketKey,
-        /// open, close, assign [WS], unassign, or an agent's name.
+        /// open, close, assign \[WS\], unassign, or an agent's name.
         words: Vec<String>,
         /// The project (its name, id or folder), where you are not in one.
         #[arg(short, long)]
