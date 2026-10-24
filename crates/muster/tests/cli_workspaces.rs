@@ -374,7 +374,7 @@ async fn an_agent_started_in_a_workspace_s_terminal_belongs_to_it_and_takes_the_
 }
 
 #[tokio::test]
-async fn init_s_functions_make_a_bare_agent_a_session_of_the_workspace_prd_13() {
+async fn init_s_functions_run_a_bare_agent_in_its_terminal_prd_13_arc_28() {
     let setup = setup().await;
     let printed = text(&setup.run(&["init", "bash"]).stdout);
     assert!(printed.contains("claude() {"), "{printed}");
@@ -388,11 +388,30 @@ async fn init_s_functions_make_a_bare_agent_a_session_of_the_workspace_prd_13() 
     let source = format!(". '{}'; echo sourced-$((5+5))\r", script.display());
     tab.type_in(source.as_bytes());
     tab.shows("sourced-10");
+    // `claude` runs in this terminal, its chat named by its prompt: no
+    // other session.
     tab.type_in(b"claude Fix it\r");
-    let sessions = setup.sessions_in(workspace, 2).await;
-    assert_eq!(sessions[1].harness, "claude");
-    assert_eq!(sessions[1].title, "Fix it");
-    tab.type_in(b"\x11\x11");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let terminal = loop {
+        let sessions = setup.sessions_in(workspace, 1).await;
+        assert_eq!(sessions.len(), 1, "{sessions:?}");
+        let terminal = sessions.into_iter().next().unwrap();
+        let claude = terminal.agent.as_ref().map(|agent| agent.harness.as_str());
+        if claude == Some("claude") && terminal.title == "Fix it" {
+            break terminal;
+        }
+        assert!(Instant::now() < deadline, "{terminal:?}");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert_eq!(terminal.harness, "shell");
+    // It ends (the stand-in is a shell by now): the terminal again.
+    tab.type_in(b"exit\r");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while setup.sessions_in(workspace, 1).await[0].agent.is_some() {
+        assert!(Instant::now() < deadline, "the agent never left");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    tab.type_in(b"\x11");
     assert!(tab.ends());
 }
 

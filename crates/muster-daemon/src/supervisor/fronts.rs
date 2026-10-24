@@ -11,7 +11,7 @@ use muster_core::front::{AGENT_VARIABLE, Front};
 use muster_core::harness::SessionKind;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::{AgentNow, SessionId};
-use muster_state::session::{self, SessionMachine, Start};
+use muster_state::session::{self, SessionMachine, Signal, Start};
 
 use super::Supervisor;
 use crate::harness::{Harness, HookEndpoint, Place, claude};
@@ -150,6 +150,22 @@ impl Supervisor {
         }
         if let Some((status, unseen)) = self.launched_status(session) {
             self.set_status(session, status, unseen).await;
+        }
+        // An agent found after its terminal showed it at work, or titled
+        // it, is heard from what it showed: found late, it is no news.
+        let shown = self
+            .live
+            .get(&session)
+            .filter(|live| live.agent.is_some())
+            .map(|live| live.shown.clone());
+        if let Some(shown) = shown {
+            if shown.busy {
+                self.step_session(session, Signal::Progress { busy: true })
+                    .await;
+            }
+            if let Some(title) = shown.title {
+                self.on_title(session, &title).await;
+            }
         }
     }
 

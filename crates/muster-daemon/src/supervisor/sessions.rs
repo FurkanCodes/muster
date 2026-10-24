@@ -433,6 +433,7 @@ impl Supervisor {
                 named_by_person,
                 last_reply: None,
                 agent: None,
+                shown: super::Shown::default(),
             },
         );
         self.carry_watch(session);
@@ -630,7 +631,7 @@ impl Supervisor {
     /// or ready as the progress sequence would say it, and, for one whose
     /// title is its only word of waiting on the person, the wait and its
     /// end; its first title also says it has started.
-    async fn on_title(&mut self, session: SessionId, title: &str) {
+    pub(super) async fn on_title(&mut self, session: SessionId, title: &str) {
         let Some(live) = self.live.get_mut(&session) else {
             return;
         };
@@ -662,10 +663,23 @@ impl Supervisor {
     pub(super) async fn on_pty_event(&mut self, session: SessionId, event: PtyEvent) {
         match event {
             PtyEvent::Progress { busy } => {
+                if let Some(live) = self.live.get_mut(&session) {
+                    live.shown.busy = busy;
+                }
                 self.step_session(session, Signal::Progress { busy }).await;
             }
-            PtyEvent::Title(title) => self.on_title(session, &title).await,
-            PtyEvent::AgentEnded { success } => self.agent_ended(session, success).await,
+            PtyEvent::Title(title) => {
+                if let Some(live) = self.live.get_mut(&session) {
+                    live.shown.title = Some(title.clone());
+                }
+                self.on_title(session, &title).await;
+            }
+            PtyEvent::AgentEnded { success } => {
+                if let Some(live) = self.live.get_mut(&session) {
+                    live.shown = super::Shown::default();
+                }
+                self.agent_ended(session, success).await;
+            }
             PtyEvent::Exited {
                 success,
                 requested,
