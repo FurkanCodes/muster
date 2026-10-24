@@ -9,7 +9,7 @@ use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Stylize;
 use ratatui::text::Line;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
 use super::dialogs::input_window;
 use super::plugins::{runs_lines, source_text};
@@ -67,19 +67,8 @@ pub(super) fn draw_plugin_dialog(
         }
     };
     let height = 2 + parts.iter().map(|part| part_rows(part, inner)).sum::<u16>();
-    let rect = Rect {
-        x: area.x + area.width.saturating_sub(width) / 2,
-        y: area.y + area.height.saturating_sub(height) / 2,
-        width,
-        height: height.min(area.height),
-    };
-    frame.render_widget(Clear, rect);
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded);
-    let mut at = block.inner(rect);
-    frame.render_widget(block, rect);
+    let rect = super::floating::centred(area, width, height);
+    let mut at = super::floating::draw(frame, rect, Some(title), theme);
     // The keys, last, keep to the bottom, whatever is cut above them.
     let mut parts = parts;
     let keys = parts.pop();

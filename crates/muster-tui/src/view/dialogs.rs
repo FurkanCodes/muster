@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
 use muster_core::text::one_line;
 use muster_core::{ProjectId, TicketKey, WorkspaceId};
@@ -89,19 +89,8 @@ pub(super) fn draw_dialog(frame: &mut Frame<'_>, app: &App, dialog: &Dialog, are
         rows => u16::try_from(rows + 1).unwrap_or(u16::MAX),
     };
     let height = 2 + text_height + if input.is_some() { 3 + below_height } else { 0 };
-    let rect = Rect {
-        x: area.x + (area.width.saturating_sub(width)) / 2,
-        y: area.y + (area.height.saturating_sub(height)) / 2,
-        width,
-        height: height.min(area.height),
-    };
-    frame.render_widget(Clear, rect);
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded);
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
+    let rect = super::floating::centred(area, width, height);
+    let inner = super::floating::draw(frame, rect, Some(title), super::theme::of(app));
     let [text_area, input_area] =
         Layout::vertical([Constraint::Length(text_height), Constraint::Min(0)]).areas(inner);
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), text_area);

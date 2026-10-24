@@ -415,3 +415,24 @@ fn another_machine_out_of_reach_stays_drawn_dimmed_and_says_so_arc_27() {
         "the top bar"
     );
 }
+
+#[test]
+fn a_dialog_floats_in_a_border_of_the_accent_as_what_has_the_keys() {
+    let mut world = world();
+    world.app.selected = Some(Row::Session(world.session.id));
+    press(&mut world.app, KeyCode::Char('x'));
+    let screen = render(&world.app);
+    let cells = buffer(&world.app);
+    let accent = crate::view::theme::of(&world.app).accent;
+    // The dialog's title sits on its top border.
+    let (x, y) = (0..cells.area.height)
+        .find_map(|y| {
+            let line: String = (0..cells.area.width)
+                .map(|x| cells[(x, y)].symbol())
+                .collect();
+            let at = line.find("╭ Confirm")?;
+            Some((u16::try_from(line[..at].chars().count()).unwrap(), y))
+        })
+        .unwrap_or_else(|| panic!("no dialog: {screen}"));
+    assert_eq!(cells[(x, y)].fg, accent, "{screen}");
+}

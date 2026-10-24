@@ -3,9 +3,9 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
 use super::theme::Theme;
 use crate::app::{App, Help, HelpLine, View};
@@ -18,13 +18,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
     let theme = super::theme::of(app);
     let width = window.width.saturating_sub(4).min(76);
     let height = window.height.saturating_sub(2).min(30);
-    let area = Rect::new(
-        window.x + window.width.saturating_sub(width) / 2,
-        window.y + window.height.saturating_sub(height) / 2,
-        width,
-        height,
-    );
-    frame.render_widget(Clear, area);
+    let area = super::floating::centred(window, width, height);
     let screen = if help.over_changes {
         "Changes"
     } else {
@@ -35,13 +29,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
             View::Settings => "Settings",
         }
     };
-    let block = Block::default()
-        .title(format!(" Keys · {screen} "))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.accent));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = super::floating::draw(frame, area, Some(format!(" Keys · {screen} ")), theme);
     if inner.height < 3 {
         return;
     }

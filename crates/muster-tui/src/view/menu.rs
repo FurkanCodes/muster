@@ -3,9 +3,9 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
 use super::theme::Theme;
 use crate::app::Menu;
@@ -40,11 +40,7 @@ pub(crate) fn menu_area(menu: &Menu, window: Rect) -> Rect {
 
 pub(super) fn draw_menu(frame: &mut Frame<'_>, menu: &Menu, window: Rect, theme: Theme) {
     let area = menu_area(menu, window);
-    frame.render_widget(Clear, area);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.accent));
+    let inner = super::floating::draw(frame, area, None::<&str>, theme);
     let lines: Vec<Line<'_>> = menu
         .items
         .iter()
@@ -61,5 +57,5 @@ pub(super) fn draw_menu(frame: &mut Frame<'_>, menu: &Menu, window: Rect, theme:
             }
         })
         .collect();
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    frame.render_widget(Paragraph::new(lines), inner);
 }

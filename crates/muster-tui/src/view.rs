@@ -21,6 +21,7 @@ mod clashes;
 mod delegation;
 mod dialogs;
 mod drag;
+mod floating;
 mod help;
 pub(crate) mod kep;
 mod loading;
