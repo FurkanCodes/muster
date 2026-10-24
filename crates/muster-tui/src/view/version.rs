@@ -13,23 +13,16 @@ pub(super) fn stale_warning(daemon_version: &str) -> Option<String> {
 }
 
 fn warning(own: &str, daemon: &str) -> Option<String> {
-    (numbers(own) < numbers(daemon)).then(|| {
+    use muster_core::version::Version;
+    let newer = Version::of(own)
+        .zip(Version::of(daemon))
+        .is_some_and(|(own, daemon)| own < daemon);
+    newer.then(|| {
         format!(
             "This window runs muster {own}; the daemon is {daemon}. Quit with q and run muster \
              again for the new one: every session keeps running."
         )
     })
-}
-
-/// A version's numbers: `0.3.10-dev` is `[0, 3, 10]`, and what is missing
-/// or no number counts as 0.
-fn numbers(version: &str) -> [u64; 3] {
-    let mut numbers = [0; 3];
-    for (number, part) in numbers.iter_mut().zip(version.trim().split('.')) {
-        let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
-        *number = digits.parse().unwrap_or(0);
-    }
-    numbers
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@
 //! default, since what a manifest says is what the person approves
 //! (`PRD-15`). Text in, a [`Manifest`] out: the daemon reads the file.
 
+use crate::version::Version;
 use serde::{Deserialize, Serialize};
 
 use super::hooks::Hook;
@@ -257,9 +258,9 @@ pub(crate) fn read(text: &str, running: &str, own: bool) -> Result<Manifest, Man
         "muster",
         "the oldest Muster it works with, as `muster = \"0.4.0\"`",
     )?;
-    let needs = super::version(&muster)
+    let needs = Version::exact(&muster)
         .ok_or_else(|| top.invalid("muster", "a version of Muster, as `0.4.0`"))?;
-    if super::version(running).is_some_and(|running| needs > running) {
+    if Version::of(running).is_some_and(|running| needs > running) {
         return Err(ManifestError::TooNew {
             needs: muster,
             running: running.to_owned(),
@@ -356,9 +357,7 @@ impl<'a> Read<'a> {
     fn text(&self, key: &str) -> Result<Option<String>, ManifestError> {
         match self.table.get(key) {
             None => Ok(None),
-            Some(toml::Value::String(text))
-                if !text.trim().is_empty() && !text.chars().any(char::is_control) =>
-            {
+            Some(toml::Value::String(text)) if crate::text::is_one_line(text) => {
                 Ok(Some(text.trim().to_owned()))
             }
             Some(_) => Err(self.invalid(key, "one line of text, not empty")),
@@ -411,9 +410,7 @@ impl<'a> Read<'a> {
         items
             .iter()
             .map(|item| match item {
-                toml::Value::String(text)
-                    if !text.trim().is_empty() && !text.chars().any(char::is_control) =>
-                {
+                toml::Value::String(text) if crate::text::is_one_line(text) => {
                     Ok(text.trim().to_owned())
                 }
                 _ => Err(self.invalid(key, expected)),

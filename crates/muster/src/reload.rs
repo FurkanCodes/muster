@@ -7,22 +7,17 @@ use std::process::ExitCode;
 
 use muster_client::ClientError;
 
+use muster_core::version::Version;
+
 use crate::commands::{CLIENT, count, shown};
 
 /// The first muster whose daemon restarts in place on SIGUSR1; an older one
 /// would end on it, taking its sessions with it.
-const RELOADS_FROM: [u64; 3] = [0, 2, 0];
+const RELOADS_FROM: Version = Version(0, 2, 0);
 
 /// Whether a daemon of `version` restarts in place.
 pub(crate) fn reloads(version: &str) -> bool {
-    let parts: Vec<u64> = version
-        .split('.')
-        .map(|part| {
-            let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
-            digits.parse().unwrap_or(0)
-        })
-        .collect();
-    parts.len() >= 3 && [parts[0], parts[1], parts[2]] >= RELOADS_FROM
+    Version::of(version).is_some_and(|version| version >= RELOADS_FROM)
 }
 
 /// `muster reload`: moves the running daemon onto the muster installed now,

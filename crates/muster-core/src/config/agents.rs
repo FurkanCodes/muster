@@ -418,7 +418,9 @@ impl Read<'_> {
     fn text(&self, key: &str) -> Result<Option<String>, AgentError> {
         match self.table.get(key) {
             None => Ok(None),
-            Some(toml::Value::String(text)) if single_line(text) => Ok(Some(text.clone())),
+            Some(toml::Value::String(text)) if crate::text::is_one_line(text) => {
+                Ok(Some(text.clone()))
+            }
             Some(toml::Value::String(_)) => Err(self.invalid(key, "one line of text, not empty")),
             Some(_) => Err(self.invalid(key, "text")),
         }
@@ -514,7 +516,9 @@ impl Read<'_> {
         self.known(title, &TITLE_KEYS, "title.")?;
         let words = |key: &str| match title.get(key) {
             None => Ok(None),
-            Some(toml::Value::String(text)) if single_line(text) => Ok(Some(text.clone())),
+            Some(toml::Value::String(text)) if crate::text::is_one_line(text) => {
+                Ok(Some(text.clone()))
+            }
             Some(_) => Err(self.invalid(&format!("title.{key}"), "one line of text, not empty")),
         };
         Ok(TitleWords {
@@ -527,10 +531,6 @@ impl Read<'_> {
 
 /// Whether `text` is one line with something on it, and no other control
 /// character.
-fn single_line(text: &str) -> bool {
-    !text.trim().is_empty() && !text.chars().any(char::is_control)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -48,23 +48,6 @@ pub fn is_reserved(id: &str) -> bool {
     RESERVED.contains(&id) || id == "muster" || id.starts_with("muster-")
 }
 
-/// A version as `0.4.0` or `0.4` writes it, for comparing; `None` for
-/// anything else.
-pub fn version(text: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = text.trim().split('.');
-    let number = |part: Option<&str>| {
-        part.filter(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
-            .and_then(|part| part.parse::<u64>().ok())
-    };
-    let major = number(parts.next())?;
-    let minor = number(parts.next())?;
-    let patch = match parts.next() {
-        None => 0,
-        part => number(part)?,
-    };
-    parts.next().is_none().then_some((major, minor, patch))
-}
-
 /// Whether `text` is a git commit's id: 40 hexadecimal digits, or 64 in a
 /// repository of SHA-256 objects, in lowercase as git prints them.
 pub fn is_commit(text: &str) -> bool {
@@ -215,15 +198,8 @@ mod tests {
     }
 
     #[test]
-    fn versions_compare_by_their_numbers() {
-        assert_eq!(version("0.4.0"), Some((0, 4, 0)));
-        assert_eq!(version("0.4"), Some((0, 4, 0)));
-        assert_eq!(version(" 1.10.2 "), Some((1, 10, 2)));
-        assert!(version("0.10.0") > version("0.9.9"));
-        for bad in ["", "1", "1.x", "1.2.3.4", "v1.2", "1..2", "1.2-beta"] {
-            assert_eq!(version(bad), None, "{bad}");
-        }
-        assert!(version(MUSTER_VERSION).is_some());
+    fn muster_s_own_version_reads() {
+        assert!(crate::version::Version::of(MUSTER_VERSION).is_some());
     }
 
     #[test]

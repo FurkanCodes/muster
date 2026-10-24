@@ -486,7 +486,7 @@ impl Default for Keymap {
                 let chords = action
                     .defaults()
                     .iter()
-                    .map(|key| Chord::parse(key).unwrap_or_else(|_| unreachable!("{key}")))
+                    .filter_map(|key| Chord::parse(key).ok())
                     .collect();
                 (*action, chords)
             })
@@ -631,6 +631,15 @@ impl Keymap {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_default_key_reads() {
+        for action in Action::ALL {
+            for key in action.defaults() {
+                assert!(Chord::parse(key).is_ok(), "{action:?}: {key}");
+            }
+        }
+    }
 
     fn set(pairs: &[(&str, &[&str])]) -> BTreeMap<String, Vec<String>> {
         pairs

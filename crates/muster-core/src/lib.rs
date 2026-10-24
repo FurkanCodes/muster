@@ -43,6 +43,7 @@ pub mod tickets;
 pub mod tidy;
 pub mod time;
 pub mod timeline;
+pub mod version;
 
 pub use changes::{ChangeKind, ChangePart, ChangeSummary, Changes, FileChange, FileDiff};
 pub use entities::{Issue, IssueComment, Project, Session, TicketBrief, Workspace, WorkspaceKind};

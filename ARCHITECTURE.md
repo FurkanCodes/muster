@@ -412,7 +412,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 
 ## 14. Rules
 
-- **ARC-01** `muster-core`, `muster-state` and `muster-model` do no IO.
+- **ARC-01** `muster-core`, `muster-state` and `muster-model` do no IO. One exception, on purpose: a new ID (`SessionId::new` and the rest, `muster_core::ids`) is a ULID, made from the system clock and its randomness, as an ID must be unique wherever it is made; nothing decides anything by an ID's time.
 - **ARC-02** The daemon's state (projects, workspaces, sessions, runs) has one owner, the Supervisor; every other task asks it. Shared mutable state elsewhere is only a leaf: a cache, a client's session or a per-key lock, held within one task's request and never across a call back into the Supervisor, its size bounded by what it is keyed on (`ARC-14`).
 - **ARC-03** Every system outside the daemon has one seam where a test stands in for it. In-process, a trait with a fake: the clock (wall-clock and monotonic; clippy refuses reading it elsewhere), the git host, ticket sources, credentials, the Keychain and runs' work. Where tests run the real binary, a program found on `PATH` or named in settings: `docker`, `git`, `gh`, `glab` and the agents' own CLIs; and a real pseudo-terminal running `/bin/sh`. Harnesses are a set Muster knows, described by data, not trait objects.
 - **ARC-04** Containers outlive the daemon; the daemon reconciles them on boot.

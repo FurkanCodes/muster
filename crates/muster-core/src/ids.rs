@@ -1,9 +1,11 @@
 //! Typed identifiers. Every entity has its own ID type, so a session ID can
 //! never be passed where a project ID is expected.
 //!
-//! IDs are ULIDs: unique, ordered by creation time to the millisecond, and
-//! printed with a short prefix (`ses_01J…`) so logs say what kind of thing
-//! they name.
+//! IDs are ULIDs: unique, and printed with a short prefix (`ses_01J…`) so
+//! logs say what kind of thing they name. A new one is made from the
+//! system clock and its randomness, the one thing this crate takes from
+//! the system (`ARC-01`); its time is only a tie-break, never a rule, as
+//! two made in one millisecond come in no set order.
 
 use std::fmt;
 use std::str::FromStr;

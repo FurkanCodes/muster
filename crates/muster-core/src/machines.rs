@@ -233,13 +233,8 @@ impl Probe {
 /// Whether version `a` comes before `b`, number by number (`0.5.10` after
 /// `0.5.9`); one that does not read is older.
 pub fn older(a: &str, b: &str) -> bool {
-    let numbers = |text: &str| -> Option<Vec<u64>> {
-        text.split(['.', '-'])
-            .take(3)
-            .map(|part| part.parse().ok())
-            .collect()
-    };
-    match (numbers(a), numbers(b)) {
+    use crate::version::Version;
+    match (Version::of(a), Version::of(b)) {
         (Some(a), Some(b)) => a < b,
         (None, Some(_)) => true,
         _ => false,

@@ -194,7 +194,7 @@ impl MusterConfig {
                 .map_err(|error| invalid(&format!("layout.panels: {error}")))?,
         };
         let one_line = |key: &str, text: Option<String>| match text {
-            Some(text) if text.trim().is_empty() || text.chars().any(char::is_control) => {
+            Some(text) if !crate::text::is_one_line(&text) => {
                 Err(invalid(&format!("names.{key} must be one line of text")))
             }
             text => Ok(text.map(|text| text.trim().to_owned())),
