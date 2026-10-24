@@ -115,6 +115,8 @@ pub(super) enum Request {
         project: muster_core::ProjectId,
         listed: Vec<crate::worktree_sync::Listed>,
     },
+    /// A worktree's plan, asked of git off the loop.
+    WorktreePlanned(Box<super::worktrees::Planned>),
     /// A worktree git made off the loop, or could not.
     WorktreeMade(Box<super::worktrees::Made>),
     /// What a move of a branch onto its base was asked of git, off the loop.
@@ -190,6 +192,7 @@ impl std::fmt::Debug for Request {
             Self::Branches(_) => f.write_str("Branches"),
             Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
             Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
+            Self::WorktreePlanned(_) => f.write_str("WorktreePlanned"),
             Self::WorktreeMade(_) => f.write_str("WorktreeMade"),
             Self::MovePlanned(_) => f.write_str("MovePlanned"),
             Self::Prepared(_) => f.write_str("Prepared"),

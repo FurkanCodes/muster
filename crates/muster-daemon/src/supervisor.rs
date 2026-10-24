@@ -537,7 +537,7 @@ impl Supervisor {
                 } => {
                     let then = worktrees::Then::Reply(reply);
                     let branch = worktrees::Branch::new(branch, named_for);
-                    self.create_worktree(project, branch, on, then).await;
+                    self.create_worktree(project, branch, on, then);
                 }
                 Command::RemoveWorktree { workspace, force } => {
                     self.remove_worktree(workspace, force, reply).await;
@@ -669,6 +669,7 @@ impl Supervisor {
             Request::WorktreesListed { project, listed } => {
                 self.sync_worktrees(project, listed).await;
             }
+            Request::WorktreePlanned(planned) => self.worktree_planned(*planned),
             Request::WorktreeMade(made) => self.worktree_made(*made).await,
             Request::MovePlanned(planned) => self.move_planned(*planned),
             Request::Prepared(prepared) => self.prepared(*prepared).await,

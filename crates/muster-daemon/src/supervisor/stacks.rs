@@ -18,15 +18,13 @@ use crate::git;
 use crate::timeline::{MovePlan, Store, TimelineError};
 
 impl Supervisor {
-    /// What a new branch `branch` in `project` is stacked on when made on
-    /// top of `on`'s: that branch, at its newest commit.
-    pub(super) async fn stack_on(
+    /// The branch of `on`, a workspace of `project`, a new branch is to be
+    /// stacked on, and where it is checked out.
+    pub(super) fn stack_parent(
         &self,
         project: ProjectId,
         on: WorkspaceId,
-        branch: &str,
-        exists: bool,
-    ) -> Result<Stacked, ErrorBody> {
+    ) -> Result<(PathBuf, String), ErrorBody> {
         let parent = self
             .state
             .workspaces
@@ -56,27 +54,7 @@ impl Supervisor {
                 format!("there is no branch checked out there to stack on ({parent_branch})"),
             ));
         }
-        if exists {
-            return Err(ErrorBody::new(
-                ErrorCode::Conflict,
-                format!("{branch} exists already, so it cannot be made on top of {parent_branch}"),
-            ));
-        }
-        let at = git::checked(
-            &path,
-            &[
-                "rev-parse",
-                "--verify",
-                "--end-of-options",
-                &format!("refs/heads/{parent_branch}^{{commit}}"),
-            ],
-        )
-        .await
-        .map_err(|error| ErrorBody::new(ErrorCode::Internal, error.to_string()))?;
-        Ok(Stacked {
-            branch: parent_branch,
-            at,
-        })
+        Ok((path, parent_branch))
     }
 
     /// `MoveOnto`: refused while an agent works there, else done once the

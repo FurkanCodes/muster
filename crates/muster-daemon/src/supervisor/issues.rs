@@ -292,15 +292,11 @@ impl Supervisor {
         };
         let branch = match (existing, another) {
             (Some(existing), false) => return self.start_ticket_agent(existing, ticket).await,
-            (None, false) => branch,
-            (_, true) => match self.unused_worktree_branch(project, &branch).await {
-                Ok(branch) => branch,
-                Err(error) => return ticket.refuse(error),
-            },
+            (None, false) => worktrees::Branch::Named(branch),
+            (_, true) => worktrees::Branch::Another(branch),
         };
         let then = worktrees::Then::Ticket(Box::new(ticket));
-        self.create_worktree(project, worktrees::Branch::Named(branch), on, then)
-            .await;
+        self.create_worktree(project, branch, on, then);
     }
 
     /// Starts the ticket's agent in `workspace`, with the ticket as its
@@ -415,32 +411,6 @@ impl Supervisor {
         let updated = found.clone();
         self.broadcast(muster_core::protocol::Delta::WorkspaceUpserted(updated));
         Ok(Reply::Done)
-    }
-
-    /// `branch-2`, `-3`… : the first no workspace has and the repository
-    /// does not have yet, for another agent's worktree.
-    async fn unused_worktree_branch(
-        &self,
-        project: ProjectId,
-        branch: &str,
-    ) -> Result<String, ErrorBody> {
-        let root = self
-            .project_root(project)
-            .ok_or_else(|| no_project(project))?;
-        for n in 2..100 {
-            let candidate = format!("{branch}-{n}");
-            let in_use = self.branch_taken(project, &candidate);
-            let exists = crate::git::branch_exists(&root, &candidate)
-                .await
-                .unwrap_or(true);
-            if !in_use && !exists {
-                return Ok(candidate);
-            }
-        }
-        Err(ErrorBody::new(
-            ErrorCode::Conflict,
-            format!("{branch} already has 99 worktrees"),
-        ))
     }
 
     pub(super) fn project_root(&self, project: ProjectId) -> Option<std::path::PathBuf> {

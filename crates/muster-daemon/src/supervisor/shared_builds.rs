@@ -65,19 +65,4 @@ impl Supervisor {
             }
         }
     }
-
-    /// Before a worktree is made in `group`: its builds go to the shared
-    /// folder from the first, while the person shares them.
-    pub(super) async fn share_builds_in(&self, group: &Path) {
-        if !self.state.preferences.shared_builds {
-            return;
-        }
-        if let Err(error) = shared_builds::share(group).await {
-            tracing::warn!(
-                %error,
-                folder = %group.display(),
-                "could not share the builds of a project's worktrees"
-            );
-        }
-    }
 }
