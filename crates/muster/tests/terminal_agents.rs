@@ -283,3 +283,20 @@ async fn an_agent_muster_exec_runs_in_a_terminal_is_heard_by_hooks_and_ends_ther
     );
     assert_eq!(back.status, SessionStatus::Fresh);
 }
+
+#[tokio::test]
+async fn an_agent_found_after_it_showed_its_work_is_heard_at_work_arc_28() {
+    // Looked at seldom: the agent says it is busy long before it is found.
+    let Setup {
+        sandbox: _sandbox,
+        _daemon,
+        mut connection,
+        terminal,
+    } = setup_looking_every("500", &["codex"], None).await;
+    until(&mut connection, terminal, "named", |s| s.title != "Shell").await;
+    connection.input(terminal, b"codex\ngo\n").await.unwrap();
+    until(&mut connection, terminal, "found at work", |s| {
+        agent(s) == Some("codex") && s.status == SessionStatus::Running
+    })
+    .await;
+}

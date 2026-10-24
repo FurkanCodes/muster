@@ -277,6 +277,17 @@ struct Live {
     /// (`ARC-28`): its title is read as that agent's, and its machine is
     /// the agent's while it is there.
     agent: Option<Harness>,
+    /// What its terminal last showed, for an agent found in front after it
+    /// showed it (`ARC-28`): whether the progress sequence says busy, and
+    /// the window title.
+    shown: Shown,
+}
+
+/// What a terminal last showed of how its program is doing.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Shown {
+    busy: bool,
+    title: Option<String>,
 }
 
 impl Live {

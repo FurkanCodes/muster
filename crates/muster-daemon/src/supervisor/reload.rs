@@ -140,6 +140,7 @@ impl Supervisor {
                     named_by_person: false,
                     last_reply: None,
                     agent: agent.clone(),
+                    shown: super::Shown::default(),
                 },
             );
             if let Some(agent) = agent {
