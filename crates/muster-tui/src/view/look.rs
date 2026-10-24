@@ -67,7 +67,7 @@ pub(crate) fn session_time(app: &App, session: &Session) -> Option<String> {
     let now = app.now?;
     let since = muster_core::time::between(session.status_since, now);
     Some(match session.status {
-        SessionStatus::Running | SessionStatus::NeedsYou { .. } => short_span(since, app.motion),
+        SessionStatus::Running | SessionStatus::NeedsYou { .. } => short_span(since, app.moving.on),
         _ => format!("{} ago", short_span(since, false)),
     })
 }

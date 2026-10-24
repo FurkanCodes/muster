@@ -129,17 +129,17 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut terminal = HostTerminal::enter()?;
     let size = area_size(terminal.area.width, terminal.area.height);
     let mut app = App::new(options.cwd.clone(), size);
-    app.colours = std::mem::take(&mut terminal.colours);
-    app.cell_pixels = cell_pixels();
+    app.person.colours = std::mem::take(&mut terminal.colours);
+    app.person.cell_pixels = cell_pixels();
     app.alarms.notify = options.notify;
-    app.motion = options.motion;
-    app.graphics = crate::view::logos::Graphics::detect(|name| std::env::var(name).ok());
+    app.moving.on = options.motion;
+    app.person.graphics = crate::view::logos::Graphics::detect(|name| std::env::var(name).ok());
     app.welcome = true;
     if let Some(session) = options.open {
         app.open_at_start(session);
     }
     let outside = Outside::take(&mut options);
-    app.notch_here = outside.start_notch.is_some();
+    app.person.notch_here = outside.start_notch.is_some();
     app.machine.clone_from(&outside.machine);
 
     // Bounded: a loop that falls behind stops the link reading, and the
@@ -476,11 +476,12 @@ impl FrameHold {
 fn follow_window(terminal: &mut HostTerminal, app: &mut App) -> std::io::Result<Vec<Action>> {
     let (cols, rows) = crossterm::terminal::size()?;
     let cell = cell_pixels();
-    if (cols, rows) == (terminal.area.width, terminal.area.height) && cell == app.cell_pixels {
+    if (cols, rows) == (terminal.area.width, terminal.area.height) && cell == app.person.cell_pixels
+    {
         return Ok(Vec::new());
     }
     terminal.resize(cols, rows)?;
-    app.cell_pixels = cell;
+    app.person.cell_pixels = cell;
     Ok(app.on_resize(area_size(cols, rows)))
 }
 

@@ -4,7 +4,7 @@
 # Supervisor's parts and the TUI's screens are, before it gets close.
 set -euo pipefail
 
-limit="${1:-50}"
+limit="${1:-40}"
 status=0
 while IFS= read -r -d '' file; do
     while IFS= read -r found; do

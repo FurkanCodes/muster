@@ -47,6 +47,9 @@ jobs:
       - name: File size (ARC-08)
         if: runner.os == 'Linux'
         run: scripts/check-file-size.sh
+      - name: Type size (ARC-08)
+        if: runner.os == 'Linux'
+        run: scripts/check-type-size.sh
       - name: No credentials (ARC-20)
         if: runner.os == 'Linux'
         run: scripts/check-no-secrets.sh

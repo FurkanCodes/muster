@@ -447,6 +447,9 @@ pub(crate) struct App {
     pub(crate) settings: screens::SettingsScreen,
     pub(crate) panels: screens::Panels,
     pub(crate) alarms: screens::Alarms,
+    pub(crate) moving: screens::Moving,
+    pub(crate) person: screens::Person,
+    requests: screens::Requests,
     pub(crate) screens: HashMap<SessionId, Screen>,
     /// A workspace's changes, shown beside the list while open (`d`).
     pub(crate) changes: Option<ChangesPane>,
@@ -461,8 +464,6 @@ pub(crate) struct App {
     /// deltas travel separately, so either can arrive first. Selected (and,
     /// for a new session, opened) as soon as it appears.
     wanted: Option<(Row, bool)>,
-    pending: HashMap<u64, Then>,
-    next_req: u64,
     /// The window below the top bar: a session filling the window is drawn
     /// at this size; beside the list, at the pane's (`session_size`).
     pub(crate) terminal_size: TermSize,
@@ -477,47 +478,20 @@ pub(crate) struct App {
     removing: Vec<WorkspaceId>,
     /// Where `muster` was started, offered when adding a project.
     cwd: PathBuf,
-    /// Whether the person's terminal window has focus, once it has said;
-    /// terminals that never say count as looking.
-    pub(crate) focused: Option<bool>,
-    /// Whether anything moves: running sessions' marks spin and what
-    /// needs the person pulses.
-    pub(crate) motion: bool,
-    /// The step of the motion to draw, counted out by the runtime.
-    pub(crate) step: u64,
     /// The time now, as the runtime last read it, for how long sessions
     /// have run, waited or sat finished; `None` until it has.
     pub(crate) now: Option<muster_core::Timestamp>,
-    /// Sessions whose lines flash for a change of status, with the step
-    /// each flash began.
-    flashes: HashMap<SessionId, u64>,
-    /// The step a session last finished at, while Kep is glad of it.
-    glad_at: Option<u64>,
-    /// The selected line whose name, cut short, slides along.
-    slide: Option<motion::Slide>,
     /// Whether the welcome fills the window, as the UI starts.
     pub(crate) welcome: bool,
     /// The harness last started from the new-session dialog, which it
     /// offers first next time.
     last_harness: HarnessChoice,
-    /// What the person's terminal draws: the agents' logos as pictures,
-    /// or their marks in text.
-    pub(crate) graphics: crate::view::logos::Graphics,
-    /// Whether Muster's notch can show here: a Mac, with a program to
-    /// start it.
-    pub(crate) notch_here: bool,
     /// The machine whose Muster this UI shows, reached through ssh
     /// (`muster --on vm`); `None` for this one's.
     pub(crate) machine: Option<String>,
     /// Whether this UI has started the notch since it connected, or seen
     /// it turned off since.
     notch_started: bool,
-    /// The colours of the person's terminal, as it said them as the UI
-    /// started, told to each daemon the UI connects to.
-    pub(crate) colours: muster_core::colours::TerminalColours,
-    /// One cell of the person's terminal in pixels, as its size says,
-    /// read as the UI starts and as the window is resized.
-    pub(crate) cell_pixels: Option<PixelSize>,
     /// The size the streamed session's program was last given.
     fitted: Option<TermSize>,
     /// What each key does, Muster's own with the person's over them.
@@ -555,34 +529,25 @@ impl App {
             settings: screens::SettingsScreen::default(),
             panels: screens::Panels::default(),
             alarms: screens::Alarms::default(),
+            moving: screens::Moving::default(),
+            person: screens::Person::default(),
+            requests: screens::Requests::default(),
             screens: HashMap::new(),
             changes: None,
             selection: None,
             attached: None,
             focus_told: None,
             wanted: None,
-            pending: HashMap::new(),
-            next_req: 1,
             terminal_size,
             full_screen: false,
             closing: Vec::new(),
             removing: Vec::new(),
             cwd,
-            focused: None,
-            motion: true,
-            step: 0,
             now: None,
-            flashes: HashMap::new(),
-            glad_at: None,
-            slide: None,
             welcome: false,
             last_harness: HarnessChoice::CLAUDE,
-            graphics: crate::view::logos::Graphics::Text,
-            notch_here: false,
             machine: None,
             notch_started: false,
-            colours: muster_core::colours::TerminalColours::default(),
-            cell_pixels: None,
             areas_cache: std::cell::RefCell::default(),
             fitted: None,
             keymap: muster_core::keys::Keymap::default(),
@@ -596,9 +561,9 @@ impl App {
     // Commands.
 
     fn command(&mut self, command: Command, then: Then) -> Action {
-        let req_id = self.next_req;
-        self.next_req += 1;
-        self.pending.insert(req_id, then);
+        let req_id = self.requests.next;
+        self.requests.next += 1;
+        self.requests.pending.insert(req_id, then);
         Action::Send(ClientFrame::Command { req_id, command })
     }
 
@@ -606,7 +571,7 @@ impl App {
         self.note = Some(Note {
             text: text.into(),
             error: false,
-            shown_at: self.step,
+            shown_at: self.moving.step,
         });
     }
 
@@ -614,7 +579,7 @@ impl App {
         self.note = Some(Note {
             text: text.into(),
             error: true,
-            shown_at: self.step,
+            shown_at: self.moving.step,
         });
     }
 
@@ -704,7 +669,7 @@ impl App {
         } else {
             self.shown_session()
         };
-        shown.filter(|_| self.focused != Some(false))
+        shown.filter(|_| self.person.focused != Some(false))
     }
 
     /// Tells the daemon which session is in focus now, if that changed, so
@@ -722,7 +687,7 @@ impl App {
     /// A session's terminal of `size` in pixels, scaled from a cell of the
     /// person's terminal; `None` where that terminal does not say its own.
     pub(crate) fn session_pixels(&self, size: TermSize) -> Option<PixelSize> {
-        let cell = self.cell_pixels?;
+        let cell = self.person.cell_pixels?;
         Some(PixelSize {
             width: size.cols.saturating_mul(cell.width),
             height: size.rows.saturating_mul(cell.height),

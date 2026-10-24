@@ -122,3 +122,82 @@ impl Default for Alarms {
         }
     }
 }
+
+/// What moves on screen (`app::motion`).
+#[derive(Debug)]
+pub(crate) struct Moving {
+    /// Whether anything moves: running sessions' marks spin and what
+    /// needs the person pulses.
+    pub(crate) on: bool,
+    /// The step of the motion to draw, counted out by the runtime.
+    pub(crate) step: u64,
+    /// Sessions whose lines flash for a change of status, with the step
+    /// each flash began.
+    pub(crate) flashes: HashMap<SessionId, u64>,
+    /// The step a session last finished at, while Kep is glad of it.
+    pub(crate) glad_at: Option<u64>,
+    /// The selected line whose name, cut short, slides along.
+    pub(super) slide: Option<super::motion::Slide>,
+}
+
+impl Default for Moving {
+    fn default() -> Self {
+        Self {
+            on: true,
+            step: 0,
+            flashes: HashMap::new(),
+            glad_at: None,
+            slide: None,
+        }
+    }
+}
+
+/// The person's terminal, and the machine it is on, as they said as the
+/// UI started and since.
+#[derive(Debug)]
+pub(crate) struct Person {
+    /// Whether the person's terminal window has focus, once it has said;
+    /// terminals that never say count as looking.
+    pub(crate) focused: Option<bool>,
+    /// What the person's terminal draws: the agents' logos as pictures,
+    /// or their marks in text.
+    pub(crate) graphics: crate::view::logos::Graphics,
+    /// Whether Muster's notch can show here: a Mac, with a program to
+    /// start it.
+    pub(crate) notch_here: bool,
+    /// The colours of the person's terminal, as it said them as the UI
+    /// started, told to each daemon the UI connects to.
+    pub(crate) colours: muster_core::colours::TerminalColours,
+    /// One cell of the person's terminal in pixels, as its size says,
+    /// read as the UI starts and as the window is resized.
+    pub(crate) cell_pixels: Option<muster_core::protocol::PixelSize>,
+}
+
+impl Default for Person {
+    fn default() -> Self {
+        Self {
+            focused: None,
+            graphics: crate::view::logos::Graphics::Text,
+            notch_here: false,
+            colours: muster_core::colours::TerminalColours::default(),
+            cell_pixels: None,
+        }
+    }
+}
+
+/// The commands sent and what follows each one's reply.
+#[derive(Debug)]
+pub(crate) struct Requests {
+    pub(super) pending: HashMap<u64, super::Then>,
+    /// The id the next command is sent with.
+    pub(crate) next: u64,
+}
+
+impl Default for Requests {
+    fn default() -> Self {
+        Self {
+            pending: HashMap::new(),
+            next: 1,
+        }
+    }
+}

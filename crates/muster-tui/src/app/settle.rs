@@ -173,7 +173,7 @@ impl App {
             session,
             from_seq,
             // Attached while the window is out of focus: nobody looks.
-            watching: self.focused != Some(false),
+            watching: self.person.focused != Some(false),
         }));
         actions
     }

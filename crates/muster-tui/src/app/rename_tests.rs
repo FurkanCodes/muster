@@ -48,7 +48,7 @@ fn each_chat_is_led_by_its_agent_s_mark_and_named() {
 #[test]
 fn where_the_terminal_draws_pictures_the_mark_is_one() {
     let mut world = world();
-    world.app.graphics = Graphics::Iterm;
+    world.app.person.graphics = Graphics::Iterm;
     with_harness(&mut world, "claude");
     let cells = buffer(&world);
     let (x, y) = (0..cells.area.height)

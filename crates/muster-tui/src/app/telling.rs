@@ -35,7 +35,7 @@ impl App {
         );
         // The Mac's own sound is the person's alert sound, which only a
         // notification plays.
-        if !actions.is_empty() && self.notch_here && matches!(sound, Sound::Named(_)) {
+        if !actions.is_empty() && self.person.notch_here && matches!(sound, Sound::Named(_)) {
             actions.push(Action::Hear(sound));
         }
         actions

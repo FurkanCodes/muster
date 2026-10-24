@@ -211,7 +211,7 @@ impl App {
             self.complain(format!("{id} is Muster's own: it updates with Muster."));
             return Vec::new();
         }
-        let asked = self.next_req;
+        let asked = self.requests.next;
         let command = Command::Plugin(PluginCommand::Update { id: id.clone() });
         let action = self.command(command, Then::PluginPreview(asked));
         self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Fetching {
@@ -324,7 +324,7 @@ impl App {
                     PluginOrigin::Git { url, .. } => one_line(url),
                     PluginOrigin::Folder { path } => one_line(&path.display().to_string()),
                 };
-                let asked = self.next_req;
+                let asked = self.requests.next;
                 let command = Command::Plugin(PluginCommand::Preview { origin });
                 let action = self.command(command, Then::PluginPreview(asked));
                 self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Fetching {

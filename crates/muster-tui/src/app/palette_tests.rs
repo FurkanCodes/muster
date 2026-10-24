@@ -99,7 +99,7 @@ fn the_terminal_s_own_colours_draw_as_they_always_did() {
 #[test]
 fn a_terminal_s_own_background_shades_the_selected_line() {
     let mut world = world();
-    world.app.colours.background = Some(muster_core::colours::Rgb {
+    world.app.person.colours.background = Some(muster_core::colours::Rgb {
         red: 0,
         green: 0,
         blue: 0,
@@ -215,7 +215,7 @@ fn a_click_on_either_line_of_a_session_selects_it() {
 #[test]
 fn a_picture_sits_on_each_session_s_first_line() {
     let (mut world, second) = two_sessions();
-    world.app.graphics = Graphics::Iterm;
+    world.app.person.graphics = Graphics::Iterm;
     for id in [world.session.id, second] {
         let mut claude = world.app.model.session(id).unwrap().clone();
         claude.harness = "claude".to_owned();
@@ -269,7 +269,7 @@ fn picture_on(cells: &Buffer, row: u16) -> Option<((u32, u32), Vec<u8>)> {
 #[test]
 fn a_logo_is_laid_on_the_colour_of_its_line_so_no_square_shows_around_it() {
     let (mut world, second) = two_sessions();
-    world.app.graphics = Graphics::Iterm;
+    world.app.person.graphics = Graphics::Iterm;
     for id in [world.session.id, second] {
         let mut claude = world.app.model.session(id).unwrap().clone();
         claude.harness = "claude".to_owned();
@@ -299,12 +299,12 @@ fn a_logo_is_laid_on_the_colour_of_its_line_so_no_square_shows_around_it() {
 
     // Said: every line's is laid, as wide as its two cells are, the
     // unselected on the terminal's own background.
-    world.app.colours.background = Some(muster_core::colours::Rgb {
+    world.app.person.colours.background = Some(muster_core::colours::Rgb {
         red: 0x1e1e,
         green: 0x1e1e,
         blue: 0x2e2e,
     });
-    world.app.cell_pixels = Some(muster_core::protocol::PixelSize {
+    world.app.person.cell_pixels = Some(muster_core::protocol::PixelSize {
         width: 8,
         height: 18,
     });

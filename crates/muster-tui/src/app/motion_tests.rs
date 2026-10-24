@@ -65,13 +65,13 @@ fn count_modifiers(buffer: &Buffer) -> Modifier {
 fn a_running_session_s_mark_spins_one_frame_a_step() {
     let mut world = world();
     with_status(&mut world, SessionStatus::Running);
-    world.app.step = 0;
+    world.app.moving.step = 0;
     let screen = render(&world.app);
     assert!(screen.contains("⠋ • Shell"), "{screen}");
     assert!(!screen.contains('●'), "{screen}");
-    world.app.step = 1;
+    world.app.moving.step = 1;
     assert!(render(&world.app).contains("⠙ • Shell"));
-    world.app.step = 10;
+    world.app.moving.step = 10;
     assert!(render(&world.app).contains("⠋ • Shell"));
 }
 
@@ -85,7 +85,7 @@ fn what_needs_the_person_pulses_bright_plain_dim_plain() {
         },
     );
     let at = |world: &mut World, step| {
-        world.app.step = step;
+        world.app.moving.step = step;
         let buffer = buffer(world);
         (modifiers_of(&buffer, "▲"), count_modifiers(&buffer))
     };
@@ -104,8 +104,8 @@ fn what_needs_the_person_pulses_bright_plain_dim_plain() {
 #[test]
 fn with_motion_off_every_mark_stands_still() {
     let mut world = world();
-    world.app.motion = false;
-    world.app.step = 7;
+    world.app.moving.on = false;
+    world.app.moving.step = 7;
     with_status(&mut world, SessionStatus::Running);
     assert!(render(&world.app).contains("● • Shell"));
     assert!(!world.app.animating());
@@ -116,7 +116,7 @@ fn with_motion_off_every_mark_stands_still() {
             reason: WaitReason::Question,
         },
     );
-    world.app.step = 8;
+    world.app.moving.step = 8;
     let buffer = buffer(&world);
     assert!(modifiers_of(&buffer, "▲").contains(Modifier::BOLD));
     assert!(count_modifiers(&buffer).contains(Modifier::BOLD));
@@ -128,8 +128,8 @@ fn with_motion_off_every_mark_stands_still() {
 fn settle(world: &mut World) {
     world
         .app
-        .on_step(world.app.step + crate::motion::GLAD_STEPS);
-    world.app.on_step(world.app.step + 1);
+        .on_step(world.app.moving.step + crate::motion::GLAD_STEPS);
+    world.app.on_step(world.app.moving.step + 1);
 }
 
 #[test]
@@ -175,10 +175,12 @@ fn an_idle_screen_wants_no_steps_and_its_times_change_by_the_minute() {
     world.app.note = Some(super::Note {
         text: "Copied".to_owned(),
         error: false,
-        shown_at: world.app.step,
+        shown_at: world.app.moving.step,
     });
     assert!(world.app.wants_steps());
-    world.app.on_step(world.app.step + crate::motion::NOTE_GOES);
+    world
+        .app
+        .on_step(world.app.moving.step + crate::motion::NOTE_GOES);
     assert!(!world.app.wants_steps());
     // A running session spins, and its time reads by the second.
     with_status(&mut world, SessionStatus::Running);
@@ -311,7 +313,7 @@ fn waiting_and_ending_flash_but_starting_or_staying_the_same_does_not() {
 #[test]
 fn with_motion_off_nothing_flashes() {
     let mut world = world();
-    world.app.motion = false;
+    world.app.moving.on = false;
     world.app.on_step(1);
     with_status(&mut world, SessionStatus::Running);
     with_status(&mut world, SessionStatus::Finished);

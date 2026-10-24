@@ -97,7 +97,7 @@ fn enter_tells_a_kind_or_not_and_waits_for_the_answer() {
 #[test]
 fn the_arrows_choose_a_sound_heard_on_a_mac_as_it_is_chosen() {
     let mut world = on(Kind::Question);
-    world.app.notch_here = true;
+    world.app.person.notch_here = true;
     // From the Mac's own: none, then the first of the Mac's sounds.
     let actions = press(&mut world.app, KeyCode::Right);
     let (req_id, _, told) = tell(&actions);

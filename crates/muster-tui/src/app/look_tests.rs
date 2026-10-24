@@ -75,9 +75,9 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     assert!(line.contains("• Shell  running npm"), "{line}");
     assert!(line.contains("4m12s││"), "{line}");
     // Still, it reads to the minute.
-    world.app.motion = false;
+    world.app.moving.on = false;
     assert!(line_with(&render(&world.app), "running npm").contains("4m││"));
-    world.app.motion = true;
+    world.app.moving.on = true;
     // Where it does not fit, what it does gives way; the time stays.
     doing(&mut world, id, Some("editing view_settings.rs"));
     let line = line_with(&render(&world.app), "editing");
@@ -97,7 +97,7 @@ fn a_working_agent_says_what_it_does_and_for_how_long() {
     doing(&mut world, id, Some("wants to run rm"));
     world.app.selected = Some(Row::Session(id));
     // Past the flash its line gives as it comes to wait.
-    world.app.on_step(world.app.step + 20);
+    world.app.on_step(world.app.moving.step + 20);
     let screen = render(&world.app);
     assert!(line_with(&screen, "Shell  wants to").contains("2m11s││"));
     assert!(
@@ -319,7 +319,7 @@ fn the_clock_asks_for_drawing_only_as_a_time_on_screen_changes() {
     // One that runs counts its seconds.
     status(&mut world, id, SessionStatus::Running, 0);
     assert!(world.app.on_clock(Timestamp::from_millis(NOW + 61_000)));
-    world.app.motion = false;
+    world.app.moving.on = false;
     assert!(!world.app.on_clock(Timestamp::from_millis(NOW + 62_000)));
     assert!(world.app.on_clock(Timestamp::from_millis(NOW + 120_000)));
 }

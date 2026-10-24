@@ -132,7 +132,7 @@ fn line_wants(app: &App, row: Row) -> usize {
         Row::Session(id) => app.model.session(id).map_or(0, |session| {
             pull_request::width(&session_lead(edge))
                 + 2
-                + logos::width(app.graphics)
+                + logos::width(app.person.graphics)
                 + cells::width(&session.title)
         }),
     }
@@ -148,7 +148,7 @@ fn draw_logos(
     (sessions, heights, offset): (&[Option<&Session>], &[usize], usize),
     lead: usize,
 ) {
-    if app.graphics == logos::Graphics::Text {
+    if app.person.graphics == logos::Graphics::Text {
         return;
     }
     let inner = area.inner(ratatui::layout::Margin::new(1, 1));
@@ -168,11 +168,11 @@ fn draw_logos(
             // flash's, or none of its own.
             let under = frame.buffer_mut().cell(at).map(|cell| cell.bg);
             let backdrop = under
-                .and_then(|colour| super::theme::shown(colour, &app.colours))
-                .map(|colour| logos::Backdrop::new(colour, app.cell_pixels));
+                .and_then(|colour| super::theme::shown(colour, &app.person.colours))
+                .map(|colour| logos::Backdrop::new(colour, app.person.cell_pixels));
             logos::draw(
                 frame.buffer_mut(),
-                app.graphics,
+                app.person.graphics,
                 session.shown_harness(),
                 at,
                 backdrop,
@@ -511,7 +511,7 @@ fn session_parts(
         }
     }
     let lead_width = lead_width + project.iter().map(Span::width).sum::<usize>();
-    let fixed = lead_width + 2 + logos::width(app.graphics) + unseen;
+    let fixed = lead_width + 2 + logos::width(app.person.graphics) + unseen;
     let title_least = cells::width(&session.title).min(READABLE_TITLE);
     let wanted = title_least + 2 + cells::width(&doing);
     let mut time = look::session_time(app, session).unwrap_or_default();
@@ -616,7 +616,7 @@ fn pair_title_room(
     };
     let unseen = if session.unseen { 2 } else { 0 };
     width
-        .saturating_sub(lead_width + 2 + logos::width(app.graphics) + project + unseen)
+        .saturating_sub(lead_width + 2 + logos::width(app.person.graphics) + project + unseen)
         .max(4)
 }
 
@@ -637,7 +637,7 @@ fn session_pair(
     let lead_width: usize = lead.iter().map(Span::width).sum();
     let mut first = lead.clone();
     first.extend([Span::styled(symbol, style), Span::raw(" ")]);
-    first.extend(logos::spans(app.graphics, session.shown_harness()));
+    first.extend(logos::spans(app.person.graphics, session.shown_harness()));
     if place
         && let Some(id) = app.model.project_of(Row::Session(session.id))
         && let Some(found) = app.model.project(id)
@@ -662,7 +662,7 @@ fn session_pair(
     }
 
     // Under the name, past the mark and the logo.
-    let indent = 2 + logos::width(app.graphics);
+    let indent = 2 + logos::width(app.person.graphics);
     let mut second = lead;
     second.push(Span::raw(" ".repeat(indent)));
     let mut doing = look::doing(session).into_owned();
@@ -708,7 +708,7 @@ fn session_line(
     let doing_style = doing_style(app, session);
     let mut spans = lead;
     spans.extend([Span::styled(symbol, style), Span::raw(" ")]);
-    spans.extend(logos::spans(app.graphics, session.shown_harness()));
+    spans.extend(logos::spans(app.person.graphics, session.shown_harness()));
     spans.extend(project);
     spans.push(Span::raw(title));
     if !doing.is_empty() {

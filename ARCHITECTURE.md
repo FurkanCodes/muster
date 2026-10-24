@@ -419,7 +419,7 @@ Following Nebula's strategy, which is the best part of its codebase.
 - **ARC-05** Muster never writes to the user's global agent configuration or to files in their repository to make itself work; what it needs is passed at launch, inline or as files of its own in its private runtime directory that the harness is pointed at for the session. The person's files change only when they ask (`PRD-14`), as when a workspace's files are put back from its timeline.
 - **ARC-06** Git-host credentials never enter a container; commits leave through `git bundle`.
 - **ARC-07** Errors across the protocol carry typed codes.
-- **ARC-08** No source file over 1,000 lines; CI fails above it.
+- **ARC-08** No source file over 1,000 lines, and no struct of more than 40 fields; CI fails above either (`scripts/check-file-size.sh`, `scripts/check-type-size.sh`). A type that keeps everything is split by what goes together, as the Supervisor's parts and the TUI's screens are.
 - **ARC-09** Protocol changes follow the versioning rules in §6.
 - **ARC-10** A transition is stored with its reason before its effects run, and every effect is idempotent.
 - **ARC-11** A session's identity comes from its own secret token, never from an id the caller supplies.

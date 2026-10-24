@@ -20,7 +20,7 @@ fn looking(looking: bool) -> Action {
 /// The world's app, on a Mac, connected anew with Muster's own settings.
 fn mac(notch: bool) -> World {
     let mut world = world();
-    world.app.notch_here = true;
+    world.app.person.notch_here = true;
     world.app.on_connected("0.1.0".to_owned());
     world.app.on_frame(ServerFrame::Snapshot(Snapshot {
         projects: vec![world.project.clone()],
@@ -145,7 +145,7 @@ fn the_notch_is_started_once_wanted_and_again_once_turned_back_on() {
 #[test]
 fn the_snapshot_on_a_mac_starts_the_notch() {
     let mut world = world();
-    world.app.notch_here = true;
+    world.app.person.notch_here = true;
     world.app.on_connected("0.1.0".to_owned());
     let actions = world.app.on_frame(ServerFrame::Snapshot(Snapshot {
         projects: vec![world.project.clone()],
@@ -255,7 +255,7 @@ fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_ag
         SettingRow::Plugins,
         SettingRow::AddPlugin
     ]));
-    world.app.notch_here = true;
+    world.app.person.notch_here = true;
     assert!(world.app.setting_rows().ends_with(&[
         SettingRow::Muster,
         SettingRow::Notch,

@@ -172,12 +172,12 @@ fn nothing_slides_while_a_session_has_the_keys_or_the_window_is_away() {
     assert!(!world.app.on_step(26));
 
     world.app.mode = Mode::Browse;
-    world.app.focused = Some(false);
+    world.app.person.focused = Some(false);
     world.app.on_step(27);
     assert_eq!(world.app.slid_by(View::Sessions, long), 0);
     assert!(!world.app.wants_steps(), "nobody looks: no steps");
 
-    world.app.focused = Some(true);
+    world.app.person.focused = Some(true);
     assert!(world.app.wants_steps());
     world.app.on_step(30);
     world.app.on_step(30 + 17);
@@ -187,7 +187,7 @@ fn nothing_slides_while_a_session_has_the_keys_or_the_window_is_away() {
 #[test]
 fn with_motion_off_a_cut_name_stays_cut() {
     let (mut world, _) = long_world();
-    world.app.motion = false;
+    world.app.moving.on = false;
     world.app.selected = Some(Row::Session(world.session.id));
     assert!(!world.app.wants_steps());
     world.app.on_step(0);

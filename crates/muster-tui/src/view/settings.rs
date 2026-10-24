@@ -555,7 +555,7 @@ fn notifications_text(app: &App) -> Text<'static> {
         "Muster's helper tells you with the Mac's own notifications, in any terminal and with \
          every window closed; a click on one opens its session in the Muster window you used \
          last."
-    } else if app.notch_here {
+    } else if app.person.notch_here {
         "On a Mac, Muster's helper tells you with the Mac's own notifications once you allow \
          them: macOS asks once, for Muster. Allowed later in System Settings, Notifications, \
          Muster. Until then, this window's terminal tells you, as a desktop notification and \

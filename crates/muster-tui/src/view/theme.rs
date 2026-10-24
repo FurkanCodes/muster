@@ -1,6 +1,6 @@
 //! The colours the UI draws in (`Preferences::palette`). Muster's own are
 //! full colour: soft text, one accent, the statuses' colours, and shades
-//! taken from the terminal's own background (`app.colours`, asked as the
+//! taken from the terminal's own background (`app.person.colours`, asked as the
 //! UI starts), so a selected line is a little lighter than whatever the
 //! terminal is, never a grey of Muster's choosing; light where that
 //! background is light. The terminal's own are its sixteen, so the UI
@@ -14,7 +14,7 @@ use crate::app::App;
 
 /// The colours `app` draws in: the person's palette on their terminal.
 pub(crate) fn of(app: &App) -> Theme {
-    Theme::new(app.model.preferences().palette, &app.colours)
+    Theme::new(app.model.preferences().palette, &app.person.colours)
 }
 
 /// The colours of every screen.

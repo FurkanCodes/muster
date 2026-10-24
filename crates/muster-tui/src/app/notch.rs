@@ -14,7 +14,7 @@ use crate::model::Row;
 impl App {
     /// Whether the daemon knows the notch, and Muster's own settings.
     pub(crate) fn notch_known(&self) -> bool {
-        self.notch_here
+        self.person.notch_here
     }
 
     /// Tells the daemon whether the person is looking at this window; a
@@ -22,7 +22,7 @@ impl App {
     pub(super) fn looking(&self) -> Option<Action> {
         (matches!(self.link, Link::Connected { .. })).then(|| {
             Action::Send(ClientFrame::Looking {
-                looking: self.focused != Some(false),
+                looking: self.person.focused != Some(false),
             })
         })
     }

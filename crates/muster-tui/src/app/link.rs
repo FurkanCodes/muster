@@ -21,7 +21,7 @@ impl App {
         self.plugin_stream.session = None;
         // A new daemon knows nothing of where the keys are.
         self.focus_told = None;
-        self.pending.clear();
+        self.requests.pending.clear();
         // Asked of the last daemon, never answered: asked again.
         self.forget_unanswered();
         // A new connection is a new daemon, which numbers its terminals'
@@ -33,8 +33,10 @@ impl App {
         actions.extend(self.looking());
         // Programs in sessions asking their terminal's colours are told the
         // person's.
-        if !self.colours.is_empty() {
-            actions.push(Action::Send(ClientFrame::Colours(self.colours.clone())));
+        if !self.person.colours.is_empty() {
+            actions.push(Action::Send(ClientFrame::Colours(
+                self.person.colours.clone(),
+            )));
         }
         actions
     }
@@ -45,7 +47,7 @@ impl App {
         self.shell_stream.session = None;
         self.plugin_stream.session = None;
         self.focus_told = None;
-        self.pending.clear();
+        self.requests.pending.clear();
         self.forget_unanswered();
         self.forget_plugin_fetch();
         self.settings.plugin_changing = None;
@@ -178,7 +180,7 @@ impl App {
     /// they are looking elsewhere and want to be told.
     pub(super) fn news(&self, session: SessionId) -> Option<Action> {
         // Muster's helper tells the person with the Mac's own notifications.
-        if !self.alarms.notify || self.focused != Some(false) || self.model.notifier() {
+        if !self.alarms.notify || self.person.focused != Some(false) || self.model.notifier() {
             return None;
         }
         if !self.model.preferences().notifications {
@@ -205,7 +207,7 @@ impl App {
     /// news; looking back watches it again, and on the Tickets screen tries
     /// again what could not be fetched.
     pub(crate) fn on_focus(&mut self, focused: bool) -> Vec<Action> {
-        self.focused = Some(focused);
+        self.person.focused = Some(focused);
         let mut actions = match self.attached {
             Some(session) if matches!(self.link, Link::Connected { .. }) => {
                 vec![Action::Send(ClientFrame::Watch {
@@ -229,7 +231,7 @@ impl App {
         reason = "one arm for each reply the daemon can send"
     )]
     fn on_reply(&mut self, req_id: u64, outcome: Result<Reply, ErrorBody>) -> Vec<Action> {
-        let Some(then) = self.pending.remove(&req_id) else {
+        let Some(then) = self.requests.pending.remove(&req_id) else {
             return Vec::new();
         };
         match (outcome, then) {
@@ -437,7 +439,7 @@ impl App {
     /// Whether an answer `then` waits for is on its way: asked, and the
     /// connection not lost since (which forgets every one).
     fn awaits(&self, then: impl Fn(&Then) -> bool) -> bool {
-        self.pending.values().any(then)
+        self.requests.pending.values().any(then)
     }
 
     /// The notch is being turned on or off.

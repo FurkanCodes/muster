@@ -24,7 +24,7 @@ impl App {
         }
         if stored.status == SessionStatus::Finished {
             self.alarms.held.retain(|(held, _)| *held != session);
-            self.alarms.held.push((session, self.step));
+            self.alarms.held.push((session, self.moving.step));
             return None;
         }
         self.alarms.last = Some(session);
@@ -35,7 +35,7 @@ impl App {
     /// finished and unseen; those at work again by then are dropped. The
     /// runtime asks after each step.
     pub(crate) fn due_news(&mut self) -> Vec<Action> {
-        let step = self.step;
+        let step = self.moving.step;
         let (due, held): (Vec<_>, Vec<_>) = std::mem::take(&mut self.alarms.held)
             .into_iter()
             .partition(|(_, at)| step.saturating_sub(*at) >= HOLD_STEPS);

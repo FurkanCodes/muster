@@ -14,7 +14,7 @@ impl App {
     /// Ends the welcome once it is due to go; whether it went.
     pub(super) fn end_welcome_when_due(&mut self) -> bool {
         let ready = self.model.loaded() || matches!(self.link, Link::Lost(_));
-        if self.welcome && ready && self.step >= WELCOME_STEPS {
+        if self.welcome && ready && self.moving.step >= WELCOME_STEPS {
             self.welcome = false;
             return true;
         }

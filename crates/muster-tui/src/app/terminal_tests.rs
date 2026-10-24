@@ -27,7 +27,7 @@ fn dark() -> TerminalColours {
 #[test]
 fn the_person_s_colours_are_told_to_each_daemon() {
     let mut app = App::new(PathBuf::from("/src"), SIZE);
-    app.colours = dark();
+    app.person.colours = dark();
     let told = Action::Send(ClientFrame::Colours(dark()));
     assert!(app.on_connected("0.4.0".to_owned()).contains(&told));
     // Again on every connection: a daemon started since knows none.
@@ -246,7 +246,7 @@ fn a_session_s_size_in_pixels_is_scaled_from_the_person_s_cells() {
     use muster_core::protocol::PixelSize;
     let mut world = world();
     let id = world.session.id;
-    world.app.cell_pixels = Some(PixelSize {
+    world.app.person.cell_pixels = Some(PixelSize {
         width: 8,
         height: 16,
     });
