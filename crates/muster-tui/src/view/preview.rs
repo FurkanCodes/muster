@@ -16,6 +16,17 @@ use crate::model::Row;
 
 pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
     if let Some(session) = app.focused_session() {
+        if app.pinned_beside().contains(&session) {
+            // Drawn in its own panel: once only.
+            let unpin = format!("{} unpins it.", app.key(Does::PinSession));
+            return kep::draw_empty_pane(
+                frame,
+                app,
+                area,
+                "It is in a panel of its own.",
+                &[&unpin],
+            );
+        }
         draw_session(frame, app, session, area, false);
         return;
     }

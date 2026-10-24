@@ -19,6 +19,7 @@ pub(super) struct Key {
     changes: bool,
     shell: bool,
     plugin: bool,
+    pinned: Vec<muster_core::SessionId>,
     keys: Panel,
 }
 
@@ -35,6 +36,7 @@ impl Key {
             changes: app.changes_shown(),
             shell: app.shell_beside().is_some(),
             plugin: app.plugin_beside().is_some(),
+            pinned: app.pinned_beside(),
             keys: app.panel_with_keys(),
         }
     }

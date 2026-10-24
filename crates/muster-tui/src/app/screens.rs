@@ -98,6 +98,9 @@ pub(crate) struct Panels {
     pub(crate) hover: Option<grab::Grab>,
     /// The panels being moved with the keys.
     pub(crate) arranging: Option<drag::Arranging>,
+    /// The sessions pinned in panels of their own that are streamed, and
+    /// the size each was given.
+    pub(crate) pinned: Vec<super::settle::Streamed>,
 }
 
 /// The news told the person while they look elsewhere (`app::alarm`).

@@ -21,7 +21,7 @@ pub(crate) const LIST_MOST: u16 = 36;
 const fn least(panel: Panel, list: u16) -> (u16, u16) {
     match panel {
         Panel::List => (list, 6),
-        Panel::Session | Panel::Changes => (60, 6),
+        Panel::Session | Panel::Changes | Panel::Pinned(_) => (60, 6),
         Panel::Shell | Panel::Plugin => (40, 6),
     }
 }

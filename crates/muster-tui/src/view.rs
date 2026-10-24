@@ -2,7 +2,7 @@
 
 use muster_core::layout::Panel;
 use muster_core::num::fraction;
-use muster_core::{SessionStatus, WaitReason};
+use muster_core::{SessionId, SessionStatus, WaitReason};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -82,9 +82,48 @@ pub(crate) struct BrowseAreas {
     pub(crate) shell: Rect,
     /// A plugin's panel beside the session.
     pub(crate) plugin: Rect,
+    /// The sessions pinned in panels of their own.
+    pub(crate) pinned: Vec<(SessionId, Rect)>,
     pub(crate) bottom: Rect,
     /// The lines between panels, which a drag moves.
     pub(crate) dividers: Vec<Divider>,
+}
+
+impl BrowseAreas {
+    /// Where `panel` is drawn; nowhere (an empty area) when not shown.
+    pub(crate) fn of(&self, panel: Panel) -> Rect {
+        match panel {
+            Panel::List => self.list,
+            Panel::Session => self.preview,
+            Panel::Changes => self.changes,
+            Panel::Shell => self.shell,
+            Panel::Plugin => self.plugin,
+            Panel::Pinned(session) => self
+                .pinned
+                .iter()
+                .find(|(pinned, _)| *pinned == session)
+                .map_or(Rect::default(), |(_, area)| *area),
+        }
+    }
+
+    /// Every panel shown, each where it is drawn.
+    pub(crate) fn shown(&self) -> Vec<(Panel, Rect)> {
+        [
+            (Panel::List, self.list),
+            (Panel::Session, self.preview),
+            (Panel::Changes, self.changes),
+            (Panel::Shell, self.shell),
+            (Panel::Plugin, self.plugin),
+        ]
+        .into_iter()
+        .chain(
+            self.pinned
+                .iter()
+                .map(|(session, area)| (Panel::Pinned(*session), *area)),
+        )
+        .filter(|(_, area)| !area.is_empty())
+        .collect()
+    }
 }
 
 /// The list view's layout in `area`, shared with the app so the mouse
@@ -111,16 +150,10 @@ pub(crate) fn session_area(app: &App, area: Rect) -> Rect {
     areas(app, area, 1, true).preview.inner(Margin::new(1, 1))
 }
 
-/// Where the shell beside the session is drawn in `area`, inside its
-/// border, measured as [`session_area`] is.
-pub(crate) fn shell_area(app: &App, area: Rect) -> Rect {
-    areas(app, area, 1, true).shell.inner(Margin::new(1, 1))
-}
-
-/// Where a plugin's panel beside the session is drawn in `area`, inside
-/// its border, measured as [`session_area`] is.
-pub(crate) fn plugin_area(app: &App, area: Rect) -> Rect {
-    areas(app, area, 1, true).plugin.inner(Margin::new(1, 1))
+/// Where `panel` (the shell, a plugin's panel, a session pinned) is drawn
+/// in `area`, inside its border, measured as [`session_area`] is.
+pub(crate) fn panel_area(app: &App, area: Rect, panel: Panel) -> Rect {
+    areas(app, area, 1, true).of(panel).inner(Margin::new(1, 1))
 }
 
 fn areas(app: &App, area: Rect, bottom: u16, beside_session: bool) -> BrowseAreas {
@@ -159,6 +192,11 @@ fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> B
         changes: solved.of(Panel::Changes),
         shell: solved.of(Panel::Shell),
         plugin: solved.of(Panel::Plugin),
+        pinned: solved
+            .panels
+            .iter()
+            .filter_map(|(panel, area)| panel.pinned().map(|session| (session, *area)))
+            .collect(),
         bottom,
         dividers: solved.dividers,
     }
@@ -207,6 +245,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         if let Mode::Terminal(session) = app.mode
             && !app.typing_in_shell()
             && !app.typing_in_plugin()
+            && app.typing_in_pinned().is_none()
         {
             draw_session(frame, app, session, preview, true);
         } else if app.view == View::Tickets {
@@ -229,6 +268,15 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         && let Some(beside) = app.plugin_beside()
     {
         draw_session(frame, app, beside, plugin, app.typing_in_plugin());
+    }
+    for (session, area) in &areas.pinned {
+        draw_session(
+            frame,
+            app,
+            *session,
+            *area,
+            app.mode == Mode::Terminal(*session),
+        );
     }
     drag::draw_moving(frame, app, &areas);
     // The daemon out of reach: what it last said stays, dimmed, until it

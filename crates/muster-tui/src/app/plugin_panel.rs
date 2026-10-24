@@ -94,16 +94,7 @@ impl App {
 
     /// The size the plugin's panel beside the session is given.
     pub(crate) fn plugin_size(&self) -> TermSize {
-        if self.fills_window() || self.narrow() {
-            return self.terminal_size;
-        }
-        let window =
-            ratatui::layout::Rect::new(0, 0, self.terminal_size.cols, self.terminal_size.rows + 1);
-        let pane = crate::view::plugin_area(self, window);
-        TermSize {
-            cols: pane.width.max(1),
-            rows: pane.height.max(1),
-        }
+        self.panel_size(muster_core::layout::Panel::Plugin)
     }
 
     /// The panels of the plugins that run, as their keys open them: each

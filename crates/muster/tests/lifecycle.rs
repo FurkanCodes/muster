@@ -293,6 +293,38 @@ async fn running_or_unknown_sessions_are_neither_restarted_nor_removed() {
 }
 
 #[tokio::test]
+async fn a_session_pinned_beside_goes_from_the_layout_as_it_is_removed() {
+    use muster_core::layout::{Edge, Panel, Place};
+    use muster_core::settings::PreferenceChange;
+
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let session = start(&mut connection, setup.workspace, "shell").await;
+    let snapshot = connection.subscribe().await.unwrap();
+    let pinned = snapshot
+        .preferences
+        .panels
+        .pinning(session, Place::Beside(Panel::Session, Edge::Left));
+    connection
+        .command(Command::ChangePreference(PreferenceChange::Panels(pinned)))
+        .await
+        .unwrap();
+    let kept = connection.subscribe().await.unwrap().preferences.panels;
+    assert_eq!(kept.pinned(), [session], "the daemon keeps it");
+
+    exit(&mut connection, session).await;
+    connection
+        .command(Command::RemoveSession { session })
+        .await
+        .unwrap();
+    let after = connection.subscribe().await.unwrap().preferences.panels;
+    assert!(after.pinned().is_empty(), "{after}");
+    let written = std::fs::read_to_string(setup.sandbox.paths().config_dir.join("settings.toml"))
+        .unwrap_or_default();
+    assert!(!written.contains(&session.to_string()), "{written}");
+}
+
+#[tokio::test]
 async fn a_removed_session_leaves_the_list_for_good() {
     let setup = setup().await;
     let mut connection = setup.daemon.connect().await;

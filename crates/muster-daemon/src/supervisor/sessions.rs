@@ -594,6 +594,7 @@ impl Supervisor {
         self.release_terminal(session);
         self.state.sessions.retain(|stored| stored.id != session);
         self.broadcast(Delta::SessionRemoved { id: session });
+        self.unpin_gone();
         Ok(Reply::Done)
     }
 

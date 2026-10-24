@@ -365,6 +365,7 @@ impl Supervisor {
         self.start_plugins().await;
         self.ensure_checkouts().await;
         self.settle_shared_builds(true).await;
+        self.unpin_gone();
         // Running sessions handed over keep running: taken over before any
         // is taken to have died with the last daemon.
         self.adopt_sessions(adopted);

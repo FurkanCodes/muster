@@ -58,10 +58,14 @@ impl App {
         if self.note.as_ref().is_some_and(|note| note.error) {
             self.note = None;
         }
-        if self.panels.drag.is_some() {
-            // A key lets go of a drag, the layout as it was.
+        if let Some(drag) = &self.panels.drag {
+            // A key lets go of a drag, the layout as it was; a line pressed
+            // in the list and gone nowhere yet was only a click.
+            let only_pressed = matches!(drag, super::drag::Drag::Line { to: None, .. });
             self.cancel_drag();
-            return self.settle();
+            if !only_pressed {
+                return self.settle();
+            }
         }
         if self.panels.arranging.is_some() {
             let mut actions = self.arrange_key(&key);
@@ -260,6 +264,7 @@ impl App {
             Does::ShowChanges => return self.open_changes(),
             Does::Fold => self.toggle_fold(),
             Does::Shell => return self.toggle_shell(),
+            Does::PinSession => return self.toggle_pin(),
             _ => {}
         }
         Vec::new()

@@ -59,17 +59,19 @@ impl App {
                     self.here(Does::Rename, "rename"),
                     self.here(Does::Close, "close"),
                     self.here(Does::StopSession, "stop"),
+                    self.pin_here(session.id),
                     self.here(Does::NewSession, "session"),
                 ]);
                 here
             }
-            (_, _, Some(_)) => vec![
+            (_, _, Some(session)) => vec![
                 enter("open"),
                 self.here(Does::FullScreen, "full screen"),
                 self.here(Does::ShowChanges, "changes"),
                 self.here(Does::Rename, "rename"),
                 self.here(Does::RestartSession, "restart"),
                 self.here(Does::Close, "remove"),
+                self.pin_here(session.id),
                 self.here(Does::NewSession, "session"),
             ],
             (View::Sessions, Some(Row::Worktree(id)), None) => self.worktree_actions(id),
@@ -129,6 +131,15 @@ impl App {
             self.here(Does::ShowTickets, "tickets"),
         ]);
         here
+    }
+
+    /// Pinning `session` in a panel of its own, or unpinning it.
+    fn pin_here(&self, session: muster_core::SessionId) -> Here {
+        let pinned = self.panels().pinned().contains(&session);
+        self.here(
+            Does::PinSession,
+            if pinned { "unpin" } else { "pin beside" },
+        )
     }
 
     /// `does`, by its key.

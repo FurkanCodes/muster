@@ -391,6 +391,7 @@ impl Supervisor {
         self.forget_timeline(workspace);
         self.forget_clashes_with(workspace);
         self.forget_tidies();
+        self.unpin_gone();
     }
 
     /// The live worktree Muster made for `project` on `branch`, if any.

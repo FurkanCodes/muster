@@ -9,6 +9,10 @@
 //! as a click on the panel does. A line is taken by the cell before it
 //! too; from there it moves once the pointer has gone two cells, and a
 //! press that does not is the click it was.
+//!
+//! A session's line in the list, dragged out of it, pins the session in a
+//! panel of its own where it is dropped (`app::pinned`); the press on it
+//! selects it as any does.
 
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::layout::{Branch, Edge, Layout, Panel, Place, Size, Split};
@@ -34,6 +38,13 @@ pub(crate) enum Drag {
     Panel {
         panel: Panel,
         moved: bool,
+        to: Option<Place>,
+    },
+    /// A session's line taken from the list: the press that took it, and
+    /// where its panel would land now, once it has left the list.
+    Line {
+        session: muster_core::SessionId,
+        press: MouseEvent,
         to: Option<Place>,
     },
     /// The line between two panels, and the layout before it moved; the
@@ -72,17 +83,7 @@ impl App {
 
     /// The panels shown, each where it is drawn.
     pub(super) fn shown_panels(&self) -> Vec<(Panel, Rect)> {
-        let areas = crate::view::browse_areas(self, self.window());
-        [
-            (Panel::List, areas.list),
-            (Panel::Session, areas.preview),
-            (Panel::Changes, areas.changes),
-            (Panel::Shell, areas.shell),
-            (Panel::Plugin, areas.plugin),
-        ]
-        .into_iter()
-        .filter(|(_, area)| !area.is_empty())
-        .collect()
+        crate::view::browse_areas(self, self.window()).shown()
     }
 
     /// The mouse, for a drag: a press on a panel's title or on a line
@@ -90,6 +91,11 @@ impl App {
     /// it takes every event. `None` leaves the event to the mode.
     pub(super) fn drag_mouse(&mut self, event: MouseEvent) -> Option<Vec<Action>> {
         let at = Position::new(event.column, event.row);
+        if event.kind == MouseEventKind::Down(MouseButton::Left) && self.panels.drag.is_some() {
+            // A press while a drag is under way: its release never came, so
+            // it is let go, and this press is one of its own.
+            self.cancel_drag();
+        }
         if let Some(drag) = self.panels.drag.clone() {
             return Some(match event.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
@@ -102,6 +108,16 @@ impl App {
         }
         if event.kind != MouseEventKind::Down(MouseButton::Left) || !self.can_arrange() {
             return None;
+        }
+        if let Some(session) = self.session_line_at(at) {
+            // The press is the click it always was, and may become a drag.
+            let actions = self.mode_mouse(event);
+            self.panels.drag = Some(Drag::Line {
+                session,
+                press: event,
+                to: None,
+            });
+            return Some(actions);
         }
         // What is marked in a session is clicked away, as by any click.
         self.panels.drag = Some(match self.hold_at(at)? {
@@ -124,6 +140,13 @@ impl App {
 
     fn drag_to(&mut self, drag: Drag, at: Position) {
         match drag {
+            Drag::Line { session, press, .. } => {
+                let list = crate::view::browse_areas(self, self.window()).list;
+                let to = (!list.contains(at))
+                    .then(|| self.drop_place(Panel::Pinned(session), at))
+                    .flatten();
+                self.panels.drag = Some(Drag::Line { session, press, to });
+            }
             Drag::Panel { panel, .. } => {
                 self.panels.drag = Some(Drag::Panel {
                     panel,
@@ -164,6 +187,24 @@ impl App {
 
     fn drop_at(&mut self, drag: Drag, at: Position) -> Vec<Action> {
         match drag {
+            Drag::Line {
+                session,
+                to: Some(place),
+                ..
+            } => {
+                self.panels.drag = None;
+                self.pin_at(session, place)
+            }
+            Drag::Line { press, .. } => {
+                // Let go in the list: the click it was, already taken.
+                self.panels.drag = None;
+                self.mode_mouse(MouseEvent {
+                    kind: MouseEventKind::Up(MouseButton::Left),
+                    column: at.x,
+                    row: at.y,
+                    ..press
+                })
+            }
             Drag::Panel { panel, moved, to } => {
                 self.panels.drag = None;
                 match (moved, to) {
@@ -227,6 +268,11 @@ impl App {
             {
                 self.close_changes();
                 self.open_selected();
+                Vec::new()
+            }
+            (Panel::Pinned(session), _) => {
+                self.close_changes();
+                self.mode = Mode::Terminal(session);
                 Vec::new()
             }
             _ => Vec::new(),
@@ -364,10 +410,7 @@ impl App {
             return Vec::new();
         }
         let panel = match self.mode {
-            Mode::Terminal(_) if self.typing_in_shell() => Panel::Shell,
-            Mode::Terminal(_) if self.typing_in_plugin() => Panel::Plugin,
-            Mode::Terminal(_) => Panel::Session,
-            Mode::Changes => Panel::Changes,
+            Mode::Terminal(_) | Mode::Changes => self.panel_with_keys(),
             _ => Panel::List,
         };
         self.panels.arranging = Some(Arranging {
