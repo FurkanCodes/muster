@@ -473,18 +473,16 @@ fn the_command_line_manages_worktrees_and_sessions() {
     };
 
     assert!(run(&["project", "add", root.to_str().unwrap()]).0);
-    let (ok, stdout, stderr) = run(&["worktree", "add", "app", "--branch", "cli-work"]);
+    let (ok, stdout, stderr) = run(&["workspace", "add", "-p", "app", "--branch", "cli-work"]);
     assert!(ok, "{stderr}");
-    assert!(stdout.contains("Created cli-work at"), "{stdout}");
+    assert!(
+        stdout.contains("Made workspace cli-work on cli-work at"),
+        "{stdout}"
+    );
 
-    let (ok, stdout, stderr) = run(&["session", "start", "cli-work"]);
+    let (ok, stdout, stderr) = run(&["term", "new", "--in", "cli-work", "--bg"]);
     assert!(ok, "{stderr}");
-    let session = stdout
-        .trim()
-        .strip_prefix("Started ")
-        .and_then(|rest| rest.strip_suffix('.'))
-        .expect("the session id")
-        .to_owned();
+    assert!(stdout.contains("terminal 1 in cli-work"), "{stdout}");
 
     let (_, status, _) = run(&["status"]);
     assert!(
@@ -493,37 +491,18 @@ fn the_command_line_manages_worktrees_and_sessions() {
     );
     assert!(status.contains("cli-work"), "{status}");
     // A shell is named by what runs in it once the sampler looks.
-    let line = status
-        .lines()
-        .find(|line| line.contains(&session))
-        .unwrap_or_default();
-    assert!(line.contains("fresh"), "{status}");
+    assert!(status.contains("fresh"), "{status}");
 
-    // A shell ends with its worktree; an agent at work there keeps it.
-    let (ok, stdout, stderr) = run(&["session", "start", "cli-work", "--harness", "claude"]);
+    // Its sessions are stopped only on the person's word: asked, or with
+    // --yes; a script that says neither removes nothing.
+    let (ok, _, stderr) = run(&["claude", "--in", "cli-work"]);
     assert!(ok, "{stderr}");
-    let agent = stdout
-        .trim()
-        .strip_prefix("Started ")
-        .and_then(|rest| rest.strip_suffix('.'))
-        .expect("the session id")
-        .to_owned();
-    let (ok, _, stderr) = run(&["worktree", "remove", "cli-work"]);
+    let (ok, _, stderr) = run(&["workspace", "rm", "cli-work"]);
     assert!(!ok);
-    assert!(stderr.contains("running session"), "{stderr}");
-
-    assert!(run(&["session", "stop", &agent]).0);
-    // The stop finishes asynchronously; removal succeeds once it has.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        let (ok, stdout, stderr) = run(&["worktree", "remove", "cli-work"]);
-        if ok {
-            assert!(stdout.contains("its branch is kept"), "{stdout}");
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "{stderr}");
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    assert!(stderr.contains("nothing was removed"), "{stderr}");
+    let (ok, stdout, stderr) = run(&["workspace", "rm", "cli-work", "-y"]);
+    assert!(ok, "{stderr}");
+    assert!(stdout.contains("its branch is kept"), "{stdout}");
     assert!(run(&["status"]).1.contains("0 worktrees"));
 }
 

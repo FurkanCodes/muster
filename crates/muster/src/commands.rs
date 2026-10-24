@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Reply, Snapshot, TermSize};
-use muster_core::{Project, SessionId, SessionStatus, WaitReason, Workspace};
+use muster_core::{Project, SessionStatus, WaitReason, Workspace};
 
 pub(crate) const CLIENT: &str = concat!("muster ", env!("CARGO_PKG_VERSION"));
 
@@ -344,113 +344,6 @@ pub(crate) async fn show_config(
     Ok(())
 }
 
-pub(crate) async fn add_worktree(socket: &Path, project: &str, branch: Option<String>) -> Outcome {
-    let mut connection = connect(socket).await?;
-    let snapshot = connection.subscribe().await?;
-    let project = find_project(&snapshot, project)?;
-    let reply = connection
-        .command(Command::CreateWorktree {
-            project: project.id,
-            branch,
-            on: None,
-            named_for: None,
-        })
-        .await?;
-    let Reply::WorktreeCreated { id } = reply else {
-        return Err(unexpected(&reply));
-    };
-    let created = connection.subscribe().await?;
-    match created
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.id == id)
-    {
-        Some(workspace) => println!(
-            "Created {} at {} ({id}).",
-            shown(workspace.kind.branch()),
-            shown(
-                &workspace
-                    .kind
-                    .host_path()
-                    .map_or_else(String::new, |path| path.display().to_string())
-            )
-        ),
-        None => println!("Created {id}."),
-    }
-    Ok(())
-}
-
-pub(crate) async fn remove_worktree(socket: &Path, worktree: &str, force: bool) -> Outcome {
-    let mut connection = connect(socket).await?;
-    let snapshot = connection.subscribe().await?;
-    let workspace = find_worktree(&snapshot, worktree)?.id;
-    connection
-        .command(Command::RemoveWorktree { workspace, force })
-        .await?;
-    println!("Removed {workspace}; its branch is kept.");
-    Ok(())
-}
-
-pub(crate) async fn start_session(
-    socket: &Path,
-    worktree: &str,
-    harness: String,
-    title: Option<String>,
-    prompt: Option<String>,
-) -> Outcome {
-    let mut connection = connect(socket).await?;
-    let snapshot = connection.subscribe().await?;
-    let workspace = find_worktree(&snapshot, worktree)?.id;
-    let reply = connection
-        .command(Command::StartSession {
-            workspace,
-            harness,
-            title,
-            size: TermSize::default(),
-            prompt,
-            started_by: crate::verbs::started_by(),
-        })
-        .await?;
-    let Reply::SessionStarted { id } = reply else {
-        return Err(unexpected(&reply));
-    };
-    println!("Started {id}.");
-    Ok(())
-}
-
-pub(crate) async fn stop_session(socket: &Path, session: &str) -> Outcome {
-    let session: SessionId = session.parse()?;
-    connect(socket)
-        .await?
-        .command(Command::StopSession { session })
-        .await?;
-    println!("Stopping {session}.");
-    Ok(())
-}
-
-pub(crate) async fn restart_session(socket: &Path, session: &str) -> Outcome {
-    let session: SessionId = session.parse()?;
-    let mut connection = connect(socket).await?;
-    connection
-        .command(Command::RestartSession {
-            session,
-            size: TermSize::default(),
-        })
-        .await?;
-    println!("Restarted {session}.");
-    Ok(())
-}
-
-pub(crate) async fn remove_session(socket: &Path, session: &str) -> Outcome {
-    let session: SessionId = session.parse()?;
-    connect(socket)
-        .await?
-        .command(Command::RemoveSession { session })
-        .await?;
-    println!("Removed {session}.");
-    Ok(())
-}
-
 /// Stops whichever daemon answers on `socket`, waiting until it has gone.
 pub(crate) async fn stop_daemon(socket: &Path) -> ExitCode {
     let pid = match muster_client::daemon_pid(socket, CLIENT).await {
@@ -482,64 +375,7 @@ pub(crate) async fn stop_daemon(socket: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-pub(crate) async fn close_issue(
-    socket: &Path,
-    project: &str,
-    key: muster_core::TicketKey,
-) -> Outcome {
-    let mut connection = connect(socket).await?;
-    let snapshot = connection.subscribe().await?;
-    let project = find_project(&snapshot, project)?.id;
-    let shown = key.shown();
-    connection
-        .command(Command::CloseIssue { project, key })
-        .await?;
-    println!("Closed {shown}.");
-    Ok(())
-}
-
-/// `muster session list`: every session, in words or with `json` as one
-/// JSON document.
-pub(crate) async fn list_sessions(socket: &Path, json: bool) -> Outcome {
-    let snapshot = connect(socket).await?.subscribe().await?;
-    if json {
-        return Ok(crate::json::print(&crate::json::SessionList::new(
-            &snapshot,
-        ))?);
-    }
-    if snapshot.sessions.is_empty() {
-        println!("No sessions.");
-    }
-    for session in &snapshot.sessions {
-        let workspace = snapshot
-            .workspaces
-            .iter()
-            .find(|workspace| workspace.id == session.workspace);
-        let project = workspace
-            .and_then(|workspace| {
-                snapshot
-                    .projects
-                    .iter()
-                    .find(|project| project.id == workspace.project)
-            })
-            .map_or_else(|| "?".to_owned(), |project| shown(&project.name));
-        let place = match workspace {
-            Some(workspace) if workspace.kind.in_git() => shown(workspace.kind.branch()),
-            Some(_) => "(not a git repository)".to_owned(),
-            None => "?".to_owned(),
-        };
-        let mark = if session.unseen { "•" } else { " " };
-        println!(
-            "{mark} {}  {}  {}  ({project}, {place})",
-            session.id,
-            shown(&session.title),
-            describe(session.status)
-        );
-    }
-    Ok(())
-}
-
-/// `muster issue list`: a project's tickets with the agents on each, in
+/// `muster list tickets`: a project's tickets with the agents on each, in
 /// words or with `json` as one JSON document.
 pub(crate) async fn list_issues(socket: &Path, project: &str, json: bool) -> Outcome {
     let mut connection = connect(socket).await?;
@@ -635,35 +471,6 @@ fn sessions_on<'a>(
     agents
 }
 
-pub(crate) async fn start_issue(
-    socket: &Path,
-    project: &str,
-    key: muster_core::TicketKey,
-    harness: String,
-    another: bool,
-) -> Outcome {
-    let mut connection = connect(socket).await?;
-    let snapshot = connection.subscribe().await?;
-    no_agent_starts_one(&snapshot, "start agents on tickets")?;
-    let project = find_project(&snapshot, project)?.id;
-    let reply = connection
-        .command(Command::StartFromIssue {
-            project,
-            key: key.clone(),
-            harness,
-            size: TermSize::default(),
-            another,
-            on: None,
-            brief: None,
-        })
-        .await?;
-    let Reply::IssueStarted { workspace, session } = reply else {
-        return Err(unexpected(&reply));
-    };
-    println!("Started {session} for {} in {workspace}.", key.shown());
-    Ok(())
-}
-
 /// Refuses to put an agent on a ticket, a review or a run from inside one
 /// of this daemon's sessions that is no shell (`PRD-01`, `PRD-07`): an
 /// agent may start sessions, within the person's limits, but which tickets
@@ -725,30 +532,6 @@ pub(crate) fn find_project<'a>(
                 || path.as_ref().is_some_and(|path| *path == project.root)
         }),
         "project",
-        wanted,
-    )
-}
-
-/// A workspace by id or branch, or a project's own checkout by the
-/// project's name.
-pub(crate) fn find_worktree<'a>(
-    snapshot: &'a Snapshot,
-    wanted: &str,
-) -> Result<&'a Workspace, String> {
-    let named_project = |workspace: &Workspace| {
-        workspace.kind.is_checkout()
-            && snapshot
-                .projects
-                .iter()
-                .any(|project| project.id == workspace.project && project.name == wanted)
-    };
-    one(
-        snapshot.workspaces.iter().filter(|workspace| {
-            workspace.id.to_string() == wanted
-                || (workspace.kind.in_git() && workspace.kind.branch() == wanted)
-                || named_project(workspace)
-        }),
-        "worktree",
         wanted,
     )
 }
@@ -857,7 +640,7 @@ async fn run_checks(socket: &Path, worktree: &str) -> Result<bool, Box<dyn std::
 
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
-    let workspace = find_worktree(&snapshot, worktree)?.id;
+    let workspace = crate::verbs::targets::find_workspace(&snapshot, worktree, None)?.id;
     let columns = std::env::var("COLUMNS")
         .ok()
         .and_then(|columns| columns.parse().ok())
@@ -924,7 +707,7 @@ pub(crate) async fn review(socket: &Path, worktree: &str) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
     no_agent_starts_one(&snapshot, "start reviews")?;
-    let workspace = find_worktree(&snapshot, worktree)?;
+    let workspace = crate::verbs::targets::find_workspace(&snapshot, worktree, None)?;
     let (id, branch) = (workspace.id, workspace.kind.branch().to_owned());
     let reply = connection
         .command(Command::ReviewWorkspace {
@@ -946,7 +729,7 @@ pub(crate) async fn review(socket: &Path, worktree: &str) -> Outcome {
 pub(crate) async fn open_pull_request(socket: &Path, worktree: &str) -> Outcome {
     let mut connection = connect(socket).await?;
     let snapshot = connection.subscribe().await?;
-    let workspace = find_worktree(&snapshot, worktree)?.id;
+    let workspace = crate::verbs::targets::find_workspace(&snapshot, worktree, None)?.id;
     let reply = connection
         .command(Command::OpenPullRequest { workspace })
         .await?;

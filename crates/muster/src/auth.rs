@@ -123,16 +123,7 @@ async fn browser(service: muster_daemon::SignIn, name: &str, variables: &str) ->
     }
     let outcome = muster_daemon::sign_in(service, |address| {
         println!("Sign in to {name} in your browser. If it does not open, go to:\n\n  {address}\n");
-        let opener = if cfg!(target_os = "macos") {
-            "open"
-        } else {
-            "xdg-open"
-        };
-        let _ = std::process::Command::new(opener)
-            .arg(address)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
+        let _ = crate::person::open_in_browser(address);
     })
     .await;
     match outcome {

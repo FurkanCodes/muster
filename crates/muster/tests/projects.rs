@@ -310,12 +310,9 @@ fn the_command_line_works_in_a_projects_checkout_and_removes_projects() {
     assert!(status.contains("(the project's checkout)"), "{status}");
 
     // The project's name names its checkout.
-    let started = ok(&["session", "start", "app"]);
-    let session = started
-        .trim()
-        .trim_start_matches("Started ")
-        .trim_end_matches('.');
-    ok(&["session", "stop", session]);
+    let started = ok(&["term", "new", "--in", "app", "--bg"]);
+    assert!(started.contains("in app"), "{started}");
+    ok(&["stop", "app/1"]);
 
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {

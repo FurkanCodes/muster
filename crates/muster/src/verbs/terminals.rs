@@ -127,7 +127,7 @@ pub(crate) async fn close(
     let (id, title) = (session.id, shown(&session.title));
     if !session.status.is_exited() {
         let question = format!("{title} is running: stop it and close it?");
-        if !yes && !workspaces::agrees(&question)? {
+        if !yes && !crate::person::agrees(&question)? {
             return Err("nothing was closed (--yes closes it without asking)".into());
         }
         connection

@@ -1,4 +1,4 @@
-//! End-to-end tests of `muster session explain`: why a session has its
+//! End-to-end tests of `muster explain`: why a session has its
 //! status, from the real daemon, with a stand-in `claude` running the
 //! exact hook commands Muster gave it. Only kinds of signal and tools'
 //! names come back, never a prompt or a command's arguments (`PRD-06`).
@@ -157,7 +157,7 @@ async fn a_waiting_session_says_on_whom_for_what_and_what_it_heard() {
     );
 
     // The command says the same in words, and nothing that was written.
-    let output = sandbox.run(&["session", "explain", &session.to_string()]);
+    let output = sandbox.run(&["explain", &session.to_string()]);
     assert!(output.status.success(), "{output:?}");
     let said = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -194,7 +194,7 @@ async fn a_session_the_daemon_does_not_know_is_refused_by_its_code() {
         panic!("expected a refusal, got {refused:?}");
     };
     assert_eq!(body.code, ErrorCode::NotFound, "ARC-07");
-    let output = sandbox.run(&["session", "explain", &SessionId::new().to_string()]);
+    let output = sandbox.run(&["explain", &SessionId::new().to_string()]);
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("no session"),

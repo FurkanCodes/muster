@@ -53,7 +53,7 @@ pub(crate) async fn keys(
 fn drivable(snapshot: &Snapshot, session: &Session) -> Result<(), String> {
     if session.status.is_exited() {
         return Err(format!(
-            "{} has ended: `muster session restart` starts it again",
+            "{} has ended: `muster restart` starts it again",
             shown(&session.title)
         ));
     }

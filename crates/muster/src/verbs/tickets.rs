@@ -12,7 +12,6 @@ use muster_core::protocol::{Command, Reply, Snapshot, TermSize};
 use muster_core::{Paths, ProjectId, TicketKey, Workspace};
 
 use super::targets::{self, workspace_name};
-use super::workspaces;
 use crate::commands::{self, count, describe, shown, unexpected};
 
 /// A ticket's key as written on the command line.
@@ -92,13 +91,14 @@ fn ticket_workspace<'a>(
 /// each.
 pub(crate) async fn list(
     paths: &Paths,
+    project: Option<&str>,
     json: bool,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let snapshot = commands::connect(&paths.socket())
         .await?
         .subscribe()
         .await?;
-    let (project, _) = place(&snapshot, None)?;
+    let (project, _) = place(&snapshot, project)?;
     commands::list_issues(&paths.socket(), &project.to_string(), json).await?;
     Ok(ExitCode::SUCCESS)
 }
@@ -193,18 +193,8 @@ async fn open(paths: &Paths, asked: &Asked) -> Result<ExitCode, Box<dyn std::err
     let Reply::IssueViewed { issue, .. } = reply else {
         return Err(unexpected(&reply));
     };
-    let opener = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    let status = std::process::Command::new(opener)
-        .arg(&issue.url)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()?;
-    if !status.success() {
+    let opened = crate::person::open_in_browser(&issue.url)?;
+    if !opened {
         return Err(format!("could not open {}", shown(&issue.url)).into());
     }
     Ok(ExitCode::SUCCESS)
@@ -217,7 +207,7 @@ async fn close(paths: &Paths, asked: &Asked) -> Result<ExitCode, Box<dyn std::er
     let (project, _) = place(&snapshot, asked.project.as_deref())?;
     let shown_key = asked.key.shown();
     let question = format!("Close {shown_key} in its tracker? Everyone watching it is told.");
-    if !asked.yes && !workspaces::agrees(&question)? {
+    if !asked.yes && !crate::person::agrees(&question)? {
         return Err("nothing was closed (--yes closes it without asking)".into());
     }
     connection

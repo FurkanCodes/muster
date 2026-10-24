@@ -4,8 +4,9 @@
 
 use std::time::Duration;
 
-use muster_client::{ClientError, Connection};
+use muster_client::Connection;
 use muster_core::Paths;
+use tokio::net::UnixStream;
 
 /// How often a command looks for a daemon it started.
 const LOOK_EVERY: Duration = Duration::from_millis(50);
@@ -16,26 +17,30 @@ pub(crate) async fn connect(paths: &Paths) -> Result<Connection, Box<dyn std::er
     if let Some(remote) = crate::ssh::remote() {
         return Ok(crate::ssh::connect(remote).await?);
     }
+    let (read, write) = stream(paths).await?.into_split();
+    Ok(Connection::over(read, write, crate::commands::CLIENT).await?)
+}
+
+/// This machine's daemon's socket, connected to: the daemon started first
+/// where none answers.
+pub(crate) async fn stream(paths: &Paths) -> Result<UnixStream, Box<dyn std::error::Error>> {
     let socket = paths.socket();
-    match crate::commands::connect(&socket).await {
-        Err(ClientError::Unreachable { .. }) => {}
-        connected => return Ok(connected?),
+    if let Ok(stream) = UnixStream::connect(&socket).await {
+        return Ok(stream);
     }
     start(paths)?;
     let deadline = crate::instant_now() + muster_tui::START_WAIT;
     loop {
-        match crate::commands::connect(&socket).await {
-            Err(ClientError::Unreachable { .. }) if crate::instant_now() < deadline => {
-                tokio::time::sleep(LOOK_EVERY).await;
-            }
-            Err(ClientError::Unreachable { .. }) => {
+        match UnixStream::connect(&socket).await {
+            Ok(stream) => return Ok(stream),
+            Err(_) if crate::instant_now() < deadline => tokio::time::sleep(LOOK_EVERY).await,
+            Err(error) => {
                 return Err(format!(
-                    "the daemon did not start; its log is {}",
+                    "the daemon did not start ({error}); its log is {}",
                     paths.runtime_dir.join("daemon.log").display()
                 )
                 .into());
             }
-            connected => return Ok(connected?),
         }
     }
 }

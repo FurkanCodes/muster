@@ -669,7 +669,7 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
     ui.keys(b"Q");
     ui.wait_for("muster/issue-42-fix-the-login-redirect-2");
 
-    let listed = sandbox.run(&["issue", "list", "app"]);
+    let listed = sandbox.run(&["list", "tickets", "-p", "app"]);
     let listed = String::from_utf8_lossy(&listed.stdout);
     assert!(
         listed.contains("#42") && listed.contains("2 agents"),

@@ -148,7 +148,7 @@ fn refuse_ended(snapshot: &Snapshot, session: SessionId) -> Result<(), String> {
     };
     if found.status.is_exited() {
         return Err(format!(
-            "{} has ended: `muster session restart {}` starts it again",
+            "{} has ended: `muster restart {}` starts it again",
             shown(&found.title),
             found.id
         ));

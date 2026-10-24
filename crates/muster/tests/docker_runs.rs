@@ -436,7 +436,10 @@ async fn real_docker_takes_a_person_s_branch_from_the_checks_to_a_ready_pull_req
     cleanup.0 = Some(add_project(&daemon, &root).await);
 
     // The person's work, committed on a worktree's branch only they have.
-    muster(&sandbox, &["worktree", "add", "app", "--branch", "by-hand"]);
+    muster(
+        &sandbox,
+        &["workspace", "add", "-p", "app", "--branch", "by-hand"],
+    );
     let snapshot = daemon.connect().await.subscribe().await.unwrap();
     let tree = snapshot
         .workspaces

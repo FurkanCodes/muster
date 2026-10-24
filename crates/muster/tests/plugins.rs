@@ -112,7 +112,7 @@ fn refused(sandbox: &Sandbox, args: &[&str], env: &[(&str, &str)]) -> String {
 /// always there.
 fn listed(sandbox: &Sandbox) -> Vec<Value> {
     let document: Value = serde_json::from_str(&ok(sandbox, &["list", "--json"])).unwrap();
-    assert_eq!(document["format"], 1);
+    assert_eq!(document["format"], 2);
     let plugins = document["plugins"].as_array().unwrap();
     let own: Vec<&str> = plugins
         .iter()

@@ -584,9 +584,12 @@ async fn an_agent_starts_sessions_but_puts_no_agent_on_a_ticket_a_review_or_a_ru
             String::from_utf8_lossy(&output.stderr).into_owned(),
         )
     };
-    let start_one = ["session", "start", "work", "--harness", "shell"];
+    let start_one = ["term", "new", "--in", "work", "--bg"];
 
-    for args in [&["issue", "start", "app", "42"][..], &["review", "work"]] {
+    for args in [
+        &["ticket", "42", "claude", "-p", "app"][..],
+        &["review", "work"],
+    ] {
         let (ok, stderr) = inside(agent.to_string(), args);
         assert!(!ok, "{args:?} ran inside an agent");
         assert!(
@@ -607,7 +610,7 @@ async fn an_agent_starts_sessions_but_puts_no_agent_on_a_ticket_a_review_or_a_ru
         snapshot.sessions
     );
     // Reading is no starting.
-    assert!(inside(agent.to_string(), &["session", "list"]).0);
+    assert!(inside(agent.to_string(), &["list"]).0);
 
     let (ok, stderr) = inside(shell.to_string(), &start_one);
     assert!(ok, "the person's shell: {stderr}");

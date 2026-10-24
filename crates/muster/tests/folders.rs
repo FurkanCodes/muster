@@ -90,11 +90,11 @@ async fn a_plain_folder_is_a_project_until_and_after_it_becomes_a_repository() {
     // or Linear for a folder too, say how to name where they are.
     for (args, why) in [
         (
-            &["worktree", "add", "notes", "--branch", "side"][..],
-            "worktrees need one",
+            &["workspace", "add", "-p", "notes", "--branch", "side"][..],
+            "not a git repository",
         ),
         (
-            &["issue", "list", "notes"][..],
+            &["list", "tickets", "-p", "notes"][..],
             "choose where its tickets are on the Settings screen, or say with [tickets] tracker",
         ),
         (&["review", "notes"][..], "no branch to review or push"),
@@ -129,7 +129,7 @@ async fn a_plain_folder_is_a_project_until_and_after_it_becomes_a_repository() {
         _ => None,
     })
     .await;
-    let made = sandbox.run(&["worktree", "add", "notes", "--branch", "side"]);
+    let made = sandbox.run(&["workspace", "add", "-p", "notes", "--branch", "side"]);
     assert!(made.status.success(), "{}", said(&made));
     assert_eq!(
         git(

@@ -112,7 +112,7 @@ async fn a_review_by_hand_is_claude_code_in_plan_mode_on_the_change() {
             .status
             .success()
     );
-    let added = sandbox.run(&["worktree", "add", "app", "--branch", "feature"]);
+    let added = sandbox.run(&["workspace", "add", "-p", "app", "--branch", "feature"]);
     assert!(added.status.success());
 
     let reviewed = sandbox.run(&["review", "feature"]);
@@ -177,7 +177,7 @@ async fn a_draft_pull_request_by_hand_pushes_the_branch_and_opens_or_finds_it() 
     );
     assert!(
         sandbox
-            .run(&["worktree", "add", "app", "--branch", "feature"])
+            .run(&["workspace", "add", "-p", "app", "--branch", "feature"])
             .status
             .success()
     );

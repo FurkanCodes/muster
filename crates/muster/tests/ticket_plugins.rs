@@ -168,7 +168,7 @@ fn the_daemon_runs_muster_s_own_plugin_once_and_stops_it_with_itself() {
         "none until tickets are asked for"
     );
     for _ in 0..2 {
-        let listed = sandbox.run(&["issue", "list", "app"]);
+        let listed = sandbox.run(&["list", "tickets", "-p", "app"]);
         assert!(listed.status.success());
         assert!(String::from_utf8_lossy(&listed.stdout).contains("#42"));
     }

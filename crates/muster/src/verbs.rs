@@ -42,8 +42,12 @@ pub(crate) enum Verb {
         #[arg(value_enum)]
         what: Option<list::Listing>,
         /// Every project's.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "project")]
         all: bool,
+        /// The project's (its name, id or folder), rather than the one you
+        /// are in.
+        #[arg(short, long)]
+        project: Option<String>,
         /// Print them as one JSON document, for scripts.
         #[arg(long)]
         json: bool,
@@ -239,6 +243,13 @@ pub(crate) enum Verb {
     },
     /// Stop SESSION (its id, name or branch).
     Stop { session: String },
+    /// Start ended SESSION's program again: a coding agent carries on its
+    /// conversation, a shell starts afresh.
+    Restart { session: String },
+    /// Say why SESSION has its status: whom it waits on and for what,
+    /// whether its turn is held for subagents, its next deadline, and the
+    /// last signals it received.
+    Explain { session: String },
 }
 
 /// Whether `verb` can ask another machine's Muster (`--on`): not those
@@ -259,7 +270,12 @@ pub(crate) enum Then {
 
 pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
     let ran = match verb {
-        Verb::List { what, all, json } => list::run(paths, what, all, json).await,
+        Verb::List {
+            what,
+            all,
+            project,
+            json,
+        } => list::run(paths, what, all, project.as_deref(), json).await,
         Verb::Attach { session, ui } => match attach(paths, &session).await {
             Ok(id) if ui => return Then::Open(id),
             Ok(id) => tab::show(paths, id).await,
@@ -347,6 +363,8 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
             lines,
         } => logs::run(paths, &session, reply, follow, lines).await,
         Verb::Stop { session } => stop(paths, &session).await,
+        Verb::Restart { session } => restart(paths, &session).await,
+        Verb::Explain { session } => crate::explain::explain_session(paths, &session).await,
     };
     Then::Exit(ran.unwrap_or_else(crate::fail))
 }
@@ -443,6 +461,24 @@ async fn wait(
     let waited = wait::follow(&mut connection, &sessions, statuses(&snapshot), &waiting).await?;
     tell(&mut connection, &snapshot, &waited).await?;
     Ok(waited.code())
+}
+
+async fn restart(paths: &Paths, session: &str) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let mut connection = commands::connect(&paths.socket()).await?;
+    let snapshot = connection.subscribe().await?;
+    let session = targets::find_session(&snapshot, session)?;
+    connection
+        .command(Command::RestartSession {
+            session: session.id,
+            size: muster_core::protocol::TermSize::default(),
+        })
+        .await?;
+    println!(
+        "Started {} ({}) again.",
+        shown(&session.title),
+        targets::short(session.id)
+    );
+    Ok(ExitCode::SUCCESS)
 }
 
 async fn stop(paths: &Paths, session: &str) -> Result<ExitCode, Box<dyn std::error::Error>> {

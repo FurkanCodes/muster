@@ -263,7 +263,10 @@ async fn a_worktree_s_committed_work_is_handed_to_the_autopilot() {
     support::git(&root, &["commit", "--quiet", "--message", "Runs"]);
     let daemon = sandbox.start();
     ok(&sandbox, &["project", "add", root.to_str().unwrap()]);
-    ok(&sandbox, &["worktree", "add", "app", "--branch", "by-hand"]);
+    ok(
+        &sandbox,
+        &["workspace", "add", "-p", "app", "--branch", "by-hand"],
+    );
     let snapshot = daemon.connect().await.subscribe().await.unwrap();
     let tree = snapshot
         .workspaces
@@ -304,5 +307,5 @@ async fn a_worktree_s_committed_work_is_handed_to_the_autopilot() {
         &sandbox,
         &["run", "start", "app", "7", "--from", "elsewhere"],
     );
-    assert!(base.contains("no worktree matches \"elsewhere\""), "{base}");
+    assert!(base.contains("no workspace is \"elsewhere\""), "{base}");
 }

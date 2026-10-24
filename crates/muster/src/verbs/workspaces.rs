@@ -4,7 +4,6 @@
 //! tab into a workspace's terminal, from where what the person starts
 //! belongs to it.
 
-use std::io::{IsTerminal, Write as _};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -15,7 +14,7 @@ use muster_core::{Paths, ProjectId, Session, SessionId, Workspace, WorkspaceId};
 use serde::Serialize;
 
 use super::targets::{self, numbered, workspace_name};
-use crate::commands::{self, describe, shown, unexpected};
+use crate::commands::{self, shown, unexpected};
 
 /// How long `muster workspace rm` waits for the sessions it stopped.
 const STOPPING: Duration = Duration::from_secs(10);
@@ -154,16 +153,14 @@ struct WorkspaceEntry {
     sessions: Vec<NumberedEntry>,
 }
 
+/// A session under its workspace: as every document gives one, with its
+/// number there and its short id.
 #[derive(Debug, Serialize)]
 struct NumberedEntry {
     number: usize,
-    session: String,
     short: String,
-    harness: String,
-    /// The coding agent running in front in it, where it is a terminal.
-    agent: Option<String>,
-    title: String,
-    status: String,
+    #[serde(flatten)]
+    session: crate::json::SessionEntry,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,16 +175,17 @@ struct WorkspaceList {
 pub(crate) async fn list(
     paths: &Paths,
     all: bool,
+    project: Option<&str>,
     json: bool,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let snapshot = commands::connect(&paths.socket())
         .await?
         .subscribe()
         .await?;
-    let project = if all {
-        None
-    } else {
-        project_of(&snapshot, None).ok()
+    let project = match project {
+        Some(wanted) => Some(project_of(&snapshot, Some(wanted))?),
+        None if all => None,
+        None => project_of(&snapshot, None).ok(),
     };
     let workspaces: Vec<&Workspace> = snapshot
         .workspaces
@@ -320,12 +318,8 @@ fn entry(snapshot: &Snapshot, workspace: &Workspace) -> WorkspaceEntry {
             .enumerate()
             .map(|(i, session)| NumberedEntry {
                 number: i + 1,
-                session: session.id.to_string(),
                 short: targets::short(session.id),
-                harness: session.harness.clone(),
-                agent: session.agent.as_ref().map(|agent| agent.harness.clone()),
-                title: session.title.clone(),
-                status: describe(session.status),
+                session: crate::json::session_entry(snapshot, session),
             })
             .collect(),
     }
@@ -364,7 +358,7 @@ async fn remove(
             shown(&name),
             if running.len() == 1 { "it" } else { "them" }
         );
-        if !yes && !agrees(&question)? {
+        if !yes && !crate::person::agrees(&question)? {
             return Err("nothing was removed".into());
         }
         for session in &running {
@@ -404,19 +398,6 @@ pub(crate) async fn stopped(
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-}
-
-/// Whether the person, asked on their terminal, says yes; never, without
-/// a terminal to ask on.
-pub(crate) fn agrees(question: &str) -> std::io::Result<bool> {
-    if !std::io::stdin().is_terminal() {
-        return Ok(false);
-    }
-    eprint!("{question} [y/N] ");
-    std::io::stderr().flush()?;
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    Ok(matches!(answer.trim(), "y" | "Y" | "yes"))
 }
 
 /// `muster enter [WS]`: the tab into workspace WS's terminal, the one used
@@ -481,7 +462,9 @@ pub(crate) async fn start_terminal(
             title: title.clone(),
             size,
             prompt: None,
-            started_by: None,
+            // Marked as started by the agent the command runs under, if any
+            // (`PRD-01`).
+            started_by: super::started_by(),
         })
         .await?;
     let Reply::SessionStarted { id } = reply else {

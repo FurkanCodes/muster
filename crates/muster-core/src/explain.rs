@@ -1,4 +1,4 @@
-//! Why a session has its status (`muster session explain`): what its
+//! Why a session has its status (`muster explain`): what its
 //! status machine holds, and the signals it last received. Only kinds of
 //! signal and tools' names, never what an agent or the person wrote, a
 //! payload's body or terminal output (`PRD-06`).

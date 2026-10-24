@@ -256,7 +256,7 @@ async fn here_reads_the_prompt_from_standard_input_and_works_in_the_checkout() {
     );
     assert!(output.status.success(), "{}", text(&output.stderr));
     let started: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(started["format"], 1);
+    assert_eq!(started["format"], 2);
     assert_eq!(started["branch"], "main");
     let session: SessionId = started["session"].as_str().unwrap().parse().unwrap();
     assert_eq!(

@@ -424,7 +424,7 @@ async fn another_agent_works_in_a_worktree_of_its_own_and_the_list_shows_them() 
     );
 
     // The command line lists them with their agents.
-    let listed = setup.sandbox.run(&["issue", "list", "app"]);
+    let listed = setup.sandbox.run(&["list", "tickets", "-p", "app"]);
     let listed = String::from_utf8_lossy(&listed.stdout);
     let line = listed.lines().find(|line| line.starts_with("#42")).unwrap();
     assert!(line.contains("· 3 agents: "), "{listed}");
@@ -495,27 +495,27 @@ fn the_command_line_lists_starts_and_closes_issues() {
             .success()
     );
 
-    let listed = sandbox.run(&["issue", "list", "app"]);
+    let listed = sandbox.run(&["list", "tickets", "-p", "app"]);
     let stdout = String::from_utf8_lossy(&listed.stdout);
     assert!(
         stdout.contains("#3      Typo in README  [docs]"),
         "{stdout}"
     );
 
-    let started = sandbox.run(&["issue", "start", "app", "3", "--harness", "shell"]);
+    let started = sandbox.run(&["ticket", "3", "shell", "-p", "app"]);
     assert!(
         started.status.success(),
         "{}",
         String::from_utf8_lossy(&started.stderr)
     );
-    assert!(String::from_utf8_lossy(&started.stdout).contains("for #3 in"));
+    assert!(String::from_utf8_lossy(&started.stdout).contains("on #3 in"));
     let status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
     assert!(status.contains("muster/issue-3-typo-in-readme"), "{status}");
     assert!(status.contains("#3 Typo in README"), "{status}");
 
     // Closing it goes to GitHub through the person's gh, and leaves the
     // work on it alone.
-    let closed = sandbox.run(&["issue", "close", "app", "3"]);
+    let closed = sandbox.run(&["ticket", "3", "close", "-p", "app", "-y"]);
     assert!(
         closed.status.success(),
         "{}",
@@ -528,7 +528,7 @@ fn the_command_line_lists_starts_and_closes_issues() {
     assert!(status.contains("muster/issue-3-typo-in-readme"), "{status}");
 
     // GitHub's reason, when it will not.
-    let refused = sandbox.run(&["issue", "close", "app", "99"]);
+    let refused = sandbox.run(&["ticket", "99", "close", "-p", "app", "-y"]);
     assert!(!refused.status.success());
     assert!(
         String::from_utf8_lossy(&refused.stderr).contains("Could not resolve"),
@@ -559,12 +559,12 @@ fn escape_sequences_in_an_issue_never_reach_the_terminal() {
     };
     run(&["project", "add", root.to_str().unwrap()]);
 
-    let listed = run(&["issue", "list", "app"]);
+    let listed = run(&["list", "tickets", "-p", "app"]);
     assert!(!listed.contains('\u{1b}'), "{listed:?}");
     assert!(listed.contains("Fix it]0;owned[2J now"), "{listed:?}");
     assert!(listed.contains("[b[31mug]"), "{listed:?}");
 
-    run(&["issue", "start", "app", "9", "--harness", "shell"]);
+    run(&["ticket", "9", "shell", "-p", "app"]);
     let status = run(&["status"]);
     assert!(!status.contains('\u{1b}'), "{status:?}");
     assert!(status.contains("#9 Fix it]0;owned[2J now"), "{status:?}");

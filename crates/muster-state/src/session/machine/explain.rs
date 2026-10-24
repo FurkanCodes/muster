@@ -1,5 +1,5 @@
 //! What a session machine holds, for a person asking why a session has
-//! its status (`muster session explain`): its open prompts, its hold for
+//! its status (`muster explain`): its open prompts, its hold for
 //! subagents and its next deadline, each moment on the wall clock.
 
 use std::time::{Duration, Instant};

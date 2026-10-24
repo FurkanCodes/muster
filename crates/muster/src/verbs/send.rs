@@ -94,7 +94,7 @@ fn text(words: &[String]) -> Result<String, Box<dyn std::error::Error>> {
 fn sendable(session: &Session, force: bool) -> Result<(), String> {
     match session.status {
         SessionStatus::Exited { .. } => Err(format!(
-            "{} has ended: `muster session restart` starts it again",
+            "{} has ended: `muster restart` starts it again",
             shown(&session.title)
         )),
         SessionStatus::NeedsYou {

@@ -162,22 +162,7 @@ pub(crate) async fn bridge(paths: &Paths) -> Result<ExitCode, Box<dyn std::error
     if let Some(forwarded) = std::env::var_os("SSH_AUTH_SOCK") {
         link_agent(&paths.runtime_dir, Path::new(&forwarded));
     }
-    let socket = paths.socket();
-    let stream = if let Ok(stream) = tokio::net::UnixStream::connect(&socket).await {
-        stream
-    } else {
-        crate::daemon_start::start(paths)?;
-        let deadline = crate::instant_now() + muster_tui::START_WAIT;
-        loop {
-            match tokio::net::UnixStream::connect(&socket).await {
-                Ok(stream) => break stream,
-                Err(_) if crate::instant_now() < deadline => {
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                }
-                Err(error) => return Err(format!("the daemon did not start: {error}").into()),
-            }
-        }
-    };
+    let stream = crate::daemon_start::stream(paths).await?;
     let (mut from_daemon, mut to_daemon) = stream.into_split();
     let mut stdout = tokio::io::stdout();
     stdout

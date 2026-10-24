@@ -1,21 +1,24 @@
-//! `muster session explain`: why a session has its status, as the
+//! `muster explain`: why a session has its status, as the
 //! daemon's machine for it holds and the signals it last received. Every
 //! time is read against the daemon's own, which the answer carries, so
 //! this command reads no clock.
-
-use std::path::Path;
 
 use muster_core::explain::{DeadlineKind, Explanation, MachineView};
 use muster_core::protocol::{Command, Reply};
 use muster_core::session::Origin;
 use muster_core::time::{between, span};
-use muster_core::{SessionId, Timestamp, WaitReason};
+use muster_core::{Timestamp, WaitReason};
 
-use crate::commands::{Outcome, connect, describe, shown, unexpected};
+use crate::commands::{connect, describe, shown, unexpected};
 
-pub(crate) async fn explain_session(socket: &Path, session: &str) -> Outcome {
-    let session: SessionId = session.parse()?;
-    let mut connection = connect(socket).await?;
+/// `muster explain SESSION`.
+pub(crate) async fn explain_session(
+    paths: &muster_core::Paths,
+    session: &str,
+) -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
+    let mut connection = connect(&paths.socket()).await?;
+    let snapshot = connection.subscribe().await?;
+    let session = crate::verbs::targets::find_session(&snapshot, session)?.id;
     let reply = connection
         .command(Command::ExplainSession { session })
         .await?;
@@ -23,7 +26,7 @@ pub(crate) async fn explain_session(socket: &Path, session: &str) -> Outcome {
         return Err(unexpected(&reply));
     };
     print!("{}", render(&explanation));
-    Ok(())
+    Ok(std::process::ExitCode::SUCCESS)
 }
 
 /// The explanation as printed, a line for each thing it says.

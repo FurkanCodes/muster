@@ -46,21 +46,20 @@ fn status_and_the_session_list_are_one_json_document_each() {
     said(&sandbox, &["project", "add", root.to_str().unwrap()]);
     said(
         &sandbox,
-        &["worktree", "add", "app", "--branch", "fix-login"],
+        &["workspace", "add", "-p", "app", "--branch", "fix-login"],
     );
-    let started = said(
+    said(
         &sandbox,
-        &["session", "start", "fix-login", "--title", "Look around"],
+        &["term", "new", "Look around", "--in", "fix-login", "--bg"],
     );
-    let session = started
-        .trim()
-        .strip_prefix("Started ")
-        .and_then(|rest| rest.strip_suffix('.'))
+    let listed = document(&sandbox, &["list", "--json"]);
+    let session = listed["sessions"][0]["id"]
+        .as_str()
         .expect("the session id")
         .to_owned();
 
     let status = document(&sandbox, &["status", "--json"]);
-    assert_eq!(status["format"], 1, "{status}");
+    assert_eq!(status["format"], 2, "{status}");
     assert_eq!(status["running"], true);
     assert_eq!(status["daemon"]["pid"], daemon.pid());
     assert_eq!(
@@ -71,7 +70,7 @@ fn status_and_the_session_list_are_one_json_document_each() {
     let projects = status["projects"].as_array().unwrap();
     assert_eq!(projects.len(), 1, "{status}");
     assert_eq!(projects[0]["name"], "app");
-    assert_eq!(projects[0]["root"], root.display().to_string());
+    assert_eq!(projects[0]["path"], root.display().to_string());
     let workspaces = projects[0]["workspaces"].as_array().unwrap();
     let checkout = workspaces
         .iter()
@@ -93,8 +92,8 @@ fn status_and_the_session_list_are_one_json_document_each() {
     assert_eq!(sessions[0]["needs"], Value::Null);
     assert!(sessions[0]["created_at_ms"].as_i64().unwrap() > 0);
 
-    let listed = document(&sandbox, &["session", "list", "--json"]);
-    assert_eq!(listed["format"], 1);
+    let listed = document(&sandbox, &["list", "--json"]);
+    assert_eq!(listed["format"], 2);
     let sessions = listed["sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 1, "{listed}");
     assert_eq!(sessions[0]["id"], session.as_str());
@@ -102,19 +101,30 @@ fn status_and_the_session_list_are_one_json_document_each() {
     assert_eq!(sessions[0]["project"], projects[0]["id"]);
     assert_eq!(sessions[0]["workspace"], worktree["id"]);
 
+    // A workspace's sessions are given as every list gives one, with their
+    // number there.
+    let workspaces = document(&sandbox, &["list", "workspaces", "-p", "app", "--json"]);
+    let under = workspaces["workspaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|workspace| workspace["name"] == "fix-login")
+        .unwrap();
+    assert_eq!(under["sessions"][0]["id"], session.as_str(), "{workspaces}");
+    assert_eq!(under["sessions"][0]["number"], 1);
+    assert_eq!(under["sessions"][0]["status"], "fresh");
+
     // Words stay the default.
-    let words = said(&sandbox, &["session", "list"]);
-    assert!(
-        words.contains(&format!("{session}  Look around  fresh  (app, fix-login)")),
-        "{words}"
-    );
+    let words = said(&sandbox, &["list"]);
+    assert!(words.contains("Look around"), "{words}");
+    assert!(words.contains("fix-login"), "{words}");
     assert!(serde_json::from_str::<Value>(&words).is_err());
 
     // An ended session says how it ended.
-    said(&sandbox, &["session", "stop", &session]);
+    said(&sandbox, &["stop", "fix-login/1"]);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     loop {
-        let listed = document(&sandbox, &["session", "list", "--json"]);
+        let listed = document(&sandbox, &["list", "--json"]);
         let found = &listed["sessions"][0];
         if found["status"] == "exited" {
             assert!(found["success"].is_boolean(), "{found}");
@@ -132,12 +142,14 @@ fn status_in_json_says_so_when_no_daemon_runs() {
     let output = sandbox.run(&["status", "--json"]);
     assert!(!output.status.success());
     let read: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(read, json!({"format": 1, "running": false}));
+    assert_eq!(read, json!({"format": 2, "running": false}));
+    let listed = sandbox.run(&["list", "--json"]);
     assert!(
-        String::from_utf8_lossy(&sandbox.run(&["session", "list", "--json"]).stderr)
-            .contains("could not reach the daemon"),
-        "a list from no daemon fails as in words"
+        !listed.status.success(),
+        "a list from no daemon says so, as status does"
     );
+    let read: Value = serde_json::from_slice(&listed.stdout).unwrap();
+    assert_eq!(read, json!({"format": 2, "running": false}));
 }
 
 #[test]
@@ -161,19 +173,16 @@ fn a_ticket_list_in_json_has_its_agents_and_keeps_its_credentials_hidden() {
     std::fs::write(sandbox.fake_gh().join("issue-3.json"), viewed.to_string()).unwrap();
     let _daemon = sandbox.start();
     said(&sandbox, &["project", "add", root.to_str().unwrap()]);
-    said(
-        &sandbox,
-        &["issue", "start", "app", "3", "--harness", "shell"],
-    );
+    said(&sandbox, &["ticket", "3", "shell", "-p", "app"]);
 
-    let text = said(&sandbox, &["issue", "list", "app", "--json"]);
+    let text = said(&sandbox, &["list", "tickets", "-p", "app", "--json"]);
     assert!(!text.contains(token), "the token was printed: {text}");
     assert!(
         !text.chars().any(|c| c.is_control() && c != '\n'),
         "a control character reached the terminal: {text:?}"
     );
     let listed: Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(listed["format"], 1);
+    assert_eq!(listed["format"], 2);
     assert_eq!(listed["tracker"], "GitHub issues");
     assert_eq!(listed["mine"], false);
     let tickets = listed["tickets"].as_array().unwrap();

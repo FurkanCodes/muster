@@ -193,7 +193,7 @@ pub(crate) async fn run(
                 asked.machine
             ),
         };
-        if !asked.install && !agrees(&question)? {
+        if !asked.install && !crate::person::agrees(&question)? {
             if probe.muster.is_none() {
                 return Err(format!(
                     "Muster is not on {}: `muster ssh {} --install` installs it, or install it \
@@ -219,7 +219,7 @@ pub(crate) async fn run(
         );
         if report::claude_missing(&checked)
             && (asked.install_claude
-                || agrees(&format!(
+                || crate::person::agrees(&format!(
                     "Install Claude Code on {} with its own installer?",
                     asked.machine
                 ))?)
@@ -471,17 +471,4 @@ fn install_claude(
          login` (open its link here, paste the code back)."
     );
     Ok(())
-}
-
-/// Whether the person, asked on their terminal, says yes; never, without
-/// a terminal to ask on.
-fn agrees(question: &str) -> std::io::Result<bool> {
-    if !std::io::stdin().is_terminal() {
-        return Ok(false);
-    }
-    eprint!("{question} [y/N] ");
-    std::io::stderr().flush()?;
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    Ok(matches!(answer.trim(), "y" | "Y" | "yes"))
 }

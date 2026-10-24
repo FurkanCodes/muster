@@ -8,7 +8,7 @@ use muster_core::protocol::{Command, Reply, Snapshot};
 use muster_core::time::{between, span};
 use muster_core::{Run, RunId, RunStage, RunTransition, Timestamp};
 
-use crate::commands::{Outcome, connect, find_project, find_worktree, shown, unexpected};
+use crate::commands::{Outcome, connect, find_project, shown, unexpected};
 
 pub(crate) async fn start(
     socket: &Path,
@@ -23,7 +23,7 @@ pub(crate) async fn start(
     let name = project.name.clone();
     let handed = match &from {
         Some(wanted) => {
-            let workspace = find_worktree(&snapshot, wanted)?;
+            let workspace = crate::verbs::targets::find_workspace(&snapshot, wanted, None)?;
             if workspace.project != project.id {
                 return Err(format!("{wanted:?} is not one of {}'s", shown(&name)).into());
             }
