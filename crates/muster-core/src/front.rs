@@ -37,12 +37,13 @@ const OWN: [(&str, &[&str]); 5] = [
 ];
 
 /// Packages that are Muster's own agents, as a package runner names them
-/// or a runtime's script lies in them.
-const PACKAGES: [(&str, &str); 5] = [
+/// or a program or a runtime's script lies in them.
+const PACKAGES: [(&str, &str); 6] = [
     ("@anthropic-ai/claude-code", "claude"),
     ("@openai/codex", "codex"),
     ("@google/gemini-cli", "gemini"),
     ("opencode-ai", "opencode"),
+    ("@opencode-ai/cli", "opencode"),
     ("@github/copilot", "copilot"),
 ];
 
@@ -63,12 +64,8 @@ pub fn identify<'a>(
 ) -> Front {
     let (program, package) = looked_through(facts);
     let agent = package
-        .and_then(|package| {
-            PACKAGES
-                .iter()
-                .find(|(named, _)| *named == package)
-                .map(|(_, agent)| (*agent).to_owned())
-        })
+        .and_then(|package| agent_of(&package))
+        .map(str::to_owned)
         .or_else(|| {
             OWN.iter()
                 .find(|(_, names)| names.contains(&program.as_str()))
@@ -92,6 +89,11 @@ fn looked_through(facts: &ProcessFacts) -> (String, Option<String>) {
         .argv
         .first()
         .map_or(facts.name.as_str(), String::as_str);
+    // A program of one of Muster's own agents' packages, under any name
+    // (`…/@opencode-ai/cli/bin/opencode2.exe`).
+    if let Some(package) = package_of(first) {
+        return (shown(&package), Some(package));
+    }
     let mut program = command_name(first);
     if program.is_empty() {
         program = command_name(&facts.name);
@@ -102,7 +104,7 @@ fn looked_through(facts: &ProcessFacts) -> (String, Option<String>) {
             Some((Script::Module(module), _)) => return (module.to_owned(), None),
             Some((Script::File(path), after)) => {
                 if let Some(package) = package_of(path) {
-                    return (named(&package), Some(package));
+                    return (shown(&package), Some(package));
                 }
                 program = command_name(path);
                 rest = after;
@@ -114,7 +116,7 @@ fn looked_through(facts: &ProcessFacts) -> (String, Option<String>) {
         && let Some(package) = rest.iter().find(|word| !word.starts_with('-'))
     {
         let package = without_version(package);
-        return (named(package), Some(package.to_owned()));
+        return (shown(package), Some(package.to_owned()));
     }
     (program, None)
 }
@@ -160,10 +162,20 @@ fn package_of(path: &str) -> Option<String> {
         .map(|(package, _)| (*package).to_owned())
 }
 
-/// What a package is called by: its name without its scope
-/// (`@anthropic-ai/claude-code` is `claude-code`).
-fn named(package: &str) -> String {
-    package.rsplit('/').next().unwrap_or(package).to_owned()
+/// The agent of Muster's own a package is.
+fn agent_of(package: &str) -> Option<&'static str> {
+    PACKAGES
+        .iter()
+        .find(|(named, _)| *named == package)
+        .map(|(_, agent)| *agent)
+}
+
+/// What a package is called by: the agent of Muster's own it is, else its
+/// name without its scope (`@scope/tool` is `tool`).
+fn shown(package: &str) -> String {
+    agent_of(package)
+        .unwrap_or_else(|| package.rsplit('/').next().unwrap_or(package))
+        .to_owned()
 }
 
 /// A package without the version asked for (`aider-chat@0.80`,
@@ -254,6 +266,17 @@ mod tests {
             Some("gemini")
         );
         assert_eq!(agent(&["opencode"]).as_deref(), Some("opencode"));
+        let packaged = front(&[
+            "/u/.nvm/versions/node/v25/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe",
+        ]);
+        assert_eq!(
+            (packaged.program.as_str(), packaged.agent.as_deref()),
+            ("opencode", Some("opencode"))
+        );
+        assert_eq!(
+            front(&["npx", "-y", "@anthropic-ai/claude-code"]).program,
+            "claude"
+        );
         assert_eq!(agent(&["copilot"]).as_deref(), Some("copilot"));
     }
 
