@@ -731,13 +731,15 @@ impl Supervisor {
             } => self.exec_agent(session, &harness, prompt).await,
             Command::AssignTicket { workspace, key } => self.assign_ticket(workspace, key).await,
             Command::ChangePreference(change) => {
+                let sharing = self.state.preferences.shared_builds;
                 let changed = self.change_preference(&change);
-                self.settle_shared_builds(false).await;
+                self.settle_shared_builds_if(sharing).await;
                 changed
             }
             Command::ReadPreferences => {
+                let sharing = self.state.preferences.shared_builds;
                 let read = self.read_preferences().await;
-                self.settle_shared_builds(false).await;
+                self.settle_shared_builds_if(sharing).await;
                 Ok(read)
             }
             Command::AddProject { root, name } => self.add_project(root, name).await,

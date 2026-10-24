@@ -65,4 +65,12 @@ impl Supervisor {
             }
         }
     }
+
+    /// After the person's settings were taken again: settled if sharing
+    /// builds, which `was` before, changed.
+    pub(super) async fn settle_shared_builds_if(&mut self, was: bool) {
+        if self.state.preferences.shared_builds != was {
+            self.settle_shared_builds(false).await;
+        }
+    }
 }
