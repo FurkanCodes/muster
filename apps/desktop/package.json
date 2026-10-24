@@ -1,7 +1,7 @@
 {
   "name": "muster-desktop",
   "private": true,
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Muster's desktop app: the webview half. The Rust half is src-tauri.",
   "license": "MIT",
   "type": "module",
