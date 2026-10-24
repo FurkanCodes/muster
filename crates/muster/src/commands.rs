@@ -666,6 +666,13 @@ pub(crate) async fn start_issue(
 /// guard against an agent's ordinary use, as `muster plugin`'s is, not a
 /// wall: a program running as the person can do what the person can.
 pub(crate) fn no_agent_starts_one(snapshot: &Snapshot, what: &str) -> Result<(), String> {
+    // A program an agent `muster exec` ran started, whatever runs in front.
+    if std::env::var_os(muster_core::front::AGENT_VARIABLE).is_some() {
+        return Err(format!(
+            "this runs under a coding agent, and agents do not put agents on tickets, reviews or \
+             runs: {what} in Muster's window, in a shell Muster opened, or in a terminal of your own"
+        ));
+    }
     let Some(inside) = std::env::var("MUSTER_SESSION")
         .ok()
         .filter(|session| !session.is_empty())

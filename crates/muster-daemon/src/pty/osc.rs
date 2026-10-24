@@ -5,6 +5,9 @@
 //!   0 means idle; any other state means busy.
 //! - The window title, OSC 0 or 2: `ESC ] 0 ; <title> (BEL | ESC \)`. Codex
 //!   and Gemini CLI say there whether they work, wait or are ready.
+//! - The end of an agent `muster exec` ran in a terminal, with its exit
+//!   code ([`muster_core::front::AGENT_ENDED`], `ARC-28`). What either
+//!   reported last is forgotten then, so the next agent's is news.
 //!
 //! Only changes are reported. The scanner keeps a few bytes between chunks,
 //! so a sequence split across reads is still found, and never buffers more
@@ -21,6 +24,8 @@ pub(crate) enum Report {
     Progress { busy: bool },
     /// The window title changed.
     Title(String),
+    /// The agent `muster exec` ran ended, cleanly or not.
+    AgentEnded { success: bool },
 }
 
 #[derive(Debug, Default)]
@@ -86,7 +91,16 @@ impl OscScanner {
         if self.overflowed {
             return;
         }
-        if let Some(rest) = self.body.strip_prefix(b"9;4;") {
+        if let Some(code) = self
+            .body
+            .strip_prefix(muster_core::front::AGENT_ENDED.as_bytes())
+        {
+            self.busy = None;
+            self.title = None;
+            reports.push(Report::AgentEnded {
+                success: code == b"0",
+            });
+        } else if let Some(rest) = self.body.strip_prefix(b"9;4;") {
             let state = rest.split(|&byte| byte == b';').next().unwrap_or_default();
             let busy = match state {
                 b"0" => false,

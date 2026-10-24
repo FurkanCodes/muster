@@ -50,7 +50,7 @@ impl Variant for ServerFrame {
 }
 
 impl Variant for Command {
-    const COUNT: usize = 47;
+    const COUNT: usize = 48;
     fn variant(&self) -> usize {
         match self {
             Self::Ping => 0,
@@ -100,12 +100,13 @@ impl Variant for Command {
             Self::ReadSession { .. } => 44,
             Self::Switch { .. } => 45,
             Self::AssignTicket { .. } => 46,
+            Self::ExecAgent { .. } => 47,
         }
     }
 }
 
 impl Variant for Reply {
-    const COUNT: usize = 29;
+    const COUNT: usize = 30;
     fn variant(&self) -> usize {
         match self {
             Self::Pong => 0,
@@ -137,6 +138,7 @@ impl Variant for Reply {
             Self::Agents(_) => 26,
             Self::Repositories(_) => 27,
             Self::SessionText { .. } => 28,
+            Self::AgentCommand { .. } => 29,
         }
     }
 }

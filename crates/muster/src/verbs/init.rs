@@ -1,10 +1,11 @@
 //! `muster init zsh|bash|fish`: functions the person adds to their shell,
 //! with `eval "$(muster init zsh)"` in its rc file, so a coding agent typed
-//! by its own name in a workspace's terminal (`claude "fix it"`) starts as
-//! a session of that workspace, shown in its place, as `muster claude`
-//! would; anywhere else, and with a flag first (`claude --resume`) or
-//! input from a pipe, the agent's own program runs as it is. Muster writes
-//! no file of the person's (`PRD-13`): it prints the functions.
+//! by its own name in a terminal of Muster's (`claude "fix it"`) runs in
+//! that terminal with Muster's hooks (`muster exec`), the terminal its chat
+//! until it ends (`ARC-28`); anywhere else, and with a flag first (`claude
+//! --resume`) or input from a pipe, the agent's own program runs as it is.
+//! Muster writes no file of the person's (`PRD-13`): it prints the
+//! functions.
 
 use std::process::ExitCode;
 use std::time::Duration;
@@ -67,16 +68,16 @@ fn usable(name: &str) -> bool {
 /// The functions for `shell`, one for each agent in `names`.
 fn functions(shell: Shell, names: &[String]) -> String {
     let mut out = String::from(
-        "# Muster (`muster init`): in a workspace's terminal, an agent typed by its name\n\
-         # starts as a session of the workspace. `command <agent>` runs the program itself.\n",
+        "# Muster (`muster init`): in a terminal of Muster's, an agent typed by its name\n\
+         # runs there with Muster's hooks. `command <agent>` runs the program itself.\n",
     );
     for name in names.iter().filter(|name| usable(name)) {
         let function = match shell {
             Shell::Zsh | Shell::Bash => format!(
-                "{name}() {{\n  case \"${{1-}}\" in\n    -*) command {name} \"$@\" ;;\n    *) if [ -n \"${{MUSTER_TERMINAL-}}\" ] && [ -t 0 ]; then\n         command muster {name} \"$@\"\n       else\n         command {name} \"$@\"\n       fi ;;\n  esac\n}}\n"
+                "{name}() {{\n  case \"${{1-}}\" in\n    -*) command {name} \"$@\" ;;\n    *) if [ -n \"${{MUSTER_TERMINAL-}}\" ] && [ -t 0 ]; then\n         command muster exec {name} \"$@\"\n       else\n         command {name} \"$@\"\n       fi ;;\n  esac\n}}\n"
             ),
             Shell::Fish => format!(
-                "function {name}\n  if set -q MUSTER_TERMINAL; and isatty stdin; and not string match -q -- '-*' \"$argv[1]\"\n    command muster {name} $argv\n  else\n    command {name} $argv\n  end\nend\n"
+                "function {name}\n  if set -q MUSTER_TERMINAL; and isatty stdin; and not string match -q -- '-*' \"$argv[1]\"\n    command muster exec {name} $argv\n  else\n    command {name} $argv\n  end\nend\n"
             ),
         };
         out.push_str(&function);
@@ -93,12 +94,12 @@ mod tests {
         let names = vec!["claude".to_owned(), "my agent".to_owned()];
         let zsh = functions(Shell::Zsh, &names);
         assert!(zsh.contains("claude() {"));
-        assert!(zsh.contains("command muster claude \"$@\""));
+        assert!(zsh.contains("command muster exec claude \"$@\""));
         assert!(zsh.contains("command claude \"$@\""));
         assert!(zsh.contains("${MUSTER_TERMINAL-}"));
         assert!(!zsh.contains("my agent"), "no name a shell cannot take");
         let fish = functions(Shell::Fish, &names);
         assert!(fish.contains("function claude"));
-        assert!(fish.contains("command muster claude $argv"));
+        assert!(fish.contains("command muster exec claude $argv"));
     }
 }

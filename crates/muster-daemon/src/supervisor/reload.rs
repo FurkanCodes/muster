@@ -159,7 +159,7 @@ impl Supervisor {
             if self
                 .live
                 .get(&id)
-                .is_some_and(|live| live.harness.stays_in_focus())
+                .is_some_and(|live| live.heard().stays_in_focus())
             {
                 pty.focus_now(true);
             }

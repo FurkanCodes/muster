@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use muster_core::harness::SessionKind;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reading, Reply, TermSize};
 use muster_core::text::one_line;
 use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
@@ -154,7 +155,7 @@ impl Supervisor {
     /// The person's ssh agent for a session on the host, where their ssh
     /// forwarded one to this machine and `muster bridge` linked it in the
     /// runtime folder (`ARC-27`); a link that leads nowhere is none.
-    fn ssh_agent(&self, on_host: bool) -> Option<std::path::PathBuf> {
+    pub(super) fn ssh_agent(&self, on_host: bool) -> Option<std::path::PathBuf> {
         self.hook_socket
             .parent()
             .map(|dir| dir.join(muster_core::machines::AGENT_LINK))
@@ -343,8 +344,10 @@ impl Supervisor {
             .and_then(|live| live.ended)
             .map_or(0, |(end, _)| end + 1);
         // Hooks reach the daemon only from the host; in a container the
-        // status comes from the terminal and the process.
-        let hooked = harness.has_hooks() && place.hears_hooks();
+        // status comes from the terminal and the process. A terminal has
+        // its own, for the agents `muster exec` runs in it (`ARC-28`).
+        let terminal = SessionKind::of(harness.id()).is_shell();
+        let hooked = (harness.has_hooks() || terminal) && place.hears_hooks();
         let on_host = matches!(place, Place::Host(_));
         let (agent_session, resume, prompt, checks) = match mode {
             Mode::Fresh { prompt } => {
@@ -363,16 +366,7 @@ impl Supervisor {
         } else {
             None
         };
-        // The files of Muster's own it hears some harnesses through. If they
-        // cannot be written the session still starts, with less status.
-        let support = self.hook_socket.parent().map(|dir| dir.join("harness"));
-        let support = support.filter(|dir| match harness.prepare_support(dir) {
-            Ok(()) => true,
-            Err(error) => {
-                tracing::warn!(%error, harness = harness.id(), "could not write the files its hooks need");
-                false
-            }
-        });
+        let support = self.support_for(&harness, hooked);
         let ssh_agent = self.ssh_agent(on_host);
         let spec = harness::spawn_spec(
             &harness,
@@ -385,7 +379,7 @@ impl Supervisor {
                 place,
                 size,
                 checks,
-                support: hooked.then_some(support).flatten(),
+                support,
                 ssh_agent,
             },
         );
@@ -444,6 +438,27 @@ impl Supervisor {
         self.carry_watch(session);
         self.publish_terminal(session, pty, size);
         Ok(())
+    }
+
+    /// The folder of Muster's own files `harness` is heard through, where
+    /// it is `hooked`: written if need be. If they cannot be written the
+    /// session still starts, with less status.
+    pub(super) fn support_for(
+        &self,
+        harness: &Harness,
+        hooked: bool,
+    ) -> Option<std::path::PathBuf> {
+        let dir = self.hook_socket.parent()?.join("harness");
+        if !hooked {
+            return None;
+        }
+        match harness.prepare_support(&dir) {
+            Ok(()) => Some(dir),
+            Err(error) => {
+                tracing::warn!(%error, harness = harness.id(), "could not write the files its hooks need");
+                None
+            }
+        }
     }
 
     /// The status a just-launched session's machine starts in, as the person
@@ -650,6 +665,7 @@ impl Supervisor {
                 self.step_session(session, Signal::Progress { busy }).await;
             }
             PtyEvent::Title(title) => self.on_title(session, &title).await,
+            PtyEvent::AgentEnded { success } => self.agent_ended(session, success).await,
             PtyEvent::Exited {
                 success,
                 requested,
@@ -761,7 +777,7 @@ impl Supervisor {
             .and_then(|found| found.kind.host_path().map(std::path::Path::to_owned))
     }
 
-    fn session_path(&self, session: SessionId) -> Option<PathBuf> {
+    pub(super) fn session_path(&self, session: SessionId) -> Option<PathBuf> {
         let workspace = self
             .state
             .sessions

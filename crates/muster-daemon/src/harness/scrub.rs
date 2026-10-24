@@ -105,6 +105,7 @@ const MUSTER: &[&str] = &[
     "MUSTER_TERMINAL",
     "MUSTER_HOOK_SOCKET",
     "MUSTER_HOOK_TOKEN",
+    "MUSTER_AGENT",
 ];
 
 /// Prefixes of the same, for families of them.

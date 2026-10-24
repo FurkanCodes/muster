@@ -88,6 +88,8 @@ pub(crate) enum PtyEvent {
     Progress { busy: bool },
     /// The program set its window title, as it may to say how it is doing.
     Title(String),
+    /// The agent `muster exec` ran in the terminal ended (`ARC-28`).
+    AgentEnded { success: bool },
     /// The process exited and all its output has been read; `end` is the
     /// position after its last byte and `size` the terminal's last size.
     Exited {
@@ -754,6 +756,7 @@ impl Actor {
             events(match report {
                 Report::Progress { busy } => PtyEvent::Progress { busy },
                 Report::Title(title) => PtyEvent::Title(title),
+                Report::AgentEnded { success } => PtyEvent::AgentEnded { success },
             });
         }
         // In a flood that never lets up, what the ring is to let go of is

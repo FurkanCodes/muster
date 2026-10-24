@@ -51,8 +51,12 @@ impl Supervisor {
             .iter()
             .find(|stored| stored.id == session)
             .is_some_and(|stored| {
-                self.harness(&stored.harness)
-                    .is_some_and(|found| stored.title == found.label())
+                // A terminal's agent is called by its label, or by its
+                // program as what runs in front.
+                self.harness(stored.shown_harness()).is_some_and(|found| {
+                    stored.title == found.label()
+                        || (stored.is_terminal() && found.program() == Some(stored.title.as_str()))
+                })
             });
         if !unnamed {
             return;

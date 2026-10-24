@@ -279,6 +279,14 @@ struct Live {
     agent: Option<Harness>,
 }
 
+impl Live {
+    /// The harness heard in it now: the agent in front in a terminal, else
+    /// its own.
+    fn heard(&self) -> &Harness {
+        self.agent.as_ref().unwrap_or(&self.harness)
+    }
+}
+
 #[derive(Debug)]
 struct Supervisor {
     /// Its own queue, for work finished off the loop to come back.
@@ -676,6 +684,11 @@ impl Supervisor {
             Command::ExplainSession { session } => self.explain_session(session),
             Command::Reveal { session } => self.reveal(session),
             Command::Switch { from, to } => self.switch(from, to),
+            Command::ExecAgent {
+                session,
+                harness,
+                prompt,
+            } => self.exec_agent(session, &harness, prompt).await,
             Command::AssignTicket { workspace, key } => self.assign_ticket(workspace, key).await,
             Command::ChangePreference(change) => {
                 let changed = self.change_preference(&change);
@@ -728,17 +741,7 @@ impl Supervisor {
                 self.command_run(run, RunEvent::HandBack, "be handed back")
                     .await
             }
-            Command::RequestChanges { run, comments } => {
-                if comments.trim().is_empty() {
-                    return Err(ErrorBody::new(
-                        ErrorCode::BadRequest,
-                        "say what to change: the agent gets nothing else",
-                    ));
-                }
-                let event = RunEvent::PersonRequestedChanges { comments };
-                self.command_run(run, event, "take a request for changes")
-                    .await
-            }
+            Command::RequestChanges { run, comments } => self.request_changes(run, comments).await,
             Command::RunHistory { run } => self.run_history(run).await,
             Command::ListIssues { .. }
             | Command::ViewIssue { .. }
@@ -767,6 +770,19 @@ impl Supervisor {
                 "this command is answered off the Supervisor's loop",
             )),
         }
+    }
+
+    /// The person's request for changes on `run`, which says what to change.
+    async fn request_changes(&mut self, run: RunId, comments: String) -> Result<Reply, ErrorBody> {
+        if comments.trim().is_empty() {
+            return Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                "say what to change: the agent gets nothing else",
+            ));
+        }
+        let event = RunEvent::PersonRequestedChanges { comments };
+        self.command_run(run, event, "take a request for changes")
+            .await
     }
 
     /// Keeps only the latest measurement and tells clients (ARC-14).
@@ -857,6 +873,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::MoveOnto { .. } => "move onto",
         Command::Reveal { .. } => "reveal",
         Command::Switch { .. } => "switch",
+        Command::ExecAgent { .. } => "exec agent",
         Command::AssignTicket { .. } => "assign ticket",
         Command::ChangePreference(_) => "change preference",
         Command::ReadPreferences => "read preferences",

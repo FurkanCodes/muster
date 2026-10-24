@@ -157,7 +157,10 @@
 //! (`Command::Switch`), and a ticket made a worktree's as the person asks
 //! (`Command::AssignTicket`), each sent only to a daemon of 52 or later;
 //! version 53 the coding agent running in front in a terminal
-//! (`Session::agent`, a field older clients pass over).
+//! (`Session::agent`, a field older clients pass over); version 54 an
+//! agent run in a terminal's foreground with Muster's hooks
+//! (`Command::ExecAgent`, answered with `Reply::AgentCommand`, sent only
+//! to a daemon of 54 or later).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -187,9 +190,11 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 53;
+pub const PROTOCOL_VERSION: u32 = 54;
 /// The first protocol whose daemon takes [`Command::Switch`].
 pub const SWITCH_PROTOCOL: u32 = 52;
+/// The first protocol whose daemon takes [`Command::ExecAgent`].
+pub const EXEC_PROTOCOL: u32 = 54;
 /// The oldest protocol this build still speaks.
 pub const MIN_PROTOCOL_VERSION: u32 = 16;
 
@@ -585,6 +590,18 @@ pub enum Command {
         workspace: WorkspaceId,
         key: Option<TicketKey>,
     },
+    /// Run coding agent `harness` in the foreground of terminal `session`,
+    /// as `muster exec` asks from inside it (`muster init`'s functions):
+    /// with the terminal's hooks and a session id the daemon chooses, and
+    /// `prompt` to start on, heard from now as the terminal's agent
+    /// (`ARC-28`). Answered with [`Reply::AgentCommand`], which the asker
+    /// runs. Sent only to a daemon of 54 or later ([`EXEC_PROTOCOL`]).
+    ExecAgent {
+        session: SessionId,
+        harness: String,
+        #[serde(default)]
+        prompt: Option<String>,
+    },
     /// Change one of Muster's own settings, in the person's own file;
     /// answered with [`Reply::Done`], every client told by
     /// [`Delta::Preferences`]. Sent only to a daemon of 23 or later.
@@ -799,6 +816,14 @@ pub enum Reply {
     /// agent whose hooks do not tell its answer. From protocol 51.
     SessionText {
         text: Option<String>,
+    },
+    /// The command line to run an agent in a terminal with
+    /// ([`Command::ExecAgent`]): its program, arguments and the variables
+    /// to add. From protocol 54.
+    AgentCommand {
+        program: String,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
     },
     /// The command was carried out and has nothing to report.
     Done,
