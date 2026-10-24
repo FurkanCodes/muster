@@ -229,6 +229,24 @@ fn the_notch_is_turned_on_and_off_on_the_settings_screen() {
 }
 
 #[test]
+fn a_change_whose_answer_the_lost_connection_took_can_be_asked_again() {
+    let mut world = mac(true);
+    world.app.view = View::Settings;
+    world.app.settings_selected = Some(SettingRow::Notch);
+    command(&press(&mut world.app, KeyCode::Enter));
+    assert!(world.app.notch_changing());
+    world.app.on_disconnected("the daemon restarted".to_owned());
+    assert!(!world.app.notch_changing(), "no answer is coming");
+    world.app.on_connected("0.1.0".to_owned());
+    world.app.on_frame(preferences(true));
+    let (_, sent) = command(&press(&mut world.app, KeyCode::Enter));
+    assert_eq!(
+        sent,
+        Command::ChangePreference(PreferenceChange::Notch(false))
+    );
+}
+
+#[test]
 fn muster_s_own_settings_show_the_notch_only_where_it_can_be_and_the_person_s_agents() {
     let mut world = world();
     world.app.view = View::Settings;

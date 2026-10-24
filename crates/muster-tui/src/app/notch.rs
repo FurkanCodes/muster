@@ -90,10 +90,9 @@ impl App {
 
     /// Turns the notch on or off.
     pub(super) fn toggle_notch(&mut self) -> Vec<Action> {
-        if !self.notch_known() || self.notch_changing {
+        if !self.notch_known() || self.notch_changing() {
             return Vec::new();
         }
-        self.notch_changing = true;
         let on = !self.model.preferences().notch;
         vec![self.command(
             Command::ChangePreference(PreferenceChange::Notch(on)),
@@ -105,7 +104,6 @@ impl App {
     /// settings as they are now come as a change to the state, which may
     /// come before this answer or after it.
     pub(super) fn notch_changed(&mut self, on: bool, outcome: Result<(), ErrorBody>) {
-        self.notch_changing = false;
         match outcome {
             Ok(()) if on => {
                 self.say("The notch shows your agents while you look elsewhere.");

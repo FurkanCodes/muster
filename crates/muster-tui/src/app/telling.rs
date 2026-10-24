@@ -47,10 +47,9 @@ impl App {
     }
 
     fn change_tell(&mut self, kind: Kind, tell: Tell) -> Vec<Action> {
-        if !self.telling_known() || self.telling_changing {
+        if !self.telling_known() || self.telling_changing() {
             return Vec::new();
         }
-        self.telling_changing = true;
         vec![self.command(
             Command::ChangePreference(PreferenceChange::Tell {
                 kind,
@@ -63,7 +62,6 @@ impl App {
     /// `kind` is told as `tell` now, or could not be. The settings as they
     /// are now come as a change to the state.
     pub(super) fn tell_changed(&mut self, kind: Kind, tell: &Tell, outcome: Result<(), ErrorBody>) {
-        self.telling_changing = false;
         match outcome {
             Ok(()) if tell.on => self.say(format!(
                 "{} are told, with {}.",

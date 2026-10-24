@@ -734,6 +734,21 @@ fn a_harness_silent_past_the_grace_is_asking_before_it_starts() {
 }
 
 #[test]
+fn a_hook_from_another_harness_session_is_no_start() {
+    let mut session = reporting(Start::Idle);
+    session.now = session.start + Timing::default().start_grace;
+    session.send(Signal::Tick);
+    assert_eq!(session.status(), STARTING);
+    assert!(
+        session
+            .hook_from("theirs", HookEvent::PromptSubmitted)
+            .is_empty()
+    );
+    assert_eq!(session.status(), STARTING);
+    assert_eq!(session.machine.next_deadline(), None);
+}
+
+#[test]
 fn a_start_in_time_leaves_nothing_to_wait_for() {
     let mut session = reporting(Start::WithPrompt);
     session.at(1);

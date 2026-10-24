@@ -61,7 +61,7 @@ impl App {
     /// (`SIDE_BY_SIDE_CHOICES`), round from the widest to any width with
     /// `round`, else no further than either end.
     pub(super) fn step_side_by_side(&mut self, by: isize, round: bool) -> Vec<Action> {
-        if !self.side_by_side_known() || self.side_by_side_changing {
+        if !self.side_by_side_known() || self.side_by_side_changing() {
             return Vec::new();
         }
         let now = self.model.preferences().side_by_side_from;
@@ -82,7 +82,6 @@ impl App {
         if columns == now {
             return Vec::new();
         }
-        self.side_by_side_changing = true;
         vec![self.command(
             Command::ChangePreference(PreferenceChange::SideBySideFrom(columns)),
             Then::SideBySideChanged(columns),
@@ -96,7 +95,6 @@ impl App {
         columns: u16,
         outcome: Result<(), muster_core::protocol::ErrorBody>,
     ) {
-        self.side_by_side_changing = false;
         match outcome {
             Ok(()) if columns == 0 => {
                 self.say("A session sits beside the list at any width.");

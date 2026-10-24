@@ -22,7 +22,7 @@ pub(super) fn draw_tickets(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let rows = app.ticket_rows();
     if rows.is_empty() {
         frame.render_widget(
-            Paragraph::new("No projects yet: add one in the sessions view with a.")
+            Paragraph::new(super::no_projects(app))
                 .wrap(Wrap { trim: false })
                 .block(block)
                 .dim(),

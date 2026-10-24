@@ -10,7 +10,7 @@ use crate::app::App;
 /// What `kind`'s row says of it: on, with its sound, or off.
 pub(super) fn value(app: &App, kind: Kind) -> Span<'static> {
     let tell = app.model.preferences().telling.of(kind);
-    if app.telling_changing {
+    if app.telling_changing() {
         return Span::from("…").dim();
     }
     if !tell.on {

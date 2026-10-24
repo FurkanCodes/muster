@@ -553,20 +553,12 @@ pub(crate) struct App {
     /// Whether this UI has started the notch since it connected, or seen
     /// it turned off since.
     notch_started: bool,
-    /// The notch is being turned on or off: the answer is on its way.
-    pub(crate) notch_changing: bool,
     /// The colours of the person's terminal, as it said them as the UI
     /// started, told to each daemon the UI connects to.
     pub(crate) colours: muster_core::colours::TerminalColours,
     /// One cell of the person's terminal in pixels, as its size says,
     /// read as the UI starts and as the window is resized.
     pub(crate) cell_pixels: Option<PixelSize>,
-    /// The width a session sits beside the list from is being changed.
-    pub(crate) side_by_side_changing: bool,
-    /// The look is being changed: whose colours, or how many lines.
-    pub(crate) look_changing: bool,
-    /// How a kind of notification is told is being changed.
-    pub(crate) telling_changing: bool,
     /// The plugin being turned on or off: the answer is on its way.
     pub(crate) plugin_changing: Option<PluginKey>,
     /// A plugin just installed, selected once the list has it.
@@ -659,12 +651,8 @@ impl App {
             notch_here: false,
             machine: None,
             notch_started: false,
-            notch_changing: false,
             colours: muster_core::colours::TerminalColours::default(),
             cell_pixels: None,
-            side_by_side_changing: false,
-            look_changing: false,
-            telling_changing: false,
             plugin_changing: None,
             plugin_wanted: None,
             areas_cache: std::cell::RefCell::default(),

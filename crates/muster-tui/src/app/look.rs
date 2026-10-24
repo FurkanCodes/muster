@@ -41,10 +41,9 @@ impl App {
     }
 
     fn change_look(&mut self, change: LookChange) -> Vec<Action> {
-        if !self.look_known() || self.look_changing {
+        if !self.look_known() || self.look_changing() {
             return Vec::new();
         }
-        self.look_changing = true;
         let asked = match change {
             LookChange::Palette(palette) => PreferenceChange::Palette(palette),
             LookChange::SessionLines(lines) => PreferenceChange::SessionLines(lines),
@@ -55,7 +54,6 @@ impl App {
     /// The look was changed, or could not be. The settings as they are now
     /// come as a change to the state, which draws in them.
     pub(super) fn look_changed(&mut self, change: LookChange, outcome: Result<(), ErrorBody>) {
-        self.look_changing = false;
         match outcome {
             Ok(()) => self.say(match change {
                 LookChange::Palette(Palette::Muster) => "Muster draws in its own colours.",

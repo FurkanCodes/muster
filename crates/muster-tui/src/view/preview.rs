@@ -105,9 +105,12 @@ fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
     }
     if let Some(stacked) = &workspace.stacked_on {
         let merged = if app.stack_merged(workspace.id) {
-            " · it has merged: u moves this onto its base"
+            format!(
+                " · it has merged: {} moves this onto its base",
+                app.key(Does::MoveBranch)
+            )
         } else {
-            ""
+            String::new()
         };
         lines.push(Line::from(vec![
             Span::from("Stacked ").dim(),

@@ -386,3 +386,11 @@ pub(crate) fn bytes(count: u64) -> String {
         format!("{} MB", count.div_ceil(MB))
     }
 }
+
+/// What a screen that lists projects says while there are none.
+fn no_projects(app: &App) -> String {
+    format!(
+        "No projects yet: add one in the sessions view with {}.",
+        app.key(muster_core::keys::Action::AddProject)
+    )
+}

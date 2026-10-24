@@ -416,4 +416,30 @@ impl App {
         self.settings
             .retain(|_, settings| !matches!(settings, Settings::Loading));
     }
+
+    /// Whether an answer `then` waits for is on its way: asked, and the
+    /// connection not lost since (which forgets every one).
+    fn awaits(&self, then: impl Fn(&Then) -> bool) -> bool {
+        self.pending.values().any(then)
+    }
+
+    /// The notch is being turned on or off.
+    pub(crate) fn notch_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::NotchChanged(_)))
+    }
+
+    /// The width a session sits beside the list from is being changed.
+    pub(crate) fn side_by_side_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::SideBySideChanged(_)))
+    }
+
+    /// The look is being changed: whose colours, or how many lines.
+    pub(crate) fn look_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::LookChanged(_)))
+    }
+
+    /// How a kind of notification is told is being changed.
+    pub(crate) fn telling_changing(&self) -> bool {
+        self.awaits(|then| matches!(then, Then::TellChanged(..)))
+    }
 }

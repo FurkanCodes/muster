@@ -44,7 +44,7 @@ pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let rows = app.setting_rows();
     if rows.is_empty() {
         frame.render_widget(
-            Paragraph::new("No projects yet: add one in the sessions view with a.")
+            Paragraph::new(super::no_projects(app))
                 .wrap(Wrap { trim: false })
                 .block(block)
                 .dim(),
@@ -159,7 +159,7 @@ fn labelled(label: &str, value: Span<'static>, width: usize) -> Line<'static> {
 
 /// Whether the notch is on, or being turned on or off.
 fn notch_value(app: &App) -> Span<'static> {
-    if app.notch_changing {
+    if app.notch_changing() {
         Span::from("…").dim()
     } else if app.model.preferences().notch {
         Span::from("on").green().bold()
@@ -170,7 +170,7 @@ fn notch_value(app: &App) -> Span<'static> {
 
 /// Whose colours the UI draws in, or that it is being changed.
 fn colours_value(app: &App) -> Span<'static> {
-    if app.look_changing {
+    if app.look_changing() {
         return Span::from("…").dim();
     }
     match app.model.preferences().palette {
@@ -181,7 +181,7 @@ fn colours_value(app: &App) -> Span<'static> {
 
 /// How many lines a session takes, or that it is being changed.
 fn session_lines_value(app: &App) -> Span<'static> {
-    if app.look_changing {
+    if app.look_changing() {
         return Span::from("…").dim();
     }
     match app.model.preferences().session_lines {
@@ -211,7 +211,7 @@ fn agents_value(app: &App) -> Span<'static> {
 /// From how many columns a session sits beside the list, or that it is
 /// being changed.
 fn side_by_side_value(app: &App) -> Span<'static> {
-    if app.side_by_side_changing {
+    if app.side_by_side_changing() {
         return Span::from("…").dim();
     }
     match app.model.preferences().side_by_side_from {
@@ -473,7 +473,8 @@ fn agents_text(app: &App) -> Text<'static> {
             agents_value(app),
         ]),
         Line::from(
-            "Coding agents Muster does not know, added in your own settings, are offered beside              its own: for a new session, and for a ticket where they take a first prompt.",
+            "Coding agents Muster does not know, added in your own settings, are offered beside \
+             its own: for a new session, and for a ticket where they take a first prompt.",
         ),
         Line::from(""),
     ];
@@ -514,7 +515,8 @@ fn agents_text(app: &App) -> Text<'static> {
         Line::from("  resume = [\"--continue\"]").dim(),
         Line::from(""),
         Line::from(
-            "Muster hears them by their terminal's progress, their window title and their exit,              and never changes their own settings.",
+            "Muster hears them by their terminal's progress, their window title and their exit, \
+             and never changes their own settings.",
         )
         .dim(),
     ]);
@@ -633,11 +635,13 @@ fn panels_text(app: &App) -> Text<'static> {
             Span::from(format!("{PANELS}  ")).bold(),
             panels_value(app),
         ]),
-        Line::from(
+        Line::from(format!(
             "Drag a panel by its title to another edge of the window or of another panel, and \
-             the line between two to share out their place. m moves them with the keys. \
-             Ctrl+\\ folds the list away and brings it back, as you type in a session too.",
-        ),
+             the line between two to share out their place. {} moves them with the keys. \
+             {} folds the list away and brings it back, as you type in a session too.",
+            app.key(muster_core::keys::Action::MovePanels),
+            app.key(muster_core::keys::Action::FoldList),
+        )),
         Line::from(""),
         detail("Now", app.panels().to_string()),
         detail("The list", folded.to_owned()),
@@ -843,23 +847,23 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
                 });
             }
         }
-        Some(SettingRow::Notch) if !app.notch_changing => {
+        Some(SettingRow::Notch) if !app.notch_changing() => {
             hints.push(if app.model.preferences().notch {
                 "⏎ turn off"
             } else {
                 "⏎ turn on"
             });
         }
-        Some(SettingRow::SideBySide) if !app.side_by_side_changing => {
+        Some(SettingRow::SideBySide) if !app.side_by_side_changing() => {
             hints.extend(["⏎ next width", "← → smaller, larger"]);
         }
-        Some(SettingRow::Colours) if !app.look_changing => {
+        Some(SettingRow::Colours) if !app.look_changing() => {
             hints.push(match app.model.preferences().palette {
                 Palette::Muster => "⏎ the terminal's",
                 Palette::Terminal => "⏎ Muster's",
             });
         }
-        Some(SettingRow::SessionLines) if !app.look_changing => {
+        Some(SettingRow::SessionLines) if !app.look_changing() => {
             hints.push(match app.model.preferences().session_lines {
                 SessionLines::Two => "⏎ one line",
                 SessionLines::One => "⏎ two lines",
@@ -885,7 +889,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
                 "⏎ turn on"
             });
         }
-        Some(SettingRow::Tell(kind)) if !app.telling_changing => {
+        Some(SettingRow::Tell(kind)) if !app.telling_changing() => {
             hints.push(if app.model.preferences().telling.of(kind).on {
                 "⏎ turn off"
             } else {
