@@ -160,13 +160,7 @@ mod tests {
             .parse()
             .unwrap();
         let gone = || nix::sys::signal::kill(nix::unistd::Pid::from_raw(child), None).is_err();
-        for _ in 0..100 {
-            if gone() {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        panic!("what it started still runs");
+        crate::waiting::until("what it started to be gone", async || gone()).await;
     }
 
     #[tokio::test]

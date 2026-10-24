@@ -18,6 +18,7 @@ use super::*;
 use crate::git::tests::{git, repository};
 use crate::runs::provision::tests::{RemoveOnDrop, test_image};
 use crate::service::{BoxFuture, ServiceError};
+use crate::waiting;
 
 /// Stands in for Claude Code in the container: a builder that commits
 /// (and fixes its work when told the checks failed), or, with
@@ -326,8 +327,10 @@ async fn real_docker_takes_a_run_from_pickup_to_ready_through_a_failed_check() {
             work.start(context.clone(), effect, reports.clone());
         }
     }
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    assert_eq!(host.ready.lock().unwrap().as_slice(), [17]);
+    waiting::until("its pull request to be marked ready", async || {
+        host.ready.lock().unwrap().as_slice() == [17]
+    })
+    .await;
 
     // The credential reached only the agents' runs, never the container.
     let container = context.container.clone().unwrap();

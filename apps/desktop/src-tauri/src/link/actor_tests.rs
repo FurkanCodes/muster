@@ -97,12 +97,6 @@ async fn connecting_subscribes_and_says_how_the_person_looks() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_older_daemon_is_told_only_what_it_knows() {
-    let (_, _, mut frames) = connected(22);
-    assert_eq!(sent(&mut frames), [ClientFrame::Subscribe]);
-}
-
-#[tokio::test(start_paused = true)]
 async fn a_snapshot_says_the_link_is_up_then_everything_is_sent_reset() {
     let (mut actor, told, _frames) = connected(44);
     told.take();
@@ -447,4 +441,3 @@ async fn the_terminals_colours_are_told_as_they_change_and_on_each_connection() 
     });
     assert!(sent(&mut again).contains(&ClientFrame::Colours(colours(0xffff))));
 }
-

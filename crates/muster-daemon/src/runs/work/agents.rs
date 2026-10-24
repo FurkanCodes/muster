@@ -431,6 +431,10 @@ impl Inner {
                     }
                 }
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "ARC-30: a job in a container says nothing as it ends, so it is looked at every `poll`"
+            )]
             tokio::time::sleep(self.poll).await;
         }
     }

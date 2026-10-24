@@ -369,6 +369,10 @@ pub(crate) async fn stop_daemon(socket: &Path) -> ExitCode {
                 "the daemon (pid {pid}) is still running after 10 seconds; `kill -9 {pid}` ends it"
             ));
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: a daemon stopping says nothing as its process ends, looked at every 50 ms"
+        )]
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     println!("Stopped the daemon (pid {pid}).");
@@ -698,6 +702,10 @@ async fn run_checks(socket: &Path, worktree: &str) -> Result<bool, Box<dyn std::
         {
             return Ok(success);
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: the session's status asked again every 20 ms until it has exited"
+        )]
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     Err("the checks ended without saying how".into())

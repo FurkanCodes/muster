@@ -19,10 +19,11 @@
 
 mod support;
 
+use support::wait;
+
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
-use std::time::{Duration, Instant};
 
 use muster_core::protocol::plugins::PluginProblem;
 use muster_core::protocol::{Delta, ServerFrame};
@@ -148,11 +149,7 @@ fn sha256(text: &str) -> String {
 /// Waits up to ten seconds for `done`: a folder is removed off the
 /// daemon's loop, a moment after the command that let it go.
 fn wait_until(what: &str, done: impl Fn() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !done() {
-        assert!(Instant::now() < deadline, "waited for {what}");
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    wait::until(what, done);
 }
 
 fn address(repository: &Path) -> String {

@@ -14,6 +14,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::time::{Duration, Instant};
 
 use muster_client::{ClientError, Connection};
@@ -344,14 +346,7 @@ async fn a_ticket_keeps_its_worktree_when_its_branch_is_renamed() {
                 workspace.id == first && workspace.kind.branch() == "fix/login-redirect"
             })
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !renamed().await {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the branch watcher never saw the rename"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
+    wait::until_async("the branch watcher to see the rename", renamed).await;
 
     let (second, _) = start_issue(&mut connection, setup.project, 42)
         .await
@@ -456,7 +451,7 @@ async fn a_slow_github_call_does_not_hold_up_other_commands() {
     let mut slow = setup.daemon.connect().await;
     let project = setup.project;
     let listing = tokio::spawn(async move { slow.command(Command::ListIssues { project }).await });
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait::passes_async(Duration::from_millis(200), "the slow listing under way").await;
 
     let started = Instant::now();
     let mut quick = setup.daemon.connect().await;

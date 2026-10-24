@@ -172,6 +172,10 @@ pub(crate) async fn wait_for_text(
             eprintln!("muster: out of time; it shows no {wanted:?}");
             return Ok(ExitCode::from(super::wait::TIMED_OUT));
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: what a session shows is looked at every `LOOK_EVERY` until it shows what is waited for"
+        )]
         tokio::time::sleep(LOOK_EVERY).await;
     }
 }

@@ -10,17 +10,16 @@
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use muster_core::protocol::plugins::{Beside, PluginCommand};
 use muster_core::protocol::{Command, ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::{Session, SessionId, SessionStatus, Timestamp, WorkspaceId};
-use tokio::time::timeout;
 
 use crate::clock::Clock;
 use crate::panel_tests::{FixedClock, project, session, spawn, spawn_with, started, state, until};
 use crate::store::Store;
 use crate::supervisor::SupervisorHandle;
+use crate::waiting;
 
 const MANIFEST: &str = r#"id = "demo"
 name = "Demo"
@@ -120,16 +119,10 @@ async fn open(
 
 /// What the plugin's program in `folder` was given, once it has run.
 async fn given(folder: &Path) -> (Vec<String>, HashMap<String, String>) {
-    let env = timeout(Duration::from_secs(5), async {
-        loop {
-            if let Ok(env) = std::fs::read_to_string(folder.join("env")) {
-                return env;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+    let env = waiting::found("the panel's program to run", async || {
+        std::fs::read_to_string(folder.join("env")).ok()
     })
-    .await
-    .expect("the panel's program ran");
+    .await;
     let args = std::fs::read_to_string(folder.join("args")).unwrap();
     let env = env
         .lines()

@@ -15,8 +15,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use muster_client::Connection;
 use muster_core::protocol::{Command, Reply, Snapshot, TermSize};
@@ -48,15 +50,10 @@ fn worktrees(snapshot: &Snapshot) -> Vec<&Workspace> {
 
 /// Waits until the daemon's state satisfies `done`.
 async fn wait_until(connection: &mut Connection, done: impl Fn(&Snapshot) -> bool) -> Snapshot {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let snapshot = connection.subscribe().await.unwrap();
-        if done(&snapshot) {
-            return snapshot;
-        }
-        assert!(Instant::now() < deadline, "{:#?}", snapshot.workspaces);
-        tokio::time::sleep(Duration::from_millis(30)).await;
-    }
+    wait::found_async("the workspaces wanted", async || {
+        Some(connection.subscribe().await.unwrap()).filter(|snapshot| done(snapshot))
+    })
+    .await
 }
 
 fn fast() -> Sandbox {
@@ -173,9 +170,11 @@ async fn a_worktree_deleted_by_hand_is_forgotten_once_nothing_runs_in_it() {
 
     std::fs::remove_dir_all(&path).unwrap();
     // Kept while its session runs.
-    tokio::time::sleep(Duration::from_millis(400)).await;
-    let snapshot = connection.subscribe().await.unwrap();
-    assert!(snapshot.workspaces.iter().any(|w| w.id == id));
+    wait::holds_async("it kept", Duration::from_millis(400), async || {
+        let snapshot = connection.subscribe().await.unwrap();
+        snapshot.workspaces.iter().any(|w| w.id == id)
+    })
+    .await;
 
     stop_and_wait(&mut connection, session).await;
     wait_until(&mut connection, |s| {
@@ -219,7 +218,7 @@ async fn muster_s_own_worktrees_are_neither_doubled_nor_brought_back() {
         else {
             panic!("expected WorktreeCreated");
         };
-        tokio::time::sleep(Duration::from_millis(15)).await;
+        wait::passes_async(Duration::from_millis(15), "the sync looking between rounds").await;
         if round % 2 == 0 {
             connection
                 .command(Command::RemoveWorktree {
@@ -230,13 +229,21 @@ async fn muster_s_own_worktrees_are_neither_doubled_nor_brought_back() {
                 .unwrap();
         }
     }
-    // Let the sync look several times more.
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    let snapshot = connection.subscribe().await.unwrap();
-    let mut branches: Vec<_> = worktrees(&snapshot)
-        .iter()
-        .map(|w| w.kind.branch().to_owned())
-        .collect();
-    branches.sort();
-    assert_eq!(branches, ["race-1", "race-3", "race-5", "race-7"]);
+    // However often the sync looks, those made and not removed stay.
+    let mut branches = async || {
+        let snapshot = connection.subscribe().await.unwrap();
+        let mut branches: Vec<_> = worktrees(&snapshot)
+            .iter()
+            .map(|w| w.kind.branch().to_owned())
+            .collect();
+        branches.sort();
+        branches == ["race-1", "race-3", "race-5", "race-7"]
+    };
+    wait::until_async("the worktrees made and not removed", &mut branches).await;
+    wait::holds_async(
+        "the worktrees kept",
+        Duration::from_millis(300),
+        &mut branches,
+    )
+    .await;
 }

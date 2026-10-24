@@ -105,6 +105,10 @@ pub(crate) async fn run(
         if since.elapsed() > PATIENCE {
             return Ended::NoDaemon("the daemon is gone".to_owned());
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: a daemon gone says nothing as it comes back, so the notch tries again every 500 ms"
+        )]
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }

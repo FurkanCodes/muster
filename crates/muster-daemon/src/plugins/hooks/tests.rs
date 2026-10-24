@@ -9,6 +9,8 @@ use tokio::sync::oneshot;
 
 use super::*;
 
+use crate::waiting;
+
 /// A plugin's folder: its manifest, and its programs, each a `sh` script.
 struct Plugin {
     dir: tempfile::TempDir,
@@ -88,15 +90,9 @@ async fn outcome(ran: oneshot::Receiver<HookRun>) -> HookRun {
         .expect("it was told")
 }
 
-/// Waits until `done` holds, at most five seconds.
+/// Waits until `done` holds.
 async fn until(done: impl Fn() -> bool) {
-    for _ in 0..500 {
-        if done() {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    panic!("it never came to be");
+    waiting::until("it to come to be", async || done()).await;
 }
 
 fn alive(pid_file: &Path) -> bool {
@@ -252,11 +248,12 @@ async fn at_most_four_of_a_plugin_s_hooks_run_at_once_and_the_rest_wait_their_tu
     let (jobs, runs): (Vec<_>, Vec<_>) = (0..6).map(|_| plugin.job(&["./notify"], 20)).unzip();
     hooks.raise(jobs);
     until(|| started(&plugin) == 4).await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(
-        (started(&plugin), hooks.running(), hooks.waiting()),
-        (4, 4, 2)
-    );
+    waiting::holds(
+        "four running, two waiting",
+        Duration::from_millis(200),
+        async || (started(&plugin), hooks.running(), hooks.waiting()) == (4, 4, 2),
+    )
+    .await;
     std::fs::write(plugin.path().join("go"), "").unwrap();
     for ran in runs {
         assert_eq!(outcome(ran).await.outcome, HookOutcome::Exited { code: 0 });

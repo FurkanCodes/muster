@@ -14,6 +14,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::PathBuf;
 
 use muster_client::{ClientError, Connection};
@@ -508,13 +510,7 @@ fn the_command_line_manages_worktrees_and_sessions() {
 
 /// Waits until `done` holds, for what the daemon finishes off its loop.
 async fn until(what: &str, done: impl Fn() -> bool) {
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
-        while !done() {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("waited 10 s for {what}"));
+    wait::until_async(what, async || done()).await;
 }
 
 #[tokio::test]

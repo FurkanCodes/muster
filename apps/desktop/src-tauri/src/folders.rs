@@ -49,9 +49,12 @@ pub(crate) async fn pick_folder(window: tauri::Window, title: Option<String>) ->
         let _ = sent.send(path);
     });
     match chosen.await {
-        Ok(Some(path)) => path
-            .into_path()
-            .map_or(PickedFolder::Cancelled, |path| PickedFolder::Chosen { path }),
+        Ok(Some(path)) => {
+            path.into_path()
+                .map_or(PickedFolder::Cancelled, |path| PickedFolder::Chosen {
+                    path,
+                })
+        }
         Ok(None) | Err(_) => PickedFolder::Cancelled,
     }
 }

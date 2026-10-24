@@ -396,6 +396,10 @@ pub(crate) async fn stopped(
         if crate::instant_now() >= deadline {
             return Err("its sessions are still stopping; try again in a moment".into());
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: sessions stopping are looked at every 100 ms until none runs"
+        )]
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }

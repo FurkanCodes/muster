@@ -11,6 +11,8 @@ disallowed-methods = [
     { path = "std::sync::mpsc::channel", reason = "ARC-14: bound the queue (`sync_channel`), or #[expect] it with why its producer is bounded" },
     { path = "std::time::Instant::now", reason = "ARC-03: the daemon reads time through its Clock, each other program in one place" },
     { path = "std::time::SystemTime::now", reason = "ARC-03: the daemon reads time through its Clock, each other program in one place" },
+    { path = "std::thread::sleep", reason = "ARC-30: wait on what happens, not a guess at how long it takes; a test waits through its support's `wait`, and a sleep that is right says why in an #[expect]" },
+    { path = "tokio::time::sleep", reason = "ARC-30: wait on what happens, not a guess at how long it takes; a test waits through its support's `wait`, and a sleep that is right says why in an #[expect]" },
     { path = "ratatui::style::Stylize::black", reason = "ARC-29: the TUI draws in its theme's roles (`view::theme`), never a colour of its own" },
     { path = "ratatui::style::Stylize::red", reason = "ARC-29: the TUI draws in its theme's roles (`view::theme`), never a colour of its own" },
     { path = "ratatui::style::Stylize::green", reason = "ARC-29: the TUI draws in its theme's roles (`view::theme`), never a colour of its own" },

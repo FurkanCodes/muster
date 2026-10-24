@@ -123,6 +123,10 @@ pub(crate) async fn type_into(
         .map_err(|_| "the session's terminal did not answer")??;
     connection.input(session, &paste(text, modes)).await?;
     if enter {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: a program takes a paste and an Enter that follow at once as one paste; the time apart is what keeps them two"
+        )]
         tokio::time::sleep(BEFORE_ENTER).await;
         connection.input(session, &enter_key(modes)).await?;
     }

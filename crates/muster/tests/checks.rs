@@ -15,6 +15,8 @@
 
 mod support;
 
+use support::wait;
+
 use muster_core::SessionStatus;
 use muster_core::protocol::{Command, Reply, TermSize};
 
@@ -80,21 +82,17 @@ async fn the_checks_run_in_a_workspace_show_their_output_and_say_how_they_went()
         .await
         .unwrap();
     assert_eq!(restarted, Reply::SessionStarted { id: checks.id });
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
+    wait::until_async("the checks to pass", async || {
         let snapshot = connection.subscribe().await.unwrap();
-        let status = snapshot
+        snapshot
             .sessions
             .iter()
             .find(|session| session.id == checks.id)
             .unwrap()
-            .status;
-        if status == (SessionStatus::Exited { success: true }) {
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "still {status:?}");
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+            .status
+            == (SessionStatus::Exited { success: true })
+    })
+    .await;
 
     let passed = sandbox.run(&["check", "app"]);
     assert!(passed.status.success());
@@ -212,14 +210,10 @@ async fn a_draft_pull_request_by_hand_pushes_the_branch_and_opens_or_finds_it() 
         "{calls}"
     );
     // Shown on the worktree at once, not at the pull requests' next look.
-    let mut status = String::new();
-    for _ in 0..100 {
-        status = String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned();
-        if status.contains("pull request #17 · draft") {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    let status = wait::found("the draft on the worktree", || {
+        Some(String::from_utf8_lossy(&sandbox.run(&["status"]).stdout).into_owned())
+            .filter(|status| status.contains("pull request #17 · draft"))
+    });
     assert!(status.contains("    pull request #17 · draft"), "{status}");
     assert!(
         std::fs::read_to_string(sandbox.fake_gh().join("calls"))

@@ -393,6 +393,10 @@ async fn drive(
     let mut next_id: u64 = 1;
     let mut said = vec![0; 4096];
     let mut stderr_open = true;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-30: the plugin's process is let go after `idle` unused, a timer reset by each request"
+    )]
     let unused = tokio::time::sleep(driving.idle);
     tokio::pin!(unused);
     let end = loop {

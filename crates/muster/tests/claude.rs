@@ -16,6 +16,8 @@
 
 mod support;
 
+use support::wait;
+
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame, TermSize};
 use muster_core::{SessionId, SessionStatus, WaitReason, WorkspaceId};
@@ -458,20 +460,12 @@ async fn a_resume_that_fails_at_once_starts_fresh() {
     assert_ne!(fresh, id);
 
     let mut connection = daemon.connect().await;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
+    let fresh = wait::found_async("it to be fresh again", async || {
         let snapshot = connection.subscribe().await.unwrap();
-        if snapshot.sessions[0].status == SessionStatus::Fresh {
-            assert_eq!(snapshot.sessions[0].ended_at, None);
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "{:?}",
-            snapshot.sessions[0]
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+        (snapshot.sessions[0].status == SessionStatus::Fresh).then(|| snapshot.sessions[0].clone())
+    })
+    .await;
+    assert_eq!(fresh.ended_at, None);
 }
 
 #[tokio::test]
@@ -550,7 +544,11 @@ async fn nothing_is_news_while_someone_watches_the_session() {
         (SessionStatus::Finished, false)
     );
     drop(viewer);
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    wait::passes_async(
+        std::time::Duration::from_millis(300),
+        "the daemon to see the viewer gone, which no client is told",
+    )
+    .await;
     fire("UserPromptSubmit", json!({}));
     expect_status(&mut connection, session).await;
     fire("Stop", json!({}));
@@ -736,13 +734,17 @@ async fn a_claude_that_announces_its_start_is_never_taken_to_be_asking() {
     let checkout = snapshot.workspaces[0].id;
     let session = start_claude(&mut connection, checkout, None).await;
     sandbox.wait_for_launches(session, 1);
-    tokio::time::sleep(std::time::Duration::from_millis(3500)).await;
-    let snapshot = connection.subscribe().await.unwrap();
-    let stored = snapshot.sessions.iter().find(|s| s.id == session).unwrap();
-    assert_eq!(
-        (stored.status, stored.unseen),
-        (SessionStatus::Fresh, false)
-    );
+    // Through the grace and past it.
+    wait::holds_async(
+        "it fresh, asking nothing",
+        std::time::Duration::from_millis(3500),
+        async || {
+            let snapshot = connection.subscribe().await.unwrap();
+            let stored = snapshot.sessions.iter().find(|s| s.id == session).unwrap();
+            (stored.status, stored.unseen) == (SessionStatus::Fresh, false)
+        },
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -766,14 +768,18 @@ async fn attaching_without_watching_leaves_the_news_for_later() {
     let mut viewer = setup.daemon.connect().await;
     viewer.attach_unwatched(session, None).await.unwrap();
     viewer.command(Command::Ping).await.unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    let snapshot = connection.subscribe().await.unwrap();
-    assert!(
-        snapshot
-            .sessions
-            .iter()
-            .any(|s| s.id == session && s.unseen)
-    );
+    wait::holds_async(
+        "the news left for later",
+        std::time::Duration::from_millis(200),
+        async || {
+            let snapshot = connection.subscribe().await.unwrap();
+            snapshot
+                .sessions
+                .iter()
+                .any(|s| s.id == session && s.unseen)
+        },
+    )
+    .await;
     // Until it looks.
     viewer.watch(session, true).await.unwrap();
     assert_eq!(
@@ -821,17 +827,18 @@ async fn what_a_claude_session_used_is_read_from_its_transcript() {
             + "\n",
     )
     .unwrap();
-    let spent = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-        loop {
-            let snapshot = setup.daemon.connect().await.subscribe().await.unwrap();
-            if let Some(spend) = snapshot.sessions[0].spend {
-                return spend;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+    let spent = wait::found_async("the transcript to be read", async || {
+        setup
+            .daemon
+            .connect()
+            .await
+            .subscribe()
+            .await
+            .unwrap()
+            .sessions[0]
+            .spend
     })
-    .await
-    .expect("the transcript was never read");
+    .await;
     assert_eq!(
         spent,
         muster_core::Spend {

@@ -47,32 +47,9 @@ pub(crate) async fn reload_daemon(socket: &Path, runtime_dir: &Path) -> ExitCode
     if let Err(error) = nix::sys::signal::kill(process, nix::sys::signal::Signal::SIGUSR1) {
         return crate::fail(format!("could not reach the daemon (pid {pid}): {error}"));
     }
-    // It stops answering as it starts over; whoever answers next is the
-    // daemon after: the new version, or this one carrying on.
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    let deadline = crate::instant_now() + std::time::Duration::from_secs(30);
-    let after = loop {
-        let asked = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            muster_client::daemon_identity(socket, CLIENT),
-        )
-        .await;
-        match asked {
-            Ok(Ok((answering, version))) if answering == pid => break version,
-            Ok(Ok((other, _))) => {
-                return crate::fail(format!(
-                    "another daemon (pid {other}) answers now, not the one restarting (pid {pid}); see {}",
-                    log.display()
-                ));
-            }
-            _ if crate::instant_now() >= deadline => {
-                return crate::fail(format!(
-                    "the daemon (pid {pid}) has not answered for 30 seconds; see {}",
-                    log.display()
-                ));
-            }
-            _ => tokio::time::sleep(std::time::Duration::from_millis(200)).await,
-        }
+    let after = match answered_after(socket, pid, &log).await {
+        Ok(version) => version,
+        Err(code) => return code,
     };
     // What it said as it went, if it logs where the UI has it log.
     let said = read_from(&log, logged);
@@ -115,6 +92,48 @@ pub(crate) async fn reload_daemon(socket: &Path, runtime_dir: &Path) -> ExitCode
         ),
     }
     ExitCode::SUCCESS
+}
+
+/// The version of the daemon answering once `pid` has started over:
+/// itself, on the new version or carrying on; or why it did not answer.
+async fn answered_after(socket: &Path, pid: u32, log: &Path) -> Result<String, ExitCode> {
+    // It stops answering as it starts over; whoever answers next is the
+    // daemon after: the new version, or this one carrying on.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-30: SIGUSR1 has no answer of its own: the daemon stops answering as it starts over, well within 300 ms, so whoever answers after is the daemon after"
+    )]
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let deadline = crate::instant_now() + std::time::Duration::from_secs(30);
+    loop {
+        let asked = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            muster_client::daemon_identity(socket, CLIENT),
+        )
+        .await;
+        match asked {
+            Ok(Ok((answering, version))) if answering == pid => return Ok(version),
+            Ok(Ok((other, _))) => {
+                return Err(crate::fail(format!(
+                    "another daemon (pid {other}) answers now, not the one restarting (pid {pid}); see {}",
+                    log.display()
+                )));
+            }
+            _ if crate::instant_now() >= deadline => {
+                return Err(crate::fail(format!(
+                    "the daemon (pid {pid}) has not answered for 30 seconds; see {}",
+                    log.display()
+                )));
+            }
+            _ => {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "ARC-30: a daemon starting over says nothing until it answers, asked every 200 ms"
+                )]
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        }
+    }
 }
 
 /// What `log` holds past `offset` (all of it if it has since been cut),

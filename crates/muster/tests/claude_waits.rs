@@ -18,6 +18,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::time::Duration;
 
 use muster_client::Connection;
@@ -158,8 +160,7 @@ fn task_stopped(task: &str, status: &str) -> String {
 /// Waits until the daemon takes `session`'s subagents at work to be
 /// `wanted`.
 async fn expect_subagents(connection: &mut Connection, session: SessionId, wanted: &[&str]) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-    loop {
+    wait::until_async(&format!("subagents {wanted:?} at work"), async || {
         let Reply::Explanation(explanation) = connection
             .command(Command::ExplainSession { session })
             .await
@@ -167,17 +168,9 @@ async fn expect_subagents(connection: &mut Connection, session: SessionId, wante
         else {
             panic!("expected an explanation");
         };
-        let machine = explanation.machine.expect("its machine is held");
-        if machine.subagents == wanted {
-            return;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "subagents at work: {:?}",
-            machine.subagents
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+        explanation.machine.expect("its machine is held").subagents == wanted
+    })
+    .await;
 }
 
 fn append(path: &std::path::Path, text: &str) {
@@ -226,9 +219,11 @@ async fn a_permission_the_person_declines_needs_them_no_more() {
         (needs_permission, true)
     );
     // The earlier turn's interruption is no word about this one.
-    tokio::time::sleep(Duration::from_millis(600)).await;
-    let snapshot = setup.daemon.connect().await.subscribe().await.unwrap();
-    assert_eq!(snapshot.sessions[0].status, needs_permission);
+    wait::holds_async("it asking still", Duration::from_millis(600), async || {
+        let snapshot = setup.daemon.connect().await.subscribe().await.unwrap();
+        snapshot.sessions[0].status == needs_permission
+    })
+    .await;
 
     // The person presses Esc at the dialog: Claude Code runs no hook, and
     // writes the turn's end to its transcript.

@@ -16,6 +16,8 @@
 
 mod support;
 
+use support::wait;
+
 use serde_json::{Value, json};
 
 use support::Sandbox;
@@ -122,18 +124,12 @@ fn status_and_the_session_list_are_one_json_document_each() {
 
     // An ended session says how it ended.
     said(&sandbox, &["stop", "fix-login/1"]);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
+    let found = wait::found("the session to have ended", || {
         let listed = document(&sandbox, &["list", "--json"]);
-        let found = &listed["sessions"][0];
-        if found["status"] == "exited" {
-            assert!(found["success"].is_boolean(), "{found}");
-            assert!(found["ended_at_ms"].as_i64().is_some(), "{found}");
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "{listed}");
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+        Some(listed["sessions"][0].clone()).filter(|found| found["status"] == "exited")
+    });
+    assert!(found["success"].is_boolean(), "{found}");
+    assert!(found["ended_at_ms"].as_i64().is_some(), "{found}");
 }
 
 #[test]

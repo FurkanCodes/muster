@@ -14,6 +14,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
 
@@ -301,15 +303,10 @@ fn the_daemons_log_moves_on_to_a_fresh_file_and_keeps_seven() {
     // setting the log aside a tick after it outgrew its size, one file short
     // until the fresh one is open. Wait for the last: a fresh file under the
     // size, where what the daemon logged after went.
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    wait::until("a fresh log under the size", || {
         let fresh = std::fs::read_to_string(runtime.join("daemon.log")).unwrap_or_default();
-        if fresh.contains("a fresh log") && fresh.len() <= 1000 {
-            break;
-        }
-        assert!(Instant::now() < deadline, "{} bytes: {fresh}", fresh.len());
-        std::thread::sleep(Duration::from_millis(20));
-    }
+        fresh.contains("a fresh log") && fresh.len() <= 1000
+    });
     assert_eq!(logs(), 7);
     drop(daemon);
 }

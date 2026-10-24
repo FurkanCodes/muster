@@ -508,8 +508,13 @@ async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent>, again: A
                 }
             }
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: a daemon gone says nothing as it comes back, so the link tries again every `RETRY_EVERY`, or at once when asked"
+        )]
+        let retry = tokio::time::sleep(RETRY_EVERY);
         tokio::select! {
-            () = tokio::time::sleep(RETRY_EVERY) => {}
+            () = retry => {}
             () = again.notified() => last_start = None,
         }
     }
@@ -604,8 +609,13 @@ async fn connect(
         loop {
             match Connection::connect(socket, CLIENT).await {
                 Err(ClientError::Unreachable { .. }) if Instant::now() < deadline => {
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "ARC-30: a daemon starting says nothing until its socket answers, tried every 50 ms"
+                    )]
+                    let look_again = tokio::time::sleep(Duration::from_millis(50));
                     tokio::select! {
-                        () = tokio::time::sleep(Duration::from_millis(50)) => {}
+                        () = look_again => {}
                         () = again.notified() => break,
                     }
                 }

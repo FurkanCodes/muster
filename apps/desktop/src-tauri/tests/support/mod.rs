@@ -19,8 +19,16 @@ use muster_desktop::link::{FrameSink, StateSink};
 use tempfile::TempDir;
 use tokio::sync::mpsc;
 
+/// Waiting on what happens, as the core's end-to-end tests do (ARC-30).
+#[path = "../../../../../crates/muster/tests/support/wait.rs"]
+#[allow(
+    dead_code,
+    reason = "the core's helpers, of which these tests use some"
+)]
+pub(crate) mod wait;
+
 /// How long a test waits for what it expects before failing.
-pub(crate) const WAIT: Duration = Duration::from_secs(15);
+pub(crate) const WAIT: Duration = wait::WAIT;
 
 /// The `muster` binary under test.
 pub(crate) fn muster() -> &'static Path {
@@ -187,14 +195,8 @@ pub(crate) struct Daemon {
 
 impl Daemon {
     fn wait_until_ready(&self, socket: &Path) {
-        let started = std::time::Instant::now();
-        while started.elapsed() < WAIT {
-            if answers_hello(socket) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        panic!(
+        assert!(
+            wait::within(WAIT, || answers_hello(socket).then_some(())).is_some(),
             "the daemon did not start; its log:\n{}",
             std::fs::read_to_string(&self.sandbox_log).unwrap_or_default()
         );
@@ -215,12 +217,8 @@ impl Daemon {
                 nix::sys::signal::Signal::SIGTERM,
             );
         }
-        let started = std::time::Instant::now();
-        while started.elapsed() < WAIT {
-            if let Ok(Some(_)) = child.try_wait() {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(20));
+        if wait::within(WAIT, || child.try_wait().ok().flatten()).is_some() {
+            return;
         }
         let _ = child.kill();
         let _ = child.wait();

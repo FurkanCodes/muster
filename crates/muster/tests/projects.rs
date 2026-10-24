@@ -15,8 +15,9 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::PathBuf;
-use std::time::Duration;
 
 use muster_client::{ClientError, Connection};
 use muster_core::protocol::{Command, Delta, ErrorCode, Reply, ServerFrame, Snapshot, TermSize};
@@ -251,20 +252,16 @@ async fn removing_a_project_forgets_it_and_leaves_the_repository_alone() {
         .command(Command::StopSession { session })
         .await
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    loop {
+    // Refused while what it ran is still stopping.
+    let reply = wait::found_async("the project to be removed", async || {
         match connection.command(remove.clone()).await {
-            Ok(reply) => {
-                assert_eq!(reply, Reply::Done);
-                break;
-            }
-            Err(ClientError::Daemon(error)) if error.code == ErrorCode::Conflict => {
-                assert!(std::time::Instant::now() < deadline, "{error}");
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
+            Ok(reply) => Some(reply),
+            Err(ClientError::Daemon(error)) if error.code == ErrorCode::Conflict => None,
             Err(other) => panic!("{other}"),
         }
-    }
+    })
+    .await;
+    assert_eq!(reply, Reply::Done);
 
     let snapshot = connection.subscribe().await.unwrap();
     assert!(snapshot.projects.is_empty());
@@ -314,16 +311,10 @@ fn the_command_line_works_in_a_projects_checkout_and_removes_projects() {
     assert!(started.contains("in app"), "{started}");
     ok(&["stop", "app/1"]);
 
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    loop {
-        let output = sandbox.run(&["project", "remove", "app"]);
-        if output.status.success() {
-            assert!(String::from_utf8_lossy(&output.stdout).contains("untouched"));
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "{output:?}");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    let output = wait::found("the project to be removed", || {
+        Some(sandbox.run(&["project", "remove", "app"])).filter(|output| output.status.success())
+    });
+    assert!(String::from_utf8_lossy(&output.stdout).contains("untouched"));
     assert!(ok(&["status"]).contains("0 projects"));
 }
 

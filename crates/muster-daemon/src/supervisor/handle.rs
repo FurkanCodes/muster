@@ -145,6 +145,10 @@ pub(super) enum Request {
     HandOver(oneshot::Sender<Vec<crate::handoff::HandedSession>>),
     /// Take sessions over that were handed over.
     Adopt(Vec<crate::handoff::HandedSession>, oneshot::Sender<()>),
+    /// Stop, as the daemon's process ending stops it: for a test that
+    /// starts another on the same store. Told once it is gone.
+    #[cfg(test)]
+    Stop(oneshot::Sender<()>),
     /// Start a plugin's panel, as `Command::OpenPanel` will.
     #[cfg(test)]
     StartPanel {
@@ -203,6 +207,8 @@ impl std::fmt::Debug for Request {
             Self::Spends(spends) => write!(f, "Spends({})", spends.len()),
             Self::Interrupted(turns) => write!(f, "Interrupted({})", turns.len()),
             Self::Stopped(stopped) => write!(f, "Stopped({})", stopped.len()),
+            #[cfg(test)]
+            Self::Stop(_) => f.write_str("Stop"),
             Self::HandOver(_) => f.write_str("HandOver"),
             Self::Adopt(sessions, _) => write!(f, "Adopt({})", sessions.len()),
             #[cfg(test)]
@@ -255,6 +261,18 @@ impl SupervisorHandle {
             .await
             .expect("the Supervisor runs");
         answer.await.expect("the Supervisor answers")
+    }
+
+    /// Stops the Supervisor, as the daemon's process ending would, once
+    /// it has done what it was asked before; back once it is gone.
+    #[cfg(test)]
+    pub(crate) async fn stop(self) {
+        let (done, gone) = oneshot::channel();
+        self.requests
+            .send(Request::Stop(done))
+            .await
+            .expect("the Supervisor runs");
+        gone.await.expect("the Supervisor stops");
     }
 
     /// Carries out a client's command.

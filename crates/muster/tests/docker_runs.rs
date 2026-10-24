@@ -18,9 +18,11 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::{Path, PathBuf};
 use std::process::Command as Process;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use muster_core::protocol::{Command, Reply};
 use muster_core::{ProjectId, Run, RunStage, RunTransition, SessionId};
@@ -203,31 +205,28 @@ async fn wait_for_stage(
     stage: RunStage,
     limit: Duration,
 ) -> (Run, Vec<RunTransition>) {
-    let deadline = Instant::now() + limit;
     let mut connection = daemon.connect().await;
-    loop {
+    let mut last = None;
+    let found = wait::within_async(limit, async || {
         let snapshot = connection.subscribe().await.unwrap();
-        if let [run] = snapshot.runs.as_slice() {
-            let Reply::RunHistory { transitions } = connection
-                .command(Command::RunHistory { run: run.id })
-                .await
-                .unwrap()
-            else {
-                panic!("expected RunHistory");
-            };
-            if run.stage == stage {
-                return (run.clone(), transitions);
-            }
-            assert!(
-                Instant::now() < deadline,
-                "the run is at {:?}, not {stage:?}: {:?} {transitions:#?}\n{}",
-                run.stage,
-                run.reason,
-                daemon.log()
-            );
+        let [run] = snapshot.runs.as_slice() else {
+            return None;
+        };
+        let Reply::RunHistory { transitions } = connection
+            .command(Command::RunHistory { run: run.id })
+            .await
+            .unwrap()
+        else {
+            panic!("expected RunHistory");
+        };
+        if run.stage == stage {
+            return Some((run.clone(), transitions));
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+        last = Some((run.stage, run.reason.clone(), transitions));
+        None
+    })
+    .await;
+    found.unwrap_or_else(|| panic!("the run is not at {stage:?}: {last:#?}\n{}", daemon.log()))
 }
 
 fn branch_log(remote: &Path) -> Vec<String> {
@@ -263,7 +262,11 @@ async fn real_docker_takes_an_issue_to_a_ready_pull_request_through_a_daemon_kil
 
     // Killed outright while the agent works in the container.
     wait_for_stage(&daemon, RunStage::Building, Duration::from_secs(120)).await;
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+    wait::passes_async(
+        Duration::from_millis(1500),
+        "the agent at work in the container a moment before the daemon is killed",
+    )
+    .await;
     let pid = Pid::from_raw(i32::try_from(daemon.pid()).unwrap());
     kill(pid, Signal::SIGKILL).unwrap();
     drop(daemon);
@@ -306,20 +309,18 @@ async fn real_docker_takes_an_issue_to_a_ready_pull_request_through_a_daemon_kil
     assert!(body.starts_with("Closes #42."), "{body}");
     let reviews = std::fs::read_to_string(gh.join("reviews")).unwrap();
     assert!(reviews.contains("reviewer agent approves"), "{reviews}");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !std::fs::read_to_string(gh.join("ready")).is_ok_and(|ready| ready.contains("17")) {
-        assert!(Instant::now() < deadline, "never marked ready");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    wait::until("it to be marked ready", || {
+        std::fs::read_to_string(gh.join("ready")).is_ok_and(|ready| ready.contains("17"))
+    });
 
     // Merged on GitHub: the run ends and its container goes.
     std::fs::write(gh.join("pr-state"), "MERGED").unwrap();
     let (merged, _) = wait_for_stage(&daemon, RunStage::Merged, Duration::from_secs(30)).await;
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !containers_of(&merged).is_empty() {
-        assert!(Instant::now() < deadline, "the container stayed");
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
+    let gone = wait::within_async(Duration::from_secs(30), async || {
+        containers_of(&merged).is_empty().then_some(())
+    })
+    .await;
+    assert!(gone.is_some(), "the container stayed");
 }
 
 #[tokio::test]
@@ -390,31 +391,23 @@ async fn real_docker_lets_a_person_take_a_run_over_in_its_container_and_hand_it_
     );
     let log = branch_log(&remote);
     assert_eq!(log[..2], ["By hand", "Fix the thing"], "{log:?}");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    wait::until_async("the person's session to end", async || {
         let snapshot = connection.subscribe().await.unwrap();
-        let ended = snapshot
+        snapshot
             .sessions
             .iter()
-            .any(|found| found.id == session && found.ended_at.is_some());
-        if ended {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the person's session kept running"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+            .any(|found| found.id == session && found.ended_at.is_some())
+    })
+    .await;
 
     // Cancelled, the run's container and its workspace go.
     muster(&sandbox, &["run", "cancel", "42"]);
     wait_for_stage(&daemon, RunStage::Cancelled, Duration::from_secs(10)).await;
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !containers_of(&run).is_empty() {
-        assert!(Instant::now() < deadline, "the container stayed");
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
+    let gone = wait::within_async(Duration::from_secs(30), async || {
+        containers_of(&run).is_empty().then_some(())
+    })
+    .await;
+    assert!(gone.is_some(), "the container stayed");
     let snapshot = connection.subscribe().await.unwrap();
     assert!(
         snapshot

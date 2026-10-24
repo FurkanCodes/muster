@@ -11,7 +11,7 @@ use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use muster_client::Connection;
 use muster_core::Paths;
@@ -24,6 +24,7 @@ use tempfile::TempDir;
 pub(crate) mod agents;
 pub(crate) mod http;
 mod services;
+pub(crate) mod wait;
 
 pub(crate) const BINARY: &str = env!("CARGO_BIN_EXE_muster");
 
@@ -335,19 +336,10 @@ impl Sandbox {
         session: muster_core::SessionId,
         count: usize,
     ) -> Vec<ClaudeLaunch> {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
+        wait::found(&format!("Claude Code to start {count} times"), || {
             let launches = self.claude_launches(session);
-            if launches.len() >= count {
-                return launches;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "only {} launches",
-                launches.len()
-            );
-            std::thread::sleep(Duration::from_millis(20));
-        }
+            (launches.len() >= count).then_some(launches)
+        })
     }
 
     pub(crate) fn paths(&self) -> Paths {
@@ -480,21 +472,15 @@ impl Sandbox {
         };
         let stdout = read(Box::new(child.stdout.take().unwrap()));
         let stderr = read(Box::new(child.stderr.take().unwrap()));
-        let deadline = Instant::now() + Duration::from_secs(10);
-        let status = loop {
-            if let Some(status) = child.try_wait().unwrap() {
-                break status;
-            }
-            if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                panic!(
-                    "`muster {}` was still running after 10 s; stderr:\n{}",
-                    args.join(" "),
-                    String::from_utf8_lossy(&stderr.join().unwrap())
-                );
-            }
-            std::thread::sleep(Duration::from_millis(20));
+        let Some(status) = wait::within(wait::WAIT, || child.try_wait().unwrap()) else {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!(
+                "`muster {}` was still running after {:?}; stderr:\n{}",
+                args.join(" "),
+                wait::WAIT,
+                String::from_utf8_lossy(&stderr.join().unwrap())
+            );
         };
         Output {
             status,
@@ -565,14 +551,11 @@ impl Daemon {
     }
 
     fn wait_until_ready(&self) {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < deadline {
-            if answers_hello(&self.socket) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        panic!("the daemon did not start; its log:\n{}", self.log());
+        assert!(
+            wait::within(wait::WAIT, || answers_hello(&self.socket).then_some(())).is_some(),
+            "the daemon did not start; its log:\n{}",
+            self.log()
+        );
     }
 
     pub(crate) fn pid(&self) -> u32 {
@@ -602,12 +585,8 @@ impl Daemon {
         let mut child = self.child.take()?;
         let pid = Pid::from_raw(i32::try_from(child.id()).ok()?);
         let _ = kill(pid, Signal::SIGTERM);
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < deadline {
-            if let Ok(Some(status)) = child.try_wait() {
-                return Some(status);
-            }
-            std::thread::sleep(Duration::from_millis(20));
+        if let Some(status) = wait::within(wait::WAIT, || child.try_wait().ok().flatten()) {
+            return Some(status);
         }
         let _ = child.kill();
         child.wait().ok()

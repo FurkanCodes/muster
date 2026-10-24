@@ -15,6 +15,8 @@
 
 mod support;
 
+use support::wait;
+
 use std::time::Duration;
 
 use muster_client::{ClientError, Connection};
@@ -94,21 +96,15 @@ async fn wait_for(
     session: SessionId,
     done: impl Fn(&muster_core::Session) -> bool,
 ) -> muster_core::Session {
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    loop {
+    wait::found_async("the session wanted", async || {
         let snapshot = connection.subscribe().await.unwrap();
-        if let Some(found) = snapshot.sessions.iter().find(|s| s.id == session)
-            && done(found)
-        {
-            return found.clone();
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "{:?}",
-            snapshot.sessions
-        );
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+        snapshot
+            .sessions
+            .into_iter()
+            .find(|s| s.id == session)
+            .filter(|found| done(found))
+    })
+    .await
 }
 
 /// Makes the session's shell exit and waits until the daemon says so.
@@ -384,7 +380,10 @@ fn daemon_stop_reaches_a_daemon_from_an_older_build() {
                 return true;
             }
             let Ok((mut stream, _)) = listener.accept() else {
-                std::thread::sleep(Duration::from_millis(10));
+                wait::passes(
+                    Duration::from_millis(10),
+                    "the stand-in daemon looking at its socket again",
+                );
                 continue;
             };
             stream.set_nonblocking(false).unwrap();

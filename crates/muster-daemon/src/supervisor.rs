@@ -381,6 +381,12 @@ impl Supervisor {
             let wake_at = deadline.map_or_else(tokio::time::Instant::now, Into::into);
             tokio::select! {
                 request = queues.requests.recv() => match request {
+                    #[cfg(test)]
+                    Some(Request::Stop(done)) => {
+                        drop(self);
+                        let _ = done.send(());
+                        return;
+                    }
                     Some(request) => {
                         self.take_dropped_guards(&mut queues).await;
                         self.on_request(request).await;
@@ -598,6 +604,9 @@ impl Supervisor {
                 self.adopt_sessions(sessions);
                 let _ = reply.send(());
             }
+            // Taken in the loop, which it ends.
+            #[cfg(test)]
+            Request::Stop(_) => unreachable!("the loop takes a stop"),
             #[cfg(test)]
             Request::StartPanel {
                 workspace,

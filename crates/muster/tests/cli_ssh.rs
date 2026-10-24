@@ -19,9 +19,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::PathBuf;
 use std::process::Output;
-use std::time::{Duration, Instant};
 
 use sha2::Digest as _;
 
@@ -262,16 +263,10 @@ async fn the_person_s_forwarded_ssh_agent_reaches_sessions_there_arc_27() {
         "echo",
         "agent=$SSH_AUTH_SOCK",
     ]);
-    let deadline = Instant::now() + Duration::from_secs(10);
     let wanted = format!("agent={}", link.display());
-    loop {
-        let shown = text(&setup.run(&["--on", "vm", "logs", "keys/1"]).stdout);
-        if shown.contains(&wanted) {
-            break;
-        }
-        assert!(Instant::now() < deadline, "no {wanted} in:\n{shown}");
-        std::thread::sleep(Duration::from_millis(100));
-    }
+    wait::until(&format!("{wanted} in its terminal"), || {
+        text(&setup.run(&["--on", "vm", "logs", "keys/1"]).stdout).contains(&wanted)
+    });
 }
 
 #[tokio::test]

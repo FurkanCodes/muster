@@ -21,8 +21,9 @@
 
 mod support;
 
+use support::wait;
+
 use std::os::unix::fs::PermissionsExt as _;
-use std::time::{Duration, Instant};
 
 use muster_client::Connection;
 use muster_core::protocol::plugins::{Beside, PluginCommand};
@@ -146,12 +147,8 @@ fn alive(pid: &str) -> bool {
 }
 
 /// Waits up to ten seconds for `done`.
-async fn until(what: &str, mut done: impl AsyncFnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !done().await {
-        assert!(Instant::now() < deadline, "{what}");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+async fn until(what: &str, done: impl AsyncFnMut() -> bool) {
+    wait::until_async(what, done).await;
 }
 
 #[tokio::test]

@@ -33,7 +33,13 @@ pub(crate) async fn stream(paths: &Paths) -> Result<UnixStream, Box<dyn std::err
     loop {
         match UnixStream::connect(&socket).await {
             Ok(stream) => return Ok(stream),
-            Err(_) if crate::instant_now() < deadline => tokio::time::sleep(LOOK_EVERY).await,
+            Err(_) if crate::instant_now() < deadline => {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "ARC-30: a daemon starting says nothing until its socket answers, tried every `LOOK_EVERY`"
+                )]
+                tokio::time::sleep(LOOK_EVERY).await;
+            }
             Err(error) => {
                 return Err(format!(
                     "the daemon did not start ({error}); its log is {}",

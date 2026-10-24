@@ -32,6 +32,10 @@ fn options(socket: std::path::PathBuf) -> Options {
 async fn settled(written: &AtomicUsize) -> usize {
     let mut last = written.load(Ordering::SeqCst);
     for _ in 0..100 {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: writing that stopped is seen only by its not moving for a while"
+        )]
         tokio::time::sleep(Duration::from_millis(100)).await;
         let now = written.load(Ordering::SeqCst);
         if now == last {

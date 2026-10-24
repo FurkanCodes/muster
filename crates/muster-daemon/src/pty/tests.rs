@@ -8,6 +8,7 @@ use tokio::time::timeout;
 use super::osc::{OscScanner, Report};
 use super::ring::{Replay, Ring};
 use super::{PtyEvent, PtyHandle, SpawnSpec, adopt, spawn};
+use crate::waiting;
 
 // Ring
 
@@ -180,20 +181,12 @@ impl Events {
     }
 
     async fn exit(&self) -> PtyEvent {
-        timeout(Duration::from_secs(10), async {
-            loop {
-                if let Some(exit) = self
-                    .all()
-                    .into_iter()
-                    .find(|event| matches!(event, PtyEvent::Exited { .. }))
-                {
-                    return exit;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
+        waiting::found("the process to exit", async || {
+            self.all()
+                .into_iter()
+                .find(|event| matches!(event, PtyEvent::Exited { .. }))
         })
         .await
-        .expect("the process exited")
     }
 }
 
@@ -287,7 +280,11 @@ async fn a_terminal_flooded_with_output_is_still_handed_over() {
     pty.input(b"echo flood-$((4*4)); yes muster-flood\n".to_vec())
         .await;
     read_until(&pty, None, "flood-16").await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    waiting::passes(
+        std::time::Duration::from_millis(300),
+        "`yes` filling the reader's queue",
+    )
+    .await;
     let handed = tokio::time::timeout(std::time::Duration::from_secs(10), pty.hand_over())
         .await
         .expect("handed over while its program floods it")
@@ -319,17 +316,10 @@ async fn a_client_starting_over_is_sent_the_screen_its_bytes_cannot_draw() {
     );
     assert!(pty.input(command.into_bytes()).await);
     let drawn = |data: &[u8]| data.windows(8).any(|bytes| bytes == b"drawn-42");
-    let attachment = timeout(Duration::from_secs(10), async {
-        loop {
-            let attachment = pty.attach(None).await.unwrap();
-            if drawn(&attachment.replay.data) {
-                return attachment;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+    let attachment = waiting::found("the program to draw its last line", async || {
+        Some(pty.attach(None).await.unwrap()).filter(|attachment| drawn(&attachment.replay.data))
     })
-    .await
-    .expect("the program drew its last line");
+    .await;
     assert!(attachment.replay.reset);
     let screen = attachment.screen.expect("a replay starting over has it");
     let size = TermSize::default();

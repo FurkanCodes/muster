@@ -114,6 +114,10 @@ pub(super) async fn keep_linked(options: Options, events: mpsc::Sender<LinkEvent
                 }
             }
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "ARC-30: a daemon gone says nothing as it comes back, so the link tries again after a while"
+        )]
         tokio::time::sleep(retry_after(options.connect.is_some(), failed)).await;
     }
 }
@@ -200,6 +204,10 @@ async fn connect(
     loop {
         match Connection::connect(&options.socket, CLIENT).await {
             Err(ClientError::Unreachable { .. }) if monotonic() < deadline => {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "ARC-30: a daemon starting says nothing until its socket answers, tried every 50 ms"
+                )]
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
             other => return other,

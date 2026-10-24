@@ -20,6 +20,7 @@ use crate::runs::{Report, Reports, RunContext, RunWork};
 use crate::store::{Store, StoreHandle};
 use crate::supervisor::{self, SupervisorHandle};
 use crate::trackers::{Fixed, IssueDetail, ServiceError, TicketSource};
+use crate::waiting;
 
 #[derive(Debug)]
 struct FixedClock;
@@ -111,21 +112,10 @@ impl RunWork for FakeWork {
 impl FakeWork {
     /// Waits for the `n`-th piece of work asked for (from 1).
     async fn asked(&self, n: usize) -> (RunContext, RunEffect) {
-        timeout(Duration::from_secs(5), async {
-            loop {
-                if let Some(found) = self.asked.lock().unwrap().get(n - 1).cloned() {
-                    return found;
-                }
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        waiting::found(&format!("work {n} to be asked for"), async || {
+            self.asked.lock().unwrap().get(n - 1).cloned()
         })
         .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "work {n} was never asked for: {:?}",
-                self.asked.lock().unwrap()
-            )
-        })
     }
 
     fn count(&self) -> usize {
@@ -353,13 +343,10 @@ async fn a_run_goes_through_every_stage_and_its_timeline_is_stored() {
 
     // Its pull request is looked at, and its merge ends the run.
     setup.supervisor.check_pull_requests().await;
-    timeout(Duration::from_secs(5), async {
-        while setup.work.pr_checks.lock().unwrap().is_empty() {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
+    waiting::until("its pull request to be looked at", async || {
+        !setup.work.pr_checks.lock().unwrap().is_empty()
     })
-    .await
-    .unwrap();
+    .await;
     report(RunEvent::PrMerged);
     wait_for_stage(&mut deltas, run, RunStage::Merged).await;
     let (_, effect) = setup.work.asked(7).await;
@@ -527,8 +514,12 @@ async fn reports_on_overtaken_work_change_nothing() {
         }),
     );
     setup.supervisor.command(Command::Ping).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    assert_eq!(setup.work.count(), 2);
+    waiting::holds(
+        "no more work asked for",
+        Duration::from_millis(50),
+        async || setup.work.count() == 2,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -568,8 +559,6 @@ async fn a_restarted_daemon_carries_on_with_the_work_under_way() {
         .work
         .report(run, Report::AgentSession("agent-1".to_owned()));
     wait_for_stage(&mut deltas, run, RunStage::Building).await;
-    setup.supervisor.command(Command::Ping).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
 
     // A new daemon on the same store.
     let Setup {
@@ -578,8 +567,7 @@ async fn a_restarted_daemon_carries_on_with_the_work_under_way() {
         supervisor,
         ..
     } = setup;
-    drop(supervisor);
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    supervisor.stop().await;
     let work = Arc::new(FakeWork::default());
     let supervisor = spawn(&database, work.clone(), dir.path()).await;
 
@@ -737,8 +725,7 @@ async fn a_run_resumed_with_unreadable_settings_stops_for_the_person_until_they_
         root,
         ..
     } = setup;
-    drop(supervisor);
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    supervisor.stop().await;
     let work = Arc::new(FakeWork::default());
     let supervisor = spawn(&database, work.clone(), dir.path()).await;
     let (snapshot, mut deltas) = supervisor.subscribe().await.unwrap();
@@ -816,9 +803,10 @@ async fn containers_of_runs_that_ended_go_even_when_they_come_late() {
     setup
         .work
         .report(run, Report::Container("c-late".to_owned()));
-    setup.supervisor.command(Command::Ping).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(20)).await;
-    assert_eq!(setup.work.removed.lock().unwrap().as_slice(), [run]);
+    waiting::until("the late container to go", async || {
+        setup.work.removed.lock().unwrap().as_slice() == [run]
+    })
+    .await;
 
     // A daemon starting again clears what is left of ended runs.
     let Setup {
@@ -827,8 +815,7 @@ async fn containers_of_runs_that_ended_go_even_when_they_come_late() {
         supervisor,
         ..
     } = setup;
-    drop(supervisor);
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    supervisor.stop().await;
     let work = Arc::new(FakeWork::default());
     let _supervisor = spawn(&database, work.clone(), dir.path()).await;
     assert_eq!(work.removed.lock().unwrap().as_slice(), [run]);

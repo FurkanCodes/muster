@@ -17,10 +17,10 @@
 )]
 
 mod support;
+
+use support::wait;
 #[path = "tui/ui.rs"]
 mod ui;
-
-use std::time::{Duration, Instant};
 
 use support::{Sandbox, daemon_pid};
 use ui::{StopDaemon, Ui};
@@ -74,11 +74,9 @@ async fn the_ui_shows_another_machine_s_muster_and_connects_again_arc_27() {
     // connects again, and the UI follows what changes there.
     let first = daemon.pid();
     daemon.stop();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while daemon_pid(&socket).is_none_or(|pid| pid == first) {
-        assert!(Instant::now() < deadline, "no daemon started again there");
-        std::thread::sleep(Duration::from_millis(100));
-    }
+    wait::until("a daemon started again there", || {
+        daemon_pid(&socket).is_some_and(|pid| pid != first)
+    });
     run(&["--on", "vm", "workspace", "add", "later", "-p", "app"]);
     ui.wait_for("later");
     ui.wait_for("on vm");

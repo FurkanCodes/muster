@@ -16,11 +16,12 @@
 )]
 
 mod support;
+
+use support::wait;
 #[path = "tui/ui.rs"]
 mod ui;
 
 use std::path::Path;
-use std::time::Duration;
 
 use muster_client::Connection;
 use muster_core::protocol::{Command, Delta, Reply, ServerFrame, TermSize};
@@ -66,14 +67,9 @@ async fn a_turn(sandbox: &Sandbox, root: &Path) {
         .join("timelines")
         .join(workspace.to_string())
         .join("refs/open");
-    let started = (0..200).any(|_| {
-        let found = std::fs::read_dir(&open).is_ok_and(|mut entries| entries.next().is_some());
-        if !found {
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        found
+    wait::until("the turn's start kept", || {
+        std::fs::read_dir(&open).is_ok_and(|mut entries| entries.next().is_some())
     });
-    assert!(started, "the turn's start was never kept");
     std::fs::write(root.join("README.md"), "test\nby the agent\n").unwrap();
     fire("Stop");
     expect_event(&mut connection, |frame| match frame {

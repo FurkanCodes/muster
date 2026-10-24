@@ -58,6 +58,8 @@ mod run_tests;
 mod tests;
 #[cfg(test)]
 mod timeline_supervisor_tests;
+#[cfg(test)]
+mod waiting;
 
 use std::fs::{DirBuilder, File, Permissions, TryLockError};
 use std::io;

@@ -53,6 +53,9 @@ jobs:
       - name: The TUI's colours are its theme's (ARC-29)
         if: runner.os == 'Linux'
         run: scripts/check-tui-colours.sh
+      - name: Tests wait on what happens, never a guess (ARC-30)
+        if: runner.os == 'Linux'
+        run: scripts/check-test-sleeps.sh
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all --check

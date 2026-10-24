@@ -17,9 +17,10 @@
 
 mod support;
 
+use support::wait;
+
 use std::path::PathBuf;
 use std::process::Output;
-use std::time::{Duration, Instant};
 
 use muster_core::protocol::{Command, Reply};
 use muster_core::{Run, RunStage, RunTransition};
@@ -85,30 +86,22 @@ async fn wait_for_run(
     daemon: &Daemon,
     mut done: impl FnMut(&Run, &[RunTransition]) -> bool,
 ) -> (Run, Vec<RunTransition>) {
-    let deadline = Instant::now() + Duration::from_secs(10);
     let mut connection = daemon.connect().await;
-    loop {
+    wait::found_async("the run wanted", async || {
         let snapshot = connection.subscribe().await.unwrap();
-        if let [run] = snapshot.runs.as_slice() {
-            let Reply::RunHistory { transitions } = connection
-                .command(Command::RunHistory { run: run.id })
-                .await
-                .unwrap()
-            else {
-                panic!("expected RunHistory");
-            };
-            if done(run, &transitions) {
-                return (run.clone(), transitions);
-            }
-            assert!(
-                Instant::now() < deadline,
-                "the run stayed at {:?}: {transitions:?}",
-                run.stage
-            );
-        }
-        assert!(Instant::now() < deadline, "no run appeared");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+        let [run] = snapshot.runs.as_slice() else {
+            return None;
+        };
+        let Reply::RunHistory { transitions } = connection
+            .command(Command::RunHistory { run: run.id })
+            .await
+            .unwrap()
+        else {
+            panic!("expected RunHistory");
+        };
+        done(run, &transitions).then(|| (run.clone(), transitions))
+    })
+    .await
 }
 
 #[tokio::test]

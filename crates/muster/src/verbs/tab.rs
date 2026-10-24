@@ -118,6 +118,10 @@ pub(crate) async fn run(
     read_keys(keys)?;
     let mut resized =
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::window_change())?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "ARC-30: the start of a sequence split across reads is held `HELD_FOR`, and sent as it is if no more of it comes"
+    )]
     while let Some(&current) = tab.stack.last() {
         tokio::select! {
             frame = receiver.next() => {

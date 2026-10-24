@@ -14,11 +14,13 @@
 )]
 
 mod support;
+
+use support::wait;
 #[path = "tui/ui.rs"]
 mod ui;
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use support::Sandbox;
 use ui::{BACKGROUND, StopDaemon, Ui};
@@ -74,11 +76,9 @@ fn a_program_s_copy_reaches_the_clipboard_and_is_not_made_again_on_attaching() {
     ui.keys(b"printf '\\033]52;c;Y29weS00Mg==\\007'; echo sent-$((2*4))\r");
     ui.wait_for("sent-8");
     ui.wait_for("The session copied a line.");
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while sandbox.clipboard().as_deref() != Some("copy-42") {
-        assert!(Instant::now() < deadline, "{:?}", sandbox.clipboard());
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    wait::until("copy-42 on the clipboard", || {
+        sandbox.clipboard().as_deref() == Some("copy-42")
+    });
 
     // Another UI, which shows the session from the start of its history,
     // the copy in it: not copied again.
@@ -97,9 +97,9 @@ fn a_program_s_copy_reaches_the_clipboard_and_is_not_made_again_on_attaching() {
     again.wait_for("Shift-Q back to the list");
     again.keys(b"echo after-$((3*3))\r");
     again.wait_for("after-9");
-    std::thread::sleep(Duration::from_millis(1000));
-    assert_eq!(sandbox.clipboard(), None);
-    assert!(!again.text().contains("copied"), "{}", again.text());
+    wait::holds("nothing copied again", Duration::from_millis(1000), || {
+        sandbox.clipboard().is_none() && !again.text().contains("copied")
+    });
 }
 
 #[test]
