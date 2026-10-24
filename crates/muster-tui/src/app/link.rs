@@ -48,7 +48,7 @@ impl App {
         self.pending.clear();
         self.forget_unanswered();
         self.forget_plugin_fetch();
-        self.plugin_changing = None;
+        self.settings.plugin_changing = None;
         // The reason takes lines from the list.
         self.keep_in_view();
     }
@@ -178,7 +178,7 @@ impl App {
     /// they are looking elsewhere and want to be told.
     pub(super) fn news(&self, session: SessionId) -> Option<Action> {
         // Muster's helper tells the person with the Mac's own notifications.
-        if !self.notify || self.focused != Some(false) || self.model.notifier() {
+        if !self.alarms.notify || self.focused != Some(false) || self.model.notifier() {
             return None;
         }
         if !self.model.preferences().notifications {
@@ -272,7 +272,7 @@ impl App {
                 }),
                 Then::Tickets(project),
             ) => {
-                self.tickets.insert(
+                self.tickets.by_project.insert(
                     project,
                     Tickets::Loaded {
                         tickets: issues,
@@ -283,14 +283,18 @@ impl App {
                 );
             }
             (Err(error), Then::Tickets(project)) => {
-                self.tickets.insert(project, Tickets::Failed(error.message));
+                self.tickets
+                    .by_project
+                    .insert(project, Tickets::Failed(error.message));
             }
             (Ok(Reply::IssueViewed { body, comments, .. }), Then::TicketText(project, key)) => {
-                self.ticket_texts
+                self.tickets
+                    .texts
                     .insert((project, key), TicketText::Loaded { body, comments });
             }
             (Err(error), Then::TicketText(project, key)) => {
-                self.ticket_texts
+                self.tickets
+                    .texts
                     .insert((project, key), TicketText::Failed(error.message));
             }
             (Ok(_), Then::RemovedWorktree(_)) => {
@@ -368,10 +372,13 @@ impl App {
             ) => self.on_moved(workspace, Ok((onto, commits, entry))),
             (Err(error), Then::Moved(workspace)) => self.on_moved(workspace, Err(error.message)),
             (Ok(Reply::ProjectSettings(settings)), Then::Settings(project)) => {
-                self.settings.insert(project, Settings::Loaded(settings));
+                self.settings
+                    .by_project
+                    .insert(project, Settings::Loaded(settings));
             }
             (Err(error), Then::Settings(project)) => {
                 self.settings
+                    .by_project
                     .insert(project, Settings::Failed(error.message));
             }
             (Ok(Reply::ProjectSettings(settings)), Then::SettingChanged(project)) => {
@@ -417,10 +424,13 @@ impl App {
     /// again once the screen wants it.
     fn forget_unanswered(&mut self) {
         self.tickets
+            .by_project
             .retain(|_, tickets| !matches!(tickets, Tickets::Loading));
-        self.ticket_texts
+        self.tickets
+            .texts
             .retain(|_, text| !matches!(text, TicketText::Loading));
         self.settings
+            .by_project
             .retain(|_, settings| !matches!(settings, Settings::Loading));
     }
 

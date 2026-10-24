@@ -127,7 +127,7 @@ fn a_snapshot_announces_nothing_and_notifications_can_be_turned_off() {
     assert!(notes(&actions).is_empty());
 
     status(&mut world, SessionStatus::Running, false);
-    world.app.notify = false;
+    world.app.alarms.notify = false;
     assert!(notes(&status(&mut world, SessionStatus::Finished, true)).is_empty());
 }
 
@@ -160,7 +160,7 @@ fn while_muster_s_helper_notifies_the_terminal_is_told_nothing() {
 fn notifications_are_turned_on_and_off_on_the_settings_screen() {
     let mut world = world();
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(super::SettingRow::Notifications);
+    world.app.settings.selected = Some(super::SettingRow::Notifications);
     let screen = super::tests::render(&world.app);
     assert!(screen.contains("Notifications"), "{screen}");
     let actions = press(&mut world.app, KeyCode::Enter);

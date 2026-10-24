@@ -68,7 +68,7 @@ fn on_settings(selected: SettingRow) -> World {
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::PluginsChanged(vec![notify()])));
-    world.app.settings_selected = Some(selected);
+    world.app.settings.selected = Some(selected);
     world
 }
 

@@ -141,7 +141,7 @@ fn a_ticket_is_offered_the_person_s_agents_that_take_its_prompt() {
 fn the_settings_screen_shows_the_person_s_agents_or_why_they_do_not_read() {
     let mut world = on_settings(false);
     told(&mut world, vec![my_agent(), quiet()], None);
-    world.app.settings_selected = Some(SettingRow::Agents);
+    world.app.settings.selected = Some(SettingRow::Agents);
     let screen = render(&world.app);
     for shown in [
         "Your agents",

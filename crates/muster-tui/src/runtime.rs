@@ -131,7 +131,7 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut app = App::new(options.cwd.clone(), size);
     app.colours = std::mem::take(&mut terminal.colours);
     app.cell_pixels = cell_pixels();
-    app.notify = options.notify;
+    app.alarms.notify = options.notify;
     app.motion = options.motion;
     app.graphics = crate::view::logos::Graphics::detect(|name| std::env::var(name).ok());
     app.welcome = true;
@@ -197,9 +197,9 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 // A move that lights nothing new and sends nothing draws
                 // nothing: the pointer crossing the window costs no frame.
                 Some(Ok(Event::Mouse(mouse))) if mouse.kind == MouseEventKind::Moved => {
-                    let was = app.hover.clone();
+                    let was = app.panels.hover.clone();
                     let actions = app.on_mouse(mouse);
-                    if actions.is_empty() && app.hover == was && due.is_empty() {
+                    if actions.is_empty() && app.panels.hover == was && due.is_empty() {
                         draw_if_due(&mut terminal, &app, &mut draws)?;
                         continue;
                     }

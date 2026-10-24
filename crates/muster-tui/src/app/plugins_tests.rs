@@ -104,7 +104,7 @@ fn on(selected: SettingRow) -> World {
     world.app.on_resize(WIDE);
     world.app.view = View::Settings;
     plugins(&mut world, vec![zoe(), youtrack()]);
-    world.app.settings_selected = Some(selected);
+    world.app.settings.selected = Some(selected);
     world
 }
 
@@ -298,7 +298,7 @@ fn space_turns_a_plugin_off_and_on_waiting_for_each_answer() {
     );
     reply(&mut world, req_id, refused("zoe cannot be turned on: no."));
     assert!(render(&world).contains("zoe cannot be turned on: no."));
-    assert_eq!(world.app.plugin_changing, None);
+    assert_eq!(world.app.settings.plugin_changing, None);
 }
 
 #[test]
@@ -376,7 +376,7 @@ fn a_plugin_is_added_from_git_after_its_preview_and_selected_once_listed() {
     // The change to the state can come after the reply.
     plugins(&mut world, vec![zoe(), youtrack()]);
     assert_eq!(
-        world.app.settings_selected,
+        world.app.settings.selected,
         Some(SettingRow::Plugin(key("zoe")))
     );
 }
@@ -557,10 +557,10 @@ fn x_removes_a_plugin_after_asking_and_muster_s_own_only_turn_off() {
     plugins(&mut world, vec![youtrack()]);
     reply(&mut world, req_id, Ok(Reply::Done));
     assert!(render(&world).contains("Removed zoe."));
-    assert_eq!(world.app.settings_selected, Some(SettingRow::AddPlugin));
+    assert_eq!(world.app.settings.selected, Some(SettingRow::AddPlugin));
 
     // A linked folder is left where it is.
-    world.app.settings_selected = Some(SettingRow::Plugin(key("youtrack")));
+    world.app.settings.selected = Some(SettingRow::Plugin(key("youtrack")));
     press(&mut world.app, KeyCode::Char('x'));
     let screen = render(&world);
     assert!(
@@ -572,14 +572,14 @@ fn x_removes_a_plugin_after_asking_and_muster_s_own_only_turn_off() {
     let mut own = zoe();
     own.source = PluginSource::Builtin;
     plugins(&mut world, vec![own]);
-    world.app.settings_selected = Some(SettingRow::Plugin(key("zoe")));
+    world.app.settings.selected = Some(SettingRow::Plugin(key("zoe")));
     assert_eq!(press(&mut world.app, KeyCode::Char('x')), []);
     assert!(render(&world).contains("zoe is Muster's own: it cannot be removed, only turned off."));
     assert_eq!(press(&mut world.app, KeyCode::Char('u')), []);
     assert!(render(&world).contains("zoe is Muster's own: it updates with Muster."));
 
     // Off a plugin, neither does anything but say so.
-    world.app.settings_selected = Some(SettingRow::Notch);
+    world.app.settings.selected = Some(SettingRow::Notch);
     assert_eq!(press(&mut world.app, KeyCode::Char('x')), []);
     assert!(render(&world).contains("Select a plugin to remove it."));
 }

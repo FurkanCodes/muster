@@ -53,17 +53,17 @@ impl App {
         // Typed ahead, as the person knows the screens behind.
         self.skip_welcome();
         // What a key changes may move what the pointer is over.
-        self.hover = None;
+        self.panels.hover = None;
         // An error stays until the person has seen it and pressed on.
         if self.note.as_ref().is_some_and(|note| note.error) {
             self.note = None;
         }
-        if self.drag.is_some() {
+        if self.panels.drag.is_some() {
             // A key lets go of a drag, the layout as it was.
             self.cancel_drag();
             return self.settle();
         }
-        if self.arranging.is_some() {
+        if self.panels.arranging.is_some() {
             let mut actions = self.arrange_key(&key);
             actions.extend(self.settle());
             return actions;
@@ -272,13 +272,14 @@ impl App {
     pub(super) fn show(&mut self, view: View) -> Vec<Action> {
         let mut read = None;
         if view == View::NeedsYou && self.view != View::NeedsYou {
-            self.needs_selected = self.model.needs_you().first().copied();
+            self.needs.selected = self.model.needs_you().first().copied();
         }
         if view == View::Tickets && self.view != View::Tickets {
             self.forget_failed_tickets();
         }
         if view == View::Settings && self.view != View::Settings {
             self.settings
+                .by_project
                 .retain(|_, settings| matches!(settings, super::Settings::Loading));
             read = Some(self.read_plugins());
         }
@@ -304,26 +305,29 @@ impl App {
                 self.selected = step(rows.len(), at).map(|index| rows[index]);
             }
             View::NeedsYou => {
-                let list = &self.needs_list;
+                let list = &self.needs.list;
                 let at = self
-                    .needs_selected
+                    .needs
+                    .selected
                     .and_then(|session| list.iter().position(|s| *s == session));
-                self.needs_selected = step(list.len(), at).map(|index| list[index]);
+                self.needs.selected = step(list.len(), at).map(|index| list[index]);
             }
             View::Tickets => {
                 let rows = self.ticket_rows();
                 let at = self
-                    .tickets_selected
+                    .tickets
+                    .selected
                     .as_ref()
                     .and_then(|row| rows.iter().position(|r| r == row));
-                self.tickets_selected = step(rows.len(), at).map(|index| rows[index].clone());
+                self.tickets.selected = step(rows.len(), at).map(|index| rows[index].clone());
             }
             View::Settings => {
                 let rows = self.setting_rows();
                 let at = self
-                    .settings_selected
+                    .settings
+                    .selected
                     .and_then(|row| rows.iter().position(|r| *r == row));
-                self.settings_selected = step(rows.len(), at).map(|index| rows[index]);
+                self.settings.selected = step(rows.len(), at).map(|index| rows[index]);
             }
         }
     }
@@ -369,10 +373,10 @@ impl App {
         // Back from a session of the queue that waits no more: the person
         // dealt with it, so the queue moves on rather than keep it.
         if self.view == View::NeedsYou
-            && self.needs_selected == Some(session)
+            && self.needs.selected == Some(session)
             && !self.model.session(session).is_some_and(needs_attention)
         {
-            self.needs_selected = None;
+            self.needs.selected = None;
         }
         // Settled, a session that filled the window is given its size
         // beside the list again.

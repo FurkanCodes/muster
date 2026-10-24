@@ -756,7 +756,7 @@ pub(super) fn cut_name(app: &App, width: usize) -> Option<(usize, usize)> {
             }
         },
         View::NeedsYou => {
-            let session = app.model.session(app.needs_selected?)?;
+            let session = app.model.session(app.needs.selected?)?;
             // Led by its edge alone, a cell.
             (
                 session.title.as_str(),
@@ -822,7 +822,7 @@ fn flashed(app: &App, session: &Session, mut text: Text<'static>) -> Text<'stati
 pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let theme = super::theme::of(app);
     let block = list_block(app, "waiting on you", app.list_has_keys());
-    if app.needs_list.is_empty() {
+    if app.needs.list.is_empty() {
         let text = Text::from(vec![
             Line::from(""),
             Line::from(" ✓ All clear").fg(theme.done).bold(),
@@ -839,11 +839,12 @@ pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
     }
     let width = usize::from(area.width.saturating_sub(2));
     let items: Vec<ListItem<'_>> = app
-        .needs_list
+        .needs
+        .list
         .iter()
         .filter_map(|id| app.model.session(*id))
         .map(|session| {
-            let selected = app.needs_selected == Some(session.id);
+            let selected = app.needs.selected == Some(session.id);
             let project = app.model.project_of(Row::Session(session.id));
             let lead = vec![look::edge(app, project, selected)];
             let by = app.slid_by(View::NeedsYou, Row::Session(session.id));
@@ -853,17 +854,19 @@ pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
         })
         .collect();
     let mut state = ListState::default()
-        .with_offset(app.needs_offset)
+        .with_offset(app.needs.offset)
         .with_selected(
-            app.needs_selected
-                .and_then(|s| app.needs_list.iter().position(|id| *id == s)),
+            app.needs
+                .selected
+                .and_then(|s| app.needs.list.iter().position(|id| *id == s)),
         );
     let list = List::new(items)
         .block(block)
-        .highlight_style(session_highlight(app, app.needs_selected));
+        .highlight_style(session_highlight(app, app.needs.selected));
     frame.render_stateful_widget(list, area, &mut state);
     let sessions: Vec<Option<&Session>> = app
-        .needs_list
+        .needs
+        .list
         .iter()
         .filter_map(|id| app.model.session(*id))
         .map(Some)

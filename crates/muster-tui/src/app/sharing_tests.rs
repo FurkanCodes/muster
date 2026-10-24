@@ -117,7 +117,7 @@ fn agent(app: &mut App, project: &Project, branch: &str, created: i64) {
 
 /// Selects `row` on the Tickets screen.
 fn select(app: &mut App, row: &TicketRow) {
-    while app.tickets_selected.as_ref() != Some(row) {
+    while app.tickets.selected.as_ref() != Some(row) {
         press(app, KeyCode::Down);
     }
 }

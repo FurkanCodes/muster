@@ -24,7 +24,7 @@ fn changed(actions: &[Action]) -> Option<PreferenceChange> {
 /// The Keys list open on `does`.
 fn on(world: &mut World, does: Does) {
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(SettingRow::Keys);
+    world.app.settings.selected = Some(SettingRow::Keys);
     press(&mut world.app, KeyCode::Enter);
     let Mode::Dialog(Dialog::Keys(rebinding)) = &mut world.app.mode else {
         panic!("{:?}", world.app.mode);
@@ -186,7 +186,7 @@ fn a_key_for_an_action_no_longer_there_leaves_the_rest_and_says_so() {
     );
     assert_eq!(world.app.keymap.aside().len(), 1);
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(SettingRow::Keys);
+    world.app.settings.selected = Some(SettingRow::Keys);
     world.app.on_resize(muster_core::protocol::TermSize {
         cols: 180,
         rows: 40,

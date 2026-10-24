@@ -58,15 +58,17 @@ impl App {
                     // Each heading's, as `ticket_rows` lists them.
                     .filter(|project| self.lead(project.id) == project.id)
                     .any(|project| {
-                        matches!(self.tickets.get(&project.id), None | Some(Tickets::Loading))
+                        matches!(self.tickets.by_project.get(&project.id), None | Some(Tickets::Loading))
                     })
                     || self
-                        .ticket_texts
+                        .tickets
+                        .texts
                         .values()
                         .any(|text| matches!(text, TicketText::Loading))
             }
             View::Settings => self
                 .settings
+                .by_project
                 .values()
                 .any(|settings| matches!(settings, Settings::Loading)),
             View::Sessions | View::NeedsYou => false,
@@ -121,7 +123,7 @@ impl App {
         }
         let row = match self.view {
             View::Sessions => self.selected,
-            View::NeedsYou => self.needs_selected.map(Row::Session),
+            View::NeedsYou => self.needs.selected.map(Row::Session),
             View::Tickets | View::Settings => None,
         }?;
         Some((self.view, row))

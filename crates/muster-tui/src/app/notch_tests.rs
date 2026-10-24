@@ -173,7 +173,7 @@ fn the_snapshot_on_a_mac_starts_the_notch() {
 fn the_notch_is_turned_on_and_off_on_the_settings_screen() {
     let mut world = mac(true);
     world.app.view = View::Settings;
-    world.app.settings_selected = Some(SettingRow::Notch);
+    world.app.settings.selected = Some(SettingRow::Notch);
     let screen = render(&world.app);
     assert!(screen.contains("Muster"), "{screen}");
     assert!(screen.contains("Agents in the notch"), "{screen}");
@@ -216,7 +216,7 @@ fn the_notch_is_turned_on_and_off_on_the_settings_screen() {
 fn a_change_whose_answer_the_lost_connection_took_can_be_asked_again() {
     let mut world = mac(true);
     world.app.view = View::Settings;
-    world.app.settings_selected = Some(SettingRow::Notch);
+    world.app.settings.selected = Some(SettingRow::Notch);
     command(&press(&mut world.app, KeyCode::Enter));
     assert!(world.app.notch_changing());
     world.app.on_disconnected("the daemon restarted".to_owned());

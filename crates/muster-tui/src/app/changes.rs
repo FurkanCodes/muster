@@ -222,7 +222,8 @@ impl App {
         let workspace = match self.view {
             View::Sessions => self.selected.and_then(|row| self.model.worktree_of(row)),
             View::NeedsYou => self
-                .needs_selected
+                .needs
+                .selected
                 .and_then(|session| self.model.session(session))
                 .map(|session| session.workspace),
             View::Tickets | View::Settings => None,

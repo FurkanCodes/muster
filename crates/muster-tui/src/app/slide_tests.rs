@@ -209,7 +209,7 @@ fn a_long_title_slides_on_the_selected_line_of_needs_you() {
         .app
         .on_key(super::tests::key(crossterm::event::KeyCode::Char('2')));
     assert_eq!(world.app.view, View::NeedsYou);
-    assert_eq!(world.app.needs_selected, Some(world.session.id));
+    assert_eq!(world.app.needs.selected, Some(world.session.id));
     let (len, room) = crate::view::cut_name(&world.app).expect("cut short");
     let start: String = TITLE.chars().take(room - 1).collect();
     assert!(render(&world.app).contains(&format!("{start}…")));

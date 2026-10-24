@@ -92,10 +92,11 @@ fn on_tickets_from(settings: ProjectSettings) -> World {
     world
         .app
         .settings
+        .by_project
         .insert(project, Settings::Loaded(settings));
     press(&mut world.app, KeyCode::Down);
     assert_eq!(
-        world.app.settings_selected,
+        world.app.settings.selected,
         Some(SettingRow::TicketsFrom(project))
     );
     world
@@ -182,6 +183,7 @@ fn a_project_whose_remote_cannot_tell_is_pointed_at_jira_here() {
     world
         .app
         .tickets
+        .by_project
         .insert(project, Tickets::Failed("x".to_owned()));
     reply(
         &mut world,
@@ -200,7 +202,7 @@ fn a_project_whose_remote_cannot_tell_is_pointed_at_jira_here() {
     );
     assert!(screen.contains("Jira APP"), "{screen}");
     assert!(
-        !world.app.tickets.contains_key(&project),
+        !world.app.tickets.by_project.contains_key(&project),
         "fetched again from there"
     );
 }
@@ -234,7 +236,7 @@ fn the_dialog_starts_from_what_is_written_and_can_go_back_to_the_remote() {
 
     // ⇧⇥ from Jira is GitLab, which needs nothing typed.
     let project = world.project.id;
-    world.app.settings.insert(
+    world.app.settings.by_project.insert(
         project,
         Settings::Loaded(ProjectSettings {
             tickets: Some(written),
@@ -252,7 +254,7 @@ fn the_dialog_starts_from_what_is_written_and_can_go_back_to_the_remote() {
     );
 
     // Round to its git remote: nothing written any more.
-    world.app.settings.insert(
+    world.app.settings.by_project.insert(
         project,
         Settings::Loaded(settings(false, SettingSource::Default)),
     );
@@ -333,7 +335,7 @@ fn a_jira_site_in_use_is_offered_to_the_next_project() {
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::ProjectUpserted(other.clone())));
-    world.app.settings.insert(
+    world.app.settings.by_project.insert(
         other.id,
         Settings::Loaded(ProjectSettings {
             tickets: Some(jira("acme.atlassian.net", "INT")),
@@ -388,7 +390,7 @@ fn turning_a_ticket_plugin_off_or_on_fetches_the_tickets_again_prd_15() {
     // The same plugins told again keep the tickets fetched.
     assert!(sent(&mut world, &github).is_empty());
     assert!(matches!(
-        world.app.tickets.get(&project),
+        world.app.tickets.by_project.get(&project),
         Some(Tickets::Loaded { .. })
     ));
 
@@ -398,15 +400,16 @@ fn turning_a_ticket_plugin_off_or_on_fetches_the_tickets_again_prd_15() {
         plugin.enabled = false;
     }
     assert_eq!(sent(&mut world, &github), std::slice::from_ref(&listed));
-    assert!(world.app.ticket_texts.is_empty());
+    assert!(world.app.tickets.texts.is_empty());
     // Turned on again, they are fetched once more.
     for plugin in github.iter_mut().filter(|plugin| plugin.id == "github") {
         plugin.enabled = true;
     }
-    world.app.tickets.clear();
+    world.app.tickets.by_project.clear();
     world
         .app
         .tickets
+        .by_project
         .insert(project, Tickets::Failed("off".to_owned()));
     assert_eq!(sent(&mut world, &github), std::slice::from_ref(&listed));
     // A plugin with no ticket source changing leaves them be.
@@ -416,6 +419,7 @@ fn turning_a_ticket_plugin_off_or_on_fetches_the_tickets_again_prd_15() {
     world
         .app
         .tickets
+        .by_project
         .insert(project, Tickets::Failed("kept".to_owned()));
     assert!(sent(&mut world, &github).is_empty());
     // Anyone's ticket plugin installed changes where tickets may come from.

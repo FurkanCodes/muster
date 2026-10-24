@@ -24,7 +24,7 @@ impl App {
                 Some(Row::Session(session)) => Some(session),
                 _ => None,
             },
-            View::NeedsYou => self.needs_selected,
+            View::NeedsYou => self.needs.selected,
             View::Tickets | View::Settings => None,
         }
     }
@@ -80,7 +80,7 @@ impl App {
         };
         let opened = match self.view {
             View::Sessions => self.selected == Some(Row::Session(session)),
-            View::NeedsYou => self.needs_selected == Some(session),
+            View::NeedsYou => self.needs.selected == Some(session),
             View::Tickets | View::Settings => true,
         };
         let panel = self

@@ -118,7 +118,7 @@ fn a_terminal_s_own_background_shades_the_selected_line() {
 fn on_look_row(world: &mut World, row: SettingRow) {
     press(&mut world.app, KeyCode::Char('4'));
     assert_eq!(world.app.view, View::Settings);
-    world.app.settings_selected = Some(row);
+    world.app.settings.selected = Some(row);
 }
 
 #[test]

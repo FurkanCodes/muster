@@ -119,5 +119,5 @@ fn r_needs_a_session() {
     assert!(render(&world.app).contains("Select a session to rename it."));
 
     world.app.view = View::NeedsYou;
-    world.app.needs_selected = Some(world.session.id);
+    world.app.needs.selected = Some(world.session.id);
 }

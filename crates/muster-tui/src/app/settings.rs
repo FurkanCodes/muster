@@ -192,7 +192,7 @@ impl App {
         match (key.code, does) {
             (KeyCode::Up, _) | (_, Some(Does::MoveUp)) => self.move_selection(-1),
             (KeyCode::Down, _) | (_, Some(Does::MoveDown)) => self.move_selection(1),
-            (KeyCode::Enter | KeyCode::Char(' '), _) => match self.settings_selected {
+            (KeyCode::Enter | KeyCode::Char(' '), _) => match self.settings.selected {
                 Some(SettingRow::TicketsFrom(project)) => return self.choose_tickets_from(project),
                 Some(SettingRow::Notch) => return self.toggle_notch(),
                 Some(SettingRow::SideBySide) => return self.step_side_by_side(1, true),
@@ -217,13 +217,13 @@ impl App {
                 return self.confirm_remove_plugin();
             }
             (KeyCode::Left | KeyCode::Right, _)
-                if self.settings_selected == Some(SettingRow::SideBySide) =>
+                if self.settings.selected == Some(SettingRow::SideBySide) =>
             {
                 let by = if key.code == KeyCode::Left { -1 } else { 1 };
                 return self.step_side_by_side(by, false);
             }
             (KeyCode::Left | KeyCode::Right, _) => {
-                if let Some(SettingRow::Tell(kind)) = self.settings_selected {
+                if let Some(SettingRow::Tell(kind)) = self.settings.selected {
                     let by = if key.code == KeyCode::Left { -1 } else { 1 };
                     return self.step_sound(kind, by);
                 }
@@ -231,7 +231,7 @@ impl App {
             (_, Some(Does::ReadSettings)) => {
                 // Read again as they are shown, edits by hand included,
                 // Muster's own too.
-                self.settings.clear();
+                self.settings.by_project.clear();
                 let mut actions = vec![self.command(
                     Command::ReadPreferences,
                     Then::Say("Read the settings again."),
@@ -246,12 +246,12 @@ impl App {
 
     /// Turns the selected setting on or off.
     fn toggle_setting(&mut self) -> Vec<Action> {
-        let (project, then) = match self.settings_selected {
+        let (project, then) = match self.settings.selected {
             Some(SettingRow::OnlyMine(project)) => (project, Then::SettingChanged(project)),
             Some(SettingRow::MusterPrefix(project)) => (project, Then::BranchesChanged(project)),
             _ => return Vec::new(),
         };
-        let change = match self.settings.get(&project) {
+        let change = match self.settings.by_project.get(&project) {
             Some(Settings::Loaded(settings)) => match then {
                 Then::BranchesChanged(_) => match settings.muster_prefix {
                     Some(prefix) => SettingChange::MusterPrefix(!prefix.on),
@@ -266,7 +266,7 @@ impl App {
             // Read or changed just now: the answer is on its way.
             Some(Settings::Loading) | None => return Vec::new(),
         };
-        self.settings.insert(project, Settings::Loading);
+        self.settings.by_project.insert(project, Settings::Loading);
         vec![self.command(Command::ChangeSetting { project, change }, then)]
     }
 
@@ -284,7 +284,9 @@ impl App {
                 "New branches in {name} go without muster/: issue-42-fix-the-login."
             )),
         }
-        self.settings.insert(project, Settings::Loaded(settings));
+        self.settings
+            .by_project
+            .insert(project, Settings::Loaded(settings));
     }
 
     /// A setting was changed: the project's tickets are fetched again, as
@@ -300,15 +302,17 @@ impl App {
             "every open ticket"
         };
         self.say(format!("Tickets for {name} now lists {lists}."));
-        self.settings.insert(project, Settings::Loaded(settings));
-        self.tickets.remove(&project);
-        self.ticket_texts.retain(|(of, _), _| *of != project);
+        self.settings
+            .by_project
+            .insert(project, Settings::Loaded(settings));
+        self.tickets.by_project.remove(&project);
+        self.tickets.texts.retain(|(of, _), _| *of != project);
     }
 
     /// A change that was refused: the reason is shown, and the settings
     /// read again, as they still are.
     pub(super) fn setting_refused(&mut self, project: ProjectId, reason: String) {
-        self.settings.remove(&project);
+        self.settings.by_project.remove(&project);
         self.complain(reason);
     }
 
@@ -323,12 +327,12 @@ impl App {
             .projects()
             .iter()
             .map(|project| project.id)
-            .filter(|project| !self.settings.contains_key(project))
+            .filter(|project| !self.settings.by_project.contains_key(project))
             .collect();
         wanted
             .into_iter()
             .map(|project| {
-                self.settings.insert(project, Settings::Loading);
+                self.settings.by_project.insert(project, Settings::Loading);
                 self.command(
                     Command::ProjectSettings { project },
                     Then::Settings(project),
@@ -342,26 +346,28 @@ impl App {
     /// installed once it is listed, and *add a plugin* for one removed.
     pub(super) fn keep_setting_selection(&mut self) {
         let rows = self.setting_rows();
-        if let Some(wanted) = self.plugin_wanted
+        if let Some(wanted) = self.settings.plugin_wanted
             && rows.contains(&SettingRow::Plugin(wanted))
         {
-            self.plugin_wanted = None;
-            self.settings_selected = Some(SettingRow::Plugin(wanted));
+            self.settings.plugin_wanted = None;
+            self.settings.selected = Some(SettingRow::Plugin(wanted));
             return;
         }
         if self
-            .settings_selected
+            .settings
+            .selected
             .is_some_and(|row| rows.contains(&row))
         {
             return;
         }
         // Chosen as the screen shows, so the first is a project's once
         // there is one, not Muster's own, listed before any project.
-        if self.settings_selected.is_none() && self.view != View::Settings {
+        if self.settings.selected.is_none() && self.view != View::Settings {
             return;
         }
-        self.settings_selected = self
-            .settings_selected
+        self.settings.selected = self
+            .settings
+            .selected
             .and_then(|row| match row {
                 SettingRow::Plugin(_) => Some(SettingRow::AddPlugin),
                 row => row.project().map(SettingRow::Project),

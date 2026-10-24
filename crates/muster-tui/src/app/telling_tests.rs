@@ -16,7 +16,7 @@ use super::{Action, SettingRow, View};
 fn on(kind: Kind) -> World {
     let mut world = world();
     world.app.view = View::Settings;
-    world.app.settings_selected = Some(SettingRow::Tell(kind));
+    world.app.settings.selected = Some(SettingRow::Tell(kind));
     world
 }
 

@@ -57,7 +57,7 @@ fn plugin_line(app: &App, plugin: &PluginInfo, width: usize) -> Line<'static> {
     let show_source = width >= base + 1 + source_width;
     let show_version = width >= base + 1 + source_width + 1 + version_width;
 
-    let (mark, state) = if app.plugin_changing == PluginKey::of(&plugin.id) {
+    let (mark, state) = if app.settings.plugin_changing == PluginKey::of(&plugin.id) {
         (Span::from("○ ").dim(), Span::from("…  ").dim())
     } else if plugin.runs() {
         (
@@ -450,7 +450,7 @@ pub(super) fn hints(app: &App, row: SettingRow) -> Vec<String> {
     match row {
         SettingRow::Plugin(key) => {
             if let Some(plugin) = app.plugin(key)
-                && app.plugin_changing.is_none()
+                && app.settings.plugin_changing.is_none()
             {
                 hints.push(if plugin.runs() {
                     "space turn off".to_owned()

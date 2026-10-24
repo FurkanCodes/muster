@@ -165,7 +165,7 @@ fn a_panel_dragged_by_its_title_goes_where_it_is_dropped_and_is_kept() {
     left(&mut world, MouseEventKind::Down, (5, 1));
     left(&mut world, MouseEventKind::Drag, (99, 12));
     assert!(matches!(
-        world.app.drag,
+        world.app.panels.drag,
         Some(Drag::Panel {
             to: Some(Place::Window(Edge::Right)),
             ..
@@ -184,7 +184,7 @@ fn a_panel_dragged_by_its_title_goes_where_it_is_dropped_and_is_kept() {
     );
     let moved = areas(&world);
     assert_eq!((moved.list.x, moved.preview.x), (70, 0));
-    assert_eq!(world.app.drag, None);
+    assert_eq!(world.app.panels.drag, None);
 }
 
 #[test]
@@ -231,7 +231,7 @@ fn a_key_lets_go_of_a_drag_the_layout_as_it_was() {
     left(&mut world, MouseEventKind::Drag, (39, 10));
     assert_eq!(areas(&world).list.width, 40);
     let actions = press(&mut world.app, KeyCode::Esc);
-    assert_eq!(world.app.drag, None);
+    assert_eq!(world.app.panels.drag, None);
     assert_eq!(areas(&world).list.width, 30);
     assert_eq!(changed(&actions), None);
 }
@@ -240,7 +240,7 @@ fn a_key_lets_go_of_a_drag_the_layout_as_it_was() {
 fn m_moves_the_panels_with_the_keys_and_esc_puts_them_back() {
     let mut world = shown();
     press(&mut world.app, KeyCode::Char('m'));
-    assert!(world.app.arranging.is_some());
+    assert!(world.app.panels.arranging.is_some());
     let screen = super::tests::render(&world.app);
     assert!(screen.contains(" moving "), "{screen}");
     // Past its neighbour, the session.
@@ -249,7 +249,7 @@ fn m_moves_the_panels_with_the_keys_and_esc_puts_them_back() {
     assert!(moved.list.x > moved.preview.x, "{moved:?}");
     let actions = press(&mut world.app, KeyCode::Esc);
     assert_eq!(changed(&actions), None);
-    assert_eq!(world.app.arranging, None);
+    assert_eq!(world.app.panels.arranging, None);
     assert_eq!(*world.app.panels(), Layout::default());
 
     // Wider, and kept on ⏎.
@@ -263,7 +263,7 @@ fn m_moves_the_panels_with_the_keys_and_esc_puts_them_back() {
             Layout::parse("list 32 | session 60% | (changes / shell)").unwrap()
         ))
     );
-    assert_eq!(world.app.arranging, None);
+    assert_eq!(world.app.panels.arranging, None);
 }
 
 #[test]
@@ -274,7 +274,7 @@ fn the_settings_screen_puts_the_panels_back_as_they_were_at_first() {
         preferences.list_folded = true;
     });
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(SettingRow::Panels);
+    world.app.settings.selected = Some(SettingRow::Panels);
     let screen = super::tests::render(&world.app);
     assert!(screen.contains("moved, list folded"), "{screen}");
     let actions = press(&mut world.app, KeyCode::Enter);

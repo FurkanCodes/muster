@@ -17,14 +17,16 @@ use crate::layout::{Solved, needs, solve};
 impl App {
     /// Where the panels are: as changed in this window, or as kept.
     pub(crate) fn panels(&self) -> &Layout {
-        self.panels_kept
+        self.panels
+            .kept
             .as_ref()
             .unwrap_or(&self.model.preferences().panels)
     }
 
     /// Whether the list is folded away.
     pub(crate) fn list_folded(&self) -> bool {
-        self.folded_kept
+        self.panels
+            .folded_kept
             .unwrap_or(self.model.preferences().list_folded)
     }
 
@@ -99,7 +101,7 @@ impl App {
     /// or brings it back. It works as the person types in the session too.
     pub(super) fn toggle_list(&mut self) -> Vec<Action> {
         let folded = !self.list_folded();
-        self.folded_kept = Some(folded);
+        self.panels.folded_kept = Some(folded);
         let mut actions = vec![self.command(
             Command::ChangePreference(PreferenceChange::ListFolded(folded)),
             Then::ListFolded,
@@ -129,7 +131,7 @@ impl App {
         &mut self,
         outcome: Result<(), muster_core::protocol::ErrorBody>,
     ) {
-        self.folded_kept = None;
+        self.panels.folded_kept = None;
         if let Err(error) = outcome {
             self.complain(error.message);
         }

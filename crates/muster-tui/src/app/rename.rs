@@ -18,7 +18,7 @@ impl App {
                 Some(crate::model::Row::Session(session)) => Some(session),
                 _ => None,
             },
-            View::NeedsYou => self.needs_selected,
+            View::NeedsYou => self.needs.selected,
             View::Tickets | View::Settings => None,
         };
         let Some(session) = selected.and_then(|session| self.model.session(session)) else {

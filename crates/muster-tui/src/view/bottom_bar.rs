@@ -134,7 +134,7 @@ pub(super) fn hint(app: &App, does: Does, what: &str) -> Option<String> {
 
 /// The keys that do something for what is selected, most used first.
 fn hints(app: &App) -> Vec<String> {
-    if app.arranging.is_some() {
+    if app.panels.arranging.is_some() {
         return vec![
             "←→↑↓ move it  + − wider or narrower  ⇥ another  ⏎ keep  esc put back".to_owned(),
         ];

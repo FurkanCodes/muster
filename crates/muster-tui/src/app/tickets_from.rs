@@ -89,7 +89,7 @@ impl App {
     /// ⏎ on the project's Tickets from: the dialog, filled in with what is
     /// written now.
     pub(super) fn choose_tickets_from(&mut self, project: ProjectId) -> Vec<Action> {
-        let settings = match self.settings.get(&project) {
+        let settings = match self.settings.by_project.get(&project) {
             Some(Settings::Loaded(settings)) => settings.clone(),
             Some(Settings::Failed(error)) => {
                 self.complain(format!("Its settings cannot be read: {error}"));
@@ -130,7 +130,7 @@ impl App {
         else {
             return Vec::new();
         };
-        let written = |of: ProjectId| match self.settings.get(&of) {
+        let written = |of: ProjectId| match self.settings.by_project.get(&of) {
             Some(Settings::Loaded(ProjectSettings {
                 tickets: Some(from),
                 ..
@@ -149,6 +149,7 @@ impl App {
                     .or_else(|| {
                         (setting.key == "site").then(|| {
                             self.settings
+                                .by_project
                                 .keys()
                                 .filter(|other| **other != project)
                                 .find_map(|other| written(*other)?.get("site").cloned())
@@ -278,7 +279,7 @@ impl App {
                 .collect(),
         });
         self.mode = Mode::Browse;
-        self.settings.insert(project, Settings::Loading);
+        self.settings.by_project.insert(project, Settings::Loading);
         vec![self.command(
             Command::ChangeSetting {
                 project,
@@ -299,9 +300,11 @@ impl App {
             "{name}'s tickets now come from {}.",
             settings.tickets_from
         ));
-        self.settings.insert(project, Settings::Loaded(settings));
-        self.tickets.remove(&project);
-        self.ticket_texts.retain(|(of, _), _| *of != project);
+        self.settings
+            .by_project
+            .insert(project, Settings::Loaded(settings));
+        self.tickets.by_project.remove(&project);
+        self.tickets.texts.retain(|(of, _), _| *of != project);
     }
 }
 

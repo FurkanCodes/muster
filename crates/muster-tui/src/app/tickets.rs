@@ -86,7 +86,8 @@ impl App {
                 continue;
             }
             rows.push(TicketRow::Project(project.id));
-            if let Some(Tickets::Loaded { tickets, .. }) = self.tickets.get(&project.id) {
+            if let Some(Tickets::Loaded { tickets, .. }) = self.tickets.by_project.get(&project.id)
+            {
                 rows.extend(
                     tickets
                         .iter()
@@ -99,7 +100,7 @@ impl App {
 
     /// The ticket a row is, as fetched.
     pub(crate) fn ticket(&self, project: ProjectId, key: &TicketKey) -> Option<&Issue> {
-        match self.tickets.get(&project)? {
+        match self.tickets.by_project.get(&project)? {
             Tickets::Loaded { tickets, .. } => tickets.iter().find(|ticket| ticket.key == *key),
             Tickets::Loading | Tickets::Failed(_) => None,
         }
@@ -107,7 +108,7 @@ impl App {
 
     /// Where a project's tickets come from, once fetched.
     pub(crate) fn tracker_of(&self, project: ProjectId) -> &str {
-        match self.tickets.get(&project) {
+        match self.tickets.by_project.get(&project) {
             Some(Tickets::Loaded { tracker, .. }) if !tracker.is_empty() => tracker,
             _ => "its tracker",
         }
@@ -115,7 +116,7 @@ impl App {
 
     /// The selected ticket, if a ticket is selected.
     fn selected_ticket(&self) -> Option<(ProjectId, TicketKey)> {
-        match &self.tickets_selected {
+        match &self.tickets.selected {
             Some(TicketRow::Ticket(project, key)) => Some((*project, key.clone())),
             _ => None,
         }
@@ -125,7 +126,7 @@ impl App {
     pub(super) fn show_tickets(&mut self, project: Option<ProjectId>) {
         self.view = View::Tickets;
         if let Some(project) = project {
-            self.tickets_selected = Some(TicketRow::Project(project));
+            self.tickets.selected = Some(TicketRow::Project(project));
         }
     }
 
@@ -176,8 +177,8 @@ impl App {
 
     /// How far the selected line's details are paged down.
     pub(crate) fn ticket_scrolled(&self) -> usize {
-        match &self.ticket_scroll {
-            Some((row, by)) if self.tickets_selected.as_ref() == Some(row) => *by,
+        match &self.tickets.scroll {
+            Some((row, by)) if self.tickets.selected.as_ref() == Some(row) => *by,
             _ => 0,
         }
     }
@@ -195,7 +196,8 @@ impl App {
     /// What of the selected ticket an agent is given: its text alone
     /// until the person chooses otherwise.
     pub(crate) fn ticket_brief(&self, project: ProjectId, key: &TicketKey) -> TicketBrief {
-        self.ticket_briefs
+        self.tickets
+            .briefs
             .get(&(project, key.clone()))
             .cloned()
             .unwrap_or_default()
@@ -204,8 +206,8 @@ impl App {
     /// The part of the selected ticket the keys are on: 0 its text, 1 its
     /// first comment…
     pub(crate) fn ticket_part(&self) -> usize {
-        match &self.ticket_part {
-            Some((row, at)) if self.tickets_selected.as_ref() == Some(row) => *at,
+        match &self.tickets.part {
+            Some((row, at)) if self.tickets.selected.as_ref() == Some(row) => *at,
             _ => 0,
         }
     }
@@ -216,7 +218,7 @@ impl App {
         let Some((project, key)) = self.selected_ticket() else {
             return 0;
         };
-        match self.ticket_texts.get(&(project, key)) {
+        match self.tickets.texts.get(&(project, key)) {
             Some(TicketText::Loaded { comments, .. }) => comments.len(),
             _ => 0,
         }
@@ -226,18 +228,18 @@ impl App {
     /// scrolled into sight; a ticket without comments has one part.
     fn move_part(&mut self, by: isize) {
         let comments = self.selected_comments();
-        let Some(row) = self.tickets_selected.clone() else {
+        let Some(row) = self.tickets.selected.clone() else {
             return;
         };
         if comments == 0 {
             return;
         }
         let at = self.ticket_part().saturating_add_signed(by).min(comments);
-        self.ticket_part = Some((row.clone(), at));
+        self.tickets.part = Some((row.clone(), at));
         let (width, height) = self.ticket_pane();
         let last = crate::view::ticket_details_height(self, width).saturating_sub(height);
         if let Some(top) = crate::view::ticket_part_lines(self, width).get(at) {
-            self.ticket_scroll = Some((row, top.saturating_sub(1).min(last)));
+            self.tickets.scroll = Some((row, top.saturating_sub(1).min(last)));
         }
     }
 
@@ -273,7 +275,7 @@ impl App {
         }
         let mut brief = self.ticket_brief(project, &key);
         if brief.toggle(self.ticket_part()) {
-            self.ticket_briefs.insert((project, key), brief);
+            self.tickets.briefs.insert((project, key), brief);
         } else {
             self.say("The agent needs the ticket's text or a comment to work on.");
         }
@@ -290,7 +292,7 @@ impl App {
     /// Scrolls the selected line's details `lines` down (up where
     /// negative), never past their end: the wheel over the pane.
     pub(super) fn scroll_ticket(&mut self, lines: isize) {
-        let Some(row) = self.tickets_selected.clone() else {
+        let Some(row) = self.tickets.selected.clone() else {
             return;
         };
         let (width, height) = self.ticket_pane();
@@ -299,7 +301,7 @@ impl App {
             .ticket_scrolled()
             .saturating_add_signed(lines)
             .min(last);
-        self.ticket_scroll = Some((row, at));
+        self.tickets.scroll = Some((row, at));
     }
 
     /// ⏎ on a ticket: its agent's terminal (the latest still running, else
@@ -336,7 +338,7 @@ impl App {
         self.mode = Mode::Dialog(Dialog::AssignAgent {
             project,
             key,
-            harness: self.ticket_agent.clone(),
+            harness: self.tickets.agent.clone(),
             another,
             into: self.project_to_offer(project),
             on: None,
@@ -386,7 +388,7 @@ impl App {
             }
             KeyCode::Enter => {
                 self.mode = Mode::Browse;
-                self.ticket_agent = harness.clone();
+                self.tickets.agent = harness.clone();
                 self.remember_project(project, into);
                 let another = self.starts_another(into, &key, another);
                 let on = on.filter(|_| stacking);
@@ -423,7 +425,8 @@ impl App {
         // What it is given, where there are comments to choose among; the
         // ticket listed under the project it is shared from.
         let brief = self
-            .tickets_selected
+            .tickets
+            .selected
             .as_ref()
             .and_then(|row| match row {
                 TicketRow::Ticket(listed, listed_key) if *listed_key == key => Some(*listed),
@@ -450,10 +453,11 @@ impl App {
         let worktrees = self.ticket_worktrees(project, &key).len();
         let agents = self.ticket_agents(project, &key).len();
         for sharing in self.sharing(project) {
-            if let Some(Tickets::Loaded { tickets, .. }) = self.tickets.get_mut(&sharing) {
+            if let Some(Tickets::Loaded { tickets, .. }) = self.tickets.by_project.get_mut(&sharing)
+            {
                 tickets.retain(|ticket| ticket.key != key);
             }
-            self.ticket_texts.remove(&(sharing, key.clone()));
+            self.tickets.texts.remove(&(sharing, key.clone()));
         }
         if worktrees == 0 {
             self.say(format!("Closed {} in {tracker}.", key.shown()));
@@ -525,17 +529,19 @@ impl App {
     /// maybe with the VPN their tracker needs turned on.
     pub(super) fn forget_failed_tickets(&mut self) {
         self.tickets
+            .by_project
             .retain(|_, tickets| !matches!(tickets, Tickets::Failed(_)));
-        self.ticket_texts
+        self.tickets
+            .texts
             .retain(|_, text| !matches!(text, TicketText::Failed(_)));
     }
 
     /// Forgets every ticket and text, so each is fetched again as it is
     /// shown; comments chosen may have moved, so they are chosen again.
     pub(super) fn forget_tickets(&mut self) {
-        self.tickets.clear();
-        self.ticket_texts.clear();
-        self.ticket_briefs.clear();
+        self.tickets.by_project.clear();
+        self.tickets.texts.clear();
+        self.tickets.briefs.clear();
     }
 
     /// Asks for the tickets of projects shown without them, and for the
@@ -549,17 +555,18 @@ impl App {
             .projects()
             .iter()
             .map(|project| project.id)
-            .filter(|project| !self.tickets.contains_key(project))
+            .filter(|project| !self.tickets.by_project.contains_key(project))
             .collect();
         let mut actions = Vec::new();
         for project in wanted {
-            self.tickets.insert(project, Tickets::Loading);
+            self.tickets.by_project.insert(project, Tickets::Loading);
             actions.push(self.command(Command::ListIssues { project }, Then::Tickets(project)));
         }
         if let Some((project, key)) = self.selected_ticket()
-            && !self.ticket_texts.contains_key(&(project, key.clone()))
+            && !self.tickets.texts.contains_key(&(project, key.clone()))
         {
-            self.ticket_texts
+            self.tickets
+                .texts
                 .insert((project, key.clone()), TicketText::Loading);
             actions.push(self.command(
                 Command::ViewIssue {
@@ -576,17 +583,18 @@ impl App {
     /// project sharing its tickets is the same line under the first's.
     pub(super) fn keep_ticket_selection(&mut self) {
         let rows = self.ticket_rows();
-        self.tickets_selected = self.tickets_selected.take().map(|row| match row {
+        self.tickets.selected = self.tickets.selected.take().map(|row| match row {
             TicketRow::Project(project) => TicketRow::Project(self.lead(project)),
             TicketRow::Ticket(project, key) => TicketRow::Ticket(self.lead(project), key),
         });
         let kept = self
-            .tickets_selected
+            .tickets
+            .selected
             .clone()
             .filter(|row| rows.contains(row));
-        self.tickets_selected = kept.or_else(|| {
+        self.tickets.selected = kept.or_else(|| {
             // A ticket that went (closed, or fetched again): its project.
-            match &self.tickets_selected {
+            match &self.tickets.selected {
                 Some(TicketRow::Ticket(project, _)) => Some(TicketRow::Project(*project)),
                 _ => None,
             }

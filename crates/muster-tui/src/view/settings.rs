@@ -60,9 +60,10 @@ pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
         .map(|row| ListItem::new(row_line(app, *row, width)))
         .collect();
     let mut state = ListState::default()
-        .with_offset(app.settings_offset)
+        .with_offset(app.settings.offset)
         .with_selected(
-            app.settings_selected
+            app.settings
+                .selected
                 .and_then(|selected| rows.iter().position(|row| *row == selected)),
         );
     let list = List::new(items)
@@ -73,7 +74,7 @@ pub(super) fn draw_settings(frame: &mut Frame<'_>, app: &App, area: Rect) {
 
 /// A project's heading, or a setting with its value at the line's end.
 fn row_line(app: &App, row: SettingRow, width: usize) -> Line<'static> {
-    let edge = look::edge(app, row.project(), app.settings_selected == Some(row));
+    let edge = look::edge(app, row.project(), app.settings.selected == Some(row));
     let mut line = row_text(app, row, width.saturating_sub(1));
     line.spans.insert(0, edge);
     line
@@ -82,7 +83,9 @@ fn row_line(app: &App, row: SettingRow, width: usize) -> Line<'static> {
 /// A row's line after its edge.
 fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
     let theme = super::theme::of(app);
-    let settings = row.project().and_then(|project| app.settings.get(&project));
+    let settings = row
+        .project()
+        .and_then(|project| app.settings.by_project.get(&project));
     match row {
         SettingRow::Muster => Line::from(Span::from("Muster").bold()),
         SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
@@ -270,7 +273,7 @@ fn project_name(app: &App, project: ProjectId) -> String {
 pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let theme = super::theme::of(app);
     let width = usize::from(area.width.saturating_sub(2));
-    let text = match app.settings_selected {
+    let text = match app.settings.selected {
         Some(SettingRow::Muster | SettingRow::Notch) if app.notch_known() => notch_text(app),
         Some(SettingRow::SideBySide) => side_by_side_text(app),
         Some(SettingRow::Colours) => colours_text(app),
@@ -288,7 +291,10 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(row @ (SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin)) => {
             plugins::details(app, row)
         }
-        Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
+        Some(row) => match row
+            .project()
+            .and_then(|project| app.settings.by_project.get(&project))
+        {
             Some(Settings::Loaded(settings)) => match row {
                 SettingRow::OnlyMine(_) => only_mine_text(settings, theme),
                 SettingRow::TicketsFrom(_) => tickets_from_text(app, settings),
@@ -818,7 +824,7 @@ pub(super) fn detail(label: &str, value: String) -> Line<'static> {
 
 /// The keys that apply on the Settings screen, for what is selected.
 pub(super) fn hints(app: &App) -> Vec<String> {
-    let mut hints = match app.settings_selected {
+    let mut hints = match app.settings.selected {
         Some(row @ (SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin)) => {
             plugins::hints(app, row)
         }
@@ -840,7 +846,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
     let mut hints = Vec::new();
     match selected {
         Some(SettingRow::OnlyMine(project)) => {
-            if let Some(Settings::Loaded(settings)) = app.settings.get(&project) {
+            if let Some(Settings::Loaded(settings)) = app.settings.by_project.get(&project) {
                 hints.push(if settings.only_mine.on {
                     "⏎ turn off"
                 } else {
@@ -849,12 +855,12 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
             }
         }
         Some(SettingRow::TicketsFrom(project)) => {
-            if let Some(Settings::Loaded(_)) = app.settings.get(&project) {
+            if let Some(Settings::Loaded(_)) = app.settings.by_project.get(&project) {
                 hints.push("⏎ choose");
             }
         }
         Some(SettingRow::MusterPrefix(project)) => {
-            if let Some(Settings::Loaded(settings)) = app.settings.get(&project)
+            if let Some(Settings::Loaded(settings)) = app.settings.by_project.get(&project)
                 && let Some(prefix) = settings.muster_prefix
             {
                 hints.push(if prefix.on {

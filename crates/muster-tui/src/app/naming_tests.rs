@@ -10,7 +10,7 @@ use super::{Action, Dialog, Mode, SettingRow};
 
 fn on_row(world: &mut World, row: SettingRow) {
     press(&mut world.app, KeyCode::Char('4'));
-    world.app.settings_selected = Some(row);
+    world.app.settings.selected = Some(row);
 }
 
 fn changed(actions: &[Action]) -> Option<PreferenceChange> {

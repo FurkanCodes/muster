@@ -131,7 +131,7 @@ impl App {
 
     /// The plugin selected on the Settings screen.
     fn selected_plugin(&self) -> Option<&PluginInfo> {
-        match self.settings_selected {
+        match self.settings.selected {
             Some(SettingRow::Plugin(key)) => self.plugin(key),
             _ => None,
         }
@@ -147,7 +147,7 @@ impl App {
     /// Space or ⏎ on a plugin: off if it runs, else on, refused with why
     /// where it cannot run.
     pub(super) fn toggle_plugin(&mut self, key: PluginKey) -> Vec<Action> {
-        if self.plugin_changing.is_some() {
+        if self.settings.plugin_changing.is_some() {
             return Vec::new();
         }
         let Some(plugin) = self.plugin(key) else {
@@ -163,7 +163,7 @@ impl App {
             self.complain(refused);
             return Vec::new();
         }
-        self.plugin_changing = Some(key);
+        self.settings.plugin_changing = Some(key);
         let command = PluginCommand::SetEnabled {
             id: key.id().to_owned(),
             on,
@@ -180,7 +180,7 @@ impl App {
         on: bool,
         outcome: Result<(), ErrorBody>,
     ) {
-        self.plugin_changing = None;
+        self.settings.plugin_changing = None;
         match outcome {
             Ok(()) => self.say(format!(
                 "Turned {} {}.",
@@ -478,7 +478,7 @@ impl App {
                 format!("Updated {id} to {}.", one_line(&preview.details.version))
             }
         });
-        self.plugin_wanted = PluginKey::of(&preview.id);
+        self.settings.plugin_wanted = PluginKey::of(&preview.id);
     }
 }
 

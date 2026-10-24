@@ -188,7 +188,7 @@ fn the_width_is_one_of_muster_s_own_settings() {
         SettingRow::Plugins,
         SettingRow::AddPlugin
     ]));
-    world.app.settings_selected = Some(SettingRow::SideBySide);
+    world.app.settings.selected = Some(SettingRow::SideBySide);
     let screen = super::tests::render(&world.app);
     assert!(screen.contains("Session beside the list from"), "{screen}");
     assert!(screen.contains("100 columns"), "{screen}");
@@ -227,7 +227,7 @@ fn from_the_widest_the_next_width_is_any() {
     let mut world = world();
     side_by_side_from(&mut world, 160);
     world.app.view = View::Settings;
-    world.app.settings_selected = Some(SettingRow::SideBySide);
+    world.app.settings.selected = Some(SettingRow::SideBySide);
     assert_eq!(
         asked(&press(&mut world.app, KeyCode::Right)),
         None,
