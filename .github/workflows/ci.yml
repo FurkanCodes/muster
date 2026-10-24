@@ -50,6 +50,9 @@ jobs:
       - name: No credentials (ARC-20)
         if: runner.os == 'Linux'
         run: scripts/check-no-secrets.sh
+      - name: The TUI's colours are its theme's (ARC-29)
+        if: runner.os == 'Linux'
+        run: scripts/check-tui-colours.sh
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all --check

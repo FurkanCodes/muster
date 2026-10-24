@@ -370,7 +370,10 @@ fn a_ui_older_than_its_daemon_says_how_to_start_the_new_one() {
                 .contains("This window runs")
         })
         .unwrap();
-    assert_eq!(cells[(1, row)].fg, Color::Yellow);
+    assert_eq!(
+        cells[(1, row)].fg,
+        crate::view::theme::of(&world.app).working
+    );
 
     // In a session, the session keeps its size and the bar its one line.
     world.app.selected = Some(Row::Session(world.session.id));

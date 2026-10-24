@@ -245,7 +245,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     draw_bottom_bar(frame, app, bottom);
     match &app.mode {
         Mode::Dialog(dialog) => dialogs::draw_dialog(frame, app, dialog, area),
-        Mode::Menu(open) => menu::draw_menu(frame, open, area),
+        Mode::Menu(open) => menu::draw_menu(frame, open, area, theme::of(app)),
         Mode::Help(open) => help::draw_help(frame, app, open, area),
         _ => {}
     }

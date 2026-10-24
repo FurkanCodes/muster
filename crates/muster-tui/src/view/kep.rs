@@ -14,6 +14,7 @@ use ratatui::widgets::{Paragraph, Widget, Wrap};
 
 use super::look::WORDMARK;
 use super::panel;
+use super::theme::Theme;
 use crate::app::{App, Link};
 use crate::model::needs_attention;
 use crate::motion;
@@ -252,11 +253,11 @@ fn banner_size(area: Rect, under: &Line<'_>) -> (u16, u16, Layout) {
 /// Kep with Muster's name beside it and `under` beside or below them,
 /// from the top left of `area`; the name alone where Kep does not fit.
 /// The rows it took.
-fn banner(frame: &mut Frame<'_>, area: Rect, under: Line<'static>) -> u16 {
+fn banner(frame: &mut Frame<'_>, area: Rect, under: Line<'static>, theme: Theme) -> u16 {
     let (_, height, layout) = banner_size(area, &under);
     let mut lines: Vec<Line<'static>> = WORDMARK
         .iter()
-        .map(|line| Line::from(*line).cyan().bold())
+        .map(|line| Line::from(*line).fg(theme.accent).bold())
         .collect();
     if layout == Layout::NameOnly {
         lines.extend([Line::from(""), under]);
@@ -288,9 +289,10 @@ fn banner(frame: &mut Frame<'_>, area: Rect, under: Line<'static>) -> u16 {
 /// The welcome, filling the window as the UI starts: Kep and Muster's
 /// name, centred, with how the sessions stand.
 pub(crate) fn draw_welcome(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let theme = super::theme::of(app);
     let (text, bad) = greeting(app);
     let under = if bad {
-        Line::from(text).red()
+        Line::from(text).fg(theme.waiting)
     } else {
         Line::from(text).dim()
     };
@@ -301,7 +303,7 @@ pub(crate) fn draw_welcome(frame: &mut Frame<'_>, app: &App, area: Rect) {
         width,
         height,
     };
-    banner(frame, centred, under);
+    banner(frame, centred, under, theme);
 }
 
 /// The details pane while there is nothing to show: Kep, Muster's name
@@ -322,7 +324,12 @@ pub(crate) fn draw_empty_pane(
         width: inner.width.saturating_sub(2),
         height: inner.height.saturating_sub(1),
     };
-    let rows = banner(frame, room, Line::from(under.to_owned()).dim());
+    let rows = banner(
+        frame,
+        room,
+        Line::from(under.to_owned()).dim(),
+        super::theme::of(app),
+    );
     let below = Rect {
         y: room.y + rows + 1,
         height: room.height.saturating_sub(rows + 1),

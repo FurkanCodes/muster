@@ -10,6 +10,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
+use super::theme::Theme;
 use super::{
     delegation, list_block, look, naming, panel, plugins, shared_builds, shorten, telling,
 };
@@ -80,6 +81,7 @@ fn row_line(app: &App, row: SettingRow, width: usize) -> Line<'static> {
 
 /// A row's line after its edge.
 fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
+    let theme = super::theme::of(app);
     let settings = row.project().and_then(|project| app.settings.get(&project));
     match row {
         SettingRow::Muster => Line::from(Span::from("Muster").bold()),
@@ -110,7 +112,9 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
                 vec![Span::styled(project_name(app, project), Style::default().fg(colour)).bold()];
             match settings {
                 None | Some(Settings::Loading) => spans.push(Span::from("  reading…").dim()),
-                Some(Settings::Failed(_)) => spans.push(Span::from("  cannot be read").red()),
+                Some(Settings::Failed(_)) => {
+                    spans.push(Span::from("  cannot be read").fg(theme.waiting));
+                }
                 Some(Settings::Loaded(_)) => {}
             }
             Line::from(spans)
@@ -118,10 +122,10 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::OnlyMine(_) => {
             let value = match settings {
                 Some(Settings::Loaded(found)) if found.only_mine.on => {
-                    Span::from("on").green().bold()
+                    Span::from("on").fg(theme.done).bold()
                 }
                 Some(Settings::Loaded(_)) => Span::from("off").dim(),
-                Some(Settings::Failed(_)) => Span::from("?").red(),
+                Some(Settings::Failed(_)) => Span::from("?").fg(theme.waiting),
                 None | Some(Settings::Loading) => Span::from("…").dim(),
             };
             labelled(ONLY_MINE, value, width)
@@ -129,7 +133,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::TicketsFrom(_) => {
             let value = match settings {
                 Some(Settings::Loaded(found)) => tickets_value(app, found),
-                Some(Settings::Failed(_)) => Span::from("?").red(),
+                Some(Settings::Failed(_)) => Span::from("?").fg(theme.waiting),
                 None | Some(Settings::Loading) => Span::from("…").dim(),
             };
             labelled(TICKETS_FROM, value, width)
@@ -137,11 +141,11 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::MusterPrefix(_) => {
             let value = match settings {
                 Some(Settings::Loaded(found)) => match found.muster_prefix {
-                    Some(prefix) if prefix.on => Span::from("on").green().bold(),
+                    Some(prefix) if prefix.on => Span::from("on").fg(theme.done).bold(),
                     Some(_) => Span::from("off").dim(),
-                    None => Span::from("?").red(),
+                    None => Span::from("?").fg(theme.waiting),
                 },
-                Some(Settings::Failed(_)) => Span::from("?").red(),
+                Some(Settings::Failed(_)) => Span::from("?").fg(theme.waiting),
                 None | Some(Settings::Loading) => Span::from("…").dim(),
             };
             labelled(MUSTER_PREFIX, value, width)
@@ -160,10 +164,11 @@ fn labelled(label: &str, value: Span<'static>, width: usize) -> Line<'static> {
 
 /// Whether the notch is on, or being turned on or off.
 fn notch_value(app: &App) -> Span<'static> {
+    let theme = super::theme::of(app);
     if app.notch_changing() {
         Span::from("…").dim()
     } else if app.model.preferences().notch {
-        Span::from("on").green().bold()
+        Span::from("on").fg(theme.done).bold()
     } else {
         Span::from("off").dim()
     }
@@ -194,9 +199,10 @@ fn session_lines_value(app: &App) -> Span<'static> {
 /// The agents the person added, by name; why none can be read where
 /// Muster's own settings do not read.
 fn agents_value(app: &App) -> Span<'static> {
+    let theme = super::theme::of(app);
     let preferences = app.model.preferences();
     if preferences.problem.is_some() {
-        return Span::from("cannot be read").red();
+        return Span::from("cannot be read").fg(theme.waiting);
     }
     if preferences.agents.is_empty() {
         return Span::from("none").dim();
@@ -225,6 +231,7 @@ fn side_by_side_value(app: &App) -> Span<'static> {
 /// tracker's name and the first of its settings said, past a site or a
 /// query; `choose` where nothing can tell.
 fn tickets_value(app: &App, settings: &ProjectSettings) -> Span<'static> {
+    let theme = super::theme::of(app);
     match &settings.tickets {
         Some(from) => {
             let offered = app
@@ -247,7 +254,7 @@ fn tickets_value(app: &App, settings: &ProjectSettings) -> Span<'static> {
             })
             .bold()
         }
-        None if settings.tickets_untold => Span::from("choose").red().bold(),
+        None if settings.tickets_untold => Span::from("choose").fg(theme.waiting).bold(),
         None => Span::from("git remote").dim(),
     }
 }
@@ -261,6 +268,7 @@ fn project_name(app: &App, project: ProjectId) -> String {
 /// The selected setting: what it does, where its value comes from and
 /// where a change goes; or the selected project's settings as a whole.
 pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let theme = super::theme::of(app);
     let width = usize::from(area.width.saturating_sub(2));
     let text = match app.settings_selected {
         Some(SettingRow::Muster | SettingRow::Notch) if app.notch_known() => notch_text(app),
@@ -282,9 +290,9 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         }
         Some(row) => match row.project().and_then(|project| app.settings.get(&project)) {
             Some(Settings::Loaded(settings)) => match row {
-                SettingRow::OnlyMine(_) => only_mine_text(settings),
+                SettingRow::OnlyMine(_) => only_mine_text(settings, theme),
                 SettingRow::TicketsFrom(_) => tickets_from_text(app, settings),
-                SettingRow::MusterPrefix(_) => muster_prefix_text(settings),
+                SettingRow::MusterPrefix(_) => muster_prefix_text(settings, theme),
                 SettingRow::Project(project) => project_text(app, project, settings),
                 SettingRow::Muster | SettingRow::Notch => notch_text(app),
                 SettingRow::Agents => agents_text(app),
@@ -312,7 +320,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 )
                 .bold(),
                 Line::from(""),
-                Line::from("Its settings cannot be read:").red(),
+                Line::from("Its settings cannot be read:").fg(theme.waiting),
                 Line::from(error.clone()),
                 Line::from(""),
                 Line::from(format!(
@@ -335,11 +343,11 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
     );
 }
 
-fn only_mine_text(settings: &ProjectSettings) -> Text<'static> {
+fn only_mine_text(settings: &ProjectSettings, theme: Theme) -> Text<'static> {
     let toggle = settings.only_mine;
     let (state, does, key) = if toggle.on {
         (
-            Span::from("on").green().bold(),
+            Span::from("on").fg(theme.done).bold(),
             "The Tickets screen lists only the open tickets assigned to you.",
             "⏎ or space turns it off, to list every open ticket.",
         )
@@ -433,10 +441,11 @@ fn session_lines_text(app: &App) -> Text<'static> {
 }
 
 fn notch_text(app: &App) -> Text<'static> {
+    let theme = super::theme::of(app);
     let preferences = app.model.preferences();
     let (state, does, key) = if preferences.notch {
         (
-            Span::from("on").green().bold(),
+            Span::from("on").fg(theme.done).bold(),
             "On a MacBook with a notch, the agents show around it while you look away from \
              Muster: how many work, how many wait on you. Point at it for the list, and click one \
              to come back to it here.",
@@ -467,6 +476,7 @@ fn notch_text(app: &App) -> Text<'static> {
 /// The coding agents the person added in Muster's own settings, and how
 /// to add one.
 fn agents_text(app: &App) -> Text<'static> {
+    let theme = super::theme::of(app);
     let preferences = app.model.preferences();
     let mut lines = vec![
         Line::from(vec![
@@ -481,7 +491,7 @@ fn agents_text(app: &App) -> Text<'static> {
     ];
     if let Some(problem) = &preferences.problem {
         lines.extend([
-            Line::from("Muster's own settings cannot be read:").red(),
+            Line::from("Muster's own settings cannot be read:").fg(theme.waiting),
             Line::from(problem.clone()),
             Line::from(""),
         ]);
@@ -526,10 +536,11 @@ fn agents_text(app: &App) -> Text<'static> {
 
 /// Whether the person is told of what newly needs them, and how.
 fn notifications_value(app: &App) -> Span<'static> {
+    let theme = super::theme::of(app);
     match (app.model.preferences().notifications, app.model.notifier()) {
         (false, _) => Span::from("off").dim(),
-        (true, true) => Span::from("the Mac's").green().bold(),
-        (true, false) => Span::from("on").green().bold(),
+        (true, true) => Span::from("the Mac's").fg(theme.done).bold(),
+        (true, false) => Span::from("on").fg(theme.done).bold(),
     }
 }
 
@@ -589,6 +600,7 @@ fn keys_value(app: &App) -> Span<'static> {
 /// What setting the keys does, where they are kept, and which of them do
 /// nothing.
 fn keys_text(app: &App) -> Text<'static> {
+    let theme = super::theme::of(app);
     let mut lines = vec![
         Line::from(vec![
             Span::from(format!("{KEYS}  ")).bold(),
@@ -609,7 +621,10 @@ fn keys_text(app: &App) -> Text<'static> {
         Line::from("Moving about (the arrows, the page keys) and ⏎ stay as they are.").dim(),
     ];
     for warning in app.keymap.warnings() {
-        lines.extend([Line::from(""), Line::from(warning.to_string()).yellow()]);
+        lines.extend([
+            Line::from(""),
+            Line::from(warning.to_string()).fg(theme.working),
+        ]);
     }
     Text::from(lines)
 }
@@ -686,13 +701,13 @@ fn side_by_side_text(app: &App) -> Text<'static> {
     ])
 }
 
-fn muster_prefix_text(settings: &ProjectSettings) -> Text<'static> {
+fn muster_prefix_text(settings: &ProjectSettings, theme: Theme) -> Text<'static> {
     let Some(toggle) = settings.muster_prefix else {
         return Text::from("The daemon did not say how it names branches.").dim();
     };
     let (state, does, key) = if toggle.on {
         (
-            Span::from("on").green().bold(),
+            Span::from("on").fg(theme.done).bold(),
             "The branches Muster makes start with muster/: muster/issue-42-fix-the-login for a \
              ticket, muster/4f2k9q for a worktree you give no name.",
             "⏎ or space turns it off, for issue-42-fix-the-login and worktree-4f2k9q.",
@@ -727,6 +742,7 @@ fn muster_prefix_text(settings: &ProjectSettings) -> Text<'static> {
 }
 
 fn tickets_from_text(app: &App, settings: &ProjectSettings) -> Text<'static> {
+    let theme = super::theme::of(app);
     let from = match settings.tickets_set_by {
         SettingSource::Yours => "your settings",
         SettingSource::Project => "the project's muster.toml",
@@ -739,7 +755,7 @@ fn tickets_from_text(app: &App, settings: &ProjectSettings) -> Text<'static> {
             tickets_value(app, settings),
         ]),
         if settings.tickets_untold {
-            said.red()
+            said.fg(theme.waiting)
         } else {
             said
         },

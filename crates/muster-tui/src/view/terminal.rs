@@ -112,6 +112,7 @@ pub(super) fn draw_terminal(
     session: muster_core::SessionId,
     area: Rect,
 ) {
+    let theme = super::theme::of(app);
     let [top, body] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
     let mut spans = vec![super::top_bar::name(app), Span::raw(" ")];
     if let Some(stored) = app.model.session(session) {
@@ -139,13 +140,15 @@ pub(super) fn draw_terminal(
         .get(&session)
         .map_or(0, crate::screen::Screen::scrolled_back);
     match &app.note {
-        Some(note) if note.error => spans.push(Span::from(format!("   {}", note.text)).red()),
-        Some(note) => spans.push(Span::from(format!("   {}", note.text)).green()),
+        Some(note) if note.error => {
+            spans.push(Span::from(format!("   {}", note.text)).fg(theme.waiting));
+        }
+        Some(note) => spans.push(Span::from(format!("   {}", note.text)).fg(theme.done)),
         None if back > 0 => spans.push(
             Span::from(format!(
                 "   ↑ {back} lines back · scroll down or type to return"
             ))
-            .yellow(),
+            .fg(theme.working),
         ),
         None => spans.push(
             Span::from(format!(

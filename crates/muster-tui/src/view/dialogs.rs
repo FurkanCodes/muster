@@ -215,6 +215,7 @@ fn naming_model<'a>(
     model: &'a LineInput,
     listed: Option<&Result<Vec<String>, String>>,
 ) -> Shape<'a> {
+    let theme = super::theme::of(app);
     let label = app
         .namers()
         .into_iter()
@@ -226,7 +227,7 @@ fn naming_model<'a>(
             Line::from(format!("{label} lists none: type one it knows.")).dim()
         }
         Some(Ok(models)) => Line::from(format!("It offers: {}", models.join(", "))).dim(),
-        Some(Err(error)) => Line::from(one_line(error)).red(),
+        Some(Err(error)) => Line::from(one_line(error)).fg(theme.waiting),
     };
     Shape {
         below: vec![offered],
@@ -336,6 +337,7 @@ fn new_session<'a>(
     harness: &HarnessChoice,
     prompt: &'a LineInput,
 ) -> Shape<'a> {
+    let theme = super::theme::of(app);
     // A branch, or, in a plain folder, which has none, the project.
     let place = match app.model.workspace(workspace) {
         Some(found) if !found.kind.in_git() => app
@@ -354,7 +356,7 @@ fn new_session<'a>(
         .then(|| app.model.second_agent_warning(workspace))
         .flatten();
     if let Some(warning) = warning {
-        lines.push(Line::from(warning).yellow());
+        lines.push(Line::from(warning).fg(theme.working));
     }
     lines.push(Line::from(run));
     let input = harness.takes_prompt().then(|| {
@@ -544,10 +546,11 @@ fn add_project<'a>(
 
 /// The repositories offered, the chosen one lit, and why ⏎ did nothing.
 fn repository_lines(app: &App, choice: &CloneChoice, columns: usize) -> Vec<Line<'static>> {
+    let theme = super::theme::of(app);
     let mut lines = match &choice.listed {
         None => vec![super::loading::rule(app, "Loading repositories", columns)],
         Some(Err(reason)) => vec![
-            Line::from(super::shorten(&format!("GitHub: {reason}"), columns)).red(),
+            Line::from(super::shorten(&format!("GitHub: {reason}"), columns)).fg(theme.waiting),
             Line::from("⏎ still clones one typed as owner/name.").dim(),
         ],
         Some(Ok(_)) => {
@@ -587,7 +590,7 @@ fn repository_lines(app: &App, choice: &CloneChoice, columns: usize) -> Vec<Line
     };
     lines.resize(CLONE_ROWS + 1, Line::from(""));
     if let Some(refused) = &choice.refused {
-        lines.push(Line::from(refused.clone()).red());
+        lines.push(Line::from(refused.clone()).fg(theme.waiting));
     }
     lines
 }

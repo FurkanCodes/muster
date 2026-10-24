@@ -463,7 +463,7 @@ fn a_long_preview_scrolls_to_its_last_line_and_no_further() {
         rows: 20,
     });
     let shown = preview(PreviewKind::Install, None);
-    let lines = crate::view::preview_lines(&shown).len();
+    let lines = crate::view::preview_lines(&shown, crate::view::theme::of(&world.app)).len();
     world.app.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Preview {
         preview: shown,
         offset: 0,

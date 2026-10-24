@@ -14,6 +14,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use super::dialogs::input_window;
 use super::plugins::{runs_lines, source_text};
 use super::settings::detail;
+use super::theme::Theme;
 use crate::app::plugins::{Typed, is_folder};
 use crate::app::{App, PluginDialog};
 use crate::cells;
@@ -32,12 +33,14 @@ pub(super) fn draw_plugin_dialog(
     dialog: &PluginDialog,
     area: Rect,
 ) {
+    let theme = super::theme::of(app);
     let width = area.width.saturating_sub(4).min(84);
     let inner = width.saturating_sub(2).max(1);
     let (title, parts) = match dialog {
-        PluginDialog::Add { typed, refused } => {
-            (" Add a plugin ".to_owned(), add(typed, refused.as_deref()))
-        }
+        PluginDialog::Add { typed, refused } => (
+            " Add a plugin ".to_owned(),
+            add(typed, refused.as_deref(), theme),
+        ),
         PluginDialog::Fetching { what, typed, .. } => {
             let title = if typed.is_some() {
                 " Add a plugin "
@@ -50,7 +53,7 @@ pub(super) fn draw_plugin_dialog(
             format!(" {title} "),
             vec![Part::Text(vec![
                 Line::from("It could not be fetched:"),
-                Line::from(one_line(message)).red(),
+                Line::from(one_line(message)).fg(theme.waiting),
                 Line::from(""),
                 Line::from("Nothing was changed.   esc close").dim(),
             ])],
@@ -59,7 +62,7 @@ pub(super) fn draw_plugin_dialog(
             let available = area.height.saturating_sub(2 + 2 + 2);
             (
                 title(preview),
-                shown_preview(preview, *offset, inner, available),
+                shown_preview(preview, *offset, inner, available, theme),
             )
         }
     };
@@ -159,7 +162,7 @@ fn rows(line: &Line<'_>, width: u16) -> u16 {
 
 /// Where to add a plugin from: an address or a folder, and a branch or
 /// tag for git.
-fn add<'a>(typed: &'a Typed, refused: Option<&str>) -> Vec<Part<'a>> {
+fn add<'a>(typed: &'a Typed, refused: Option<&str>, theme: Theme) -> Vec<Part<'a>> {
     let folder = is_folder(typed.address.text().trim());
     let mut parts = vec![
         Part::Text(vec![Line::from(
@@ -179,7 +182,10 @@ fn add<'a>(typed: &'a Typed, refused: Option<&str>) -> Vec<Part<'a>> {
     ];
     let mut below = vec![Line::from("")];
     if let Some(refused) = refused {
-        below.extend([Line::from(one_line(refused)).red(), Line::from("")]);
+        below.extend([
+            Line::from(one_line(refused)).fg(theme.waiting),
+            Line::from(""),
+        ]);
     }
     below.push(
         Line::from("⏎ fetch it and show what it runs   ⇥ the other field   esc cancel").dim(),
@@ -221,8 +227,9 @@ fn shown_preview(
     offset: usize,
     inner: u16,
     available: u16,
+    theme: Theme,
 ) -> Vec<Part<'static>> {
-    let lines = preview_lines(preview);
+    let lines = preview_lines(preview, theme);
     let total = lines.len();
     let mut shown = Vec::new();
     let mut used = 0;
@@ -254,7 +261,7 @@ fn shown_preview(
 /// Everything a preview shows, a line each before wrapping: what the
 /// plugin is, where it is from and would go, everything it would run,
 /// what it needs and what it would be given.
-pub(crate) fn preview_lines(preview: &PluginPreview) -> Vec<Line<'static>> {
+pub(crate) fn preview_lines(preview: &PluginPreview, theme: Theme) -> Vec<Line<'static>> {
     let details = &preview.details;
     let mut lines = vec![
         Line::from(format!(
@@ -319,7 +326,7 @@ pub(crate) fn preview_lines(preview: &PluginPreview) -> Vec<Line<'static>> {
     ));
     lines.push(detail("SHA-256", details.sha256.clone()));
     lines.push(Line::from(""));
-    lines.extend(runs_lines(details));
+    lines.extend(runs_lines(details, theme));
     lines.push(Line::from(""));
     let (done, after) = match preview.kind {
         PreviewKind::Update => ("updated", "Updating keeps it on or off, as it is."),
@@ -334,7 +341,7 @@ pub(crate) fn preview_lines(preview: &PluginPreview) -> Vec<Line<'static>> {
                 "It needs programs that are not on PATH: it can be {done}, but they are yours to \
                  get."
             ))
-            .yellow(),
+            .fg(theme.working),
         );
     }
     lines.push(Line::from(after));

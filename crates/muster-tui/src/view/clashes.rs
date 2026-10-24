@@ -6,10 +6,11 @@
 use muster_core::clashes::Clash;
 use muster_core::text::one_line;
 use muster_core::{WorkspaceId, WorkspaceKind};
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 
 use super::shorten;
+use super::theme::Theme;
 use crate::app::App;
 use crate::cells;
 
@@ -19,13 +20,13 @@ const NAMED: usize = 3;
 /// The word at the end of a worktree's line, if its work meets other
 /// work: `conflict` in red where merging both would conflict, else
 /// `overlap` in yellow.
-pub(super) fn mark(clashes: &[Clash]) -> Option<Span<'static>> {
+pub(super) fn mark(clashes: &[Clash], theme: Theme) -> Option<Span<'static>> {
     if clashes.iter().any(Clash::would_conflict) {
-        Some(Span::styled("conflict", Style::default().fg(Color::Red)))
+        Some(Span::styled("conflict", Style::default().fg(theme.waiting)))
     } else if clashes.is_empty() {
         None
     } else {
-        Some(Span::styled("overlap", Style::default().fg(Color::Yellow)))
+        Some(Span::styled("overlap", Style::default().fg(theme.working)))
     }
 }
 
@@ -66,30 +67,32 @@ fn what(clash: &Clash) -> String {
     format!("{said} {}{more}", named.join(", "))
 }
 
-fn style(clash: &Clash) -> Style {
+fn style(clash: &Clash, theme: Theme) -> Style {
     if clash.would_conflict() {
-        Style::default().fg(Color::Red)
+        Style::default().fg(theme.waiting)
     } else {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(theme.working)
     }
 }
 
 /// A line of the changes pane, `width` cells wide: `   ⎇ feature  would
 /// conflict in README.md`.
 pub(super) fn pane_line(app: &App, clash: &Clash, width: usize) -> Line<'static> {
+    let theme = super::theme::of(app);
     let other = other(app, clash.with);
     let room = width.saturating_sub(3 + cells::width(&other) + 2);
     Line::from(vec![
         Span::raw("   "),
         Span::raw(other),
         Span::raw("  "),
-        Span::styled(shorten(&what(clash), room.max(4)), style(clash)),
+        Span::styled(shorten(&what(clash), room.max(4)), style(clash, theme)),
     ])
 }
 
 /// The lines of a worktree's details, one for each other workspace:
 /// `Clashes ⎇ feature would conflict in README.md`.
 pub(super) fn detail_lines(app: &App, clashes: &[Clash]) -> Vec<Line<'static>> {
+    let theme = super::theme::of(app);
     clashes
         .iter()
         .enumerate()
@@ -98,7 +101,7 @@ pub(super) fn detail_lines(app: &App, clashes: &[Clash]) -> Vec<Line<'static>> {
             Line::from(vec![
                 Span::from(label).dim(),
                 Span::raw(format!("{} ", other(app, clash.with))),
-                Span::styled(what(clash), style(clash)),
+                Span::styled(what(clash), style(clash, theme)),
             ])
         })
         .collect()
@@ -141,13 +144,15 @@ mod tests {
     fn the_word_on_the_line_says_conflict_over_overlap() {
         let conflict = clash(&[("a", true)], 0);
         let overlap = clash(&[("b", false)], 0);
-        assert_eq!(mark(&[]), None);
+        assert_eq!(mark(&[], crate::view::theme::plain()), None);
         assert_eq!(
-            mark(std::slice::from_ref(&overlap)).map(|span| span.content.into_owned()),
+            mark(std::slice::from_ref(&overlap), crate::view::theme::plain())
+                .map(|span| span.content.into_owned()),
             Some("overlap".to_owned())
         );
         assert_eq!(
-            mark(&[overlap, conflict]).map(|span| span.content.into_owned()),
+            mark(&[overlap, conflict], crate::view::theme::plain())
+                .map(|span| span.content.into_owned()),
             Some("conflict".to_owned())
         );
     }

@@ -68,6 +68,7 @@ fn row_line(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
 
 /// A row's line after its edge.
 fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
+    let theme = super::theme::of(app);
     match row {
         TicketRow::Project(project) => {
             let project = *project;
@@ -96,7 +97,8 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
                     Span::from(format!("  {}{yours} open", tickets.len())).dim()
                 }
                 Some(Tickets::Failed(error)) => {
-                    Span::from(format!("  {}", shorten(error, width.saturating_sub(4)))).red()
+                    Span::from(format!("  {}", shorten(error, width.saturating_sub(4))))
+                        .fg(theme.waiting)
                 }
             };
             spans.push(state);
@@ -133,7 +135,7 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
             if let Some(found) = app.model.ticket_pull_request(&app.sharing(project), key) {
                 let mut with = marks.clone();
                 with.push(Span::raw("  "));
-                with.extend(pull_request::badge(found, true));
+                with.extend(pull_request::badge(found, true, theme));
                 if room_beside(&with) >= TITLE_KEPT {
                     marks = with;
                 }
@@ -258,6 +260,7 @@ fn names(app: &App, project: muster_core::ProjectId) -> Vec<Span<'static>> {
 }
 
 fn project_text(app: &App, project: muster_core::ProjectId, width: usize) -> Text<'static> {
+    let theme = super::theme::of(app);
     let sharing = app.sharing(project);
     let mut lines = Vec::new();
     for found in sharing.iter().filter_map(|id| app.model.project(*id)) {
@@ -270,7 +273,7 @@ fn project_text(app: &App, project: muster_core::ProjectId, width: usize) -> Tex
     lines.push(Line::from(""));
     match app.tickets.get(&project) {
         Some(Tickets::Failed(error)) => {
-            lines.push(Line::from("Its tickets could not be fetched:").red());
+            lines.push(Line::from("Its tickets could not be fetched:").fg(theme.waiting));
             lines.push(Line::from(error.clone()));
             lines.push(Line::from(""));
             lines.push(
@@ -325,6 +328,7 @@ fn ticket_text(
     width: usize,
     parts: &mut Vec<usize>,
 ) -> Text<'static> {
+    let theme = super::theme::of(app);
     let Some(ticket) = app.ticket(project, key) else {
         return Text::default();
     };
@@ -351,7 +355,7 @@ fn ticket_text(
         if !about.is_empty() {
             about.push(Span::from(" · ").dim());
         }
-        about.push(Span::from(ticket.labels.join(", ")).cyan());
+        about.push(Span::from(ticket.labels.join(", ")).fg(theme.news));
     }
     if !about.is_empty() {
         lines.push(Line::from(about));
@@ -410,7 +414,7 @@ fn ticket_text(
                 .and_then(|workspace| workspace.pull_request.as_ref())
             {
                 spans.push(Span::raw("  "));
-                spans.extend(pull_request::badge(found, false));
+                spans.extend(pull_request::badge(found, false, theme));
             }
             lines.push(Line::from(spans));
         }
@@ -426,7 +430,9 @@ fn ticket_text(
     match app.ticket_texts.get(&(project, key.clone())) {
         None | Some(TicketText::Loading) => lines.push(loading::rule(app, "Loading ticket", width)),
         Some(TicketText::Failed(error)) => {
-            lines.push(Line::from(format!("Its text could not be fetched: {error}")).red());
+            lines.push(
+                Line::from(format!("Its text could not be fetched: {error}")).fg(theme.waiting),
+            );
         }
         Some(TicketText::Loaded { body, comments }) => {
             let theme = super::theme::of(app);

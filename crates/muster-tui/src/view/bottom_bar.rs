@@ -62,12 +62,13 @@ pub(crate) fn bottom_height(app: &App, width: u16) -> u16 {
 }
 
 pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let theme = super::theme::of(app);
     if message(app).is_none()
         && let Some(warning) = stale(app)
     {
         let [above, hints_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
-        let warning = Line::from(note_text(&warning)).yellow();
+        let warning = Line::from(note_text(&warning)).fg(theme.working);
         frame.render_widget(Paragraph::new(warning).wrap(Wrap { trim: false }), above);
         draw_hints(frame, app, hints_area);
         return;
@@ -75,9 +76,9 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
     if let Some((text, error)) = message(app) {
         let text = Line::from(note_text(text));
         let text = match (error, app.note_fading()) {
-            (true, _) => text.red(),
-            (false, true) => text.green().dim(),
-            (false, false) => text.green(),
+            (true, _) => text.fg(theme.waiting),
+            (false, true) => text.fg(theme.done).dim(),
+            (false, false) => text.fg(theme.done),
         };
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), area);
         return;

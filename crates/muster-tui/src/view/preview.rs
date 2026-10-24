@@ -61,6 +61,7 @@ pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
 
 /// A worktree's or a checkout's details, and what can be done with it.
 fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
+    let theme = super::theme::of(app);
     let id = workspace.id;
     let sessions = app.model.sessions_of(id).count();
     let mut lines = Vec::new();
@@ -96,7 +97,7 @@ fn workspace_details(app: &App, workspace: &Workspace) -> Text<'static> {
         };
         let mut spans = vec![Span::from("Changed ").dim()];
         if summary.added + summary.removed > 0 {
-            spans.extend(super::changes::summary(summary));
+            spans.extend(super::changes::summary(summary, theme));
             spans.push(Span::raw(format!(" in {files}")));
         } else {
             spans.push(Span::raw(files));

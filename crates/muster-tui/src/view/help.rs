@@ -7,6 +7,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
+use super::theme::Theme;
 use crate::app::{App, Help, HelpLine, View};
 use crate::cells;
 
@@ -14,6 +15,7 @@ use crate::cells;
 const KEYS_WIDTH: usize = 22;
 
 pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: Rect) {
+    let theme = super::theme::of(app);
     let width = window.width.saturating_sub(4).min(76);
     let height = window.height.saturating_sub(2).min(30);
     let area = Rect::new(
@@ -37,7 +39,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
         .title(format!(" Keys · {screen} "))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().cyan());
+        .border_style(Style::default().fg(theme.accent));
     let inner = block.inner(area);
     frame.render_widget(block, area);
     if inner.height < 3 {
@@ -56,7 +58,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
     let room = usize::from(inner.height.saturating_sub(3));
     let width = usize::from(inner.width);
     for line in shown.iter().skip(help.offset) {
-        let rows = help_rows(line, width);
+        let rows = help_rows(line, width, theme);
         if lines.len() - 2 + rows.len() > room {
             break;
         }
@@ -78,9 +80,11 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
 
 /// The rows `line` takes `width` cells wide: what a key does wraps under
 /// itself, clear of the keys' column.
-fn help_rows(line: &HelpLine, width: usize) -> Vec<Line<'static>> {
+fn help_rows(line: &HelpLine, width: usize, theme: Theme) -> Vec<Line<'static>> {
     match line {
-        HelpLine::Heading(heading) => vec![Line::from(Span::from(*heading).cyan().bold())],
+        HelpLine::Heading(heading) => {
+            vec![Line::from(Span::from(*heading).fg(theme.accent).bold())]
+        }
         HelpLine::Key(keys, what) => {
             let keys = format!("  {keys}");
             let gap = KEYS_WIDTH.saturating_sub(cells::width(&keys)).max(1);

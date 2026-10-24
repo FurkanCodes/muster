@@ -4,7 +4,7 @@
 use muster_core::{Session, SessionStatus, WorkspaceId, WorkspaceKind};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
@@ -392,11 +392,15 @@ fn branch_and_tail(
     branch: &str,
     room: usize,
 ) -> (Vec<Span<'static>>, usize) {
+    let theme = super::theme::of(app);
     let workspace = app.model.workspace(id);
     let found = workspace.and_then(|workspace| workspace.pull_request.as_ref());
     let summary = workspace.and_then(|workspace| workspace.changes.as_ref());
-    let mark = clashes::mark(workspace.map_or(&[][..], |workspace| &workspace.clashes));
-    let tail = worktree_tail(branch, mark.as_ref(), summary, found, room);
+    let mark = clashes::mark(
+        workspace.map_or(&[][..], |workspace| &workspace.clashes),
+        theme,
+    );
+    let tail = worktree_tail(branch, mark.as_ref(), summary, found, room, theme);
     let branch_room = if tail.is_empty() {
         room
     } else {
@@ -415,6 +419,7 @@ fn worktree_tail(
     summary: Option<&muster_core::ChangeSummary>,
     found: Option<&muster_core::PullRequestStatus>,
     room: usize,
+    theme: super::theme::Theme,
 ) -> Vec<Span<'static>> {
     let fits = |tail: &[Span<'_>]| {
         tail.is_empty() || cells::width(branch) + 1 + pull_request::width(tail) <= room
@@ -425,13 +430,13 @@ fn worktree_tail(
             if !tail.is_empty() {
                 tail.push(Span::raw(" "));
             }
-            tail.extend(changes::summary(summary));
+            tail.extend(changes::summary(summary, theme));
         }
         if let Some(found) = found {
             if !tail.is_empty() {
                 tail.push(Span::raw(" "));
             }
-            tail.extend(pull_request::badge(found, compact));
+            tail.extend(pull_request::badge(found, compact, theme));
         }
         tail
     };
@@ -797,7 +802,7 @@ fn flashed(app: &App, session: &Session, mut text: Text<'static>) -> Text<'stati
     let colour = status_symbol(&theme, session.status, None)
         .1
         .fg
-        .unwrap_or(Color::White);
+        .unwrap_or(theme.text);
     let flash = motion::flash(colour, theme.on_accent, age);
     for line in &mut text.lines {
         match flash {
@@ -815,11 +820,12 @@ fn flashed(app: &App, session: &Session, mut text: Text<'static>) -> Text<'stati
 }
 
 pub(super) fn draw_needs_you(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let theme = super::theme::of(app);
     let block = list_block(app, "waiting on you", app.list_has_keys());
     if app.needs_list.is_empty() {
         let text = Text::from(vec![
             Line::from(""),
-            Line::from(" ✓ All clear").green().bold(),
+            Line::from(" ✓ All clear").fg(theme.done).bold(),
             Line::from(""),
             Line::from(" Nothing is waiting on you.").dim(),
             Line::from(" Agents that ask you something, or finish while").dim(),

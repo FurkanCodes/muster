@@ -359,7 +359,9 @@ impl App {
             _ => None,
         };
         if let Some(by) = scroll {
-            let last = crate::view::preview_lines(&preview).len().saturating_sub(1);
+            let last = crate::view::preview_lines(&preview, crate::view::theme::of(self))
+                .len()
+                .saturating_sub(1);
             let offset = offset.saturating_add_signed(by).min(last);
             self.mode = Mode::Dialog(Dialog::Plugin(PluginDialog::Preview { preview, offset }));
             return Vec::new();
