@@ -80,7 +80,7 @@ function Commands() {
   const items = catalogue(app, typed, tickets);
   const lit = Math.min(at, items.length - 1);
   const chosen = items[lit];
-  const help = labelOf(app.daemon.store.getState().preferences, "help");
+  const help = labelOf(app.daemon.store.getState(), "help");
 
   const run = (item: PaletteItem | undefined) => {
     if (!item) return;
@@ -233,11 +233,7 @@ function EveryKey({ changes }: { changes: boolean }) {
   const [typed, setTyped] = useState("");
   const list = useRef<HTMLDivElement>(null);
   const close = () => actions.openPalette(false);
-  const sections = helpFor(
-    changes ? "changes" : screen,
-    app.daemon.store.getState().preferences,
-    typed,
-  );
+  const sections = helpFor(changes ? "changes" : screen, app.daemon.store.getState(), typed);
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const by = { ArrowDown: 32, ArrowUp: -32, PageDown: 320, PageUp: -320 }[event.key];
     if (by !== undefined) {

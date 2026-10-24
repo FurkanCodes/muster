@@ -87,7 +87,7 @@ const SETTINGS: readonly [row: string, label: string, page: string][] = [
 ];
 
 function actionsHere(app: App): PaletteItem[] {
-  const prefs = app.daemon.store.getState().preferences;
+  const keyed = app.daemon.store.getState();
   const { session, workspace, project, onProject } = act.here(app);
   const group = session
     ? `Actions on ${session.title}`
@@ -104,11 +104,11 @@ function actionsHere(app: App): PaletteItem[] {
       id: `do:${action}`,
       group,
       label,
-      keys: labelOf(prefs, action),
+      keys: labelOf(keyed, action),
       meta: null,
       lead: { kind: "none" },
       run: () => {
-        const key = keysOf(prefs, action)[0];
+        const key = keysOf(keyed, action)[0];
         if (!key || !pressKey(key.chord)) run(app);
       },
     });
@@ -188,14 +188,14 @@ function actionsHere(app: App): PaletteItem[] {
 }
 
 function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
-  const prefs = app.daemon.store.getState().preferences;
+  const keyed = app.daemon.store.getState();
   const group = "Anywhere";
   const items: PaletteItem[] = [
     {
       id: "do:add_project",
       group,
       label: "Add a project",
-      keys: labelOf(prefs, "add_project"),
+      keys: labelOf(keyed, "add_project"),
       meta: null,
       lead: { kind: "none" },
       run: () => act.addProject(app),
@@ -204,7 +204,7 @@ function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
       id: "do:clone_project",
       group,
       label: "Clone a project from GitHub",
-      keys: labelOf(prefs, "clone_project"),
+      keys: labelOf(keyed, "clone_project"),
       meta: null,
       lead: { kind: "none" },
       run: () => act.cloneProject(app),
@@ -215,7 +215,7 @@ function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
       id: "do:new_session",
       group,
       label: "Start a new session",
-      keys: labelOf(prefs, "new_session"),
+      keys: labelOf(keyed, "new_session"),
       meta: null,
       lead: { kind: "none" },
       run: () => act.newSession(app),
@@ -244,7 +244,7 @@ function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
       id: "help",
       group,
       label: "Every key of this screen",
-      keys: labelOf(prefs, "help"),
+      keys: labelOf(keyed, "help"),
       meta: null,
       lead: { kind: "none" },
       run: () => app.actions.openPalette(true, "keys"),

@@ -6,9 +6,10 @@
 // person's browser. Where none can be, the TUI's words say why.
 
 import type { App } from "../app/context";
-import { handsOn, here, START_SIZE, said } from "../flows/actions";
+import { handsOn, here, START_SIZE } from "../flows/actions";
 import { labelOf } from "../flows/keymap";
 import type { Command } from "../ipc/generated/Command";
+import { errorText } from "../lib/text";
 import { whenKnown } from "../state/whenKnown";
 
 function complain(app: App, text: string): void {
@@ -31,7 +32,7 @@ function startAndOpen(app: App, command: Command): void {
         app.actions.keysTo("terminal");
       });
     },
-    (error: unknown) => complain(app, said(error)),
+    (error: unknown) => complain(app, errorText(error)),
   );
 }
 
@@ -61,7 +62,7 @@ export function openPullRequest(app: App): void {
       const { pr } = reply.PullRequestOpened;
       app.actions.tell(`Draft pull request #${pr.number} is open: ${pr.url}`);
     },
-    (error: unknown) => complain(app, said(error)),
+    (error: unknown) => complain(app, errorText(error)),
   );
 }
 
@@ -69,9 +70,9 @@ export function openPullRequest(app: App): void {
 export function browsePullRequest(app: App): void {
   const pr = here(app).workspace?.pull_request;
   if (!pr) {
-    const open = labelOf(app.daemon.store.getState().preferences, "open_pull_request");
+    const open = labelOf(app.daemon.store.getState(), "open_pull_request");
     complain(app, `No pull request from this branch is known; ${open} opens one.`);
     return;
   }
-  app.bridge.openUrl(pr.url).catch((error: unknown) => complain(app, said(error)));
+  app.bridge.openUrl(pr.url).catch((error: unknown) => complain(app, errorText(error)));
 }

@@ -4,6 +4,7 @@ import { useActions, useApp, useBridge, useDaemon } from "../../app/context";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
 import { agentOf, OWN } from "../../lib/agents";
+import { errorText } from "../../lib/text";
 import { whenKnown } from "../../state/whenKnown";
 import { AgentChoice } from "../../ui/AgentChoice";
 import { Button } from "../../ui/controls";
@@ -12,7 +13,7 @@ import { Select } from "../../ui/Select";
 import { BranchName, ErrorText } from "../../ui/status";
 import { Field } from "../../ui/TextField";
 import { shownKey, ticketBranch, worktreesFor } from "./agents";
-import { givenWords, message, TEXT_ALONE, type TicketsModel, ticketId } from "./data";
+import { givenWords, TEXT_ALONE, type TicketsModel, ticketId } from "./data";
 import { ticketText } from "./TicketText";
 
 export function Assign({
@@ -78,7 +79,7 @@ export function Assign({
           setSettings(reply.ProjectSettings);
       })
       .catch((error) => {
-        if (current) setError(message(error));
+        if (current) setError(errorText(error));
       });
     return () => {
       current = false;
@@ -148,7 +149,7 @@ export function Assign({
       actions.tell(`Started ${name} on ${shownKey(issue.key)}.`);
       onClose();
     } catch (error) {
-      setError(message(error));
+      setError(errorText(error));
       setBusy(false);
     }
   }

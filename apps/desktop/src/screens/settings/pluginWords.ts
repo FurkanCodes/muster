@@ -9,7 +9,8 @@ import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import type { PluginSource } from "../../ipc/generated/PluginSource";
 import { chordLabel, parseChord } from "../../keys/chord";
 import { type Keymap, labelOf, panelName } from "../../keys/keymap";
-import { commandLine, hookWhen, hookWords, oneLine, whenWords } from "./words";
+import { oneLine } from "../../lib/text";
+import { commandLine, hookWhen, hookWords, whenWords } from "./words";
 
 /** Whether `address` names a folder rather than a git repository (`plugins::is_folder`). */
 export function isFolder(address: string): boolean {

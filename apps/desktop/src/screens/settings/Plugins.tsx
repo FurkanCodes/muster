@@ -9,6 +9,7 @@ import { useNow } from "../../app/clock";
 import { useDaemon } from "../../app/context";
 import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import { useKeyLabel, useKeymap } from "../../keys/useKeymap";
+import { oneLine } from "../../lib/text";
 import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
 import { Button, Pressable } from "../../ui/controls";
 import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
@@ -21,15 +22,7 @@ import { rowKey, rowName } from "./model";
 import { PluginFacts } from "./PluginFacts";
 import { brings, pluginName, pluginOrder, runs, sourceText, wantsApproval } from "./pluginWords";
 import { Footnote, SettingRow, Unreadable } from "./Row";
-import {
-  capital,
-  changeWords,
-  oneLine,
-  problemText,
-  problemWord,
-  sentence,
-  sourceWord,
-} from "./words";
+import { capital, changeWords, problemText, problemWord, sentence, sourceWord } from "./words";
 
 function usePlugin(id: string): PluginInfo | undefined {
   return useDaemon((daemon) => daemon.plugins.find((plugin) => plugin.id === id));

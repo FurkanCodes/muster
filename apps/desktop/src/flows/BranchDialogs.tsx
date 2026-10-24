@@ -135,7 +135,7 @@ export function Move({ workspace }: { workspace: WorkspaceId }) {
         throw new Error("The daemon answered something else; try again.");
       const { onto: moved, commits: replayed, entry } = reply.Moved;
       const state = app.daemon.store.getState();
-      const keys = (action: "put_back" | "show_changes") => labelOf(state.preferences, action);
+      const keys = (action: "put_back" | "show_changes") => labelOf(state, action);
       const open = state.workspaces[workspace]?.pull_request;
       const push =
         open && (open.state === "open" || open.state === "draft")

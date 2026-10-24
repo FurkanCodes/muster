@@ -12,6 +12,7 @@ import type { AgentFound } from "../../ipc/generated/AgentFound";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { agentOf } from "../../lib/agents";
+import { errorText, oneLine } from "../../lib/text";
 import { Button } from "../../ui/controls";
 import { Label } from "../../ui/Label";
 import { Loading } from "../../ui/Loading";
@@ -29,7 +30,6 @@ import { canAsk } from "./asks";
 import { useSettings } from "./context";
 import { rowKey } from "./model";
 import { Control, Footnote, Group, Page, SettingRow, SettingText, Unreadable } from "./Row";
-import { oneLine } from "./words";
 
 /** A thing that holds or not: ✓ in the finished colour, or a quiet ✗; then what it is. */
 function Check({ holds, children }: { holds: boolean; children: string }) {
@@ -173,7 +173,7 @@ export function Agents({ preferences }: { preferences: Preferences }) {
       .then(
         () =>
           ui.tell(`Opened ${preferences.file} in your editor. Press ${readKey} once it is saved.`),
-        (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+        (error: unknown) => ui.tell(errorText(error), true),
       )
       .finally(() => setOpening(false));
   };

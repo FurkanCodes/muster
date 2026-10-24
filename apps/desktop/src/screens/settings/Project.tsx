@@ -10,6 +10,7 @@ import type { ProjectId } from "../../ipc/generated/ProjectId";
 import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
 import type { SettingSource } from "../../ipc/generated/SettingSource";
 import { useKeyLabel } from "../../keys/useKeymap";
+import { errorText, oneLine } from "../../lib/text";
 import { projectColour } from "../../state/selectors";
 import { Banner, BannerBody, BannerLead } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
@@ -29,7 +30,7 @@ import {
   offeredTrackers,
   ticketsFrom,
 } from "./trackers";
-import { listed, oneLine, sentence } from "./words";
+import { listed, sentence } from "./words";
 
 /** Where a setting is set, where it is not the person's own file. */
 function setIn(from: SettingSource): string | undefined {
@@ -131,7 +132,7 @@ function RemoveProject({ project, name }: { project: ProjectId; name: string }) 
     setAsking(false);
     bridge.command({ RemoveProject: { project } }).then(
       () => ui.tell("Muster no longer tracks the project; its folder is untouched."),
-      (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+      (error: unknown) => ui.tell(errorText(error), true),
     );
   };
   return (

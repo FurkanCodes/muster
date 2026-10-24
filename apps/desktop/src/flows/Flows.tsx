@@ -6,9 +6,11 @@
 import { lazy, Suspense, useEffect } from "react";
 import { type App, useApp, useDaemon, useUi } from "../app/context";
 import { type KeyHandlers, useKeys } from "../app/keys";
+import { useKeymap } from "../keys/useKeymap";
+import { errorText } from "../lib/text";
 import type { ScreenId } from "../state/ui";
 import * as act from "./actions";
-import { type KeyAction, keysOf } from "./keymap";
+import { type KeyAction, keysIn } from "./keymap";
 // The palette comes with the window: what is typed straight after ⌘K must
 // reach its field. The dialogs load when first asked.
 import Palette from "./Palette";
@@ -33,16 +35,16 @@ const BOUND: readonly [KeyAction, (app: App) => void, readonly ScreenId[]][] = [
 
 function useFlowKeys(app: App): void {
   const screen = useUi((state) => state.screen);
-  const preferences = useDaemon((state) => state.preferences);
+  const map = useKeymap();
   const linked = useDaemon((state) => state.link.state === "up");
   const handlers: Record<string, KeyHandlers[string]> = {};
   if (linked) {
     for (const [action, run, screens] of BOUND) {
       if (!screens.includes(screen)) continue;
-      for (const key of keysOf(preferences, action)) handlers[key.chord] = () => run(app);
+      for (const key of keysIn(map, action)) handlers[key.chord] = () => run(app);
     }
   }
-  for (const key of keysOf(preferences, "help"))
+  for (const key of keysIn(map, "help"))
     handlers[key.chord] = () => app.actions.openPalette(true, "keys");
   useKeys(handlers, { beneath: true });
 }
@@ -61,7 +63,7 @@ function useFolderDrop(app: App): void {
           adding.add(path);
           act
             .addProjectAt(app, path)
-            .catch((error: unknown) => app.actions.tell(act.said(error), true))
+            .catch((error: unknown) => app.actions.tell(errorText(error), true))
             .finally(() => adding.delete(path));
         }
       })

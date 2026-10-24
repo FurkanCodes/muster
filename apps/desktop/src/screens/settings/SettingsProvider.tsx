@@ -14,6 +14,7 @@ import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import type { PluginPreview } from "../../ipc/generated/PluginPreview";
 import type { ProjectId } from "../../ipc/generated/ProjectId";
 import { useKeymap } from "../../keys/useKeymap";
+import { errorText, oneLine } from "../../lib/text";
 import { projectsInOrder } from "../../state/selectors";
 import { agentIds } from "./agentList";
 import {
@@ -29,14 +30,11 @@ import { keyEntries, narrowed } from "./keyRows";
 import { keptRow, movedRow, rowKey, rowName, settingRows } from "./model";
 import { isFolder, pluginOrder } from "./pluginWords";
 import { chosenTracker, fieldsFor, offeredTrackers } from "./trackers";
-import { oneLine, problemText } from "./words";
+import { problemText } from "./words";
 
 const NO_AGENTS: never[] = [];
 
 /** The message of a refusal, as the daemon wrote it. */
-function said(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** What approving a preview is doing, for the note meanwhile. */
 function doing(preview: PluginPreview): string {
@@ -129,7 +127,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const selected = keptRow(rows, wanted);
 
   const send = (command: Command) => bridge.command(command);
-  const fail = (error: unknown) => ui.tell(said(error), true);
+  const fail = (error: unknown) => ui.tell(errorText(error), true);
   const hold = (row: string, held: boolean) =>
     setBusy((now) => {
       const next = new Set(now);
@@ -166,7 +164,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           }
         },
         (error: unknown) =>
-          setProjects((now) => new Map(now).set(project, { state: "failed", error: said(error) })),
+          setProjects((now) =>
+            new Map(now).set(project, { state: "failed", error: errorText(error) }),
+          ),
       );
     }
   }, [bridge, projectIds, projects]);
@@ -194,7 +194,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         }
       },
       (error: unknown) => {
-        if (asked.current === request) setDialog(refused(said(error)));
+        if (asked.current === request) setDialog(refused(errorText(error)));
       },
     );
   };

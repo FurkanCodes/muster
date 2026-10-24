@@ -1,3 +1,4 @@
+import { oneLine } from "../../lib/text";
 // What Settings says, in the terminal UI's words where it says the same
 // thing (crates/muster-tui/src/view/settings.rs, plugins.rs,
 // plugin_dialog.rs, telling.rs), as plain functions of the state.
@@ -11,17 +12,6 @@ import type { PluginProblem } from "../../ipc/generated/PluginProblem";
 import type { PluginSource } from "../../ipc/generated/PluginSource";
 import type { Sound } from "../../ipc/generated/Sound";
 import type { When } from "../../ipc/generated/When";
-
-/** Text from outside Muster on one line, its control characters gone (`text::one_line`). */
-export function oneLine(text: string): string {
-  let out = "";
-  for (const char of text) {
-    const code = char.codePointAt(0) ?? 0;
-    if (char === "\n" || char === "\r" || char === "\t") out += " ";
-    else if (code >= 0x20 && !(code >= 0x7f && code < 0xa0)) out += char;
-  }
-  return out;
-}
 
 /** `text` with its first letter a capital, for a sentence. */
 export function capital(text: string): string {

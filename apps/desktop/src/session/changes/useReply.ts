@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useBridge, useUi } from "../../app/context";
 import type { Command } from "../../ipc/generated/Command";
 import type { Reply } from "../../ipc/generated/Reply";
+import { errorText } from "../../lib/text";
 
 export type Answer<T> =
   | { state: "loading" }
@@ -32,8 +33,7 @@ export function useReply(command: Command | null, revision: string): Answer<Repl
     };
     bridge.command(request.current).then(
       (value) => settle({ state: "ready", value }),
-      (error: unknown) =>
-        settle({ state: "error", error: error instanceof Error ? error.message : String(error) }),
+      (error: unknown) => settle({ state: "error", error: errorText(error) }),
     );
     return () => {
       current = false;

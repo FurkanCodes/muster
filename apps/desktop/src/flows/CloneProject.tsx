@@ -17,10 +17,10 @@ import { Label } from "../ui/Label";
 import { Loading } from "../ui/Loading";
 import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
-import { said } from "./actions";
 import { folderOf, repositoryName, shownRepositories } from "./repositories";
 import { useTask } from "./useTask";
 import "./flows.css";
+import { errorText } from "../lib/text";
 
 type Listing =
   | { state: "asking" }
@@ -41,7 +41,7 @@ function useListing(): Listing {
         else setListing({ state: "failed", error: "The daemon answered something else." });
       },
       (error: unknown) => {
-        if (current) setListing({ state: "failed", error: said(error) });
+        if (current) setListing({ state: "failed", error: errorText(error) });
       },
     );
     return () => {

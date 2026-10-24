@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { oneLine } from "../../lib/text";
 import {
   changeWords,
   commandLine,
@@ -6,7 +7,6 @@ import {
   hookWhen,
   hookWords,
   listed,
-  oneLine,
   problemText,
   problemWord,
   sentence,

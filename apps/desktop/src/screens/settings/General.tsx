@@ -8,6 +8,7 @@ import type { Palette } from "../../ipc/generated/Palette";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import type { SessionLines } from "../../ipc/generated/SessionLines";
 import { useKeyLabel } from "../../keys/useKeymap";
+import { errorText } from "../../lib/text";
 import { chats } from "../../state/selectors";
 import type { Theme } from "../../state/ui";
 import { Button, Segmented } from "../../ui/controls";
@@ -103,7 +104,7 @@ export function General({ preferences }: { preferences: Preferences }) {
       .restartInPlace()
       .then(
         (said) => ui.tell(said || "The daemon restarted in place."),
-        (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+        (error: unknown) => ui.tell(errorText(error), true),
       )
       .finally(() => setRestarting(false));
   };

@@ -3,7 +3,7 @@
 // saying what went wrong.
 
 import { useRef, useState } from "react";
-import { said } from "./actions";
+import { errorText } from "../lib/text";
 
 export function useTask() {
   const pending = useRef(false);
@@ -17,7 +17,7 @@ export function useTask() {
     try {
       await task();
     } catch (failure) {
-      setError(said(failure));
+      setError(errorText(failure));
     } finally {
       pending.current = false;
       setBusy(false);

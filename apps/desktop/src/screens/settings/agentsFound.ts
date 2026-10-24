@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { useBridge, useDaemon } from "../../app/context";
 import type { AgentFound } from "../../ipc/generated/AgentFound";
+import { errorText } from "../../lib/text";
 
 export type Found =
   | { state: "asking" }
@@ -38,7 +39,7 @@ export function useAgentsFound(again: number): Found {
         if (current)
           setFound({
             state: "not-known",
-            why: error instanceof Error ? error.message : String(error),
+            why: errorText(error),
           });
       },
     );

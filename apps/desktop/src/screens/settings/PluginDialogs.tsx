@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useActions, useBridge } from "../../app/context";
 import type { PluginPreview } from "../../ipc/generated/PluginPreview";
+import { errorText, oneLine } from "../../lib/text";
 import { Banner, BannerBody } from "../../ui/Banner";
 import { Button } from "../../ui/controls";
 import { Dialog, DialogText } from "../../ui/Dialog";
@@ -16,7 +17,6 @@ import { TextField } from "../../ui/TextField";
 import { type PluginDialog, useSettings } from "./context";
 import { PluginFacts } from "./PluginFacts";
 import { isFolder, missingPrograms, sourceText } from "./pluginWords";
-import { oneLine } from "./words";
 
 function AddPlugin({ dialog }: { dialog: Extract<PluginDialog, { step: "add" }> }) {
   const { actions } = useSettings();
@@ -242,7 +242,7 @@ function Remove({ dialog }: { dialog: Extract<PluginDialog, { step: "remove" }> 
     actions.setDialog(null);
     bridge.command({ Plugin: { Remove: { id: dialog.id } } }).then(
       () => ui.tell(`Removed ${id}.`),
-      (error: unknown) => ui.tell(error instanceof Error ? error.message : String(error), true),
+      (error: unknown) => ui.tell(errorText(error), true),
     );
   };
   return (

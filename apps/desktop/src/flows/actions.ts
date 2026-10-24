@@ -8,6 +8,7 @@ import type { App } from "../app/context";
 import type { Project } from "../ipc/generated/Project";
 import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
+import { errorText } from "../lib/text";
 import { projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import { whenKnown } from "../state/whenKnown";
@@ -46,7 +47,7 @@ function complain(app: App, text: string): void {
 }
 
 function key(app: App, action: Parameters<typeof labelOf>[1]): string {
-  return labelOf(app.daemon.store.getState().preferences, action);
+  return labelOf(app.daemon.store.getState(), action);
 }
 
 /** Whether a session still runs: it has not ended. */
@@ -76,7 +77,7 @@ export function addProject(app: App): void {
   app.bridge.pickFolder().then((picked) => {
     if (picked.kind === "unavailable") return browse();
     if (picked.kind === "chosen")
-      addProjectAt(app, picked.path).catch((error: unknown) => complain(app, said(error)));
+      addProjectAt(app, picked.path).catch((error: unknown) => complain(app, errorText(error)));
   }, browse);
 }
 
@@ -199,7 +200,7 @@ export function restart(app: App): void {
   }
   app.bridge.command({ RestartSession: { session: session.id, size: START_SIZE } }).then(
     () => app.actions.showTerminal(session.id),
-    (error: unknown) => complain(app, said(error)),
+    (error: unknown) => complain(app, errorText(error)),
   );
 }
 
@@ -253,6 +254,3 @@ export async function addProjectAt(app: App, path: string): Promise<void> {
 }
 
 /** What a refused command says. */
-export function said(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

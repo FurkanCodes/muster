@@ -13,6 +13,7 @@ import type { SessionId } from "../ipc/generated/SessionId";
 import type { TermSize } from "../ipc/generated/TermSize";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import type { PanelAction } from "../keys/keymap";
+import { errorText } from "../lib/text";
 import type { DaemonState } from "../state/daemon";
 import { shownHarness } from "../state/selectors";
 
@@ -57,7 +58,7 @@ export function panelBeside(state: DaemonState, shown: SessionId): SessionId | n
 }
 
 function refused(app: App, error: unknown): void {
-  app.actions.tell(error instanceof Error ? error.message : String(error), true);
+  app.actions.tell(errorText(error), true);
 }
 
 /** Gives a terminal beside the session the keys. */

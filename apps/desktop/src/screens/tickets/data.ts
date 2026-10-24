@@ -4,6 +4,7 @@ import type { Issue } from "../../ipc/generated/Issue";
 import type { PluginInfo } from "../../ipc/generated/PluginInfo";
 import type { Reply } from "../../ipc/generated/Reply";
 import type { TicketBrief } from "../../ipc/generated/TicketBrief";
+import { errorText } from "../../lib/text";
 
 export type Issues = Extract<Reply, { Issues: unknown }>["Issues"];
 export type Viewed = Extract<Reply, { IssueViewed: unknown }>["IssueViewed"];
@@ -69,10 +70,6 @@ export function ticketSources(plugins: readonly PluginInfo[]): string {
     .join("\n");
 }
 
-export function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function createTickets(bridge: Bridge) {
   const store = createStore<TicketData>(() => ({
     lists: {},
@@ -109,7 +106,7 @@ function createTickets(bridge: Bridge) {
         throw new Error("The daemon did not return its tickets.");
       if (asked[project] === ask) setList(project, { state: "loaded", value: reply.Issues });
     } catch (error) {
-      if (asked[project] === ask) setList(project, { state: "failed", error: message(error) });
+      if (asked[project] === ask) setList(project, { state: "failed", error: errorText(error) });
     }
   }
   async function view(project: string, issue: Issue) {
@@ -125,7 +122,7 @@ function createTickets(bridge: Bridge) {
         setText(id, { state: "loaded", value: reply.IssueViewed });
     } catch (error) {
       if (store.getState().texts[id] === loading)
-        setText(id, { state: "failed", error: message(error) });
+        setText(id, { state: "failed", error: errorText(error) });
     }
   }
   function refresh(projects: readonly string[]) {

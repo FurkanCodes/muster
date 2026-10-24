@@ -1,3 +1,4 @@
+import { oneLine } from "../../lib/text";
 // What the changes view says, in the TUI's words (app::timeline::label,
 // view::clashes, muster_core::changes) with the board's punctuation.
 
@@ -7,11 +8,6 @@ import type { Clash } from "../../ipc/generated/Clash";
 import type { Entry } from "../../ipc/generated/Entry";
 import type { Timeline } from "../../ipc/generated/Timeline";
 import type { Workspace } from "../../ipc/generated/Workspace";
-
-/** `muster_core::text::one_line`: line breaks and tabs as spaces, other control characters dropped. */
-export function oneLine(text: string): string {
-  return text.replace(/[\n\r\t]/g, " ").replace(/\p{Cc}/gu, "");
-}
 
 /** `timeline::turn_of_session`: a turn's place among its session's kept turns, from 1. */
 export function turnOf(timeline: Timeline, entry: Entry): number | null {

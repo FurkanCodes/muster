@@ -13,14 +13,11 @@ import type { Timeline } from "../../ipc/generated/Timeline";
 import type { UndoPlan } from "../../ipc/generated/UndoPlan";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { ago } from "../../lib/format";
+import { errorText, oneLine } from "../../lib/text";
 import { Button } from "../../ui/controls";
 import { Detail, DetailList } from "../../ui/DetailList";
 import { Dialog, DialogText } from "../../ui/Dialog";
-import { entryLabel, oneLine, turnOf } from "./labels";
-
-function failure(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { entryLabel, turnOf } from "./labels";
 
 /** What the files go back to, for the question: `Codex's turn 2`. */
 export function beforeWhat(timeline: Timeline, entry: Entry | undefined, number: number): string {
@@ -78,7 +75,7 @@ export function PutBack({
       },
       (error: unknown) => {
         if (!current) return;
-        closing.current.actions.tell(failure(error), true);
+        closing.current.actions.tell(errorText(error), true);
         closing.current.onClose();
       },
     );
@@ -144,7 +141,7 @@ function PlanDialog({
       onDone(reply.Undone.entry);
     } catch (error) {
       if (!mounted.current) return;
-      actions.tell(failure(error), true);
+      actions.tell(errorText(error), true);
       onClose();
     }
   };

@@ -14,11 +14,12 @@ import { Label } from "../ui/Label";
 import { Loading } from "../ui/Loading";
 import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
-import { addProjectAt, said } from "./actions";
+import { addProjectAt } from "./actions";
 import { root, shown, split, step, up } from "./folders";
 import { found } from "./match";
 import { useTask } from "./useTask";
 import "./flows.css";
+import { errorText } from "../lib/text";
 
 /** The folder typed so far, listed: its folders, or why not; null while asked. */
 function useListing(folder: string) {
@@ -36,7 +37,7 @@ function useListing(folder: string) {
         if (current) setListing({ folder, folders });
       },
       (error: unknown) => {
-        if (current) setListing({ folder, error: said(error) });
+        if (current) setListing({ folder, error: errorText(error) });
       },
     );
     return () => {

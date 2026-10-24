@@ -3,13 +3,14 @@ import { useActions, useApp, useBridge } from "../../app/context";
 import { BridgeFailure } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
+import { errorText } from "../../lib/text";
 import { standsBeside } from "../../state/selectors";
 import { Button } from "../../ui/controls";
 import { Detail, DetailList } from "../../ui/DetailList";
 import { Dialog, DialogText } from "../../ui/Dialog";
 import { BranchName, ErrorText } from "../../ui/status";
 import { shownKey } from "./agents";
-import { message, type TicketsModel } from "./data";
+import type { TicketsModel } from "./data";
 import { ticketText } from "./TicketText";
 import { repositoryOf, trackerName } from "./words";
 
@@ -57,7 +58,7 @@ export function CloseTicket({
         setBusy(false);
       }
     } catch (error) {
-      setError(message(error));
+      setError(errorText(error));
       setBusy(false);
     }
   }
@@ -219,7 +220,7 @@ function Cleanup({
               dirtyQueue.current.push(workspace);
               if (alive.current) setDirty((current) => current ?? dirtyQueue.current[0] ?? null);
             }
-          } else if (alive.current) setError(message(error));
+          } else if (alive.current) setError(errorText(error));
         } finally {
           inFlight.current.delete(id);
         }
@@ -236,7 +237,7 @@ function Cleanup({
       );
       for (const session of running)
         void bridge.command({ StopSession: { session: session.id } }).catch((error) => {
-          if (alive.current) setError(message(error));
+          if (alive.current) setError(errorText(error));
         });
     }
     void settle();
@@ -260,7 +261,7 @@ function Cleanup({
       await bridge.command({ RemoveWorktree: { workspace: dirty.id, force: true } });
       next(false);
     } catch (error) {
-      setError(message(error));
+      setError(errorText(error));
     } finally {
       setBusy(false);
     }

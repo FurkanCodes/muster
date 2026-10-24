@@ -4,7 +4,7 @@
 
 import type { Session } from "../ipc/generated/Session";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
-import { oneLine } from "../session/changes/labels";
+import { oneLine } from "../lib/text";
 import { shownHarness } from "../state/selectors";
 
 /** `SessionKind::is_agent`: a coding agent's chat, not a shell, a plugin's panel or the checks. */

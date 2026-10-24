@@ -13,6 +13,7 @@ import { EmptyState, EmptyStateText, EmptyStateTitle } from "../ui/EmptyState";
 import { KepFace } from "../ui/Kep";
 import { Loading } from "../ui/Loading";
 import "./away.css";
+import { errorText } from "../lib/text";
 
 function useAway(): { since: number; reason: string } | null {
   const since = useDaemon((state) => (state.link.state === "down" ? state.link.since : null));
@@ -29,7 +30,7 @@ export function AwayBanner() {
   if (!away) return null;
   const showLog = () => {
     bridge.showDaemonLog().catch((error: unknown) => {
-      actions.tell(error instanceof Error ? error.message : String(error), true);
+      actions.tell(errorText(error), true);
     });
   };
   const tryNow = () => {

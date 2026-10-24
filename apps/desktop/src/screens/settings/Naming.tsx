@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActions, useBridge } from "../../app/context";
 import type { Preferences } from "../../ipc/generated/Preferences";
 import { agentOf } from "../../lib/agents";
+import { errorText, oneLine } from "../../lib/text";
 import { Detail, DetailList } from "../../ui/DetailList";
 import { Select, type SelectOption } from "../../ui/Select";
 import { Switch } from "../../ui/Switch";
@@ -15,7 +16,7 @@ import { namers, OWN_AGENTS } from "./agentList";
 import { useSettings } from "./context";
 import { rowKey } from "./model";
 import { Control, Footnote, Group, openSelect, Page, SettingRow, SettingText } from "./Row";
-import { listed, oneLine } from "./words";
+import { listed } from "./words";
 
 const OFF = "Chats keep their first prompt's first line: turn this on above.";
 const PICK_FIRST = "Pick the agent that names chats first: each uses its own model.";
@@ -94,7 +95,7 @@ export function Naming({ preferences }: { preferences: Preferences }) {
         setListed({
           agent,
           models: [],
-          error: error instanceof Error ? error.message : String(error),
+          error: errorText(error),
         }),
     );
   }, [agent, bridge]);

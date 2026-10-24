@@ -19,9 +19,10 @@ import { ErrorText } from "../../ui/status";
 import { agentsOn, agentToOpen, worktreesFor } from "./agents";
 import { partId } from "./Conversation";
 import { Detail } from "./Detail";
-import { groupProjects, message, ticketId, ticketSources, ticketsFor } from "./data";
+import { groupProjects, ticketId, ticketSources, ticketsFor } from "./data";
 import { ProjectName, ProjectSwatch, TicketRow } from "./TicketRow";
 import "./tickets.css";
+import { errorText } from "../../lib/text";
 
 const Assign = lazy(() => import("./Assign").then((m) => ({ default: m.Assign })));
 const CloseTicket = lazy(() => import("./Cleanup").then((m) => ({ default: m.CloseTicket })));
@@ -182,7 +183,7 @@ export default function Tickets() {
   };
   const browser = () => {
     if (!selected) return;
-    void bridge.openUrl(selected.issue.url).catch((error) => actions.tell(message(error), true));
+    void bridge.openUrl(selected.issue.url).catch((error) => actions.tell(errorText(error), true));
   };
   const refresh = () => {
     if (visible) {
@@ -282,7 +283,7 @@ export default function Tickets() {
                           if ((whose === "mine") !== list.value.mine)
                             void model
                               .mine(projects, whose === "mine")
-                              .catch((error) => actions.tell(message(error), true));
+                              .catch((error) => actions.tell(errorText(error), true));
                         }}
                       />
                     ) : null}

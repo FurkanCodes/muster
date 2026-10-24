@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type App, useApp, useDaemon } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
+import { errorText } from "../lib/text";
 import { Button } from "../ui/controls";
 import { Dialog, DialogText } from "../ui/Dialog";
 import { TextField } from "../ui/TextField";
@@ -14,7 +15,7 @@ import { browsePullRequest } from "./byHand";
 
 /** Says a refusal as the daemon gave it, in the status bar until the next key. */
 function refused(app: App, error: unknown): void {
-  app.actions.tell(error instanceof Error ? error.message : String(error), true);
+  app.actions.tell(errorText(error), true);
 }
 
 /** Once `session`'s program has ended, takes it off the list (`RemoveSession`). */
@@ -71,7 +72,7 @@ export function useSessionActions(session: SessionId | undefined) {
         app.actions.tell("Renamed.");
         return null;
       } catch (error) {
-        return error instanceof Error ? error.message : String(error);
+        return errorText(error);
       }
     },
     /** Closes `which`, the shown session where none is named: at once where it has ended, after asking where it runs. */
