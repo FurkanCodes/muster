@@ -14,12 +14,13 @@ use std::path::PathBuf;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply, TermSize};
 use muster_core::tidy::{Tidy, TidyCheck};
 use muster_core::{SessionId, SessionStatus, WorkspaceId};
-use muster_state::session::Start;
+use tokio::sync::oneshot;
 
+use super::by_hand;
+use super::prepared::{Asked, Purpose, Ready};
 use super::sessions::Mode;
 use super::timeline::working;
 use super::{Request, Supervisor};
-use crate::harness::Place;
 use crate::tidy::{self, TidyError};
 
 /// What each tidy under way began from, and where.
@@ -30,72 +31,87 @@ pub(super) struct Tidies {
 
 impl Supervisor {
     /// `TidyCommits`: starts `harness` tidying `workspace`'s branch's
-    /// commits not pushed yet.
-    pub(super) async fn tidy_commits(
-        &mut self,
+    /// commits not pushed yet, with where they begin asked of git off the
+    /// loop (`prepared`).
+    pub(super) fn tidy_commits(
+        &self,
         workspace: WorkspaceId,
         harness: &str,
         size: TermSize,
-    ) -> Result<Reply, ErrorBody> {
-        let harness = self
-            .harness(harness)
-            .filter(|found| found.is_agent() && found.takes_prompt() && found.id() != "review")
-            .ok_or_else(|| {
-                ErrorBody::new(
-                    ErrorCode::BadRequest,
-                    format!("{harness:?} is not a coding agent that can tidy commits"),
-                )
-            })?;
-        let place = self.place_for(workspace, &harness)?;
-        let Place::Host(path) = &place else {
-            return Err(ErrorBody::new(
-                ErrorCode::BadRequest,
-                "commits are tidied in a worktree or the project's checkout",
-            ));
-        };
-        let path = path.clone();
-        let branch = self.reviewable_branch(workspace)?;
-        if let Some(busy) = self
+        reply: oneshot::Sender<Result<Reply, ErrorBody>>,
+    ) {
+        let asked = (|| {
+            let harness = self
+                .harness(harness)
+                .filter(|found| found.is_agent() && found.takes_prompt() && found.id() != "review")
+                .ok_or_else(|| {
+                    ErrorBody::new(
+                        ErrorCode::BadRequest,
+                        format!("{harness:?} is not a coding agent that can tidy commits"),
+                    )
+                })?;
+            let place = self.place_for(workspace, &harness)?;
+            let asked = Asked {
+                workspace,
+                title: Some(format!("Tidy commits · {}", harness.label())),
+                harness,
+                place,
+                size,
+                purpose: Purpose::Tidy,
+            };
+            let path =
+                asked.host_path("commits are tidied in a worktree or the project's checkout")?;
+            let branch = self.reviewable_branch(workspace)?;
+            if let Some(busy) = self.tidy_refused(workspace) {
+                return Err(busy);
+            }
+            let (overrides, stacked) = self.base_asked(workspace)?;
+            Ok((asked, async move {
+                let base = by_hand::branch_base(&path, stacked.as_ref(), overrides).await?;
+                let start = tidy::plan(&path, &base)
+                    .await
+                    .map_err(|error| match error {
+                        TidyError::Git(error) => {
+                            ErrorBody::new(ErrorCode::Internal, error.to_string())
+                        }
+                        refused => ErrorBody::new(ErrorCode::BadRequest, refused.to_string()),
+                    })?;
+                let prompt =
+                    crate::runs::prompts::tidy_by_hand(&branch, &start.from, start.commits);
+                Ok(Ready {
+                    mode: Mode::Fresh {
+                        prompt: Some(prompt),
+                    },
+                    tidy: Some(start),
+                })
+            }))
+        })();
+        self.prepare(asked, reply);
+    }
+
+    /// Why commits in `workspace` cannot be tidied now: an agent is at work
+    /// there.
+    pub(super) fn tidy_refused(&self, workspace: WorkspaceId) -> Option<ErrorBody> {
+        let busy = self
             .state
             .sessions
             .iter()
-            .find(|session| session.workspace == workspace && working(session.status))
-        {
-            return Err(ErrorBody::new(
-                ErrorCode::Conflict,
-                format!(
-                    "{} is at work there: tidy the commits once it has stopped",
-                    busy.title
-                ),
-            ));
-        }
-        let base = self.base_for(workspace, &path).await?;
-        let start = tidy::plan(&path, &base)
-            .await
-            .map_err(|error| match error {
-                TidyError::Git(error) => ErrorBody::new(ErrorCode::Internal, error.to_string()),
-                refused => ErrorBody::new(ErrorCode::BadRequest, refused.to_string()),
-            })?;
-        let from: String = start.from.chars().take(7).collect();
-        let prompt = crate::runs::prompts::tidy_by_hand(&branch, &start.from, start.commits);
-        let title = format!("Tidy commits · {}", harness.label());
-        let id = self
-            .add_session(workspace, &harness, Some(title), Start::WithPrompt)
-            .await?;
-        let mode = Mode::Fresh {
-            prompt: Some(prompt),
-        };
-        if let Err(error) = self.launch(id, harness, place, size, mode, Start::WithPrompt, false) {
-            self.end_session(id, SessionStatus::Exited { success: false }, true)
-                .await;
-            return Err(ErrorBody::new(
-                ErrorCode::Internal,
-                format!("could not start the tidy: {error}"),
-            ));
-        }
+            .find(|session| session.workspace == workspace && working(session.status))?;
+        Some(ErrorBody::new(
+            ErrorCode::Conflict,
+            format!(
+                "{} is at work there: tidy the commits once it has stopped",
+                busy.title
+            ),
+        ))
+    }
+
+    /// The tidy session `id`, started at `path`, began from `start`: kept,
+    /// and shown on the session.
+    pub(super) fn began_tidy(&mut self, id: SessionId, path: PathBuf, start: tidy::Start) {
         let tidy = Tidy {
             commits: start.commits,
-            from,
+            from: start.from.chars().take(7).collect(),
             checked: None,
         };
         self.tidies.began.insert(id, (path, start));
@@ -104,7 +120,6 @@ impl Supervisor {
             let updated = stored.clone();
             self.broadcast(Delta::SessionUpserted(updated));
         }
-        Ok(Reply::SessionStarted { id })
     }
 
     /// A session's status changed from `before` to `after`: a tidy whose

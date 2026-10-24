@@ -490,7 +490,13 @@ impl Supervisor {
         let (mode, start) = match (&place, resumable(&harness, &stored)) {
             // The checks run again, as the workspace has them now.
             (Place::Host(path), _) if harness.is_checks() => (
-                Mode::Checks(self.checks_in(stored.workspace, path).await?),
+                Mode::Checks(
+                    super::by_hand::checks_at(
+                        path.clone(),
+                        self.overrides_of(self.workspace(stored.workspace)?.project),
+                    )
+                    .await?,
+                ),
                 Start::WithPrompt,
             ),
             (Place::Host(_), Some(agent_session)) => {

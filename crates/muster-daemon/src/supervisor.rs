@@ -29,6 +29,7 @@ mod outside_worktrees;
 mod own_settings;
 mod panels;
 mod plugins;
+mod prepared;
 mod projects;
 mod pulls;
 mod recovery;
@@ -494,6 +495,18 @@ impl Supervisor {
                     from,
                 } => self.fetch_run_ticket(project, number, from, reply),
                 Command::OpenPullRequest { workspace } => self.open_pull_request(workspace, reply),
+                // These ask git or the settings before their session starts.
+                Command::CheckWorkspace { workspace, size } => {
+                    self.check_workspace(workspace, size, reply);
+                }
+                Command::ReviewWorkspace { workspace, size } => {
+                    self.review_workspace(workspace, size, reply);
+                }
+                Command::TidyCommits {
+                    workspace,
+                    harness,
+                    size,
+                } => self.tidy_commits(workspace, &harness, size, reply),
                 // These ask git, which can take a while in a large repository.
                 Command::WorkspaceChanges { workspace } => self.workspace_changes(workspace, reply),
                 Command::FileDiff {
@@ -658,6 +671,7 @@ impl Supervisor {
             }
             Request::WorktreeMade(made) => self.worktree_made(*made).await,
             Request::MovePlanned(planned) => self.move_planned(*planned),
+            Request::Prepared(prepared) => self.prepared(*prepared).await,
             Request::Cloned(cloned) => self.cloned(*cloned).await,
             Request::WorktreeRemoved(removed) => self.worktree_removed(*removed).await,
             Request::AddClient(reply) => {
@@ -740,17 +754,6 @@ impl Supervisor {
             }
             Command::ReadSession { session, what } => Ok(self.read_session(session, what).await),
             Command::StopSession { session } => self.stop_session(session).await,
-            Command::CheckWorkspace { workspace, size } => {
-                self.check_workspace(workspace, size).await
-            }
-            Command::ReviewWorkspace { workspace, size } => {
-                self.review_workspace(workspace, size).await
-            }
-            Command::TidyCommits {
-                workspace,
-                harness,
-                size,
-            } => self.tidy_commits(workspace, &harness, size).await,
             Command::RestartSession { session, size } => self.restart_session(session, size).await,
             Command::RemoveSession { session } => self.remove_session(session).await,
             Command::RenameSession { session, title } => self.rename_session(session, &title).await,
@@ -781,6 +784,9 @@ impl Supervisor {
             | Command::StartRun { .. }
             | Command::TakeOverRun { .. }
             | Command::OpenPullRequest { .. }
+            | Command::CheckWorkspace { .. }
+            | Command::ReviewWorkspace { .. }
+            | Command::TidyCommits { .. }
             | Command::WorkspaceChanges { .. }
             | Command::FileDiff { .. }
             | Command::Timeline { .. }
