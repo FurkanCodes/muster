@@ -329,7 +329,12 @@ fn write(path: &Path, text: &str) -> std::io::Result<()> {
         |name| name.to_string_lossy().into_owned(),
     );
     let temporary = parent.join(format!(".{name}.{}.new", std::process::id()));
-    std::fs::write(&temporary, text)?;
+    // On disk before it takes the file's place, so a crash leaves the old
+    // file or the new one, never an empty one.
+    let mut file = std::fs::File::create(&temporary)?;
+    std::io::Write::write_all(&mut file, text.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
     std::fs::rename(&temporary, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&temporary);
     })

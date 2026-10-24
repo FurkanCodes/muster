@@ -288,7 +288,10 @@ impl Jira {
                 crate::service::unreachable(&format!("Jira at {}", self.site.host), error)
             })?;
         let status = response.status();
-        let text = response.text().await.unwrap_or_default();
+        // A body that breaks off is no empty answer.
+        let text = response.text().await.map_err(|error| {
+            crate::service::unreachable(&format!("Jira at {}", self.site.host), error)
+        })?;
         let said: String = one_line(&text).chars().take(300).collect();
         match status.as_u16() {
             200..=299 if text.trim().is_empty() => Ok(Value::Null),
