@@ -24,7 +24,15 @@
 //     </ListItem>
 //   </List>
 
-import { createContext, type MouseEvent, type ReactNode, use, useEffect, useRef } from "react";
+import {
+  createContext,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+  use,
+  useEffect,
+  useRef,
+} from "react";
 import { cn } from "../lib/cn";
 import { Pressable } from "./controls";
 import { type PartProps, usePart } from "./part";
@@ -90,6 +98,7 @@ export function ListItem({
   flash,
   className,
   onSelect,
+  onCarry,
   children,
 }: {
   /** Unique in the window: the list names its selected line by it. */
@@ -110,6 +119,8 @@ export function ListItem({
   /** Its own look, beyond a line's (a ticket's key column, a file's kind). */
   className?: string;
   onSelect: () => void;
+  /** Given, the line can be carried away by the pointer: told as it is taken up (its drag's data), and let go (null). */
+  onCarry?: (event: DragEvent<HTMLElement> | null) => void;
   children: ReactNode;
 }) {
   const { kind, resting, sight } = use(Shape);
@@ -137,6 +148,9 @@ export function ListItem({
       )}
       onMouseDown={keepFocusOnList}
       onClick={onSelect}
+      draggable={onCarry ? true : undefined}
+      onDragStart={onCarry}
+      onDragEnd={onCarry ? () => onCarry(null) : undefined}
     >
       {children}
     </Pressable>

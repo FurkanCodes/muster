@@ -3,13 +3,14 @@
 // the line between two resized and kept in the person's settings, a layout
 // read back from them, and full screen on f (ARC-24, ARC-25, PRD-15, PRD §6).
 
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { installKeys } from "../app/keys";
 import { ulid } from "../ipc/mock/scenario";
 import { SessionPane } from "../session/SessionPane";
 import { renderWithApp } from "../test/render";
+import { CARRIED, carry } from "./carry";
 import { tooltipOf } from "../test/tooltip";
 
 const codex = ulid(101);
@@ -209,4 +210,45 @@ describe("ARC-24 full screen", () => {
     unmount();
     expect(app.ui.getState().fullScreen).toBeNull();
   });
+
+  it("pin the session shown in a panel of its own on P, drawn once, and unpin it on P again (PRD §6)", async () => {
+    await pane();
+    await screen.findByLabelText("Terminal");
+    const box = () => document.querySelector(".panels") as HTMLElement;
+    await userEvent.keyboard("P");
+    expect(
+      await within(box()).findByRole("region", { name: "Sketch the Tauri shell" }),
+    ).toBeInTheDocument();
+    // Its terminal once, in its own panel; the agent's panel says so.
+    await waitFor(() => expect(terminals()).toEqual([codex]));
+    expect(screen.getByRole("region", { name: "Codex" })).toHaveTextContent(
+      "It is in a panel of its own.",
+    );
+    await userEvent.keyboard("P");
+    await waitFor(() =>
+      expect(
+        within(box()).queryByRole("region", { name: "Sketch the Tauri shell" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(terminals()).toEqual([codex]);
+  });
+
+  it("pin a session whose line is carried from the sidebar and dropped on the pane (PRD §6a)", async () => {
+    const { app } = await pane();
+    const other = ulid(100);
+    const box = (await screen.findByLabelText("Terminal")).closest(".panels") as HTMLElement;
+    carry(other);
+    // jsdom has no DragEvent: the events are given where the pointer is.
+    const at = (event: Event) => {
+      Object.defineProperty(event, "clientX", { value: 1 });
+      Object.defineProperty(event, "clientY", { value: 1 });
+      return event;
+    };
+    const dataTransfer = { types: [CARRIED], dropEffect: "none" };
+    fireEvent(box, at(createEvent.dragOver(box, { dataTransfer })));
+    fireEvent(box, at(createEvent.drop(box, { dataTransfer })));
+    await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));
+    expect(app.ui.getState().note?.text).toBe("Pinned it in a panel of its own.");
+  });
 });
+

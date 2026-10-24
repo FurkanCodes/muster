@@ -1,4 +1,4 @@
-//! Sessions pinned in panels of their own (`PRODUCT.md` §6 Sessions): `p`
+//! Sessions pinned in panels of their own (`PRODUCT.md` §6 Sessions): `P`
 //! pins the selected session beside the panel with the keys and again
 //! unpins it; a session's line dragged out of the list lands where it is
 //! dropped; each is streamed, drawn and typed in on its own.
@@ -65,12 +65,12 @@ fn area_of(world: &World, session: SessionId) -> Rect {
 }
 
 #[test]
-fn p_pins_the_selected_session_beside_and_again_unpins_it() {
+fn shift_p_pins_the_selected_session_beside_and_again_unpins_it() {
     let (mut world, second) = two();
     let first = world.session.id;
     world.app.selected = Some(Row::Session(first));
     world.app.settle();
-    let actions = press(&mut world.app, KeyCode::Char('p'));
+    let actions = press(&mut world.app, KeyCode::Char('P'));
     let layout = kept(&actions).expect("the daemon keeps it");
     assert_eq!(layout.pinned(), [first]);
     assert_eq!(world.app.panels().pinned(), [first], "shown at once");
@@ -93,7 +93,7 @@ fn p_pins_the_selected_session_beside_and_again_unpins_it() {
     // Again on the one pinned: unpinned.
     world.app.selected = Some(Row::Session(first));
     world.app.settle();
-    let actions = press(&mut world.app, KeyCode::Char('p'));
+    let actions = press(&mut world.app, KeyCode::Char('P'));
     assert!(kept(&actions).expect("kept").pinned().is_empty());
     assert!(world.app.panels().pinned().is_empty());
 }

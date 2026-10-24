@@ -1,7 +1,7 @@
 //! Sessions pinned in panels of their own (`PRODUCT.md` §6 Sessions): an
 //! agent's terminal beside the rest whatever the list selects, as many as
 //! the person likes. A session's line dragged out of the list lands where
-//! it is dropped, as a panel does; `p` pins the selected session beside
+//! it is dropped, as a panel does; `P` pins the selected session beside
 //! the panel with the keys, and again unpins it. The layout keeps them
 //! (`muster_core::layout`, `session:<id>`), so the daemon has them for
 //! every window and the next. Each is streamed at its own size, and a
@@ -66,7 +66,7 @@ impl App {
         }
     }
 
-    /// `p`: pins the selected session in a panel of its own beside the
+    /// `P`: pins the selected session in a panel of its own beside the
     /// panel with the keys, or unpins it where it is pinned.
     pub(super) fn toggle_pin(&mut self) -> Vec<Action> {
         let Some(session) = self.focused_session().or(self.typing_in_pinned()) else {

@@ -188,3 +188,26 @@ describe("the panels shown", () => {
     });
   });
 });
+
+describe("a session pinned in a panel of its own", () => {
+  // As the wire has them; the layout's text prints them with `ses_`.
+  const one = "01J0000000000000000000000A";
+  const two = "01J0000000000000000000000B";
+
+  it("reads, writes, moves and goes as any panel, as muster_core::layout has it", () => {
+    const pinned = Layout.default().pinning(one, { beside: "session", edge: "left" });
+    expect(pinned.toString()).toBe(
+      `list | (session:ses_${one} | session) 60% | (changes / shell / plugin)`,
+    );
+    expect(read(pinned.toString()).toString()).toBe(pinned.toString());
+    const both = pinned.pinning(two, { window: "bottom" });
+    expect(both.pinned()).toEqual([one, two]);
+    expect(() => read(`session:ses_${one} | ${pinned}`)).toThrow(LayoutError);
+    const moved = both.pinning(one, { window: "right" });
+    expect(moved.pinned()).toEqual([two, one]);
+    expect(moved.unpinned(one).unpinned(two).toString()).toBe(DEFAULT_LAYOUT);
+    expect(() => read("list | session:ses_nope | session | changes | shell | plugin")).toThrow(
+      LayoutError,
+    );
+  });
+});

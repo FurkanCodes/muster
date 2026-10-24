@@ -1,5 +1,6 @@
 // The session pane's keys for what stands beside it, as the person set them
 // (the keymap, `src/keys`): `shell` the shell, `full_screen` full screen,
+// `pin_session` the session shown pinned in a panel of its own (again: unpinned),
 // each plugin's panel on its own key (`plugin.<id>.<panel>`), and Esc out of
 // full screen. While a terminal has the keys every key is its program's, so
 // these act only while Muster has them.
@@ -10,6 +11,7 @@ import { useKeys } from "../app/keys";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { KEY_SCREENS, useActionKeys, useKeymap } from "../keys/useKeymap";
 import { giveKeys, running, togglePanel, toggleShell } from "./beside";
+import type { PanelsLayout } from "./useLayout";
 
 /** Full screen on and off: the session fills the window with the keys, and gives it back. */
 export function toggleFullScreen(app: App, session: SessionId): void {
@@ -36,7 +38,11 @@ export function usePanelHandlers(selected: {
   return handlers;
 }
 
-export function usePanelKeys(session: SessionId, plugin: SessionId | null): void {
+export function usePanelKeys(
+  session: SessionId,
+  plugin: SessionId | null,
+  arranged: PanelsLayout,
+): void {
   const app = useApp();
   const screen = useUi((state) => KEY_SCREENS[state.screen]);
   const workspace = useDaemon((state) => state.sessions[session]?.workspace ?? null);
@@ -48,6 +54,16 @@ export function usePanelKeys(session: SessionId, plugin: SessionId | null): void
     full_screen: () => toggleFullScreen(app, session),
     shell: () => {
       if (workspace) void toggleShell(app, workspace, session);
+    },
+    pin_session: () => {
+      const layout = arranged.layout;
+      const pinned = layout.pinned().includes(session);
+      arranged.keep(
+        pinned
+          ? layout.unpinned(session)
+          : layout.pinning(session, { beside: "session", edge: "left" }),
+      );
+      app.actions.tell(pinned ? "Unpinned it." : "Pinned it in a panel of its own.");
     },
   });
   useKeys(fullScreen ? { Escape: () => app.actions.fillWindow(null) } : {});

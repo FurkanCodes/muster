@@ -7,12 +7,13 @@
 // a project's line says how the most urgent of what it hides stands, and how
 // many it hides.
 
-import type { MouseEvent, ReactNode } from "react";
+import type { DragEvent, MouseEvent, ReactNode } from "react";
 import { useNow } from "../../app/clock";
 import { useDaemon } from "../../app/context";
 import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
+import { CARRIED, carry } from "../../panels/carry";
 import { branchOf, projectColour, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import {
@@ -115,12 +116,14 @@ function Line({
   className,
   label,
   onPick,
+  onCarry,
   children,
 }: Pick<LineProps, "row" | "level" | "selected" | "onPick"> & {
   expanded?: boolean;
   density: "comfortable" | "compact";
   className?: string;
   label: string;
+  onCarry?: (event: DragEvent<HTMLElement> | null) => void;
   children: ReactNode;
 }) {
   return (
@@ -133,6 +136,7 @@ function Line({
       density={density}
       className={className}
       onSelect={() => onPick(row.id)}
+      onCarry={onCarry}
     >
       {children}
     </ListItem>
@@ -217,7 +221,17 @@ export function SessionLine(props: LineProps) {
   if (!session) return null;
   const unseen = session.unseen && session.status.state !== "needs_you";
   return (
-    <Line {...props} density="comfortable" label={`${session.title}, ${doing(session)}`}>
+    <Line
+      {...props}
+      density="comfortable"
+      label={`${session.title}, ${doing(session)}`}
+      onCarry={(event) => {
+        // Dropped on the pane, it is pinned there in a panel of its own.
+        carry(event ? session.id : null);
+        event?.dataTransfer.setData(CARRIED, session.id);
+        if (event) event.dataTransfer.effectAllowed = "move";
+      }}
+    >
       <StatusMark kind={statusKind(session)} />
       <AgentLogo harness={shownHarness(session)} />
       <ChatText session={session} lines={lines} />

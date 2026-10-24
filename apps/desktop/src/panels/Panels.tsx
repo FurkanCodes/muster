@@ -1,6 +1,9 @@
 // The panels in the session's pane (design system: Panel; `PRODUCT.md` §6,
-// `ARCHITECTURE.md` §5a Panels): the session's agent, the shell beside it
-// and a plugin's panel, each where the person's layout puts it. A panel
+// `ARCHITECTURE.md` §5a Panels): the session's agent, the shell beside it,
+// a plugin's panel and the sessions pinned in panels of their own, each where
+// the person's layout puts it. A session's line carried from the sidebar and
+// dropped on the pane is pinned where it lands (`carry`); `P` pins the
+// session shown, and again unpins it. A panel
 // dragged by its head goes to an edge of the pane, or beside or under
 // another, the place lighting up as it would land; the line between two
 // is dragged to share their place; either is kept in the person's settings.
@@ -9,12 +12,21 @@
 // keys opens over the rest. Alone, the agent's terminal is drawn as it is.
 // `m` moves them with the keys instead (useArranging).
 
-import { type PointerEvent, useEffect, useRef, useState } from "react";
+import { type DragEvent, type PointerEvent, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useApp, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { panelBeside, shellBeside } from "./beside";
-import type { Layout, PanelName } from "./layout";
-import { PanelLine, PluginPanel, SessionPanel, ShellPanel, TerminalAlone } from "./PanelBoxes";
+import { CARRIED, carriedSession, carry } from "./carry";
+import { type Layout, type PanelName, pinnedPanel } from "./layout";
+import {
+  PanelLine,
+  PinnedPanel,
+  PluginPanel,
+  SessionPanel,
+  ShellPanel,
+  TerminalAlone,
+} from "./PanelBoxes";
 import {
   type Divider,
   GAP,
@@ -100,22 +112,31 @@ export function Panels({ session }: { session: SessionId }) {
   const shell = useDaemon((state) => shellBeside(state, keptShell, session));
   const plugin = useDaemon((state) => panelBeside(state, session));
   const typingIn = useUi((state) => (state.keysIn === "terminal" ? state.terminal : null));
+  // The sessions pinned that the daemon still has, in the layout's order.
+  const pinned = useDaemon(
+    useShallow((state) => panels.layout.pinned().filter((id) => id in state.sessions)),
+  );
   const [drag, setDrag] = useState<Drag | null>(null);
-  usePanelKeys(session, plugin);
+  const [dropping, setDropping] = useState<Landing | null>(null);
+  usePanelKeys(session, plugin, panels);
 
   const sessionOf: Partial<Record<PanelName, SessionId>> = { session };
   if (shell) sessionOf.shell = shell;
   if (plugin) sessionOf.plugin = plugin;
+  for (const id of pinned) sessionOf[pinnedPanel(id)] = id;
   const withKeys: PanelName =
     typingIn && typingIn === shell
       ? "shell"
       : typingIn && typingIn === plugin
         ? "plugin"
-        : "session";
+        : typingIn && pinned.includes(typingIn)
+          ? pinnedPanel(typingIn)
+          : "session";
   const area = { x: 0, y: 0, width: size.width, height: size.height };
   const solved = laidOut(panels.layout, (panel) => Boolean(sessionOf[panel]), withKeys, area);
-  const alone = !shell && !plugin;
-  const arranging = useArranging(panels, solved, withKeys, !alone, PANE);
+  const alone = !shell && !plugin && pinned.length === 0;
+  const pane: PanelName[] = [...PANE, ...pinned.map(pinnedPanel)];
+  const arranging = useArranging(panels, solved, withKeys, !alone, pane);
 
   // A drag lets go on Esc, the layout as it was.
   useEffect(() => {
@@ -131,7 +152,7 @@ export function Panels({ session }: { session: SessionId }) {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [drag, panels]);
 
-  const point = (event: PointerEvent) => {
+  const point = (event: { clientX: number; clientY: number }) => {
     const bounds = box.current?.getBoundingClientRect();
     return { x: event.clientX - (bounds?.left ?? 0), y: event.clientY - (bounds?.top ?? 0) };
   };
@@ -180,8 +201,42 @@ export function Panels({ session }: { session: SessionId }) {
     panels.keep(
       to.target
         ? panels.layout.moved(drag.panel, { beside: to.target, edge: to.edge })
-        : panels.layout.movedToEdgeOf(drag.panel, PANE, to.edge),
+        : panels.layout.movedToEdgeOf(drag.panel, pane, to.edge),
     );
+  };
+
+  // A session's line carried over the pane: where it would be pinned lights up.
+  const carried = (event: DragEvent) =>
+    event.dataTransfer.types.includes(CARRIED) ? carriedSession() : null;
+  const landing = (event: DragEvent, id: SessionId) => {
+    const at = point(event);
+    return landingAt(pinnedPanel(id), at.x, at.y, area, solved.panels);
+  };
+  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    const id = carried(event);
+    if (!id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const to = landing(event, id);
+    if (to?.rect !== dropping?.rect) setDropping(to);
+  };
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    const id = carried(event);
+    // Where it is let go, not where the last drag over lit.
+    const to = id ? landing(event, id) : null;
+    setDropping(null);
+    carry(null);
+    if (!id || !to) return;
+    event.preventDefault();
+    const panel = pinnedPanel(id);
+    panels.keep(
+      to.target
+        ? panels.layout.pinning(id, { beside: to.target, edge: to.edge })
+        : panels.layout
+            .pinning(id, { beside: "session", edge: to.edge })
+            .movedToEdgeOf(panel, [...pane, panel], to.edge),
+    );
+    app.actions.tell("Pinned it in a panel of its own.");
   };
 
   const placed = (panel: PanelName) => solved.panels.find((one) => one.panel === panel)?.rect;
@@ -193,6 +248,7 @@ export function Panels({ session }: { session: SessionId }) {
   const lineDragged = drag?.kind === "line" ? lineKey(drag.divider) : null;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a session's line dropped here is pinned where it lands; the keys do the same with pin_session.
     <div
       ref={box}
       className={`panels ${drag ? "panels--dragging" : ""}`}
@@ -202,6 +258,12 @@ export function Panels({ session }: { session: SessionId }) {
         panels.show(null);
         setDrag(null);
       }}
+      onDragOver={onDragOver}
+      onDragLeave={(event) => {
+        // Left for good, not for one of its own panels.
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(null);
+      }}
+      onDrop={onDrop}
     >
       {alone ? (
         <TerminalAlone session={session} />
@@ -209,6 +271,7 @@ export function Panels({ session }: { session: SessionId }) {
         <>
           <SessionPanel
             session={session}
+            pinned={pinned.includes(session)}
             style={style(placed("session"))}
             lifted={dragging === "session"}
             onHeadDown={headDown("session")}
@@ -231,6 +294,16 @@ export function Panels({ session }: { session: SessionId }) {
               onHeadDown={headDown("plugin")}
             />
           ) : null}
+          {pinned.map((id) => (
+            <PinnedPanel
+              key={id}
+              session={id}
+              style={style(placed(pinnedPanel(id)))}
+              lifted={dragging === pinnedPanel(id)}
+              onHeadDown={headDown(pinnedPanel(id))}
+              onUnpin={() => panels.keep(panels.layout.unpinned(id))}
+            />
+          ))}
           {solved.dividers.map((divider) => {
             const key = lineKey(divider);
             return (
@@ -253,6 +326,9 @@ export function Panels({ session }: { session: SessionId }) {
           ) : null}
         </>
       )}
+      {dropping ? (
+        <div className="panels-landing" style={style(dropping.rect)} aria-hidden="true" />
+      ) : null}
     </div>
   );
 }
