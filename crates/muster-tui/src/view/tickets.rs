@@ -10,6 +10,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 use super::{describe, list_block, loading, look, mark, markdown, panel, pull_request, shorten};
 use crate::app::{App, HarnessChoice, TicketRow, TicketText, Tickets};
+use crate::cells;
 
 /// The most agents shown on a ticket's line; the rest are counted.
 const AGENTS_SHOWN: usize = 4;
@@ -74,7 +75,7 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
             let state = match app.tickets.get(&project) {
                 None | Some(Tickets::Loading) => {
                     // The rest of its heading is the wait.
-                    let named: usize = spans.iter().map(|span| span.content.chars().count()).sum();
+                    let named: usize = spans.iter().map(|span| cells::width(&span.content)).sum();
                     spans.push(Span::raw(" "));
                     spans.extend(
                         loading::rule(app, "Loading tickets", width.saturating_sub(named + 1))
@@ -124,9 +125,8 @@ fn row_text(app: &App, row: &TicketRow, width: usize) -> Line<'static> {
             }
             let number_text = format!("  {} ", key.shown());
             let room_beside = |marks: &[Span<'_>]| {
-                let marks_width: usize =
-                    marks.iter().map(|mark| mark.content.chars().count()).sum();
-                width.saturating_sub(number_text.chars().count() + marks_width + 1)
+                let marks_width: usize = marks.iter().map(|mark| cells::width(&mark.content)).sum();
+                width.saturating_sub(cells::width(&number_text) + marks_width + 1)
             };
             // Its pull request where the title keeps a readable length;
             // the ticket's details show it anyway.
@@ -223,7 +223,7 @@ fn wrapped_height(text: &Text<'_>, width: usize) -> usize {
                 .map(|span| span.content.as_ref())
                 .collect();
             for word in content.split_inclusive(' ') {
-                let len = word.chars().count();
+                let len = cells::width(word);
                 if used + len.min(width) > width && used > 0 {
                     rows += 1;
                     used = 0;
@@ -498,7 +498,7 @@ fn conversation(
         many => format!("{many} comments"),
     };
     let heading = format!("── {count} ");
-    let rest = width.saturating_sub(heading.chars().count());
+    let rest = width.saturating_sub(cells::width(&heading));
     lines.push(Line::from(vec![
         Span::styled(heading, theme.quiet),
         Span::styled("─".repeat(rest), Style::default().fg(theme.line)),

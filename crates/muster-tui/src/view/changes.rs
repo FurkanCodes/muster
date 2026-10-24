@@ -14,6 +14,7 @@ use ratatui::widgets::Paragraph;
 
 use super::{look, panel, shorten};
 use crate::app::{App, ChangeRow, ChangesPane, DiffPane, Pick};
+use crate::cells;
 
 pub(super) fn draw_changes(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let Some(pane) = &app.changes else {
@@ -72,7 +73,7 @@ fn row_line(
                 Span::raw(" "),
                 Span::raw(shorten(
                     &commit.subject,
-                    width.saturating_sub(commit.id.chars().count() + 4),
+                    width.saturating_sub(cells::width(&commit.id) + 4),
                 )),
             ]);
         }
@@ -108,11 +109,11 @@ fn entry_line(
         None => vec![Span::from("no files").dim()],
     });
     let tail_width: usize = tail.iter().map(Span::width).sum();
-    let lead = 3 + number.chars().count() + 2;
+    let lead = 3 + cells::width(&number) + 2;
     let room = width.saturating_sub(lead + tail_width + 2);
     let what = shorten(&crate::app::timeline::label(timeline, entry), room.max(4));
     let gap = width
-        .saturating_sub(lead + what.chars().count() + tail_width + 1)
+        .saturating_sub(lead + cells::width(&what) + tail_width + 1)
         .max(1);
     let mut spans = vec![
         Span::raw("   "),
@@ -140,7 +141,7 @@ fn file_line(file: &FileChange, width: usize) -> Line<'static> {
     let room = width.saturating_sub(lead + counts_width + 2);
     let name = shorten_start(&name, room.max(4));
     let gap = width
-        .saturating_sub(lead + name.chars().count() + counts_width + 1)
+        .saturating_sub(lead + cells::width(&name) + counts_width + 1)
         .max(1);
     let mut spans = vec![
         Span::raw("   "),
@@ -196,15 +197,13 @@ pub(super) fn summary(summary: &ChangeSummary) -> Vec<Span<'static>> {
     })
 }
 
-/// `text`, cut to `max` characters from its start, as a path's end says
+/// `text`, cut to `max` columns from its start, as a path's end says
 /// most: `…/view/changes.rs`.
 fn shorten_start(text: &str, max: usize) -> String {
-    let count = text.chars().count();
-    if count <= max {
+    if cells::width(text) <= max {
         return text.to_owned();
     }
-    let kept: String = text.chars().skip(count - max.saturating_sub(1)).collect();
-    format!("…{kept}")
+    format!("…{}", cells::end_within(text, max.saturating_sub(1)))
 }
 
 fn draw_diff(frame: &mut Frame<'_>, app: &App, pane: &ChangesPane, diff: &DiffPane, area: Rect) {

@@ -8,6 +8,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::Theme;
 use crate::app::App;
+use crate::cells;
 
 /// Steps the light takes from before the rule's start to past its end:
 /// 1.6 s, as in the app.
@@ -32,7 +33,7 @@ pub(crate) fn spans(
     theme: &Theme,
 ) -> Vec<Span<'static>> {
     let words = format!(" {text} ");
-    let room = width.saturating_sub(words.chars().count());
+    let room = width.saturating_sub(cells::width(&words));
     if room < 4 {
         return vec![Span::styled(text.to_owned(), theme.quiet)];
     }

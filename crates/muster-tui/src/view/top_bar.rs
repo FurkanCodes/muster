@@ -14,6 +14,7 @@ use ratatui::text::{Line, Span};
 
 use super::{bytes, kep, mark, theme};
 use crate::app::{App, Link, View};
+use crate::cells;
 use crate::motion;
 
 pub(super) fn draw_top_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
@@ -207,7 +208,7 @@ fn memory(app: &App, report: &ResourceReport) -> Vec<Span<'static>> {
     let part = PARTS[usize::try_from(eighths % 8).unwrap_or(0)];
     let mut bar = "█".repeat(full);
     bar.push_str(part);
-    let empty = usize::try_from(CELLS).unwrap_or(8) - bar.chars().count();
+    let empty = usize::try_from(CELLS).unwrap_or(8) - cells::width(&bar);
     let colour = match used * 100 / total {
         0..70 => theme.done,
         70..90 => theme.working,

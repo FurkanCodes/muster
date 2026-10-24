@@ -12,6 +12,7 @@ use super::{
     changes, clashes, list_block, logos, look, mark, pull_request, shorten, slid, status_symbol,
 };
 use crate::app::{App, View};
+use crate::cells;
 use crate::model::Row;
 use crate::motion;
 
@@ -116,7 +117,7 @@ fn line_wants(app: &App, row: Row) -> usize {
             3 + app
                 .model
                 .project(id)
-                .map_or(1, |project| project.name.chars().count())
+                .map_or(1, |project| cells::width(&project.name))
         }
         Row::Worktree(id) => {
             let branch = app.model.branch(id).unwrap_or("?");
@@ -126,13 +127,13 @@ fn line_wants(app: &App, row: Row) -> usize {
                     .chars()
                     .count()
             });
-            pull_request::width(&worktree_lead(app, id, edge)) + run + branch.chars().count()
+            pull_request::width(&worktree_lead(app, id, edge)) + run + cells::width(branch)
         }
         Row::Session(id) => app.model.session(id).map_or(0, |session| {
             pull_request::width(&session_lead(edge))
                 + 2
                 + logos::width(app.graphics)
-                + session.title.chars().count()
+                + cells::width(&session.title)
         }),
     }
 }
@@ -256,7 +257,7 @@ fn shell_line(
     };
     let tail = if ended { "  ended" } else { "" };
     let used: usize = spans.iter().map(Span::width).sum();
-    let room = width.saturating_sub(used + tail.len() + time.chars().count() + 1);
+    let room = width.saturating_sub(used + tail.len() + cells::width(&time) + 1);
     let name = slid(&shell.title, room.max(4), by);
     spans.push(if ended || waiting {
         Span::styled(name, theme.quiet)
@@ -268,7 +269,7 @@ fn shell_line(
     }
     if !time.is_empty() {
         let used: usize = spans.iter().map(Span::width).sum();
-        let gap = width.saturating_sub(used + time.chars().count()).max(1);
+        let gap = width.saturating_sub(used + cells::width(&time)).max(1);
         spans.push(Span::raw(" ".repeat(gap)));
         spans.push(Span::styled(time, theme.quiet));
     }
@@ -371,7 +372,7 @@ fn worktree_line(
         let (tail, branch_room) = branch_and_tail(app, id, &branch, room);
         let branch = slid(&branch, branch_room, by);
         let gap = room
-            .saturating_sub(branch.chars().count() + pull_request::width(&tail))
+            .saturating_sub(cells::width(&branch) + pull_request::width(&tail))
             .max(1);
         spans.push(Span::raw(branch));
         spans.extend(standing);
@@ -416,7 +417,7 @@ fn worktree_tail(
     room: usize,
 ) -> Vec<Span<'static>> {
     let fits = |tail: &[Span<'_>]| {
-        tail.is_empty() || branch.chars().count() + 1 + pull_request::width(tail) <= room
+        tail.is_empty() || cells::width(branch) + 1 + pull_request::width(tail) <= room
     };
     let tail = |summary: Option<&muster_core::ChangeSummary>, compact: bool| {
         let mut tail: Vec<Span<'static>> = clash.cloned().into_iter().collect();
@@ -506,14 +507,14 @@ fn session_parts(
     }
     let lead_width = lead_width + project.iter().map(Span::width).sum::<usize>();
     let fixed = lead_width + 2 + logos::width(app.graphics) + unseen;
-    let title_least = session.title.chars().count().min(READABLE_TITLE);
-    let wanted = title_least + 2 + doing.chars().count();
+    let title_least = cells::width(&session.title).min(READABLE_TITLE);
+    let wanted = title_least + 2 + cells::width(&doing);
     let mut time = look::session_time(app, session).unwrap_or_default();
     let time_width = |time: &str| {
         if time.is_empty() {
             0
         } else {
-            time.chars().count() + 1
+            cells::width(time) + 1
         }
     };
     if !live && width.saturating_sub(fixed + time_width(&time)) < wanted {
@@ -522,7 +523,7 @@ fn session_parts(
     let room = width.saturating_sub(fixed + time_width(&time));
     let doing_room = room.saturating_sub(title_least + 2);
     // A tidy's outcome is worth a shortened line, as a working agent's is.
-    let doing = if doing.chars().count() <= doing_room {
+    let doing = if cells::width(&doing) <= doing_room {
         doing
     } else if (live || session.tidy.is_some() || session.activity.is_some()) && doing_room >= 8 {
         shorten(&doing, doing_room)
@@ -532,7 +533,7 @@ fn session_parts(
     let doing_width = if doing.is_empty() {
         0
     } else {
-        doing.chars().count() + 2
+        cells::width(&doing) + 2
     };
     SessionParts {
         project,
@@ -603,7 +604,7 @@ fn pair_title_room(
             .project_of(Row::Session(session.id))
             .and_then(|id| app.model.project(id))
             .map_or(0, |found| {
-                shorten(&found.name, PROJECT_NAME_ROOM).chars().count() + 2
+                cells::width(&shorten(&found.name, PROJECT_NAME_ROOM)) + 2
             })
     } else {
         0
@@ -669,7 +670,7 @@ fn session_pair(
     let time_room = if time.is_empty() {
         0
     } else {
-        time.chars().count() + 3
+        cells::width(&time) + 3
     };
     let doing = shorten(&doing, room.saturating_sub(time_room).max(4));
     second.push(Span::styled(doing, doing_style(app, session)));
@@ -714,7 +715,7 @@ fn session_line(
     }
     if !time.is_empty() {
         let used: usize = spans.iter().map(Span::width).sum();
-        let gap = width.saturating_sub(used + time.chars().count()).max(1);
+        let gap = width.saturating_sub(used + cells::width(&time)).max(1);
         spans.push(Span::raw(" ".repeat(gap)));
         spans.push(Span::styled(time, super::theme::of(app).quiet));
     }
@@ -759,7 +760,7 @@ pub(super) fn cut_name(app: &App, width: usize) -> Option<(usize, usize)> {
         }
         View::Tickets | View::Settings => return None,
     };
-    let len = name.chars().count();
+    let len = cells::width(name);
     (len > room).then_some((len, room))
 }
 

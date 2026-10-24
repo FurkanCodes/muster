@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod cells;
 mod clipboard;
 mod colours;
 mod folders;

@@ -8,6 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::app::{App, Help, HelpLine, View};
+use crate::cells;
 
 /// The cells a key's column takes, before what it does.
 const KEYS_WIDTH: usize = 22;
@@ -71,7 +72,7 @@ pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: R
         Line::from("type to narrow   ↑↓ scroll   esc close").dim(),
         hint,
     );
-    let cursor = u16::try_from(5 + help.filter.before_cursor().chars().count()).unwrap_or(0);
+    let cursor = u16::try_from(5 + cells::width(help.filter.before_cursor())).unwrap_or(0);
     frame.set_cursor_position(Position::new(inner.x + cursor.min(inner.width), inner.y));
 }
 
@@ -82,8 +83,8 @@ fn help_rows(line: &HelpLine, width: usize) -> Vec<Line<'static>> {
         HelpLine::Heading(heading) => vec![Line::from(Span::from(*heading).cyan().bold())],
         HelpLine::Key(keys, what) => {
             let keys = format!("  {keys}");
-            let gap = KEYS_WIDTH.saturating_sub(keys.chars().count()).max(1);
-            let indent = keys.chars().count() + gap;
+            let gap = KEYS_WIDTH.saturating_sub(cells::width(&keys)).max(1);
+            let indent = cells::width(&keys) + gap;
             let mut rows = wrapped(what, width.saturating_sub(indent).max(12)).into_iter();
             let first = rows.next().unwrap_or_default();
             let mut lines = vec![Line::from(vec![
@@ -102,7 +103,7 @@ fn wrapped(text: &str, width: usize) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let mut line = String::new();
     for word in text.split(' ') {
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+        if !line.is_empty() && cells::width(&line) + 1 + cells::width(word) > width {
             lines.push(std::mem::take(&mut line));
         }
         if !line.is_empty() {

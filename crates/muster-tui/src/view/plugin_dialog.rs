@@ -16,6 +16,7 @@ use super::plugins::{runs_lines, source_text};
 use super::settings::detail;
 use crate::app::plugins::{Typed, is_folder};
 use crate::app::{App, PluginDialog};
+use crate::cells;
 use crate::input::LineInput;
 
 /// One part of the dialog, top to bottom.
@@ -140,7 +141,7 @@ fn rows(line: &Line<'_>, width: u16) -> u16 {
         .collect();
     let (mut rows, mut at) = (1_usize, 0_usize);
     for word in text.split(' ') {
-        let len = word.chars().count();
+        let len = cells::width(word);
         let gap = usize::from(at > 0);
         if at + gap + len <= width {
             at += gap + len;

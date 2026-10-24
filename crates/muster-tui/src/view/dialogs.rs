@@ -12,6 +12,7 @@ use muster_core::{ProjectId, TicketKey, WorkspaceId};
 use crate::app::cloning::{CLONE_ROWS, CloneChoice};
 use crate::app::tickets_from::Field;
 use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
+use crate::cells;
 use crate::input::LineInput;
 
 /// A harness offered in a dialog, the chosen one stood out.
@@ -563,7 +564,7 @@ fn repository_lines(app: &App, choice: &CloneChoice, columns: usize) -> Vec<Line
                         let chosen = choice.selected == Some(at);
                         let mark = if repository.private { "  private" } else { "" };
                         let name = super::shorten(&repository.name, columns.saturating_sub(2));
-                        let room = columns.saturating_sub(4 + name.chars().count() + mark.len());
+                        let room = columns.saturating_sub(4 + cells::width(&name) + mark.len());
                         let about = repository
                             .description
                             .as_deref()
@@ -669,9 +670,14 @@ fn wrapped_height(width: usize, columns: u16) -> u16 {
 /// within it.
 pub(super) fn input_window(text: &str, before_cursor: &str, columns: u16) -> (String, u16) {
     let columns = usize::from(columns.max(1));
-    let cursor = before_cursor.chars().count();
+    let cursor = cells::width(before_cursor);
     // The cursor sits after the last character shown, so keep a column for it.
     let start = (cursor + 1).saturating_sub(columns);
-    let shown: String = text.chars().skip(start).take(columns).collect();
-    (shown, u16::try_from(cursor - start).unwrap_or(0))
+    let rest = cells::after(text, start);
+    let skipped = cells::width(text) - cells::width(rest);
+    let shown = cells::start_within(rest, columns).to_owned();
+    (
+        shown,
+        u16::try_from(cursor.saturating_sub(skipped)).unwrap_or(0),
+    )
 }

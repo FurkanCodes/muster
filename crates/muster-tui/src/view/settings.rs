@@ -14,6 +14,7 @@ use super::{
     delegation, list_block, look, naming, panel, plugins, shared_builds, shorten, telling,
 };
 use crate::app::{App, SettingRow, Settings};
+use crate::cells;
 
 /// What the only-my-tickets setting is called in the list.
 const ONLY_MINE: &str = "Only my tickets";
@@ -151,9 +152,9 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
 /// A setting's line: its name, and its value at the line's end.
 fn labelled(label: &str, value: Span<'static>, width: usize) -> Line<'static> {
     let label = format!("  {label}");
-    let room = width.saturating_sub(value.content.chars().count() + 1);
+    let room = width.saturating_sub(cells::width(&value.content) + 1);
     let label = shorten(&label, room);
-    let gap = room.saturating_sub(label.chars().count()) + 1;
+    let gap = room.saturating_sub(cells::width(&label)) + 1;
     Line::from(vec![Span::raw(label), Span::raw(" ".repeat(gap)), value])
 }
 

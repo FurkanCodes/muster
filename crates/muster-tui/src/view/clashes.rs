@@ -11,6 +11,7 @@ use ratatui::text::{Line, Span};
 
 use super::shorten;
 use crate::app::App;
+use crate::cells;
 
 /// The most files named on one line; the rest are counted.
 const NAMED: usize = 3;
@@ -77,7 +78,7 @@ fn style(clash: &Clash) -> Style {
 /// conflict in README.md`.
 pub(super) fn pane_line(app: &App, clash: &Clash, width: usize) -> Line<'static> {
     let other = other(app, clash.with);
-    let room = width.saturating_sub(3 + other.chars().count() + 2);
+    let room = width.saturating_sub(3 + cells::width(&other) + 2);
     Line::from(vec![
         Span::raw("   "),
         Span::raw(other),

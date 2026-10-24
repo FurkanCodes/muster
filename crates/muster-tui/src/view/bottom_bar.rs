@@ -11,6 +11,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::{settings, tickets, version};
 use crate::app::{App, Link, Mode, View};
+use crate::cells;
 
 /// The most lines a message gets under the list.
 const MAX_NOTE_LINES: u16 = 3;
@@ -50,7 +51,7 @@ fn stale(app: &App) -> Option<String> {
 /// UI is old, up to two over the hints.
 pub(crate) fn bottom_height(app: &App, width: u16) -> u16 {
     let lines = |text: &str| {
-        let length = u16::try_from(note_text(text).chars().count()).unwrap_or(u16::MAX);
+        let length = u16::try_from(cells::width(&note_text(text))).unwrap_or(u16::MAX);
         length.div_ceil(width.max(1))
     };
     match (message(app), stale(app)) {
@@ -94,7 +95,7 @@ fn draw_hints(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let help = help_hint.is_some();
     let help_width = help_hint
         .as_ref()
-        .map_or(0, |hint| u16::try_from(hint.chars().count()).unwrap_or(0));
+        .map_or(0, |hint| u16::try_from(cells::width(hint)).unwrap_or(0));
     let [left, right] =
         Layout::horizontal([Constraint::Min(0), Constraint::Length(help_width)]).areas(area);
     // A space before them, and two before the help.
@@ -112,7 +113,7 @@ fn fitting(hints: &[String], room: usize) -> String {
     let mut text = String::new();
     for hint in hints {
         if !text.is_empty() {
-            if text.chars().count() + 2 + hint.chars().count() > room {
+            if cells::width(&text) + 2 + cells::width(hint) > room {
                 break;
             }
             text.push_str("  ");

@@ -18,6 +18,7 @@ use ratatui::text::{Line, Span, Text};
 use super::settings::detail;
 use super::shorten;
 use crate::app::{App, PluginKey, SettingRow};
+use crate::cells;
 
 /// A row of the section after its edge: the heading, a plugin, or *add a
 /// plugin*.
@@ -40,7 +41,7 @@ fn plugin_line(app: &App, plugin: &PluginInfo, width: usize) -> Line<'static> {
     let widest = |of: &dyn Fn(&PluginInfo) -> String, most: usize| {
         plugins
             .iter()
-            .map(|plugin| of(plugin).chars().count())
+            .map(|plugin| cells::width(&of(plugin)))
             .max()
             .unwrap_or(0)
             .min(most)
@@ -80,7 +81,7 @@ fn plugin_line(app: &App, plugin: &PluginInfo, width: usize) -> Line<'static> {
     }
     spans.push(Span::raw(" "));
     spans.push(state);
-    let used: usize = spans.iter().map(|span| span.content.chars().count()).sum();
+    let used: usize = spans.iter().map(|span| cells::width(&span.content)).sum();
     let room = width.saturating_sub(used + 2);
     if room >= 4 {
         spans.push(Span::raw("  "));
@@ -105,7 +106,7 @@ fn tail(app: &App, plugin: &PluginInfo, room: usize) -> Span<'static> {
             format!("{} {}", change.what.words(), change.by.words()),
         ]
         .into_iter()
-        .find(|text| text.chars().count() <= room)
+        .find(|text| cells::width(text) <= room)
         .unwrap_or_else(|| change.by.words().to_owned());
         return Span::from(shorten(&text, room)).yellow();
     }

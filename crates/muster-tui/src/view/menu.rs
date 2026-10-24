@@ -8,6 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::app::Menu;
+use crate::cells;
 
 /// Where `menu` is drawn in `window`: just below the cell clicked, or
 /// above it where there is no room below, and inside the window. The
@@ -16,7 +17,7 @@ pub(crate) fn menu_area(menu: &Menu, window: Rect) -> Rect {
     let widest = menu
         .items
         .iter()
-        .map(|item| item.key_name().chars().count() + 2 + item.what.chars().count())
+        .map(|item| cells::width(&item.key_name()) + 2 + cells::width(&item.what))
         .max()
         .unwrap_or(0);
     let width = u16::try_from(widest + 4)
