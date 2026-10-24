@@ -276,14 +276,7 @@ impl Supervisor {
         workspace: WorkspaceId,
         harness: &Harness,
     ) -> Result<Place, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if self.worktree_jobs.is_removing(workspace) {
             return Err(ErrorBody::new(
                 ErrorCode::Conflict,

@@ -22,6 +22,7 @@ mod fronts;
 mod handle;
 mod issues;
 mod looking;
+mod lookup;
 mod names;
 mod naming;
 mod outside_worktrees;
@@ -512,7 +513,7 @@ impl Supervisor {
                     number,
                     move_branch,
                 } => self.undo(workspace, number, move_branch, reply),
-                Command::MoveOnto { workspace } => self.move_onto(workspace, reply).await,
+                Command::MoveOnto { workspace } => self.move_onto(workspace, reply),
                 // Git makes or removes a worktree off the loop: a large
                 // repository's checkout takes seconds.
                 Command::CreateWorktree {
@@ -656,6 +657,7 @@ impl Supervisor {
                 self.sync_worktrees(project, listed).await;
             }
             Request::WorktreeMade(made) => self.worktree_made(*made).await,
+            Request::MovePlanned(planned) => self.move_planned(*planned),
             Request::Cloned(cloned) => self.cloned(*cloned).await,
             Request::WorktreeRemoved(removed) => self.worktree_removed(*removed).await,
             Request::AddClient(reply) => {

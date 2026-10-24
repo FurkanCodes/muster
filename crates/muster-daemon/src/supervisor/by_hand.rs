@@ -69,19 +69,8 @@ impl Supervisor {
         workspace: WorkspaceId,
         path: &Path,
     ) -> Result<CheckCommands, ErrorBody> {
-        let project = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .map(|found| found.project)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
-        let overrides: PathBuf = self
-            .config_dir
-            .join("projects")
-            .join(format!("{project}.toml"));
+        let project = self.workspace(workspace)?.project;
+        let overrides: PathBuf = self.overrides_of(project);
         let root = path.to_owned();
         let loaded = tokio::task::spawn_blocking(move || crate::config::load(&root, &overrides))
             .await
@@ -146,14 +135,7 @@ impl Supervisor {
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         let prepared = (|| {
-            let found = self
-                .state
-                .workspaces
-                .iter()
-                .find(|candidate| candidate.id == workspace)
-                .ok_or_else(|| {
-                    ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-                })?;
+            let found = self.workspace(workspace)?;
             let path = found.kind.host_path().map(Path::to_owned).ok_or_else(|| {
                 ErrorBody::new(
                     ErrorCode::BadRequest,
@@ -161,10 +143,7 @@ impl Supervisor {
                 )
             })?;
             let branch = self.reviewable_branch(workspace)?;
-            let overrides = self
-                .config_dir
-                .join("projects")
-                .join(format!("{}.toml", found.project));
+            let overrides = self.overrides_of(found.project);
             Ok::<_, ErrorBody>((path, branch, overrides, found.stacked_on.clone()))
         })();
         let (path, branch, overrides, stacked) = match prepared {
@@ -240,14 +219,7 @@ impl Supervisor {
     /// The branch checked out in `workspace`, if it can go anywhere: not
     /// detached, and not a run's container.
     pub(super) fn reviewable_branch(&self, workspace: WorkspaceId) -> Result<String, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if !found.kind.in_git() {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -291,20 +263,8 @@ impl Supervisor {
         workspace: WorkspaceId,
         path: &Path,
     ) -> Result<muster_core::config::ProjectConfig, ErrorBody> {
-        let project = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .map(|found| found.project)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
-        let overrides = self
-            .config_dir
-            .join("projects")
-            .join(format!("{project}.toml"));
-        load_settings(path.to_owned(), overrides).await
+        let project = self.workspace(workspace)?.project;
+        load_settings(path.to_owned(), self.overrides_of(project)).await
     }
 }
 

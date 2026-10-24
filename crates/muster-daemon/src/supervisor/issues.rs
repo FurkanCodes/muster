@@ -78,10 +78,7 @@ impl Supervisor {
             .ok_or_else(|| no_project(project))?;
         Ok(ProjectPlace {
             root,
-            overrides: self
-                .config_dir
-                .join("projects")
-                .join(format!("{project}.toml")),
+            overrides: self.overrides_of(project),
         })
     }
 

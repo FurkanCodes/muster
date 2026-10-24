@@ -117,6 +117,8 @@ pub(super) enum Request {
     },
     /// A worktree git made off the loop, or could not.
     WorktreeMade(Box<super::worktrees::Made>),
+    /// What a move of a branch onto its base was asked of git, off the loop.
+    MovePlanned(Box<super::stacks::MovePlanned>),
     /// A worktree git removed off the loop, or could not.
     WorktreeRemoved(Box<super::worktrees::Removed>),
     /// A project cloned off the loop, or not, to be added.
@@ -187,6 +189,7 @@ impl std::fmt::Debug for Request {
             Self::ProjectsForSync(_) => f.write_str("ProjectsForSync"),
             Self::WorktreesListed { .. } => f.write_str("WorktreesListed"),
             Self::WorktreeMade(_) => f.write_str("WorktreeMade"),
+            Self::MovePlanned(_) => f.write_str("MovePlanned"),
             Self::WorktreeRemoved(_) => f.write_str("WorktreeRemoved"),
             Self::Cloned(_) => f.write_str("Cloned"),
             Self::Resources(_) => f.write_str("Resources"),

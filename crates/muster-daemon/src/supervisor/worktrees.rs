@@ -188,10 +188,7 @@ impl Supervisor {
             .find(|candidate| candidate.id == project)
             .cloned()
             .ok_or_else(|| ErrorBody::new(ErrorCode::NotFound, format!("no project {project}")))?;
-        let overrides = self
-            .config_dir
-            .join("projects")
-            .join(format!("{}.toml", project.id));
+        let overrides = self.overrides_of(project.id);
         let prefixed = || crate::config::muster_prefix(project.root.clone(), overrides.clone());
         let branch = match branch {
             Branch::Named(name) => name,

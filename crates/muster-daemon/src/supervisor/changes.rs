@@ -277,14 +277,7 @@ impl Supervisor {
     /// checkout's on the host, in a repository; not a run's container,
     /// whose clone is its own.
     pub(super) fn changes_place(&self, workspace: WorkspaceId) -> Result<Place, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if !found.kind.in_git() {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,
@@ -305,10 +298,7 @@ impl Supervisor {
             workspace,
             branch: found.kind.branch().to_owned(),
             path: path.to_owned(),
-            overrides: self
-                .config_dir
-                .join("projects")
-                .join(format!("{}.toml", found.project)),
+            overrides: self.overrides_of(found.project),
             stacked: found.stacked_on.clone(),
         })
     }

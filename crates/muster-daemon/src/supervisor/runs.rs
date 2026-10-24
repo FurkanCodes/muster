@@ -303,7 +303,7 @@ impl Supervisor {
     }
 
     /// Where the person's overrides of `project`'s settings live.
-    fn overrides_of(&self, project: ProjectId) -> PathBuf {
+    pub(super) fn overrides_of(&self, project: ProjectId) -> PathBuf {
         self.config_dir
             .join("projects")
             .join(format!("{project}.toml"))
@@ -541,10 +541,7 @@ impl Supervisor {
             let Some(root) = self.project_root(run.project) else {
                 continue;
             };
-            let overrides = self
-                .config_dir
-                .join("projects")
-                .join(format!("{}.toml", run.project));
+            let overrides = self.overrides_of(run.project);
             let (config, unusable) = match settings_for_runs(root.clone(), overrides).await {
                 Ok(config) => (config, None),
                 Err(error) => {
@@ -630,14 +627,7 @@ impl Supervisor {
     /// The workspace whose work a run is to take over: one of the
     /// project's, on the host, on a branch no run has.
     fn hand_off(&self, project: ProjectId, workspace: WorkspaceId) -> Result<HandOff, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         if found.project != project {
             return Err(ErrorBody::new(
                 ErrorCode::BadRequest,

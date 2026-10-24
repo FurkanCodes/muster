@@ -196,10 +196,7 @@ impl Supervisor {
                 let Some(root) = self.project_root(workspace.project) else {
                     continue;
                 };
-                let overrides = self
-                    .config_dir
-                    .join("projects")
-                    .join(format!("{}.toml", workspace.project));
+                let overrides = self.overrides_of(workspace.project);
                 projects.push(ProjectBranches {
                     project: workspace.project,
                     place: ProjectPlace { root, overrides },

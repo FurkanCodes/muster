@@ -290,14 +290,7 @@ impl Supervisor {
         workspace: WorkspaceId,
         beside: Option<SessionId>,
     ) -> Result<Context, ErrorBody> {
-        let found = self
-            .state
-            .workspaces
-            .iter()
-            .find(|candidate| candidate.id == workspace)
-            .ok_or_else(|| {
-                ErrorBody::new(ErrorCode::NotFound, format!("no workspace {workspace}"))
-            })?;
+        let found = self.workspace(workspace)?;
         let project = self
             .state
             .projects
