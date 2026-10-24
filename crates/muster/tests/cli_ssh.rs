@@ -427,3 +427,37 @@ async fn a_release_that_does_not_match_its_checksum_is_never_sent_arc_21() {
     );
     assert!(!setup.home.join(".local/bin/muster").exists());
 }
+
+#[tokio::test]
+async fn a_project_there_is_named_by_its_path_there_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    assert!(
+        setup
+            .run(&["ssh", "vm", "--install", "--check"])
+            .status
+            .success()
+    );
+    let folder = setup.home.join("code-app");
+    std::fs::create_dir_all(&folder).unwrap();
+    // As the machine has it (a Mac's temporary folders are under a link).
+    let folder = folder.canonicalize().unwrap();
+    let path = folder.to_str().unwrap();
+    let added = setup.run(&["--on", "vm", "project", "add", path]);
+    assert!(added.status.success(), "{}", text(&added.stderr));
+
+    // A path there is never looked for here: gone from this side, it is
+    // still the project's, as typed.
+    std::fs::remove_dir_all(&folder).unwrap();
+    let removed = setup.run(&["--on", "vm", "project", "remove", &format!("{path}/")]);
+    assert!(removed.status.success(), "{}", text(&removed.stderr));
+
+    // Nor is a path made whole from this shell's folder.
+    let relative = setup.run(&["--on", "vm", "project", "add", "code/app"]);
+    assert!(!relative.status.success());
+    assert!(
+        text(&relative.stderr).contains("not a whole path on vm"),
+        "{}",
+        text(&relative.stderr)
+    );
+}
