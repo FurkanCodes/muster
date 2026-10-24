@@ -42,7 +42,12 @@ struct Setup {
 /// A daemon over Muster's own `settings`, with `agents` on `PATH` as the
 /// stand-in, a project, and a terminal in its checkout.
 async fn setup(agents: &[&str], settings: Option<&str>) -> Setup {
-    let sandbox = Sandbox::new().with_env("MUSTER_FRONT_MS", "50");
+    setup_looking_every("50", agents, settings).await
+}
+
+/// The same, with the terminals looked at every `millis`.
+async fn setup_looking_every(millis: &str, agents: &[&str], settings: Option<&str>) -> Setup {
+    let sandbox = Sandbox::new().with_env("MUSTER_FRONT_MS", millis);
     let bin = sandbox.root().join("bin");
     for agent in agents {
         let program = bin.join(agent);
@@ -231,4 +236,50 @@ async fn a_reload_keeps_the_agent_in_a_terminal_and_its_status() {
         (agent(&later), later.status),
         (Some("codex"), SessionStatus::Running)
     );
+}
+
+#[tokio::test]
+async fn an_agent_muster_exec_runs_in_a_terminal_is_heard_by_hooks_and_ends_there_arc_28() {
+    let Setup {
+        sandbox,
+        _daemon,
+        mut connection,
+        terminal,
+    } = setup_looking_every("600000", &[], None).await;
+    // Nothing looks at the terminal in this test after its first moment:
+    // the agent is heard as `muster exec` runs it and ends it alone.
+    // As `muster init`'s `claude` function runs it, typed in the terminal.
+    let typed = format!("{} exec claude fix the login\n", support::BINARY);
+    connection.input(terminal, typed.as_bytes()).await.unwrap();
+    let launch = sandbox.wait_for_launches(terminal, 1).remove(0);
+    assert!(
+        launch.args.iter().any(|arg| arg == "--settings"),
+        "{launch:?}"
+    );
+    assert!(
+        launch.args.iter().any(|arg| arg == "--session-id"),
+        "{launch:?}"
+    );
+    assert_eq!(
+        launch.args.last().map(String::as_str),
+        Some("fix the login")
+    );
+    assert!(!launch.token.is_empty(), "the terminal's own hooks");
+    let working = until(&mut connection, terminal, "claude at work", |s| {
+        agent(s) == Some("claude") && s.status == SessionStatus::Running
+    })
+    .await;
+    assert!(working.is_terminal() && working.kind().is_agent());
+    // Its chat is named by its first prompt, as any agent's is.
+    assert_eq!(working.title, "fix the login");
+
+    // It ends (the stand-in is a shell by now): the terminal is a terminal
+    // again at once, still running.
+    connection.input(terminal, b"exit 0\n").await.unwrap();
+    let back = until(&mut connection, terminal, "ended", |s| s.agent.is_none()).await;
+    assert!(
+        back.ended_at.is_none() && back.kind().is_shell(),
+        "{back:?}"
+    );
+    assert_eq!(back.status, SessionStatus::Fresh);
 }

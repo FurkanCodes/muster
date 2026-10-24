@@ -13,6 +13,7 @@ use muster_core::protocol::{Command, Snapshot};
 use muster_core::{Paths, SessionId, SessionStatus};
 
 mod control;
+pub(crate) mod exec;
 mod init;
 pub(crate) mod list;
 mod logs;
@@ -104,6 +105,10 @@ pub(crate) enum Verb {
     /// `--on` has ssh run on a machine.
     #[command(hide = true)]
     Bridge,
+    /// Run a coding agent in this terminal of Muster's with Muster's hooks:
+    /// what `muster init`'s functions run for an agent typed by its name.
+    #[command(hide = true)]
+    Exec(exec::Asked),
     /// Machines of your own, reached with ssh, where Muster runs too.
     #[command(subcommand)]
     Machine(crate::ssh::MachineCommand),
@@ -240,7 +245,7 @@ pub(crate) enum Verb {
 pub(crate) fn on_another_machine(verb: &Verb) -> bool {
     !matches!(
         verb,
-        Verb::Ssh { .. } | Verb::Machine(_) | Verb::Init { .. } | Verb::Bridge
+        Verb::Ssh { .. } | Verb::Machine(_) | Verb::Init { .. } | Verb::Bridge | Verb::Exec(_)
     )
 }
 
@@ -282,6 +287,7 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
         }
         Verb::Machine(command) => crate::ssh::machine(paths, command),
         Verb::Bridge => crate::ssh::bridge(paths).await,
+        Verb::Exec(asked) => return Then::Exit(exec::run(paths, asked).await),
         Verb::Ssh {
             machine,
             install,

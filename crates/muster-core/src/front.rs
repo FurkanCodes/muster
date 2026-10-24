@@ -7,6 +7,16 @@
 //! or a package runner (`npx @anthropic-ai/claude-code`). Pure: the
 //! daemon reads the processes (`ARC-01`).
 
+/// The body of the OSC (`ESC ] … BEL`) `muster exec` writes to its
+/// terminal as the agent it ran ends, followed by its exit code: how the
+/// daemon knows at once that the terminal is a terminal again.
+pub const AGENT_ENDED: &str = "6973;muster-agent-ended;";
+
+/// The variable naming, to an agent `muster exec` runs and every program
+/// it starts, the agent it is: a program run by an agent is the agent's,
+/// not the person's (`PRD-01`).
+pub const AGENT_VARIABLE: &str = "MUSTER_AGENT";
+
 /// The foreground process of a terminal, as the daemon read it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ProcessFacts {
@@ -47,6 +57,10 @@ const PACKAGES: [(&str, &str); 6] = [
     ("@github/copilot", "copilot"),
 ];
 
+/// What [`looked_through`] says came from `muster exec AGENT`: the agent
+/// by its harness's id, whatever its program.
+const EXEC: &str = "muster exec:";
+
 /// Programs that run a script named after the script: runtimes, and
 /// shells running a script file (an agent can be one).
 const RUNTIMES: [&str; 10] = [
@@ -64,8 +78,10 @@ pub fn identify<'a>(
 ) -> Front {
     let (program, package) = looked_through(facts);
     let agent = package
-        .and_then(|package| agent_of(&package))
+        .as_deref()
+        .and_then(|package| package.strip_prefix(EXEC))
         .map(str::to_owned)
+        .or_else(|| package.as_deref().and_then(agent_of).map(str::to_owned))
         .or_else(|| {
             OWN.iter()
                 .find(|(_, names)| names.contains(&program.as_str()))
@@ -97,6 +113,13 @@ fn looked_through(facts: &ProcessFacts) -> (String, Option<String>) {
     let mut program = command_name(first);
     if program.is_empty() {
         program = command_name(&facts.name);
+    }
+    // `muster exec AGENT …`: Muster running that agent in this terminal.
+    if program == "muster"
+        && facts.argv.get(1).map(String::as_str) == Some("exec")
+        && let Some(agent) = facts.argv.get(2).filter(|word| !word.starts_with('-'))
+    {
+        return (agent.clone(), Some(format!("{EXEC}{agent}")));
     }
     let mut rest = facts.argv.get(1..).unwrap_or_default();
     if is_runtime(&program) {
@@ -303,6 +326,13 @@ mod tests {
         assert_eq!(front(&["node", "-e", "console.log(1)"]).program, "node");
         assert_eq!(front(&["node"]).program, "node");
         assert_eq!(front(&["npx", "vite"]).program, "vite");
+        // Muster running an agent in the terminal, by its harness's id.
+        let exec = front(&["/usr/local/bin/muster", "exec", "pi", "--", "fix it"]);
+        assert_eq!(
+            (exec.program.as_str(), exec.agent.as_deref()),
+            ("pi", Some("pi"))
+        );
+        assert_eq!(front(&["muster", "list", "agents"]).agent, None);
         // No arguments to read: the system's name.
         assert_eq!(front_named("htop", &[]).program, "htop");
         // A shell at its prompt is itself; running a script, the script.

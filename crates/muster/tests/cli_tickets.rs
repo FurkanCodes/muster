@@ -222,4 +222,17 @@ async fn closing_asks_and_an_agent_may_not_prd_01_prd_07() {
         "{}",
         text(&inside.stderr)
     );
+    // Nor a program an agent `muster exec` ran started, whatever the
+    // terminal it runs in (`ARC-28`).
+    let under = setup.run_in(
+        &setup.repository,
+        &["ticket", "7", "claude"],
+        &[("MUSTER_AGENT", "codex")],
+    );
+    assert!(!under.status.success());
+    assert!(
+        text(&under.stderr).contains("runs under a coding agent"),
+        "{}",
+        text(&under.stderr)
+    );
 }

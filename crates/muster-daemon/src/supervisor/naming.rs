@@ -90,7 +90,7 @@ impl Supervisor {
         let Some(live) = self.live.get(&session) else {
             return;
         };
-        let (Some(asking), Some((spec, model))) = (&live.naming, self.namer(&live.harness)) else {
+        let (Some(asking), Some((spec, model))) = (&live.naming, self.namer(live.heard())) else {
             self.stop_naming(session);
             return;
         };

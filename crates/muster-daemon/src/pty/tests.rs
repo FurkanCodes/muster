@@ -77,7 +77,7 @@ fn scan(scanner: &mut OscScanner, bytes: &[u8]) -> Vec<bool> {
         .into_iter()
         .filter_map(|report| match report {
             Report::Progress { busy } => Some(busy),
-            Report::Title(_) => None,
+            Report::Title(_) | Report::AgentEnded { .. } => None,
         })
         .collect()
 }
@@ -140,6 +140,28 @@ fn titles_are_reported_as_they_change() {
     assert_eq!(scanner.scan(b"\x1b]0;\x07"), [Report::Title(String::new())]);
     let long = format!("\x1b]0;{}\x07", "x".repeat(600));
     assert!(scanner.scan(long.as_bytes()).is_empty());
+}
+
+#[test]
+fn an_agent_muster_exec_ran_ending_is_reported_and_what_it_said_forgotten_arc_28() {
+    let mut scanner = OscScanner::default();
+    let ended = |code: &str| format!("\x1b]{}{code}\x07", muster_core::front::AGENT_ENDED);
+    assert_eq!(
+        scanner.scan(format!("\x1b]9;4;3\x07\x1b]0;Working\x07{}", ended("0")).as_bytes()),
+        [
+            Report::Progress { busy: true },
+            Report::Title("Working".to_owned()),
+            Report::AgentEnded { success: true }
+        ]
+    );
+    // The next agent saying the same is news.
+    assert_eq!(
+        scanner.scan(format!("\x1b]9;4;3\x07{}", ended("130")).as_bytes()),
+        [
+            Report::Progress { busy: true },
+            Report::AgentEnded { success: false }
+        ]
+    );
 }
 
 // The actor, with a real shell

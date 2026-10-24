@@ -168,7 +168,7 @@ impl Supervisor {
         let watchers = self.watchers.entry(session).or_insert(0);
         *watchers += 1;
         if let Some(live) = self.live.get(&session)
-            && live.harness.suspends_itself()
+            && live.heard().suspends_itself()
         {
             // Looking at a suspended agent brings it back.
             live.pty.resume_if_suspended().await;
@@ -244,7 +244,7 @@ impl Supervisor {
         if *typing == 0 {
             self.typing.remove(&session);
             if let Some(live) = self.live.get(&session)
-                && !live.harness.stays_in_focus()
+                && !live.heard().stays_in_focus()
             {
                 live.pty.focus(false).await;
             }
