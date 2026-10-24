@@ -106,23 +106,56 @@ pub(crate) fn quoted(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
 
-/// The command ssh runs there: `muster` with the words, quoted for a
-/// shell, in `dir` where given.
-pub(crate) fn remote_command(remote: &str, dir: Option<&str>, words: &[String]) -> String {
+/// The command ssh runs there for Muster's UI: `muster`, in `dir` where
+/// given.
+pub(crate) fn ui_command(remote: &str, dir: Option<&str>) -> String {
     let muster = if remote.starts_with("$HOME") {
         format!("\"{remote}\"")
     } else {
         quoted(remote)
     };
-    let mut command = format!("exec {muster}");
-    for word in words {
-        command.push(' ');
-        command.push_str(&quoted(word));
-    }
+    format!("{}exec {muster}", in_dir(dir))
+}
+
+/// The command ssh runs there for the person's `words`, as ssh would run
+/// them (joined, read by a shell, so a pipe is a pipe), with Muster's
+/// `PATH` (an agent installed in `~/.local/bin` is found), in `dir` where
+/// given.
+pub(crate) fn shell_command(dir: Option<&str>, words: &[String]) -> String {
+    let script = format!("{REMOTE_PATH}; {}{}", in_dir(dir), words.join(" "));
+    format!("sh -c {}", quoted(&script))
+}
+
+/// `cd` to `dir` there, then: `~/` is that machine's home.
+fn in_dir(dir: Option<&str>) -> String {
     match dir {
-        Some(dir) => format!("cd {} && {command}", quoted(dir)),
-        None => command,
+        Some(dir) => match dir.strip_prefix("~/") {
+            Some(rest) => format!("cd \"$HOME\"/{} && ", quoted(rest)),
+            None => format!("cd {} && ", quoted(dir)),
+        },
+        None => String::new(),
     }
+}
+
+/// The user ssh signs in to `target` as, where it names none: what the
+/// person's ssh settings say for the host, else their own name here
+/// (`ssh -G`, which connects to nothing). `None` where the target names
+/// one, or ssh cannot say.
+pub(crate) fn user_for(target: &str) -> Option<String> {
+    if target.contains('@') {
+        return None;
+    }
+    let said = std::process::Command::new("ssh")
+        .args(["-G", "--", target])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&said.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("user "))
+        .map(|user| user.trim().to_owned())
+        .filter(|user| !user.is_empty())
 }
 
 /// What ssh's complaint about reaching `machine` means, and what the person
@@ -141,8 +174,9 @@ pub(crate) fn hint(stderr: &str, machine: &str) -> Option<String> {
     }
     if first(&["permission denied", "too many authentication failures"]) {
         return Some(format!(
-            "ssh could not sign in to {machine} without asking: connect once with `muster ssh \
-             {machine}`, or add your key to your agent (`ssh-add`)"
+            "ssh could not sign in to {machine} without asking: check the user name \
+             (`you@host`), connect once with `muster ssh {machine}`, or add your key to your \
+             agent (`ssh-add`)"
         ));
     }
     if first(&[
@@ -242,22 +276,31 @@ mod tests {
     }
 
     #[test]
-    fn a_command_there_is_quoted_whole_arc_27() {
+    fn muster_s_ui_there_runs_where_asked_arc_27() {
         assert_eq!(
-            remote_command(
-                "$HOME/.local/bin/muster",
-                None,
-                &["list".into(), "agents".into()]
-            ),
-            "exec \"$HOME/.local/bin/muster\" 'list' 'agents'"
+            ui_command("$HOME/.local/bin/muster", None),
+            "exec \"$HOME/.local/bin/muster\""
         );
         assert_eq!(
-            remote_command(
-                "/opt/m/muster",
-                Some("~/code"),
-                &["claude".into(), "it's broken; rm -rf /".into()]
-            ),
-            "cd '~/code' && exec '/opt/m/muster' 'claude' 'it'\\''s broken; rm -rf /'"
+            ui_command("/opt/m/muster", Some("~/code it")),
+            "cd \"$HOME\"/'code it' && exec '/opt/m/muster'"
+        );
+        assert_eq!(
+            ui_command("/opt/m/muster", Some("/srv/a'b")),
+            "cd '/srv/a'\\''b' && exec '/opt/m/muster'"
+        );
+    }
+
+    #[test]
+    fn the_person_s_command_there_runs_as_ssh_runs_one_with_muster_s_path() {
+        let command = shell_command(None, &["claude".into(), "auth".into(), "login".into()]);
+        assert!(command.starts_with("sh -c '"), "{command}");
+        assert!(command.contains(".local/bin"), "{command}");
+        assert!(command.ends_with("; claude auth login'"), "{command}");
+        let piped = shell_command(Some("~/app"), &["git log | head".into()]);
+        assert!(
+            piped.contains("cd \"$HOME\"/'\\''app'\\'' && git log | head"),
+            "{piped}"
         );
     }
 

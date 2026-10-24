@@ -128,10 +128,15 @@ pub(crate) enum Verb {
         /// a command follows.
         #[arg(long)]
         check: bool,
+        /// Install Claude Code there with its own installer, without asking.
+        #[arg(long)]
+        install_claude: bool,
         /// The folder there to run it in.
         #[arg(long, value_name = "DIR")]
         dir: Option<String>,
-        /// A command of Muster's to run there, rather than its UI.
+        /// A command to run there, as `ssh` runs one, with Muster's PATH
+        /// (`muster ssh vm claude auth login`), rather than Muster's UI.
+        /// Muster's own commands there are `muster --on MACHINE …`.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         words: Vec<String>,
     },
@@ -288,6 +293,7 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
             install,
             no_install,
             check,
+            install_claude,
             dir,
             words,
         } => {
@@ -298,6 +304,7 @@ pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
                     install,
                     no_install,
                     check,
+                    install_claude,
                     dir,
                     words,
                 },

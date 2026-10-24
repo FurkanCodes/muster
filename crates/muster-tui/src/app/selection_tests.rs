@@ -243,3 +243,25 @@ fn a_click_anywhere_takes_the_mark_away() {
     assert_eq!(copied(&up), None);
     assert_eq!(world.app.selection, None);
 }
+
+#[test]
+fn a_link_a_program_broke_over_lines_is_copied_whole() {
+    let (mut world, id) = open_with_output(0, false);
+    // As an agent prints a sign-in link wider than its window.
+    world.app.on_frame(ServerFrame::Replay {
+        session: id,
+        seq: 0,
+        data: b"https://claude.com/cai/oauth?code=true\r\n&state=Ab12\r\nnext words\r\n".to_vec(),
+        reset: true,
+        live_from: None,
+        screen: None,
+    });
+    let actions = drag(&mut world, (PANE_X, PANE_Y), (PANE_X + 60, PANE_Y + 1));
+    assert_eq!(
+        copied(&actions),
+        Some("https://claude.com/cai/oauth?code=true&state=Ab12")
+    );
+    // Words are lines as they are.
+    let actions = drag(&mut world, (PANE_X, PANE_Y + 1), (PANE_X + 60, PANE_Y + 2));
+    assert_eq!(copied(&actions), Some("&state=Ab12\nnext words"));
+}

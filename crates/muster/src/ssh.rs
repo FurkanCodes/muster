@@ -26,7 +26,9 @@ use muster_core::Paths;
 use muster_core::machines::{self, Machines, Probe};
 use sha2::Digest as _;
 
-use self::args::{How, REMOTE_PATH, control_dir, quoted, remote_command, ssh_args};
+use self::args::{
+    How, REMOTE_PATH, control_dir, quoted, shell_command, ssh_args, ui_command, user_for,
+};
 pub(crate) use self::link::{bridge, connector};
 
 /// This build's version, which a machine is brought up to.
@@ -162,6 +164,7 @@ pub(crate) struct Asked {
     pub(crate) install: bool,
     pub(crate) no_install: bool,
     pub(crate) check: bool,
+    pub(crate) install_claude: bool,
     pub(crate) dir: Option<String>,
     pub(crate) words: Vec<String>,
 }
@@ -172,6 +175,7 @@ pub(crate) async fn run(
     asked: &Asked,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let target = read_machines(paths)?.target(&asked.machine)?;
+    say_user(&target);
     let probe = Probe::read(&ask(&target, &probe_script())?);
     let system = probe.system.clone().unwrap_or_else(|| "?".to_owned());
     let mut remote = probe.muster.clone();
@@ -206,19 +210,31 @@ pub(crate) async fn run(
     let Some(remote) = remote else {
         return Err(format!("Muster is not on {}", asked.machine).into());
     };
-    if installed || asked.check {
-        let said = report::report(
-            &asked.machine,
-            &system,
-            VERSION,
-            &ask(&target, &report::script())?,
+    if installed || asked.check || asked.install_claude {
+        let checked = ask(&target, &report::script())?;
+        eprint!(
+            "{}",
+            report::report(&asked.machine, &system, VERSION, &checked)
         );
-        eprint!("{said}");
+        if report::claude_missing(&checked)
+            && (asked.install_claude
+                || agrees(&format!(
+                    "Install Claude Code on {} with its own installer?",
+                    asked.machine
+                ))?)
+        {
+            install_claude(&target, &asked.machine, &checked)?;
+        }
     }
-    if asked.check && asked.words.is_empty() {
+    if (asked.check || asked.install_claude) && asked.words.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
-    let command = remote_command(&remote, asked.dir.as_deref(), &asked.words);
+    // Muster's UI there, or the person's command, as ssh runs one.
+    let command = if asked.words.is_empty() {
+        ui_command(&remote, asked.dir.as_deref())
+    } else {
+        shell_command(asked.dir.as_deref(), &asked.words)
+    };
     let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let error = std::process::Command::new("ssh")
         .args(ssh_args(
@@ -377,6 +393,64 @@ fn reloaded(target: &str) {
         .stderr(Stdio::null())
         .status();
     eprintln!("Installed muster {VERSION} there.");
+}
+
+/// Says who ssh signs in as where the target names no user and ssh's
+/// settings name none either: the person's own name here, which a
+/// machine of theirs often does not have, so a password asked for next
+/// would never be right.
+fn say_user(target: &str) {
+    let mine = std::env::var("USER").unwrap_or_default();
+    if let Some(user) = user_for(target).filter(|user| !mine.is_empty() && *user == mine) {
+        eprintln!(
+            "Signing in to {target} as {user}, your name here: for another, `muster ssh \
+             you@{target}` (or a `User` for it in ~/.ssh/config)."
+        );
+    }
+}
+
+/// The official installer Claude Code is installed with.
+const CLAUDE_INSTALLER: &str = "https://claude.ai/install.sh";
+
+/// Installs Claude Code on the machine with its own installer, run there
+/// in the person's terminal, then says how to sign it in there: Muster
+/// copies no sign-in (`PRD-06`).
+fn install_claude(
+    target: &str,
+    machine: &str,
+    checked: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !report::has(checked, "curl") {
+        return Err(format!(
+            "Claude Code's installer needs curl, which is not on {machine}: install it there \
+             (`muster ssh {machine} sudo apt install curl`), then ask again"
+        )
+        .into());
+    }
+    let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let status = std::process::Command::new("ssh")
+        .args(ssh_args(
+            How::Interactive,
+            tty,
+            target,
+            control_dir().as_deref(),
+        ))
+        .arg(shell_command(
+            None,
+            &[format!("curl -fsSL {CLAUDE_INSTALLER} | bash")],
+        ))
+        .status()
+        .map_err(|error| format!("could not run ssh: {error}"))?;
+    if !status.success() {
+        return Err(
+            format!("Claude Code's installer on {machine} failed; what it said is above").into(),
+        );
+    }
+    eprintln!(
+        "Claude Code is on {machine}. Sign it in there once: `muster ssh {machine} claude auth \
+         login` (open its link here, paste the code back)."
+    );
+    Ok(())
 }
 
 /// Whether the person, asked on their terminal, says yes; never, without

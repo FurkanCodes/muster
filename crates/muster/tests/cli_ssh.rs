@@ -98,7 +98,8 @@ async fn ssh_installs_only_when_told_then_runs_muster_there_arc_27() {
     );
     assert!(!setup.home.join(".local/bin/muster").exists());
 
-    let first = setup.run(&["ssh", "vm", "--install", "status"]);
+    // A command there runs as ssh runs one, with Muster's PATH there.
+    let first = setup.run(&["ssh", "vm", "--install", "muster", "status"]);
     assert!(first.status.success(), "{}", text(&first.stderr));
     let said = text(&first.stderr);
     assert!(said.contains("Installed muster"), "{said}");
@@ -115,7 +116,7 @@ async fn ssh_installs_only_when_told_then_runs_muster_there_arc_27() {
     );
 
     // There now: nothing more to install, and the command runs there.
-    let again = setup.run(&["ssh", "vm", "list", "machines"]);
+    let again = setup.run(&["ssh", "vm", "muster", "list", "machines"]);
     assert!(again.status.success(), "{}", text(&again.stderr));
     assert!(!text(&again.stderr).contains("Installed"));
     let calls = std::fs::read_to_string(setup.sandbox.root().join("ssh-calls")).unwrap();
@@ -426,4 +427,105 @@ async fn a_release_that_does_not_match_its_checksum_is_never_sent_arc_21() {
         text(&refused.stderr)
     );
     assert!(!setup.home.join(".local/bin/muster").exists());
+}
+
+#[tokio::test]
+async fn a_project_there_is_named_by_its_path_there_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    assert!(
+        setup
+            .run(&["ssh", "vm", "--install", "--check"])
+            .status
+            .success()
+    );
+    let folder = setup.home.join("code-app");
+    std::fs::create_dir_all(&folder).unwrap();
+    // As the machine has it (a Mac's temporary folders are under a link).
+    let folder = folder.canonicalize().unwrap();
+    let path = folder.to_str().unwrap();
+    let added = setup.run(&["--on", "vm", "project", "add", path]);
+    assert!(added.status.success(), "{}", text(&added.stderr));
+
+    // A path there is never looked for here: gone from this side, it is
+    // still the project's, as typed.
+    std::fs::remove_dir_all(&folder).unwrap();
+    let removed = setup.run(&["--on", "vm", "project", "remove", &format!("{path}/")]);
+    assert!(removed.status.success(), "{}", text(&removed.stderr));
+
+    // Nor is a path made whole from this shell's folder.
+    let relative = setup.run(&["--on", "vm", "project", "add", "code/app"]);
+    assert!(!relative.status.success());
+    assert!(
+        text(&relative.stderr).contains("not a whole path on vm"),
+        "{}",
+        text(&relative.stderr)
+    );
+}
+
+#[tokio::test]
+async fn a_command_there_is_the_person_s_as_ssh_runs_one_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    assert!(
+        setup
+            .run(&["ssh", "vm", "--install", "--check"])
+            .status
+            .success()
+    );
+    // Read by a shell there: a pipe is a pipe.
+    let ran = setup.run(&["ssh", "vm", "echo", "quiet", "|", "tr", "a-z", "A-Z"]);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(text(&ran.stdout).contains("QUIET"), "{}", text(&ran.stdout));
+}
+
+#[tokio::test]
+async fn a_machine_named_without_a_user_says_who_ssh_signs_in_as() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "vm.example"]);
+    let checked = setup.run(&["ssh", "vm", "--install", "--check"]);
+    let me = std::env::var("USER").unwrap();
+    assert!(
+        text(&checked.stderr).contains(&format!("as {me}, your name here")),
+        "{}",
+        text(&checked.stderr)
+    );
+    setup.run(&["machine", "add", "named", "tester@vm.example"]);
+    let named = setup.run(&["ssh", "named", "--check"]);
+    assert!(!text(&named.stderr).contains("your name here"));
+}
+
+/// Stands in for `curl` on the machine fetching Claude Code's installer:
+/// records what it was asked for, and gives an installer that puts a
+/// `claude` in `~/.local/bin`.
+const MACHINE_CURL: &str = r##"#!/bin/sh
+echo "$*" >> "$HOME/curl-calls"
+echo 'mkdir -p "$HOME/.local/bin"; printf "#!/bin/sh\necho 2.1\n" > "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"'
+"##;
+
+#[tokio::test]
+async fn claude_code_is_installed_there_with_its_own_installer_prd_06() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    // Not there, and no terminal to ask on: said how, nothing installed.
+    let checked = setup.run(&["ssh", "vm", "--install", "--check"]);
+    assert!(
+        text(&checked.stderr).contains("`muster ssh vm --install-claude`"),
+        "{}",
+        text(&checked.stderr)
+    );
+    let claude = setup.home.join(".local/bin/claude");
+    assert!(!claude.exists());
+
+    let curl = setup.home.join(".local/bin/curl");
+    std::fs::write(&curl, MACHINE_CURL).unwrap();
+    std::fs::set_permissions(&curl, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let installed = setup.run(&["ssh", "vm", "--install-claude"]);
+    let said = text(&installed.stderr);
+    assert!(installed.status.success(), "{said}");
+    assert!(claude.exists(), "its installer ran there");
+    let asked = std::fs::read_to_string(setup.home.join("curl-calls")).unwrap();
+    assert!(asked.contains("https://claude.ai/install.sh"), "{asked}");
+    assert!(said.contains("`muster ssh vm claude auth login`"), "{said}");
 }
