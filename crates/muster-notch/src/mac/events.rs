@@ -13,7 +13,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSNotificationCenter, NSObjectProtocol, NSOperationQueue, NSTimer};
 
-use super::SCREEN;
+use super::{Screen, with_screen};
 
 #[expect(
     clippy::disallowed_methods,
@@ -24,19 +24,11 @@ pub(super) fn now() -> Instant {
 }
 
 pub(super) fn redraw() {
-    SCREEN.with(|screen| {
-        if let Some(screen) = screen.borrow_mut().as_mut() {
-            screen.draw();
-        }
-    });
+    with_screen(Screen::draw);
 }
 
 fn pointer() {
-    SCREEN.with(|screen| {
-        if let Some(screen) = screen.borrow_mut().as_mut() {
-            screen.pointer_changed();
-        }
-    });
+    with_screen(Screen::pointer_changed);
 }
 
 pub(super) struct Mouse {
@@ -146,11 +138,9 @@ impl Timer {
                     left.as_secs_f64().max(0.001),
                     false,
                     &RcBlock::new(|_| {
-                        SCREEN.with(|screen| {
-                            if let Some(screen) = screen.borrow_mut().as_mut() {
-                                screen.timer.clear();
-                                screen.draw();
-                            }
+                        with_screen(|screen| {
+                            screen.timer.clear();
+                            screen.draw();
                         });
                     }),
                 )
