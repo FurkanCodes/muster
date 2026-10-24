@@ -456,7 +456,7 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
     else {
         panic!("{:?}", world.app.mode);
     };
-    assert_eq!((harness, *another), (&HarnessChoice::Claude, false));
+    assert_eq!((harness, *another), (&HarnessChoice::CLAUDE, false));
     let screen = render(&world.app);
     for shown in [
         "Assign an agent",
@@ -498,7 +498,13 @@ fn the_agent_for_a_ticket_is_chosen_and_offered_first_next_time() {
     else {
         panic!("{:?}", world.app.mode);
     };
-    assert_eq!((harness, *another), (&HarnessChoice::Codex, true));
+    assert_eq!(
+        (harness, *another),
+        (
+            &HarnessChoice::Own(muster_core::harness::OwnAgent::Codex),
+            true
+        )
+    );
     assert!(render(&world.app).contains("In a worktree of its own"));
     assert!(press(&mut world.app, KeyCode::Esc).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);

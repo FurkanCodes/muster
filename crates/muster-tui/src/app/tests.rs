@@ -443,7 +443,7 @@ fn a_new_session_starts_claude_with_a_prompt_and_opens_it() {
     assert!(matches!(
         world.app.mode,
         Mode::Dialog(Dialog::NewSession {
-            harness: HarnessChoice::Claude,
+            harness: HarnessChoice::CLAUDE,
             ..
         })
     ));

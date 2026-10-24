@@ -20,7 +20,7 @@ fn t_asks_which_agent_tidies_and_only_then_starts_it() {
         world.app.mode,
         Mode::Dialog(Dialog::Tidy {
             workspace: world.worktree.id,
-            harness: HarnessChoice::Claude,
+            harness: HarnessChoice::CLAUDE,
         })
     );
     let screen = render(&world.app);
@@ -37,7 +37,7 @@ fn t_asks_which_agent_tidies_and_only_then_starts_it() {
     assert!(matches!(
         world.app.mode,
         Mode::Dialog(Dialog::Tidy {
-            harness: HarnessChoice::Copilot,
+            harness: HarnessChoice::Own(muster_core::harness::OwnAgent::Copilot),
             ..
         })
     ));

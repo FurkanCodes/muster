@@ -1,17 +1,15 @@
 import { useNow } from "../app/clock";
 import { useDaemon } from "../app/context";
 import type { Entry } from "../ipc/generated/Entry";
-import { agentOf } from "../lib/agents";
+import { agentOf, OWN } from "../lib/agents";
 import { ago } from "../lib/format";
 import { shownHarness } from "../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "./List";
 import { AgentLogo, AgentMark, DiffStat } from "./status";
 
-const AGENTS = ["claude", "codex", "gemini", "opencode", "copilot"];
-
 /** The harness of an agent the timeline names, where its session has gone. */
 function harnessNamed(agent: string): string {
-  return AGENTS.find((id) => agentOf(id).name === agent) ?? agent;
+  return OWN.find((id) => agentOf(id).name === agent) ?? agent;
 }
 
 /** A turn's line's id in the window, for its list's `aria-activedescendant`. */

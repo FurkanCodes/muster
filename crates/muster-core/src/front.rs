@@ -7,6 +7,8 @@
 //! or a package runner (`npx @anthropic-ai/claude-code`). Pure: the
 //! daemon reads the processes (`ARC-01`).
 
+use crate::harness::OwnAgent;
+
 /// The body of the OSC (`ESC ] … BEL`) `muster exec` writes to its
 /// terminal as the agent it ran ends, followed by its exit code: how the
 /// daemon knows at once that the terminal is a terminal again.
@@ -36,27 +38,6 @@ pub struct Front {
     pub agent: Option<String>,
 }
 
-/// Muster's own agents: each harness's id, and the names its program goes
-/// by, after looking through whatever starts it.
-const OWN: [(&str, &[&str]); 5] = [
-    ("claude", &["claude", "claude-code"]),
-    ("codex", &["codex"]),
-    ("gemini", &["gemini"]),
-    ("opencode", &["opencode"]),
-    ("copilot", &["copilot"]),
-];
-
-/// Packages that are Muster's own agents, as a package runner names them
-/// or a program or a runtime's script lies in them.
-const PACKAGES: [(&str, &str); 6] = [
-    ("@anthropic-ai/claude-code", "claude"),
-    ("@openai/codex", "codex"),
-    ("@google/gemini-cli", "gemini"),
-    ("opencode-ai", "opencode"),
-    ("@opencode-ai/cli", "opencode"),
-    ("@github/copilot", "copilot"),
-];
-
 /// What [`looked_through`] says came from `muster exec AGENT`: the agent
 /// by its harness's id, whatever its program.
 const EXEC: &str = "muster exec:";
@@ -83,9 +64,10 @@ pub fn identify<'a>(
         .map(str::to_owned)
         .or_else(|| package.as_deref().and_then(agent_of).map(str::to_owned))
         .or_else(|| {
-            OWN.iter()
-                .find(|(_, names)| names.contains(&program.as_str()))
-                .map(|(agent, _)| (*agent).to_owned())
+            OwnAgent::ALL
+                .into_iter()
+                .find(|agent| agent.program_names().contains(&program.as_str()))
+                .map(|agent| agent.id().to_owned())
         })
         .or_else(|| {
             added
@@ -179,18 +161,26 @@ fn script(args: &[String]) -> Option<(Script<'_>, &[String])> {
 /// The package a script lies in, where it is one of Muster's own agents'
 /// (`…/node_modules/@anthropic-ai/claude-code/cli.js`).
 fn package_of(path: &str) -> Option<String> {
-    PACKAGES
-        .iter()
+    packages()
         .find(|(package, _)| path.contains(&format!("/{package}/")))
-        .map(|(package, _)| (*package).to_owned())
+        .map(|(package, _)| package.to_owned())
 }
 
 /// The agent of Muster's own a package is.
 fn agent_of(package: &str) -> Option<&'static str> {
-    PACKAGES
-        .iter()
+    packages()
         .find(|(named, _)| *named == package)
-        .map(|(_, agent)| *agent)
+        .map(|(_, agent)| agent.id())
+}
+
+/// Each package of Muster's own agents, with its agent.
+fn packages() -> impl Iterator<Item = (&'static str, OwnAgent)> {
+    OwnAgent::ALL.into_iter().flat_map(|agent| {
+        agent
+            .packages()
+            .iter()
+            .map(move |package| (*package, agent))
+    })
 }
 
 /// What a package is called by: the agent of Muster's own it is, else its

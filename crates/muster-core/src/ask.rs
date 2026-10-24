@@ -7,6 +7,8 @@
 //! nothing in the agent's history (`PRD-13`). Parsing and building do no
 //! IO (`ARC-01`).
 
+use crate::harness::OwnAgent;
+
 /// Where the question goes in [`Ask::args`].
 pub const QUESTION: &str = "{prompt}";
 
@@ -56,9 +58,10 @@ impl Ask {
 /// checked the same way.
 pub fn built_in(id: &str) -> Option<Ask> {
     let texts = |args: &[&str]| args.iter().map(|arg| (*arg).to_owned()).collect();
-    match id {
-        "claude" => Some(Ask {
-            program: "claude".to_owned(),
+    let agent = OwnAgent::of(id)?;
+    match agent {
+        OwnAgent::Claude => Some(Ask {
+            program: agent.program().to_owned(),
             args: texts(&[
                 "-p",
                 "--safe-mode",
@@ -73,8 +76,8 @@ pub fn built_in(id: &str) -> Option<Ask> {
             default_model: Some("haiku".to_owned()),
             suggestions: texts(&["haiku", "sonnet", "opus"]),
         }),
-        "codex" => Some(Ask {
-            program: "codex".to_owned(),
+        OwnAgent::Codex => Some(Ask {
+            program: agent.program().to_owned(),
             args: texts(&[
                 "exec",
                 "--ephemeral",
@@ -90,7 +93,7 @@ pub fn built_in(id: &str) -> Option<Ask> {
             default_model: None,
             suggestions: Vec::new(),
         }),
-        _ => None,
+        OwnAgent::Gemini | OwnAgent::OpenCode | OwnAgent::Copilot => None,
     }
 }
 

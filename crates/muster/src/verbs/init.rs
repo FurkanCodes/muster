@@ -12,15 +12,13 @@ use std::time::Duration;
 
 use clap::ValueEnum;
 use muster_core::Paths;
+use muster_core::harness::OwnAgent;
 
 use crate::commands;
 
 /// How long `init` waits for the daemon to name the agents the person
 /// added, as a shell starts: Muster's own are named without it.
 const ASKING: Duration = Duration::from_millis(300);
-
-/// The coding agents of Muster's own, by the names their programs go by.
-const OWN: [&str; 5] = ["claude", "codex", "gemini", "opencode", "copilot"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub(crate) enum Shell {
@@ -30,7 +28,7 @@ pub(crate) enum Shell {
 }
 
 pub(crate) async fn run(paths: &Paths, shell: Shell) -> ExitCode {
-    let mut names: Vec<String> = OWN.iter().map(|name| (*name).to_owned()).collect();
+    let mut names: Vec<String> = OwnAgent::ALL.map(|agent| agent.program().to_owned()).into();
     names.extend(added(paths).await);
     print!("{}", functions(shell, &names));
     ExitCode::SUCCESS
@@ -49,7 +47,7 @@ async fn added(paths: &Paths) -> Vec<String> {
             .agents
             .into_iter()
             .map(|agent| agent.name)
-            .filter(|name| usable(name) && !OWN.contains(&name.as_str()))
+            .filter(|name| usable(name) && OwnAgent::of(name).is_none())
             .collect(),
         _ => Vec::new(),
     }

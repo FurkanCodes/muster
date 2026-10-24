@@ -15,6 +15,7 @@ use std::sync::LazyLock;
 
 pub(crate) use super::picture::Backdrop;
 use base64::Engine as _;
+use muster_core::harness::OwnAgent;
 use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Span;
@@ -55,93 +56,70 @@ impl Graphics {
     }
 }
 
-/// An agent with a logo.
+/// An agent with a logo: each of Muster's own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Logo {
-    Claude,
-    Codex,
-    Gemini,
-    OpenCode,
-    Copilot,
-}
+struct Logo(OwnAgent);
 
 impl Logo {
     /// The logo of the agent the harness `harness` runs; the review is
     /// Claude Code's.
     fn of(harness: &str) -> Option<Self> {
-        match harness {
-            "claude" | "review" => Some(Self::Claude),
-            "codex" => Some(Self::Codex),
-            "gemini" => Some(Self::Gemini),
-            "opencode" => Some(Self::OpenCode),
-            "copilot" => Some(Self::Copilot),
-            _ => None,
-        }
+        let agent = match harness {
+            muster_core::harness::REVIEW => Some(OwnAgent::Claude),
+            harness => OwnAgent::of(harness),
+        };
+        agent.map(Self)
     }
 
     /// Its mark in text, and its brand colour.
     const fn glyph(self) -> (&'static str, Color) {
-        match self {
-            Self::Claude => ("✻", Color::Rgb(0xD9, 0x77, 0x57)),
-            Self::Codex => ("◎", Color::Rgb(0xA3, 0xA3, 0xA3)),
-            Self::Gemini => ("✦", Color::Rgb(0x8E, 0x75, 0xB2)),
-            Self::OpenCode => ("▣", Color::Rgb(0x9A, 0x94, 0x94)),
-            Self::Copilot => ("◉", Color::Rgb(0x82, 0x50, 0xDF)),
+        match self.0 {
+            OwnAgent::Claude => ("✻", Color::Rgb(0xD9, 0x77, 0x57)),
+            OwnAgent::Codex => ("◎", Color::Rgb(0xA3, 0xA3, 0xA3)),
+            OwnAgent::Gemini => ("✦", Color::Rgb(0x8E, 0x75, 0xB2)),
+            OwnAgent::OpenCode => ("▣", Color::Rgb(0x9A, 0x94, 0x94)),
+            OwnAgent::Copilot => ("◉", Color::Rgb(0x82, 0x50, 0xDF)),
         }
     }
 
     /// Its name, as its files are called.
     const fn name(self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::Codex => "codex",
-            Self::Gemini => "gemini",
-            Self::OpenCode => "opencode",
-            Self::Copilot => "copilot",
-        }
+        self.0.id()
     }
 
     /// Its pixels, unpacked from its picture by `scripts/render-logos.sh`:
     /// red, green, blue and alpha, `picture::SIDE` square.
     fn pixels(self) -> &'static [u8] {
-        match self {
-            Self::Claude => include_bytes!("../../assets/logos/claude.rgba"),
-            Self::Codex => include_bytes!("../../assets/logos/codex.rgba"),
-            Self::Gemini => include_bytes!("../../assets/logos/gemini.rgba"),
-            Self::OpenCode => include_bytes!("../../assets/logos/opencode.rgba"),
-            Self::Copilot => include_bytes!("../../assets/logos/copilot.rgba"),
+        match self.0 {
+            OwnAgent::Claude => include_bytes!("../../assets/logos/claude.rgba"),
+            OwnAgent::Codex => include_bytes!("../../assets/logos/codex.rgba"),
+            OwnAgent::Gemini => include_bytes!("../../assets/logos/gemini.rgba"),
+            OwnAgent::OpenCode => include_bytes!("../../assets/logos/opencode.rgba"),
+            OwnAgent::Copilot => include_bytes!("../../assets/logos/copilot.rgba"),
         }
     }
 
     fn picture(self) -> &'static [u8] {
-        match self {
-            Self::Claude => include_bytes!("../../assets/logos/claude.png"),
-            Self::Codex => include_bytes!("../../assets/logos/codex.png"),
-            Self::Gemini => include_bytes!("../../assets/logos/gemini.png"),
-            Self::OpenCode => include_bytes!("../../assets/logos/opencode.png"),
-            Self::Copilot => include_bytes!("../../assets/logos/copilot.png"),
+        match self.0 {
+            OwnAgent::Claude => include_bytes!("../../assets/logos/claude.png"),
+            OwnAgent::Codex => include_bytes!("../../assets/logos/codex.png"),
+            OwnAgent::Gemini => include_bytes!("../../assets/logos/gemini.png"),
+            OwnAgent::OpenCode => include_bytes!("../../assets/logos/opencode.png"),
+            OwnAgent::Copilot => include_bytes!("../../assets/logos/copilot.png"),
         }
     }
 
     /// The escape sequence drawing it two cells wide and one high, the
     /// cursor left where it was, made once.
     fn sequence(self) -> &'static str {
-        static SEQUENCES: LazyLock<[String; 5]> = LazyLock::new(|| {
-            [
-                Logo::Claude,
-                Logo::Codex,
-                Logo::Gemini,
-                Logo::OpenCode,
-                Logo::Copilot,
-            ]
-            .map(|logo| iterm_sequence(logo.picture()))
-        });
-        let at = match self {
-            Self::Claude => 0,
-            Self::Codex => 1,
-            Self::Gemini => 2,
-            Self::OpenCode => 3,
-            Self::Copilot => 4,
+        static SEQUENCES: LazyLock<[String; 5]> =
+            LazyLock::new(|| OwnAgent::ALL.map(|agent| iterm_sequence(Logo(agent).picture())));
+        let at = match self.0 {
+            OwnAgent::Claude => 0,
+            OwnAgent::Codex => 1,
+            OwnAgent::Gemini => 2,
+            OwnAgent::OpenCode => 3,
+            OwnAgent::Copilot => 4,
         };
         &SEQUENCES[at]
     }

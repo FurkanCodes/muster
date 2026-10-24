@@ -9,14 +9,20 @@ use muster_state::session::HookEvent;
 use super::*;
 
 const SHELL: Harness = Harness { kind: Kind::Shell };
-const CLAUDE: Harness = Harness { kind: Kind::Claude };
-const CODEX: Harness = Harness { kind: Kind::Codex };
-const GEMINI: Harness = Harness { kind: Kind::Gemini };
+const CLAUDE: Harness = Harness {
+    kind: Kind::Own(OwnAgent::Claude),
+};
+const CODEX: Harness = Harness {
+    kind: Kind::Own(OwnAgent::Codex),
+};
+const GEMINI: Harness = Harness {
+    kind: Kind::Own(OwnAgent::Gemini),
+};
 const OPENCODE: Harness = Harness {
-    kind: Kind::OpenCode,
+    kind: Kind::Own(OwnAgent::OpenCode),
 };
 const COPILOT: Harness = Harness {
-    kind: Kind::Copilot,
+    kind: Kind::Own(OwnAgent::Copilot),
 };
 const CHECKS: Harness = Harness { kind: Kind::Checks };
 const REVIEW: Harness = Harness { kind: Kind::Review };
@@ -476,8 +482,15 @@ fn an_added_agent_is_found_after_muster_s_own() {
     // Muster's own are never the person's.
     assert_eq!(find("my-agent"), None);
     assert_eq!((mine.id(), mine.label()), ("my-agent", "My Agent"));
-    for name in muster_core::config::agents::BUILT_IN {
-        assert!(find(name).is_some(), "{name} is Muster's own");
+    for harness in built_in() {
+        assert!(
+            muster_core::harness::is_built_in(harness.id()),
+            "{}",
+            harness.id()
+        );
+    }
+    for agent in OwnAgent::ALL {
+        assert!(find(agent.id()).is_some(), "{} is Muster's own", agent.id());
     }
 }
 

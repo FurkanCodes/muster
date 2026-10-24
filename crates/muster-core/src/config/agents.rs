@@ -38,12 +38,6 @@ use std::fmt;
 
 use crate::settings::AddedAgent;
 
-/// The names Muster's own harnesses go by, which no agent of the person's
-/// can take.
-pub const BUILT_IN: [&str; 8] = [
-    "shell", "claude", "codex", "gemini", "opencode", "copilot", "checks", "review",
-];
-
 /// Where a first prompt goes in [`AgentDefinition::prompt`].
 pub const PROMPT: &str = "{prompt}";
 
@@ -296,7 +290,7 @@ pub fn parse(agents: &toml::Value) -> Result<Vec<AgentDefinition>, AgentError> {
 
 /// One agent's table, under `name`.
 fn definition(name: &str, value: &toml::Value) -> Result<AgentDefinition, AgentError> {
-    if BUILT_IN.contains(&name) {
+    if crate::harness::is_built_in(name) {
         return Err(AgentError::BuiltIn {
             name: name.to_owned(),
         });
@@ -704,7 +698,8 @@ mod tests {
 
     #[test]
     fn a_built_in_s_name_is_refused() {
-        for name in BUILT_IN {
+        let own = crate::harness::OwnAgent::ALL.map(crate::harness::OwnAgent::id);
+        for name in own.into_iter().chain(["shell", "checks", "review"]) {
             let text = format!("[agents.{name}]\nprogram = \"x\"\n");
             let said = error(&text);
             assert!(

@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useBridge, useDaemon } from "../../app/context";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { ProjectSettings } from "../../ipc/generated/ProjectSettings";
-import { agentOf } from "../../lib/agents";
+import { agentOf, OWN } from "../../lib/agents";
 import { whenKnown } from "../../state/whenKnown";
 import { AgentChoice } from "../../ui/AgentChoice";
 import { Button } from "../../ui/controls";
@@ -40,7 +40,7 @@ export function Assign({
   const names = useDaemon(useShallow((s) => projects.map((id) => s.projects[id]?.name ?? "?")));
   const last = model.store.getState().lastAgent;
   const offered = [
-    ...["claude", "codex", "gemini", "opencode", "copilot"].map((id) => ({
+    ...OWN.map((id) => ({
       id,
       name: agentOf(id).name,
     })),

@@ -5,9 +5,11 @@
 // others once each is checked.
 
 import type { AddedAgent } from "../../ipc/generated/AddedAgent";
+import type { OwnAgent } from "../../ipc/generated/OwnAgent";
+import { OWN } from "../../lib/agents";
 
-export interface OwnAgent {
-  id: string;
+export interface OwnAgentRow {
+  id: OwnAgent;
   /** How Muster hears what it is doing. */
   status: string;
   /** Whether it carries on after a restart, from the id its reports carry. */
@@ -18,43 +20,41 @@ export interface OwnAgent {
   install: string;
 }
 
-export const OWN_AGENTS: readonly OwnAgent[] = [
-  {
-    id: "claude",
+/** What Settings › Agents says of each; one for every agent, by its type. */
+const ROWS: Record<OwnAgent, Omit<OwnAgentRow, "id">> = {
+  claude: {
     status: "status from its hooks",
     resumes: true,
     names: true,
     install: "npm install -g @anthropic-ai/claude-code",
   },
-  {
-    id: "codex",
+  codex: {
     status: "status from its turn notice and window title",
     resumes: true,
     names: true,
     install: "npm install -g @openai/codex",
   },
-  {
-    id: "gemini",
+  gemini: {
     status: "status from its hooks",
     resumes: true,
     names: false,
     install: "npm install -g @google/gemini-cli",
   },
-  {
-    id: "opencode",
+  opencode: {
     status: "status from a plugin of Muster's",
     resumes: true,
     names: false,
     install: "npm install -g opencode-ai",
   },
-  {
-    id: "copilot",
+  copilot: {
     status: "status from its hooks",
     resumes: true,
     names: false,
     install: "npm install -g @github/copilot",
   },
-];
+};
+
+export const OWN_AGENTS: readonly OwnAgentRow[] = OWN.map((id) => ({ id, ...ROWS[id] }));
 
 /** Every agent by id, Muster's own then the person's. */
 export function agentIds(added: readonly AddedAgent[]): string[] {

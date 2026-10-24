@@ -26,7 +26,7 @@ impl App {
         let harness = if self.last_harness.takes_prompt() {
             self.last_harness.clone()
         } else {
-            HarnessChoice::Claude
+            HarnessChoice::CLAUDE
         };
         self.mode = Mode::Dialog(Dialog::Tidy { workspace, harness });
         Vec::new()

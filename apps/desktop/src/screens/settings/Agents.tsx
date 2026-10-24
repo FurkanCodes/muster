@@ -23,7 +23,7 @@ import {
   Missing,
   Version as VersionText,
 } from "../../ui/status";
-import { OWN_AGENTS, type OwnAgent } from "./agentList";
+import { OWN_AGENTS, type OwnAgentRow } from "./agentList";
 import { type Found, useAgentsFound } from "./agentsFound";
 import { canAsk } from "./asks";
 import { useSettings } from "./context";
@@ -103,7 +103,7 @@ function AgentVersion({ found, harness }: { found: Found; harness: string }) {
   return version ? <VersionText>{oneLine(version)}</VersionText> : null;
 }
 
-function OwnRow({ agent, found }: { agent: OwnAgent; found: Found }) {
+function OwnRow({ agent, found }: { agent: OwnAgentRow; found: Found }) {
   return (
     <SettingRow id={rowKey("agents", `agent.${agent.id}`)} className="mu-agentrow">
       <AgentLogo harness={agent.id} size="lg" />
