@@ -49,8 +49,6 @@
   .app-head-link,
   .mu-seg-item,
   .mu-nav-item,
-  .mu-pill,
-  .mu-command,
   .mu-choice,
   .mu-select
 ):focus-visible {
@@ -61,9 +59,6 @@
   outline: var(--stroke-focus) solid var(--focus-ring);
   outline-offset: var(--stroke-focus);
 }
-.mu-item:focus-visible,
-.mu-row:focus-visible,
-.mu-tree-row:focus-visible,
 .mu-file:focus-visible,
 .mu-ticket:focus-visible,
 .mu-folder:focus-visible,

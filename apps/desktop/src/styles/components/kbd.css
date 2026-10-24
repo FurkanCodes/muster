@@ -32,9 +32,3 @@
   line-height: 16px;
   white-space: nowrap;
 }
-.mu-hints {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-12);
-}

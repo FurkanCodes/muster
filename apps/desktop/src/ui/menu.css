@@ -9,12 +9,6 @@
   background: var(--surface-panel);
   box-shadow: var(--shadow-popover);
 }
-.mu-menu-label {
-  padding: var(--space-6) var(--space-8) var(--space-4);
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-quiet);
-}
 .mu-menu-item,
 .mu-palette-item,
 .mu-select-option {

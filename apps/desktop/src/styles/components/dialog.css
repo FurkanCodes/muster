@@ -1,7 +1,4 @@
 /* Dialog */
-.mu-scrim {
-  background: var(--scrim);
-}
 .mu-dialog {
   width: var(--size-dialog);
   max-width: 100%;

@@ -402,9 +402,16 @@ test("PRD-07 ARC-24 browser and close use saved key bindings", async ({ page }) 
   await start(page);
   await page.evaluate(() => {
     const mock = window.__muster;
-    mock.world.preferences.keys.ticket_in_browser = ["shift-b"];
-    mock.world.preferences.keys.close_ticket = ["alt-x"];
-    mock.publish({ preferences: { ...mock.world.preferences } });
+    // As the daemon sends them: settings of their own, never the old ones changed.
+    mock.world.preferences = {
+      ...mock.world.preferences,
+      keys: {
+        ...mock.world.preferences.keys,
+        ticket_in_browser: ["shift-b"],
+        close_ticket: ["alt-x"],
+      },
+    };
+    mock.publish({ preferences: mock.world.preferences });
   });
   await tickets(page);
   expect(await page.evaluate(() => window.__muster.openedUrls)).toEqual([]);

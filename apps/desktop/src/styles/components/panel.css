@@ -1,13 +1,4 @@
 /* Panels beside the terminal */
-.mu-panels {
-  display: flex;
-  gap: var(--space-8);
-  min-height: 0;
-  min-width: 0;
-}
-.mu-panels--column {
-  flex-direction: column;
-}
 .mu-panel {
   flex: 1 1 0;
   min-width: var(--layout-panel-min);
@@ -57,9 +48,4 @@
   line-height: 18px;
   white-space: pre;
   color: var(--text);
-}
-.mu-panel-body--terminal {
-  padding: var(--space-12) var(--space-16);
-  font-size: 13px;
-  line-height: 20px;
 }
