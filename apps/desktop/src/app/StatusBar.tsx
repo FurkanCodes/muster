@@ -11,7 +11,7 @@ import type { SessionId } from "../ipc/generated/SessionId";
 import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { spend } from "../lib/format";
-import { standsBeside } from "../state/selectors";
+import { shownHarness, standsBeside } from "../state/selectors";
 import { isList } from "../state/ui";
 import { Hint, Spacer } from "../ui/controls";
 import { useDaemon, useUi } from "./context";
@@ -23,7 +23,7 @@ function useTyping(): string | null {
     const session = typing ? state.sessions[typing] : undefined;
     if (!session) return null;
     if (standsBeside(session)) return `Typing in ${session.title}. Every key goes to it.`;
-    return `Typing in ${session.title}. Every key goes to ${agentOf(session.harness).name}.`;
+    return `Typing in ${session.title}. Every key goes to ${agentOf(shownHarness(session)).name}.`;
   });
 }
 
@@ -37,7 +37,10 @@ function useShownSession(): SessionId | null {
 
 /** "OpenCode · $0.01, 36k tokens · 212 MB, 3% CPU": its agent, what it has spent, what it uses now. */
 function SessionFacts({ session }: { session: SessionId }) {
-  const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
+  const harness = useDaemon((state) => {
+    const stored = state.sessions[session];
+    return stored ? shownHarness(stored) : "";
+  });
   const tokens = useDaemon((state) => state.sessions[session]?.spend?.tokens ?? null);
   const cost = useDaemon((state) => state.sessions[session]?.spend?.cost_micros ?? null);
   const usage = useDaemon((state) => {

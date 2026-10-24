@@ -18,6 +18,7 @@ mod cloning;
 mod containers;
 mod events;
 mod explain;
+mod fronts;
 mod handle;
 mod issues;
 mod looking;
@@ -35,7 +36,6 @@ mod runs;
 mod sessions;
 mod settings;
 mod shared_builds;
-mod shell_names;
 mod sizing;
 mod spend;
 mod stacks;
@@ -273,6 +273,10 @@ struct Live {
     /// The answer its agent last ended a turn with, as its hooks told it:
     /// for `muster wait` and `muster logs --reply`; never stored.
     last_reply: Option<String>,
+    /// The coding agent running in front in it, where it is a terminal
+    /// (`ARC-28`): its title is read as that agent's, and its machine is
+    /// the agent's while it is there.
+    agent: Option<Harness>,
 }
 
 #[derive(Debug)]
@@ -581,10 +585,10 @@ impl Supervisor {
             }
             Request::Resources(report) => self.record_resources(report),
             Request::Notifier { client, ready } => self.set_notifier(client, ready),
-            Request::Shells(reply) => {
-                let _ = reply.send(self.shells());
+            Request::Terminals(reply) => {
+                let _ = reply.send(self.terminals());
             }
-            Request::ShellPrograms(programs) => self.shell_programs(programs).await,
+            Request::Fronts(fronts) => self.fronts(fronts).await,
             Request::SpendTargets(reply) => {
                 let _ = reply.send(self.spend_targets());
             }

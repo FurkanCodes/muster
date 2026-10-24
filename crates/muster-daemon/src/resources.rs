@@ -115,20 +115,6 @@ impl Sampler {
     }
 }
 
-impl Sampler {
-    /// The name of the program leading each `(session, group)`, as the
-    /// last measurement found it.
-    pub(crate) fn programs(&self, groups: &[(SessionId, u32)]) -> Vec<(SessionId, String)> {
-        groups
-            .iter()
-            .filter_map(|(session, group)| {
-                let process = self.system.process(sysinfo::Pid::from_u32(*group))?;
-                Some((*session, process.name().to_string_lossy().into_owned()))
-            })
-            .collect()
-    }
-}
-
 /// Measures every `interval` while the person looks at a client, and
 /// every [`UNWATCHED_EVERY`]th otherwise, until the Supervisor stops.
 pub(crate) async fn run(supervisor: SupervisorHandle, interval: Duration) {
@@ -166,34 +152,20 @@ pub(crate) async fn run(supervisor: SupervisorHandle, interval: Duration) {
         let Some(roots) = supervisor.running_processes().await else {
             return;
         };
-        // What runs in each shell's foreground, by its process group.
-        let Some(shells) = supervisor.shells().await else {
-            return;
-        };
-        let mut groups = Vec::new();
-        for (session, terminal) in shells {
-            if let Some(group) = terminal.foreground().await {
-                groups.push((session, group));
-            }
-        }
         let Some(mut taken) = sampler.take() else {
             return;
         };
         let measured = tokio::task::spawn_blocking(move || {
             let report = taken.sample(&roots);
-            let programs = taken.programs(&groups);
-            (taken, report, programs)
+            (taken, report)
         })
         .await;
-        let Ok((returned, report, programs)) = measured else {
+        let Ok((returned, report)) = measured else {
             tracing::error!("measuring resources failed");
             return;
         };
         sampler = Some(returned);
         if !supervisor.record_resources(report).await {
-            return;
-        }
-        if !programs.is_empty() && !supervisor.shell_programs(programs).await {
             return;
         }
     }

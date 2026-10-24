@@ -51,6 +51,7 @@ fn session(workspace: &Workspace, title: &str, status: SessionStatus) -> Session
         tidy: None,
         beside: None,
         started_by: None,
+        agent: None,
     }
 }
 

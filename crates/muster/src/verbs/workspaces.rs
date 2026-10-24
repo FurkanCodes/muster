@@ -160,6 +160,8 @@ struct NumberedEntry {
     session: String,
     short: String,
     harness: String,
+    /// The coding agent running in front in it, where it is a terminal.
+    agent: Option<String>,
     title: String,
     status: String,
 }
@@ -321,6 +323,7 @@ fn entry(snapshot: &Snapshot, workspace: &Workspace) -> WorkspaceEntry {
                 session: session.id.to_string(),
                 short: targets::short(session.id),
                 harness: session.harness.clone(),
+                agent: session.agent.as_ref().map(|agent| agent.harness.clone()),
                 title: session.title.clone(),
                 status: describe(session.status),
             })
@@ -451,7 +454,7 @@ async fn go_in(
     let running = numbered(&snapshot, workspace)
         .into_iter()
         .rev()
-        .find(|session| session.kind().is_shell() && !session.status.is_exited())
+        .find(|session| session.is_terminal() && !session.status.is_exited())
         .map(|session| session.id);
     let terminal = match running.filter(|_| !new) {
         Some(terminal) => terminal,

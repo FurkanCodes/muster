@@ -13,7 +13,7 @@ import { useDaemon } from "../../app/context";
 import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
-import { branchOf, projectColour } from "../../state/selectors";
+import { branchOf, projectColour, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import {
   AgentLogo,
@@ -219,7 +219,7 @@ export function SessionLine(props: LineProps) {
   return (
     <Line {...props} density="comfortable" label={`${session.title}, ${doing(session)}`}>
       <StatusMark kind={statusKind(session)} />
-      <AgentLogo harness={session.harness} />
+      <AgentLogo harness={shownHarness(session)} />
       <ChatText session={session} lines={lines} />
       <Age since={session.status_since} unseen={unseen} />
     </Line>

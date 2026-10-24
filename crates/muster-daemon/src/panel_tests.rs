@@ -187,6 +187,7 @@ async fn a_panel_runs_in_its_workspace_told_what_muster_knows_and_is_no_news_prd
         tidy: None,
         beside: None,
         started_by: None,
+        agent: None,
     };
     let mut store = Store::open(&dir.path().join("muster.db"), FixedClock.now()).unwrap();
     store.insert_session(&chat).unwrap();
@@ -243,7 +244,7 @@ async fn a_panel_runs_in_its_workspace_told_what_muster_knows_and_is_no_news_prd
     assert_eq!(stored.resume_id, None);
     assert!(!muster_core::news::needs_attention(stored));
     // No shell, named by its foreground program.
-    let shells = supervisor.shells().await.unwrap();
+    let shells = supervisor.terminals().await.unwrap().list;
     assert!(shells.iter().all(|(id, _)| *id != panel));
 
     // Beside a session of its own workspace only; and with a program.
@@ -368,7 +369,7 @@ async fn a_panel_runs_on_through_a_restart_in_place_and_comes_back_a_panel() {
     assert!(running.iter().any(|(id, _)| *id == panel), "{running:?}");
     assert!(alive(&pid), "the same program, never stopped");
     // Taken back as a panel: no shell, named by its foreground program.
-    let shells = after.shells().await.unwrap();
+    let shells = after.terminals().await.unwrap().list;
     assert!(shells.iter().all(|(id, _)| *id != panel));
     after
         .command(Command::StopSession { session: panel })

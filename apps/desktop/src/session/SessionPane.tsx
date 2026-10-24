@@ -14,7 +14,7 @@ import { KEY_SCREENS, useActionKeys, useKeyLabel, useKeymap } from "../keys/useK
 import { ShellButton } from "../panels/PaneActions";
 import { Panels } from "../panels/Panels";
 import { toggleFullScreen } from "../panels/usePanelKeys";
-import { branchOf, projectColour } from "../state/selectors";
+import { branchOf, projectColour, shownHarness } from "../state/selectors";
 import { IconButton, Pressable } from "../ui/controls";
 import { ActionMenu, keysOf, type MenuItem } from "../ui/Menu";
 import { AgentLogo, Branch, Clash, DiffStat, PullRequest } from "../ui/status";
@@ -119,7 +119,10 @@ export function SessionPane({
   const menuAt = useUi((state) => (state.menuAt?.session === session ? state.menuAt : null));
   const fullScreen = useUi((state) => state.fullScreen === session);
   const title = useDaemon((state) => state.sessions[session]?.title ?? "");
-  const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
+  const harness = useDaemon((state) => {
+    const stored = state.sessions[session];
+    return stored ? shownHarness(stored) : "";
+  });
   const workspace = useDaemon((state) => state.sessions[session]?.workspace ?? null);
   const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const mode = useUi((state) => state.pane);

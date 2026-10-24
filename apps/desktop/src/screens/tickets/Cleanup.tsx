@@ -3,6 +3,7 @@ import { useActions, useApp, useBridge } from "../../app/context";
 import { BridgeFailure } from "../../ipc/bridge";
 import type { Issue } from "../../ipc/generated/Issue";
 import type { Workspace } from "../../ipc/generated/Workspace";
+import { standsBeside } from "../../state/selectors";
 import { Button } from "../../ui/controls";
 import { Detail, DetailList } from "../../ui/DetailList";
 import { Dialog, DialogText } from "../../ui/Dialog";
@@ -36,11 +37,7 @@ export function CloseTicket({
   const key = shownKey(issue.key);
   const repository = repositoryOf(issue.url);
   const working = Object.values(app.daemon.store.getState().sessions).filter(
-    (s) =>
-      worktrees.some((w) => w.id === s.workspace) &&
-      s.ended_at === null &&
-      s.harness !== "shell" &&
-      !s.harness.startsWith("plugin:"),
+    (s) => worktrees.some((w) => w.id === s.workspace) && s.ended_at === null && !standsBeside(s),
   );
   async function close() {
     if (busy) return;

@@ -84,7 +84,7 @@ pub(crate) async fn run(
         .filter(|session| !session.kind().is_panel())
         .filter(|session| match what {
             Listing::Agents => session.kind().is_agent(),
-            Listing::Terminals => session.kind().is_shell(),
+            Listing::Terminals => session.is_terminal(),
             _ => true,
         })
         .filter(|session| in_scope(&snapshot, scope, session))
@@ -225,7 +225,7 @@ fn numbered_line(number: usize, session: &Session, now: muster_core::Timestamp) 
     format!(
         "   {unseen}{number:>2} {} {:<8}  {:<32}  {how:<28}  {}{by}",
         super::workspaces::mark_of(session),
-        shown(&session.harness),
+        shown(session.shown_harness()),
         shown(&session.title),
         targets::short(session.id),
     )

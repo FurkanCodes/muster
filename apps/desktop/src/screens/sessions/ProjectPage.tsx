@@ -22,7 +22,7 @@ import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { useShownSessionActions } from "../../session/SessionActionsContext";
 import type { DaemonState } from "../../state/daemon";
-import { branchOf, projectColour, standsBeside } from "../../state/selectors";
+import { branchOf, projectColour, shownHarness, standsBeside } from "../../state/selectors";
 import { Banner, BannerBody } from "../../ui/Banner";
 import { Button, IconButton, Spacer } from "../../ui/controls";
 import { ListItemEnd, ListItemMeta, ListItemTitle, RowButton } from "../../ui/List";
@@ -382,7 +382,7 @@ function PlaceSession({ id }: { id: string }) {
   const session = useDaemon((state) => state.sessions[id]);
   if (!session) return null;
   const beside = standsBeside(session);
-  const what = beside ? (session.harness === "shell" ? "shell" : "panel") : doing(session);
+  const what = beside ? (shownHarness(session) === "shell" ? "shell" : "panel") : doing(session);
   const unseen = session.unseen && session.status.state !== "needs_you";
   return (
     <li className="project-session-line">
@@ -395,7 +395,7 @@ function PlaceSession({ id }: { id: string }) {
         }}
       >
         {beside ? <MarkSpace /> : <StatusMark kind={statusKind(session)} />}
-        <AgentLogo harness={session.harness} />
+        <AgentLogo harness={shownHarness(session)} />
         <ListItemTitle className="project-session-name" title={session.title}>
           {session.title}
         </ListItemTitle>

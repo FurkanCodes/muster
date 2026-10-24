@@ -11,7 +11,7 @@ import { panelName } from "../keys/keymap";
 import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { doing, statusKind } from "../lib/status";
-import { branchOf } from "../state/selectors";
+import { branchOf, shownHarness } from "../state/selectors";
 import { Panel, PanelClose, PanelHead, PanelTitle } from "../ui/Panel";
 import { AgentLogo, BranchName, StatusMark } from "../ui/status";
 import { putPanelAway, putShellAway } from "./beside";
@@ -60,7 +60,10 @@ export function SessionPanel({
   lifted,
   onHeadDown,
 }: BoxProps & { session: SessionId }) {
-  const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
+  const harness = useDaemon((state) => {
+    const stored = state.sessions[session];
+    return stored ? shownHarness(stored) : "";
+  });
   const kind = useDaemon((state) => {
     const stored = state.sessions[session];
     return stored ? statusKind(stored) : "fresh";

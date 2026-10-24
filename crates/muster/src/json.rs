@@ -153,7 +153,11 @@ pub(crate) struct SessionEntry {
     workspace: String,
     /// What its workspace has checked out; `None` in a plain folder.
     branch: Option<String>,
+    /// What it was started as: `shell` for a terminal, else the agent's.
     harness: String,
+    /// The coding agent running in front in it, where it is a terminal
+    /// (`ARC-28`).
+    agent: Option<String>,
     title: String,
     /// `fresh`, `running`, `needs_you`, `finished` or `exited`.
     status: &'static str,
@@ -333,6 +337,7 @@ pub(crate) fn session_entry(snapshot: &Snapshot, session: &Session) -> SessionEn
         workspace: session.workspace.to_string(),
         branch: workspace.and_then(branch),
         harness: session.harness.clone(),
+        agent: session.agent.as_ref().map(|agent| agent.harness.clone()),
         title: session.title.clone(),
         status,
         needs,

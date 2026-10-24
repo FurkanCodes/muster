@@ -248,6 +248,7 @@ impl Supervisor {
             tidy: None,
             beside,
             started_by,
+            agent: None,
         };
         let id = session.id;
         let stored = session.clone();
@@ -437,6 +438,7 @@ impl Supervisor {
                 naming: None,
                 named_by_person,
                 last_reply: None,
+                agent: None,
             },
         );
         self.carry_watch(session);
@@ -617,18 +619,19 @@ impl Supervisor {
         let Some(live) = self.live.get_mut(&session) else {
             return;
         };
-        let Some(state) = live.harness.read_title(title) else {
+        // A terminal's title is read as the agent's running in it.
+        let reader = live.agent.as_ref().unwrap_or(&live.harness);
+        let Some(state) = reader.read_title(title) else {
             return;
         };
+        let reports_waits = reader.title_reports_waits();
         let before = live.title.replace(state);
         if before == Some(state) {
             return;
         }
         let waiting = state == TitleState::Waiting;
         let mut signals = Vec::new();
-        if live.harness.title_reports_waits()
-            && (before.is_none() || (before == Some(TitleState::Waiting)) != waiting)
-        {
+        if reports_waits && (before.is_none() || (before == Some(TitleState::Waiting)) != waiting) {
             signals.push(Signal::Waiting { waiting });
         }
         match state {
@@ -655,6 +658,7 @@ impl Supervisor {
             } => {
                 if let Some(live) = self.live.get_mut(&session) {
                     live.ended = Some((end, size));
+                    live.agent = None;
                 }
                 self.forget_token(session);
                 let failed_resume = self.live.get(&session).is_some_and(|live| {
@@ -677,6 +681,7 @@ impl Supervisor {
                     .await;
                 if let Some(stored) = self.session_mut(session) {
                     stored.ended_at = Some(at);
+                    stored.agent = None;
                     let stored = stored.clone();
                     self.broadcast(Delta::SessionUpserted(stored));
                 }
@@ -775,7 +780,7 @@ impl Supervisor {
             .filter(|session| session.workspace == workspace)
             .filter(|session| self.is_running(session.id))
             .map(|session| {
-                let ends = session.kind().ends_with_workspace();
+                let ends = session.started_as().ends_with_workspace();
                 (session.id, ends)
             })
             .collect()

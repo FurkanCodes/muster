@@ -212,6 +212,7 @@ mod tests {
             tidy: None,
             beside: None,
             started_by: None,
+            agent: None,
         };
         assert!(sendable(&session, false).unwrap_err().contains("--force"));
         assert_eq!(sendable(&session, true), Ok(()));

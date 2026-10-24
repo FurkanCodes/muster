@@ -96,6 +96,7 @@ fn chat(dir: &Path, workspace: WorkspaceId) -> Session {
         tidy: None,
         beside: None,
         started_by: None,
+        agent: None,
     };
     let mut store = Store::open(&dir.join("muster.db"), FixedClock.now()).unwrap();
     store.insert_session(&chat).unwrap();

@@ -319,6 +319,7 @@ function startFromIssue(
     tidy: null,
     beside: null,
     started_by: null,
+    agent: null,
   };
   world.sessions.push(session);
   mock.publish({ workspaces: [{ ...workspace }], sessions: [session] });
