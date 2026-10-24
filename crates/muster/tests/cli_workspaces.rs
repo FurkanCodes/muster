@@ -195,6 +195,20 @@ impl Tab {
         });
     }
 
+    /// Waits until the screen no longer shows `gone`: another terminal
+    /// shown here clears it first.
+    fn shows_no(&self, gone: &str) {
+        wait::until(&format!("{gone:?} gone from the screen"), || {
+            !self
+                .screen
+                .lock()
+                .unwrap()
+                .screen()
+                .contents()
+                .contains(gone)
+        });
+    }
+
     /// Waits for `muster` to end, saying whether it succeeded.
     fn ends(&mut self) -> bool {
         wait::found("the tab to close", || self.child.try_wait().unwrap()).success()
@@ -300,6 +314,9 @@ async fn entering_a_workspace_shows_its_terminal_in_the_tab_and_ctrl_q_leaves_it
     again.type_in(b"muster term new\r");
     let both = setup.sessions_in(workspace, 2).await;
     assert!(both[1].kind().is_shell());
+    // The daemon has it before the tab is told to show it: typed before
+    // then, the keys would reach the first.
+    again.shows_no("again-2");
     again.type_in(b"echo second-$((1+1))\r");
     setup.until_shown(&both[1], "second-2");
     again.type_in(b"\x11echo first-$((1+2))\r");
