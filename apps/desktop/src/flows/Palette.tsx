@@ -18,6 +18,7 @@ import { helpFor } from "./help";
 import { labelOf } from "./keymap";
 import { found } from "./match";
 import "./flows.css";
+import { shownHarness } from "../state/selectors";
 
 const PAGE = 10;
 
@@ -209,7 +210,7 @@ function Item({
         {item.lead.kind === "session" ? (
           <>
             <StatusMark kind={statusKind(item.lead.session)} />
-            <AgentLogo harness={item.lead.session.harness} size="sm" />
+            <AgentLogo harness={shownHarness(item.lead.session)} size="sm" />
           </>
         ) : item.lead.kind === "ticket" ? (
           <span className="mu-mono mu-quiet">{item.lead.key}</span>

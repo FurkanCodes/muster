@@ -14,6 +14,7 @@ import type { TermSize } from "../ipc/generated/TermSize";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import type { PanelAction } from "../keys/keymap";
 import type { DaemonState } from "../state/daemon";
+import { shownHarness } from "../state/selectors";
 
 /** The size a session beside is started at, before its panel gives it its own. */
 const STARTING_SIZE: TermSize = { cols: 80, rows: 24 };
@@ -120,7 +121,7 @@ export async function toggleShell(
     .map((row) => (row.kind === "session" ? state.sessions[row.id] : undefined))
     .find(
       (session) =>
-        session?.workspace === workspace && session.harness === SHELL && running(session),
+        session?.workspace === workspace && shownHarness(session) === SHELL && running(session),
     );
   if (existing) {
     app.actions.showShell(existing.id);

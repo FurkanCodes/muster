@@ -113,6 +113,7 @@ mod tests {
             tidy: None,
             beside: None,
             started_by: None,
+            agent: None,
         }
     }
 

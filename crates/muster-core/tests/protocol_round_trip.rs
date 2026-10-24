@@ -41,10 +41,10 @@ use muster_core::tidy::{Tidy, TidyCheck};
 use muster_core::time::Timestamp;
 use muster_core::timeline::{BranchMove, Entry, EntryKind, Timeline, UndoPlan};
 use muster_core::{
-    Activity, ChangeKind, ChangePart, ChangeSummary, Changes, Checks, FileChange, FileDiff, Issue,
-    Project, ProjectId, PullRequest, PullRequestState, PullRequestStatus, Review, Run, RunId,
-    RunStage, RunTransition, Session, SessionId, SessionStatus, Spend, Ticket, TicketKey,
-    WaitReason, Workspace, WorkspaceId, WorkspaceKind,
+    Activity, AgentNow, ChangeKind, ChangePart, ChangeSummary, Changes, Checks, FileChange,
+    FileDiff, Issue, Project, ProjectId, PullRequest, PullRequestState, PullRequestStatus, Review,
+    Run, RunId, RunStage, RunTransition, Session, SessionId, SessionStatus, Spend, Ticket,
+    TicketKey, WaitReason, Workspace, WorkspaceId, WorkspaceKind,
 };
 
 fn at(offset: i64) -> Timestamp {
@@ -183,6 +183,10 @@ fn sessions() -> Vec<Session> {
         }),
         beside: Some(SessionId::new()),
         started_by: Some(SessionId::new()),
+        agent: Some(AgentNow {
+            harness: "codex".to_owned(),
+            since: at(6),
+        }),
     };
     let statuses = [
         SessionStatus::Fresh,

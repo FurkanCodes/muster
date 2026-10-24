@@ -8,6 +8,7 @@ import type { Issue } from "../../ipc/generated/Issue";
 import { agentOf } from "../../lib/agents";
 import { ago, spend } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
+import { shownHarness } from "../../state/selectors";
 import { Button, IconButton } from "../../ui/controls";
 import { Heading, HeadingActions, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { Label, Labels } from "../../ui/Label";
@@ -222,16 +223,17 @@ function AgentRow({
   const workspace = useDaemon((s) => (session ? s.workspaces[session.workspace] : undefined));
   const now = useNow();
   const label = useDaemon(
-    (s) => s.preferences?.agents.find((a) => a.name === session?.harness)?.label,
+    (s) =>
+      s.preferences?.agents.find((a) => a.name === (session ? shownHarness(session) : ""))?.label,
   );
   if (!session) return null;
   return (
     <RowButton className="tickets-agent-row" title="Open its agent (⏎)" onClick={() => onOpen(id)}>
       <StatusMark kind={statusKind(session)} />
-      <AgentLogo harness={session.harness} />
+      <AgentLogo harness={shownHarness(session)} />
       <ListItemText>
         <ListItemTitle>
-          {label ?? agentOf(session.harness).name}{" "}
+          {label ?? agentOf(shownHarness(session)).name}{" "}
           <span className="mu-quiet">{ticketText(doing(session))}</span>
         </ListItemTitle>
         <ListItemMeta>

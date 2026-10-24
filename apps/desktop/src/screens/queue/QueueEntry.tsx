@@ -10,7 +10,7 @@ import type { Session } from "../../ipc/generated/Session";
 import type { SessionId } from "../../ipc/generated/SessionId";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
-import { branchOf } from "../../state/selectors";
+import { branchOf, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import { AgentLogo, BranchName, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
 import { changedInSight, stamp } from "./history";
@@ -38,7 +38,7 @@ function Asking({ session }: { session: Session }) {
   return (
     <>
       <StatusMark kind={statusKind(session)} />
-      <AgentLogo harness={session.harness} />
+      <AgentLogo harness={shownHarness(session)} />
       <ListItemText>
         <ListItemTitle className="queue-asking" title={session.title}>
           {session.title}
@@ -56,7 +56,7 @@ function Finished({ session }: { session: Session }) {
   return (
     <>
       <StatusMark kind={statusKind(session)} />
-      <AgentLogo harness={session.harness} />
+      <AgentLogo harness={shownHarness(session)} />
       <ListItemText>
         <ListItemTitle title={session.title}>{session.title}</ListItemTitle>
         <ListItemMeta>
@@ -79,7 +79,7 @@ function Working({ session }: { session: Session }) {
   return (
     <>
       <StatusMark kind="working" />
-      <AgentLogo harness={session.harness} />
+      <AgentLogo harness={shownHarness(session)} />
       <ListItemText>
         <ListItemTitle title={session.title}>{session.title}</ListItemTitle>
         <ListItemMeta title={what}>{what}</ListItemMeta>

@@ -166,6 +166,7 @@ pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
             tidy: None,
             beside: beside.as_deref().map(parse_id).transpose()?,
             started_by: started_by.as_deref().map(parse_id).transpose()?,
+            agent: None,
         })
     })())
 }

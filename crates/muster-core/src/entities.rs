@@ -262,13 +262,37 @@ pub struct Session {
     /// (`PRD-01`); `None` for one the person started. From protocol 51.
     #[serde(default)]
     pub started_by: Option<SessionId>,
+    /// The coding agent running in front in it, where it is a terminal
+    /// one runs in (`ARC-28`); shown, never stored. From protocol 53.
+    #[serde(default)]
+    pub agent: Option<crate::session::AgentNow>,
 }
 
 impl Session {
-    /// What it is, as its harness says: an agent's chat, the checks, the
-    /// person's shell or a plugin's panel.
+    /// What it is now: an agent's chat (a terminal's while an agent runs in
+    /// front in it), the checks, the person's shell or a plugin's panel.
     pub fn kind(&self) -> crate::harness::SessionKind<'_> {
+        match &self.agent {
+            Some(agent) => crate::harness::SessionKind::Agent(&agent.harness),
+            None => self.started_as(),
+        }
+    }
+
+    /// What it was started as, whatever runs in it now.
+    pub fn started_as(&self) -> crate::harness::SessionKind<'_> {
         crate::harness::SessionKind::of(&self.harness)
+    }
+
+    /// Whether it is a terminal: the person's shell, whatever runs in it.
+    pub fn is_terminal(&self) -> bool {
+        self.started_as().is_shell()
+    }
+
+    /// The harness it shows as now: the agent in front in it, else its own.
+    pub fn shown_harness(&self) -> &str {
+        self.agent
+            .as_ref()
+            .map_or(self.harness.as_str(), |agent| agent.harness.as_str())
     }
 }
 

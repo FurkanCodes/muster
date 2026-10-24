@@ -5,6 +5,7 @@
 import type { Session } from "../ipc/generated/Session";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { oneLine } from "../session/changes/labels";
+import { shownHarness } from "../state/selectors";
 
 /** `SessionKind::is_agent`: a coding agent's chat, not a shell, a plugin's panel or the checks. */
 export function isAgent(harness: string): boolean {
@@ -20,7 +21,7 @@ export function agentsAliveIn(
     .filter(
       (session) =>
         session.workspace === workspace &&
-        isAgent(session.harness) &&
+        isAgent(shownHarness(session)) &&
         session.status.state !== "exited",
     )
     .sort((a, b) => a.created_at - b.created_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

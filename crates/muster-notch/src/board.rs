@@ -245,7 +245,7 @@ fn row(state: &Snapshot, session: &Session, now: Timestamp) -> Row {
         key: Key::Session(session.id),
         session: session.id,
         mark,
-        harness: session.harness.clone(),
+        harness: session.shown_harness().to_owned(),
         project: printable(&name),
         colour,
         title: printable(&session.title),
@@ -401,6 +401,7 @@ mod tests {
             tidy: None,
             beside: None,
             started_by: None,
+            agent: None,
         }
     }
 

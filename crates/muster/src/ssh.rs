@@ -292,7 +292,7 @@ fn ssh(target: &str) -> std::process::Command {
 }
 
 /// Installs this version on the machine as a binary sent over ssh and
-/// checked there by its SHA-256: the one MUSTER_REMOTE_BINARY names, a copy
+/// checked there by its SHA-256: the one `MUSTER_REMOTE_BINARY` names, a copy
 /// of this one where it runs the same build, else this version's release
 /// for its system, downloaded and checked here, so the machine needs no
 /// internet or toolchain. Only a system Muster has no release for runs the
@@ -316,10 +316,12 @@ async fn install(target: &str, probe: &Probe) -> Result<(), Box<dyn std::error::
         if !status.success() {
             return Err("its installer failed there; what it said is above".into());
         }
-        return reloaded(target);
+        reloaded(target);
+        return Ok(());
     };
     put(target, &bytes)?;
-    reloaded(target)
+    reloaded(target);
+    Ok(())
 }
 
 fn read_binary(path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -364,7 +366,7 @@ fn put(target: &str, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Moves a daemon running there onto the new muster in place; none
 /// running is fine.
-fn reloaded(target: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn reloaded(target: &str) {
     let _ = ssh(target)
         .arg(format!(
             "sh -c {}",
@@ -375,7 +377,6 @@ fn reloaded(target: &str) -> Result<(), Box<dyn std::error::Error>> {
         .stderr(Stdio::null())
         .status();
     eprintln!("Installed muster {VERSION} there.");
-    Ok(())
 }
 
 /// Whether the person, asked on their terminal, says yes; never, without

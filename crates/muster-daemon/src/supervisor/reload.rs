@@ -9,6 +9,7 @@ use tokio::sync::oneshot;
 
 use super::{Live, Request, Supervisor, SupervisorHandle};
 use crate::handoff::{CarriedSession, HandedSession};
+use crate::harness::Harness;
 use crate::pty;
 
 impl SupervisorHandle {
@@ -69,6 +70,7 @@ impl Supervisor {
                 terminal.terminal,
             );
             session.turn.clone_from(&live.turn);
+            session.agent = live.agent.as_ref().map(|agent| agent.id().to_owned());
             // Its hooks and terminal are the next daemon's now.
             self.release_terminal(id);
             handed.push(HandedSession {
@@ -96,6 +98,12 @@ impl Supervisor {
                 tracing::warn!(session = %id, "a session handed over is not known here; let go");
                 continue;
             };
+            // The agent in front in a terminal, as the daemon before found it.
+            let agent = session
+                .agent
+                .as_deref()
+                .and_then(|id| self.harness(id))
+                .filter(Harness::is_agent);
             let events = self.pty_events.clone();
             let size = session.terminal.size;
             let pty = match pty::adopt(master, session.terminal, self.colours(), move |event| {
@@ -131,8 +139,18 @@ impl Supervisor {
                     naming: None,
                     named_by_person: false,
                     last_reply: None,
+                    agent: agent.clone(),
                 },
             );
+            if let Some(agent) = agent {
+                let since = self.clock.now();
+                if let Some(stored) = self.session_mut(id) {
+                    stored.agent = Some(muster_core::AgentNow {
+                        harness: agent.id().to_owned(),
+                        since,
+                    });
+                }
+            }
             if let Some(ago) = finished {
                 self.hold_carried_finish(id, ago);
             }

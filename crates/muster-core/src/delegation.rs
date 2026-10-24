@@ -151,6 +151,7 @@ mod tests {
             tidy: None,
             beside: None,
             started_by,
+            agent: None,
         }
     }
 

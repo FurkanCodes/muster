@@ -72,7 +72,7 @@ async fn named(
 
 #[tokio::test]
 async fn a_shell_is_named_by_what_runs_in_it_until_the_person_names_it() {
-    let sandbox = Sandbox::new().with_env("MUSTER_SAMPLE_MS", "100");
+    let sandbox = Sandbox::new().with_env("MUSTER_FRONT_MS", "100");
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;

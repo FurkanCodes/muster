@@ -2,7 +2,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useApp, useDaemon } from "../../app/context";
 import type { Issue } from "../../ipc/generated/Issue";
 import { statusKind } from "../../lib/status";
-import { projectColour } from "../../state/selectors";
+import { projectColour, shownHarness } from "../../state/selectors";
 import { ListItem } from "../../ui/List";
 import { AgentLogo, PullRequest, StatusMark, Swatch } from "../../ui/status";
 import { changedInSight, stamp } from "../queue/history";
@@ -53,7 +53,7 @@ export function TicketRow({
             {agents.slice(0, 4).map((s) => (
               <span key={s.id} className="mu-ticket-agent">
                 <StatusMark kind={statusKind(s)} />
-                <AgentLogo harness={s.harness} size="sm" />
+                <AgentLogo harness={shownHarness(s)} size="sm" />
                 {projects.length > 1 ? (
                   <ProjectName id={worktrees.find((w) => w.id === s.workspace)?.project ?? ""} />
                 ) : null}

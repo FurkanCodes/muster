@@ -22,6 +22,7 @@ function session(id: string, harness: string, title: string, status: SessionStat
     tidy: null,
     beside: null,
     started_by: null,
+    agent: null,
   } satisfies Session;
 }
 

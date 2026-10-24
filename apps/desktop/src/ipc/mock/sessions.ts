@@ -49,6 +49,7 @@ function started(
     unseen: false,
     status: { state: "fresh" },
     started_by: null,
+    agent: null,
     ...fields,
   });
   // The program at its prompt: a shell's names it, a panel draws itself.

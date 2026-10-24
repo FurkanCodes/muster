@@ -155,7 +155,9 @@
 //! in place of another where the person watches it, as a terminal tab of
 //! the command line follows a session started from inside it
 //! (`Command::Switch`), and a ticket made a worktree's as the person asks
-//! (`Command::AssignTicket`), each sent only to a daemon of 52 or later.
+//! (`Command::AssignTicket`), each sent only to a daemon of 52 or later;
+//! version 53 the coding agent running in front in a terminal
+//! (`Session::agent`, a field older clients pass over).
 //!
 //! Frames are encoded with named fields, so a field can be added to any
 //! message, including [`Hello`], without breaking older peers.
@@ -185,7 +187,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 52;
+pub const PROTOCOL_VERSION: u32 = 53;
 /// The first protocol whose daemon takes [`Command::Switch`].
 pub const SWITCH_PROTOCOL: u32 = 52;
 /// The oldest protocol this build still speaks.

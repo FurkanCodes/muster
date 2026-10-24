@@ -172,7 +172,7 @@ fn draw_logos(
             logos::draw(
                 frame.buffer_mut(),
                 app.graphics,
-                &session.harness,
+                session.shown_harness(),
                 at,
                 backdrop,
             );
@@ -631,7 +631,7 @@ fn session_pair(
     let lead_width: usize = lead.iter().map(Span::width).sum();
     let mut first = lead.clone();
     first.extend([Span::styled(symbol, style), Span::raw(" ")]);
-    first.extend(logos::spans(app.graphics, &session.harness));
+    first.extend(logos::spans(app.graphics, session.shown_harness()));
     if place
         && let Some(id) = app.model.project_of(Row::Session(session.id))
         && let Some(found) = app.model.project(id)
@@ -702,7 +702,7 @@ fn session_line(
     let doing_style = doing_style(app, session);
     let mut spans = lead;
     spans.extend([Span::styled(symbol, style), Span::raw(" ")]);
-    spans.extend(logos::spans(app.graphics, &session.harness));
+    spans.extend(logos::spans(app.graphics, session.shown_harness()));
     spans.extend(project);
     spans.push(Span::raw(title));
     if !doing.is_empty() {

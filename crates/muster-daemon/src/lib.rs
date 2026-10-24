@@ -11,6 +11,7 @@ mod branches;
 mod changes;
 mod clashes;
 mod containers;
+mod fronts;
 mod git;
 mod githost;
 mod github;
@@ -173,6 +174,9 @@ pub struct DaemonConfig {
     pub delta_capacity: usize,
     /// How often sessions' resource use is measured.
     pub sample_interval: Duration,
+    /// How often each terminal is asked what runs in front in it, while
+    /// the person looks at a client (`ARC-28`).
+    pub front_interval: Duration,
     /// How often workspaces' checked-out branches are looked at.
     pub branch_interval: Duration,
     /// How often projects are looked at for worktrees made or removed
@@ -196,6 +200,7 @@ impl DaemonConfig {
             paths,
             delta_capacity: 1024,
             sample_interval: Duration::from_secs(2),
+            front_interval: Duration::from_millis(500),
             branch_interval: Duration::from_secs(2),
             worktree_interval: Duration::from_secs(3),
             start_grace: muster_state::session::Timing::default().start_grace,
@@ -480,9 +485,14 @@ fn start_watchers(
     config: &DaemonConfig,
     supervisor: &supervisor::SupervisorHandle,
     clock: Arc<dyn Clock>,
-) -> [tasks::Owned; 6] {
+) -> [tasks::Owned; 7] {
     [
         tasks::owned(resources::run(supervisor.clone(), config.sample_interval)),
+        tasks::owned(fronts::run(
+            supervisor.clone(),
+            config.front_interval,
+            fronts::SystemProcesses::new(),
+        )),
         tasks::owned(branches::run(supervisor.clone(), config.branch_interval)),
         tasks::owned(worktree_sync::run(
             supervisor.clone(),

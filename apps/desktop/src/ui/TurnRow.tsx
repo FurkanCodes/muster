@@ -3,6 +3,7 @@ import { useDaemon } from "../app/context";
 import type { Entry } from "../ipc/generated/Entry";
 import { agentOf } from "../lib/agents";
 import { ago } from "../lib/format";
+import { shownHarness } from "../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "./List";
 import { AgentLogo, AgentMark, DiffStat } from "./status";
 
@@ -32,7 +33,10 @@ export function TurnRow({
 }) {
   const now = useNow();
   const session = entry.kind.kind === "turn" ? entry.kind.session : "";
-  const harness = useDaemon((state) => state.sessions[session]?.harness ?? "");
+  const harness = useDaemon((state) => {
+    const stored = state.sessions[session];
+    return stored ? shownHarness(stored) : "";
+  });
   const files = entry.summary?.files ?? 0;
   return (
     <ListItem

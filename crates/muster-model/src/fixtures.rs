@@ -57,5 +57,6 @@ pub fn session(workspace: WorkspaceId, title: &str, created: i64) -> Session {
         tidy: None,
         beside: None,
         started_by: None,
+        agent: None,
     }
 }

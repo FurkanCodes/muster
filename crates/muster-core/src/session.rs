@@ -76,6 +76,18 @@ pub struct Activity {
     pub since: Timestamp,
 }
 
+/// The coding agent running in front in a terminal, as the daemon found
+/// it there (`ARC-28`): typed by hand, or started by whatever the person
+/// uses. Shown, never stored.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct AgentNow {
+    /// Its harness's id: `claude`, or the name of an agent the person added.
+    pub harness: String,
+    /// When it was found there.
+    pub since: Timestamp,
+}
+
 /// What a session's agent has used, as the agent's own records say
 /// (`PRD-12`): every token it sent and got back, cached ones included, and
 /// what it cost where the agent says. Shown, never stored.

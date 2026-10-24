@@ -7,7 +7,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { useDaemon } from "../../app/context";
 import type { SessionActions } from "../../session/useSessionActions";
 import { RenameSession } from "../../session/useSessionActions";
-import { standsBeside } from "../../state/selectors";
+import { shownHarness, standsBeside } from "../../state/selectors";
 import { List } from "../../ui/List";
 import { drawn, estimate, inSight, placesOf, UNMEASURED } from "./sight";
 import {
@@ -27,8 +27,11 @@ function SessionOrBeside({
   props: LineProps;
   panelKeys: Readonly<Record<string, string>>;
 }) {
-  const harness = useDaemon((state) => state.sessions[props.row.id]?.harness ?? "");
-  if (!standsBeside({ harness })) return <SessionLine {...props} />;
+  const harness = useDaemon((state) => {
+    const stored = state.sessions[props.row.id];
+    return stored ? shownHarness(stored) : "";
+  });
+  if (!standsBeside({ harness, agent: null })) return <SessionLine {...props} />;
   return <BesideLine {...props} panelKey={panelKeys[harness] ?? null} />;
 }
 

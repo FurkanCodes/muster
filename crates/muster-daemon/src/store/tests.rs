@@ -59,6 +59,7 @@ fn session(workspace: WorkspaceId) -> Session {
         tidy: None,
         beside: None,
         started_by: None,
+        agent: None,
     }
 }
 

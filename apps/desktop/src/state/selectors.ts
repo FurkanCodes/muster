@@ -6,8 +6,15 @@ import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
 import type { DaemonState } from "./daemon";
 
-export function standsBeside(session: Pick<Session, "harness">): boolean {
-  return session.harness === "shell" || session.harness.startsWith("plugin:");
+/** The harness a session shows as now: the agent running in front in a terminal (ARC-28), else its own. */
+export function shownHarness(session: Pick<Session, "harness" | "agent">): string {
+  return session.agent?.harness ?? session.harness;
+}
+
+/** A terminal with no agent in front, or a plugin's panel: no chat of its own. */
+export function standsBeside(session: Pick<Session, "harness" | "agent">): boolean {
+  const harness = shownHarness(session);
+  return harness === "shell" || harness.startsWith("plugin:");
 }
 
 /** Projects in the order the daemon lists them. */

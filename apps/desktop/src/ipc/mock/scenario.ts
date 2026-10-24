@@ -102,6 +102,7 @@ function session(
     tidy: null,
     beside: null,
     started_by: null,
+    agent: null,
     ...extra,
   };
 }

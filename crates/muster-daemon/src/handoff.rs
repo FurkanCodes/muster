@@ -68,6 +68,10 @@ pub(crate) struct CarriedSession {
     /// none from a daemon before it was carried.
     #[serde(default)]
     pub(crate) turn: Option<String>,
+    /// The coding agent running in front in it, where it is a terminal
+    /// (`ARC-28`); none from a daemon before it was carried.
+    #[serde(default)]
+    pub(crate) agent: Option<String>,
 }
 
 impl CarriedSession {
@@ -90,6 +94,7 @@ impl CarriedSession {
             master: -1,
             terminal,
             turn: None,
+            agent: None,
         }
     }
 }

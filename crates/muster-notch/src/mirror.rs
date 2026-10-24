@@ -116,6 +116,7 @@ mod tests {
             tidy: None,
             beside: None,
             started_by: None,
+            agent: None,
         };
         let mut state = Snapshot::default();
         apply(&mut state, Delta::ProjectUpserted(project.clone()));
