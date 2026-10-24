@@ -111,6 +111,7 @@ pub const MUSTER_PREFIX: (&str, &str) = ("branches", "muster_prefix");
 /// project's, as they stand.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(default)]
 pub struct Preferences {
     /// Show the agents in the MacBook's notch while no Muster window has
     /// the person's eyes (`[notch] show`).
@@ -119,61 +120,44 @@ pub struct Preferences {
     pub file: PathBuf,
     /// The coding agents the person added there (`[agents.<name>]`), by name,
     /// offered beside Muster's own.
-    #[serde(default)]
     pub agents: Vec<AddedAgent>,
     /// Why the file does not read, naming the key, while it does not: the rest
     /// are then Muster's defaults.
-    #[serde(default)]
     pub problem: Option<String>,
     /// The fewest columns a window has for a session's terminal to sit beside
     /// the list; in a narrower one, the list or the session fills it. 0 keeps
     /// them side by side at any width (`[layout] side_by_side_from`).
-    #[serde(default = "default_side_by_side_from")]
     pub side_by_side_from: u16,
     /// Whose colours the UI draws in (`[look] colours`).
-    #[serde(default)]
     pub palette: Palette,
     /// How many lines a session's line in the lists takes (`[look]
     /// session_lines`).
-    #[serde(default)]
     pub session_lines: SessionLines,
     /// Where the UI's panels are (`[layout] panels`).
-    #[serde(default)]
     pub panels: Layout,
     /// Whether the list is folded away, the session taking its place (`[layout]
     /// list_folded`).
-    #[serde(default)]
     pub list_folded: bool,
     /// How chats are named by an agent (`[names]`).
-    #[serde(default)]
     pub naming: Naming,
     /// The keys the person set, by action, as written (`[keys]`,
     /// `muster_core::keys`): the actions not named keep Muster's.
-    #[serde(default)]
     pub keys: std::collections::BTreeMap<String, Vec<String>>,
     /// Whether the person is told of what newly needs them while they look away
     /// (`[notifications] show`); on unless they turn it off.
-    #[serde(default = "on")]
     pub notifications: bool,
     /// Which kinds the person is told of, and how each sounds
     /// (`[notifications]` `questions`, `finishes`, `errors` and their
     /// `_sound`s).
-    #[serde(default)]
     pub telling: crate::telling::Telling,
     /// Whether the worktrees Muster makes for a Rust project build into one
     /// folder of the project's, so its dependencies are built and kept once
     /// rather than once a worktree (`[worktrees] shared_builds`); on unless the
     /// person turns it off.
-    #[serde(default = "on")]
     pub shared_builds: bool,
     /// How far agents may set agents working through Muster's command line
     /// (`[delegation]`, `PRD-01`).
-    #[serde(default)]
     pub delegation: crate::delegation::Delegation,
-}
-
-fn on() -> bool {
-    true
 }
 
 /// How chats are named by an agent (`PRODUCT.md` §6): the first line of the
@@ -335,10 +319,6 @@ pub struct AddedAgent {
 /// diff's lines without wrapping them; narrower, the session would wrap
 /// what it draws.
 pub const SIDE_BY_SIDE_FROM: u16 = 100;
-
-fn default_side_by_side_from() -> u16 {
-    SIDE_BY_SIDE_FROM
-}
 
 /// The widths the Settings screen offers for
 /// [`Preferences::side_by_side_from`], narrowest first: 0 for any width.

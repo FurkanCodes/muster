@@ -149,21 +149,8 @@ pub fn own_settings(config_dir: &Path) -> Result<OwnSettings, ConfigError> {
     let config = MusterConfig::parse(read(&file)?.as_deref(), &file.display().to_string())?;
     Ok(OwnSettings {
         preferences: Preferences {
-            notch: config.notch,
             file,
-            agents: config.agents.iter().map(AgentDefinition::added).collect(),
-            problem: None,
-            side_by_side_from: config.side_by_side_from,
-            palette: config.palette,
-            session_lines: config.session_lines,
-            panels: config.panels,
-            list_folded: config.list_folded,
-            naming: config.naming,
-            keys: config.keys,
-            notifications: config.notifications,
-            telling: config.telling,
-            shared_builds: config.shared_builds,
-            delegation: config.delegation,
+            ..config.preferences
         },
         agents: config.agents,
         warnings: config.warnings,

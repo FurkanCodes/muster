@@ -16,7 +16,7 @@ use super::agents::{self, AgentDefinition};
 use crate::delegation::Delegation;
 use crate::layout::Layout;
 use crate::plugins::registry::{self, PluginEntry};
-use crate::settings::{Naming, Palette, SessionLines};
+use crate::settings::{Naming, Palette, Preferences, SessionLines};
 use crate::telling::{Kind, Sound, Tell, Telling};
 
 /// What the file is called, in the person's settings folder.
@@ -28,67 +28,20 @@ pub const NEW_FILE: &str = "# Your own settings for Muster as a whole.\n# Muster
 
 /// Muster's own settings as written; what is not written is Muster's
 /// default.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MusterConfig {
-    /// Show the agents in the MacBook's notch while the person looks
-    /// elsewhere (`[notch] show`).
-    pub notch: bool,
-    /// The coding agents the person added (`[agents.<name>]`), by name.
+    /// The settings as clients are told them ([`Preferences`]), but where
+    /// they are written, which the reader of the file fills in.
+    pub preferences: Preferences,
+    /// The coding agents the person added (`[agents.<name>]`), by name,
+    /// whole: [`Preferences::agents`] has what clients are shown of each.
     pub agents: Vec<AgentDefinition>,
-    /// The fewest columns a window has for a session to sit beside the
-    /// list; 0 at any width (`[layout] side_by_side_from`).
-    pub side_by_side_from: u16,
-    /// Whose colours the UI draws in (`[look] colours`).
-    pub palette: Palette,
-    /// How many lines a session's line takes (`[look] session_lines`).
-    pub session_lines: SessionLines,
-    /// Where the panels are (`[layout] panels`).
-    pub panels: Layout,
-    /// Whether the list is folded away (`[layout] list_folded`).
-    pub list_folded: bool,
-    /// How chats are named by an agent (`[names]`).
-    pub naming: Naming,
-    /// The keys the person set, by action, as written (`[keys]`).
-    pub keys: BTreeMap<String, Vec<String>>,
-    /// Whether the person is told of what newly needs them while they look
-    /// away (`[notifications] show`).
-    pub notifications: bool,
-    /// Which kinds the person is told of, and how each sounds (the rest of
-    /// `[notifications]`).
-    pub telling: Telling,
-    /// Whether a Rust project's worktrees build into one folder
-    /// (`[worktrees] shared_builds`).
-    pub shared_builds: bool,
-    /// How far agents may set agents working (`[delegation]`).
-    pub delegation: Delegation,
     /// The plugins the person installed, linked or turned off
     /// (`[plugins.<id>]`), by id.
     pub plugins: Vec<PluginEntry>,
     /// What reads but does nothing, for the person: a key set for an
     /// action Muster does not know, as a removed plugin's (`[keys]`).
     pub warnings: Vec<String>,
-}
-
-impl Default for MusterConfig {
-    fn default() -> Self {
-        Self {
-            notch: true,
-            agents: Vec::new(),
-            side_by_side_from: crate::settings::SIDE_BY_SIDE_FROM,
-            palette: Palette::default(),
-            session_lines: SessionLines::default(),
-            panels: Layout::default(),
-            list_folded: false,
-            naming: Naming::default(),
-            keys: BTreeMap::new(),
-            notifications: true,
-            telling: Telling::default(),
-            shared_builds: true,
-            delegation: Delegation::default(),
-            plugins: Vec::new(),
-            warnings: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -247,7 +200,7 @@ impl MusterConfig {
             text => Ok(text.map(|text| text.trim().to_owned())),
         };
         let (keys, warnings) = keys(read.keys, file)?;
-        let default = Self::default();
+        let default = Preferences::default();
         let naming = Naming {
             by_agent: read.names.by_agent.unwrap_or(default.naming.by_agent),
             agent: one_line("agent", read.names.agent)?,
@@ -272,9 +225,10 @@ impl MusterConfig {
             };
             telling = telling.with(kind, tell);
         }
-        Ok(Self {
+        let delegation = &read.delegation;
+        let preferences = Preferences {
             notch: read.notch.show.unwrap_or(default.notch),
-            agents,
+            agents: agents.iter().map(AgentDefinition::added).collect(),
             side_by_side_from: read
                 .layout
                 .side_by_side_from
@@ -292,16 +246,15 @@ impl MusterConfig {
                 .shared_builds
                 .unwrap_or(default.shared_builds),
             delegation: Delegation {
-                allowed: read
-                    .delegation
-                    .allowed
-                    .unwrap_or(default.delegation.allowed),
-                at_once: read
-                    .delegation
-                    .at_once
-                    .unwrap_or(default.delegation.at_once),
-                depth: read.delegation.depth.unwrap_or(default.delegation.depth),
+                allowed: delegation.allowed.unwrap_or(default.delegation.allowed),
+                at_once: delegation.at_once.unwrap_or(default.delegation.at_once),
+                depth: delegation.depth.unwrap_or(default.delegation.depth),
             },
+            ..default
+        };
+        Ok(Self {
+            preferences,
+            agents,
             plugins,
             warnings,
         })
@@ -362,11 +315,13 @@ mod tests {
         assert!(
             MusterConfig::parse(Some("# nothing yet\n"), "f")
                 .unwrap()
+                .preferences
                 .notch
         );
         assert!(
             !MusterConfig::parse(Some("[notch]\nshow = false\n"), "f")
                 .unwrap()
+                .preferences
                 .notch
         );
     }
@@ -378,7 +333,7 @@ mod tests {
             "settings.toml",
         )
         .unwrap();
-        assert!(!read.notch);
+        assert!(!read.preferences.notch);
         assert_eq!(read.agents.len(), 1);
         assert_eq!(read.agents[0].name, "my-agent");
         let error = MusterConfig::parse(
@@ -404,7 +359,7 @@ mod tests {
             "settings.toml",
         )
         .unwrap();
-        assert!(!read.notch);
+        assert!(!read.preferences.notch);
         assert_eq!(read.plugins.len(), 1);
         assert_eq!(read.plugins[0].id, "zoetrope");
         assert!(!read.plugins[0].enabled);
@@ -431,8 +386,12 @@ mod tests {
             "[keys.plugin.zoetrope]\ngraph = [\"G\"]\n",
         ] {
             let read = MusterConfig::parse(Some(written), "settings.toml").unwrap();
-            assert_eq!(read.keys["plugin.zoetrope.graph"], ["G"], "{written}");
-            assert_eq!(read.keys.len(), 1);
+            assert_eq!(
+                read.preferences.keys["plugin.zoetrope.graph"],
+                ["G"],
+                "{written}"
+            );
+            assert_eq!(read.preferences.keys.len(), 1);
         }
     }
 
@@ -446,9 +405,13 @@ mod tests {
             "settings.toml",
         )
         .unwrap();
-        assert!(!read.notch);
-        assert_eq!(read.keys["zoetrope_graph"], ["Z"], "kept as written");
-        assert_eq!(read.keys["rename"], ["F2"]);
+        assert!(!read.preferences.notch);
+        assert_eq!(
+            read.preferences.keys["zoetrope_graph"],
+            ["Z"],
+            "kept as written"
+        );
+        assert_eq!(read.preferences.keys["rename"], ["F2"]);
         assert_eq!(read.warnings.len(), 1);
         assert!(
             read.warnings[0].starts_with("settings.toml: keys.zoetrope_graph is not something"),
@@ -462,13 +425,13 @@ mod tests {
     #[test]
     fn a_session_sits_beside_the_list_from_a_hundred_columns_unless_written() {
         let nothing = MusterConfig::parse(None, "f").unwrap();
-        assert_eq!(nothing.side_by_side_from, 100);
+        assert_eq!(nothing.preferences.side_by_side_from, 100);
         let written =
             MusterConfig::parse(Some("[layout]\nside_by_side_from = 120\n"), "f").unwrap();
-        assert_eq!(written.side_by_side_from, 120);
-        assert!(written.notch, "the rest as by default");
+        assert_eq!(written.preferences.side_by_side_from, 120);
+        assert!(written.preferences.notch, "the rest as by default");
         let any = MusterConfig::parse(Some("[layout]\nside_by_side_from = 0\n"), "f").unwrap();
-        assert_eq!(any.side_by_side_from, 0);
+        assert_eq!(any.preferences.side_by_side_from, 0);
         // Not a width: said, naming the file.
         let error = MusterConfig::parse(Some("[layout]\nside_by_side_from = -4\n"), "s.toml")
             .unwrap_err()
@@ -479,8 +442,8 @@ mod tests {
     #[test]
     fn the_panels_are_as_written_or_muster_s_own() {
         let nothing = MusterConfig::parse(None, "f").unwrap();
-        assert_eq!(nothing.panels, Layout::default());
-        assert!(!nothing.list_folded);
+        assert_eq!(nothing.preferences.panels, Layout::default());
+        assert!(!nothing.preferences.list_folded);
         let written = MusterConfig::parse(
             Some("[layout]\npanels = \"session | list 30 | (changes / shell)\"\nlist_folded = true\n"),
             "f",
@@ -489,16 +452,16 @@ mod tests {
         // Written before the plugin's panel: it goes where the default
         // puts it, under the shell.
         assert_eq!(
-            written.panels.to_string(),
+            written.preferences.panels.to_string(),
             "session | list 30 | (changes / shell / plugin)"
         );
-        assert!(written.list_folded);
+        assert!(written.preferences.list_folded);
         let old_default = MusterConfig::parse(
             Some("[layout]\npanels = \"list | session 60% | (changes / shell)\"\n"),
             "f",
         )
         .unwrap();
-        assert_eq!(old_default.panels, Layout::default());
+        assert_eq!(old_default.preferences.panels, Layout::default());
         let error = MusterConfig::parse(
             Some("[layout]\npanels = \"list | list | session\"\n"),
             "s.toml",
@@ -515,15 +478,15 @@ mod tests {
     #[test]
     fn an_agent_names_chats_unless_the_person_says_not_and_by_the_agent_they_pick() {
         let nothing = MusterConfig::parse(None, "f").unwrap();
-        assert_eq!(nothing.naming, Naming::default());
-        assert!(nothing.naming.by_agent);
+        assert_eq!(nothing.preferences.naming, Naming::default());
+        assert!(nothing.preferences.naming.by_agent);
         let written = MusterConfig::parse(
             Some("[names]\nby_agent = false\nagent = \"codex\"\nmodel = \" o4 \"\n"),
             "f",
         )
         .unwrap();
         assert_eq!(
-            written.naming,
+            written.preferences.naming,
             Naming {
                 by_agent: false,
                 agent: Some("codex".to_owned()),
@@ -543,8 +506,8 @@ mod tests {
             "f",
         )
         .unwrap();
-        assert_eq!(read.keys["new_session"], ["N"]);
-        assert_eq!(read.keys["leave_session"], ["Q", "alt-q"]);
+        assert_eq!(read.preferences.keys["new_session"], ["N"]);
+        assert_eq!(read.preferences.keys["leave_session"], ["Q", "alt-q"]);
         let error = MusterConfig::parse(Some("[keys]\nnew_session = \"d\"\n"), "s.toml")
             .unwrap_err()
             .to_string();
@@ -580,15 +543,15 @@ mod tests {
     #[test]
     fn the_look_is_muster_s_own_on_two_lines_unless_written() {
         let nothing = MusterConfig::parse(None, "f").unwrap();
-        assert_eq!(nothing.palette, Palette::Muster);
-        assert_eq!(nothing.session_lines, SessionLines::Two);
+        assert_eq!(nothing.preferences.palette, Palette::Muster);
+        assert_eq!(nothing.preferences.session_lines, SessionLines::Two);
         let written = MusterConfig::parse(
             Some("[look]\ncolours = \"terminal\"\nsession_lines = 1\n"),
             "f",
         )
         .unwrap();
-        assert_eq!(written.palette, Palette::Terminal);
-        assert_eq!(written.session_lines, SessionLines::One);
+        assert_eq!(written.preferences.palette, Palette::Terminal);
+        assert_eq!(written.preferences.session_lines, SessionLines::One);
         for (text, says) in [
             ("[look]\ncolours = \"neon\"\n", "look.colours must be"),
             (
@@ -608,7 +571,7 @@ mod tests {
     #[test]
     fn each_kind_is_told_with_the_mac_s_sound_unless_written() {
         let nothing = MusterConfig::parse(Some("[notifications]\nshow = true\n"), "f").unwrap();
-        assert_eq!(nothing.telling, Telling::default());
+        assert_eq!(nothing.preferences.telling, Telling::default());
         let written = MusterConfig::parse(
             Some(
                 "[notifications]\nfinishes = false\nquestions_sound = \"Glass\"\n\
@@ -617,15 +580,15 @@ mod tests {
             "f",
         )
         .unwrap();
-        assert!(!written.telling.finishes.on);
+        assert!(!written.preferences.telling.finishes.on);
         assert_eq!(
-            written.telling.questions,
+            written.preferences.telling.questions,
             Tell {
                 on: true,
                 sound: Sound::Named("Glass".to_owned())
             }
         );
-        assert_eq!(written.telling.errors.sound, Sound::Silent);
+        assert_eq!(written.preferences.telling.errors.sound, Sound::Silent);
         let error = MusterConfig::parse(
             Some("[notifications]\nerrors_sound = \"../x.wav\"\n"),
             "settings.toml",
