@@ -191,7 +191,18 @@ fn print_workspace(snapshot: &Snapshot, workspace: &Workspace) {
 
 pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>) -> Outcome {
     // The daemon runs elsewhere, so it needs a path that does not depend on
-    // this shell's working directory.
+    // this shell's working directory; another machine's (`--on`) is given
+    // whole, as nothing here can make it so.
+    if let Some(remote) = crate::ssh::remote()
+        && !path.is_absolute()
+    {
+        return Err(format!(
+            "{} is not a whole path on {}: give it from / (/home/you/code/app)",
+            shown(&path.display().to_string()),
+            remote.name
+        )
+        .into());
+    }
     let root = std::path::absolute(path)?;
     let reply = connect(socket)
         .await?
@@ -690,14 +701,20 @@ pub(crate) fn no_agent_starts_one(snapshot: &Snapshot, what: &str) -> Result<(),
     ))
 }
 
-/// A project by id, name or path.
+/// A project by id, name or path. With `--on`, a path is the other
+/// machine's, as typed: nothing of this machine's folders says what it
+/// is there.
 pub(crate) fn find_project<'a>(
     snapshot: &'a Snapshot,
     wanted: &str,
 ) -> Result<&'a Project, String> {
-    let path = std::path::absolute(wanted)
-        .ok()
-        .and_then(|path| path.canonicalize().ok());
+    let path = if crate::ssh::remote().is_some() {
+        Some(std::path::PathBuf::from(wanted).components().collect())
+    } else {
+        std::path::absolute(wanted)
+            .ok()
+            .and_then(|path| path.canonicalize().ok())
+    };
     one(
         snapshot.projects.iter().filter(|project| {
             project.id.to_string() == wanted
