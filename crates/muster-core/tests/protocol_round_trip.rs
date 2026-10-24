@@ -12,6 +12,7 @@
 )]
 
 mod plugin_samples;
+mod terminal_samples;
 mod variants;
 
 use std::path::PathBuf;
@@ -629,21 +630,6 @@ fn comment() -> muster_core::IssueComment {
     }
 }
 
-/// What a session shows, and the command line an agent is run with in a
-/// terminal (`ARC-28`).
-fn terminal_replies() -> [Reply; 2] {
-    [
-        Reply::SessionText {
-            text: Some("Fixed it.".to_owned()),
-        },
-        Reply::AgentCommand {
-            program: "claude".to_owned(),
-            args: vec!["--session-id".to_owned(), "0f8b".to_owned()],
-            env: vec![("MUSTER_AGENT".to_owned(), "claude".to_owned())],
-        },
-    ]
-}
-
 fn replies() -> Vec<Reply> {
     let mut all = vec![
         Reply::Pong,
@@ -741,7 +727,7 @@ fn replies() -> Vec<Reply> {
         Reply::Done,
     ];
     all.extend(plugin_samples::replies());
-    all.extend(terminal_replies());
+    all.extend(terminal_samples::replies());
     all
 }
 
