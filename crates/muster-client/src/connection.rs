@@ -266,9 +266,7 @@ impl Connection {
     }
 
     /// Tells the colours of the person's terminal, which programs in
-    /// sessions asking their terminal's are told. Only to a daemon of
-    /// [`TERMINAL_PROTOCOL`](muster_core::colours::TERMINAL_PROTOCOL) or
-    /// later.
+    /// sessions asking their terminal's are told.
     pub async fn colours(
         &mut self,
         colours: muster_core::colours::TerminalColours,
@@ -276,10 +274,7 @@ impl Connection {
         self.send(ClientFrame::Colours(colours)).await
     }
 
-    /// Says which session's terminal has the person's keys, if any. Only to
-    /// a daemon of
-    /// [`TERMINAL_PROTOCOL`](muster_core::colours::TERMINAL_PROTOCOL) or
-    /// later.
+    /// Says which session's terminal has the person's keys, if any.
     pub async fn keys(&mut self, session: Option<SessionId>) -> Result<(), ClientError> {
         self.send(ClientFrame::Keys { session }).await
     }
