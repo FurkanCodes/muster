@@ -32,7 +32,7 @@ impl Supervisor {
                     .filter_map(|path| path.parent().map(Path::to_path_buf)),
             )
             .collect();
-        let Ok(mut entries) = tokio::fs::read_dir(&self.worktrees_dir).await else {
+        let Ok(mut entries) = tokio::fs::read_dir(&self.paths.worktrees_dir).await else {
             return;
         };
         while let Ok(Some(entry)) = entries.next_entry().await {

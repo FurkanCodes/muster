@@ -72,12 +72,12 @@ impl Supervisor {
     /// is under way, or nobody looks at a client and it is not that tick's
     /// turn.
     pub(super) fn tick_pull_requests(&mut self) {
-        self.pulls.ticks = self.pulls.ticks.wrapping_add(1);
+        self.looks.pulls.ticks = self.looks.pulls.ticks.wrapping_add(1);
         if self.pulls_under_way() {
             return;
         }
-        if !self.state.looked_at && !self.pulls.ticks.is_multiple_of(UNWATCHED_EVERY) {
-            self.pulls.missed = true;
+        if !self.state.looked_at && !self.looks.pulls.ticks.is_multiple_of(UNWATCHED_EVERY) {
+            self.looks.pulls.missed = true;
             return;
         }
         self.look_at_pull_requests(None);
@@ -86,16 +86,17 @@ impl Supervisor {
     /// The person looks at a client again: the look a tick let go by while
     /// nobody did is taken now, so what they see is recent.
     pub(super) fn catch_up_pull_requests(&mut self) {
-        if self.pulls.missed && !self.pulls_under_way() {
+        if self.looks.pulls.missed && !self.pulls_under_way() {
             self.look_at_pull_requests(None);
         }
     }
 
     /// Whether a look at every branch is under way, and not lost.
     fn pulls_under_way(&self) -> bool {
-        self.pulls
+        self.looks
+            .pulls
             .under_way
-            .is_some_and(|started| self.pulls.ticks.wrapping_sub(started) < LOST_AFTER)
+            .is_some_and(|started| self.looks.pulls.ticks.wrapping_sub(started) < LOST_AFTER)
     }
 
     /// Looks at the pull request of `only` that workspace's branch, or of
@@ -107,10 +108,10 @@ impl Supervisor {
         }
         let whole = only.is_none();
         if whole {
-            self.pulls.under_way = Some(self.pulls.ticks);
-            self.pulls.missed = false;
+            self.looks.pulls.under_way = Some(self.looks.pulls.ticks);
+            self.looks.pulls.missed = false;
         }
-        let (requests, hosts) = (self.requests.clone(), self.hosts.clone());
+        let (requests, hosts) = (self.requests.clone(), self.systems.hosts.clone());
         self.tasks.spawn(async move {
             let mut looked = look(hosts, projects).await;
             looked.whole = whole;
@@ -124,15 +125,15 @@ impl Supervisor {
     /// was looked at for, and tells clients of each change.
     pub(super) fn pull_requests_looked(&mut self, looked: Looked) {
         if looked.whole {
-            self.pulls.under_way = None;
+            self.looks.pulls.under_way = None;
         }
         for project in looked.answered {
-            self.pulls.failures.remove(&project);
+            self.looks.pulls.failures.remove(&project);
         }
         for (project, error) in looked.failed {
-            if self.pulls.failures.get(&project) != Some(&error) {
+            if self.looks.pulls.failures.get(&project) != Some(&error) {
                 tracing::info!(%project, %error, "could not look at pull requests");
-                self.pulls.failures.insert(project, error);
+                self.looks.pulls.failures.insert(project, error);
             }
         }
         let mut merged = Vec::new();

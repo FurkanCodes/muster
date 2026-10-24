@@ -28,6 +28,7 @@ mod naming;
 mod outside_worktrees;
 mod own_settings;
 mod panels;
+mod parts;
 mod plugins;
 mod prepared;
 mod projects;
@@ -57,7 +58,7 @@ use muster_core::protocol::{
 use muster_core::{RunId, SessionId};
 use muster_state::run::RunEvent;
 use muster_state::session::{SessionMachine, Signal, Timing};
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{broadcast, mpsc};
 
 pub(crate) use self::clients::ClientGuard;
 use self::handle::Request;
@@ -171,45 +172,37 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         requests: requests.clone(),
         store: settings.store,
         clock: settings.clock,
-        worktrees_dir: settings.worktrees_dir,
-        data_dir: settings.data_dir.clone(),
-        hook_socket: settings.hook_socket,
+        paths: parts::Paths {
+            worktrees_dir: settings.worktrees_dir,
+            data_dir: settings.data_dir.clone(),
+            hook_socket: settings.hook_socket,
+            config_dir: settings.config_dir.clone(),
+        },
+        systems: parts::Systems {
+            work: settings.work,
+            trackers: settings.trackers,
+            credentials: settings.credentials,
+            docker: settings.docker,
+            hosts: settings.hosts,
+            repositories: settings.repositories,
+            places: settings.places,
+            secrets: settings.secrets,
+        },
+        clients: parts::Clients::new(unwatched, keys_gone, client_gone),
+        looks: parts::Looks::default(),
         deltas: broadcast::channel(settings.delta_capacity).0,
         state,
         live: HashMap::new(),
-        terminals: HashMap::new(),
-        watchers: HashMap::new(),
-        unwatched,
-        typing: HashMap::new(),
-        keys_gone,
-        colours: watch::channel(muster_core::colours::TerminalColours::default()).0,
-        lookers: looking::Lookers::default(),
-        looked_at: watch::channel(false).0,
-        sizing: sizing::Sizing::default(),
-        next_client: 0,
-        client_gone,
         hook_tokens: HashMap::new(),
         pty_events,
         timing: settings.timing,
         active_runs: HashMap::new(),
-        work: settings.work,
-        trackers: settings.trackers,
         run_reports,
-        config_dir: settings.config_dir.clone(),
-        credentials: settings.credentials,
-        docker: settings.docker,
-        hosts: settings.hosts,
-        pulls: pulls::Looks::default(),
-        changes: changes::Looks::default(),
         timelines: timeline::Timelines::default(),
-        clashes: clashes::Clashes::default(),
         tidies: tidy::Tidies::default(),
         resumes: recovery::Resumes::default(),
         worktree_jobs: worktrees::Jobs::default(),
         tasks: settings.tasks,
-        repositories: settings.repositories,
-        places: settings.places,
-        secrets: settings.secrets,
         agents,
         asks: Arc::new(tokio::sync::Semaphore::new(naming::AT_ONCE)),
         plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
@@ -318,61 +311,24 @@ struct Supervisor {
     requests: mpsc::Sender<Request>,
     store: StoreHandle,
     clock: Arc<dyn Clock>,
-    worktrees_dir: PathBuf,
-    data_dir: PathBuf,
-    hook_socket: PathBuf,
+    paths: parts::Paths,
+    systems: parts::Systems,
+    clients: parts::Clients,
+    looks: parts::Looks,
     deltas: broadcast::Sender<Delta>,
     state: Snapshot,
     live: HashMap<SessionId, Live>,
-    /// Each session's current terminal, followed by its clients across
-    /// relaunches.
-    terminals: HashMap<SessionId, watch::Sender<Option<PtyHandle>>>,
-    /// How many clients watch each watched session.
-    watchers: HashMap<SessionId, usize>,
-    /// Where dropped watch guards report.
-    unwatched: mpsc::UnboundedSender<(SessionId, u64)>,
-    /// How many clients have the person's keys in each session's terminal.
-    typing: HashMap<SessionId, usize>,
-    /// Where dropped keys guards report.
-    keys_gone: mpsc::UnboundedSender<SessionId>,
-    /// The colours of the person's terminal, as a UI last told them; every
-    /// terminal answers its program's questions about its colours from
-    /// them.
-    colours: watch::Sender<muster_core::colours::TerminalColours>,
-    /// The clients that say whether the person is looking at them.
-    lookers: looking::Lookers,
-    /// Whether the person looks at any, for the watchers that slow down
-    /// while nobody does.
-    looked_at: watch::Sender<bool>,
-    /// The sizes clients gave sessions' terminals.
-    sizing: sizing::Sizing,
-    /// The key the last connection was given.
-    next_client: u64,
-    /// Where dropped client guards report.
-    client_gone: mpsc::UnboundedSender<u64>,
     /// Which session each issued hook token names (`ARC-11`).
     hook_tokens: HashMap<crate::secrets::Token, SessionId>,
     timing: Timing,
     /// Runs in progress, with their machines.
     active_runs: HashMap<RunId, runs::ActiveRun>,
-    work: Arc<dyn RunWork>,
-    trackers: Arc<dyn Trackers>,
     /// Where runs' work reports.
     run_reports: Reports,
-    config_dir: PathBuf,
-    credentials: Arc<dyn Credentials>,
-    docker: String,
-    hosts: Arc<dyn Hosts>,
     /// Handed to every terminal actor so it can report events.
     pty_events: mpsc::UnboundedSender<(SessionId, PtyEvent)>,
-    /// Looks at branches' pull requests.
-    pulls: pulls::Looks,
-    /// Looks at what workspaces' work has changed.
-    changes: changes::Looks,
     /// Keeps workspaces' timelines.
     timelines: timeline::Timelines,
-    /// Looks at where the work in projects' workspaces meets.
-    clashes: clashes::Clashes,
     /// What each tidy of commits under way began from.
     tidies: tidy::Tidies,
     /// Sessions the last daemon left running, waiting their turn to resume.
@@ -381,12 +337,6 @@ struct Supervisor {
     worktree_jobs: worktrees::Jobs,
     /// Its work off the loop (`ARC-13`).
     tasks: Tasks,
-    /// GitHub's repositories, to clone one as a project.
-    repositories: Arc<dyn crate::repositories::Repositories>,
-    /// Where the agents keep their records.
-    places: crate::spend::Places,
-    /// Where plugins' secrets are kept.
-    secrets: Arc<dyn crate::secrets::Secrets>,
     /// The coding agents the person added in Muster's own settings, as
     /// last read.
     agents: Vec<Arc<muster_core::config::agents::AgentDefinition>>,
@@ -394,7 +344,7 @@ struct Supervisor {
     asks: Arc<tokio::sync::Semaphore>,
     /// The plugins the person installed (`ARCHITECTURE.md` §7a).
     plugins: crate::plugins::Registry,
-    /// The ticket plugins' processes and logs, shared with `trackers`.
+    /// The ticket plugins' processes and logs, shared with the trackers.
     ticket_plugins: crate::trackers::plugin::Plugins,
     /// Plugins' panels stopped to be opened afresh as they end.
     reopening: HashSet<SessionId>,
@@ -617,7 +567,7 @@ impl Supervisor {
                 self.tidy_checked(session, checked);
             }
             Request::LookedAt(reply) => {
-                let _ = reply.send(self.looked_at.subscribe());
+                let _ = reply.send(self.clients.looked_at.subscribe());
             }
             Request::RunningProcesses(reply) => {
                 let running = self

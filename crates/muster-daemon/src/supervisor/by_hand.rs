@@ -135,7 +135,7 @@ impl Supervisor {
                 return;
             }
         };
-        let (hosts, requests) = (self.hosts.clone(), self.requests.clone());
+        let (hosts, requests) = (self.systems.hosts.clone(), self.requests.clone());
         let place = crate::service::ProjectPlace {
             root: path.clone(),
             overrides: overrides.clone(),

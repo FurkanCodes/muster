@@ -156,7 +156,8 @@ impl Supervisor {
     /// forwarded one to this machine and `muster bridge` linked it in the
     /// runtime folder (`ARC-27`); a link that leads nowhere is none.
     pub(super) fn ssh_agent(&self, on_host: bool) -> Option<std::path::PathBuf> {
-        self.hook_socket
+        self.paths
+            .hook_socket
             .parent()
             .map(|dir| dir.join(muster_core::machines::AGENT_LINK))
             .filter(|link| on_host && link.exists())
@@ -353,7 +354,7 @@ impl Supervisor {
         };
         let hooks = if hooked {
             Some(HookEndpoint {
-                socket: self.hook_socket.clone(),
+                socket: self.paths.hook_socket.clone(),
                 token: crate::secrets::Token::new(harness::new_token()?),
             })
         } else {
@@ -442,7 +443,7 @@ impl Supervisor {
         harness: &Harness,
         hooked: bool,
     ) -> Option<std::path::PathBuf> {
-        let dir = self.hook_socket.parent()?.join("harness");
+        let dir = self.paths.hook_socket.parent()?.join("harness");
         if !hooked {
             return None;
         }

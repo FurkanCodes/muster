@@ -95,7 +95,7 @@ impl Supervisor {
                 return;
             }
         };
-        let trackers = self.trackers.clone();
+        let trackers = self.systems.trackers.clone();
         self.tasks.spawn(async move {
             let outcome = async {
                 let source = trackers.for_project(place).await?;
@@ -130,7 +130,7 @@ impl Supervisor {
                 return;
             }
         };
-        let trackers = self.trackers.clone();
+        let trackers = self.systems.trackers.clone();
         self.tasks.spawn(async move {
             let outcome = async {
                 let detail = trackers.for_project(place).await?.view(&key).await?;
@@ -160,7 +160,7 @@ impl Supervisor {
                 return;
             }
         };
-        let trackers = self.trackers.clone();
+        let trackers = self.systems.trackers.clone();
         self.tasks.spawn(async move {
             let outcome = async {
                 trackers.for_project(place).await?.close(&key).await?;
@@ -213,7 +213,7 @@ impl Supervisor {
             let _ = reply.send(Err(self.no_harness(&harness)));
             return;
         }
-        let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
+        let (requests, trackers) = (self.requests.clone(), self.systems.trackers.clone());
         self.tasks.spawn(async move {
             let prefixed =
                 crate::config::muster_prefix(place.root.clone(), place.overrides.clone()).await;

@@ -143,7 +143,7 @@ impl Supervisor {
             overrides: self.overrides_of(project.id),
             branch,
             taken,
-            dir: self.worktrees_dir.clone(),
+            dir: self.paths.worktrees_dir.clone(),
             own_groups: groups(&|of| of == project.id),
             other_groups: groups(&|of| of != project.id),
             making: self

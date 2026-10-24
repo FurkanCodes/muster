@@ -157,7 +157,7 @@ impl Supervisor {
         workspace: WorkspaceId,
     ) -> Result<(PathBuf, PathBuf), ErrorBody> {
         let path = self.repository_path(workspace)?;
-        Ok((path, timeline::dir(&self.data_dir, workspace)))
+        Ok((path, timeline::dir(&self.paths.data_dir, workspace)))
     }
 
     /// Runs `job` now, or after the one under way in `workspace`.
@@ -329,7 +329,7 @@ impl Supervisor {
     /// A workspace went: its timeline goes with it (`ARC-14`).
     pub(super) fn forget_timeline(&mut self, workspace: WorkspaceId) {
         self.timelines.busy.remove(&workspace);
-        let dir = timeline::dir(&self.data_dir, workspace);
+        let dir = timeline::dir(&self.paths.data_dir, workspace);
         self.tasks
             .spawn(async move { timeline::remove(&dir).await });
     }

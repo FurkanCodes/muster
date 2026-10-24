@@ -175,7 +175,7 @@ impl Supervisor {
         launch.seen.clone_from(&details.env);
         for name in &details.secrets {
             if let Some(secret) =
-                crate::secrets::plugin_secret(self.secrets.as_ref(), plugin, name).await
+                crate::secrets::plugin_secret(self.systems.secrets.as_ref(), plugin, name).await
             {
                 launch.secrets.push((name.clone(), secret));
             }
@@ -271,7 +271,7 @@ impl Supervisor {
     ) -> Result<Context, ErrorBody> {
         let mut context = self.known_context(workspace, beside)?;
         if let (Some(harness), Some(resume)) = (context.harness.clone(), context.resume.clone()) {
-            let places = self.places.clone();
+            let places = self.systems.places.clone();
             let found = tokio::task::spawn_blocking(move || {
                 crate::spend::transcript(&places, &harness, &resume)
             })

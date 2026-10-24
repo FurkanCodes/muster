@@ -100,7 +100,7 @@ impl Supervisor {
             }
         };
         let overrides = place.overrides.clone();
-        let (requests, trackers) = (self.requests.clone(), self.trackers.clone());
+        let (requests, trackers) = (self.requests.clone(), self.systems.trackers.clone());
         self.tasks.spawn(async move {
             let prepared = async {
                 let config = settings_for_runs(root.clone(), overrides).await?;
@@ -304,7 +304,8 @@ impl Supervisor {
 
     /// Where the person's overrides of `project`'s settings live.
     pub(super) fn overrides_of(&self, project: ProjectId) -> PathBuf {
-        self.config_dir
+        self.paths
+            .config_dir
             .join("projects")
             .join(format!("{project}.toml"))
     }
@@ -365,7 +366,9 @@ impl Supervisor {
                     };
                     let mut context = active.context.clone();
                     context.cost_micros = active.machine.cost_micros();
-                    self.work.start(context, work, self.run_reports.clone());
+                    self.systems
+                        .work
+                        .start(context, work, self.run_reports.clone());
                 }
             }
         }
@@ -470,7 +473,7 @@ impl Supervisor {
             if let Report::Container(container) = report {
                 // Made by work the run's end overtook: it goes too.
                 tracing::info!(%run, %container, "removing the container of a run that ended");
-                self.work.remove_containers_of(vec![run]);
+                self.systems.work.remove_containers_of(vec![run]);
             }
             return;
         };
@@ -497,7 +500,8 @@ impl Supervisor {
     pub(super) fn check_pull_requests(&self) {
         for active in self.active_runs.values() {
             if active.context.pr.is_some() {
-                self.work
+                self.systems
+                    .work
                     .check_pull_request(active.context.clone(), self.run_reports.clone());
             }
         }
@@ -601,7 +605,7 @@ impl Supervisor {
             .filter(|run| run.stage.is_over())
             .map(|run| run.id)
             .collect();
-        self.work.remove_containers_of(ended);
+        self.systems.work.remove_containers_of(ended);
     }
 
     /// The run going on `number` in `project`, if one is.
