@@ -75,19 +75,18 @@ fn shift_p_pins_the_selected_session_beside_and_again_unpins_it() {
     assert_eq!(layout.pinned(), [first]);
     assert_eq!(world.app.panels().pinned(), [first], "shown at once");
     assert!(!area_of(&world, first).is_empty());
-    // Drawn once, in its own panel: the session panel says so.
-    let screen = render_in(&world.app, WIDE);
-    assert!(screen.contains("It is in a panel of its own."), "{screen}");
+    // Drawn once, in its own panel: the session's panel, with nothing else
+    // to show, goes.
+    let size = world.app.terminal_size;
+    let areas = crate::view::browse_areas(&world.app, Rect::new(0, 0, size.cols, size.rows + 1));
+    assert!(areas.preview.is_empty(), "{areas:?}");
 
     // Another selected: both are on screen, each streamed.
     world.app.selected = Some(Row::Session(second));
     let actions = world.app.settle();
     assert!(attached(&actions).contains(&second), "{actions:?}");
     let screen = render_in(&world.app, WIDE);
-    assert!(
-        screen.contains("Claude") && !screen.contains("It is in a panel of its own."),
-        "{screen}"
-    );
+    assert!(screen.contains("Claude"), "{screen}");
     assert!(!area_of(&world, first).is_empty());
 
     // Again on the one pinned: unpinned.
@@ -101,6 +100,9 @@ fn shift_p_pins_the_selected_session_beside_and_again_unpins_it() {
 #[test]
 fn a_session_s_line_dragged_out_of_the_list_is_pinned_where_it_is_dropped() {
     let (mut world, second) = two();
+    // The first session shown beside the list.
+    world.app.selected = Some(Row::Session(world.session.id));
+    world.app.settle();
     let down = |kind| mouse(kind, 8, 6);
     // Pressed, it is selected at once, as a click selects.
     world
@@ -133,6 +135,16 @@ fn a_session_s_line_dragged_out_of_the_list_is_pinned_where_it_is_dropped() {
     );
     let area = area_of(&world, second);
     assert_eq!(area.right(), 180, "{area:?}");
+    // The session shown before it was pressed stays beside the list, so
+    // both terminals are drawn and streamed.
+    world.app.settle();
+    assert_eq!(world.app.session_beside_list(), Some(world.session.id));
+    assert_eq!(world.app.shown_session(), Some(world.session.id));
+    let size = world.app.terminal_size;
+    let areas = crate::view::browse_areas(&world.app, Rect::new(0, 0, size.cols, size.rows + 1));
+    assert!(!areas.preview.is_empty(), "{areas:?}");
+    let screen = render_in(&world.app, WIDE);
+    assert!(!screen.contains("It is in a panel of its own."), "{screen}");
 }
 
 #[test]

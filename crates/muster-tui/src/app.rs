@@ -653,10 +653,33 @@ impl App {
         }
     }
 
+    /// The session drawn in the session's panel: the one shown, or, while
+    /// that one is pinned in a panel of its own, the last shown that is not
+    /// (none if it is gone or pinned too), so every terminal is drawn and
+    /// none twice.
+    pub(crate) fn session_beside_list(&self) -> Option<SessionId> {
+        let pinned = self.pinned_beside();
+        match self.focused_session() {
+            Some(session) if pinned.contains(&session) => self
+                .panels
+                .agents
+                .into_iter()
+                .flatten()
+                .find(|kept| !pinned.contains(kept) && self.model.session(*kept).is_some()),
+            focused => focused,
+        }
+    }
+
+    /// Whether the session's panel has nothing to draw: the session selected
+    /// is pinned and none is kept beside it, so the panel goes.
+    pub(crate) fn session_panel_empty(&self) -> bool {
+        self.focused_session().is_some() && self.session_beside_list().is_none()
+    }
+
     /// The session whose terminal is drawn, and so streamed: open, or
     /// selected beside the list. A narrow window's list draws none.
     pub(crate) fn shown_session(&self) -> Option<SessionId> {
-        self.focused_session()
+        self.session_beside_list()
             .filter(|session| self.model.session(*session).is_some())
             // One pinned is drawn, and streamed, in its own panel.
             .filter(|session| !self.pinned_beside().contains(session))

@@ -72,7 +72,8 @@ impl App {
         let pinned = self.pinned_beside();
         let showing = |panel: Panel| match panel {
             Panel::List => with_list,
-            Panel::Session => true,
+            // Nothing to draw there while the session selected is pinned.
+            Panel::Session => !self.session_panel_empty(),
             Panel::Changes => self.changes_shown(),
             Panel::Shell => self.shell_beside().is_some(),
             Panel::Plugin => self.plugin_beside().is_some(),

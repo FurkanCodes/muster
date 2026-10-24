@@ -13,7 +13,6 @@ import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { doing, statusKind } from "../lib/status";
 import { branchOf, shownHarness } from "../state/selectors";
-import { EmptyState, EmptyStateText } from "../ui/EmptyState";
 import { Panel, PanelClose, PanelHead, PanelTitle } from "../ui/Panel";
 import { AgentLogo, BranchName, StatusMark } from "../ui/status";
 import { putPanelAway, putShellAway } from "./beside";
@@ -106,13 +105,11 @@ export function PinnedPanel({
 
 export function SessionPanel({
   session,
-  pinned,
   style,
   lifted,
   onHeadDown,
-}: BoxProps & { session: SessionId; pinned: boolean }) {
+}: BoxProps & { session: SessionId }) {
   const { harness, kind, words, name } = useAgentHead(session);
-  const key = useKeyLabel("pin_session");
   return (
     <Panel
       label={name}
@@ -126,16 +123,7 @@ export function SessionPanel({
         <StatusMark kind={kind} />
         <span className="mu-cut">{words}</span>
       </PanelHead>
-      {pinned ? (
-        // Drawn in its own panel: once only, as a terminal is one.
-        <EmptyState className="panels-body">
-          <EmptyStateText>
-            It is in a panel of its own. {key === "none" ? "" : `${key} unpins it.`}
-          </EmptyStateText>
-        </EmptyState>
-      ) : (
-        <Body session={session} compact={false} />
-      )}
+      <Body session={session} compact={false} />
     </Panel>
   );
 }

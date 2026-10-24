@@ -6,12 +6,14 @@
 import { act, createEvent, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
+import { AppContext } from "../app/context";
 import { installKeys } from "../app/keys";
 import { ulid } from "../ipc/mock/scenario";
+import { SessionActionsProvider } from "../session/SessionActionsContext";
 import { SessionPane } from "../session/SessionPane";
 import { renderWithApp } from "../test/render";
-import { CARRIED, carry } from "./carry";
 import { tooltipOf } from "../test/tooltip";
+import { CARRIED, carry } from "./carry";
 
 const codex = ulid(101);
 const gitLog = ulid(102);
@@ -219,11 +221,9 @@ describe("ARC-24 full screen", () => {
     expect(
       await within(box()).findByRole("region", { name: "Sketch the Tauri shell" }),
     ).toBeInTheDocument();
-    // Its terminal once, in its own panel; the agent's panel says so.
+    // Its terminal once, in its own panel; the agent's panel, with nothing else to show, goes.
     await waitFor(() => expect(terminals()).toEqual([codex]));
-    expect(screen.getByRole("region", { name: "Codex" })).toHaveTextContent(
-      "It is in a panel of its own.",
-    );
+    expect(screen.queryByRole("region", { name: "Codex" })).not.toBeInTheDocument();
     await userEvent.keyboard("P");
     await waitFor(() =>
       expect(
@@ -250,5 +250,27 @@ describe("ARC-24 full screen", () => {
     await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));
     expect(app.ui.getState().note?.text).toBe("Pinned it in a panel of its own.");
   });
-});
 
+  it("keep the agent shown before beside a pinned session selected, both terminals drawn (PRD §6a)", async () => {
+    const { app, rerender } = await pane();
+    const other = ulid(100);
+    await screen.findByLabelText("Terminal");
+    const shown = (session: string) => (
+      <AppContext value={app}>
+        <SessionActionsProvider>
+          <SessionPane session={session} />
+        </SessionActionsProvider>
+      </AppContext>
+    );
+    // The other shown as its line is taken up, then pinned: Codex stays.
+    rerender(shown(other));
+    await userEvent.keyboard("P");
+    await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));
+    rerender(shown(codex));
+    await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));
+    rerender(shown(other));
+    await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));
+    expect(terminals()).toHaveLength(2);
+    expect(screen.queryByText(/It is in a panel of its own/)).not.toBeInTheDocument();
+  });
+});

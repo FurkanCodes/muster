@@ -15,19 +15,11 @@ use crate::app::{App, View};
 use crate::model::Row;
 
 pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    if let Some(session) = app.focused_session() {
-        if app.pinned_beside().contains(&session) {
-            // Drawn in its own panel: once only.
-            let unpin = format!("{} unpins it.", app.key(Does::PinSession));
-            return kep::draw_empty_pane(
-                frame,
-                app,
-                area,
-                "It is in a panel of its own.",
-                &[&unpin],
-            );
+    if app.focused_session().is_some() {
+        // A pinned one selected is drawn in its own panel, once only.
+        if let Some(session) = app.session_beside_list() {
+            draw_session(frame, app, session, area, false);
         }
-        draw_session(frame, app, session, area, false);
         return;
     }
     let text = match app

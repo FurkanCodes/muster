@@ -57,6 +57,12 @@ impl App {
         actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
+        if let Some(session) = self.focused_session()
+            && !self.pinned_beside().contains(&session)
+            && self.panels.agents[0] != Some(session)
+        {
+            self.panels.agents = [Some(session), self.panels.agents[0]];
+        }
         let told = self.tell_focus();
         actions.extend(self.settle_streams());
         actions.extend(told);

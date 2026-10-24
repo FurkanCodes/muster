@@ -101,6 +101,11 @@ pub(crate) struct Panels {
     /// The sessions pinned in panels of their own that are streamed, and
     /// the size each was given.
     pub(crate) pinned: Vec<super::settle::Streamed>,
+    /// The last two sessions the list showed that were not pinned, the
+    /// latest first: the session's panel keeps one while a pinned one is
+    /// selected (`session_beside_list`). Two, as a line dragged out of the
+    /// list is selected as it is pressed, before it is pinned.
+    pub(crate) agents: [Option<SessionId>; 2],
 }
 
 /// The news told the person while they look elsewhere (`app::alarm`).
