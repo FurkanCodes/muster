@@ -122,7 +122,7 @@ fn the_model_is_picked_among_those_the_agent_offers_or_typed() {
         req_id,
         outcome: Ok(Reply::Models(vec!["haiku".to_owned(), "sonnet".to_owned()])),
     });
-    assert!(render(&world.app).contains("It offers: haiku, sonnet"));
+    assert!(render(&world.app).contains("It offers: haiku  sonnet "));
     press(&mut world.app, KeyCode::Tab);
     press(&mut world.app, KeyCode::Tab);
     let Mode::Dialog(Dialog::NamingModel { model, .. }) = &world.app.mode else {

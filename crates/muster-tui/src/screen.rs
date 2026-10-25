@@ -51,6 +51,9 @@ pub(crate) struct Screen {
     /// The last bytes of output, for a frame's start or end split across
     /// two chunks.
     tail: Vec<u8>,
+    /// How many lines of scrollback it holds, as far back as the view can
+    /// go: what a scroll bar measures.
+    history: usize,
 }
 
 impl std::fmt::Debug for Screen {
@@ -72,7 +75,23 @@ impl Screen {
             ended: None,
             in_frame: false,
             tail: Vec::new(),
+            history: 0,
         }
+    }
+
+    /// How many lines back the view can go.
+    pub(crate) fn history(&self) -> usize {
+        self.history
+    }
+
+    /// Counts the scrollback the emulator holds, by asking it to go as far
+    /// back as it can and coming back.
+    fn count_history(&mut self) {
+        let screen = self.parser.screen_mut();
+        let at = screen.scrollback();
+        screen.set_scrollback(usize::MAX);
+        self.history = screen.scrollback();
+        screen.set_scrollback(at);
     }
 
     /// Whether the program is drawing a frame it has not finished: one
@@ -181,6 +200,7 @@ impl Screen {
         self.parser.callbacks_mut().live = live;
         self.parser.process(data);
         self.parser.callbacks_mut().live = false;
+        self.count_history();
     }
 
     /// What the program last copied in its live output since this was last
@@ -191,6 +211,7 @@ impl Screen {
 
     pub(crate) fn resize(&mut self, cols: u16, rows: u16) {
         self.parser.screen_mut().set_size(rows.max(2), cols.max(2));
+        self.count_history();
     }
 
     /// Moves the view `lines` back into the scrollback, or forward with a

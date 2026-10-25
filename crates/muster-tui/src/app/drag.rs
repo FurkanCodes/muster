@@ -23,6 +23,7 @@ use muster_core::settings::PreferenceChange;
 use ratatui::layout::{Position, Rect};
 
 use super::grab::Hold;
+use super::scrollbars::Bar;
 use super::{Action, App, Mode, Then, View};
 use crate::layout::Divider;
 
@@ -51,13 +52,25 @@ pub(crate) enum Drag {
     },
     /// The line between two panels, and the layout before it moved; the
     /// press that took it, and whether it has moved; `beside` where it was
-    /// taken by a cell beside it, not on it.
+    /// taken by a cell beside it, not on it; and the scroll bar on it, if
+    /// one is, which a drag up or down takes instead.
     Divider {
         divider: Divider,
         was: Layout,
         press: MouseEvent,
         beside: bool,
         moved: bool,
+        bar: Option<super::scrollbars::Bar>,
+    },
+    /// A scroll bar's thumb, carried up or down (`app::scrollbars`).
+    Bar { bar: super::scrollbars::Bar },
+    /// A project's line taken from the sessions list: the press that took
+    /// it, and the project it would land on now, once it has moved off
+    /// its own (`app::project_order`).
+    Project {
+        project: muster_core::ProjectId,
+        press: MouseEvent,
+        onto: Option<muster_core::ProjectId>,
     },
 }
 
@@ -108,12 +121,25 @@ impl App {
                 _ => Vec::new(),
             });
         }
-        if event.kind != MouseEventKind::Down(MouseButton::Left) || !self.can_arrange() {
+        if event.kind != MouseEventKind::Down(MouseButton::Left) {
             return None;
         }
-        if let Some((panel, button)) = crate::view::pane::button_at(self, &self.shown_panels(), at)
-        {
-            return Some(self.press_button(panel, button));
+        // The help's scroll bar, over a screen whose panels do not move.
+        if !self.can_arrange() {
+            let (bar, _) = self.bar_at(at).filter(|(bar, _)| *bar == Bar::Help)?;
+            self.scroll_bar_to(bar, at.y);
+            self.panels.drag = Some(Drag::Bar { bar });
+            return Some(Vec::new());
+        }
+        if let Some(project) = self.project_line_at(at) {
+            // The press is the click it always was, and may become a drag.
+            let actions = self.mode_mouse(event);
+            self.panels.drag = Some(Drag::Project {
+                project,
+                press: event,
+                onto: None,
+            });
+            return Some(actions);
         }
         if let Some(session) = self.session_line_at(at) {
             // The press is the click it always was, and may become a drag.
@@ -125,14 +151,24 @@ impl App {
             });
             return Some(actions);
         }
+        let bar = self.bar_at(at).map(|(bar, _)| bar);
+        let Some(hold) = self.hold_at(at) else {
+            // A scroll bar where no line between panels is: taken.
+            let bar = bar?;
+            self.scroll_bar_to(bar, at.y);
+            self.panels.drag = Some(Drag::Bar { bar });
+            self.selection = None;
+            return Some(Vec::new());
+        };
         // What is marked in a session is clicked away, as by any click.
-        self.panels.drag = Some(match self.hold_at(at)? {
+        self.panels.drag = Some(match hold {
             Hold::Line { divider, on_it } => Drag::Divider {
                 divider,
                 was: self.panels().clone(),
                 press: event,
                 beside: !on_it,
                 moved: false,
+                bar,
             },
             Hold::Title(panel) => Drag::Panel {
                 panel,
@@ -160,12 +196,35 @@ impl App {
                     to: self.drop_place(panel, at, true),
                 });
             }
+            Drag::Bar { bar } => self.scroll_bar_to(bar, at.y),
+            Drag::Project { project, press, .. } => {
+                let onto = self
+                    .project_under(at)
+                    .filter(|onto| *onto != project || at.y != press.row);
+                self.panels.drag = Some(Drag::Project {
+                    project,
+                    press,
+                    onto,
+                });
+            }
+            // On a scroll bar, a first move up or down takes the bar.
+            Drag::Divider {
+                bar: Some(bar),
+                press,
+                moved: false,
+                ..
+            } if at.x == press.column && at.y != press.row => {
+                self.panels.kept = None;
+                self.panels.drag = Some(Drag::Bar { bar });
+                self.scroll_bar_to(bar, at.y);
+            }
             Drag::Divider {
                 divider,
                 was,
                 press,
                 beside,
                 moved,
+                bar,
             } => {
                 // Moved as far as the pointer, from where it was taken.
                 let (from, to) = match divider.split {
@@ -186,6 +245,7 @@ impl App {
                     press,
                     beside,
                     moved: true,
+                    bar,
                 });
             }
         }
@@ -221,6 +281,39 @@ impl App {
                     }
                     (true, None) => Vec::new(),
                 }
+            }
+            Drag::Bar { .. } => {
+                self.panels.drag = None;
+                Vec::new()
+            }
+            Drag::Project {
+                project,
+                onto: Some(onto),
+                ..
+            } if onto != project => {
+                self.panels.drag = None;
+                self.move_project(project, onto)
+            }
+            Drag::Project { press, .. } => {
+                // Let go on itself: the click it was, already taken.
+                self.panels.drag = None;
+                self.mode_mouse(MouseEvent {
+                    kind: MouseEventKind::Up(MouseButton::Left),
+                    column: at.x,
+                    row: at.y,
+                    ..press
+                })
+            }
+            // A click on a scroll bar on the line: there, at once.
+            Drag::Divider {
+                bar: Some(bar),
+                press,
+                moved: false,
+                ..
+            } => {
+                self.panels.drag = None;
+                self.scroll_bar_to(bar, press.row);
+                Vec::new()
             }
             Drag::Divider {
                 press,
@@ -328,7 +421,11 @@ impl App {
     }
 
     /// A press on `button` in `panel`'s title.
-    fn press_button(&mut self, panel: Panel, button: crate::view::pane::Button) -> Vec<Action> {
+    pub(super) fn press_button(
+        &mut self,
+        panel: Panel,
+        button: crate::view::pane::Button,
+    ) -> Vec<Action> {
         use crate::view::pane::Button;
         match (button, panel) {
             (Button::TakeOff, Panel::Placed(session)) => self.take_off(session),

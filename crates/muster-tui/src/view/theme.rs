@@ -171,6 +171,12 @@ impl Theme {
         }
     }
 
+    /// What a press would take or press, under the pointer: the accent
+    /// on its shade.
+    pub(crate) fn pressable(&self) -> Style {
+        Style::new().fg(self.accent).bg(self.lit).bold()
+    }
+
     /// The selected tab's look: lit in the accent, or the terminal's own
     /// reversed.
     pub(crate) fn tab(&self) -> Style {

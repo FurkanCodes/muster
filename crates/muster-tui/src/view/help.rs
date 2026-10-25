@@ -14,11 +14,17 @@ use crate::cells;
 /// The cells a key's column takes, before what it does.
 const KEYS_WIDTH: usize = 22;
 
-pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: Rect) {
-    let theme = super::theme::of(app);
+/// Where the help is drawn over `window`: in its middle, as wide as its
+/// keys need and as tall as there is room for, up to thirty lines.
+pub(super) fn area(window: Rect) -> Rect {
     let width = window.width.saturating_sub(4).min(76);
     let height = window.height.saturating_sub(2).min(30);
-    let area = super::floating::centred(window, width, height);
+    super::floating::centred(window, width, height)
+}
+
+pub(super) fn draw_help(frame: &mut Frame<'_>, app: &App, help: &Help, window: Rect) {
+    let theme = super::theme::of(app);
+    let area = area(window);
     let screen = if help.over_changes {
         "Changes"
     } else {

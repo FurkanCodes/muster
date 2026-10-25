@@ -2,6 +2,7 @@
 //! change here, then Muster's own, and what the selected one does and
 //! where it is kept.
 
+use crossterm::event::KeyCode;
 use muster_core::ProjectId;
 use muster_core::settings::{Palette, ProjectSettings, SessionLines, SettingSource};
 use ratatui::Frame;
@@ -36,6 +37,8 @@ const COLOURS: &str = "Colours";
 const SESSION_LINES: &str = "Lines for each session";
 /// What the setting of where the panels are is called.
 const PANELS: &str = "Panels";
+/// What the setting of the projects' order is called.
+const PROJECT_ORDER: &str = "Projects' order";
 /// What the setting of the keys is called.
 const KEYS: &str = "Keys";
 /// What the setting of notifications is called.
@@ -90,10 +93,11 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Muster => Line::from(Span::from("Muster").bold()),
         SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
         SettingRow::Agents => labelled(AGENTS, agents_value(app), width),
-        SettingRow::SideBySide => labelled(SIDE_BY_SIDE, side_by_side_value(app), width),
+        SettingRow::SideBySide => stepped(SIDE_BY_SIDE, &side_by_side_value(app), width),
         SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
         SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
         SettingRow::Panels => labelled(PANELS, panels_value(app), width),
+        SettingRow::ProjectOrder => labelled(PROJECT_ORDER, project_order_value(app), width),
         SettingRow::NamesByAgent => {
             labelled(naming::NAMES_BY_AGENT, naming::by_agent_value(app), width)
         }
@@ -105,7 +109,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         }
         SettingRow::Delegation => labelled(delegation::LABEL, delegation::value(app), width),
         SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
-        SettingRow::Tell(kind) => labelled(&telling::label(kind), telling::value(app, kind), width),
+        SettingRow::Tell(kind) => stepped(&telling::label(kind), &telling::value(app, kind), width),
         SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
             plugins::row_text(app, row, width)
         }
@@ -154,6 +158,69 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
             labelled(MUSTER_PREFIX, value, width)
         }
     }
+}
+
+/// A setting's line whose value steps through choices: ← and → step it,
+/// and so does a click on its arrows (`value_keys`).
+fn stepped(label: &str, value: &Span<'static>, width: usize) -> Line<'static> {
+    let shown = Span::styled(format!("{LEFT}{}{RIGHT}", value.content), value.style);
+    let mut line = labelled(label, shown, width);
+    // The arrows quiet, the value as it was.
+    if let Some(last) = line.spans.pop() {
+        let text = last.content.to_string();
+        let inner = text
+            .strip_prefix(LEFT)
+            .and_then(|rest| rest.strip_suffix(RIGHT))
+            .unwrap_or(&text)
+            .to_owned();
+        line.spans.push(Span::from(LEFT).dim());
+        line.spans.push(Span::styled(inner, last.style));
+        line.spans.push(Span::from(RIGHT).dim());
+    }
+    line
+}
+
+/// The arrows either side of a value that steps.
+const LEFT: &str = "‹ ";
+const RIGHT: &str = " ›";
+
+/// Where a click on `row`'s value, at its line's end, presses a key, from
+/// the start of the line drawn `width` wide: its arrows ← and →, where it
+/// has them, the value itself ⏎, which turns it on or off, goes to its
+/// next choice or opens its dialog. None for a heading.
+pub(crate) fn value_keys(app: &App, row: SettingRow, width: usize) -> Vec<(u16, u16, KeyCode)> {
+    if matches!(
+        row,
+        SettingRow::Muster | SettingRow::Project(_) | SettingRow::Plugins
+    ) {
+        return Vec::new();
+    }
+    let line = row_line(app, row, width);
+    let spans = &line.spans;
+    let count = spans.len();
+    let arrows =
+        count >= 3 && spans[count - 1].content == RIGHT && spans[count - 3].content == LEFT;
+    let keys: &[KeyCode] = if arrows {
+        &[KeyCode::Left, KeyCode::Enter, KeyCode::Right]
+    } else {
+        &[KeyCode::Enter]
+    };
+    let mut at = line.width()
+        - spans[count - keys.len()..]
+            .iter()
+            .map(Span::width)
+            .sum::<usize>();
+    let mut cells = Vec::new();
+    for (span, key) in spans[count - keys.len()..].iter().zip(keys) {
+        let width = span.width();
+        cells.push((
+            u16::try_from(at).unwrap_or(0),
+            u16::try_from(width).unwrap_or(0),
+            *key,
+        ));
+        at += width;
+    }
+    cells
 }
 
 /// A setting's line: its name, and its value at the line's end.
@@ -279,6 +346,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::Colours) => colours_text(app),
         Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Panels) => panels_text(app),
+        Some(SettingRow::ProjectOrder) => project_order_text(app),
         Some(SettingRow::Keys) => keys_text(app),
         Some(SettingRow::SharedBuilds) => shared_builds::text(app),
         Some(SettingRow::Delegation) => delegation::text(app),
@@ -306,6 +374,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Colours => colours_text(app),
                 SettingRow::SessionLines => session_lines_text(app),
                 SettingRow::Panels => panels_text(app),
+                SettingRow::ProjectOrder => project_order_text(app),
                 SettingRow::Keys => keys_text(app),
                 SettingRow::SharedBuilds => shared_builds::text(app),
                 SettingRow::Delegation => delegation::text(app),
@@ -646,6 +715,34 @@ fn panels_value(app: &App) -> Span<'static> {
     }
 }
 
+/// Whether the projects are in the person's order or as they were added.
+fn project_order_value(app: &App) -> Span<'static> {
+    if app.model.preferences().projects.is_empty() {
+        Span::from("as added").dim()
+    } else {
+        Span::from("yours")
+    }
+}
+
+fn project_order_text(app: &App) -> Text<'static> {
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{PROJECT_ORDER}  ")).bold(),
+            project_order_value(app),
+        ]),
+        Line::from(
+            "Drag a project's line up or down the list to put it there; every Muster window              lists them so, and the next.",
+        ),
+        Line::from(""),
+        detail(
+            "Saved in",
+            app.model.preferences().file.display().to_string(),
+        ),
+        Line::from(""),
+        Line::from("⏎ lists them in the order they were added again.").dim(),
+    ])
+}
+
 fn panels_text(app: &App) -> Text<'static> {
     let folded = if app.list_folded() {
         "folded away"
@@ -878,7 +975,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
             });
         }
         Some(SettingRow::SideBySide) if !app.side_by_side_changing() => {
-            hints.extend(["⏎ next width", "← → smaller, larger"]);
+            hints.extend(["⏎ next width", "← smaller", "→ larger"]);
         }
         Some(SettingRow::Colours) if !app.look_changing() => {
             hints.push(match app.model.preferences().palette {
@@ -893,6 +990,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
             });
         }
         Some(SettingRow::Panels) => hints.push("⏎ put back as at first"),
+        Some(SettingRow::ProjectOrder) => hints.push("⏎ as they were added"),
         Some(SettingRow::NamesByAgent) => {
             hints.push(if app.model.preferences().naming.by_agent {
                 "⏎ turn off"
@@ -918,7 +1016,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
             } else {
                 "⏎ turn on"
             });
-            hints.push("← → sound");
+            hints.extend(["← sound", "→ sound"]);
         }
         Some(
             SettingRow::Plugins

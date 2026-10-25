@@ -25,11 +25,18 @@ impl App {
     /// A right-click on the list at `at`: the line there is selected, and
     /// the menu of what can be done on it opens, if anything can.
     pub(super) fn open_menu(&mut self, list: Rect, at: Position) {
-        if !matches!(self.view, View::Sessions | View::NeedsYou) {
-            return;
-        }
+        let on_a_line = self.has_line_at(list, at.y);
         self.select_at(list, at.y);
-        let items = self.actions_here();
+        let items = match self.view {
+            // The list's empty part: what starts something there.
+            View::Sessions | View::NeedsYou if !on_a_line => self.empty_list_items(),
+            View::Sessions | View::NeedsYou => self.actions_here(),
+            // A ticket's or a setting's: what its hints say, each its key.
+            View::Tickets | View::Settings => crate::view::line_hints(self)
+                .iter()
+                .filter_map(|hint| Here::of_hint(hint))
+                .collect(),
+        };
         if items.is_empty() {
             return;
         }
@@ -123,6 +130,48 @@ impl App {
         actions
     }
 
+    /// Whether the list at `list` draws a line at `row`.
+    fn has_line_at(&self, list: Rect, row: u16) -> bool {
+        use super::lines::line_at;
+        match self.view {
+            View::Sessions => {
+                let rows = self.rows();
+                line_at(list, row, &self.row_heights(&rows), self.list_offset).is_some()
+            }
+            View::NeedsYou => {
+                line_at(list, row, &self.needs_heights(), self.needs.offset).is_some()
+            }
+            View::Tickets => {
+                let heights = vec![1; self.ticket_rows().len()];
+                line_at(list, row, &heights, self.tickets.offset).is_some()
+            }
+            View::Settings => {
+                let heights = vec![1; self.setting_rows().len()];
+                line_at(list, row, &heights, self.settings.offset).is_some()
+            }
+        }
+    }
+
+    /// What a right-click on the empty part of the list offers: a project
+    /// to add or clone, the session told of last, and every key.
+    pub(super) fn empty_list_items(&self) -> Vec<Here> {
+        use muster_core::keys::Action as Does;
+        [
+            (Does::AddProject, "add a project"),
+            (Does::CloneProject, "clone one from GitHub"),
+            (Does::LastAlarm, "the session told of last"),
+            (Does::Help, "every key"),
+        ]
+        .into_iter()
+        .map(|(does, what)| Here {
+            does: Some(does),
+            panel: None,
+            key: self.keymap.label(does),
+            what: what.to_owned(),
+        })
+        .collect()
+    }
+
     /// Does what `item` of `menu` says, as its key would.
     fn choose(&mut self, menu: &Menu, item: &Here) -> Vec<Action> {
         self.mode = Mode::Browse;
@@ -131,9 +180,38 @@ impl App {
             return self.panel_action(does, panel);
         }
         match (item.does, &item.panel) {
+            // What the list's keys do, they do from the menu too.
+            (Some(does), _) if !matches!(self.view, View::Sessions | View::NeedsYou) => {
+                self.press_does(does)
+            }
+            (
+                Some(
+                    does @ (muster_core::keys::Action::AddProject
+                    | muster_core::keys::Action::CloneProject
+                    | muster_core::keys::Action::LastAlarm
+                    | muster_core::keys::Action::Help),
+                ),
+                _,
+            ) => self.press_does(does),
             (Some(does), _) => self.list_action(does),
             (None, Some(panel)) => self.toggle_panel(panel),
-            (None, None) => self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+            // ⏎, or the key a hint named.
+            (None, None) => {
+                let key = crate::keys::labelled(&item.key)
+                    .unwrap_or_else(|| KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                self.on_key(key)
+            }
+        }
+    }
+
+    /// Presses `does`'s first key, as the person would.
+    fn press_does(&mut self, does: muster_core::keys::Action) -> Vec<Action> {
+        match self.keymap.chords(does).first() {
+            Some(chord) => {
+                let key = crate::keys::press(*chord);
+                self.on_key(key)
+            }
+            None => Vec::new(),
         }
     }
 

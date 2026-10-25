@@ -270,6 +270,99 @@ pub(crate) fn chord(key: &KeyEvent) -> Option<Chord> {
     Some(Chord { key, ctrl, alt })
 }
 
+/// The key press that is `chord`, as the person's terminal sends it: what
+/// a click on something pressing a key of Muster's presses.
+pub(crate) fn press(chord: Chord) -> KeyEvent {
+    let mut modifiers = KeyModifiers::NONE;
+    if chord.ctrl {
+        modifiers |= KeyModifiers::CONTROL;
+    }
+    if chord.alt {
+        modifiers |= KeyModifiers::ALT;
+    }
+    let code = match chord.key {
+        Key::Char(c) => {
+            if c.is_ascii_uppercase() {
+                modifiers |= KeyModifiers::SHIFT;
+            }
+            KeyCode::Char(c)
+        }
+        Key::Tab => KeyCode::Tab,
+        Key::BackTab => KeyCode::BackTab,
+        Key::Esc => KeyCode::Esc,
+        Key::Backspace => KeyCode::Backspace,
+        Key::Enter => KeyCode::Enter,
+        Key::Up => KeyCode::Up,
+        Key::Down => KeyCode::Down,
+        Key::Left => KeyCode::Left,
+        Key::Right => KeyCode::Right,
+        Key::PageUp => KeyCode::PageUp,
+        Key::PageDown => KeyCode::PageDown,
+        Key::Home => KeyCode::Home,
+        Key::End => KeyCode::End,
+        Key::F(n) => KeyCode::F(n),
+    };
+    KeyEvent::new(code, modifiers)
+}
+
+/// The key a hint names by its label, as `Chord::label` writes one (`⏎`,
+/// `esc`, `d`, `Shift-R`, `Ctrl-b`, `⇥`), for a click on the hint to press
+/// it. `None` for a label of several keys (`↑↓`, `hjkl`, `1-9`) or none.
+pub(crate) fn labelled(label: &str) -> Option<KeyEvent> {
+    let mut modifiers = KeyModifiers::NONE;
+    let mut rest = label;
+    loop {
+        if let Some(after) = rest.strip_prefix("Ctrl-").filter(|after| !after.is_empty()) {
+            modifiers |= KeyModifiers::CONTROL;
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix("Alt-").filter(|after| !after.is_empty()) {
+            modifiers |= KeyModifiers::ALT;
+            rest = after;
+        } else if let Some(after) = rest
+            .strip_prefix("Shift-")
+            .filter(|after| !after.is_empty())
+        {
+            modifiers |= KeyModifiers::SHIFT;
+            rest = after;
+        } else {
+            break;
+        }
+    }
+    let code = match rest {
+        "⏎" => KeyCode::Enter,
+        "esc" => KeyCode::Esc,
+        "⇥" => KeyCode::Tab,
+        "⇧⇥" => KeyCode::BackTab,
+        "⌫" => KeyCode::Backspace,
+        "↑" => KeyCode::Up,
+        "↓" => KeyCode::Down,
+        "←" => KeyCode::Left,
+        "→" => KeyCode::Right,
+        "PgUp" => KeyCode::PageUp,
+        "PgDn" => KeyCode::PageDown,
+        "Home" => KeyCode::Home,
+        "End" => KeyCode::End,
+        "space" => KeyCode::Char(' '),
+        _ => {
+            let mut chars = rest.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) if !c.is_control() && !c.is_whitespace() => {
+                    if modifiers.contains(KeyModifiers::SHIFT) && c.is_ascii_alphabetic() {
+                        KeyCode::Char(c.to_ascii_uppercase())
+                    } else {
+                        KeyCode::Char(c)
+                    }
+                }
+                _ => match rest.strip_prefix('F').and_then(|n| n.parse::<u8>().ok()) {
+                    Some(n @ 1..=24) => KeyCode::F(n),
+                    _ => return None,
+                },
+            }
+        }
+    };
+    Some(KeyEvent::new(code, modifiers))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +385,29 @@ mod tests {
 
     fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
+    }
+
+    #[test]
+    fn a_hint_s_label_names_the_key_a_click_on_it_presses() {
+        for (label, code, modifiers) in [
+            ("⏎", KeyCode::Enter, KeyModifiers::NONE),
+            ("esc", KeyCode::Esc, KeyModifiers::NONE),
+            ("d", KeyCode::Char('d'), KeyModifiers::NONE),
+            ("?", KeyCode::Char('?'), KeyModifiers::NONE),
+            ("Shift-T", KeyCode::Char('T'), KeyModifiers::SHIFT),
+            ("Ctrl-b", KeyCode::Char('b'), KeyModifiers::CONTROL),
+            ("Ctrl-]", KeyCode::Char(']'), KeyModifiers::CONTROL),
+            ("⇥", KeyCode::Tab, KeyModifiers::NONE),
+            ("F5", KeyCode::F(5), KeyModifiers::NONE),
+        ] {
+            assert_eq!(labelled(label), Some(key(code, modifiers)), "{label}");
+            // And it is the key the label was written for.
+            let chord = chord(&key(code, modifiers)).unwrap();
+            assert_eq!(chord.label(), label);
+        }
+        for several in ["↑↓", "hjkl", "1-9", "Shift-HJKL", "", "keys"] {
+            assert_eq!(labelled(several), None, "{several}");
+        }
     }
 
     fn encode(code: KeyCode, modifiers: KeyModifiers, modes: TerminalModes) -> Option<Vec<u8>> {

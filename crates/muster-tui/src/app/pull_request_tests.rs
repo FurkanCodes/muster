@@ -9,7 +9,7 @@ use super::Action;
 use super::tests::{World, press, render, world};
 use crate::model::Row;
 
-fn approved() -> PullRequestStatus {
+pub(super) fn approved() -> PullRequestStatus {
     PullRequestStatus {
         number: 42,
         url: "https://github.com/o/app/pull/42".to_owned(),

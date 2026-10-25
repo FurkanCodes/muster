@@ -205,4 +205,4 @@ impl App {
 
 #[cfg(test)]
 #[path = "timeline_tests.rs"]
-mod tests;
+pub(super) mod tests;

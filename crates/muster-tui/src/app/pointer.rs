@@ -24,9 +24,36 @@ use crate::view::browse_areas;
 /// Lines one turn of the wheel scrolls.
 const WHEEL_LINES: isize = 3;
 
+/// The most milliseconds between two presses of a double-click.
+const DOUBLE_CLICK_MS: u64 = 400;
+
 impl App {
+    /// The mouse, `ms` milliseconds into the runtime's clock: what tells a
+    /// double-click.
+    pub(crate) fn on_mouse_at(&mut self, event: MouseEvent, ms: u64) -> Vec<Action> {
+        self.person.clock_ms = Some(ms);
+        self.on_mouse(event)
+    }
+
+    /// Whether a press of the left button at `at` is the second of a
+    /// double-click: soon after one in the same place. It is the last
+    /// press then, so a third is not another.
+    fn double_click(&mut self, at: Position) -> bool {
+        let Some(now) = self.person.clock_ms else {
+            return false;
+        };
+        let double = self.person.last_press.is_some_and(|(was, then)| {
+            now.saturating_sub(then) <= DOUBLE_CLICK_MS
+                && was.y == at.y
+                && was.x.abs_diff(at.x) <= 1
+        });
+        self.person.last_press = (!double).then_some((at, now));
+        double
+    }
+
     pub(crate) fn on_mouse(&mut self, event: MouseEvent) -> Vec<Action> {
         let at = Position::new(event.column, event.row);
+        self.person.pointer = Some(at);
         // Moving, the pointer only lights what it could take hold of, and
         // reaches the program in a session that asked for it.
         if event.kind == MouseEventKind::Moved {
@@ -45,6 +72,28 @@ impl App {
         if self.skip_welcome() {
             return Vec::new();
         }
+        // A double-click: on a panel's title it zooms the panel, or puts it
+        // back; on a line of a list it does what ⏎ does there.
+        self.person.double = event.kind == MouseEventKind::Down(MouseButton::Left)
+            && self.panels.drag.is_none()
+            && self.double_click(Position::new(event.column, event.row));
+        if self.person.double && !matches!(self.mode, Mode::Dialog(_)) {
+            let at = Position::new(event.column, event.row);
+            if self.can_arrange()
+                && let Some(super::grab::Hold::Title(panel)) = self.hold_at(at)
+                && panel != muster_core::layout::Panel::List
+            {
+                self.panels.zoomed = match self.panels.zoomed {
+                    Some(_) => None,
+                    None => Some(panel),
+                };
+                return self.settle();
+            }
+            let list = browse_areas(self, self.window()).list;
+            if self.mode == Mode::Browse && list.contains(at) {
+                return self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            }
+        }
         // A right-click on a panel's title: what the panel key does to it.
         if event.kind == MouseEventKind::Down(MouseButton::Right)
             && self.can_arrange()
@@ -54,6 +103,16 @@ impl App {
         {
             self.open_title_menu(panel, Position::new(event.column, event.row));
             return Vec::new();
+        }
+        // A hint, a tab, a title's button or the fold button: pressed.
+        if event.kind == MouseEventKind::Down(MouseButton::Left)
+            && self.panels.drag.is_none()
+            && let Some(control) = self.control_at(Position::new(event.column, event.row))
+        {
+            self.selection = None;
+            let mut actions = self.press_control(control);
+            actions.extend(self.settle());
+            return actions;
         }
         if let Some(mut actions) = self.drag_mouse(event) {
             actions.extend(self.settle());
@@ -76,7 +135,10 @@ impl App {
                 let help = help.clone();
                 self.help_mouse(help, event)
             }
-            Mode::Dialog(_) => Vec::new(),
+            Mode::Dialog(ref dialog) => {
+                let dialog = dialog.clone();
+                self.dialog_mouse(&dialog, event)
+            }
         };
         actions.extend(self.settle());
         actions
@@ -224,7 +286,9 @@ impl App {
                     .into_iter()
                     .find(|(panel, _)| areas.of(*panel).contains(at));
                 if areas.list.contains(at) {
-                    self.click_list(areas.list, at);
+                    return self.click_list(areas.list, at);
+                } else if self.view == View::Tickets && areas.preview.contains(at) {
+                    self.click_ticket(areas.preview, at);
                 } else if let Some((_, session)) = beside {
                     self.mode = Mode::Terminal(session);
                 } else if areas.preview.contains(at)
@@ -248,23 +312,39 @@ impl App {
     }
 
     /// A click on the list at `at`: selects the line there, and on a
-    /// project's or a worktree's triangle folds or unfolds it.
-    fn click_list(&mut self, list: Rect, at: Position) {
+    /// project's or a worktree's triangle folds or unfolds it; on a
+    /// setting's value, presses what changes it (`view::settings::
+    /// value_keys`).
+    fn click_list(&mut self, list: Rect, at: Position) -> Vec<Action> {
         self.select_at(list, at.y);
+        if self.view == View::Settings
+            && let Some(row) = self.settings.selected
+        {
+            let width = usize::from(list.width.saturating_sub(2));
+            let column = at.x.saturating_sub(list.x + 1);
+            let key = crate::view::settings::value_keys(self, row, width)
+                .into_iter()
+                .find(|(from, cells, _)| (*from..from + cells).contains(&column))
+                .map(|(_, _, key)| key);
+            if let Some(key) = key {
+                return self.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+            }
+        }
         if self.view != View::Sessions {
-            return;
+            return Vec::new();
         }
         let rows = self.rows();
         let heights = self.row_heights(&rows);
         let Some(row) = line_at(list, at.y, &heights, self.list_offset).map(|index| rows[index])
         else {
-            return;
+            return Vec::new();
         };
         let on_triangle =
             crate::view::fold_column(row).is_some_and(|column| at.x == list.x + 1 + column);
         if on_triangle && (self.foldable(row) || self.is_folded(row)) {
             self.fold(row);
         }
+        Vec::new()
     }
 
     /// Selects the list line drawn at `row`, if there is one.

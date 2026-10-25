@@ -46,6 +46,8 @@ pub(crate) enum SettingRow {
     SessionLines,
     /// Where the panels are, and whether the list is folded away.
     Panels,
+    /// The order the projects are listed in.
+    ProjectOrder,
     /// Whether an agent names chats.
     NamesByAgent,
     /// Which agent names them.
@@ -86,6 +88,7 @@ impl SettingRow {
             | Self::Colours
             | Self::SessionLines
             | Self::Panels
+            | Self::ProjectOrder
             | Self::NamesByAgent
             | Self::NamedBy
             | Self::NamingModel
@@ -144,6 +147,7 @@ impl App {
                 SettingRow::Colours,
                 SettingRow::SessionLines,
                 SettingRow::Panels,
+                SettingRow::ProjectOrder,
                 SettingRow::NamesByAgent,
                 SettingRow::NamedBy,
                 SettingRow::NamingModel,
@@ -199,6 +203,7 @@ impl App {
                 Some(SettingRow::Colours) => return self.toggle_palette(),
                 Some(SettingRow::SessionLines) => return self.toggle_session_lines(),
                 Some(SettingRow::Panels) => return self.put_panels_back(),
+                Some(SettingRow::ProjectOrder) => return self.put_projects_back(),
                 Some(SettingRow::NamesByAgent) => return self.toggle_names_by_agent(),
                 Some(SettingRow::NamedBy) => return self.next_namer(),
                 Some(SettingRow::NamingModel) => return self.choose_naming_model(),

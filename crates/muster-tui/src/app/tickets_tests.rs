@@ -19,7 +19,7 @@ pub(super) fn key(number: u64) -> TicketKey {
     TicketKey::number(number)
 }
 
-fn issue(number: u64, title: &str) -> Issue {
+pub(super) fn issue(number: u64, title: &str) -> Issue {
     Issue {
         key: key(number),
         title: title.to_owned(),

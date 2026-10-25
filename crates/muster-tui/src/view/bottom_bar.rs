@@ -1,6 +1,8 @@
 //! The bottom bar: the keys that do something for what is selected, or
 //! the last note, or why the daemon cannot be reached, and a warning when
-//! this UI is older than the daemon.
+//! this UI is older than the daemon. Each hint that names one key is a
+//! button too: a click on it presses that key (`hint_at`), so whatever the
+//! keys do there the mouse does (`ARC-32`).
 
 use muster_core::keys::Action as Does;
 use ratatui::Frame;
@@ -90,38 +92,94 @@ pub(super) fn draw_bottom_bar(frame: &mut Frame<'_>, app: &App, area: Rect) {
 /// the help, where it opens, so the way to every other key is always in
 /// view while the list has the keys.
 fn draw_hints(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let theme = super::theme::of(app);
+    let hover = app.person.pointer;
+    for (text, cells) in placed_hints(app, area) {
+        // One under the pointer that a click presses is lit.
+        let lit = hover.is_some_and(|at| cells.contains(at)) && clickable(&text).is_some();
+        let line = if lit {
+            Line::styled(text, theme.pressable())
+        } else {
+            Line::from(text).dim()
+        };
+        frame.render_widget(line, cells);
+    }
+}
+
+/// Each hint drawn in the bar at `area`, and the cells it takes.
+fn placed_hints(app: &App, area: Rect) -> Vec<(String, Rect)> {
     let help_hint = (app.mode == Mode::Browse)
-        .then(|| hint(app, Does::Help, "help "))
+        .then(|| hint(app, Does::Help, "help"))
         .flatten();
-    let help = help_hint.is_some();
     let help_width = help_hint
         .as_ref()
-        .map_or(0, |hint| u16::try_from(cells::width(hint)).unwrap_or(0));
+        .map_or(0, |hint| u16::try_from(cells::width(hint) + 1).unwrap_or(0));
     let [left, right] =
         Layout::horizontal([Constraint::Min(0), Constraint::Length(help_width)]).areas(area);
     // A space before them, and two before the help.
-    let room = usize::from(left.width).saturating_sub(if help { 3 } else { 1 });
-    let text = fitting(&hints(app), room);
-    frame.render_widget(Line::from(format!(" {text}")).dim(), left);
-    if let Some(help_hint) = help_hint {
-        frame.render_widget(Line::from(help_hint).dim(), right);
+    let room = usize::from(left.width).saturating_sub(if help_hint.is_some() { 3 } else { 1 });
+    let mut placed = Vec::new();
+    let mut x = left.x + 1;
+    for (at, text) in fitting(&hints(app), room).into_iter().enumerate() {
+        if at > 0 {
+            x += 2;
+        }
+        let width = u16::try_from(cells::width(&text)).unwrap_or(u16::MAX);
+        let shown = width.min(left.right().saturating_sub(x));
+        placed.push((text, Rect::new(x, area.y, shown, 1)));
+        x = x.saturating_add(width);
     }
+    if let Some(help_hint) = help_hint {
+        let width = u16::try_from(cells::width(&help_hint)).unwrap_or(0);
+        placed.push((
+            help_hint,
+            Rect::new(right.x, area.y, width.min(right.width), 1),
+        ));
+    }
+    placed
+}
+
+/// The key a click on `hint` presses: the one its label names first.
+fn clickable(hint: &str) -> Option<crossterm::event::KeyEvent> {
+    crate::keys::labelled(hint.split(' ').next()?)
+}
+
+/// Each hint in the bar at `area` that names a key, the key and where the
+/// hint is: a click on it presses that key. None while the bar says a
+/// note instead.
+pub(crate) fn hint_areas(app: &App, area: Rect) -> Vec<(crossterm::event::KeyEvent, Rect)> {
+    if message(app).is_some() || area.height == 0 {
+        return Vec::new();
+    }
+    // Under a warning that this UI is old, the hints are on the last line.
+    let line = Rect {
+        y: area.bottom().saturating_sub(1),
+        height: 1,
+        ..area
+    };
+    placed_hints(app, line)
+        .into_iter()
+        .filter_map(|(text, cells)| clickable(&text).map(|key| (key, cells)))
+        .collect()
 }
 
 /// As many of `hints` as fit in `room` cells, whole, two spaces apart:
 /// the first however long, cut where the bar ends.
-fn fitting(hints: &[String], room: usize) -> String {
-    let mut text = String::new();
+fn fitting(hints: &[String], room: usize) -> Vec<String> {
+    let mut fitted: Vec<String> = Vec::new();
+    let mut used = 0;
     for hint in hints {
-        if !text.is_empty() {
-            if cells::width(&text) + 2 + cells::width(hint) > room {
+        let width = cells::width(hint);
+        if !fitted.is_empty() {
+            if used + 2 + width > room {
                 break;
             }
-            text.push_str("  ");
+            used += 2;
         }
-        text.push_str(hint);
+        used += width;
+        fitted.push(hint.clone());
     }
-    text
+    fitted
 }
 
 /// `does`'s key and `what`, as a hint; none where it has no key.
@@ -135,56 +193,44 @@ pub(super) fn hint(app: &App, does: Does, what: &str) -> Option<String> {
 /// The keys that do something for what is selected, most used first.
 fn hints(app: &App) -> Vec<String> {
     if app.panels.arranging.is_some() {
-        return vec![
-            "←→↑↓ move it  + − wider or narrower  ⇥ another  ⏎ keep  esc put back".to_owned(),
-        ];
+        return [
+            "←→↑↓ move it",
+            "+ wider",
+            "- narrower",
+            "⇥ another",
+            "⏎ keep",
+            "esc put back",
+        ]
+        .map(str::to_owned)
+        .to_vec();
     }
     if app.panels.waiting.is_some() {
-        return vec![panel_key_hints(app)];
+        return panel_key_hints(app);
     }
     if app.panels.resizing.is_some() {
-        return vec!["h j k l move its edge  H J K L five  ⏎ keep  esc put back".to_owned()];
+        return ["hjkl move its edge", "HJKL five", "⏎ keep", "esc put back"]
+            .map(str::to_owned)
+            .to_vec();
     }
     if let Mode::Menu(_) = app.mode {
-        return vec!["↑↓ choose  ⏎ do it, or press its key  esc close".to_owned()];
+        return ["↑↓ choose", "⏎ do it, or press its key", "esc close"]
+            .map(str::to_owned)
+            .to_vec();
     }
     if let Mode::Help(_) = app.mode {
-        return vec!["type to narrow  ↑↓ scroll  esc close".to_owned()];
+        return ["type to narrow", "↑↓ scroll", "esc close"]
+            .map(str::to_owned)
+            .to_vec();
     }
     if matches!(app.mode, Mode::Terminal(_)) {
         let back = hint(app, Does::LeaveSession, "back to the list (or click it)")
             .unwrap_or_else(|| "a click on the list goes back to it".to_owned());
-        let panels = hint(app, Does::PanelKey, "panels")
-            .map_or_else(String::new, |hint| format!("   {hint}"));
-        return vec![format!("keys go to the session   {back}{panels}")];
+        let mut hints = vec!["keys go to the session".to_owned(), back];
+        hints.extend(hint(app, Does::PanelKey, "panels"));
+        return hints;
     }
     if app.mode == Mode::Changes {
-        let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
-        let entry = app
-            .changes
-            .as_ref()
-            .is_some_and(|pane| pane.selected_entry().is_some());
-        let again = hint(app, Does::ChangesAgain, "again");
-        let undo = entry
-            .then(|| hint(app, Does::PutBack, "put back as before it"))
-            .flatten();
-        let mut hints: Vec<String> = if diff {
-            vec![
-                "↑↓ scroll".to_owned(),
-                "PgUp PgDn page".to_owned(),
-                "esc the changes".to_owned(),
-            ]
-        } else {
-            vec!["↑↓ move".to_owned(), "⏎ its diff".to_owned()]
-        };
-        hints.extend(again);
-        hints.extend(undo);
-        hints.extend(if diff {
-            hint(app, Does::CloseChanges, "back")
-        } else {
-            Some("esc back to the list".to_owned())
-        });
-        return vec![hints.join("  ")];
+        return changes_hints(app);
     }
     let mut hints = vec!["↑↓ move".to_owned()];
     let general = match app.view {
@@ -227,7 +273,7 @@ fn hints(app: &App) -> Vec<String> {
 
 /// What the key after the panel key does, while it waits: the most used
 /// first, as many as fit.
-fn panel_key_hints(app: &App) -> String {
+fn panel_key_hints(app: &App) -> Vec<String> {
     let after = |does: Does, what: &str| hint(app, does, what);
     let moves = [
         Does::FocusLeft,
@@ -250,10 +296,10 @@ fn panel_key_hints(app: &App) -> String {
             .to_owned()
     })
     .join("");
-    let hints: Vec<String> = [
+    [
         after(Does::SplitRight, "split →"),
         after(Does::SplitDown, "split ↓"),
-        Some(format!("{moves} or ←↓↑→ move")),
+        Some(format!("{moves}/←↓↑→ move")),
         Some(format!("Shift-{swaps} swap")),
         after(Does::Zoom, "zoom"),
         after(Does::TakeOff, "off the screen"),
@@ -264,6 +310,37 @@ fn panel_key_hints(app: &App) -> String {
     ]
     .into_iter()
     .flatten()
-    .collect();
-    hints.join("  ")
+    .collect()
+}
+
+/// The hints while a workspace's changes have the keys: in its list, or
+/// in a diff.
+fn changes_hints(app: &App) -> Vec<String> {
+    let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
+    let entry = app
+        .changes
+        .as_ref()
+        .is_some_and(|pane| pane.selected_entry().is_some());
+    let again = hint(app, Does::ChangesAgain, "again");
+    let undo = entry
+        .then(|| hint(app, Does::PutBack, "put back as before it"))
+        .flatten();
+    let mut hints: Vec<String> = if diff {
+        vec![
+            "↑↓ scroll".to_owned(),
+            "PgUp PgDn page".to_owned(),
+            "esc the changes".to_owned(),
+        ]
+    } else {
+        vec!["↑↓ move".to_owned(), "⏎ its diff".to_owned()]
+    };
+    hints.extend(again);
+    hints.extend(undo);
+    hints.extend(if diff {
+        hint(app, Does::CloseChanges, "back")
+    } else {
+        hint(app, Does::CloseChanges, "back to the list")
+    });
+    hints.extend(hint(app, Does::ChangesHelp, "keys"));
+    hints
 }

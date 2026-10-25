@@ -32,6 +32,22 @@ pub(super) fn draw_moving(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas)
             .buffer_mut()
             .set_style(held, Style::default().fg(theme.accent).bg(theme.lit).bold());
     }
+    // A project carried over another's lines: where it lands, lit.
+    if let Some(Drag::Project {
+        project,
+        onto: Some(onto),
+        ..
+    }) = &app.panels.drag
+        && onto != project
+        && let Some(line) = app.project_line_area(*onto)
+    {
+        frame
+            .buffer_mut()
+            .set_style(line, Style::default().bg(theme.tint));
+        frame
+            .buffer_mut()
+            .set_style(line, Style::default().fg(theme.accent).bold());
+    }
     if let Some(Drag::Panel {
         to: Some(place), ..
     }) = &app.panels.drag

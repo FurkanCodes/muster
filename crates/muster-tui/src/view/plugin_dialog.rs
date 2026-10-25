@@ -27,12 +27,13 @@ enum Part<'a> {
     Input(&'a LineInput, bool),
 }
 
-pub(super) fn draw_plugin_dialog(
-    frame: &mut Frame<'_>,
+/// The dialog's title and parts, and the box it is drawn in within
+/// `area`, as the drawing and the mouse share them.
+fn laid_out<'a>(
     app: &App,
-    dialog: &PluginDialog,
+    dialog: &'a PluginDialog,
     area: Rect,
-) {
+) -> (String, Vec<Part<'a>>, Rect, u16) {
     let theme = super::theme::of(app);
     let width = area.width.saturating_sub(4).min(84);
     let inner = width.saturating_sub(2).max(1);
@@ -68,6 +69,55 @@ pub(super) fn draw_plugin_dialog(
     };
     let height = 2 + parts.iter().map(|part| part_rows(part, inner)).sum::<u16>();
     let rect = super::floating::centred(area, width, height);
+    (title, parts, rect, inner)
+}
+
+/// Where the dialog is in `area`, and where on its keys, at its foot, a
+/// click presses one (`ARC-32`).
+pub(super) fn plugin_presses(
+    app: &App,
+    dialog: &PluginDialog,
+    area: Rect,
+) -> (Rect, Vec<(Rect, super::dialogs::DialogPress)>) {
+    let (_, mut parts, rect, inner) = laid_out(app, dialog, area);
+    let mut presses = Vec::new();
+    let inside = Rect {
+        x: rect.x + 1,
+        y: rect.y + 1,
+        width: rect.width.saturating_sub(2),
+        height: rect.height.saturating_sub(2),
+    };
+    if let Some(Part::Text(lines)) = parts.pop() {
+        let rows: u16 = lines.iter().map(|line| self::rows(line, inner)).sum();
+        let mut y = inside.bottom().saturating_sub(rows.min(inside.height));
+        for line in &lines {
+            let text: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+            presses.extend(super::dialogs::hint_marks(&text).into_iter().map(
+                |(from, width, key)| {
+                    (
+                        Rect::new(inside.x + from, y, width, 1),
+                        super::dialogs::DialogPress::Key(key),
+                    )
+                },
+            ));
+            y += self::rows(line, inner);
+        }
+    }
+    (rect, presses)
+}
+
+pub(super) fn draw_plugin_dialog(
+    frame: &mut Frame<'_>,
+    app: &App,
+    dialog: &PluginDialog,
+    area: Rect,
+) {
+    let theme = super::theme::of(app);
+    let (title, parts, rect, inner) = laid_out(app, dialog, area);
     let mut at = super::floating::draw(frame, rect, Some(title), theme);
     // The keys, last, keep to the bottom, whatever is cut above them.
     let mut parts = parts;

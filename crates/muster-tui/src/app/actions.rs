@@ -28,6 +28,20 @@ pub(crate) struct Here {
 }
 
 impl Here {
+    /// A menu's item from a hint (`⏎ turn on`, `b browser`): its key the
+    /// label it starts with, which choosing it presses. None for a hint of
+    /// several keys (`↑↓ move`).
+    pub(crate) fn of_hint(hint: &str) -> Option<Self> {
+        let (key, what) = hint.split_once(' ')?;
+        crate::keys::labelled(key)?;
+        Some(Self {
+            does: None,
+            panel: None,
+            key: key.to_owned(),
+            what: what.to_owned(),
+        })
+    }
+
     /// The key as the person reads it.
     pub(crate) fn key_name(&self) -> String {
         self.key.clone()

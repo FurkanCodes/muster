@@ -6,6 +6,8 @@ mod actions;
 mod alarm;
 mod changes;
 pub(crate) mod cloning;
+mod controls;
+mod dialog_mouse;
 pub(crate) mod drag;
 mod events;
 mod fold;
@@ -27,9 +29,11 @@ mod plugin_panel;
 pub(crate) mod plugins;
 mod pointer;
 mod prefix;
+mod project_order;
 mod rebind;
 mod rename;
 pub(crate) mod screens;
+pub(crate) mod scrollbars;
 pub(crate) mod selection;
 mod settings;
 mod settle;
@@ -61,9 +65,15 @@ mod alarm_tests;
 #[cfg(test)]
 mod by_hand_tests;
 #[cfg(test)]
+mod by_mouse_tests;
+#[cfg(test)]
 mod changes_tests;
 #[cfg(test)]
 mod clashes_tests;
+#[cfg(test)]
+mod controls_tests;
+#[cfg(test)]
+mod dialog_mouse_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]
@@ -118,6 +128,8 @@ mod project_tests;
 mod pull_request_tests;
 #[cfg(test)]
 mod rebind_tests;
+#[cfg(test)]
+mod scrollbars_tests;
 #[cfg(test)]
 mod selection_tests;
 #[cfg(test)]

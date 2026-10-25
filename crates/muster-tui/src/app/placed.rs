@@ -113,7 +113,9 @@ impl App {
     /// the list places.
     pub(super) fn session_line_at(&self, at: Position) -> Option<SessionId> {
         let list = crate::view::browse_areas(self, self.window()).list;
-        if !list.contains(at) {
+        // Inside its frame: the frame's edge is the line beside it, or its
+        // scroll bar.
+        if !list.inner(ratatui::layout::Margin::new(1, 1)).contains(at) {
             return None;
         }
         match self.view {

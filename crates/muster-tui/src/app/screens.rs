@@ -190,6 +190,16 @@ pub(crate) struct Person {
     /// One cell of the person's terminal in pixels, as its size says,
     /// read as the UI starts and as the window is resized.
     pub(crate) cell_pixels: Option<muster_core::protocol::PixelSize>,
+    /// Where the pointer last was, which lights what a press there does.
+    pub(crate) pointer: Option<ratatui::layout::Position>,
+    /// When the mouse event being handled came, in milliseconds of the
+    /// runtime's clock (`ARC-03`); `None` where nobody said.
+    pub(crate) clock_ms: Option<u64>,
+    /// Where and when the left button was last pressed, for a second
+    /// press soon after to be a double-click.
+    pub(crate) last_press: Option<(ratatui::layout::Position, u64)>,
+    /// Whether the press being handled is the second of a double-click.
+    pub(crate) double: bool,
 }
 
 impl Default for Person {
@@ -200,6 +210,10 @@ impl Default for Person {
             notch_here: false,
             colours: muster_core::colours::TerminalColours::default(),
             cell_pixels: None,
+            pointer: None,
+            clock_ms: None,
+            last_press: None,
+            double: false,
         }
     }
 }
