@@ -37,8 +37,6 @@ import {
 const kep = async () => (await $(".app-sidebar .mu-kep").getAttribute("aria-label")) ?? "";
 const banner = () => $(".ui-flow-away");
 const note = () => $('[data-said="note"]');
-/** Text shown in the sidebar's list. */
-const inList = (text: string) => $(`//nav[@aria-label="Sessions"]//*[contains(text(), "${text}")]`);
 /** The sidebar's way to anything by typing. */
 const search = () =>
   $('//nav[@aria-label="Sessions"]/button[starts-with(normalize-space(.), "Search")]');
@@ -151,12 +149,12 @@ describe("The window as a whole", () => {
   });
 
   it("lists the projects with their sessions under All, and puts the sidebar away on ⌘\\", async () => {
-    muster("session", "start", "other", "--harness", "claude", "--title", "Other agent");
+    muster("claude", "--project", "other", "--here", "--title", "Other agent");
     await goTo("Sessions");
     await expect(row("app")).toBeDisplayed();
     await expect(row("other")).toBeDisplayed();
-    await expect(inList("Other agent")).toBeDisplayed();
-    await expect(inList("Asking agent")).toBeDisplayed();
+    await expect(row("Other agent")).toBeDisplayed();
+    await expect(row("Asking agent")).toBeDisplayed();
     // ⌘\ puts the sidebar away, and back.
     const sidebar = $('nav[aria-label="Sessions"]');
     await pressOnWindow("⌘\\");
@@ -182,6 +180,9 @@ describe("The window as a whole", () => {
       "the settings to be read",
     );
     const theme = $('[role="group"][aria-label="Theme"]');
+    // Dark is the first theme: pressed already, it changes nothing until another is.
+    await theme.$("button=Light").click();
+    expect(await drawnIn()).toBe("light");
     await theme.$("button=Dark").click();
     expect(await drawnIn()).toBe("dark");
     await expect(note()).toHaveText("This window is dark.");
@@ -189,7 +190,7 @@ describe("The window as a whole", () => {
     // An agent asking its terminal's background is told the dark theme's.
     await until(() => {
       try {
-        muster("session", "start", "app", "--harness", "asker", "--title", "Dark asker");
+        muster("asker", "--project", "app", "--here", "--title", "Dark asker");
         return true;
       } catch {
         return false;
@@ -200,20 +201,20 @@ describe("The window as a whole", () => {
       const file = id ? join(answers, id) : "";
       return id && existsSync(file) && readFileSync(file, "utf8").includes("rgb:") && file;
     }, "the dark asker's answer");
-    expect(readFileSync(dark, "utf8")).toContain("rgb:1313/1313/1b1b");
+    expect(readFileSync(dark, "utf8")).toContain("rgb:1111/1111/1010");
 
     await theme.$("button=Light").click();
     expect(await drawnIn()).toBe("light");
     await expect(note()).toHaveText("This window is light.");
     // The window's own, kept by the app in the sandbox (src-tauri/src/kept.rs).
     await until(() => keptState()["muster.theme"] === "light", "the theme to be kept");
-    muster("session", "start", "app", "--harness", "asker", "--title", "Light asker");
+    muster("asker", "--project", "app", "--here", "--title", "Light asker");
     const light = await until(() => {
       const id = session("Light asker")?.id;
       const file = id ? join(answers, id) : "";
       return id && existsSync(file) && readFileSync(file, "utf8").includes("rgb:") && file;
     }, "the light asker's answer");
-    expect(readFileSync(light, "utf8")).toContain("rgb:ffff/ffff/ffff");
+    expect(readFileSync(light, "utf8")).toContain("rgb:fbfb/fbfb/fafa");
     await theme.$("button=Dark").click();
   });
 
@@ -323,7 +324,7 @@ describe("The window as a whole", () => {
     holdDaemon(true);
     muster("daemon", "stop");
     await restartApp();
-    await expect($("h2=Waiting for the daemon")).toBeDisplayed();
+    await expect($('[role="status"][aria-label="Waiting for the daemon"]')).toBeDisplayed();
     await expect(banner()).toBeDisplayed();
     expect(await kep()).toBe("The daemon is out of reach");
     holdDaemon(false);

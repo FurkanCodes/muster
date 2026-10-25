@@ -108,7 +108,7 @@ describe("Needs you, over the real daemon", () => {
     await expect($("h2=Asks first")).toBeDisplayed();
     await expect($(".session-banner")).toHaveText(expect.stringContaining("Needs you:"));
     // Its row says what it asks, in the waiting colour; the terminal, the question itself.
-    await expect(option("Asks first").$(".queue-ask")).toBeDisplayed();
+    await expect(option("Asks first").$(".queue-asking")).toBeDisplayed();
     const id = session("Asks first")?.id ?? "";
     await until(
       async () => (await terminalText(id)).includes("May the stand-in run the tests?"),
@@ -161,7 +161,7 @@ describe("Needs you, over the real daemon", () => {
     // The window sees it ask before it is answered: drawn among who asks,
     // saying what it asks; a window sent the ask and the answer in one patch
     // never saw it need the person.
-    await expect(option("Long at work").$(".queue-ask")).toBeExisting();
+    await expect(option("Long at work").$(".queue-asking")).toBeExisting();
     await work(agents.long);
     await untilSession("Long at work", "running");
     // At work again, it needs nobody: it leaves Needs you.
@@ -181,12 +181,12 @@ describe("Needs you, over the real daemon", () => {
     await browser.keys("Enter");
     await until(() => session("Asks, renamed"), "the daemon to keep the new name");
     await expect($("h2=Asks, renamed")).toBeDisplayed();
-    expect(muster("session", "list")).toContain("Asks, renamed");
+    expect(muster("list", "--all")).toContain("Asks, renamed");
   });
 
   it("PRD-09 s stops the session after asking, and r starts it again", async () => {
     await pressOnWindow("s");
-    await expect($("dialog")).toHaveText(expect.stringContaining("Stop Asks, renamed?"));
+    await expect($("[role='dialog']")).toHaveText(expect.stringContaining("Stop Asks, renamed?"));
     await $("button=Stop session").click();
     await untilSession("Asks, renamed", "exited");
     const id = session("Asks, renamed")?.id ?? "";
@@ -211,15 +211,15 @@ describe("Needs you, over the real daemon", () => {
     await option("To be closed").click();
     await untilSelected("To be closed");
     await pressOnWindow("x");
-    await expect($("dialog")).toHaveText(expect.stringContaining("Close To be closed?"));
+    await expect($("[role='dialog']")).toHaveText(expect.stringContaining("Close To be closed?"));
     await $("button=Close session").click();
     await until(() => !session("To be closed"), "the daemon to take it off its list");
-    expect(muster("session", "list")).not.toContain("To be closed");
+    expect(muster("list", "--all")).not.toContain("To be closed");
     await until(async () => !(await option("To be closed").isExisting()), "the row to go");
   });
 
   it("PRD-14 a real turn is among the changes' turns: ⏎ shows its diff, z puts it back", async () => {
-    muster("worktree", "add", "app", "--branch", "feature/turn");
+    muster("workspace", "add", "--project", "app", "--branch", "feature/turn");
     agents.turn = await startAgent("app", "Takes a turn", { branch: "feature/turn" });
     await ask(agents.turn, "Begin?");
     await untilSession("Takes a turn", "needs_you");
@@ -244,12 +244,14 @@ describe("Needs you, over the real daemon", () => {
     );
 
     await pressOnWindow("z");
-    await expect($("dialog")).toHaveText(expect.stringContaining("Put the files back as before"));
+    await expect($("[role='dialog']")).toHaveText(
+      expect.stringContaining("Put the files back as before"),
+    );
     await $("button=Put back the files").click();
     await expect(statusBar()).toHaveText(
       expect.stringContaining("The files are as they were before #1."),
     );
-    await expect($("dialog")).not.toBeExisting();
+    await expect($("[role='dialog']")).not.toBeExisting();
     const cwd = agents.turn.cwd;
     await until(() => read(cwd, "notes.txt") === null, "notes.txt to be gone again");
     expect(read(cwd, "README.md")).toBe("test\n");

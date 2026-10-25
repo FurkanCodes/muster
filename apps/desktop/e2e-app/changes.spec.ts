@@ -111,8 +111,8 @@ describe("The changes view, over real git", () => {
       "shared.txt": lines(),
     });
     muster("project", "add", repo);
-    muster("worktree", "add", "lib", "--branch", "feature/one");
-    muster("worktree", "add", "lib", "--branch", "feature/two");
+    muster("workspace", "add", "--project", "lib", "--branch", "feature/one");
+    muster("workspace", "add", "--project", "lib", "--branch", "feature/two");
     one = await startAgent("lib", "One", { branch: "feature/one" });
     two = await startAgent("lib", "Two", { branch: "feature/two" });
     // Each asks, and its first turn ends with nothing changed.
@@ -222,7 +222,7 @@ describe("The changes view, over real git", () => {
     await begin("One", one, "Shall I go on?");
     await newestTurn();
     await pressOnWindow("z");
-    await expect($("dialog")).toBeDisplayed();
+    await expect($("[role='dialog']")).toBeDisplayed();
     await browser.keys("y");
     await expect(statusBar()).toHaveText(
       expect.stringContaining("One is at work there: put the files back once it has stopped"),
@@ -235,7 +235,9 @@ describe("The changes view, over real git", () => {
     const head = git(one.cwd, "rev-parse", "HEAD");
     await newestTurn();
     await pressOnWindow("z");
-    await expect($("dialog")).toHaveText(expect.stringContaining("Put the files back as before"));
+    await expect($("[role='dialog']")).toHaveText(
+      expect.stringContaining("Put the files back as before"),
+    );
     await browser.keys("Enter");
     await expect(statusBar()).toHaveText(expect.stringContaining("The files are as they were"));
     expect(read(one.cwd, "turn-two.txt")).toBeNull();
@@ -246,7 +248,7 @@ describe("The changes view, over real git", () => {
   it("PRD-14 the same again is refused: the files are already as they were", async () => {
     await newestTurn();
     await pressOnWindow("z");
-    await expect($("dialog")).toBeDisplayed();
+    await expect($("[role='dialog']")).toBeDisplayed();
     await browser.keys("y");
     await expect(statusBar()).toHaveText(
       expect.stringContaining("the files are already as they were before entry"),
@@ -258,7 +260,9 @@ describe("The changes view, over real git", () => {
     expect(log(one.cwd)[0]).toBe("The second turn's commit");
     await newestTurn();
     await pressOnWindow("z");
-    await expect($("dialog")).toHaveText(expect.stringContaining("Put back with the branch"));
+    await expect($("[role='dialog']")).toHaveText(
+      expect.stringContaining("Put back with the branch"),
+    );
     await browser.keys("b");
     await expect(statusBar()).toHaveText(expect.stringContaining("and the branch with them"));
     expect(log(one.cwd)[0]).toBe("A commit on one");

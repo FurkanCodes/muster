@@ -39,13 +39,15 @@ async function find(text: string): Promise<void> {
   await fill(paletteField(), text);
 }
 
-/** The box on `project`'s page that starts work, ready on `n` with its line selected. */
+/** The box on `project`'s page that starts work, ready on `n` with its line selected: its prompt in focus, where the agent takes one. */
 async function startBox(project: string) {
   await selectRow(project);
   await press("n");
   const box = $(`//section[@aria-label="${project}"]//form[@aria-label="Start work"]`);
   await expect(box).toBeDisplayed();
-  await expect(field(box, "First prompt")).toBeFocused();
+  // The agent started last comes first; a shell takes no prompt, its field shut.
+  const prompt = field(box, "First prompt");
+  if (await prompt.isEnabled()) await expect(prompt).toBeFocused();
   return box;
 }
 
@@ -90,7 +92,7 @@ describe("The flows", () => {
       await press("Enter");
       await until(noDialog, "the dialog to close");
       const added = await until(() => project("lib"), "the project lib");
-      expect(added.root).toBe(realpathSync(join(home, "code", "lib")));
+      expect(added.path).toBe(realpathSync(join(home, "code", "lib")));
       await expect(
         $('//nav[@aria-label="Sessions"]//*[@role="treeitem" and @aria-label="lib"]'),
       ).toBeDisplayed();
@@ -128,7 +130,7 @@ describe("The flows", () => {
 
   describe("the command palette", () => {
     it("opens on ⌘K with its groups, goes to a session, and closes on ⎋", async () => {
-      muster("session", "start", "app", "--harness", "claude", "--title", "Palette agent");
+      muster("claude", "--project", "app", "--here", "--title", "Palette agent");
       await agentOf("Palette agent");
       await pressOnWindow("⌘K");
       await expect(palette()).toBeDisplayed();
@@ -186,7 +188,7 @@ describe("The flows", () => {
       const headings = await help()
         .$$("h3")
         .map((heading) => heading.getText());
-      expect(headings).toEqual(["On the queue", "In a session", "Anywhere"]);
+      expect(headings).toEqual(["On the queue", "In a session", "After the panel key", "Anywhere"]);
       await fill(field(help(), "Find a key"), "rename");
       await expect(help().$$("li")).toBeElementsArrayOfSize(1);
       await press("Enter");
@@ -446,7 +448,7 @@ describe("The flows", () => {
     });
 
     it("x on a project asks before Muster stops tracking it, and leaves its folder", async () => {
-      const root = project("lib")?.root ?? "";
+      const root = project("lib")?.path ?? "";
       await selectRow("lib");
       await press("x");
       const forget = dialog("Stop tracking lib?");

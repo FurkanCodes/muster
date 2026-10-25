@@ -73,6 +73,20 @@ describe("ARC-24 the sidebar", () => {
     expect(screen.queryByRole("heading", { name: "Tickets", level: 1 })).toBeNull();
   });
 
+  it("goes back from Settings to the list kept pressed beside it, on a click on that list", async () => {
+    renderApp();
+    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
+    await userEvent.click(screen.getByRole("button", { name: /^Settings/ }));
+    const needsYou = screen.getByRole("button", { name: /^Needs you/ });
+    expect(needsYou).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(needsYou);
+    expect(screen.getByRole("button", { name: /^Settings/ })).not.toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(needsYou).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("New session opens the selected session's project page, its box ready", async () => {
     renderApp();
     await screen.findByRole("option", { name: "Sketch the Tauri shell" });

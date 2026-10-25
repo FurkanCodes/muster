@@ -277,8 +277,10 @@ describe("Settings over the real daemon", () => {
   it("a project's page: removed from Muster after asking, its folder kept", async () => {
     await openPage("spare");
     await named("Remove…").click();
-    await expect($("dialog")).toHaveText(expect.stringContaining("Remove spare from Muster?"));
-    await $("dialog").$("button=Remove spare").click();
+    await expect($("[role='dialog']")).toHaveText(
+      expect.stringContaining("Remove spare from Muster?"),
+    );
+    await $("[role='dialog']").$("button=Remove spare").click();
     await expect(note()).toHaveText(
       "Muster no longer tracks the project; its folder is untouched.",
     );

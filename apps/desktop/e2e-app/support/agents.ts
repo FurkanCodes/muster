@@ -70,8 +70,9 @@ export async function startAgent(
   title: string,
   { agent = "claude", branch }: { agent?: string; branch?: string } = {},
 ): Promise<Launch> {
-  // A worktree is named by its branch; the project's own checkout by its name.
-  muster("session", "start", branch ?? project, "--harness", agent, "--title", title);
+  // A worktree is named by its branch; the project's own checkout is `--here`.
+  const place = branch ? ["--in", branch] : ["--project", project, "--here"];
+  muster(agent, ...place, "--title", title);
   return agentOf(title);
 }
 

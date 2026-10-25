@@ -198,7 +198,7 @@ describe("Tickets", () => {
   });
 
   it("assigns an agent made on top of another worktree's branch", async () => {
-    muster("worktree", "add", "app", "--branch", "feature/base");
+    muster("workspace", "add", "--project", "app", "--branch", "feature/base");
     await until(
       () => project("app")?.workspaces.find((one) => one.branch === "feature/base"),
       "the base",
@@ -209,7 +209,7 @@ describe("Tickets", () => {
     const assign = dialog("Assign an agent to #9");
     await expect(assign).toBeDisplayed();
     await field(assign, "Made on top of").click();
-    await option($('//*[@role="listbox"]'), "feature/base").click();
+    await option($('//*[@role="listbox"][@aria-label="Made on top of"]'), "feature/base").click();
     await button(assign, "Start").click();
     await until(noDialog, "the dialog to close");
     const [tree] = await until(
