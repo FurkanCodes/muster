@@ -237,7 +237,7 @@ function Cleanup({
     if (!started.current) {
       started.current = true;
       const running = Object.values(app.daemon.store.getState().sessions).filter(
-        (s) => pending.current.has(s.workspace) && s.ended_at === null,
+        (s) => s.workspace !== null && pending.current.has(s.workspace) && s.ended_at === null,
       );
       for (const session of running)
         void bridge.command({ StopSession: { session: session.id } }).catch((error) => {

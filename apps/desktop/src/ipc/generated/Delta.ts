@@ -9,6 +9,8 @@ import type { Run } from "./Run";
 import type { Session } from "./Session";
 import type { SessionId } from "./SessionId";
 import type { SessionStatus } from "./SessionStatus";
+import type { Space } from "./Space";
+import type { SpaceId } from "./SpaceId";
 import type { Timestamp } from "./Timestamp";
 import type { Workspace } from "./Workspace";
 import type { WorkspaceId } from "./WorkspaceId";
@@ -20,4 +22,4 @@ export type Delta = { "ProjectUpserted": Project } | { "ProjectRemoved": { id: P
 /**
  * When it came to this status.
  */
-since: Timestamp, } } | { "SessionActivity": { session: SessionId, activity: Activity | null, } } | { "Resources": ResourceReport } | { "RunUpserted": Run } | { "LookedAt": { looked_at: boolean, } } | { "Preferences": Preferences } | { "Notifier": { ready: boolean, } } | { "PluginsChanged": Array<PluginInfo> };
+since: Timestamp, } } | { "SessionActivity": { session: SessionId, activity: Activity | null, } } | { "Resources": ResourceReport } | { "RunUpserted": Run } | { "LookedAt": { looked_at: boolean, } } | { "Preferences": Preferences } | { "Notifier": { ready: boolean, } } | { "PluginsChanged": Array<PluginInfo> } | { "SpaceUpserted": Space } | { "SpaceRemoved": { id: SpaceId, } };

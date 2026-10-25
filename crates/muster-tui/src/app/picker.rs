@@ -111,6 +111,14 @@ impl FolderPicker {
 impl App {
     /// `a`: the dialog, on the folder `muster` was started in, listed.
     pub(super) fn open_add_project(&mut self) -> Vec<Action> {
+        if self.space_first(super::spaces::Later::AddProject) {
+            return Vec::new();
+        }
+        self.add_project_dialog()
+    }
+
+    /// The dialog itself, a space there to add to.
+    pub(super) fn add_project_dialog(&mut self) -> Vec<Action> {
         let path = LineInput::with(&as_folder(&self.cwd));
         self.picker_shows(path, FolderPicker::default(), None)
     }
@@ -165,7 +173,11 @@ impl App {
                     };
                     self.mode = Mode::Browse;
                     let Some(repository) = clone else {
-                        let command = Command::AddProject { root, name: None };
+                        let command = Command::AddProject {
+                            root,
+                            name: None,
+                            space: self.space_to_join(),
+                        };
                         return vec![self.command(command, Then::SelectProject)];
                     };
                     // Cloned into a folder of its name there; that takes as
@@ -174,6 +186,7 @@ impl App {
                     let command = Command::CloneProject {
                         repository,
                         into: root,
+                        space: self.space_to_join(),
                     };
                     return vec![self.command(command, Then::SelectProject)];
                 }

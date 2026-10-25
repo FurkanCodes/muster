@@ -189,6 +189,7 @@ async fn add_project(daemon: &Daemon, root: &Path) -> ProjectId {
         .command(Command::AddProject {
             root: root.to_owned(),
             name: None,
+            space: None,
         })
         .await
         .unwrap()

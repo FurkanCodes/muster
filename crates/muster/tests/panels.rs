@@ -94,7 +94,11 @@ fn plugin(sandbox: &Sandbox, args: &[&str]) {
 async fn chat(connection: &mut Connection, sandbox: &Sandbox) -> (WorkspaceId, SessionId) {
     let root = sandbox.repository("app");
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -114,12 +118,13 @@ async fn chat(connection: &mut Connection, sandbox: &Sandbox) -> (WorkspaceId, S
     };
     let Reply::SessionStarted { id } = connection
         .command(Command::StartSession {
-            workspace: worktree,
+            workspace: Some(worktree),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

@@ -16,6 +16,8 @@ use crate::service::ServiceError;
 /// A clone done off the loop, or not, on its way back to be added.
 pub(super) struct Cloned {
     root: PathBuf,
+    /// The space it joins, once added.
+    space: Option<muster_core::SpaceId>,
     outcome: Result<(), ServiceError>,
     reply: oneshot::Sender<Result<Reply, ErrorBody>>,
 }
@@ -44,6 +46,7 @@ impl Supervisor {
         &self,
         repository: &str,
         into: &Path,
+        space: Option<muster_core::SpaceId>,
         reply: oneshot::Sender<Result<Reply, ErrorBody>>,
     ) {
         let (name, root) = match clone_plan(repository, into) {
@@ -59,6 +62,7 @@ impl Supervisor {
             let outcome = repositories.clone_to(&name, &root).await;
             let cloned = Cloned {
                 root,
+                space,
                 outcome,
                 reply,
             };
@@ -70,11 +74,12 @@ impl Supervisor {
     pub(super) async fn cloned(&mut self, cloned: Cloned) {
         let Cloned {
             root,
+            space,
             outcome,
             reply,
         } = cloned;
         let added = match outcome {
-            Ok(()) => self.add_project(root, None).await,
+            Ok(()) => self.add_project(root, None, space).await,
             Err(error) => Err(error.body()),
         };
         if let Err(error) = &added {

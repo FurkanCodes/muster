@@ -33,6 +33,7 @@ async fn an_agent_changing_the_line_the_person_changed_is_shown_to_conflict() {
         .command(Command::AddProject {
             root: root.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -77,12 +78,13 @@ async fn an_agent_changing_the_line_the_person_changed_is_shown_to_conflict() {
 
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

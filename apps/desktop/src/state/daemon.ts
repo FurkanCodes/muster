@@ -14,6 +14,7 @@ import type { Project } from "../ipc/generated/Project";
 import type { ResourceReport } from "../ipc/generated/ResourceReport";
 import type { Session } from "../ipc/generated/Session";
 import type { SessionId } from "../ipc/generated/SessionId";
+import type { Space } from "../ipc/generated/Space";
 import type { Workspace } from "../ipc/generated/Workspace";
 
 export interface DaemonState {
@@ -24,6 +25,8 @@ export interface DaemonState {
   workspaces: Readonly<Record<string, Workspace>>;
   sessions: Readonly<Record<string, Session>>;
   preferences: Preferences | null;
+  /** The person's spaces, in the order they were made. */
+  spaces: readonly Space[];
   plugins: readonly PluginInfo[];
   resources: ResourceReport | null;
   notifier: boolean;
@@ -37,9 +40,34 @@ export function emptyDerived(): Derived {
     needs_you: [],
     working: [],
     rows: [],
+    space_rows: {},
+    space_notes: {},
     counts: { working: 0, waiting: 0, done: 0 },
     questions: {},
   };
+}
+
+type Row = Derived["rows"][number];
+
+/** Whether two lines of the list are the same line. */
+function sameRow(a: Row, b: Row): boolean {
+  return a.kind === b.kind && ("id" in a ? a.id : null) === ("id" in b ? b.id : null);
+}
+
+function sameNotes(a: Derived["space_notes"], b: Derived["space_notes"]): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
+function sameSpaceRows(a: Derived["space_rows"], b: Derived["space_rows"]): boolean {
+  const spaces = Object.keys(a);
+  return (
+    spaces.length === Object.keys(b).length &&
+    spaces.every((space) => {
+      const rows = b[space];
+      return rows !== undefined && sameList(a[space] ?? [], rows, sameRow);
+    })
+  );
 }
 
 function byId<T extends { id: string }>(items: readonly T[]): Record<string, T> {
@@ -88,17 +116,23 @@ function keptDerived(held: Derived, next: Derived): Derived {
     ? held.needs_you
     : next.needs_you;
   const working = sameList(held.working, next.working, Object.is) ? held.working : next.working;
-  const rows = sameList(held.rows, next.rows, (a, b) => a.kind === b.kind && a.id === b.id)
-    ? held.rows
-    : next.rows;
+  const rows = sameList(held.rows, next.rows, sameRow) ? held.rows : next.rows;
+  const space_rows = sameSpaceRows(held.space_rows, next.space_rows)
+    ? held.space_rows
+    : next.space_rows;
   const questions = sameQuestions(held.questions, next.questions) ? held.questions : next.questions;
+  const space_notes = sameNotes(held.space_notes, next.space_notes)
+    ? held.space_notes
+    : next.space_notes;
   return counts === held.counts &&
     needs_you === held.needs_you &&
     working === held.working &&
     rows === held.rows &&
+    space_rows === held.space_rows &&
+    space_notes === held.space_notes &&
     questions === held.questions
     ? held
-    : { counts, needs_you, working, rows, questions };
+    : { counts, needs_you, working, rows, space_rows, space_notes, questions };
 }
 
 function patched(state: DaemonState, patch: Patch): Partial<DaemonState> {
@@ -116,6 +150,7 @@ function patched(state: DaemonState, patch: Patch): Partial<DaemonState> {
     next.sessions = merged(state.sessions, patch.sessions, patch.gone.sessions);
   }
   if (patch.preferences) next.preferences = patch.preferences;
+  if (patch.spaces) next.spaces = patch.spaces;
   if (patch.plugins) next.plugins = patch.plugins;
   if (patch.resources) next.resources = patch.resources;
   if (patch.notifier !== null) next.notifier = patch.notifier;
@@ -137,6 +172,7 @@ export function createDaemon(): Daemon {
     workspaces: {},
     sessions: {},
     preferences: null,
+    spaces: [],
     plugins: [],
     resources: null,
     notifier: false,

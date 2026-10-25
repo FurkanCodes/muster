@@ -13,11 +13,15 @@ use muster_core::protocol::plugins::PluginInfo;
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
 use muster_core::settings::Preferences;
 use muster_core::{
-    Project, ProjectId, Run, Session, SessionId, SessionStatus, TicketKey, Workspace, WorkspaceId,
+    Project, ProjectId, Run, Session, SessionId, SessionStatus, Space, SpaceId, TicketKey,
+    Workspace, WorkspaceId,
 };
 
 #[cfg(any(test, feature = "fixtures"))]
 pub mod fixtures;
+mod spaces;
+
+pub use spaces::View;
 
 /// One line of the sessions list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -25,6 +29,9 @@ pub enum Row {
     Project(ProjectId),
     Worktree(WorkspaceId),
     Session(SessionId),
+    /// A space's heading (`ARC-33`): its projects' lines and its free
+    /// terminals follow it.
+    Space(SpaceId),
 }
 
 /// How many agents work, wait on the person and are done: a shell, the
@@ -54,6 +61,8 @@ pub struct Model {
     notifier: bool,
     /// The plugins, as the daemon has them (protocol 41).
     plugins: Vec<PluginInfo>,
+    /// The person's spaces, in the order they were made.
+    spaces: Vec<Space>,
     /// Whether a snapshot has arrived; until then the model is empty, not
     /// "no sessions".
     loaded: bool,
@@ -77,6 +86,7 @@ impl Model {
         self.preferences = snapshot.preferences;
         self.notifier = snapshot.notifier;
         self.plugins = snapshot.plugins;
+        self.spaces = snapshot.spaces;
         self.loaded = true;
         self.order_projects();
     }
@@ -108,8 +118,11 @@ impl Model {
                     .workspaces_of(id)
                     .map(|workspace| workspace.id)
                     .collect();
-                self.sessions
-                    .retain(|session| !gone.contains(&session.workspace));
+                self.sessions.retain(|session| {
+                    session
+                        .workspace
+                        .is_none_or(|workspace| !gone.contains(&workspace))
+                });
                 self.workspaces.retain(|workspace| workspace.project != id);
                 self.projects.retain(|project| project.id != id);
             }
@@ -118,7 +131,7 @@ impl Model {
             }
             Delta::WorkspaceRemoved { id } => {
                 self.workspaces.retain(|workspace| workspace.id != id);
-                self.sessions.retain(|session| session.workspace != id);
+                self.sessions.retain(|session| !session.is_in(id));
             }
             Delta::SessionUpserted(session) => {
                 self.touch(session.id);
@@ -157,6 +170,8 @@ impl Model {
             }
             Delta::Notifier { ready } => self.notifier = ready,
             Delta::PluginsChanged(plugins) => self.plugins = plugins,
+            Delta::SpaceUpserted(space) => upsert(&mut self.spaces, space, |s| s.id),
+            Delta::SpaceRemoved { id } => self.spaces.retain(|space| space.id != id),
             // For the notch: this window says itself whether it is looked at.
             Delta::LookedAt { .. } => {}
         }
@@ -224,7 +239,11 @@ impl Model {
         let mut agents: Vec<&Session> = self
             .sessions
             .iter()
-            .filter(|session| workspaces.contains(&session.workspace))
+            .filter(|session| {
+                session
+                    .workspace
+                    .is_some_and(|workspace| workspaces.contains(&workspace))
+            })
             .filter(|session| !session.kind().is_panel())
             .collect();
         agents.sort_by_key(|session| (session.created_at, session.id));
@@ -317,7 +336,7 @@ impl Model {
     pub fn sessions_of(&self, workspace: WorkspaceId) -> impl Iterator<Item = &Session> {
         self.sessions
             .iter()
-            .filter(move |session| session.workspace == workspace)
+            .filter(move |session| session.is_in(workspace))
     }
 
     /// A workspace's sessions as the list shows them: its chats, then its
@@ -366,25 +385,30 @@ impl Model {
     /// has its shell under that agent's chat; where several chats share the
     /// workspace, its shells serve them all, and stand after them.
     pub fn under_its_chat(&self, shell: &Session) -> bool {
+        let Some(workspace) = shell.workspace else {
+            return false;
+        };
         stands_beside(shell)
             && self
-                .sessions_of(shell.workspace)
+                .sessions_of(workspace)
                 .filter(|session| !stands_beside(session))
                 .count()
                 == 1
     }
 
-    /// The sessions list: each project, its worktrees, their sessions.
+    /// The sessions list: each space's heading, then its projects with
+    /// their worktrees and sessions, then its free terminals.
     pub fn rows(&self) -> Vec<Row> {
-        let mut rows = Vec::new();
-        for project in &self.projects {
-            rows.push(Row::Project(project.id));
-            for workspace in self.workspaces_of(project.id) {
-                rows.push(Row::Worktree(workspace.id));
-                rows.extend(self.listed_of(workspace.id).map(|s| Row::Session(s.id)));
-            }
+        self.rows_in(View::All)
+    }
+
+    /// A project's lines: itself, its worktrees, their sessions.
+    fn project_rows(&self, project: ProjectId, rows: &mut Vec<Row>) {
+        rows.push(Row::Project(project));
+        for workspace in self.workspaces_of(project) {
+            rows.push(Row::Worktree(workspace.id));
+            rows.extend(self.listed_of(workspace.id).map(|s| Row::Session(s.id)));
         }
-        rows
     }
 
     /// Sessions waiting on the person: those asking something first, then
@@ -435,14 +459,16 @@ impl Model {
     }
 
     /// The sessions on a row: a project's in all its workspaces, a
-    /// worktree's, or the session itself.
+    /// worktree's, the session itself, or all of a space's.
     pub fn sessions_on(&self, row: Row) -> impl Iterator<Item = &Session> {
         self.sessions.iter().filter(move |session| match row {
-            Row::Project(project) => self
-                .workspace(session.workspace)
+            Row::Project(project) => session
+                .workspace
+                .and_then(|workspace| self.workspace(workspace))
                 .is_some_and(|workspace| workspace.project == project),
-            Row::Worktree(workspace) => session.workspace == workspace,
+            Row::Worktree(workspace) => session.is_in(workspace),
             Row::Session(id) => session.id == id,
+            Row::Space(space) => self.space_of(Row::Session(session.id)) == Some(space),
         })
     }
 
@@ -468,17 +494,18 @@ impl Model {
             Row::Worktree(id) => self.workspace(id).map(|workspace| workspace.project),
             Row::Session(id) => self
                 .session(id)
-                .and_then(|session| self.workspace(session.workspace))
+                .and_then(|session| self.workspace(session.workspace?))
                 .map(|workspace| workspace.project),
+            Row::Space(_) => None,
         }
     }
 
     /// The worktree a row belongs to, if any.
     pub fn worktree_of(&self, row: Row) -> Option<WorkspaceId> {
         match row {
-            Row::Project(_) => None,
+            Row::Project(_) | Row::Space(_) => None,
             Row::Worktree(id) => Some(id),
-            Row::Session(id) => self.session(id).map(|session| session.workspace),
+            Row::Session(id) => self.session(id).and_then(|session| session.workspace),
         }
     }
 

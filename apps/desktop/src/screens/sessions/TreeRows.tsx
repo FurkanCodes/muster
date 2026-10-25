@@ -168,6 +168,19 @@ export function ProjectLine(props: LineProps) {
   );
 }
 
+/** A space's heading (`ARC-33`): it folds away what the space holds, as a project's line does. */
+export function SpaceLine(props: LineProps) {
+  const { row, folded } = props;
+  const name = useDaemon((state) => state.spaces.find((space) => space.id === row.id)?.name ?? "");
+  return (
+    <Line {...props} expanded={!folded} density="compact" className="sessions-project" label={name}>
+      <Fold {...props} />
+      <span className="mu-tree-project mu-quiet mu-cut">{name}</span>
+      {folded ? <Standing row={row} /> : null}
+    </Line>
+  );
+}
+
 /** A worktree no session is in: its branch, and what its work there comes to. */
 export function WorktreeLine(props: LineProps) {
   const { row } = props;

@@ -9,9 +9,14 @@ import type { Timestamp } from "./Timestamp";
 import type { WorkspaceId } from "./WorkspaceId";
 
 /**
- * One agent process in one workspace.
+ * One agent process in one workspace, or a terminal in none.
  */
-export type Session = { id: SessionId, workspace: WorkspaceId, 
+export type Session = { id: SessionId, 
+/**
+ * Where it runs; `None` for a free terminal, which is in no project
+ * and runs in the home folder of its daemon's machine (`ARC-33`).
+ */
+workspace: WorkspaceId | null, 
 /**
  * The harness descriptor's id, such as `claude`.
  */

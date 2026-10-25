@@ -158,6 +158,15 @@ impl Ui {
         }
     }
 
+    /// `a` while there is no space yet: Muster asks for one first
+    /// (`ARC-33`), named Home here, then opens the dialog to add a project.
+    pub(crate) fn add_in_a_new_space(&mut self) {
+        self.keys(b"a");
+        self.wait_for("Everything lives in a space");
+        self.keys(b"Home\r");
+        self.wait_for("Add a project");
+    }
+
     /// Waits until the screen no longer shows `gone`.
     pub(crate) fn wait_without(&self, gone: &str) {
         if crate::support::wait::within(crate::support::wait::WAIT, || {

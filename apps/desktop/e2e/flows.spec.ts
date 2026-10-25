@@ -18,7 +18,13 @@ const MUSTER = id(1);
 
 type Mock = {
   sent: unknown[];
-  world: { projects: unknown[]; workspaces: unknown[]; sessions: unknown[]; preferences: unknown };
+  world: {
+    projects: unknown[];
+    workspaces: unknown[];
+    sessions: unknown[];
+    preferences: unknown;
+    spaces?: unknown[];
+  };
   flows: { unreadable: Record<string, string> };
   publish(parts: unknown): void;
   hold(command: string): void;
@@ -33,6 +39,17 @@ type Mock = {
 async function open(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("img", { name: /working, .* waiting on you/ })).toBeVisible();
+}
+
+/** A space to add to, as there is once anything was added (`ARC-33`). */
+async function aSpace(page: Page) {
+  await page.evaluate(() => {
+    const mock = (window as unknown as { __muster: Mock }).__muster;
+    const home = { id: "01JD0000000000000000000700", name: "Home", members: [], created_at: 0 };
+    mock.world.spaces = [home];
+    mock.publish({ spaces: [home] });
+  });
+  await expect(page.getByRole("button", { name: "Spaces" })).toBeVisible();
 }
 
 const TITLES: Record<string, string> = { "needs-you": "Needs you", all: "Sessions" };
@@ -275,6 +292,7 @@ test.describe("PRD-03 work starts on the project's page", () => {
             size: { cols: 100, rows: 30 },
             prompt: "Add a Not seen filter\nto the sidebar",
             started_by: null,
+            space: null,
           },
         },
       ]);
@@ -367,6 +385,7 @@ test.describe("PRD-01 adding a project", () => {
     page,
   }) => {
     await open(page);
+    await aSpace(page);
     // The Projects + offers a folder; with no Mac panel here, the folder browser asks.
     await page.getByRole("button", { name: "Add a project" }).click();
     await page
@@ -420,6 +439,7 @@ test.describe("PRD-01 adding a project", () => {
     page,
   }) => {
     await open(page);
+    await aSpace(page);
     await page.keyboard.press("a");
     const dialog = page.getByRole("dialog", { name: "Add a project" });
     const field = dialog.getByRole("combobox", { name: "Folder" });
@@ -431,7 +451,12 @@ test.describe("PRD-01 adding a project", () => {
     await expect(dialog).toBeHidden();
     await expect(statusBar(page)).toContainText("Added lamphaus-api.");
     expect(await sent(page, "AddProject")).toContainEqual({
-      AddProject: { root: "/Users/you/code/lamphaus-api", name: null },
+      // In the space the window has to add to (`ARC-33`).
+      AddProject: {
+        root: "/Users/you/code/lamphaus-api",
+        name: null,
+        space: "01JD0000000000000000000700",
+      },
     });
     await expect(page.getByRole("navigation", { name: "Sessions" })).toContainText("lamphaus-api");
   });
@@ -440,6 +465,7 @@ test.describe("PRD-01 adding a project", () => {
     page,
   }) => {
     await open(page);
+    await aSpace(page);
     await page.evaluate(() => {
       (window as unknown as { __muster: Mock }).__muster.flows.unreadable["/Users/you/Documents"] =
         "Operation not permitted (os error 1)";
@@ -462,6 +488,7 @@ test.describe("PRD-01 adding a project", () => {
 
   test("a folder dropped on the window is added", async ({ page }) => {
     await open(page);
+    await aSpace(page);
     await page.evaluate(() =>
       (window as unknown as { __muster: Mock }).__muster.drop(["/Users/you/code/lamphaus-api"]),
     );
@@ -684,6 +711,11 @@ test.describe("PRD-01 the first run and the daemon out of reach", () => {
     // The key, then what it does.
     await expect(statusBar(page)).toContainText(/\ba\s*add a project/);
     await page.keyboard.press("a");
+    // Everything lives in a space: the first is named, then the project goes in it.
+    const named = page.getByRole("dialog", { name: "New space" });
+    await expect(named).toContainText("Everything lives in a space");
+    await named.getByLabel("Name").fill("Home");
+    await named.getByRole("button", { name: /Make it/ }).click();
     await expect(page.getByRole("dialog", { name: "Add a project" })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.evaluate(() =>

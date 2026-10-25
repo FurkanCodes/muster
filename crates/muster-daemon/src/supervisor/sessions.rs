@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use muster_core::harness::SessionKind;
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reading, Reply, TermSize};
+use muster_core::spaces::Member;
 use muster_core::text::one_line;
-use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
+use muster_core::{Session, SessionId, SessionStatus, SpaceId, WorkspaceId};
 use muster_state::session::{self, SessionMachine, Signal, Start};
 
 use super::recovery::resumable;
@@ -26,6 +27,8 @@ pub(super) struct Asked {
     pub(super) prompt: Option<String>,
     /// The agent's session asking, through the command line (`PRD-01`).
     pub(super) started_by: Option<SessionId>,
+    /// The space it joins, the one the asking client shows.
+    pub(super) space: Option<SpaceId>,
 }
 
 impl Asked {
@@ -38,7 +41,13 @@ impl Asked {
             title,
             prompt,
             started_by,
+            space: None,
         }
+    }
+
+    /// Joining `space` as it starts.
+    pub(super) fn in_space(self, space: Option<SpaceId>) -> Self {
+        Self { space, ..self }
     }
 }
 
@@ -83,7 +92,7 @@ pub(super) enum Mode {
 impl Supervisor {
     pub(super) async fn start_session(
         &mut self,
-        workspace: WorkspaceId,
+        workspace: Option<WorkspaceId>,
         harness: String,
         size: TermSize,
         asked: Asked,
@@ -92,10 +101,11 @@ impl Supervisor {
             title,
             prompt,
             started_by,
+            space,
         } = asked;
         let started_by = self.starter(started_by)?;
         let harness = self.known_harness(&harness)?;
-        let place = self.place_for(workspace, &harness)?;
+        let place = self.place_of(workspace, &harness)?;
         let prompt = prompt.filter(|prompt| !prompt.trim().is_empty());
         if prompt.is_some() && !harness.takes_prompt() {
             return Err(ErrorBody::new(
@@ -110,6 +120,12 @@ impl Supervisor {
                 "the checks start with the check command",
             ));
         }
+        // A free terminal is in a space; one in a workspace shows where its
+        // project does (`ARC-33`).
+        let home = match workspace {
+            None => Some(self.home_for(space).await?),
+            Some(_) => None,
+        };
         let start = if prompt.is_some() {
             Start::WithPrompt
         } else {
@@ -149,6 +165,11 @@ impl Supervisor {
         if let Some(prompt) = named_by_prompt {
             self.ask_name(id, &prompt);
         }
+        if let Some(home) = home
+            && let Err(error) = self.move_to(home, Member::Session(id)).await
+        {
+            tracing::warn!(error = %error.message, "a free terminal did not join its space");
+        }
         Ok(Reply::SessionStarted { id })
     }
 
@@ -186,7 +207,7 @@ impl Supervisor {
         title: Option<String>,
         start: Start,
     ) -> Result<SessionId, ErrorBody> {
-        self.add_session_tied(workspace, harness, title, start, Ties::default())
+        self.add_session_tied(Some(workspace), harness, title, start, Ties::default())
             .await
     }
 
@@ -219,7 +240,7 @@ impl Supervisor {
     /// beside a session, or an agent's started by another.
     pub(super) async fn add_session_tied(
         &mut self,
-        workspace: WorkspaceId,
+        workspace: Option<WorkspaceId>,
         harness: &Harness,
         title: Option<String>,
         start: Start,
@@ -272,6 +293,27 @@ impl Supervisor {
     /// Where a new session in `workspace` runs: on the host in a worktree
     /// or checkout; in a run's container through docker, where Claude Code
     /// runs only for the person taking the run over.
+    /// Where a session in `workspace` runs, or a free terminal in none:
+    /// the home folder (`ARC-33`); an agent and the checks always run in
+    /// a project.
+    pub(super) fn place_of(
+        &self,
+        workspace: Option<WorkspaceId>,
+        harness: &Harness,
+    ) -> Result<Place, ErrorBody> {
+        match workspace {
+            Some(workspace) => self.place_for(workspace, harness),
+            None if SessionKind::of(harness.id()).is_shell() => Ok(Place::Host(home_folder()?)),
+            None => Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!(
+                    "{} starts in a project: a terminal can start in none",
+                    harness.label()
+                ),
+            )),
+        }
+    }
+
     pub(super) fn place_for(
         &self,
         workspace: WorkspaceId,
@@ -487,14 +529,14 @@ impl Supervisor {
             return self.restart_panel(session, size).await;
         }
         let harness = self.known_harness(&stored.harness)?;
-        let place = self.place_for(stored.workspace, &harness)?;
+        let place = self.place_of(stored.workspace, &harness)?;
         let (mode, start) = match (&place, resumable(&harness, &stored)) {
             // The checks run again, as the workspace has them now.
             (Place::Host(path), _) if harness.is_checks() => (
                 Mode::Checks(
                     super::by_hand::checks_at(
                         path.clone(),
-                        self.overrides_of(self.workspace(stored.workspace)?.project),
+                        self.overrides_of(self.workspace_of(&stored)?.project),
                     )
                     .await?,
                 ),
@@ -594,6 +636,7 @@ impl Supervisor {
         self.release_terminal(session);
         self.state.sessions.retain(|stored| stored.id != session);
         self.broadcast(Delta::SessionRemoved { id: session });
+        self.forget_members(|member| member == Member::Session(session));
         self.unplace_gone();
         Ok(Reply::Done)
     }
@@ -719,6 +762,7 @@ impl Supervisor {
                 // A shell that ended leaves its panel.
                 self.unplace_gone();
                 self.reopen_panel(session, size).await;
+                self.remove_if_moved(session).await;
             }
         }
     }
@@ -795,6 +839,8 @@ impl Supervisor {
             .and_then(|found| found.kind.host_path().map(std::path::Path::to_owned))
     }
 
+    /// Where a session runs on the host: its workspace's folder, or the
+    /// home folder for a free terminal.
     pub(super) fn session_path(&self, session: SessionId) -> Option<PathBuf> {
         let workspace = self
             .state
@@ -802,7 +848,10 @@ impl Supervisor {
             .iter()
             .find(|stored| stored.id == session)?
             .workspace;
-        self.workspace_path(workspace)
+        match workspace {
+            Some(workspace) => self.workspace_path(workspace),
+            None => home_folder().ok(),
+        }
     }
 
     /// The sessions running in `workspace`, each with whether it ends
@@ -811,7 +860,7 @@ impl Supervisor {
         self.state
             .sessions
             .iter()
-            .filter(|session| session.workspace == workspace)
+            .filter(|session| session.is_in(workspace))
             .filter(|session| self.is_running(session.id))
             .map(|session| {
                 let ends = session.started_as().ends_with_workspace();
@@ -825,8 +874,21 @@ impl Supervisor {
         self.state
             .sessions
             .iter()
-            .filter(|session| session.workspace == workspace)
+            .filter(|session| session.is_in(workspace))
             .filter(|session| self.is_running(session.id))
             .count()
     }
+}
+
+/// The home folder of this machine, where a free terminal starts.
+pub(super) fn home_folder() -> Result<PathBuf, ErrorBody> {
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            ErrorBody::new(
+                ErrorCode::Internal,
+                "the daemon has no home folder (HOME) to start a terminal in",
+            )
+        })
 }

@@ -9,8 +9,9 @@
 use std::path::{Path, PathBuf};
 
 use muster_core::protocol::{Delta, ErrorBody, ErrorCode, Reply};
+use muster_core::spaces::Member;
 use muster_core::text::one_line;
-use muster_core::{Project, ProjectId, Workspace, WorkspaceId, WorkspaceKind};
+use muster_core::{Project, ProjectId, SpaceId, Workspace, WorkspaceId, WorkspaceKind};
 
 use super::{Supervisor, store_closed, store_error};
 use crate::branches;
@@ -20,6 +21,7 @@ impl Supervisor {
         &mut self,
         root: PathBuf,
         name: Option<String>,
+        space: Option<SpaceId>,
     ) -> Result<Reply, ErrorBody> {
         let root = folder_root(&root).await?;
         if self
@@ -50,6 +52,7 @@ impl Supervisor {
             root,
             created_at: self.clock.now(),
         };
+        let home = self.home_for(space).await?;
         let checkout = self.checkout_of(&project).await;
 
         let (stored, stored_checkout) = (project.clone(), checkout.clone());
@@ -64,6 +67,9 @@ impl Supervisor {
         let id = project.id;
         self.broadcast(Delta::ProjectUpserted(project));
         self.broadcast(Delta::WorkspaceUpserted(checkout));
+        if let Err(error) = self.move_to(home, Member::Project(id)).await {
+            tracing::warn!(error = %error.message, "a project did not join its space");
+        }
         Ok(Reply::ProjectAdded { id })
     }
 
@@ -131,20 +137,28 @@ impl Supervisor {
             .state
             .sessions
             .iter()
-            .filter(|session| workspaces.contains(&session.workspace))
+            .filter(|session| {
+                session
+                    .workspace
+                    .is_some_and(|workspace| workspaces.contains(&workspace))
+            })
             .map(|session| session.id)
             .collect();
-        for session in sessions {
-            self.release_terminal(session);
+        for session in &sessions {
+            self.release_terminal(*session);
         }
         self.state
             .sessions
-            .retain(|session| !workspaces.contains(&session.workspace));
+            .retain(|session| !sessions.contains(&session.id));
         self.state
             .workspaces
             .retain(|workspace| workspace.project != project);
         self.state.projects.retain(|kept| kept.id != project);
         self.broadcast(Delta::ProjectRemoved { id: project });
+        self.forget_members(|member| match member {
+            Member::Project(id) => id == project,
+            Member::Session(id) => sessions.contains(&id),
+        });
         for workspace in workspaces {
             self.forget_timeline(workspace);
         }

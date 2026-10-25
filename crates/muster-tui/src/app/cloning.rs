@@ -84,6 +84,14 @@ impl CloneChoice {
 impl App {
     /// `g`: the repositories the person can reach on GitHub, asked of the daemon.
     pub(super) fn open_clone_project(&mut self) -> Vec<Action> {
+        if self.space_first(super::spaces::Later::CloneProject) {
+            return Vec::new();
+        }
+        self.clone_project_dialog()
+    }
+
+    /// The dialog itself, a space there to clone into.
+    pub(super) fn clone_project_dialog(&mut self) -> Vec<Action> {
         self.mode = Mode::Dialog(Dialog::CloneProject(CloneChoice::default()));
         vec![self.command(Command::ListRepositories, Then::Repositories)]
     }

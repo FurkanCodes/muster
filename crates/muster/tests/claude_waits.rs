@@ -42,7 +42,11 @@ async fn setup() -> Setup {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -70,12 +74,13 @@ async fn setup() -> Setup {
 async fn start_claude(connection: &mut Connection, workspace: WorkspaceId) -> SessionId {
     match connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

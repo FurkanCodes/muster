@@ -330,7 +330,7 @@ impl Supervisor {
         let title = format!("{} {}", detail.issue.key.shown(), detail.issue.title);
         match self
             .start_session(
-                workspace,
+                Some(workspace),
                 harness,
                 size,
                 super::sessions::Asked::new(Some(title), prompt, None),

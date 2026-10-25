@@ -34,7 +34,7 @@ fn workspace(project: &Project, branch: &str) -> Workspace {
 fn session(workspace: &Workspace, title: &str, status: SessionStatus) -> Session {
     Session {
         id: SessionId::new(),
-        workspace: workspace.id,
+        workspace: Some(workspace.id),
         harness: "claude".to_owned(),
         title: title.to_owned(),
         status,

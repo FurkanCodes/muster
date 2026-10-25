@@ -170,6 +170,8 @@ actions! {
     RestartSession "restart_session" SESSION_LISTS, ["r"], "start an ended session again";
     Close "close" SESSION_LISTS, ["x"], "close the session; remove the worktree or the project, after asking";
     Rename "rename" SESSION_LISTS, ["R"], "rename the session's chat";
+    Spaces "spaces" SESSION_LISTS, ["W"], "spaces: go to one, make, rename or remove one, or put the line's project or terminal in one";
+    NewTerminal "new_terminal" SESSION_LISTS, ["+"], "a new terminal in no project, in the home folder (in the space shown)";
     Fold "fold" SESSIONS, ["e"], "fold or unfold a project or a worktree (on a session, its worktree)";
     Checks "checks" SESSIONS, ["c"], "run the project's checks in the worktree";
     Review "review" SESSIONS, ["v"], "have Claude Code review the worktree's change";
@@ -177,6 +179,9 @@ actions! {
     MoveBranch "move_branch" SESSIONS, ["u"], "move the worktree's branch onto its base, after asking";
     OpenPullRequest "open_pull_request" SESSIONS, ["o"], "push the branch and open a draft pull request";
     PullRequestInBrowser "pull_request_in_browser" SESSIONS, ["b"], "the branch's pull request in the browser";
+    NextSpace "next_space" SESSIONS, ["]"], "the next space the list shows (after the last, all of it)";
+    PreviousSpace "previous_space" SESSIONS, ["["], "the space before";
+    FileTerminal "file_terminal" SESSIONS, ["F"], "put a terminal in no project under a project: where its shell is, or started again there";
     RefreshTickets "refresh_tickets" &[Screen::Tickets], ["r"], "fetch the tickets again";
     AnotherAgent "another_agent" &[Screen::Tickets], ["a"], "start another agent on it, in a worktree of its own";
     TicketInBrowser "ticket_in_browser" &[Screen::Tickets], ["b"], "the ticket in the browser";

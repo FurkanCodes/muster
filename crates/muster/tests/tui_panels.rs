@@ -75,7 +75,7 @@ fn its_key_opens_a_panel_beside_the_session_and_the_keys_move_between_them() {
     let root = sandbox.repository("app");
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("⌂ main");
     // A shell in the checkout, then back on the list, its line selected.

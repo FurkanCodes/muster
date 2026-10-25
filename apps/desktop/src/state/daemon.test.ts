@@ -11,6 +11,7 @@ function patch(parts: Partial<Patch>): Patch {
     sessions: [],
     gone: { projects: [], workspaces: [], sessions: [] },
     preferences: null,
+    spaces: null,
     plugins: null,
     resources: null,
     notifier: null,
@@ -58,6 +59,8 @@ describe("the daemon's state in the webview", () => {
       needs_you: ["a"],
       working: [],
       rows: [],
+      space_rows: {},
+      space_notes: {},
       counts: { working: 1, waiting: 1, done: 0 },
       questions: { a: ["Which?"] },
     };

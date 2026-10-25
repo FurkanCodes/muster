@@ -20,6 +20,7 @@ import type { Workspace } from "../generated/Workspace";
 import type { MockBridge } from "./bridge";
 import { folderTree } from "./folders";
 import { NOW, type Scenario, ulid } from "./scenario";
+import { homeFor, moveTo } from "./spaces";
 
 /** What the mock's git and file system say, which tests change. */
 export class FlowWorld {
@@ -134,6 +135,8 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       refuse("bad_request", `cannot open ${root}: No such file or directory (os error 2)`);
     if (world.projects.some((p) => p.root === root))
       refuse("conflict", `${root} is already a project`);
+    // In a space (`ARC-33`): the one asked, else the daemon's choice.
+    const home = homeFor(mock, command.AddProject.space);
     const added = {
       id: id(),
       name: command.AddProject.name?.trim() || root.split("/").at(-1) || root,
@@ -162,6 +165,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       branch: [],
     };
     tell({ projects: [added], workspaces: [checkout] });
+    moveTo(mock, home, { Project: added.id });
     return { ProjectAdded: { id: added.id } };
   }
 
@@ -185,7 +189,9 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       refuse("conflict", `${root} is there already: add it as a folder, or clone into another`);
     inside?.push({ name: folder, path: root, git: true });
     flows.folders[root] = [];
-    return flowCommand(mock, { AddProject: { root, name: null } });
+    return flowCommand(mock, {
+      AddProject: { root, name: null, space: command.CloneProject.space },
+    });
   }
 
   if ("RemoveProject" in command) {
@@ -269,6 +275,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
         "bad_request",
         `no harness called "${harness}"; add an agent of your own as [agents.${harness}] in ${world.preferences.file}`,
       );
+    if (workspace === null) refuse("bad_request", "the flows' mock starts nothing in no project");
     const found = place(workspace);
     if (found.kind.kind === "container" && harness !== "shell")
       refuse(

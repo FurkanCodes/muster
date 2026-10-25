@@ -39,6 +39,7 @@ mod settings;
 mod settle;
 mod sharing;
 mod shell;
+mod spaces;
 mod stacks;
 mod telling;
 mod tickets;
@@ -299,6 +300,13 @@ pub(crate) enum Dialog {
         session: SessionId,
         name: LineInput,
     },
+    /// A new space's name, or a space's new name (`app::spaces`); a new
+    /// one's `then` is done in it once it is made.
+    SpaceName {
+        space: Option<muster_core::SpaceId>,
+        name: LineInput,
+        then: Option<spaces::Later>,
+    },
     /// Every action and its keys, for the person to set them.
     Keys(Rebinding),
     /// The model `agent` names chats with, as the person types or picks
@@ -354,6 +362,13 @@ pub(crate) enum Confirmed {
     MoveOnto(WorkspaceId),
     /// Remove the plugin by this id.
     RemovePlugin(String),
+    /// Remove the space, which the daemon does only once it is empty.
+    DeleteSpace(muster_core::SpaceId),
+    /// Start the terminal again in the workspace, ending what runs in it.
+    RestartIn {
+        session: SessionId,
+        workspace: WorkspaceId,
+    },
 }
 
 /// A line under the screen telling the person what just happened. It
@@ -438,6 +453,8 @@ enum Then {
     PluginInstalled(Box<muster_core::protocol::plugins::PluginPreview>),
     /// Say the plugin by this id is removed.
     PluginRemoved(String),
+    /// Something about spaces (`app::spaces`).
+    Space(spaces::Waiting),
     Say(&'static str),
 }
 
@@ -454,6 +471,9 @@ pub(crate) struct App {
     /// The projects' and worktrees' lines folded in the sessions list,
     /// hiding what is under them (`app::fold`).
     folded: HashSet<Row>,
+    /// The space the sessions list shows; `None` for all of it. This UI's
+    /// own: the daemon is never told (`app::spaces`).
+    pub(crate) space: Option<muster_core::SpaceId>,
     /// Where the selected line was, so the selection stays nearby when
     /// that line goes away.
     selected_at: usize,
@@ -537,6 +557,7 @@ impl App {
             note: None,
             selected: None,
             folded: HashSet::new(),
+            space: None,
             selected_at: 0,
             list_offset: 0,
             needs: screens::NeedsScreen::default(),

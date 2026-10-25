@@ -14,6 +14,7 @@ use crate::model::Row;
 /// The world with a second project, `notes`, a plain folder.
 fn with_folder() -> (World, Project, Workspace) {
     let mut world = world();
+    super::tests::a_space(&mut world.app);
     let project = Project {
         id: ProjectId::new(),
         name: "notes".to_owned(),

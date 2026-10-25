@@ -191,7 +191,7 @@ mod tests {
     fn an_ended_session_or_one_asking_is_not_typed_into_unless_forced() {
         let mut session = Session {
             id: SessionId::new(),
-            workspace: muster_core::WorkspaceId::new(),
+            workspace: Some(muster_core::WorkspaceId::new()),
             harness: "claude".to_owned(),
             title: "Fix".to_owned(),
             status: SessionStatus::NeedsYou {

@@ -26,7 +26,11 @@ use support::{Sandbox, git};
 
 async fn add(connection: &mut Connection, root: std::path::PathBuf) -> ProjectId {
     let Reply::ProjectAdded { id } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {

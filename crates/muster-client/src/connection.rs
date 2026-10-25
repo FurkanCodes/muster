@@ -489,43 +489,32 @@ mod tests {
 
     #[test]
     fn a_frame_the_daemon_s_protocol_lacks_is_never_sent_arc_09() {
-        let exec = ClientFrame::Command {
+        // A free terminal (`ARC-33`) is as old as the oldest protocol
+        // spoken; a daemon before it is told to update.
+        let free = ClientFrame::Command {
             req_id: 1,
-            command: Command::ExecAgent {
-                session: SessionId::new(),
-                harness: "claude".to_owned(),
+            command: Command::StartSession {
+                workspace: None,
+                harness: "shell".to_owned(),
+                title: None,
+                size: muster_core::protocol::TermSize::default(),
                 prompt: None,
+                started_by: None,
+                space: None,
             },
         };
-        assert!(sendable(&exec, 54).is_ok());
-        let refused = sendable(&exec, 53).unwrap_err();
+        assert!(sendable(&free, MIN_PROTOCOL_VERSION).is_ok());
+        let refused = sendable(&free, MIN_PROTOCOL_VERSION - 1).unwrap_err();
         assert!(
             matches!(
                 refused,
-                ClientError::DaemonTooOld {
-                    needs: 54,
-                    daemon: 53
-                }
+                ClientError::DaemonTooOld { needs, daemon }
+                    if needs == MIN_PROTOCOL_VERSION && daemon == MIN_PROTOCOL_VERSION - 1
             ),
             "{refused}"
         );
         assert!(refused.to_string().contains("muster reload"));
         assert!(sendable(&ClientFrame::Subscribe, MIN_PROTOCOL_VERSION).is_ok());
-        // The projects' order is a setting a daemon before 56 cannot write.
-        let order = ClientFrame::Command {
-            req_id: 2,
-            command: Command::ChangePreference(
-                muster_core::settings::PreferenceChange::ProjectOrder(Vec::new()),
-            ),
-        };
-        assert!(sendable(&order, 56).is_ok());
-        assert!(matches!(
-            sendable(&order, 55),
-            Err(ClientError::DaemonTooOld {
-                needs: 56,
-                daemon: 55
-            })
-        ));
     }
 
     #[tokio::test(start_paused = true)]

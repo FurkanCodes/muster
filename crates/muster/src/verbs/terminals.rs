@@ -21,8 +21,14 @@ pub(crate) enum TermCommand {
         /// Its name; the program in front in it names it otherwise.
         name: Option<String>,
         /// The workspace, as `muster list workspaces` names it.
-        #[arg(long = "in", value_name = "WS")]
+        #[arg(long = "in", value_name = "WS", conflicts_with = "free")]
         in_workspace: Option<String>,
+        /// In no project: in the home folder, wherever you are.
+        #[arg(long)]
+        free: bool,
+        /// The space a terminal in no project joins.
+        #[arg(long, value_name = "SPACE", requires = "free")]
+        space: Option<String>,
         /// Start it and return, without showing it.
         #[arg(long)]
         bg: bool,
@@ -33,8 +39,16 @@ pub(crate) async fn run(paths: &Paths, command: TermCommand) -> super::Then {
     let ran = match command {
         TermCommand::New {
             name,
+            free: true,
+            space,
+            bg,
+            ..
+        } => free(paths, name, space.as_deref(), bg).await,
+        TermCommand::New {
+            name,
             in_workspace,
             bg,
+            ..
         } => new(paths, name, in_workspace.as_deref(), bg).await,
     };
     super::Then::Exit(ran.unwrap_or_else(crate::fail))
@@ -79,6 +93,31 @@ async fn new(
             "Started terminal {number} in {}. `muster attach {}/{number}` shows it.",
             shown(&place),
             shown(&place)
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
+    drop(connection);
+    super::tab::show(paths, terminal).await
+}
+
+/// `muster term new --free`: a terminal in no project, in the home folder
+/// (`ARC-33`), in `space` where named.
+async fn free(
+    paths: &Paths,
+    name: Option<String>,
+    space: Option<&str>,
+    bg: bool,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let mut connection = crate::daemon_start::connect(paths).await?;
+    let snapshot = connection.subscribe().await?;
+    let space = space
+        .map(|wanted| super::spaces::find(&snapshot, wanted).map(|space| space.id))
+        .transpose()?;
+    let terminal = workspaces::start_free_terminal(&mut connection, name, space).await?;
+    if bg {
+        println!(
+            "Started a terminal in no project. `muster attach {}` shows it.",
+            targets::short(terminal)
         );
         return Ok(ExitCode::SUCCESS);
     }

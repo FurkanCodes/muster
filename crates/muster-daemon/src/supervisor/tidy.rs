@@ -96,7 +96,7 @@ impl Supervisor {
             .state
             .sessions
             .iter()
-            .find(|session| session.workspace == workspace && working(session.status))?;
+            .find(|session| session.is_in(workspace) && working(session.status))?;
         Some(ErrorBody::new(
             ErrorCode::Conflict,
             format!(

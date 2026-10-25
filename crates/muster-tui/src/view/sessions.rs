@@ -135,6 +135,7 @@ fn line_wants(app: &App, row: Row) -> usize {
                 + logos::width(app.person.graphics)
                 + cells::width(&session.title)
         }),
+        Row::Space(space) => 3 + cells::width(&super::spaces::space_name(app, space)),
     }
 }
 
@@ -207,6 +208,12 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
             ListItem::new(Line::from(spans))
         }
         Row::Worktree(id) => ListItem::new(worktree_line(app, id, edge, width, by)),
+        Row::Space(space) => ListItem::new(super::spaces::space_line(
+            app,
+            space,
+            edge,
+            fold_mark(app, row),
+        )),
         Row::Session(id) => match app.model.session(id) {
             Some(session) if session.harness == muster_core::harness::SHELL => {
                 ListItem::new(shell_lines(app, session, session_lead(edge), width, by))
@@ -362,7 +369,7 @@ fn shell_line(
 /// cells from the list's inside edge: what a click folds it on.
 pub(crate) fn fold_column(row: Row) -> Option<u16> {
     match row {
-        Row::Project(_) => Some(1),
+        Row::Project(_) | Row::Space(_) => Some(1),
         Row::Worktree(_) => Some(2),
         Row::Session(_) => None,
     }
@@ -576,7 +583,10 @@ fn session_parts(
     let mut doing = look::doing(session).into_owned();
     let mut project = Vec::new();
     if place {
-        let branch = app.model.branch(session.workspace).unwrap_or("?");
+        let branch = match session.workspace {
+            Some(workspace) => app.model.branch(workspace).unwrap_or("?"),
+            None => "no project",
+        };
         doing = format!("{doing} · {branch}");
         if let Some(id) = app.model.project_of(Row::Session(session.id))
             && let Some(found) = app.model.project(id)
@@ -591,6 +601,9 @@ fn session_parts(
                 Span::raw("  "),
             ];
         }
+        // The space it shows in, never cut: alerts reach the person
+        // whichever space is shown.
+        project.extend(super::spaces::queue_note(app, session));
     }
     let lead_width = lead_width + project.iter().map(Span::width).sum::<usize>();
     let fixed = lead_width + 2 + logos::width(app.person.graphics) + unseen;
@@ -734,7 +747,12 @@ fn session_pair(
             Span::raw("  "),
         ]);
     }
-    let room = pair_title_room(app, session, lead_width, width, place);
+    let note = place
+        .then(|| super::spaces::queue_note(app, session))
+        .flatten();
+    let note_width = note.as_ref().map_or(0, Span::width);
+    first.extend(note);
+    let room = pair_title_room(app, session, lead_width, width, place).saturating_sub(note_width);
     first.push(Span::styled(
         slid(&session.title, room, by),
         Style::default().add_modifier(Modifier::BOLD),
@@ -749,7 +767,10 @@ fn session_pair(
     second.push(Span::raw(" ".repeat(indent)));
     let mut doing = look::doing(session).into_owned();
     if place {
-        let branch = app.model.branch(session.workspace).unwrap_or("?");
+        let branch = match session.workspace {
+            Some(workspace) => app.model.branch(workspace).unwrap_or("?"),
+            None => "no project",
+        };
         doing = format!("{doing} · {branch}");
     }
     let time = look::session_time(app, session).unwrap_or_default();
@@ -815,7 +836,7 @@ fn session_line(
 pub(super) fn cut_name(app: &App, width: usize) -> Option<(usize, usize)> {
     let (name, room) = match app.view {
         View::Sessions => match app.selected? {
-            Row::Project(_) => return None,
+            Row::Project(_) | Row::Space(_) => return None,
             Row::Worktree(id) => {
                 let kind = &app.model.workspace(id)?.kind;
                 if !kind.in_git() || app.model.run_of(id).is_some() {

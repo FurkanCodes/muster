@@ -11,6 +11,7 @@ import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { readFolds, writeFolds } from "./folds";
 import {
   allRows,
+  foldOf,
   keptFolds,
   selectionAfterFold,
   shownRows,
@@ -21,12 +22,12 @@ import {
 
 /** The rows as strings, so the list re-renders only when a line comes, goes or moves. */
 function encoded(row: TreeRow): string {
-  return [row.kind, row.id, row.project, row.workspace ?? ""].join(" ");
+  return [row.kind, row.id, row.project, row.space, row.workspace ?? ""].join(" ");
 }
 
 function decoded(text: string): TreeRow {
-  const [kind = "project", id = "", project = "", workspace = ""] = text.split(" ");
-  return { kind: kind as TreeRow["kind"], id, project, workspace: workspace || null };
+  const [kind = "project", id = "", project = "", space = "", workspace = ""] = text.split(" ");
+  return { kind: kind as TreeRow["kind"], id, project, space, workspace: workspace || null };
 }
 
 export function useTree() {
@@ -34,7 +35,8 @@ export function useTree() {
   const actions = useActions();
   const chosen = useUi((state) => state.selected.all);
   const loaded = useDaemon((state) => state.loaded);
-  const lines = useDaemon(useShallow((state) => allRows(state).map(encoded)));
+  const space = useUi((state) => state.space);
+  const lines = useDaemon(useShallow((state) => allRows(state, space).map(encoded)));
   const rows = lines.map(decoded);
   const [folded, setFolded] = useState<ReadonlySet<string>>(readFolds);
   const shown = shownRows(rows, folded);
@@ -80,12 +82,14 @@ export function useTree() {
     rows: shown,
     folded,
     selected,
-    /** Folds or unfolds a project's line; on a session, its project's. */
+    /** Folds or unfolds a space's or a project's line; on a line under one, the one it is under. */
     fold(id: string) {
       const row = rows.find((one) => one.id === id);
       if (!row) return;
-      keep(toggled(folded, row.project));
-      const after = selectionAfterFold(row.project, selected);
+      const target = foldOf(row);
+      if (!target) return;
+      keep(toggled(folded, target));
+      const after = selectionAfterFold(target, selected);
       if (after && after !== selected?.id) actions.select("all", after);
     },
     pick(id: string) {

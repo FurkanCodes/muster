@@ -10,6 +10,7 @@ import type { Session } from "../../ipc/generated/Session";
 import type { SessionId } from "../../ipc/generated/SessionId";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
+import { SpaceNote } from "../../spaces/SpaceNote";
 import { branchOf, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import { AgentLogo, BranchName, DiffStat, NewsDot, PullRequest, StatusMark } from "../../ui/status";
@@ -43,7 +44,10 @@ function Asking({ session }: { session: Session }) {
         <ListItemTitle className="queue-asking" title={session.title}>
           {session.title}
         </ListItemTitle>
-        <ListItemMeta title={what}>{what}</ListItemMeta>
+        <ListItemMeta title={what}>
+          {what}
+          <SpaceNote of={session.id} />
+        </ListItemMeta>
       </ListItemText>
       <Age since={session.status_since} />
     </>
@@ -51,7 +55,9 @@ function Asking({ session }: { session: Session }) {
 }
 
 function Finished({ session }: { session: Session }) {
-  const workspace = useDaemon((state) => state.workspaces[session.workspace]);
+  const workspace = useDaemon((state) =>
+    session.workspace === null ? undefined : state.workspaces[session.workspace],
+  );
   const changes = workspace?.changes;
   return (
     <>
@@ -67,6 +73,7 @@ function Finished({ session }: { session: Session }) {
             <span>no changes</span>
           )}
           {workspace?.pull_request ? <PullRequest pr={workspace.pull_request} /> : null}
+          <SpaceNote of={session.id} />
         </ListItemMeta>
       </ListItemText>
       <Age since={session.status_since} unseen={session.unseen} />

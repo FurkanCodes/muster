@@ -8,6 +8,7 @@ import { type App, useApp, useDaemon, useUi } from "../app/context";
 import { type KeyHandlers, useKeys } from "../app/keys";
 import { useKeymap } from "../keys/useKeymap";
 import { errorText } from "../lib/text";
+import * as spaces from "../spaces/spaces";
 import type { ScreenId } from "../state/ui";
 import * as act from "./actions";
 import { type KeyAction, keysIn } from "./keymap";
@@ -19,6 +20,11 @@ const NewWorktree = lazy(() => import("./NewWorktree"));
 const CloneProject = lazy(() => import("./CloneProject"));
 const AddProject = lazy(() => import("./AddProject"));
 const Questions = lazy(() => import("./Questions"));
+const SpaceName = lazy(() => import("./SpaceDialogs").then((m) => ({ default: m.SpaceName })));
+const RemoveSpace = lazy(() => import("./SpaceDialogs").then((m) => ({ default: m.RemoveSpace })));
+const FileTerminal = lazy(() =>
+  import("./SpaceDialogs").then((m) => ({ default: m.FileTerminal })),
+);
 
 /** The flows' keys, and the screens each works on. */
 const BOUND: readonly [KeyAction, (app: App) => void, readonly ScreenId[]][] = [
@@ -31,6 +37,11 @@ const BOUND: readonly [KeyAction, (app: App) => void, readonly ScreenId[]][] = [
   ["restart_session", act.restart, act.SESSION_LISTS],
   ["tidy", act.tidy, ["all"]],
   ["move_branch", act.moveBranch, ["all"]],
+  ["new_terminal", (app) => void spaces.newTerminal(app), act.SESSION_LISTS],
+  ["spaces", spaces.openSpaces, act.SESSION_LISTS],
+  ["next_space", (app) => spaces.cycle(app, 1), ["all"]],
+  ["previous_space", (app) => spaces.cycle(app, -1), ["all"]],
+  ["file_terminal", spaces.fileTerminal, ["all"]],
 ];
 
 function useFlowKeys(app: App): void {
@@ -121,6 +132,12 @@ export function Flows() {
         <CloneProject />
       ) : flow?.kind === "new-worktree" ? (
         <NewWorktree flow={flow} />
+      ) : flow?.kind === "space-name" ? (
+        <SpaceName space={flow.space} after={flow.after} />
+      ) : flow?.kind === "remove-space" ? (
+        <RemoveSpace space={flow.space} />
+      ) : flow?.kind === "file-terminal" ? (
+        <FileTerminal flow={flow} />
       ) : flow ? (
         <Questions flow={flow} />
       ) : null}

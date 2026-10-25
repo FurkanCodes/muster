@@ -38,6 +38,7 @@ describe("ARC-25 the lines of a long tree in sight", () => {
       kind,
       id: "a",
       project: "p",
+      space: "",
       workspace: null,
     });
     expect(estimate(row("project"), true, "two")).toBe(28);

@@ -7,6 +7,7 @@
 - Every behaviour change comes with tests: unit tests for the state machines, parsers and scheduler; end-to-end tests against the real daemon binary with fakes for external systems.
 - Before finishing: `cargo fmt --check`, `CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets`, and the tests of what changed (see *Which tests to run*); CI runs them all.
 - Never put a real credential in code, fixtures, logs or test output (`PRD-06`). Recorded agent fixtures are scrubbed before they are committed.
+- After you create or rewrite a Markdown (`.md`) file, read it back in full before you call it done.
 - Nebula (MIT) informed the design. If its code is ever copied, add its notice to `NOTICE` in the same change.
 
 ## Which tests to run

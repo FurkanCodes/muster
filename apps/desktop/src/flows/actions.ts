@@ -10,6 +10,7 @@ import type { Project } from "../ipc/generated/Project";
 import type { Session } from "../ipc/generated/Session";
 import type { Workspace } from "../ipc/generated/Workspace";
 import { errorText } from "../lib/text";
+import { spaceFirst, spaceToJoin } from "../spaces/spaces";
 import { projectsInOrder } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import { whenKnown } from "../state/whenKnown";
@@ -74,6 +75,12 @@ function checkoutOf(app: App, project: string): Workspace | null {
  * where the app has none (its tests' build, the mock), the folder browser.
  */
 export function addProject(app: App): void {
+  if (spaceFirst(app, { kind: "add-project" })) return;
+  addProjectIn(app);
+}
+
+/** The Mac's folder panel, or the folder browser, a space there to add to. */
+export function addProjectIn(app: App): void {
   const browse = () => app.actions.openFlow({ kind: "add-project" });
   app.bridge.pickFolder().then((picked) => {
     if (picked.kind === "unavailable") return browse();
@@ -84,6 +91,7 @@ export function addProject(app: App): void {
 
 /** `g`: a project cloned from GitHub, into a folder the person chooses. */
 export function cloneProject(app: App): void {
+  if (spaceFirst(app, { kind: "clone-project" })) return;
   app.actions.openFlow({ kind: "clone-project" });
 }
 
@@ -243,7 +251,11 @@ export function moveBranch(app: App): void {
 
 /** Adds the project at `path`, says so, and selects it. */
 export async function addProjectAt(app: App, path: string): Promise<void> {
-  const reply = await ask(app.bridge, { AddProject: { root: path, name: null } }, "ProjectAdded");
+  const reply = await ask(
+    app.bridge,
+    { AddProject: { root: path, name: null, space: spaceToJoin(app) } },
+    "ProjectAdded",
+  );
   const id = reply.id;
   app.actions.show("all");
   whenKnown(app, "projects", id, () => {

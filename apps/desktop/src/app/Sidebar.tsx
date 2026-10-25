@@ -16,6 +16,8 @@ import {
 } from "react";
 import { addProject, cloneProject, newSession } from "../flows/actions";
 import { useKeymap } from "../keys/useKeymap";
+import { SpaceLineMenu, SpaceMenu } from "../spaces/SpaceMenu";
+import { newTerminal } from "../spaces/spaces";
 import { keep, kept } from "../state/kept";
 import { chats } from "../state/selectors";
 import type { ListId } from "../state/ui";
@@ -131,7 +133,7 @@ function ProjectsHead({ linked }: { linked: boolean }) {
   const map = useKeymap();
   return (
     <div className="app-projects-head">
-      <span className="app-projects-title">Projects</span>
+      <SpaceMenu />
       <ActionMenu
         label="Add a project"
         items={[
@@ -140,6 +142,16 @@ function ProjectsHead({ linked }: { linked: boolean }) {
             ...keysOf(map, "clone_project"),
             label: "Clone from GitHub…",
             does: () => cloneProject(app),
+          },
+          {
+            ...keysOf(map, "new_terminal"),
+            label: "Terminal in no project",
+            does: () => void newTerminal(app),
+          },
+          {
+            key: "",
+            label: "New space…",
+            does: () => app.actions.openFlow({ kind: "space-name", space: null }),
           },
         ]}
         trigger={<IconButton icon="plus" size="sm" label="Add a project" disabled={!linked} />}
@@ -228,7 +240,8 @@ function useSidebarWidth(): [number, (width: number, done: boolean) => void] {
 
 /**
  * A right-click on a line of the list selects it, as a click does, and opens
- * its menu where the pointer is: a session's is the one under its ⋯.
+ * its menu where the pointer is: a session's is the one under its ⋯, a
+ * project's the one under its page's, a space's what can go in it.
  */
 function useLineMenu(): (event: MouseEvent<HTMLElement>) => void {
   const app = useApp();
@@ -243,8 +256,13 @@ function useLineMenu(): (event: MouseEvent<HTMLElement>) => void {
     line.click();
     const ui = app.ui.getState();
     const id = ui.selected[ui.screen];
-    if (id && app.daemon.store.getState().sessions[id])
+    const state = app.daemon.store.getState();
+    if (id && state.sessions[id])
       app.actions.openMenuAt({ session: id, x: event.clientX, y: event.clientY });
+    else if (id && state.projects[id])
+      app.actions.openMenuAt({ project: id, x: event.clientX, y: event.clientY });
+    else if (id && state.spaces.some((space) => space.id === id))
+      app.actions.openMenuAt({ space: id, x: event.clientX, y: event.clientY });
   };
 }
 
@@ -290,6 +308,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
       <div className="app-sidebar-list" onContextMenu={lineMenu}>
         {children}
       </div>
+      <SpaceLineMenu />
       <SideButton
         icon="gear"
         label="Settings"

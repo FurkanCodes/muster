@@ -75,6 +75,18 @@ pub(crate) struct Status {
     /// The machine's memory, once measured.
     memory: Option<Memory>,
     projects: Vec<ProjectEntry>,
+    /// The terminals in no project (`ARC-33`).
+    terminals: Vec<SessionEntry>,
+    /// The person's spaces, by name, with the ids of what is in each.
+    spaces: Vec<SpaceEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct SpaceEntry {
+    id: String,
+    name: String,
+    /// The projects' and terminals' ids, in the order they were put in.
+    members: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,7 +161,8 @@ struct ChangesEntry {
 pub(crate) struct SessionEntry {
     id: String,
     project: Option<String>,
-    workspace: String,
+    /// `None` for a terminal in no project (`ARC-33`).
+    workspace: Option<String>,
     /// What its workspace has checked out; `None` in a plain folder.
     branch: Option<String>,
     /// What it was started as: `shell` for a terminal, else the agent's.
@@ -233,6 +246,28 @@ impl Status {
                 total_bytes: report.host_memory_total,
             }),
             projects,
+            terminals: snapshot
+                .sessions
+                .iter()
+                .filter(|session| session.is_free())
+                .map(|session| session_entry(snapshot, session))
+                .collect(),
+            spaces: snapshot
+                .spaces
+                .iter()
+                .map(|space| SpaceEntry {
+                    id: space.id.to_string(),
+                    name: space.name.clone(),
+                    members: space
+                        .members
+                        .iter()
+                        .map(|member| match member {
+                            muster_core::Member::Project(id) => id.to_string(),
+                            muster_core::Member::Session(id) => id.to_string(),
+                        })
+                        .collect(),
+                })
+                .collect(),
         }
     }
 }
@@ -286,7 +321,7 @@ fn workspace_entry(snapshot: &Snapshot, workspace: &Workspace) -> WorkspaceEntry
         sessions: snapshot
             .sessions
             .iter()
-            .filter(|session| session.workspace == workspace.id)
+            .filter(|session| session.is_in(workspace.id))
             .map(|session| session_entry(snapshot, session))
             .collect(),
     }
@@ -305,7 +340,7 @@ pub(crate) fn session_entry(snapshot: &Snapshot, session: &Session) -> SessionEn
     let workspace = snapshot
         .workspaces
         .iter()
-        .find(|workspace| workspace.id == session.workspace);
+        .find(|workspace| session.is_in(workspace.id));
     let (status, needs, success) = match session.status {
         SessionStatus::Fresh => ("fresh", None, None),
         SessionStatus::Running => ("running", None, None),
@@ -333,7 +368,7 @@ pub(crate) fn session_entry(snapshot: &Snapshot, session: &Session) -> SessionEn
     SessionEntry {
         id: session.id.to_string(),
         project: workspace.map(|workspace| workspace.project.to_string()),
-        workspace: session.workspace.to_string(),
+        workspace: session.workspace.map(|id| id.to_string()),
         branch: workspace.and_then(branch),
         harness: session.harness.clone(),
         agent: session.agent.as_ref().map(|agent| agent.harness.clone()),

@@ -173,6 +173,7 @@ export async function startShell(
         harness: SHELL,
         title: null,
         size: STARTING_SIZE,
+        space: null,
         prompt: null,
         started_by: null,
       },

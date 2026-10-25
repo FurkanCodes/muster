@@ -374,6 +374,30 @@
       "what": "rename the session's chat"
     },
     {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "W"
+      ],
+      "name": "spaces",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "spaces: go to one, make, rename or remove one, or put the line's project or terminal in one"
+    },
+    {
+      "group": "Sessions and Needs you",
+      "keys": [
+        "+"
+      ],
+      "name": "new_terminal",
+      "screens": [
+        "sessions",
+        "needs_you"
+      ],
+      "what": "a new terminal in no project, in the home folder (in the space shown)"
+    },
+    {
       "group": "Sessions",
       "keys": [
         "e"
@@ -449,6 +473,39 @@
         "sessions"
       ],
       "what": "the branch's pull request in the browser"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "]"
+      ],
+      "name": "next_space",
+      "screens": [
+        "sessions"
+      ],
+      "what": "the next space the list shows (after the last, all of it)"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "["
+      ],
+      "name": "previous_space",
+      "screens": [
+        "sessions"
+      ],
+      "what": "the space before"
+    },
+    {
+      "group": "Sessions",
+      "keys": [
+        "F"
+      ],
+      "name": "file_terminal",
+      "screens": [
+        "sessions"
+      ],
+      "what": "put a terminal in no project under a project: where its shell is, or started again there"
     },
     {
       "group": "Tickets",

@@ -3,12 +3,12 @@
 //! Never edit a migration that has shipped; add a new one. Each runs in its own
 //! transaction together with the version bump.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -139,8 +139,63 @@ const V9: &str = "ALTER TABLE workspaces ADD COLUMN ticket TEXT;";
 /// (`PRD-01`), shown with it and counted against the person's limits.
 const V10: &str = "ALTER TABLE sessions ADD COLUMN started_by TEXT;";
 
+/// Free terminals, in no workspace (`ARC-33`), and the person's spaces
+/// with what is in them. SQLite cannot let a column be empty in place, so
+/// `sessions` is made again and its rows copied, with foreign keys off for
+/// the copy ([`REBUILDS`]) so that dropping the old table removes no
+/// session's history; they are checked before the change is kept.
+const V11: &str = r"
+CREATE TABLE sessions_v11 (
+    id            TEXT PRIMARY KEY,
+    workspace_id  TEXT REFERENCES workspaces (id) ON DELETE CASCADE,
+    harness       TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    status        TEXT NOT NULL CHECK (json_valid(status)),
+    unseen        INTEGER NOT NULL CHECK (unseen IN (0, 1)),
+    resume_id     TEXT,
+    created_at    INTEGER NOT NULL,
+    ended_at      INTEGER,
+    removed_at    INTEGER,
+    beside        TEXT,
+    started_by    TEXT
+) STRICT;
+
+INSERT INTO sessions_v11
+    (id, workspace_id, harness, title, status, unseen, resume_id, created_at, ended_at,
+     removed_at, beside, started_by)
+SELECT id, workspace_id, harness, title, status, unseen, resume_id, created_at, ended_at,
+       removed_at, beside, started_by
+FROM sessions;
+
+DROP TABLE sessions;
+ALTER TABLE sessions_v11 RENAME TO sessions;
+CREATE INDEX sessions_by_workspace ON sessions (workspace_id);
+
+CREATE TABLE spaces (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_at  INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE space_members (
+    space_id   TEXT NOT NULL REFERENCES spaces (id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL CHECK (kind IN ('project', 'session')),
+    member_id  TEXT NOT NULL,
+    PRIMARY KEY (space_id, kind, member_id)
+) STRICT;
+
+CREATE INDEX space_members_by_member ON space_members (kind, member_id);
+";
+
+/// Everything in exactly one space (`ARC-33`): no table changes, and
+/// [`one_home_each`] settles what 11 allowed.
+const V12: &str = "";
+
 /// The version whose migration fills in worktrees' tickets.
 const TICKETS: u32 = 9;
+
+/// The version whose migration makes a table again, with foreign keys off.
+const REBUILDS: u32 = 11;
 
 /// Each worktree's ticket, as its branch's name says (`muster/issue-42-…`):
 /// how the ticket's agents were found before it was stored. Run once, in
@@ -159,6 +214,76 @@ fn tickets_from_branches(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreErro
         }
     }
     Ok(())
+}
+
+/// The version whose migration puts everything in exactly one space.
+const ONE_HOME: u32 = 12;
+
+/// Settles what schema 11 allowed into one space each (`ARC-33`): one in
+/// several spaces stays in the one made first; one in none, a project or a
+/// free terminal still listed, goes in the space called Home, made where
+/// there is none, as old as the oldest it takes in. Run once, in the
+/// migration that asks it.
+fn one_home_each(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    tx.execute(
+        "DELETE FROM space_members WHERE rowid IN (
+             SELECT m.rowid FROM space_members m JOIN spaces s ON s.id = m.space_id
+             WHERE EXISTS (
+                 SELECT 1 FROM space_members o JOIN spaces t ON t.id = o.space_id
+                 WHERE o.kind = m.kind AND o.member_id = m.member_id
+                   AND (t.created_at, t.id) < (s.created_at, s.id)))",
+        [],
+    )?;
+    let homeless: Vec<(String, String, i64)> = tx
+        .prepare(
+            "SELECT 'project', id, created_at FROM projects
+             WHERE id NOT IN (SELECT member_id FROM space_members WHERE kind = 'project')
+             UNION ALL
+             SELECT 'session', id, created_at FROM sessions
+             WHERE workspace_id IS NULL AND removed_at IS NULL
+               AND id NOT IN (SELECT member_id FROM space_members WHERE kind = 'session')
+             ORDER BY 3, 2",
+        )?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let Some(oldest) = homeless.iter().map(|(_, _, at)| *at).min() else {
+        return Ok(());
+    };
+    let home: Option<String> = tx
+        .query_row("SELECT id FROM spaces WHERE name = 'Home'", [], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    let home = if let Some(home) = home {
+        home
+    } else {
+        let id = muster_core::SpaceId::new().to_string();
+        tx.execute(
+            "INSERT INTO spaces (id, name, created_at) VALUES (?1, 'Home', ?2)",
+            rusqlite::params![id, oldest],
+        )?;
+        id
+    };
+    for (kind, member, _) in homeless {
+        tx.execute(
+            "INSERT INTO space_members (space_id, kind, member_id) VALUES (?1, ?2, ?3)",
+            rusqlite::params![home, kind, member],
+        )?;
+    }
+    Ok(())
+}
+
+/// Refuses a migration that left a row naming one that is not there.
+fn check_foreign_keys(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    let broken: Option<String> = tx
+        .query_row("PRAGMA foreign_key_check", [], |row| row.get(0))
+        .optional()?;
+    match broken {
+        Some(table) => Err(StoreError::Invalid(format!(
+            "a row of {table} names one that is not there"
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// The schema version this build creates.
@@ -182,13 +307,27 @@ pub(super) fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         });
     }
     for (version, migration) in (1..=known).zip(MIGRATIONS).skip(current as usize) {
+        // Foreign keys are turned off outside a transaction only.
+        let rebuild = version == REBUILDS;
+        if rebuild {
+            conn.pragma_update(None, "foreign_keys", "OFF")?;
+        }
         let tx = conn.transaction()?;
         tx.execute_batch(migration)?;
         if version == TICKETS {
             tickets_from_branches(&tx)?;
         }
+        if version == ONE_HOME {
+            one_home_each(&tx)?;
+        }
+        if rebuild {
+            check_foreign_keys(&tx)?;
+        }
         tx.pragma_update(None, "user_version", version)?;
         tx.commit()?;
+        if rebuild {
+            conn.pragma_update(None, "foreign_keys", "ON")?;
+        }
     }
     Ok(())
 }

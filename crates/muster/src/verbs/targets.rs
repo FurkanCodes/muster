@@ -57,7 +57,7 @@ pub(crate) fn find_session_in<'a>(
     let by_branch = |session: &&Session| {
         session.kind().is_agent()
             && snapshot.workspaces.iter().any(|workspace| {
-                workspace.id == session.workspace
+                session.is_in(workspace.id)
                     && workspace.kind.in_git()
                     && workspace.kind.branch() == wanted
             })
@@ -132,7 +132,7 @@ pub(crate) fn numbered(snapshot: &Snapshot, workspace: WorkspaceId) -> Vec<&Sess
     let mut sessions: Vec<&Session> = snapshot
         .sessions
         .iter()
-        .filter(|session| session.workspace == workspace && !session.kind().is_panel())
+        .filter(|session| session.is_in(workspace) && !session.kind().is_panel())
         .collect();
     sessions.sort_by_key(|session| (session.created_at, session.id));
     sessions
@@ -140,7 +140,7 @@ pub(crate) fn numbered(snapshot: &Snapshot, workspace: WorkspaceId) -> Vec<&Sess
 
 /// A session's number in its workspace, from 1.
 pub(crate) fn number_of(snapshot: &Snapshot, session: &Session) -> Option<usize> {
-    numbered(snapshot, session.workspace)
+    numbered(snapshot, session.workspace?)
         .iter()
         .position(|found| found.id == session.id)
         .map(|i| i + 1)
@@ -232,7 +232,7 @@ pub(crate) fn current_workspace<'a>(
         snapshot
             .workspaces
             .iter()
-            .find(|workspace| workspace.id == session.workspace)
+            .find(|workspace| session.is_in(workspace.id))
     });
     of_session.or_else(|| {
         let here = here(snapshot, folder)?;
@@ -334,7 +334,7 @@ mod tests {
     fn session(workspace: &Workspace, harness: &str, title: &str) -> Session {
         Session {
             id: SessionId::new(),
-            workspace: workspace.id,
+            workspace: Some(workspace.id),
             harness: harness.to_owned(),
             title: title.to_owned(),
             status: SessionStatus::Running,

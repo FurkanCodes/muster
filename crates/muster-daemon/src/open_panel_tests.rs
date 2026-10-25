@@ -81,7 +81,7 @@ fn link(dir: &Path, manifest: &str, enabled: bool) -> PathBuf {
 fn chat(dir: &Path, workspace: WorkspaceId) -> Session {
     let chat = Session {
         id: SessionId::new(),
-        workspace,
+        workspace: Some(workspace),
         harness: "claude".to_owned(),
         title: "Fix the login".to_owned(),
         status: SessionStatus::Finished,
@@ -201,7 +201,7 @@ async fn a_panel_opens_beside_its_chat_told_what_muster_knows_and_given_only_wha
 async fn a_panel_that_cannot_open_is_refused_saying_why() {
     let dir = tempfile::tempdir().unwrap();
     let (supervisor, _, chat) = with_a_chat(dir.path(), MANIFEST).await;
-    let checkout = chat.workspace;
+    let checkout = chat.workspace.unwrap();
     let refused = |outcome: Result<Reply, ErrorBody>| outcome.unwrap_err();
     let error = refused(open(&supervisor, "nope", Beside::Session(chat.id)).await);
     assert_eq!(error.code, ErrorCode::NotFound);

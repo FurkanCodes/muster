@@ -47,7 +47,11 @@ async fn project(
 ) -> (ProjectId, WorkspaceId) {
     let root = sandbox.repository("app");
     let Reply::ProjectAdded { id } = link
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -71,12 +75,13 @@ async fn project(
 async fn start(link: &Link, workspace: WorkspaceId, harness: &str) -> SessionId {
     let Reply::SessionStarted { id } = link
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: harness.to_owned(),
             title: None,
             size: TermSize { cols: 80, rows: 24 },
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -132,12 +137,13 @@ async fn the_link_connects_and_patches_the_state_as_the_daemon_changes_it_arc_24
     // A refusal keeps the daemon's own code and words.
     let refused = link
         .command(Command::StartSession {
-            workspace: WorkspaceId::new(),
+            workspace: Some(WorkspaceId::new()),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await;
     assert!(
@@ -164,10 +170,15 @@ async fn the_link_connects_and_patches_the_state_as_the_daemon_changes_it_arc_24
         .until(
             "the project gone, its checkout and shell with it",
             |webview| {
+                // Its space stays, empty: a space goes only when asked (`ARC-33`).
                 webview.projects.is_empty()
                     && webview.workspaces.is_empty()
                     && webview.sessions.is_empty()
-                    && webview.derived.rows.is_empty()
+                    && webview
+                        .derived
+                        .rows
+                        .iter()
+                        .all(|row| matches!(row, Row::Space(_)))
             },
         )
         .await;

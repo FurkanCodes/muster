@@ -131,7 +131,7 @@ pub(super) fn draw_session(
 /// Where `stored` works, for a title among others': its project and its
 /// branch, or the project alone in its checkout of a plain folder.
 fn where_it_works(app: &App, stored: &muster_core::Session) -> Option<String> {
-    let workspace = app.model.workspace(stored.workspace)?;
+    let workspace = app.model.workspace(stored.workspace?)?;
     let project = app.model.project(workspace.project)?;
     Some(match workspace.kind.branch() {
         "" => project.name.clone(),
@@ -181,7 +181,10 @@ pub(super) fn draw_terminal(
         if let Some(spend) = &stored.spend {
             spans.push(Span::from(format!(" · {}", spend.text())).dim());
         }
-        if let Some(workspace) = app.model.workspace(stored.workspace) {
+        if let Some(workspace) = stored
+            .workspace
+            .and_then(|workspace| app.model.workspace(workspace))
+        {
             let mark = if workspace.kind.is_checkout() {
                 "⌂"
             } else {

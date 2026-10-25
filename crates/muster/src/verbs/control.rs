@@ -14,7 +14,6 @@ use muster_core::{Paths, Session, SessionStatus};
 
 use super::send;
 use super::targets::{self, workspace_name};
-use super::workspaces;
 use crate::commands::{self, shown, unexpected};
 
 /// How often `wait --for` looks at the screen.
@@ -180,11 +179,11 @@ pub(crate) async fn wait_for_text(
     }
 }
 
-/// `muster move <s> --to WS`: a terminal taken to another workspace: a new
-/// one started there, under the name the person gave the old, shown where
-/// the old was shown, and the old one closed. What ran in it ends, as it
-/// would in any shell that changes folder; an agent is never moved, as
-/// its work is in its workspace.
+/// `muster move <s> --to WS`: a terminal taken to another workspace: the
+/// daemon starts a new one there, under the name the person gave the old,
+/// shown where the old was shown, and closes the old one (`RestartIn`).
+/// What ran in it ends, as it would in any shell that changes folder; an
+/// agent is never moved, as its work is in its workspace.
 pub(crate) async fn move_terminal(
     paths: &Paths,
     session: &str,
@@ -201,32 +200,29 @@ pub(crate) async fn move_terminal(
         )
         .into());
     }
-    let from_project = snapshot
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.id == old.workspace)
+    let from_project = old
+        .workspace
+        .and_then(|id| {
+            snapshot
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.id == id)
+        })
         .map(|workspace| workspace.project);
     let target = targets::find_workspace(&snapshot, to, from_project)?;
-    if target.id == old.workspace {
+    if old.is_in(target.id) {
         return Err(format!("it is in {to} already").into());
     }
-    let (old_id, title) = (old.id, old.title.clone());
     let place = workspace_name(&snapshot, target);
-    let new = workspaces::start_terminal(&mut connection, target.id, Some(title)).await?;
-    // A tab or window showing the old one shows the new one now.
-    let _ = connection
-        .command(Command::Switch {
-            from: old_id,
-            to: new,
+    let reply = connection
+        .command(Command::RestartIn {
+            session: old.id,
+            workspace: target.id,
         })
-        .await;
-    connection
-        .command(Command::StopSession { session: old_id })
         .await?;
-    workspaces::stopped(&mut connection, &[old_id]).await?;
-    connection
-        .command(Command::RemoveSession { session: old_id })
-        .await?;
+    let Reply::SessionStarted { id: new } = reply else {
+        return Err(unexpected(&reply));
+    };
     let snapshot = connection.subscribe().await?;
     let number = snapshot
         .sessions

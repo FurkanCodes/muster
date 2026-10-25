@@ -63,7 +63,11 @@ async fn setup_looking_every(millis: &str, agents: &[&str], settings: Option<&st
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap();
     let checkout = connection.subscribe().await.unwrap().workspaces[0].id;
@@ -79,12 +83,13 @@ async fn setup_looking_every(millis: &str, agents: &[&str], settings: Option<&st
 async fn start_terminal(connection: &mut Connection, workspace: WorkspaceId) -> SessionId {
     let Reply::SessionStarted { id } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

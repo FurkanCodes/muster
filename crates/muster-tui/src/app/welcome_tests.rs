@@ -148,6 +148,7 @@ fn a_key_typed_ahead_goes_through_but_a_click_only_lets_the_welcome_go() {
     assert_ne!(world.app.selected, selected, "as the wheel moves it after");
 
     // `a` opens the dialog to add a project, as it says.
+    super::tests::a_space(&mut world.app);
     world.app.welcome = true;
     press(&mut world.app, KeyCode::Char('a'));
     assert!(!world.app.welcome);

@@ -38,7 +38,11 @@ async fn setup() -> Setup {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -74,12 +78,13 @@ async fn setup() -> Setup {
 async fn start(connection: &mut Connection, workspace: WorkspaceId) -> SessionId {
     match connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -255,7 +260,11 @@ async fn the_persons_claude_settings_reach_sessions_and_a_parent_sessions_marker
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { .. } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -449,12 +458,13 @@ async fn a_worktree_with_a_running_session_is_not_removed() {
     // An agent's: a shell would end with its worktree.
     let Reply::SessionStarted { .. } = connection
         .command(Command::StartSession {
-            workspace: setup.workspace,
+            workspace: Some(setup.workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -479,12 +489,13 @@ async fn unknown_harnesses_and_sessions_are_refused() {
     let mut connection = setup.daemon.connect().await;
     let started = connection
         .command(Command::StartSession {
-            workspace: setup.workspace,
+            workspace: Some(setup.workspace),
             harness: "nonsense".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await;
     assert!(
@@ -558,12 +569,13 @@ async fn an_agent_starts_sessions_but_puts_no_agent_on_a_ticket_a_review_or_a_ru
     let shell = start(&mut connection, setup.workspace).await;
     let Reply::SessionStarted { id: agent } = connection
         .command(Command::StartSession {
-            workspace: setup.workspace,
+            workspace: Some(setup.workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

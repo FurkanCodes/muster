@@ -92,7 +92,10 @@ impl Supervisor {
             .cloned()
             .collect();
         for session in orphaned {
-            if let Some(run) = self.workspace_run(session.workspace) {
+            if let Some(run) = session
+                .workspace
+                .and_then(|workspace| self.workspace_run(workspace))
+            {
                 self.recover_in_container(&session, run).await;
                 continue;
             }
@@ -194,7 +197,7 @@ impl Supervisor {
     /// Starts `session`'s program again on `agent_session`. A turn the
     /// restart cut short counts as unseen.
     async fn resume(&mut self, session: &Session, harness: Harness, agent_session: String) -> bool {
-        let Some(cwd) = self.workspace_path(session.workspace) else {
+        let Some(cwd) = self.session_path(session.id) else {
             return false;
         };
         let unseen = session.unseen

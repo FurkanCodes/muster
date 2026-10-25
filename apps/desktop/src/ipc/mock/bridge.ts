@@ -149,6 +149,7 @@ export class MockBridge implements Bridge {
       sessions: [],
       gone: { projects: [], workspaces: [], sessions: [] },
       preferences: null,
+      spaces: null,
       plugins: null,
       resources: null,
       notifier: null,
@@ -171,6 +172,10 @@ export class MockBridge implements Bridge {
           sessions: [...this.world.sessions],
           preferences: this.world.preferences,
           plugins: this.world.plugins,
+          spaces: (this.world.spaces ?? []).map((space) => ({
+            ...space,
+            members: [...space.members],
+          })),
           resources: {
             host_memory_used: 21e9,
             host_memory_total: 34e9,

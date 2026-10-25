@@ -50,7 +50,7 @@ impl Variant for ServerFrame {
 }
 
 impl Variant for Command {
-    const COUNT: usize = 48;
+    const COUNT: usize = 56;
     fn variant(&self) -> usize {
         match self {
             Self::Ping => 0,
@@ -101,12 +101,20 @@ impl Variant for Command {
             Self::Switch { .. } => 45,
             Self::AssignTicket { .. } => 46,
             Self::ExecAgent { .. } => 47,
+            Self::CreateSpace { .. } => 48,
+            Self::RenameSpace { .. } => 49,
+            Self::DeleteSpace { .. } => 50,
+            Self::MoveToSpace { .. } => 51,
+            Self::ReadPlace { .. } => 52,
+            Self::FileSession { .. } => 53,
+            Self::AddProjectHere { .. } => 54,
+            Self::RestartIn { .. } => 55,
         }
     }
 }
 
 impl Variant for Reply {
-    const COUNT: usize = 30;
+    const COUNT: usize = 32;
     fn variant(&self) -> usize {
         match self {
             Self::Pong => 0,
@@ -139,12 +147,14 @@ impl Variant for Reply {
             Self::Repositories(_) => 27,
             Self::SessionText { .. } => 28,
             Self::AgentCommand { .. } => 29,
+            Self::SpaceCreated { .. } => 30,
+            Self::Place { .. } => 31,
         }
     }
 }
 
 impl Variant for Delta {
-    const COUNT: usize = 14;
+    const COUNT: usize = 16;
     fn variant(&self) -> usize {
         match self {
             Self::ProjectUpserted(_) => 0,
@@ -161,6 +171,8 @@ impl Variant for Delta {
             Self::Preferences(_) => 11,
             Self::Notifier { .. } => 12,
             Self::PluginsChanged(_) => 13,
+            Self::SpaceUpserted(_) => 14,
+            Self::SpaceRemoved { .. } => 15,
         }
     }
 }

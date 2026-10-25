@@ -49,6 +49,8 @@ const OTHERWISE: &[(Does, &str)] = &[
         Does::SendPanelKey,
         "the mouse never took the panel key, so the program has it as typed",
     ),
+    (Does::NextSpace, "the spaces menu goes to any space"),
+    (Does::PreviousSpace, "the spaces menu goes to any space"),
 ];
 
 /// The screen whose keys a press of a hint's key is, as the app is.
@@ -147,6 +149,10 @@ fn each_line(world: &mut World, reached: &mut BTreeSet<Does>) {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one walk through every screen, each step reaching what it shows"
+)]
 fn every_key_has_a_mouse_arc_32() {
     let mut reached = BTreeSet::new();
     let wide = TermSize {
@@ -169,6 +175,12 @@ fn every_key_has_a_mouse_arc_32() {
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
+    // And a terminal in no project, under its space.
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(
+            crate::model::tests::free_terminal("zsh", 12),
+        )));
     each_line(&mut world, &mut reached);
 
     // Typing in a session, two panels side by side, the panel key waiting.

@@ -181,7 +181,7 @@ impl Supervisor {
             .sessions
             .iter()
             .find(|stored| stored.id == session)
-            .map(|stored| stored.workspace);
+            .and_then(|stored| stored.workspace);
         if let Some(workspace) = workspace {
             self.look_at_changes(Some(workspace));
         }

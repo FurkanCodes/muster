@@ -2,7 +2,7 @@
 //! too (`muster-model`), so both say alike what needs the person and in
 //! what order.
 
-pub(crate) use muster_model::{Model, Row, needs_attention, stands_beside};
+pub(crate) use muster_model::{Model, Row, View, needs_attention, stands_beside};
 
 /// Entities to build tests' states from.
 #[cfg(test)]

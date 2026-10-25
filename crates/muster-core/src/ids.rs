@@ -108,6 +108,11 @@ id_type!(
     RunId,
     "run"
 );
+id_type!(
+    /// A group of projects and terminals the person made.
+    SpaceId,
+    "spc"
+);
 
 #[cfg(test)]
 mod tests {

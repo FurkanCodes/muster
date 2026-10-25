@@ -42,6 +42,7 @@ mod selection;
 mod sessions;
 pub(crate) mod settings;
 mod shared_builds;
+mod spaces;
 mod telling;
 mod terminal;
 pub(crate) mod theme;

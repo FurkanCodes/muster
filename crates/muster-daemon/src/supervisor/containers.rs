@@ -208,7 +208,7 @@ impl Supervisor {
             .state
             .sessions
             .iter()
-            .find(|session| session.workspace == workspace && session.harness == AGENT)
+            .find(|session| session.is_in(workspace) && session.harness == AGENT)
             .map(|session| session.id);
         if let Some(session) = existing {
             if !self.is_running(session) {
@@ -266,7 +266,7 @@ impl Supervisor {
             .sessions
             .iter()
             .find(|stored| stored.id == session)?;
-        let run = self.workspace_run(stored.workspace)?;
+        let run = self.workspace_run(stored.workspace?)?;
         if stored.harness != AGENT {
             return None;
         }
@@ -302,9 +302,12 @@ impl Supervisor {
             return Err(error);
         }
         let stored = self.stored_session(session)?;
-        let run = self.workspace_run(stored.workspace).ok_or_else(|| {
-            ErrorBody::new(ErrorCode::BadRequest, "not a session in a run's container")
-        })?;
+        let run = stored
+            .workspace
+            .and_then(|workspace| self.workspace_run(workspace))
+            .ok_or_else(|| {
+                ErrorBody::new(ErrorCode::BadRequest, "not a session in a run's container")
+            })?;
         let harness = harness::find(AGENT).ok_or_else(|| {
             ErrorBody::new(ErrorCode::Internal, "Claude Code is not a known harness")
         })?;
@@ -421,7 +424,7 @@ impl Supervisor {
             .sessions
             .iter()
             .find(|stored| stored.id == session)
-            .and_then(|stored| self.workspace_run(stored.workspace))
+            .and_then(|stored| self.workspace_run(stored.workspace?))
         else {
             return;
         };
@@ -441,7 +444,12 @@ impl Supervisor {
             .state
             .sessions
             .iter()
-            .filter(|session| self.workspace_run(session.workspace) == Some(run))
+            .filter(|session| {
+                session
+                    .workspace
+                    .and_then(|workspace| self.workspace_run(workspace))
+                    == Some(run)
+            })
             .map(|session| session.id)
             .filter(|session| self.is_running(*session))
             .collect();

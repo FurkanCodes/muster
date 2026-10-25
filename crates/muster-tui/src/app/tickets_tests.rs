@@ -550,7 +550,7 @@ fn the_agents_on_a_ticket_are_those_in_worktrees_made_for_it_whatever_their_bran
             .on_frame(ServerFrame::Delta(Delta::SessionUpserted(agent)));
     }
     // A plugin's panel beside an agent is no agent.
-    let mut panel = session(first.workspace, "graph", 50);
+    let mut panel = session(first.workspace.unwrap(), "graph", 50);
     panel.harness = "plugin:session-graph/graph".to_owned();
     world
         .app

@@ -37,7 +37,11 @@ fn said(output: &std::process::Output) -> String {
 async fn worktree(connection: &mut Connection, sandbox: &Sandbox) -> WorkspaceId {
     let root = sandbox.repository("app");
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -61,12 +65,13 @@ async fn worktree(connection: &mut Connection, sandbox: &Sandbox) -> WorkspaceId
 async fn start(connection: &mut Connection, workspace: WorkspaceId, harness: &str) -> SessionId {
     match connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: harness.to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

@@ -16,7 +16,7 @@ pub(crate) fn apply(state: &mut Snapshot, delta: Delta) {
                 .collect();
             state
                 .sessions
-                .retain(|session| !gone.contains(&session.workspace));
+                .retain(|session| session.workspace.is_none_or(|w| !gone.contains(&w)));
             state.workspaces.retain(|workspace| workspace.project != id);
             state.projects.retain(|project| project.id != id);
         }
@@ -25,7 +25,7 @@ pub(crate) fn apply(state: &mut Snapshot, delta: Delta) {
         }
         Delta::WorkspaceRemoved { id } => {
             state.workspaces.retain(|workspace| workspace.id != id);
-            state.sessions.retain(|session| session.workspace != id);
+            state.sessions.retain(|session| !session.is_in(id));
         }
         Delta::SessionUpserted(session) => upsert(&mut state.sessions, session, |s| s.id),
         Delta::SessionRemoved { id } => state.sessions.retain(|session| session.id != id),
@@ -50,6 +50,8 @@ pub(crate) fn apply(state: &mut Snapshot, delta: Delta) {
         Delta::Preferences(preferences) => state.preferences = preferences,
         Delta::Notifier { ready } => state.notifier = ready,
         Delta::PluginsChanged(plugins) => state.plugins = plugins,
+        Delta::SpaceUpserted(space) => upsert(&mut state.spaces, space, |s| s.id),
+        Delta::SpaceRemoved { id } => state.spaces.retain(|space| space.id != id),
         // Nothing the notch shows.
         Delta::Resources(_) | Delta::RunUpserted(_) => {}
     }
@@ -102,7 +104,7 @@ mod tests {
         };
         let session = Session {
             id: SessionId::new(),
-            workspace: workspace.id,
+            workspace: Some(workspace.id),
             harness: "claude".to_owned(),
             title: "t".to_owned(),
             status: SessionStatus::Fresh,

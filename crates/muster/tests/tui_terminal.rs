@@ -40,7 +40,7 @@ fn shell(sandbox: &Sandbox) -> (Ui, PathBuf) {
     let root = sandbox.repository("app");
     let mut ui = Ui::start_with(sandbox, &root, &LOCAL);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     // Its checkout too, which can come after the reply.
@@ -88,7 +88,9 @@ fn a_program_s_copy_reaches_the_clipboard_and_is_not_made_again_on_attaching() {
     std::fs::remove_file(sandbox.root().join("fake-clipboard/copied")).unwrap();
     let mut again = Ui::start_with(&sandbox, &root, &LOCAL);
     again.wait_for("⌂ main");
-    // Down from the project, past its checkout, to the session.
+    // Down from its space's heading, past the project and its checkout, to
+    // the session.
+    again.keys(b"\x1b[B");
     again.keys(b"\x1b[B");
     again.keys(b"\x1b[B");
     again.wait_for("sent-8");

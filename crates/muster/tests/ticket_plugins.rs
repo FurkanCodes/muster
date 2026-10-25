@@ -185,7 +185,11 @@ async fn muster_s_own_github_plugin_turned_off_gives_no_tickets_until_turned_on_
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -288,7 +292,11 @@ async fn anyone_s_ticket_plugin_serves_a_project_s_tickets_through_muster_prd_15
     let root = sandbox.repository("app");
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -554,6 +562,7 @@ async fn the_example_ticket_plugin_installs_from_git_and_serves_its_file_s_ticke
         .command(Command::AddProject {
             root: root.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -642,7 +651,11 @@ async fn a_ticket_plugin_linked_again_updated_or_turned_on_again_runs_as_it_is_n
     let root = sandbox.repository("app");
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {

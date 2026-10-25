@@ -71,3 +71,11 @@
   flex: 1;
   min-width: 0;
 }
+
+/* The ways a terminal in no project goes under one (SpaceDialogs), one under another. */
+.ui-flow-choices {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-8);
+}

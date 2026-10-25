@@ -23,13 +23,18 @@ use serde_json::json;
 use support::{Sandbox, expect_event};
 
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one end-to-end story, step by step")]
 async fn an_agent_s_turn_ending_shows_what_it_changed_and_each_file_s_diff() {
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -58,12 +63,13 @@ async fn an_agent_s_turn_ending_shows_what_it_changed_and_each_file_s_diff() {
 
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

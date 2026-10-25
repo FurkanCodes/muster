@@ -52,7 +52,7 @@ export function worktreesFor(
 export function agentsOn(sessions: readonly Session[], worktrees: readonly Workspace[]): Session[] {
   const ids = new Set(worktrees.map((w) => w.id));
   return sessions
-    .filter((s) => ids.has(s.workspace) && !standsBeside(s))
+    .filter((s) => s.workspace !== null && ids.has(s.workspace) && !standsBeside(s))
     .sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id));
 }
 

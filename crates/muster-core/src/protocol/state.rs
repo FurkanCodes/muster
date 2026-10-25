@@ -54,6 +54,9 @@ pub struct Snapshot {
     /// Every plugin.
     #[serde(default)]
     pub plugins: Vec<plugins::PluginInfo>,
+    /// The person's spaces, in the order they were made.
+    #[serde(default)]
+    pub spaces: Vec<crate::Space>,
 }
 
 /// What the machine and each running session use, measured every couple of
@@ -123,4 +126,10 @@ pub enum Delta {
     },
     /// The plugins changed: each, as it is now.
     PluginsChanged(Vec<plugins::PluginInfo>),
+    /// A space was made or changed: as it is now.
+    SpaceUpserted(crate::Space),
+    /// A space was removed; what was in it stays.
+    SpaceRemoved {
+        id: crate::SpaceId,
+    },
 }

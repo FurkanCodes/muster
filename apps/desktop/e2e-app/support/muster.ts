@@ -34,8 +34,9 @@ export function musterVersion(): string {
 
 export interface StatusSession {
   id: string;
-  project: string;
-  workspace: string;
+  project: string | null;
+  /** None for a terminal in no project (ARC-33). */
+  workspace: string | null;
   branch: string | null;
   harness: string;
   title: string;
@@ -65,6 +66,9 @@ export interface Status {
   daemon?: { version: string; pid: number; protocol: number };
   health?: { tasks: number; work: number; clients: number; terminals: number };
   projects?: StatusProject[];
+  /** The terminals in no project (ARC-33). */
+  terminals?: StatusSession[];
+  spaces?: { id: string; name: string; members: string[] }[];
 }
 
 /** `muster status --json`; not running where it cannot be read. */

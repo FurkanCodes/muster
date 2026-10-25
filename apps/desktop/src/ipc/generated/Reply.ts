@@ -16,6 +16,7 @@ import type { PullRequest } from "./PullRequest";
 import type { RunId } from "./RunId";
 import type { RunTransition } from "./RunTransition";
 import type { SessionId } from "./SessionId";
+import type { SpaceId } from "./SpaceId";
 import type { Timeline } from "./Timeline";
 import type { UndoPlan } from "./UndoPlan";
 import type { WorkspaceId } from "./WorkspaceId";
@@ -23,7 +24,19 @@ import type { WorkspaceId } from "./WorkspaceId";
 /**
  * A successful answer to a [`Command`].
  */
-export type Reply = "Pong" | { "ProjectAdded": { id: ProjectId, } } | { "WorktreeCreated": { id: WorkspaceId, } } | { "SessionStarted": { id: SessionId, } } | { "Issues": { issues: Array<Issue>, 
+export type Reply = "Pong" | { "ProjectAdded": { id: ProjectId, } } | { "WorktreeCreated": { id: WorkspaceId, } } | { "SessionStarted": { id: SessionId, } } | { "SpaceCreated": { id: SpaceId, } } | { "Place": { 
+/**
+ * Its folder; `None` where it cannot be read.
+ */
+folder: string | null, 
+/**
+ * The workspace whose folder holds it, if one does.
+ */
+workspace: WorkspaceId | null, 
+/**
+ * What runs in front in it, as the person would name it.
+ */
+front: string | null, } } | { "Issues": { issues: Array<Issue>, 
 /**
  * Where they came from, for the person: `GitHub issues`, `Jira
  * (acme.atlassian.net)`.

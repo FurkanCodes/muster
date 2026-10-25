@@ -10,7 +10,7 @@ use muster_core::harness::SessionKind;
 use muster_core::plugins::{Context, Missing, PanelOn};
 use muster_core::protocol::plugins::Beside;
 use muster_core::protocol::{ErrorBody, ErrorCode, Reply, TermSize};
-use muster_core::{SessionId, SessionStatus, WorkspaceId};
+use muster_core::{Session, SessionId, SessionStatus, WorkspaceId};
 use muster_state::session::Start;
 
 use super::Supervisor;
@@ -67,7 +67,10 @@ impl Supervisor {
         size: TermSize,
     ) -> Result<Reply, ErrorBody> {
         let (workspace, session) = match beside {
-            Beside::Session(session) => (self.stored_session(session)?.workspace, Some(session)),
+            Beside::Session(session) => {
+                let stored = self.stored_session(session)?;
+                (Self::panel_workspace(&stored)?, Some(session))
+            }
             Beside::Workspace(workspace) => (workspace, None),
         };
         let (launch, beside, context) =
@@ -77,6 +80,17 @@ impl Supervisor {
         }
         self.launch_panel(workspace, beside, launch, &context, size)
             .await
+    }
+
+    /// The workspace a panel beside `session` opens in: a free terminal's
+    /// has none, so no panel opens beside it (`ARC-33`).
+    fn panel_workspace(session: &Session) -> Result<WorkspaceId, ErrorBody> {
+        session.workspace.ok_or_else(|| {
+            ErrorBody::new(
+                ErrorCode::BadRequest,
+                "a plugin's panel opens in a project, and this terminal is in none",
+            )
+        })
     }
 
     /// Starts the ended panel `session` again in the same session, opened
@@ -93,11 +107,12 @@ impl Supervisor {
                 format!("{} is no plugin's panel", stored.title),
             ));
         };
+        let workspace = Self::panel_workspace(&stored)?;
         let (mut launch, _, context) = self
-            .panel_launch(plugin, panel, stored.workspace, stored.beside)
+            .panel_launch(plugin, panel, workspace, stored.beside)
             .await?;
         launch.env.extend(context.variables());
-        let path = self.panel_path(stored.workspace)?;
+        let path = self.panel_path(workspace)?;
         self.reopen_and_launch(
             session,
             Harness::panel(launch),
@@ -255,7 +270,7 @@ impl Supervisor {
         self.state
             .sessions
             .iter()
-            .filter(|session| session.harness == harness && session.workspace == workspace)
+            .filter(|session| session.harness == harness && session.is_in(workspace))
             .filter(|session| session.beside == beside && session.ended_at.is_none())
             .find(|session| self.is_running(session.id))
             .map(|session| session.id)
@@ -311,7 +326,7 @@ impl Supervisor {
         };
         if let Some(beside) = beside {
             let stored = self.stored_session(beside)?;
-            if stored.workspace != workspace {
+            if !stored.is_in(workspace) {
                 return Err(ErrorBody::new(
                     ErrorCode::BadRequest,
                     format!("{} is not in that workspace", stored.title),
@@ -370,7 +385,13 @@ impl Supervisor {
         panel.env.extend(context.variables());
         let harness = Harness::panel(panel);
         let id = self
-            .add_session_tied(workspace, &harness, None, Start::Idle, Ties::beside(beside))
+            .add_session_tied(
+                Some(workspace),
+                &harness,
+                None,
+                Start::Idle,
+                Ties::beside(beside),
+            )
             .await?;
         let mode = Mode::Fresh { prompt: None };
         let place = Place::Host(path);

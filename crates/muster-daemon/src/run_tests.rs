@@ -222,6 +222,7 @@ async fn setup_with(muster_toml: &str, token: Option<&str>) -> Setup {
         .command(Command::AddProject {
             root: root.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap()

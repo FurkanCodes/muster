@@ -14,7 +14,9 @@ use std::collections::BTreeMap;
 use muster_core::protocol::plugins::PluginInfo;
 use muster_core::protocol::{DetachReason, ErrorCode, ResourceReport, TerminalModes};
 use muster_core::settings::Preferences;
-use muster_core::{Project, ProjectId, Session, SessionId, Timestamp, Workspace, WorkspaceId};
+use muster_core::{
+    Project, ProjectId, Session, SessionId, Space, SpaceId, Timestamp, Workspace, WorkspaceId,
+};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -67,6 +69,8 @@ pub struct Patch {
     pub workspaces: Vec<Workspace>,
     pub sessions: Vec<Session>,
     pub gone: Gone,
+    /// The person's spaces, all of them, when any changed.
+    pub spaces: Option<Vec<Space>>,
     /// Muster's own settings, when they changed.
     pub preferences: Option<Preferences>,
     /// Every plugin, when any changed.
@@ -98,9 +102,16 @@ pub struct Derived {
     /// The agents at work, the longest at it first (*Working*): chats
     /// running with no news for the person, never a shell or a panel.
     pub working: Vec<SessionId>,
-    /// The sessions list: each project, its workspaces, their sessions, in
-    /// the order the terminal UI lists them.
+    /// The sessions list: each space's heading, then its projects with
+    /// their workspaces and sessions, then its terminals in no project, in
+    /// the order the terminal UI lists them (`ARC-33`).
     pub rows: Vec<Row>,
+    /// The same list as each space shows it (`muster_model::Model::rows_in`),
+    /// for a window to show the one it chose without filtering.
+    pub space_rows: BTreeMap<SpaceId, Vec<Row>>,
+    /// The space each session waiting on the person is in, as its line in
+    /// *Needs you* notes it (`in Work`); none where in no space.
+    pub space_notes: BTreeMap<String, String>,
     /// The flock, as the title bar counts it.
     pub counts: Counts,
     /// What each session asking the person shows last: its screen's last
@@ -118,6 +129,8 @@ pub enum Row {
     Project(ProjectId),
     Workspace(WorkspaceId),
     Session(SessionId),
+    /// A space's heading (`ARC-33`): what it holds follows it.
+    Space(SpaceId),
 }
 
 /// How many agents work, wait on the person and are done, as the terminal

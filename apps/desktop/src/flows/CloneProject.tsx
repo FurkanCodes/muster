@@ -21,6 +21,7 @@ import { useTask } from "./useTask";
 import "./flows.css";
 import { ask } from "../ipc/ask";
 import { type Asked, useAsked } from "../ipc/useAsked";
+import { spaceToJoin } from "../spaces/spaces";
 
 /** The repositories the person can reach, asked of the daemon once as the dialog opens. */
 function useListing(): Asked<HostedRepository[]> {
@@ -53,7 +54,7 @@ export default function CloneProject() {
   const cloneInto = async (name: string, folder: string) => {
     const reply = await ask(
       app.bridge,
-      { CloneProject: { repository: name, into: folder } },
+      { CloneProject: { repository: name, into: folder, space: spaceToJoin(app) } },
       "ProjectAdded",
     );
     const project = reply.id;

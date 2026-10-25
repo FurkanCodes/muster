@@ -38,7 +38,11 @@ async fn an_agent_tidies_the_commits_not_pushed_and_muster_checks_the_files() {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {

@@ -63,7 +63,11 @@ async fn setup(settings: Option<&str>) -> Setup {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -96,12 +100,13 @@ async fn start(
 ) -> Result<SessionId, ClientError> {
     connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "my-agent".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: prompt.map(str::to_owned),
             started_by: None,
+            space: None,
         })
         .await
         .map(|reply| match reply {

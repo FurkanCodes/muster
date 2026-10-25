@@ -29,6 +29,7 @@ async fn add_project(connection: &mut Connection, root: &std::path::Path) -> Pro
         .command(Command::AddProject {
             root: root.to_owned(),
             name: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -291,12 +292,13 @@ async fn the_daemon_answers_while_git_makes_or_removes_a_worktree() {
     at_once(connection.command(Command::Ping)).await.unwrap();
     // Nothing starts in a worktree going, and it goes once.
     let shell = Command::StartSession {
-        workspace: id,
+        workspace: Some(id),
         harness: "shell".to_owned(),
         title: None,
         size: muster_core::protocol::TermSize::default(),
         prompt: None,
         started_by: None,
+        space: None,
     };
     assert_eq!(
         code(at_once(connection.command(shell)).await),

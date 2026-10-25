@@ -225,7 +225,7 @@ impl App {
                 .needs
                 .selected
                 .and_then(|session| self.model.session(session))
-                .map(|session| session.workspace),
+                .and_then(|session| session.workspace),
             View::Tickets | View::Settings => None,
         };
         let Some(found) = workspace.and_then(|id| self.model.workspace(id)) else {

@@ -79,7 +79,13 @@ describe("The flows", () => {
         expect.stringContaining("Or drop a folder on this window."),
       );
 
+      // Everything lives in a space (ARC-33): the first is named, then the project goes in it.
       await pressOnWindow("a");
+      const named = dialog("New space");
+      await expect(named).toBeDisplayed();
+      await expect(named).toHaveText(expect.stringContaining("Everything lives in a space"));
+      await fill(field(named, "Name"), "Home");
+      await button(named, "Make it").click();
       const adding = dialog("Add a project");
       await expect(adding).toBeDisplayed();
       const folder = field(adding, "Folder");
@@ -93,6 +99,13 @@ describe("The flows", () => {
       await until(noDialog, "the dialog to close");
       const added = await until(() => project("lib"), "the project lib");
       expect(added.path).toBe(realpathSync(join(home, "code", "lib")));
+      await until(
+        () =>
+          status()
+            .spaces?.find((space) => space.name === "Home")
+            ?.members.includes(added.id),
+        "the project in the space named first",
+      );
       await expect(
         $('//nav[@aria-label="Sessions"]//*[@role="treeitem" and @aria-label="lib"]'),
       ).toBeDisplayed();

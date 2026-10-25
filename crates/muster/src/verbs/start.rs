@@ -111,12 +111,13 @@ async fn start(paths: &Paths, args: Args) -> Result<ExitCode, Box<dyn std::error
     };
     let started = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: args.agent.clone(),
             title: args.title.clone(),
             size: TermSize::default(),
             prompt,
             started_by: super::started_by(),
+            space: None,
         })
         .await;
     let session = match started {
@@ -173,7 +174,7 @@ fn in_terminal(snapshot: &Snapshot, args: &Args) -> Option<(SessionId, Workspace
         .sessions
         .iter()
         .find(|session| session.id == inside && session.kind().is_shell())
-        .map(|session| (session.id, session.workspace))
+        .and_then(|session| Some((session.id, session.workspace?)))
 }
 
 /// The prompt the words make, read from standard input for `-`; `None`
@@ -221,7 +222,11 @@ async fn with_project(
         .into());
     }
     let reply = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await?;
     let Reply::ProjectAdded { .. } = reply else {
         return Err(unexpected(&reply));

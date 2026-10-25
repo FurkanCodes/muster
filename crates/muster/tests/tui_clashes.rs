@@ -89,7 +89,7 @@ fn a_worktree_whose_work_would_conflict_with_the_checkout_says_so() {
 
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("Add a project");
     ui.keys(b"\r");
     ui.wait_for("⌂ main");

@@ -255,6 +255,10 @@ enum ProjectCommand {
         /// The name shown in the UI; defaults to the directory's name.
         #[arg(long)]
         name: Option<String>,
+        /// The space it goes in; without it, the only space, or a Home
+        /// made for it where there is none.
+        #[arg(long, value_name = "SPACE")]
+        space: Option<String>,
     },
     /// Stop tracking PROJECT (its name, id or path). Its folder is not
     /// touched; its worktrees must be removed first.
@@ -379,8 +383,8 @@ fn main() -> ExitCode {
             }
             Some(Commands::Upgrade) => return upgrade::run(&socket, &paths.runtime_dir).await,
             Some(Commands::Status { json }) => return commands::status(&socket, json).await,
-            Some(Commands::Project(ProjectCommand::Add { path, name })) => {
-                commands::add_project(&socket, &path, name).await
+            Some(Commands::Project(ProjectCommand::Add { path, name, space })) => {
+                commands::add_project(&socket, &path, name, space.as_deref()).await
             }
             Some(Commands::Project(ProjectCommand::Remove { project })) => {
                 commands::remove_project(&socket, &project).await

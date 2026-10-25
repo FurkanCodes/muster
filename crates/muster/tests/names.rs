@@ -31,12 +31,13 @@ async fn start(
 ) -> SessionId {
     let Reply::SessionStarted { id } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: prompt.map(str::to_owned),
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -77,7 +78,11 @@ async fn a_chat_is_named_by_its_first_prompt_and_renamed_by_the_person() {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { .. } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {

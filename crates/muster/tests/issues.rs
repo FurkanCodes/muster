@@ -64,7 +64,11 @@ async fn setup() -> Setup {
     let Reply::ProjectAdded { id: project } = daemon
         .connect()
         .await
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {

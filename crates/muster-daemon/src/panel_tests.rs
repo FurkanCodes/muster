@@ -87,6 +87,7 @@ pub(crate) async fn project(dir: &Path, supervisor: &SupervisorHandle) -> (PathB
         .command(Command::AddProject {
             root: root.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap();
@@ -159,7 +160,7 @@ async fn a_panel_runs_in_its_workspace_told_what_muster_knows_and_is_no_news_prd
     // A Claude Code chat that ran a turn, as a restart finds it.
     let chat = Session {
         id: SessionId::new(),
-        workspace: checkout,
+        workspace: Some(checkout),
         harness: "claude".to_owned(),
         title: "Fix the login".to_owned(),
         status: SessionStatus::Finished,

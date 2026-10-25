@@ -368,9 +368,16 @@ describe("Sessions and its panels, over the real daemon", () => {
       const toml = settingsToml();
       return toml.includes(api) && toml.indexOf(api) < toml.indexOf(first);
     }, "the order to be kept, api first");
+    // Under their space's heading (ARC-33), api now comes before web.
     await browser.waitUntil(
-      async () =>
-        (await $('[role="treeitem"][aria-level="1"]').getAttribute("aria-label")) === "api",
+      async () => {
+        const labels = await browser.execute(() =>
+          [...document.querySelectorAll('[role="treeitem"]')].map((one) =>
+            one.getAttribute("aria-label"),
+          ),
+        );
+        return labels.indexOf("api") >= 0 && labels.indexOf("api") < labels.indexOf("web");
+      },
       { timeoutMsg: "api was not listed first" },
     );
   });

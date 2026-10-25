@@ -40,12 +40,13 @@ async fn a_turn(sandbox: &Sandbox, root: &Path) {
     let workspace = snapshot.workspaces[0].id;
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -89,7 +90,7 @@ fn z_puts_a_turn_s_files_back_once_the_person_says_yes() {
 
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("Add a project");
     ui.keys(b"\r");
     ui.wait_for("⌂ main");

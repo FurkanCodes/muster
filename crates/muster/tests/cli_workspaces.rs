@@ -50,6 +50,7 @@ async fn setup() -> Setup {
         .command(Command::AddProject {
             root: repository.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap();
@@ -105,7 +106,7 @@ impl Setup {
                 .await
                 .sessions
                 .into_iter()
-                .filter(|session| session.workspace == workspace)
+                .filter(|session| session.is_in(workspace))
                 .collect();
             found.sort_by_key(|session| (session.created_at, session.id));
             (found.len() >= count).then_some(found)
@@ -339,7 +340,11 @@ async fn an_agent_started_in_a_workspace_s_terminal_belongs_to_it_and_takes_the_
     let sessions = setup.sessions_in(workspace, 2).await;
     let agent = &sessions[1];
     assert_eq!(agent.harness, "claude");
-    assert_eq!(agent.workspace, workspace, "in the terminal's workspace");
+    assert_eq!(
+        agent.workspace,
+        Some(workspace),
+        "in the terminal's workspace"
+    );
     assert_eq!(
         setup.snapshot().await.workspaces.len(),
         2,
@@ -485,10 +490,7 @@ async fn a_terminal_moves_to_another_workspace_and_an_agent_does_not_prd_6b() {
     assert_eq!(there[0].title, "server");
     let snapshot = setup.snapshot().await;
     assert!(
-        !snapshot
-            .sessions
-            .iter()
-            .any(|session| session.workspace == from),
+        !snapshot.sessions.iter().any(|session| session.is_in(from)),
         "the old one is closed"
     );
 

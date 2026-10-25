@@ -103,6 +103,7 @@ mod tests {
             command: Command::AddProject {
                 root: PathBuf::from("/src/app"),
                 name: None,
+                space: None,
             },
         });
         round_trip(ServerFrame::Delta(Delta::SessionStatus {

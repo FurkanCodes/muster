@@ -177,7 +177,11 @@ fn wait_heard(folder: &Path, hook: &str, event: &str, times: usize) -> Value {
 async fn project(connection: &mut Connection, sandbox: &Sandbox) -> muster_core::ProjectId {
     let root = sandbox.repository("app");
     let Reply::ProjectAdded { id } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -209,12 +213,13 @@ async fn worktree(
 async fn start(connection: &mut Connection, workspace: WorkspaceId, harness: &str) -> SessionId {
     match connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: harness.to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

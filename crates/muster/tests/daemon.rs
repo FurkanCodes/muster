@@ -50,6 +50,7 @@ fn add(root: &std::path::Path) -> Command {
     Command::AddProject {
         root: root.to_owned(),
         name: None,
+        space: None,
     }
 }
 
@@ -342,7 +343,7 @@ async fn the_daemon_backs_up_schema_six_before_dropping_samples_arc_14_prd_09() 
         current
             .pragma_query_value::<u32, _>(None, "user_version", |row| row.get(0))
             .unwrap(),
-        10,
+        11,
         "migrated to the newest schema"
     );
     assert_eq!(

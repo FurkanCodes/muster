@@ -146,7 +146,7 @@ async fn the_person_drives_the_run_s_agent_in_its_container_and_hands_it_back() 
     let session = snapshot.sessions.iter().find(|s| s.id == agent).unwrap();
     assert_eq!(
         (session.workspace, session.harness.as_str()),
-        (workspace, "claude")
+        (Some(workspace), "claude")
     );
 
     // Started through docker with a terminal, in the run's container,
@@ -181,12 +181,13 @@ async fn the_person_drives_the_run_s_agent_in_its_container_and_hands_it_back() 
         twice.message
     );
     let start_in = |harness: &str| Command::StartSession {
-        workspace,
+        workspace: Some(workspace),
         harness: harness.to_owned(),
         title: None,
         size: TermSize::default(),
         prompt: None,
         started_by: None,
+        space: None,
     };
     let refused = setup
         .supervisor
@@ -261,7 +262,7 @@ async fn the_person_drives_the_run_s_agent_in_its_container_and_hands_it_back() 
             .all(|found| found.id != workspace)
     })
     .await;
-    assert!(snapshot.sessions.iter().all(|s| s.workspace != workspace));
+    assert!(snapshot.sessions.iter().all(|s| !s.is_in(workspace)));
 }
 
 #[tokio::test]
@@ -319,12 +320,13 @@ async fn a_daemon_restart_starts_the_person_s_agent_again_and_ends_their_shells(
     let Reply::SessionStarted { id: shell } = setup
         .supervisor
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
