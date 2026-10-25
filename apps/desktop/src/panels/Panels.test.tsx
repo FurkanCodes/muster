@@ -157,6 +157,58 @@ describe("ARC-24 the panels beside the agent", () => {
   });
 });
 
+describe("ARC-24 the preview, zoom and the panel key (PRD §6a)", () => {
+  it("place the preview's session by its ◆, and fold the preview away by its ✕", async () => {
+    const { app, bridge } = await pane();
+    await userEvent.keyboard("T");
+    act(() => app.actions.keysTo("list"));
+    const preview = await screen.findByRole("region", { name: "Preview: Codex" });
+    await userEvent.click(within(preview).getByRole("button", { name: "Place it here" }));
+    await waitFor(() => expect(bridge.world.preferences.panels).toContain(`session:ses_${codex}`));
+    // Placed, it is in a panel of its own; the preview has none to show.
+    const box = document.querySelector(".panels") as HTMLElement;
+    await within(box).findByRole("region", { name: "Sketch the Tauri shell" });
+    expect(screen.queryByRole("region", { name: "Preview: Codex" })).not.toBeInTheDocument();
+  });
+
+  it("fold the preview away by its ✕ until another is selected", async () => {
+    const { app } = await pane();
+    await userEvent.keyboard("T");
+    act(() => app.actions.keysTo("list"));
+    const preview = await screen.findByRole("region", { name: "Preview: Codex" });
+    await userEvent.click(within(preview).getByRole("button", { name: "Fold the preview away" }));
+    expect(screen.queryByRole("region", { name: "Preview: Codex" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /^Shell/ })).toBeInTheDocument();
+  });
+
+  it("zoom a panel by a double-click on its head, saying how many it hides, and put it back", async () => {
+    const { app } = await pane();
+    await userEvent.keyboard("T");
+    act(() => app.actions.keysTo("list"));
+    const shell = await screen.findByRole("region", { name: /^Shell/ });
+    const head = shell.querySelector(".mu-panel-head") as HTMLElement;
+    await userEvent.dblClick(head);
+    expect(screen.queryByRole("region", { name: "Preview: Codex" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /^Shell/ })).toHaveTextContent("zoomed · 1 more");
+    await userEvent.dblClick(head);
+    expect(screen.getByRole("region", { name: "Preview: Codex" })).toBeInTheDocument();
+  });
+
+  it("zoom by the panel key and z, as the terminal UI does", async () => {
+    const { app } = await pane();
+    await userEvent.keyboard("T");
+    act(() => app.actions.keysTo("list"));
+    await screen.findByRole("region", { name: /^Shell/ });
+    await userEvent.keyboard("{Control>}b{/Control}");
+    expect(app.ui.getState().note?.text).toMatch(/^⌃B: +v split →/);
+    await userEvent.keyboard("z");
+    expect(screen.queryByRole("region", { name: /^Shell/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Preview: Codex" })).toHaveTextContent(
+      "zoomed · 1 more",
+    );
+  });
+});
+
 describe("ARC-24 moving the panels with the keys", () => {
   it("moves the panel with the keys on m and the arrows, ⏎ keeping the layout", async () => {
     const { app, bridge } = await pane();

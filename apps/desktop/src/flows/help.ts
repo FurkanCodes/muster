@@ -33,7 +33,8 @@ const WHAT: Partial<Record<KeyAction, string>> = {
   show_tickets: "the project's tickets",
   full_screen: "the session full screen",
   show_changes: "what the worktree or session has changed, and its turns",
-  shell: "a shell in the workspace, beside the session (again: put it away)",
+  shell: "a shell in the workspace, placed beside the session (one there gets the keys)",
+  pin_session: "place the session in a panel of its own (again: off the screen; or drag its line)",
   stop_session: "stop the session",
   restart_session: "start an ended session again",
   close: "close the session; remove the worktree or the project, after asking",
@@ -80,6 +81,7 @@ const ANYWHERE: Entry[] = [
   fixed("⌘,", "Settings"),
   fixed("⌘\\", "fold the sidebar away, or bring it back"),
   "fold_list",
+  "panel_key",
   "last_alarm",
   "help",
 ];
@@ -88,12 +90,40 @@ const IN_A_SESSION: HelpSectionOf = [
   "In a session",
   [
     fixed("⇧Q", "back to the list (or a click on it)"),
+    "panel_key",
     fixed("⌘ shortcuts", "the window's, as everywhere"),
     fixed("any other key", "goes to its program, ⎋ and ⇥ too"),
   ],
 ];
 
 type HelpSectionOf = [string, Entry[]];
+
+/** What the key after the panel key does, on the list or in a panel (`app::prefix`). */
+const AFTER_THE_PANEL_KEY: HelpSectionOf = [
+  "After the panel key",
+  [
+    "split_right",
+    "split_down",
+    "focus_left",
+    "focus_down",
+    "focus_up",
+    "focus_right",
+    "swap_left",
+    "swap_down",
+    "swap_up",
+    "swap_right",
+    "zoom",
+    "take_off",
+    "close_panel",
+    "place_preview",
+    "to_panel",
+    "to_list",
+    "send_panel_key",
+    "panel_keys",
+    fixed("esc", "give up"),
+    fixed("double-click a head", "zoom it, or put it back"),
+  ],
+];
 
 const SESSIONS: HelpSectionOf[] = [
   [
@@ -129,6 +159,7 @@ const SESSIONS: HelpSectionOf[] = [
     ],
   ],
   IN_A_SESSION,
+  AFTER_THE_PANEL_KEY,
   ["Anywhere", ANYWHERE],
 ];
 
@@ -154,6 +185,7 @@ const QUEUE: HelpSectionOf[] = [
     ],
   ],
   IN_A_SESSION,
+  AFTER_THE_PANEL_KEY,
   ["Anywhere", ANYWHERE],
 ];
 

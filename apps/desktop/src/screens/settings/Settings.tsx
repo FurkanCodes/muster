@@ -264,6 +264,7 @@ function hintsFor(
 
 const BUTTON_HINTS: Readonly<Record<string, string>> = {
   panels: "put back as at first",
+  projects: "as they were added",
   read_again: "read again",
   add_plugin: "add a plugin",
   remove: "remove the project",

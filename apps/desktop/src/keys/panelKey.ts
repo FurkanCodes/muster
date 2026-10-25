@@ -22,6 +22,13 @@ export function readKeymapFrom(read: () => Keymap, onWaiting: (waiting: boolean)
   told = onWaiting;
 }
 
+/** Lets go of a panel key waiting and of where the keymap was read, as the window's keys are taken away. */
+export function stopPanelKeys(): void {
+  waiting = false;
+  keymapNow = null;
+  told = null;
+}
+
 /** The panels shown, which the key after the panel key acts on; null as they go. */
 export function answerPanelKeys(next: PanelKeyHandler | null): void {
   handler = next;

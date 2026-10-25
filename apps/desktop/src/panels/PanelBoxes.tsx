@@ -11,13 +11,13 @@
 
 import { type CSSProperties, type KeyboardEvent, lazy, type PointerEvent, Suspense } from "react";
 import { useApp, useDaemon, useUi } from "../app/context";
-import { IconButton } from "../ui/controls";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { panelName } from "../keys/keymap";
 import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { doing, statusKind } from "../lib/status";
 import { branchOf, shownHarness } from "../state/selectors";
+import { IconButton } from "../ui/controls";
 import { Panel, PanelClose, PanelHead, PanelTitle } from "../ui/Panel";
 import { AgentLogo, BranchName, StatusMark } from "../ui/status";
 import { putPanelAway } from "./beside";
@@ -120,7 +120,7 @@ export function PlacedPanel({
   const key = useKeyLabel("pin_session");
   return (
     <Panel
-      label={shell ? `Shell ${title}` : title}
+      label={shell ? "Shell" : title}
       hasKeys={useHasKeys(session)}
       className={`panels-box ${lifted ? "is-lifted" : ""}`}
       style={style}

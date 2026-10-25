@@ -142,10 +142,14 @@ test("narrows the keys to what is typed, by words or by key", async ({ page }) =
   await expect(key(page, "pull_request_in_browser")).toBeVisible();
   await expect(key(page, "rename")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "This window" })).toHaveCount(0);
-  await find.fill("z");
+  await find.fill("put the files back");
   await expect(key(page, "put_back")).toBeVisible();
   await find.press("Enter");
   await expect(key(page, "put_back")).toHaveClass(/is-selected/);
+  // By its key too.
+  await find.fill("z");
+  await expect(key(page, "put_back")).toBeVisible();
+  await expect(key(page, "zoom")).toBeVisible();
   await find.fill("nothing does this");
   await expect(page.getByText("No key does “nothing does this”.")).toBeVisible();
 });

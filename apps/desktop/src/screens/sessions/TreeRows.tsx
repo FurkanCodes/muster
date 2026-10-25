@@ -13,7 +13,7 @@ import { useDaemon } from "../../app/context";
 import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
-import { CARRIED, carry } from "../../panels/carry";
+import { CARRIED, CARRIED_PROJECT, carry, carryProject } from "../../panels/carry";
 import { branchOf, projectColour, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import {
@@ -149,7 +149,19 @@ export function ProjectLine(props: LineProps) {
   const root = useDaemon((state) => state.projects[row.id]?.root ?? "");
   const colour = useDaemon((state) => projectColour(state, row.id));
   return (
-    <Line {...props} expanded={!folded} density="compact" className="sessions-project" label={name}>
+    <Line
+      {...props}
+      expanded={!folded}
+      density="compact"
+      className="sessions-project"
+      label={name}
+      onCarry={(event) => {
+        // Let go on another project's lines, it goes there (projectOrder).
+        carryProject(event ? row.id : null);
+        event?.dataTransfer.setData(CARRIED_PROJECT, row.id);
+        if (event) event.dataTransfer.effectAllowed = "move";
+      }}
+    >
       <Fold {...props} />
       <Swatch colour={colour} />
       <span className="mu-tree-project mu-cut" title={homely(root)}>

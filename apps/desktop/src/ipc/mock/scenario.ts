@@ -121,7 +121,7 @@ export function defaultPreferences(): Preferences {
     side_by_side_from: 100,
     palette: "muster",
     session_lines: "two",
-    panels: "list | session 60% | (changes / shell / plugin)",
+    panels: "list | session 60% | (changes / plugin)",
     list_folded: false,
     projects: [],
     naming: { by_agent: true, agent: null, model: null },

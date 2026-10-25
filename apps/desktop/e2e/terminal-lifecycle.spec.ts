@@ -89,7 +89,7 @@ test("ARC-25 sessions shown in turn keep each its own terminal, made once, with 
   expect(again.slice(1).every((one) => one.fromSeq !== null)).toBe(true);
 });
 
-test("ARC-25 the agent's terminal stays itself as its shell opens beside it and goes", async ({
+test("ARC-25 the agent's terminal stays itself as its shell is placed beside it and taken off", async ({
   page,
 }) => {
   await allSessions(page);
@@ -100,10 +100,11 @@ test("ARC-25 the agent's terminal stays itself as its shell opens beside it and 
   if (!agent) throw new Error("no agent");
   const before = (await made(page))[agent];
   await page.keyboard.press("T");
-  await expect(page.getByRole("region", { name: "Shell", exact: true })).toBeVisible();
+  const shell = page.getByRole("region", { name: "Shell", exact: true });
+  await expect(shell).toBeVisible();
   await page.keyboard.press("Shift+Q");
-  await page.keyboard.press("T");
-  await expect(page.getByRole("region", { name: "Shell", exact: true })).toHaveCount(0);
+  await shell.getByRole("button", { name: "Take the shell off the screen" }).click();
+  await expect(shell).toHaveCount(0);
   expect((await made(page))[agent]).toBe(before);
 });
 
