@@ -43,7 +43,7 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 55;
+pub const PROTOCOL_VERSION: u32 = 56;
 /// The oldest protocol this build still speaks: v0.5.7's, the first of
 /// Muster on other machines. Older clients and daemons are told to update.
 pub const MIN_PROTOCOL_VERSION: u32 = 54;
@@ -182,6 +182,10 @@ impl ClientFrame {
     #[must_use]
     pub fn since(&self) -> u32 {
         match self {
+            Self::Command {
+                command: Command::ChangePreference(PreferenceChange::ProjectOrder(_)),
+                ..
+            } => 56,
             Self::Command {
                 command: Command::ExecAgent { .. },
                 ..

@@ -325,6 +325,36 @@ impl Layout {
         }
     }
 
+    /// The layout with `one` and `other` in each other's places, as a panel
+    /// dropped on another's middle swaps with it. A share stays with its
+    /// place; a width in cells goes with its panel, as in [`Self::moved`],
+    /// so the list keeps the width the person dragged it to. As it was
+    /// where either is not in it, or the two are one.
+    #[must_use]
+    pub fn swapped(&self, one: Panel, other: Panel) -> Self {
+        let (Some(one_size), Some(other_size)) =
+            (size_of(&self.root, one), size_of(&self.root, other))
+        else {
+            return self.clone();
+        };
+        if one == other {
+            return self.clone();
+        }
+        // What the place each leaves is sized by once the other is in it.
+        let taken = |leaving: Option<Size>, coming: Option<Size>| match (leaving, coming) {
+            (_, Some(Size::Cells(cells))) => Some(Size::Cells(cells)),
+            (Some(Size::Cells(_)), _) => None,
+            (share, _) => share,
+        };
+        let swap = Swap {
+            one: (one, taken(one_size, other_size)),
+            other: (other, taken(other_size, one_size)),
+        };
+        Self {
+            root: exchanged(&self.root, &swap),
+        }
+    }
+
     /// The layout with the split at `path` (each step from the window
     /// down) sharing out its place by `size`, given to its `branch`; the
     /// other of the two takes what is left.
@@ -660,6 +690,50 @@ fn beside(node: Node, target: Panel, moving: Node, edge: Edge) -> Node {
                 size: node.size,
             }
         }
+    }
+}
+
+/// Two panels changing places, each place with the size it takes then.
+struct Swap {
+    one: (Panel, Option<Size>),
+    other: (Panel, Option<Size>),
+}
+
+/// The size `panel` is given where it is in `node`: `Some` of it, as it may
+/// have none, where `panel` is there; `None` where it is not.
+#[expect(
+    clippy::option_option,
+    reason = "a panel not in the layout differs from one there without a size"
+)]
+fn size_of(node: &Node, panel: Panel) -> Option<Option<Size>> {
+    match &node.part {
+        Part::Panel(this) => (*this == panel).then_some(node.size),
+        Part::Split(_, first, second) => size_of(first, panel).or_else(|| size_of(second, panel)),
+    }
+}
+
+/// `node` with the two panels of `swap` in each other's places.
+fn exchanged(node: &Node, swap: &Swap) -> Node {
+    let (one, one_size) = swap.one;
+    let (other, other_size) = swap.other;
+    match &node.part {
+        Part::Panel(panel) if *panel == one => Node {
+            part: Part::Panel(other),
+            size: one_size,
+        },
+        Part::Panel(panel) if *panel == other => Node {
+            part: Part::Panel(one),
+            size: other_size,
+        },
+        Part::Panel(_) => node.clone(),
+        Part::Split(split, first, second) => Node {
+            part: Part::Split(
+                *split,
+                Box::new(exchanged(first, swap)),
+                Box::new(exchanged(second, swap)),
+            ),
+            size: node.size,
+        },
     }
 }
 

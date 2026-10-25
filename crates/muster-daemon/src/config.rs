@@ -11,8 +11,8 @@ use muster_core::config::{ConfigError, ProjectConfig, edit};
 use muster_core::plugins::PluginEntry;
 use muster_core::settings::{
     KEYS, LIST_FOLDED, LOOK_COLOURS, LOOK_SESSION_LINES, MUSTER_PREFIX, NAMES, NOTCH,
-    NOTIFICATIONS, ONLY_MINE, PANELS, PreferenceChange, Preferences, SHARED_BUILDS, SIDE_BY_SIDE,
-    SettingChange, SettingSource, TRACKER, TicketsFrom,
+    NOTIFICATIONS, ONLY_MINE, PANELS, PROJECTS, PreferenceChange, Preferences, SHARED_BUILDS,
+    SIDE_BY_SIDE, SettingChange, SettingSource, TRACKER, TicketsFrom,
 };
 
 /// The repository's settings file.
@@ -163,9 +163,27 @@ fn agents_start_agents(text: Option<&str>, on: bool) -> Result<String, edit::Edi
     edit::set_in(text, preferences::NEW_FILE, table, "allowed", on)
 }
 
+/// The settings `text` with the projects in `order`; with none, without
+/// the key, so they are in the order they were added.
+fn project_order(
+    text: Option<&str>,
+    order: &[muster_core::ProjectId],
+) -> Result<String, edit::EditError> {
+    let (table, key) = PROJECTS;
+    if order.is_empty() {
+        return edit::remove_in(text, table, key);
+    }
+    let ids: Vec<String> = order.iter().map(ToString::to_string).collect();
+    edit::set_list_in(text, preferences::NEW_FILE, table, key, &ids)
+}
+
 /// Makes `change` in Muster's own settings in `config_dir`, keeping the
 /// rest of the file as written; refused, writing nothing, if they would not
 /// read with it.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one arm for each setting, saying where it is written"
+)]
 pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result<(), ConfigError> {
     let file = config_dir.join(preferences::FILE_NAME);
     let shown = file.display().to_string();
@@ -203,6 +221,7 @@ pub fn change_preference(config_dir: &Path, change: &PreferenceChange) -> Result
             let (table, key) = LIST_FOLDED;
             edit::set_in(text.as_deref(), preferences::NEW_FILE, table, key, *folded)
         }
+        PreferenceChange::ProjectOrder(order) => project_order(text.as_deref(), order),
         PreferenceChange::NamesByAgent(on) => edit::set_in(
             text.as_deref(),
             preferences::NEW_FILE,
@@ -437,6 +456,28 @@ mod tests {
             std::fs::read_to_string(&file).unwrap(),
             "[layout]\nside_by_side_from = 120 # mine\npanels = \"session | list 28 | (changes / shell / plugin)\"\n\
              list_folded = true\n"
+        );
+    }
+
+    #[test]
+    fn the_projects_order_is_written_and_put_back() {
+        use muster_core::ProjectId;
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        let file = config_dir.join("settings.toml");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(&file, "[layout]\nlist_folded = true # mine\n").unwrap();
+        let order = vec![ProjectId::new(), ProjectId::new()];
+        change_preference(&config_dir, &PreferenceChange::ProjectOrder(order.clone())).unwrap();
+        let read = preferences(&config_dir).unwrap();
+        assert_eq!(read.projects, order);
+        assert!(read.list_folded, "the rest stays as written");
+        // Put back, the key goes and the rest stays.
+        change_preference(&config_dir, &PreferenceChange::ProjectOrder(Vec::new())).unwrap();
+        assert!(preferences(&config_dir).unwrap().projects.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "[layout]\nlist_folded = true # mine\n"
         );
     }
 
