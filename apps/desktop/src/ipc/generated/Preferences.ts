@@ -4,6 +4,7 @@ import type { Delegation } from "./Delegation";
 import type { Layout } from "./Layout";
 import type { Naming } from "./Naming";
 import type { Palette } from "./Palette";
+import type { ProjectId } from "./ProjectId";
 import type { SessionLines } from "./SessionLines";
 import type { Telling } from "./Telling";
 
@@ -55,6 +56,13 @@ panels: Layout,
  * list_folded`).
  */
 list_folded: boolean, 
+/**
+ * The projects in the order the person dragged them to (`[layout]
+ * projects`), the others after them as the daemon lists them; empty
+ * until the person moves one. An id of a project since removed is
+ * passed over.
+ */
+projects: Array<ProjectId>, 
 /**
  * How chats are named by an agent (`[names]`).
  */

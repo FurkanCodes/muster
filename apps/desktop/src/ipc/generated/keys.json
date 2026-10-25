@@ -176,6 +176,22 @@
     {
       "group": "Anywhere",
       "keys": [
+        "ctrl-b"
+      ],
+      "name": "panel_key",
+      "screens": [
+        "sessions",
+        "needs_you",
+        "tickets",
+        "settings",
+        "changes",
+        "in_session"
+      ],
+      "what": "wait for one more key, to split, zoom, move or close the panel with the keys"
+    },
+    {
+      "group": "Anywhere",
+      "keys": [
         "k"
       ],
       "name": "move_up",
@@ -295,7 +311,7 @@
         "sessions",
         "needs_you"
       ],
-      "what": "a shell in the workspace, beside the session (again: put it away)"
+      "what": "a shell in the workspace, beside the panel with the keys (the one off the screen there, else a new one)"
     },
     {
       "group": "Sessions and Needs you",
@@ -307,7 +323,7 @@
         "sessions",
         "needs_you"
       ],
-      "what": "pin the session in a panel of its own, beside the one with the keys (again: unpin it; or drag its line)"
+      "what": "place the session in a panel of its own, beside the one with the keys (again: off the screen; or drag its line)"
     },
     {
       "group": "Sessions and Needs you",
@@ -623,6 +639,224 @@
         "in_tab"
       ],
       "what": "back to the session shown before in the tab, else to your own shell (the session keeps running)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "v"
+      ],
+      "name": "split_right",
+      "screens": [
+        "prefix"
+      ],
+      "what": "split the panel right, a new shell in its workspace"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "s",
+        "-"
+      ],
+      "name": "split_down",
+      "screens": [
+        "prefix"
+      ],
+      "what": "split the panel down, a new shell in its workspace"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "h"
+      ],
+      "name": "focus_left",
+      "screens": [
+        "prefix"
+      ],
+      "what": "the keys to the panel on the left (← too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "j"
+      ],
+      "name": "focus_down",
+      "screens": [
+        "prefix"
+      ],
+      "what": "the keys to the panel below (↓ too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "k"
+      ],
+      "name": "focus_up",
+      "screens": [
+        "prefix"
+      ],
+      "what": "the keys to the panel above (↑ too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "l"
+      ],
+      "name": "focus_right",
+      "screens": [
+        "prefix"
+      ],
+      "what": "the keys to the panel on the right (→ too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "H"
+      ],
+      "name": "swap_left",
+      "screens": [
+        "prefix"
+      ],
+      "what": "swap the panel with the one on the left (⇧← too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "J"
+      ],
+      "name": "swap_down",
+      "screens": [
+        "prefix"
+      ],
+      "what": "swap the panel with the one below (⇧↓ too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "K"
+      ],
+      "name": "swap_up",
+      "screens": [
+        "prefix"
+      ],
+      "what": "swap the panel with the one above (⇧↑ too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "L"
+      ],
+      "name": "swap_right",
+      "screens": [
+        "prefix"
+      ],
+      "what": "swap the panel with the one on the right (⇧→ too)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "z"
+      ],
+      "name": "zoom",
+      "screens": [
+        "prefix"
+      ],
+      "what": "zoom the panel over the others beside the list, or put it back"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "x"
+      ],
+      "name": "take_off",
+      "screens": [
+        "prefix"
+      ],
+      "what": "take the panel off the screen; its session runs on"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "X"
+      ],
+      "name": "close_panel",
+      "screens": [
+        "prefix"
+      ],
+      "what": "close the panel's session, after asking while it runs"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "p"
+      ],
+      "name": "place_preview",
+      "screens": [
+        "prefix"
+      ],
+      "what": "place the preview's session where the preview is"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "r"
+      ],
+      "name": "resize",
+      "screens": [
+        "prefix"
+      ],
+      "what": "resize the panel: h j k l move its edge a cell, H J K L five, ⏎ keeps it, esc puts it back"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9"
+      ],
+      "name": "to_panel",
+      "screens": [
+        "prefix"
+      ],
+      "what": "the keys to the panel of that number, as its title shows while the panel key waits"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "w"
+      ],
+      "name": "to_list",
+      "screens": [
+        "prefix"
+      ],
+      "what": "the keys back to the list"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "b"
+      ],
+      "name": "send_panel_key",
+      "screens": [
+        "prefix"
+      ],
+      "what": "send the panel key to the program, as pressing it again does (Claude Code backgrounds a command on Ctrl-B)"
+    },
+    {
+      "group": "After the panel key",
+      "keys": [
+        "?"
+      ],
+      "name": "panel_keys",
+      "screens": [
+        "prefix"
+      ],
+      "what": "these keys"
     }
   ],
   "kept": [
@@ -695,6 +929,10 @@
     {
       "id": "in_tab",
       "title": "In a terminal tab"
+    },
+    {
+      "id": "prefix",
+      "title": "After the panel key"
     }
   ]
 }
