@@ -255,6 +255,7 @@ test("ARC-24 R renames in place, ⎋ gives up, and the more menu offers the same
   // A session's menu is the same whichever list it was chosen in (app/Detail.tsx).
   await expect(menu.getByRole("menuitem")).toHaveText([
     "Full screenf",
+    "Pin to the right⇧P",
     "Rename⇧R",
     "Run the checksc",
     "Review the changev",

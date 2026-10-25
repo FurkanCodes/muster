@@ -71,8 +71,9 @@ impl App {
         }
     }
 
-    /// `P`: places the selected session in a panel of its own beside the
-    /// panel with the keys, or takes it off the screen where it is placed.
+    /// `P`, and *pin to the right* on a line's menu: places the selected
+    /// session in a panel of its own at the right of the panel with the
+    /// keys, or takes it off the screen where it is placed.
     pub(super) fn toggle_place(&mut self) -> Vec<Action> {
         let Some(session) = self.focused_session().or(self.typing_in_placed()) else {
             self.complain("Select a session to place it beside the others.");
@@ -85,7 +86,7 @@ impl App {
             self.complain("Sessions are placed in a window wide enough for the list beside them.");
             return Vec::new();
         }
-        let place = self.beside_keys(Edge::Left);
+        let place = self.beside_keys(Edge::Right);
         self.place_at(session, place)
     }
 

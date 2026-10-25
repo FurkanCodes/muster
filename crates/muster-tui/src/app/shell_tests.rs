@@ -244,7 +244,7 @@ fn line_with(world: &World, text: &str) -> String {
 }
 
 #[test]
-fn a_worktree_s_shell_stands_under_its_one_chat_on_one_line() {
+fn a_worktree_s_shell_stands_under_its_one_chat_drawn_as_a_chat_is() {
     let mut world = sized(WIDE);
     // Started before the chat, still listed after it.
     let mut shell = session(world.worktree.id, "cargo", 1);
@@ -260,9 +260,21 @@ fn a_worktree_s_shell_stands_under_its_one_chat_on_one_line() {
             .unwrap()
     };
     assert_eq!(at(shell.id), at(world.session.id) + 1, "{rows:?}");
-    assert_eq!(world.app.row_heights(&rows)[at(shell.id)], 1, "one line");
-    let line = line_with(&world, "cargo");
-    assert!(line.contains("└ ❯ cargo"), "{line}");
+    assert_eq!(
+        world.app.row_heights(&rows)[at(shell.id)],
+        world.app.session_height(),
+        "as many lines as a chat"
+    );
+    // Its mark and its `❯`, the program in front in it, and under it what it does.
+    let screen = render_in(&world.app, WIDE);
+    let lines: Vec<&str> = screen.lines().collect();
+    let first = lines
+        .iter()
+        .position(|line| line.contains("cargo"))
+        .unwrap_or_else(|| panic!("no cargo in\n{screen}"));
+    assert!(lines[first].contains("└ "), "{}", lines[first]);
+    assert!(lines[first].contains("❯"), "{}", lines[first]);
+    assert!(lines[first + 1].contains("running"), "{}", lines[first + 1]);
 
     // A click on its line selects it, the chat above taking two.
     let list = areas(&world).list;

@@ -323,7 +323,7 @@
         "sessions",
         "needs_you"
       ],
-      "what": "place the session in a panel of its own, beside the one with the keys (again: off the screen; or drag its line)"
+      "what": "place the session in a panel of its own, at the right of the one with the keys (again: off the screen; or drag its line, or its menu)"
     },
     {
       "group": "Sessions and Needs you",
