@@ -28,6 +28,7 @@ Compile wide, test narrow: clippy over the whole workspace catches a changed int
   | `apps/desktop` webview | `pnpm lint`, `pnpm typecheck`, `pnpm test`; `pnpm e2e` for a screen's flow |
   | `apps/desktop/src-tauri` | `cargo test` there; `pnpm bindings` if a type the webview uses changed |
 
+- **A small change gets small tests.** A UI tweak, a moved button, a renamed label: lint, typecheck and the unit tests of the files touched (`pnpm exec vitest run <path>`, `cargo nextest run -p <crate> <filter>`), and nothing more. Never the whole browser suite (`pnpm e2e`), the real app (`pnpm e2e:app`) or every end-to-end file for one; if the person is watching the running app, they check it there. Run a wider set only when asked or when the change is large (a protocol, store or model change).
 - **The whole suite** (`cargo nextest run --workspace`) only for a protocol version change (`ARC-09`), a dependency or toolchain update, a release, or when asked.
 - **Before a release only,** as CI does not run them: `pnpm e2e:app` (the real app, on a Mac) and the real-Docker suite (`MUSTER_DOCKER_TESTS=1 cargo test -p muster-daemon`).
 - **Don't repeat work:** a test that passed is not run again unless its code changed since; after a failure, rerun only the failing test until it passes, then the step's set once.

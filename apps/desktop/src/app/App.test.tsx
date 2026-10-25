@@ -15,7 +15,6 @@ describe("the window", () => {
 
   it("lists the projects in the daemon's order in the All list, each in its colour", async () => {
     renderApp();
-    await userEvent.click(await screen.findByRole("button", { name: /^All/ }));
     const tree = await screen.findByRole("tree", { name: "Projects and sessions" });
     const names = within(tree)
       .getAllByRole("treeitem")
@@ -34,9 +33,10 @@ describe("the window", () => {
     expect(await screen.findByRole("heading", { name: "Tickets" })).toBeInTheDocument();
   });
 
-  it("goes between screens by key", async () => {
+  it("opens on everything, and goes between screens by key", async () => {
     renderApp();
-    await screen.findByRole("heading", { name: "Needs you" });
+    await screen.findByRole("tree", { name: "Projects and sessions" });
+    expect(screen.queryByRole("heading", { name: "Needs you" })).toBeNull();
     await userEvent.keyboard("{Meta>},{/Meta}");
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
   });
@@ -93,7 +93,7 @@ describe("the window", () => {
   it("puts the sidebar away on the person's fold_list key as on ⌘\\, and the head brings it back", async () => {
     renderApp();
     const sidebar = await screen.findByRole("navigation", { name: "Sessions" });
-    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
+    await screen.findByRole("treeitem", { name: /^Sketch the Tauri shell,/ });
     await userEvent.keyboard("{Control>}\\{/Control}");
     await waitFor(() => expect(sidebar).not.toBeVisible());
     await userEvent.keyboard("{Control>}\\{/Control}");

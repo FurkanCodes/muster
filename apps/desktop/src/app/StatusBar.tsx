@@ -12,7 +12,6 @@ import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { spend } from "../lib/format";
 import { shownHarness, standsBeside } from "../state/selectors";
-import { isList } from "../state/ui";
 import { Hint, Spacer } from "../ui/controls";
 import { useDaemon, useUi } from "./context";
 
@@ -30,7 +29,9 @@ function useTyping(): string | null {
 /** The session beside the list, where one is selected there and shown. */
 function useShownSession(): SessionId | null {
   const id = useUi((state) =>
-    isList(state.screen) ? (state.selected[state.screen] ?? null) : null,
+    state.screen === "all" || state.screen === "needs-you"
+      ? (state.selected[state.screen] ?? null)
+      : null,
   );
   return useDaemon((state) => (id && state.sessions[id] ? id : null));
 }

@@ -148,9 +148,8 @@ export default function Tickets() {
     return () => actions.keysTo("list");
   }, [actions, dialog]);
   const openSession = (id: string) => {
-    const screen = app.daemon.store.getState().derived.needs_you.includes(id) ? "needs-you" : "all";
-    actions.show(screen);
-    actions.select(screen, id);
+    actions.show("all");
+    actions.select("all", id);
     actions.showTerminal(id);
     actions.keysTo("list");
   };

@@ -14,7 +14,7 @@ import type { SessionId } from "../ipc/generated/SessionId";
 import type { SpaceId } from "../ipc/generated/SpaceId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { errorText } from "../lib/text";
-import { doLater, goTo } from "../spaces/spaces";
+import { doLater } from "../spaces/spaces";
 import { projectsInOrder } from "../state/selectors";
 import { whenKnown } from "../state/whenKnown";
 import { Button } from "../ui/controls";
@@ -43,11 +43,9 @@ export function SpaceName({ space, after }: { space: SpaceId | null; after?: Lat
         if (typeof reply === "object" && "SpaceCreated" in reply && after) {
           // What waited on a space goes in it; the window shows everything still.
           doLater(app, after, reply.SpaceCreated.id);
-        } else if (typeof reply === "object" && "SpaceCreated" in reply) {
-          const made = reply.SpaceCreated.id;
-          const show = () => goTo(app, made);
-          if (app.daemon.store.getState().spaces.some((one) => one.id === made)) show();
-          else setTimeout(show, 0);
+        } else {
+          // Listed under its heading with the others; the list shows every space.
+          actions.tell(`Made the space ${name.trim()}.`);
         }
       } else {
         await app.bridge.command({ RenameSpace: { space, name } });

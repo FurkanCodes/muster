@@ -12,9 +12,11 @@ import { CloseSession, type SessionActions, useSessionActions } from "./useSessi
 
 const Actions = createContext<SessionActions | null>(null);
 
-/** The session the shown list has selected, where its line is a session's. */
+/** The session the shown list has selected, where its line is a session's: on *Needs you*, the queue's. */
 export function useShownSession(): SessionId | undefined {
-  const id = useUi((state) => state.selected[state.list]);
+  const id = useUi((state) =>
+    state.screen === "needs-you" ? state.selected["needs-you"] : state.selected[state.list],
+  );
   return useDaemon((state) => (id && state.sessions[id] ? id : undefined));
 }
 

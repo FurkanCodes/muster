@@ -1,7 +1,13 @@
-/* The queue, in the sidebar: as wide as it is. */
+/* The queue, on its page beside the sidebar: a column wide enough to read. */
+.queue-page {
+  display: flex;
+  flex-direction: column;
+}
 .queue-column {
   flex: 1;
   min-height: 0;
+  width: 100%;
+  max-width: 760px;
   display: flex;
   flex-direction: column;
   container-type: inline-size;

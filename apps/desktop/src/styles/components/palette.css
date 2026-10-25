@@ -32,27 +32,34 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 22px;
 }
 .mu-palette-input::placeholder {
   color: var(--text-quiet);
 }
 .mu-palette-list {
-  max-height: 420px;
+  max-height: min(440px, 60vh);
   overflow: auto;
   display: flex;
   flex-direction: column;
   padding: var(--space-4);
 }
+/* Its lines keep their height and the list scrolls: a line squeezed to
+   fit reads as a wall of words. */
 .mu-palette-group {
-  padding: var(--space-10) var(--space-8) var(--space-4);
+  flex: none;
+  padding: var(--space-12) var(--space-8) var(--space-6);
   font-size: 12px;
   line-height: 16px;
   font-weight: 500;
   color: var(--text-quiet);
 }
+.mu-palette-group:first-child {
+  padding-top: var(--space-6);
+}
 .mu-palette-item {
+  flex: none;
   height: var(--size-row);
 }
 .mu-palette-item mark {

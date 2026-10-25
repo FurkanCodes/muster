@@ -15,9 +15,8 @@
   overflow: auto;
   transition: border-color var(--timing-base) var(--ease-out);
 }
-.mu-term.has-keys {
-  border-color: var(--keys);
-}
+/* With the keys, a terminal looks as it does without: its cursor and the
+   status bar say where typing goes. */
 .mu-term--compact {
   padding: var(--space-10) var(--space-12);
   border-radius: var(--radius-md);

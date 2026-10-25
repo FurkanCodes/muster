@@ -138,7 +138,8 @@ describe("PRD-01 ARC-24 Tickets", () => {
     const { app } = renderTickets();
     await screen.findByRole("article", { name: "The ticket's text" });
     await userEvent.keyboard("{Enter}");
-    expect(app.ui.getState().screen).toBe("needs-you");
+    // Where every session is, in the list.
+    expect(app.ui.getState().screen).toBe("all");
     expect(app.ui.getState().terminal).toBe(ulid(101));
     expect(app.ui.getState().selected.tickets).toBe(`${ulid(1)}:214`);
   });

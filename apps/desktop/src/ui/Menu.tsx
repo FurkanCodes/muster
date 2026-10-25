@@ -60,7 +60,17 @@ export function ActionMenu({
   // Its own open state where its owner keeps none: an item's own key closes it as a click does.
   const [own, setOwn] = useState(false);
   const shown = at ? true : (open ?? own);
+  // Where it is drawn, found as it opens, as Select's list is: a menu in the
+  // window's first render (the projects' +) is drawn before the window's
+  // root is there, and a value worked out while drawing would be kept.
+  const [container, setContainer] = useState(portalRoot);
+  // Opened by its owner (a key), not by its trigger: found then.
+  if (shown && !container) {
+    const root = portalRoot();
+    if (root) setContainer(root);
+  }
   const change = (next: boolean) => {
+    if (next) setContainer(portalRoot());
     if (open === undefined) setOwn(next);
     onOpenChange?.(next);
     if (!next) onClose?.();
@@ -96,7 +106,7 @@ export function ActionMenu({
       onClick={() => item.does()}
     >
       {item.label}
-      <Kbd>{item.key}</Kbd>
+      {item.key ? <Kbd>{item.key}</Kbd> : null}
     </Menu.Item>
   );
   // Where a right-click opened it: a point the menu hangs from.
@@ -114,7 +124,7 @@ export function ActionMenu({
       ) : (
         <Menu.Trigger render={trigger} />
       )}
-      <Menu.Portal container={portalRoot()}>
+      <Menu.Portal container={container}>
         <Menu.Positioner
           className="ui-menu"
           side="bottom"

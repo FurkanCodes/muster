@@ -30,7 +30,7 @@ import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 
 /** The lists, in the order their switch shows them. */
-const LIST_IDS = ["needs-you", "all"] as const;
+const LIST_IDS = ["all"] as const;
 
 import { LISTS, PAGES } from "./screens";
 import { installVisibility } from "./visibility";
@@ -51,8 +51,9 @@ function useWiring(app: AppValue): void {
     const visibility = installVisibility(app);
     const history = installQueueHistory(app.daemon);
     const revealed = app.daemon.onReveal((session) => {
-      app.actions.show("needs-you");
-      app.actions.select("needs-you", session);
+      app.actions.show("all");
+      app.actions.select("all", session);
+      app.actions.showTerminal(session);
       app.actions.keysTo("terminal");
     });
     const clock = app.ui.subscribe((state, previous) => {

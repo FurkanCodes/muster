@@ -22,12 +22,22 @@ import {
 
 /** The rows as strings, so the list re-renders only when a line comes, goes or moves. */
 function encoded(row: TreeRow): string {
-  return [row.kind, row.id, row.project, row.space, row.workspace ?? ""].join(" ");
+  return [row.kind, row.id, row.project, row.space, row.workspace ?? "", row.place ? "1" : ""].join(
+    " ",
+  );
 }
 
 function decoded(text: string): TreeRow {
-  const [kind = "project", id = "", project = "", space = "", workspace = ""] = text.split(" ");
-  return { kind: kind as TreeRow["kind"], id, project, space, workspace: workspace || null };
+  const [kind = "project", id = "", project = "", space = "", workspace = "", place = ""] =
+    text.split(" ");
+  return {
+    kind: kind as TreeRow["kind"],
+    id,
+    project,
+    space,
+    workspace: workspace || null,
+    ...(place ? { place: true as const } : {}),
+  };
 }
 
 export function useTree() {

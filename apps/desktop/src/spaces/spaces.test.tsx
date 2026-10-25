@@ -1,7 +1,7 @@
 // Spaces and terminals in no project in the window (`ARC-33`, PRD §6a):
 // everything lives in one space, and the All list shows each under its
-// heading, or the space the window chose, as the model lists it; the list's
-// heading becomes the way among spaces once there is one; a space heading's
+// heading, as the model lists it; the list's heading says Spaces, with a new
+// terminal and + beside it; a space heading's
 // menu adds to it, renames and removes it, which the daemon refuses while
 // it holds anything; a project's and a terminal's menu move it to another
 // space; a terminal goes under a project where its shell is; and every
@@ -69,10 +69,15 @@ describe("ARC-33 spaces in the window", () => {
     await waitFor(() => expect(row("muster")).toBeInTheDocument());
   });
 
-  it("lists a terminal in no project under its space's heading, which folds it away", async () => {
+  it("lists a terminal in no space after the spaces, and one in a space under its heading, which folds it away", async () => {
     const { bridge } = await shown();
-    await act(() => startTerminal(bridge, "vm", null));
-    // With no space, the daemon made a Home for it.
+    // Asked in no space, it roams: listed, and no space made for it.
+    await act(() => startTerminal(bridge, "roam", null));
+    expect(await screen.findByRole("treeitem", { name: /^Shell: roam/ })).toBeInTheDocument();
+    expect(bridge.world.spaces ?? []).toEqual([]);
+    await act(() => bridge.command({ CreateSpace: { name: "Home" } }));
+    const home = bridge.world.spaces?.[0]?.id ?? null;
+    await act(() => startTerminal(bridge, "vm", home));
     const heading = await screen.findByRole("treeitem", { name: "Home" });
     expect(row(/^Shell: vm/)).toBeInTheDocument();
     await userEvent.click(heading);
@@ -82,38 +87,63 @@ describe("ARC-33 spaces in the window", () => {
     expect(await screen.findByRole("treeitem", { name: /^Shell: vm/ })).toBeInTheDocument();
   });
 
-  it("names the space shown in the list's heading once there is one", async () => {
+  it("heads the list Spaces, with a terminal and a new space beside it, and no filter", async () => {
     const { bridge } = renderApp();
-    await screen.findByRole("navigation", { name: "Sessions" });
-    expect(screen.queryByRole("button", { name: "Spaces" })).toBeNull();
+    const nav = await screen.findByRole("navigation", { name: "Sessions" });
+    expect(within(nav).getByText("Spaces")).toBeInTheDocument();
     await act(() => bridge.command({ CreateSpace: { name: "Client" } }));
-    const trigger = await screen.findByRole("button", { name: "Spaces" });
-    expect(trigger).toHaveTextContent("Everything");
-    await userEvent.click(trigger);
-    const menu = await screen.findByRole("menu", { name: "Spaces" });
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /^Client/ }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Spaces" })).toHaveTextContent("Client"),
-    );
+    await screen.findByRole("treeitem", { name: "Client" });
+    // Every space is listed, under its heading: there is no space to choose.
+    expect(screen.queryByRole("button", { name: "Spaces" })).toBeNull();
+    expect(within(nav).getByRole("button", { name: "Terminal" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "New space" })).toBeInTheDocument();
   });
 
-  it("starts with no space by naming one first, then the terminal in it", async () => {
+  it("starts a terminal in no space from the heading, and makes a space from its +", async () => {
     const bridge = new MockBridge(workingDay());
     renderApp(bridge);
     await screen.findByRole("navigation", { name: "Sessions" });
-    await userEvent.click(screen.getByRole("button", { name: "Add a project" }));
-    const menu = await screen.findByRole("menu", { name: "Add a project" });
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /^Terminal in no project/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Terminal" }));
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual(
+        expect.objectContaining({
+          StartSession: expect.objectContaining({ workspace: null, space: null }),
+        }),
+      ),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "New space" }));
     const named = await screen.findByRole("dialog", { name: "New space" });
-    expect(named).toHaveTextContent("Everything lives in a space");
     await userEvent.type(within(named).getByLabelText("Name"), "Lab");
     await userEvent.click(within(named).getByRole("button", { name: /Make it/ }));
+    expect(await screen.findByRole("treeitem", { name: "Lab" })).toBeInTheDocument();
+  });
+
+  it("a space's line starts a terminal in it, and a project's an agent in a new worktree", async () => {
+    const bridge = new MockBridge(workingDay());
+    await bridge.command({ CreateSpace: { name: "Lab" } });
+    const lab = bridge.world.spaces?.[0]?.id ?? "";
+    await bridge.command({ MoveToSpace: { space: lab, member: { Project: lamphaus } } });
+    renderApp(bridge);
+    await screen.findByRole("treeitem", { name: "Lab" });
+    await userEvent.click(screen.getByRole("button", { name: "Terminal in Lab" }));
     await waitFor(() =>
-      expect(bridge.world.spaces?.find((space) => space.name === "Lab")?.members).toHaveLength(1),
+      expect(bridge.world.spaces?.[0]?.members).toContainEqual(
+        expect.objectContaining({ Session: expect.any(String) }),
+      ),
     );
-    const lab = bridge.world.spaces?.find((space) => space.name === "Lab")?.id;
-    expect(bridge.sent).toContainEqual(
-      expect.objectContaining({ StartSession: expect.objectContaining({ space: lab }) }),
+    await userEvent.click(screen.getByRole("button", { name: "New in lamphaus" }));
+    const menu = await screen.findByRole("menu", { name: "New in lamphaus" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Codex" }));
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual(
+        expect.objectContaining({ CreateWorktree: expect.objectContaining({ project: lamphaus }) }),
+      ),
+    );
+    await waitFor(() =>
+      expect(bridge.sent).toContainEqual(
+        expect.objectContaining({ StartSession: expect.objectContaining({ harness: "codex" }) }),
+      ),
     );
   });
 
@@ -125,7 +155,6 @@ describe("ARC-33 spaces in the window", () => {
     const id =
       typeof reply === "object" && "SessionStarted" in reply ? reply.SessionStarted.id : "";
     bridge.world.folders = { [id]: "/Users/you/code/lamphaus/src" };
-    await userEvent.click(screen.getByRole("button", { name: /^All/ }));
     await userEvent.click(await screen.findByRole("treeitem", { name: /^Shell: build/ }));
     await userEvent.keyboard("{Shift>}F{/Shift}");
     await userEvent.click(
@@ -146,7 +175,6 @@ describe("ARC-33 spaces in the window", () => {
     await bridge.command({ MoveToSpace: { space: home ?? "", member: { Project: lamphaus } } });
     renderApp(bridge);
     await screen.findByRole("navigation", { name: "Sessions" });
-    await userEvent.click(screen.getByRole("button", { name: /^All/ }));
     await userEvent.click(await screen.findByRole("treeitem", { name: "lamphaus" }));
     const page = await screen.findByRole("region", { name: "lamphaus" });
     const choose = async (item: RegExp) => {
@@ -184,7 +212,6 @@ describe("ARC-33 spaces in the window", () => {
     await bridge.command({ MoveToSpace: { space: home, member: { Project: lamphaus } } });
     renderApp(bridge);
     await screen.findByRole("navigation", { name: "Sessions" });
-    await userEvent.click(screen.getByRole("button", { name: /^All/ }));
     await screen.findByRole("treeitem", { name: "Home" });
     rightClick("Home");
     const menu = await screen.findByRole("menu", { name: "Home" });
@@ -220,7 +247,9 @@ describe("ARC-33 spaces in the window", () => {
     expect(createUi().store.getState().space).toBeNull();
     renderApp(bridge);
     await screen.findByRole("navigation", { name: "Sessions" });
-    expect(await screen.findByRole("button", { name: "Spaces" })).toHaveTextContent("Everything");
+    // Every space's heading, with what is in none after them.
+    expect(await screen.findByRole("treeitem", { name: "Work" })).toBeInTheDocument();
+    expect(screen.getByRole("treeitem", { name: "muster" })).toBeInTheDocument();
   });
 
   it("notes a free terminal's lack of a project", async () => {

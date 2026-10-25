@@ -11,8 +11,10 @@
   overflow: hidden;
   transition: border-color var(--timing-base) var(--ease-out);
 }
+/* Among panels, the one with the keys is told quietly: its edge a shade
+   lighter and its title in the text's colour, never an accent. */
 .mu-panel.has-keys {
-  border-color: var(--keys);
+  border-color: var(--line-control);
 }
 .mu-panel-head {
   height: var(--size-control-lg);
@@ -34,7 +36,7 @@
   white-space: nowrap;
 }
 .mu-panel.has-keys .mu-panel-title {
-  color: var(--keys);
+  color: var(--text);
 }
 .mu-panel-body {
   flex: 1;

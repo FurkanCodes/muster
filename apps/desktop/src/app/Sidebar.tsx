@@ -14,17 +14,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { addProject, cloneProject, newSession } from "../flows/actions";
-import { useKeymap } from "../keys/useKeymap";
-import { SpaceLineMenu, SpaceMenu } from "../spaces/SpaceMenu";
-import { newTerminal } from "../spaces/spaces";
+import { newSession } from "../flows/actions";
+import { SpaceLineMenu } from "../spaces/SpaceMenu";
+import { terminalIn } from "../spaces/spaces";
 import { keep, kept } from "../state/kept";
-import { chats } from "../state/selectors";
-import type { ListId } from "../state/ui";
 import { IconButton, Kbd, Segmented, Spacer } from "../ui/controls";
 import { Icon, type IconName } from "../ui/Icon";
 import { KepFace, type Mood } from "../ui/Kep";
-import { ActionMenu, keysOf } from "../ui/Menu";
 import { NavItem } from "../ui/Nav";
 import { useActions, useApp, useDaemon, useUi } from "./context";
 
@@ -106,56 +102,54 @@ function SideButton({
   );
 }
 
+/**
+ * The chip over the list: All, as the window opens, or *Needs you*, its
+ * page beside the list, with how many wait on the person in the waiting tone.
+ */
 function ListSwitch() {
   const actions = useActions();
-  const list = useUi((state) => state.list);
+  const shown = useUi((state) => (state.screen === "needs-you" ? "needs-you" : "all"));
   const waiting = useDaemon((state) => state.derived.counts.waiting);
-  const all = useDaemon((state) => chats(state).length);
   return (
-    <Segmented<ListId>
+    <Segmented<"needs-you" | "all">
       label="Sessions listed"
       className="app-lists"
       segments={[
         { value: "needs-you", label: "Needs you", count: waiting, tone: "waiting" },
-        { value: "all", label: "All", count: all },
+        { value: "all", label: "All" },
       ]}
-      value={list}
+      value={shown}
       onChange={(id) => actions.show(id)}
-      // Beside Tickets or Settings the last list shown stays pressed: pressing it shows it.
+      // Beside Tickets or Settings, All stays pressed: pressing it shows the list.
       onAgain={(id) => actions.show(id)}
     />
   );
 }
 
-/** The projects' heading, and the ways to add one: a folder of the Mac's, or a clone from GitHub. */
+/** The list's heading, Spaces, and beside it a terminal in no space and a new space; what goes in a space is on its own line. */
 function ProjectsHead({ linked }: { linked: boolean }) {
   const app = useApp();
-  const map = useKeymap();
   return (
     <div className="app-projects-head">
-      <SpaceMenu />
-      <ActionMenu
-        label="Add a project"
-        items={[
-          { ...keysOf(map, "add_project"), label: "Open a folder…", does: () => addProject(app) },
-          {
-            ...keysOf(map, "clone_project"),
-            label: "Clone from GitHub…",
-            does: () => cloneProject(app),
-          },
-          {
-            ...keysOf(map, "new_terminal"),
-            label: "Terminal in no project",
-            does: () => void newTerminal(app),
-          },
-          {
-            key: "",
-            label: "New space…",
-            does: () => app.actions.openFlow({ kind: "space-name", space: null }),
-          },
-        ]}
-        trigger={<IconButton icon="plus" size="sm" label="Add a project" disabled={!linked} />}
-      />
+      <span className="app-projects-title">Spaces</span>
+      <span className="app-projects-actions">
+        <IconButton
+          icon="terminal"
+          size="sm"
+          label="Terminal"
+          title="A terminal in no space, to roam the machine"
+          disabled={!linked}
+          onClick={() => void terminalIn(app, null)}
+        />
+        <IconButton
+          icon="plus"
+          size="sm"
+          label="New space"
+          title="A new space, as a folder holds things"
+          disabled={!linked}
+          onClick={() => app.actions.openFlow({ kind: "space-name", space: null })}
+        />
+      </span>
     </div>
   );
 }

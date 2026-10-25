@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A Claude Code PreToolUse hook: asks the person before the whole test
-suite runs (AGENTS.md, *Which tests to run*).
+suite runs (CLAUDE.md, *Which tests to run*).
 
 A `cargo test` or `cargo nextest run` in the core's workspace with no
 `-p`/`--package` (or with `--workspace`/`--all`) is the whole suite; the
@@ -54,7 +54,7 @@ def main():
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "ask",
                 "permissionDecisionReason": (
-                    "This runs the whole test suite. AGENTS.md (Which tests to run) keeps it "
+                    "This runs the whole test suite. CLAUDE.md (Which tests to run) keeps it "
                     "for a protocol change, an update, a release or when asked; run the "
                     "changed crate's tests and its end-to-end files instead."
                 ),

@@ -1,17 +1,22 @@
 /* Session tree (All sessions): what its lines have beyond a List's (ui/list.css). */
-/* The fold shows while the pointer is on its line, or while it is folded. */
+/* A space's chevron: down while what it holds shows, turning right as it
+   folds, and back. */
 .mu-tree-fold {
   width: var(--size-mark);
+  height: var(--size-mark);
   flex: none;
-  text-align: center;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-quiet);
-  opacity: 0;
-  transition: opacity var(--timing-fast) var(--ease-out);
+  cursor: pointer;
+  transition: transform var(--timing-base) var(--ease-out);
 }
-.mu-list-item:hover .mu-tree-fold,
 .mu-tree-fold.is-folded {
-  opacity: 1;
+  transform: rotate(-90deg);
+}
+.mu-list-item:hover .mu-tree-fold {
+  color: var(--text);
 }
 .mu-tree-project {
   font-weight: 500;

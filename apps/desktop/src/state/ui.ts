@@ -11,14 +11,14 @@ import { keep, kept } from "./kept";
 
 export type ScreenId = "all" | "needs-you" | "tickets" | "settings";
 
-/** The tabs in the terminal UI's order, as Tab and ⇧Tab go round them (`next_tab`). */
-export const TABS: readonly ScreenId[] = ["all", "needs-you", "tickets", "settings"];
+/** The screens as the sidebar has them, as Tab and ⇧Tab go round them (`next_tab`): the list, then Tickets, Needs you under it, and Settings. */
+export const TABS: readonly ScreenId[] = ["all", "tickets", "needs-you", "settings"];
 
-/** The tabs the sidebar's list shows: every session by project, or what needs the person. */
-export type ListId = "all" | "needs-you";
+/** The sidebar's list: every session, under its space and project. *Needs you* is a page beside it. */
+export type ListId = "all";
 
 export function isList(screen: ScreenId): screen is ListId {
-  return screen === "all" || screen === "needs-you";
+  return screen === "all";
 }
 
 /** Where typed keys go: the list (Muster's keys), a terminal (its program), or a dialog. */
@@ -150,8 +150,8 @@ function shown(screen: ScreenId): Partial<UiState> {
 
 export function createUi(): { store: UiStore; actions: UiActions } {
   const store = createStore<UiState>(() => ({
-    screen: "needs-you",
-    list: "needs-you",
+    screen: "all",
+    list: "all",
     selected: {},
     keysIn: "list",
     terminal: null,

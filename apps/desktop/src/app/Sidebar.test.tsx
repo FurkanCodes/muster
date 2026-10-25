@@ -5,21 +5,20 @@ import { MockBridge } from "../ipc/mock/bridge";
 import { ulid, workingDay } from "../ipc/mock/scenario";
 import { renderApp } from "../test/render";
 
-// The one sidebar (PRD §6a): a new session, the palette and Tickets, the
-// switch between what needs the person and every session, the projects'
-// heading with the way to add one, the list itself under it, and Settings
-// at its foot.
+// The one sidebar (PRD §6a): a new session, the palette, Tickets and Needs
+// you under it, the projects' heading with the way to add one, the list of
+// every session itself under it, and Settings at its foot.
 
 const sidebar = () => screen.findByRole("navigation", { name: "Sessions" });
 
 describe("ARC-24 the sidebar", () => {
-  it("has a new session, the palette and Tickets, the lists' switch, a way to add a project, and Settings at its foot", async () => {
+  it("has a new session, the palette, Tickets, the Needs you and All chip, a way to add a project, and Settings at its foot", async () => {
     renderApp();
     const nav = await sidebar();
-    await within(nav).findByRole("option", { name: "Sketch the Tauri shell" });
+    await within(nav).findByRole("treeitem", { name: /^Sketch the Tauri shell,/ });
     const buttons = within(nav)
       .getAllByRole("button")
-      .filter((button) => !button.closest('[role="listbox"]'))
+      .filter((button) => !button.closest('[role="tree"]'))
       .map(
         (button) =>
           button.textContent?.replace(/⌘.$/, "").replace(/\d+$/, "") ||
@@ -32,65 +31,74 @@ describe("ARC-24 the sidebar", () => {
       "Tickets",
       "Needs you",
       "All",
-      "Add a project",
+      "Terminal",
+      "New space",
       "Settings",
     ]);
   });
 
-  it("counts what waits on the person beside Needs you, and every chat beside All", async () => {
+  it("opens on All, and counts what waits on the person beside Needs you", async () => {
     const { bridge } = renderApp();
     const needsYou = await screen.findByRole("button", { name: /^Needs you/ });
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
     expect(needsYou).toHaveTextContent("Needs you2");
-    expect(screen.getByRole("button", { name: /^All/ })).toHaveTextContent("All8");
     act(() => bridge.setStatus(ulid(201), { state: "needs_you", reason: "question" }));
     expect(needsYou).toHaveTextContent("Needs you3");
   });
 
-  it("switches the list between Needs you and every session by project", async () => {
+  it("opens Needs you beside the list of everything, and an entry there opens its session in the list", async () => {
     renderApp();
-    const needsYou = await screen.findByRole("button", { name: /^Needs you/ });
-    expect(needsYou).toHaveAttribute("aria-pressed", "true");
-    await screen.findByRole("listbox", { name: "Needs you sessions" });
-    await userEvent.click(screen.getByRole("button", { name: /^All/ }));
-    expect(await screen.findByRole("tree", { name: "Projects and sessions" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
+    const tree = await screen.findByRole("tree", { name: "Projects and sessions" });
+    await userEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
+    expect(await screen.findByRole("heading", { name: "Needs you", level: 1 })).toBeVisible();
     expect(screen.getByRole("button", { name: /^Needs you/ })).toHaveAttribute(
       "aria-pressed",
-      "false",
+      "true",
     );
-    expect(screen.queryByRole("listbox", { name: "Needs you sessions" })).toBeNull();
+    // The sidebar still lists everything.
+    expect(tree).toBeVisible();
+    const queue = screen.getByRole("listbox", { name: "Needs you sessions" });
+    await userEvent.click(within(queue).getByRole("option", { name: "Sketch the Tauri shell" }));
+    expect(
+      await screen.findByRole("heading", { name: "Sketch the Tauri shell", level: 2 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Needs you", level: 1 })).toBeNull();
+    expect(screen.getByRole("treeitem", { name: /^Sketch the Tauri shell,/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
-  it("keeps the list beside Tickets and Settings, and a session picked there is shown in their place", async () => {
+  it("keeps the list beside Tickets, and a session picked there is shown in their place", async () => {
     renderApp();
-    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
+    await screen.findByRole("treeitem", { name: /^Sketch the Tauri shell,/ });
     await userEvent.click(screen.getByRole("button", { name: "Tickets" }));
     expect(await screen.findByRole("heading", { name: "Tickets", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tickets" })).toHaveAttribute("aria-current", "page");
-    await userEvent.click(screen.getByRole("option", { name: "Explain the release script" }));
+    await userEvent.click(screen.getByRole("treeitem", { name: /^Explain the release script,/ }));
     expect(
       await screen.findByRole("heading", { name: "Explain the release script", level: 2 }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Tickets", level: 1 })).toBeNull();
   });
 
-  it("goes back from Settings to the list kept pressed beside it, on a click on that list", async () => {
+  it("goes from Settings to Needs you, and back to the list on a click on a line", async () => {
     renderApp();
-    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
+    await screen.findByRole("treeitem", { name: /^Sketch the Tauri shell,/ });
     await userEvent.click(screen.getByRole("button", { name: /^Settings/ }));
-    const needsYou = screen.getByRole("button", { name: /^Needs you/ });
-    expect(needsYou).toHaveAttribute("aria-pressed", "true");
-    await userEvent.click(needsYou);
+    await userEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
+    expect(await screen.findByRole("heading", { name: "Needs you", level: 1 })).toBeVisible();
     expect(screen.getByRole("button", { name: /^Settings/ })).not.toHaveAttribute(
       "aria-current",
       "page",
     );
-    expect(needsYou).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("treeitem", { name: /^Sketch the Tauri shell,/ }));
+    expect(screen.queryByRole("heading", { name: "Needs you", level: 1 })).toBeNull();
   });
 
   it("New session opens the selected session's project page, its box ready", async () => {
     renderApp();
-    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
+    await screen.findByRole("treeitem", { name: /^Sketch the Tauri shell,/ });
     await userEvent.click(screen.getByRole("button", { name: /^New session/ }));
     const page = await screen.findByRole("region", { name: "muster" });
     expect(within(page).getByRole("textbox", { name: "First prompt" })).toHaveFocus();
@@ -102,22 +110,17 @@ describe("ARC-24 the sidebar", () => {
     // A space to add to, as there is once anything was added (`ARC-33`).
     bridge.world.spaces = [{ id: ulid(700), name: "Home", members: [], created_at: 0 }];
     renderApp(bridge);
-    await screen.findByRole("option", { name: "Sketch the Tauri shell" });
-    // The Projects + offers a folder of the Mac's, or a clone from GitHub.
+    await screen.findByRole("treeitem", { name: /^Sketch the Tauri shell,/ });
+    // A space's + offers a folder of the Mac's, a clone from GitHub, or a terminal.
     const add = async () => {
-      await userEvent.click(screen.getByRole("button", { name: "Add a project" }));
-      const menu = await screen.findByRole("menu", { name: "Add a project" });
+      await userEvent.click(screen.getByRole("button", { name: "Add to Home" }));
+      const menu = await screen.findByRole("menu", { name: "Add to Home" });
       expect(
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual([
-        "Open a folder…a",
-        "Clone from GitHub…g",
-        "Terminal in no project+",
-        "New space…",
-      ]);
-      await userEvent.click(within(menu).getByRole("menuitem", { name: /Open a folder/ }));
+      ).toEqual(["Folder or project…a", "Clone a GitHub repository…g", "Terminal"]);
+      await userEvent.click(within(menu).getByRole("menuitem", { name: /Folder or project/ }));
     };
 
     bridge.picked = { kind: "cancelled" };
