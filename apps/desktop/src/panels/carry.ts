@@ -19,3 +19,18 @@ export function carry(session: SessionId | null): void {
 export function carriedSession(): SessionId | null {
   return carried;
 }
+
+/** What a carried project's line is said to be. */
+export const CARRIED_PROJECT = "application/x-muster-project";
+
+let carriedProject: string | null = null;
+
+/** A project's line taken up, to be put where it is let go on the list; null as it is let go. */
+export function carryProject(project: string | null): void {
+  carriedProject = project;
+}
+
+/** The project whose line is being carried, if one is. */
+export function carriedProjectId(): string | null {
+  return carriedProject;
+}

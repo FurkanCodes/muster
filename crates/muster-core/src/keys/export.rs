@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use super::{Action, Chord, Key, Screen, kept};
 
 /// Every screen, in the order the help heads them.
-const SCREENS: [Screen; 7] = [
+const SCREENS: [Screen; 8] = [
     Screen::Sessions,
     Screen::NeedsYou,
     Screen::Tickets,
@@ -19,6 +19,7 @@ const SCREENS: [Screen; 7] = [
     Screen::Changes,
     Screen::InSession,
     Screen::InTab,
+    Screen::Prefix,
 ];
 
 /// A screen's name in the table.
@@ -31,6 +32,7 @@ const fn id(screen: Screen) -> &'static str {
         Screen::Changes => "changes",
         Screen::InSession => "in_session",
         Screen::InTab => "in_tab",
+        Screen::Prefix => "prefix",
     }
 }
 

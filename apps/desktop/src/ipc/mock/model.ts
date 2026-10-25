@@ -25,6 +25,8 @@ export interface World {
   sessions: Session[];
   /** What each session's terminal shows, as its program wrote it. */
   terminals?: Readonly<Record<string, string>>;
+  /** The person's settings, of which the projects' order lists them. */
+  preferences?: { projects: readonly string[] };
 }
 
 /** The lines a question shows, at most (`link/questions.rs`, `LINES`). */
@@ -103,7 +105,15 @@ export function derive(
     .map((session) => session.id);
 
   const rows: Row[] = [];
-  for (const project of world.projects) {
+  // In the person's order, the others after them as they were added
+  // (`Model::order_projects`).
+  const order = world.preferences?.projects ?? [];
+  const at = (id: string) => {
+    const found = order.indexOf(id);
+    return found < 0 ? order.length : found;
+  };
+  const projects = [...world.projects].sort((one, other) => at(one.id) - at(other.id));
+  for (const project of projects) {
     rows.push({ kind: "project", id: project.id });
     for (const workspace of workspacesOf(world, project.id)) {
       rows.push({ kind: "workspace", id: workspace.id });

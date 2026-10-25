@@ -18,11 +18,10 @@ const EDGES: Readonly<Record<string, Edge>> = {
   ArrowDown: "bottom",
 };
 
-const NAMES: Readonly<Record<PanelName, string>> = {
+const NAMES: Readonly<Partial<Record<PanelName, string>>> = {
   list: "the list",
-  session: "the agent",
+  session: "the preview",
   changes: "the changes",
-  shell: "the shell",
   plugin: "the plugin's panel",
 };
 
@@ -77,7 +76,7 @@ export function useArranging(
     if (!movable) return actions.tell("Nothing stands beside the session to move.", true);
     setArranging(withKeys);
     actions.tell(
-      `Moving ${NAMES[withKeys]}: the arrows move it, ⇥ picks another, + and − size it, ⏎ keeps it, ⎋ puts it back.`,
+      `Moving ${NAMES[withKeys] ?? "the terminal placed"}: the arrows move it, ⇥ picks another, + and − size it, ⏎ keeps it, ⎋ puts it back.`,
     );
   };
   useActionKeys(screen, { move_panels: start });

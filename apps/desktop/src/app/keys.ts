@@ -15,6 +15,8 @@ import {
 } from "react";
 import { newSession } from "../flows/actions";
 import { charOfCode } from "../keys/chord";
+import { type Keymap, keymapOf, panelsOf } from "../keys/keymap";
+import { readKeymapFrom, stopPanelKeys, takePanelKey, waitingHint } from "../keys/panelKey";
 import type { App } from "./context";
 
 /** A key as Muster names it: `d`, `T`, `?`, `Enter`, `⌘K`, `⌥X`, `⇧Tab`. */
@@ -143,7 +145,28 @@ export function pressKey(chord: string): boolean {
   return true;
 }
 
+/** The person's keys before the daemon has said any. */
+const NO_KEYS: Readonly<Record<string, readonly string[]>> = {};
+
+/** The keymap the daemon's state says now, made again only as it changes. */
+function keymapNowOf(app: App): () => Keymap {
+  let last: { keys: unknown; plugins: unknown; map: Keymap } | null = null;
+  return () => {
+    const state = app.daemon.store.getState();
+    const keys = state.preferences?.keys ?? NO_KEYS;
+    if (last?.keys !== keys || last.plugins !== state.plugins)
+      last = { keys, plugins: state.plugins, map: keymapOf(keys, panelsOf(state.plugins)) };
+    return last.map;
+  };
+}
+
 export function installKeys(app: App): () => void {
+  // The panel key reads the person's keys as they are, and says while it waits.
+  const keymapNow = keymapNowOf(app);
+  readKeymapFrom(keymapNow, (waiting) => {
+    if (waiting) app.actions.tell(waitingHint(keymapNow()));
+    else app.actions.clearNote();
+  });
   const listener = (event: KeyboardEvent) => {
     const chord = chordOf(event);
     const ui = app.ui.getState();
@@ -158,6 +181,8 @@ export function installKeys(app: App): () => void {
       }
       return;
     }
+    // The panel key, and the key after it, wherever the keys are.
+    if (ui.keysIn !== "dialog" && !editable(event.target) && takePanelKey(event, chord)) return;
     const global = GLOBAL[chord];
     if (global) {
       event.preventDefault();
@@ -180,5 +205,8 @@ export function installKeys(app: App): () => void {
     }
   };
   window.addEventListener("keydown", listener);
-  return () => window.removeEventListener("keydown", listener);
+  return () => {
+    window.removeEventListener("keydown", listener);
+    stopPanelKeys();
+  };
 }

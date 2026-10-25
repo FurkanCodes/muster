@@ -9,8 +9,18 @@ describe("ARC-24 every key of the screen in view, as the TUI's help lists them",
   it("heads each screen's keys as the TUI does", () => {
     const headings = (screen: Parameters<typeof helpFor>[0]) =>
       helpFor(screen, NOTHING_SET).map((section) => section.heading);
-    expect(headings("needs-you")).toEqual(["On the queue", "In a session", "Anywhere"]);
-    expect(headings("all")).toEqual(["On the list", "In a session", "Anywhere"]);
+    expect(headings("needs-you")).toEqual([
+      "On the queue",
+      "In a session",
+      "After the panel key",
+      "Anywhere",
+    ]);
+    expect(headings("all")).toEqual([
+      "On the list",
+      "In a session",
+      "After the panel key",
+      "Anywhere",
+    ]);
     expect(headings("tickets")).toEqual(["On the tickets", "Choosing an agent", "Anywhere"]);
     expect(headings("settings")).toEqual(["On the settings", "On the plugins", "Anywhere"]);
   });

@@ -9,6 +9,7 @@ import type { SessionActions } from "../../session/useSessionActions";
 import { RenameSession } from "../../session/useSessionActions";
 import { shownHarness, standsBeside } from "../../state/selectors";
 import { List } from "../../ui/List";
+import { useProjectDrop } from "./projectOrder";
 import { drawn, estimate, inSight, placesOf, UNMEASURED } from "./sight";
 import {
   BesideLine,
@@ -138,11 +139,13 @@ export function SessionTree({
     );
   };
 
+  const dropping = useProjectDrop(rows);
   return (
     <List
       ref={list}
       kind="tree"
       label="Projects and sessions"
+      {...dropping}
       className="sessions-tree"
       activeId={at >= start && at < end && selected ? rowId(selected) : undefined}
       resting={resting}

@@ -9,6 +9,7 @@ import type { Preferences } from "../../ipc/generated/Preferences";
 import type { SessionLines } from "../../ipc/generated/SessionLines";
 import { useKeyLabel } from "../../keys/useKeymap";
 import { errorText } from "../../lib/text";
+import { DEFAULT_LAYOUT } from "../../panels/layout";
 import { chats } from "../../state/selectors";
 import type { Theme } from "../../state/ui";
 import { Button, Segmented } from "../../ui/controls";
@@ -30,7 +31,7 @@ import {
 import { SIDE_BY_SIDE_CHOICES, sideBySideLabel, sideBySideSaid, stepSideBySide } from "./words";
 
 /** How the panels are laid out at first (`layout::DEFAULT`). */
-export const FIRST_LAYOUT = "list | session 60% | (changes / shell / plugin)";
+export const FIRST_LAYOUT = DEFAULT_LAYOUT;
 
 const THEMES: readonly { value: Theme; label: string }[] = [
   { value: "dark", label: "Dark" },
@@ -148,6 +149,18 @@ export function General({ preferences }: { preferences: Preferences }) {
     );
   };
 
+  const putProjectsBack = () => {
+    if (preferences.projects.length === 0) {
+      ui.tell("The projects are in the order they were added.");
+      return;
+    }
+    actions.preference(
+      row("projects"),
+      { ProjectOrder: [] },
+      "The projects are back in the order they were added.",
+    );
+  };
+
   return (
     <Page title="General" lead="How Muster looks and lays itself out.">
       {preferences.problem ? <Unreadable problem={preferences.problem} readKey={readKey} /> : null}
@@ -202,6 +215,21 @@ export function General({ preferences }: { preferences: Preferences }) {
           <Control>
             <Button busy={busy("panels")} onClick={putPanelsBack}>
               Put back as at first
+            </Button>
+          </Control>
+        </SettingRow>
+        <SettingRow id={row("projects")} act={putProjectsBack}>
+          <SettingText
+            name="Projects' order"
+            does={
+              preferences.projects.length === 0
+                ? "As they were added. Drag a project's line up or down the list to put it there."
+                : "Yours: as you dragged them, in the terminal UI too."
+            }
+          />
+          <Control>
+            <Button busy={busy("projects")} onClick={putProjectsBack}>
+              As they were added
             </Button>
           </Control>
         </SettingRow>

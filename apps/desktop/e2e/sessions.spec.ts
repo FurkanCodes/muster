@@ -131,7 +131,7 @@ test("ARC-24 out of reach, and no projects yet", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Add a project to start" })).toBeVisible();
 });
 
-test("PRD-15 T opens the shell beside the agent, live and typed in; T puts it away", async ({
+test("PRD-15 T places the shell beside the agent, live and typed in; T again gives it the keys", async ({
   page,
 }) => {
   await allSessions(page);
@@ -147,9 +147,13 @@ test("PRD-15 T opens the shell beside the agent, live and typed in; T puts it aw
   await page.keyboard.type("ls");
   await expect.poll(() => shown(page, id(102))).toContain("ls");
   await page.keyboard.press("Shift+Q");
+  await expect(shell).not.toHaveClass(/has-keys/);
   await page.keyboard.press("T");
+  await expect(shell).toHaveClass(/has-keys/);
+  await page.keyboard.press("Shift+Q");
+  // Its x takes it off the screen; it runs on.
+  await shell.getByRole("button", { name: "Take the shell off the screen" }).click();
   await expect(shell).toHaveCount(0);
-  await expect(page.locator(".mu-note")).toHaveText("The shell is put away; it runs on.");
   // In a workspace with none, one is started for it, beside its chat and on no line of its own.
   await line(page, /^Flaky resize/).click();
   await page.getByRole("button", { name: "Shell", exact: true }).click();
@@ -166,7 +170,8 @@ test("PRD-15 T opens the shell beside the agent, live and typed in; T puts it aw
   await line(page, "muster").click();
   await page.keyboard.press("T");
   await expect(line(page, /^Split view\.rs/)).toHaveAttribute("aria-selected", "true");
-  await expect(region(page, "Shell")).toBeVisible();
+  // One arrangement holds every project's: the other shell stays placed beside it.
+  await expect(region(page, "Shell")).toHaveCount(2);
 });
 
 test("PRD-15 a plugin's panel opens beside the session on its key, and its x puts it away", async ({
@@ -195,7 +200,7 @@ test("ARC-24 panels move by their heads, resize by the line between, and are kep
   await allSessions(page);
   await page.keyboard.press("T");
   await page.keyboard.press("Shift+Q");
-  const agent = region(page, "Claude Code");
+  const agent = region(page, "Preview: Claude Code");
   const shell = region(page, "Shell");
   await expect(shell).toBeVisible();
   const separator = page.getByRole("separator", { name: /^Between/ });
@@ -214,7 +219,7 @@ test("ARC-24 panels move by their heads, resize by the line between, and are kep
   await expect(separator).toHaveAttribute("aria-orientation", "horizontal");
   await expect
     .poll(() => page.evaluate(() => window.__muster.world.preferences.panels))
-    .toBe("list | (session / shell) 60% | (changes / plugin)");
+    .toMatch(/^list \| \(session \/ session:ses_\w+\) 60% \| \(changes \/ plugin\)$/);
 
   // The line between them, dragged, shares their place.
   const bar = await separator.boundingBox();
@@ -225,7 +230,7 @@ test("ARC-24 panels move by their heads, resize by the line between, and are kep
   await page.mouse.up();
   await expect
     .poll(() => page.evaluate(() => window.__muster.world.preferences.panels))
-    .toMatch(/^list \| \(session \d+% \/ shell\) 60% \| \(changes \/ plugin\)$/);
+    .toMatch(/^list \| \(session \d+% \/ session:ses_\w+\) 60% \| \(changes \/ plugin\)$/);
   const share = Number(
     (await page.evaluate(() => window.__muster.world.preferences.panels)).match(
       /session (\d+)%/,
@@ -253,18 +258,25 @@ test("ARC-24 panels move by their heads, resize by the line between, and are kep
 
 test("ARC-24 the layout is read from the person's settings", async ({ page }) => {
   await allSessions(page);
+  await page.keyboard.press("T");
+  await expect(region(page, "Shell")).toBeVisible();
+  // The shell placed above the agent, as the settings say.
   await page.evaluate(() => {
     const mock = window.__muster;
+    const placed = mock.world.preferences.panels.match(/session:ses_\w+/)?.[0];
     mock.world.preferences = {
       ...mock.world.preferences,
-      panels: "list | (shell / session) | changes | plugin",
+      panels: `list | (${placed} / session) | changes | plugin`,
     };
     mock.publish({ preferences: mock.world.preferences });
   });
-  await page.keyboard.press("T");
-  const shell = await region(page, "Shell").boundingBox();
-  const agent = await region(page, "Claude Code").boundingBox();
-  expect(shell && agent && shell.y < agent.y).toBe(true);
+  await expect
+    .poll(async () => {
+      const shell = await region(page, "Shell").boundingBox();
+      const agent = await region(page, "Preview: Claude Code").boundingBox();
+      return Boolean(shell && agent && shell.y < agent.y);
+    })
+    .toBe(true);
 });
 
 test("ARC-24 full screen on f: the session and its panels fill the window; Esc gives it back", async ({
@@ -281,7 +293,7 @@ test("ARC-24 full screen on f: the session and its panels fill the window; Esc g
   const title = region(page, "Split view.rs by responsibility");
   await expect(title).toContainText("Split view.rs by responsibility");
   await expect(title).toContainText("⎇ main");
-  await expect(region(page, "Claude Code")).toHaveClass(/has-keys/);
+  await expect(region(page, "Preview: Claude Code")).toHaveClass(/has-keys/);
   await expect(region(page, "Shell")).toBeVisible();
   await page.keyboard.type("x");
   await expect.poll(() => shown(page, id(100))).toContain("x");
@@ -312,10 +324,10 @@ test("ARC-24 m moves the panels with the keys: ⇥ another, the arrows past a ne
   await page.keyboard.press("G");
   await expect(region(page, "Session graph")).toBeVisible();
   await page.keyboard.press("m");
-  await expect(page.locator(".mu-note")).toContainText("Moving the agent");
+  await expect(page.locator(".mu-note")).toContainText("Moving the preview");
   // The agent to the right, past the shell and the graph beside it.
   await page.keyboard.press("ArrowRight");
-  const agent = await region(page, "Claude Code").boundingBox();
+  const agent = await region(page, "Preview: Claude Code").boundingBox();
   const shell = await region(page, "Shell").boundingBox();
   expect(agent && shell && agent.x > shell.x).toBe(true);
   // The arrows were the panels', not the tree's.
@@ -325,7 +337,7 @@ test("ARC-24 m moves the panels with the keys: ⇥ another, the arrows past a ne
     .poll(() => page.evaluate(() => window.__muster.world.preferences.panels))
     .toContain("session");
   const kept = await page.evaluate(() => window.__muster.world.preferences.panels);
-  expect(kept).not.toBe("list | session 60% | (changes / shell / plugin)");
+  expect(kept).not.toMatch(/^list \| \(session \| session:ses_\w+\) 60% \| \(changes \/ plugin\)$/);
 });
 
 test("PRD §5 by hand: c the checks and v a review open with the keys, o a draft pull request, b it in the browser", async ({

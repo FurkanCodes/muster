@@ -181,6 +181,7 @@ test.describe("ARC-24 the command palette", () => {
     await expect(help.getByRole("heading")).toHaveText([
       "On the queue",
       "In a session",
+      "After the panel key",
       "Anywhere",
     ]);
     await page.keyboard.type("rename");

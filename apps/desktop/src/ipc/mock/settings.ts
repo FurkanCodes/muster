@@ -197,6 +197,7 @@ export class MockSettings {
     else if ("SessionLines" in change) next.session_lines = change.SessionLines;
     else if ("Panels" in change) next.panels = change.Panels;
     else if ("ListFolded" in change) next.list_folded = change.ListFolded;
+    else if ("ProjectOrder" in change) next.projects = change.ProjectOrder;
     else if ("NamesByAgent" in change)
       next.naming = { ...now.naming, by_agent: change.NamesByAgent };
     else if ("NamedBy" in change) next.naming = { ...now.naming, ...change.NamedBy };

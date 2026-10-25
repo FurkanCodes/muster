@@ -16,6 +16,11 @@
   background: color-mix(in srgb, var(--waiting) 12%, var(--surface-term));
   box-shadow: var(--shadow-drag);
 }
+/* Beside other panels, under their heads, so each head's buttons stay
+   in reach while the session asks. */
+.session-pane:has(.panels-box) .session-banner {
+  top: calc(var(--layout-titlebar) + var(--size-control-lg));
+}
 .session-terminal {
   padding-bottom: 0;
 }

@@ -114,15 +114,22 @@ export function shareAt(divider: Divider, at: number): number {
 }
 
 /** Where a panel dropped at a point would land, as it lights up. */
-export type Landing = { edge: Edge; target: PanelName | null; rect: Rect };
+export type Landing = {
+  edge: Edge;
+  target: PanelName | null;
+  rect: Rect;
+  /** Dropped about its middle: the two swap places. */
+  over?: boolean;
+};
 
 /** How near the pane's edge a drop goes to that edge rather than beside a panel. */
 export const EDGE_ZONE = 24;
 
 /**
  * Where `panel` dropped at (`x`, `y`) in `pane` would land: along an edge of
- * the pane near it, or at the nearest edge of the panel under it. Over
- * itself, nowhere (`app::drag::drop_place`).
+ * the pane near it, or at the nearest edge of the panel under it, or, where
+ * it can `swap`, in that panel's place about its middle. Over itself,
+ * nowhere (`app::drag::drop_place`).
  */
 export function landingAt(
   panel: PanelName,
@@ -130,6 +137,7 @@ export function landingAt(
   y: number,
   pane: Rect,
   shown: Solved["panels"],
+  swap = false,
 ): Landing | null {
   const edgeOfPane: Edge | null =
     x <= pane.x + EDGE_ZONE
@@ -147,6 +155,13 @@ export function landingAt(
   );
   if (!under || under.panel === panel) return null;
   const { rect } = under;
+  // About its middle, a panel that can swap takes its whole place.
+  const middle =
+    x > rect.x + rect.width / 4 &&
+    x < rect.x + (rect.width * 3) / 4 &&
+    y > rect.y + rect.height / 4 &&
+    y < rect.y + (rect.height * 3) / 4;
+  if (swap && middle) return { edge: "left", target: under.panel, rect, over: true };
   const distances: [number, Edge][] = [
     [x - rect.x, "left"],
     [rect.x + rect.width - x, "right"],

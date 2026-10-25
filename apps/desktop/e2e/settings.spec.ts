@@ -77,7 +77,7 @@ test.describe("General", () => {
     ]) {
       await expect(row(page, `general/${name}`)).toBeVisible();
     }
-    await expect(page.getByText("list | session 60% | (changes / shell / plugin)")).toBeVisible();
+    await expect(page.getByText("list | session 60% | (changes / plugin)")).toBeVisible();
     await expect(page.getByRole("main").getByText("Muster 0.4.1", { exact: true })).toBeVisible();
     await expect(page.getByText("~/.config/muster/settings.toml")).toBeVisible();
     // The status bar says what the keys do here.
@@ -154,7 +154,7 @@ test.describe("General", () => {
     expect(await sent(page)).toEqual(
       expect.arrayContaining([
         { ChangePreference: { ListFolded: false } },
-        { ChangePreference: { Panels: "list | session 60% | (changes / shell / plugin)" } },
+        { ChangePreference: { Panels: "list | session 60% | (changes / plugin)" } },
       ]),
     );
   });

@@ -16,7 +16,7 @@ import { useKeys } from "../../app/keys";
 import { newSession } from "../../flows/actions";
 import { labelOf } from "../../keys/keymap";
 import { useActionKeys, useKeymap } from "../../keys/useKeymap";
-import { toggleShell } from "../../panels/beside";
+import { openShell } from "../../panels/beside";
 import { usePanelHandlers } from "../../panels/usePanelKeys";
 import * as byHand from "../../session/byHand";
 import { useShownSessionActions } from "../../session/SessionActionsContext";
@@ -122,10 +122,10 @@ export default function AllSessions({ active }: { active: boolean }) {
     });
     if (chat) {
       tree.pick(chat.id);
-      void toggleShell(app, workspace, chat.id);
+      void openShell(app, workspace, chat.id);
       return;
     }
-    void toggleShell(app, workspace, null).then((shell) => {
+    void openShell(app, workspace, null).then((shell) => {
       if (shell) tree.pick(shell);
     });
   };

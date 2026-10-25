@@ -7,6 +7,9 @@ const PATHS = {
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-3.5-3.5",
   plus: "M12 5v14M5 12h14",
   close: "M6 6l12 12M18 6 6 18",
+  // Lucide's diamond: a session placed where the preview is.
+  place:
+    "M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z",
   trash: "M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   collapse: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",

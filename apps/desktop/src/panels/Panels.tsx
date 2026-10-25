@@ -1,32 +1,28 @@
 // The panels in the session's pane (design system: Panel; `PRODUCT.md` §6,
-// `ARCHITECTURE.md` §5a Panels): the session's agent, the shell beside it,
-// a plugin's panel and the sessions pinned in panels of their own, each where
-// the person's layout puts it. A session's line carried from the sidebar and
-// dropped on the pane is pinned where it lands (`carry`); `P` pins the
-// session shown, and again unpins it. A panel
-// dragged by its head goes to an edge of the pane, or beside or under
-// another, the place lighting up as it would land; the line between two
-// is dragged to share their place; either is kept in the person's settings.
-// Each panel is placed by its own rectangle in one box, so moving one never
-// starts its terminal afresh. Where they do not fit, the panel with the
-// keys opens over the rest. Alone, the agent's terminal is drawn as it is.
-// `m` moves them with the keys instead (useArranging).
+// `ARCHITECTURE.md` §5a Panels): the preview (the session the list selects),
+// a plugin's panel and every terminal placed in a panel of its own, an
+// agent's or a shell's, each where the person's layout puts it. A session's
+// line carried from the sidebar and dropped on the pane is placed where it
+// lands (`carry`); `P` places the session shown, and again takes it off the
+// screen. A panel dragged by its head goes to an edge of the pane, or beside
+// or under another, the place lighting up as it would land, or, dropped
+// about another's middle, swaps places with it; the line between two is
+// dragged to share their place; either is kept in the person's settings. A
+// double-click on a head zooms its panel over the others, and again puts it
+// back. Each panel is placed by its own rectangle in one box, so moving one
+// never starts its terminal afresh. Where they do not fit, the panel with the
+// keys opens over the rest, saying how many it hides. Alone, the agent's
+// terminal is drawn as it is. `m` moves them with the keys instead
+// (useArranging), and the panel key's keys act on them (usePrefixKeys).
 
 import { type DragEvent, type PointerEvent, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useApp, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
-import { panelBeside, shellBeside } from "./beside";
+import { panelBeside, running } from "./beside";
 import { CARRIED, carriedSession, carry } from "./carry";
-import { type Layout, type PanelName, pinnedPanel } from "./layout";
-import {
-  PanelLine,
-  PinnedPanel,
-  PluginPanel,
-  SessionPanel,
-  ShellPanel,
-  TerminalAlone,
-} from "./PanelBoxes";
+import { type Layout, type PanelName, placedPanel } from "./layout";
+import { PanelLine, PlacedPanel, PluginPanel, SessionPanel, TerminalAlone } from "./PanelBoxes";
 import {
   type Divider,
   GAP,
@@ -41,10 +37,11 @@ import {
 import { useArranging } from "./useArranging";
 import { useLayout } from "./useLayout";
 import { usePanelKeys } from "./usePanelKeys";
+import { usePrefixKeys } from "./usePrefixKeys";
 import "./panels.css";
 
 /** The panels of the session's pane, as `movedToEdgeOf` reads the pane's edges. */
-const PANE: readonly PanelName[] = ["session", "changes", "shell", "plugin"];
+const PANE: readonly PanelName[] = ["session", "changes", "plugin"];
 
 /** How far a pressed head moves before it is a drag rather than a click. */
 const DRAG_FROM = 4;
@@ -71,20 +68,37 @@ function useBoxSize(box: React.RefObject<HTMLDivElement | null>) {
   return size;
 }
 
-/** The panels laid out over `area`: all that are shown, or the one with the keys over the rest. */
+/**
+ * The panels laid out over `area`: all that are shown, or the zoomed one
+ * alone, or the one with the keys over the rest where they do not fit; and
+ * how many of those shown it hides then.
+ */
 function laidOut(
   layout: Layout,
   shown: (panel: PanelName) => boolean,
   withKeys: PanelName,
+  zoomed: PanelName | null,
   area: Rect,
-): Solved {
-  const all = layout.shown(shown);
+): { solved: Solved; hiding: number } {
+  const count = layout.shown(shown);
+  const total = count ? panelsCount(count) : 0;
+  const all = zoomed ? layout.shown((panel) => panel === zoomed) : count;
   if (all) {
     const least = needs(all);
     if (area.width === 0 || (least.width <= area.width && least.height <= area.height))
-      return solve(all, area);
+      return { solved: solve(all, area), hiding: zoomed ? total - 1 : 0 };
   }
-  return { panels: [{ panel: withKeys, rect: area }], dividers: [] };
+  return {
+    solved: { panels: [{ panel: zoomed ?? withKeys, rect: area }], dividers: [] },
+    hiding: total - 1,
+  };
+}
+
+/** How many panels `node` holds. */
+function panelsCount(node: NonNullable<ReturnType<Layout["shown"]>>): number {
+  return node.part.kind === "panel"
+    ? 1
+    : panelsCount(node.part.first) + panelsCount(node.part.second);
 }
 
 function lineKey(divider: Divider): string {
@@ -108,50 +122,79 @@ export function Panels({ session }: { session: SessionId }) {
   const box = useRef<HTMLDivElement>(null);
   const size = useBoxSize(box);
   const panels = useLayout();
-  const keptShell = useUi((state) => state.shell);
-  const shell = useDaemon((state) => shellBeside(state, keptShell, session));
   const plugin = useDaemon((state) => panelBeside(state, session));
   const typingIn = useUi((state) => (state.keysIn === "terminal" ? state.terminal : null));
-  // The sessions pinned that the daemon still has, in the layout's order.
-  const pinned = useDaemon(
-    useShallow((state) => panels.layout.pinned().filter((id) => id in state.sessions)),
+  // The sessions placed that the daemon still has, in the layout's order;
+  // a shell that ended leaves its panel as the daemon takes it out.
+  const placed = useDaemon(
+    useShallow((state) =>
+      panels.layout.placed().filter((id) => {
+        const stored = state.sessions[id];
+        return stored && (stored.harness !== "shell" || running(stored));
+      }),
+    ),
   );
   const [drag, setDrag] = useState<Drag | null>(null);
   const [dropping, setDropping] = useState<Landing | null>(null);
   usePanelKeys(session, plugin, panels);
 
-  // The session shown, where it is pinned, is seen in its own panel; the
-  // agent's panel keeps the last one shown that is not, or goes, so every
-  // terminal on the pane is drawn and none twice. Two are kept, the latest
-  // first, as a line carried from the sidebar may be shown as it is taken up.
-  const shownPinned = pinned.includes(session);
+  // The session shown, where it is placed, is seen in its own panel; the
+  // preview keeps the last one shown that is not, or goes, so every terminal
+  // on the pane is drawn and none twice. Two are kept, the latest first, as a
+  // line carried from the sidebar may be shown as it is taken up.
+  const shownPlaced = placed.includes(session);
   const [kept, setKept] = useState<SessionId[]>([session]);
-  if (!shownPinned && kept[0] !== session) setKept([session, ...kept.slice(0, 1)]);
+  if (!shownPlaced && kept[0] !== session) setKept([session, ...kept.slice(0, 1)]);
   const keptAgent = useDaemon(
-    (state) => kept.find((id) => id in state.sessions && !pinned.includes(id)) ?? null,
+    (state) => kept.find((id) => id in state.sessions && !placed.includes(id)) ?? null,
   );
-  const agent = shownPinned ? keptAgent : session;
+  // The preview folded away by its ✕ comes back as another is selected.
+  const [folded, setFolded] = useState<SessionId | null>(null);
+  if (folded && folded !== session && folded !== keptAgent) setFolded(null);
+  const shownAgent = shownPlaced ? keptAgent : session;
+  // Alone, the session is drawn as it is, folded or not.
+  const alone = !plugin && placed.length === 0;
+  const agent =
+    !alone && shownAgent && shownAgent === folded && typingIn !== folded ? null : shownAgent;
 
   const sessionOf: Partial<Record<PanelName, SessionId>> = {};
   if (agent) sessionOf.session = agent;
-  if (shell) sessionOf.shell = shell;
   if (plugin) sessionOf.plugin = plugin;
-  for (const id of pinned) sessionOf[pinnedPanel(id)] = id;
+  for (const id of placed) sessionOf[placedPanel(id)] = id;
   const withKeys: PanelName =
-    typingIn && typingIn === shell
-      ? "shell"
-      : typingIn && typingIn === plugin
-        ? "plugin"
-        : typingIn && pinned.includes(typingIn)
-          ? pinnedPanel(typingIn)
-          : shownPinned
-            ? pinnedPanel(session)
-            : "session";
+    typingIn && typingIn === plugin
+      ? "plugin"
+      : typingIn && placed.includes(typingIn)
+        ? placedPanel(typingIn)
+        : shownPlaced
+          ? placedPanel(session)
+          : "session";
+  // Zoomed, one panel shows alone, following the keys from panel to panel.
+  const [zoomedAs, setZoomed] = useState<PanelName | null>(null);
+  const zoomed = zoomedAs && sessionOf[zoomedAs] ? zoomedAs : null;
+  if (zoomed && withKeys !== zoomed && typingIn && sessionOf[withKeys]) setZoomed(withKeys);
   const area = { x: 0, y: 0, width: size.width, height: size.height };
-  const solved = laidOut(panels.layout, (panel) => Boolean(sessionOf[panel]), withKeys, area);
-  const alone = !shell && !plugin && pinned.length === 0;
-  const pane: PanelName[] = [...PANE, ...pinned.map(pinnedPanel)];
+  const { solved, hiding } = laidOut(
+    panels.layout,
+    (panel) => Boolean(sessionOf[panel]),
+    withKeys,
+    zoomed,
+    area,
+  );
+  const pane: PanelName[] = [...PANE, ...placed.map(placedPanel)];
   const arranging = useArranging(panels, solved, withKeys, !alone, pane);
+  const zoom = (panel: PanelName) => () => setZoomed(zoomed ? null : panel);
+  usePrefixKeys({
+    panels,
+    solved,
+    sessionOf,
+    withKeys,
+    shown: session,
+    zoom: (panel) => setZoomed(zoomed ? null : panel),
+    fold: (id) => setFolded(id),
+  });
+  const hidingOf = (panel: PanelName) =>
+    hiding > 0 && solved.panels.some((one) => one.panel === panel) ? hiding : null;
 
   // A drag lets go on Esc, the layout as it was.
   useEffect(() => {
@@ -188,7 +231,7 @@ export function Panels({ session }: { session: SessionId }) {
     const at = point(event);
     if (drag.kind === "panel") {
       const moved = drag.moved || Math.hypot(at.x - drag.x, at.y - drag.y) >= DRAG_FROM;
-      const to = moved ? landingAt(drag.panel, at.x, at.y, area, solved.panels) : null;
+      const to = moved ? landingAt(drag.panel, at.x, at.y, area, solved.panels, true) : null;
       if (moved !== drag.moved || to?.rect !== drag.to?.rect) setDrag({ ...drag, moved, to });
       return;
     }
@@ -214,18 +257,20 @@ export function Panels({ session }: { session: SessionId }) {
     const to = drag.to;
     if (!to) return;
     panels.keep(
-      to.target
-        ? panels.layout.moved(drag.panel, { beside: to.target, edge: to.edge })
-        : panels.layout.movedToEdgeOf(drag.panel, pane, to.edge),
+      to.target && to.over
+        ? panels.layout.moved(drag.panel, { over: to.target })
+        : to.target
+          ? panels.layout.moved(drag.panel, { beside: to.target, edge: to.edge })
+          : panels.layout.movedToEdgeOf(drag.panel, pane, to.edge),
     );
   };
 
-  // A session's line carried over the pane: where it would be pinned lights up.
+  // A session's line carried over the pane: where it would be placed lights up.
   const carried = (event: DragEvent) =>
     event.dataTransfer.types.includes(CARRIED) ? carriedSession() : null;
   const landing = (event: DragEvent, id: SessionId) => {
     const at = point(event);
-    return landingAt(pinnedPanel(id), at.x, at.y, area, solved.panels);
+    return landingAt(placedPanel(id), at.x, at.y, area, solved.panels);
   };
   const onDragOver = (event: DragEvent<HTMLDivElement>) => {
     const id = carried(event);
@@ -243,18 +288,18 @@ export function Panels({ session }: { session: SessionId }) {
     carry(null);
     if (!id || !to) return;
     event.preventDefault();
-    const panel = pinnedPanel(id);
+    const panel = placedPanel(id);
     panels.keep(
       to.target
-        ? panels.layout.pinning(id, { beside: to.target, edge: to.edge })
+        ? panels.layout.placing(id, { beside: to.target, edge: to.edge })
         : panels.layout
-            .pinning(id, { beside: "session", edge: to.edge })
+            .placing(id, { beside: "session", edge: to.edge })
             .movedToEdgeOf(panel, [...pane, panel], to.edge),
     );
-    app.actions.tell("Pinned it in a panel of its own.");
+    app.actions.tell("Placed it in a panel of its own.");
   };
 
-  const placed = (panel: PanelName) => solved.panels.find((one) => one.panel === panel)?.rect;
+  const placedAt = (panel: PanelName) => solved.panels.find((one) => one.panel === panel)?.rect;
   const style = (rect: Rect | undefined) =>
     rect
       ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height }
@@ -263,7 +308,7 @@ export function Panels({ session }: { session: SessionId }) {
   const lineDragged = drag?.kind === "line" ? lineKey(drag.divider) : null;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: a session's line dropped here is pinned where it lands; the keys do the same with pin_session.
+    // biome-ignore lint/a11y/noStaticElementInteractions: a session's line dropped here is placed where it lands; the keys do the same with pin_session.
     <div
       ref={box}
       className={`panels ${drag ? "panels--dragging" : ""}`}
@@ -287,37 +332,45 @@ export function Panels({ session }: { session: SessionId }) {
           {agent ? (
             <SessionPanel
               session={agent}
-              style={style(placed("session"))}
+              style={style(placedAt("session"))}
               lifted={dragging === "session"}
               onHeadDown={headDown("session")}
-            />
-          ) : null}
-          {shell ? (
-            <ShellPanel
-              shell={shell}
-              shown={session}
-              style={style(placed("shell"))}
-              lifted={dragging === "shell"}
-              onHeadDown={headDown("shell")}
+              onZoom={zoom("session")}
+              hiding={hidingOf("session")}
+              among={
+                placed.length > 0 || plugin
+                  ? {
+                      onPlace: () =>
+                        panels.keep(
+                          panels.layout.placing(agent, { beside: "session", edge: "left" }),
+                        ),
+                      onFold: () => setFolded(agent),
+                    }
+                  : null
+              }
             />
           ) : null}
           {plugin ? (
             <PluginPanel
               panel={plugin}
               shown={session}
-              style={style(placed("plugin"))}
+              style={style(placedAt("plugin"))}
               lifted={dragging === "plugin"}
               onHeadDown={headDown("plugin")}
+              onZoom={zoom("plugin")}
+              hiding={hidingOf("plugin")}
             />
           ) : null}
-          {pinned.map((id) => (
-            <PinnedPanel
+          {placed.map((id) => (
+            <PlacedPanel
               key={id}
               session={id}
-              style={style(placed(pinnedPanel(id)))}
-              lifted={dragging === pinnedPanel(id)}
-              onHeadDown={headDown(pinnedPanel(id))}
-              onUnpin={() => panels.keep(panels.layout.unpinned(id))}
+              style={style(placedAt(placedPanel(id)))}
+              lifted={dragging === placedPanel(id)}
+              onHeadDown={headDown(placedPanel(id))}
+              onZoom={zoom(placedPanel(id))}
+              hiding={hidingOf(placedPanel(id))}
+              onTakeOff={() => panels.keep(panels.layout.unplaced(id))}
             />
           ))}
           {solved.dividers.map((divider) => {

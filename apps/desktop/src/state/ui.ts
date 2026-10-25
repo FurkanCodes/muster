@@ -65,8 +65,6 @@ export interface UiState {
    * starting where `place` says (a workspace), or in a new worktree.
    */
   compose: { project: ProjectId; place: WorkspaceId | null; request: number } | null;
-  /** The shell put beside the session (`T`); it runs on when put away. */
-  shell: SessionId | null;
   /** The session filling the window (`f`), its panels with it. */
   fullScreen: SessionId | null;
   sidebarFolded: boolean;
@@ -102,7 +100,6 @@ export interface UiActions {
   compose(project: ProjectId, place: WorkspaceId | null): void;
   /** The page has made its box ready: the request is done, so showing the page again leaves the keys with the list. */
   composed(): void;
-  showShell(shell: SessionId | null): void;
   fillWindow(session: SessionId | null): void;
   foldSidebar(): void;
   setTheme(theme: Theme): void;
@@ -147,7 +144,6 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     pane: "terminal",
     changesTurn: null,
     compose: null,
-    shell: null,
     fullScreen: null,
     sidebarFolded: false,
     theme: storedTheme(),
@@ -188,7 +184,6 @@ export function createUi(): { store: UiStore; actions: UiActions } {
         compose: { project, place, request: (state.compose?.request ?? 0) + 1 },
       })),
     composed: () => set({ compose: null }),
-    showShell: (shell) => set({ shell }),
     fillWindow: (fullScreen) => set({ fullScreen }),
     foldSidebar: () => set((state) => ({ sidebarFolded: !state.sidebarFolded })),
     setTheme: (theme) => {

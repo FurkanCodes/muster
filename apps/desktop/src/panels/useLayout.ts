@@ -22,7 +22,10 @@ export function useLayout(): PanelsLayout {
   const written = useDaemon((state) => state.preferences?.panels ?? null);
   const [moving, setMoving] = useState<Layout | null>(null);
   const [kept, setKept] = useState<{ layout: Layout; over: string | null } | null>(null);
-  // What was kept in this window holds until the daemon's settings say something else.
+  // What was kept in this window holds until the daemon's settings say
+  // something else, and then is let go, so settings that come back to what
+  // they said before are read as they are.
+  if (kept && kept.over !== written) setKept(null);
   const holding = kept && kept.over === written ? kept.layout : null;
   const settled = holding ?? Layout.read(written);
   const layout = moving ?? settled;

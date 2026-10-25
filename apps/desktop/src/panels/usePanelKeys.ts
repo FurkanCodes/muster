@@ -1,6 +1,7 @@
 // The session pane's keys for what stands beside it, as the person set them
-// (the keymap, `src/keys`): `shell` the shell, `full_screen` full screen,
-// `pin_session` the session shown pinned in a panel of its own (again: unpinned),
+// (the keymap, `src/keys`): `shell` a shell placed beside it, `full_screen`
+// full screen, `pin_session` the session shown placed in a panel of its own
+// (again: off the screen),
 // each plugin's panel on its own key (`plugin.<id>.<panel>`), and Esc out of
 // full screen. While a terminal has the keys every key is its program's, so
 // these act only while Muster has them.
@@ -10,7 +11,7 @@ import { type App, useApp, useDaemon, useUi } from "../app/context";
 import { useKeys } from "../app/keys";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { KEY_SCREENS, useActionKeys, useKeymap } from "../keys/useKeymap";
-import { giveKeys, running, togglePanel, toggleShell } from "./beside";
+import { giveKeys, openShell, running, togglePanel } from "./beside";
 import type { PanelsLayout } from "./useLayout";
 
 /** Full screen on and off: the session fills the window with the keys, and gives it back. */
@@ -53,17 +54,19 @@ export function usePanelKeys(
     ...panels,
     full_screen: () => toggleFullScreen(app, session),
     shell: () => {
-      if (workspace) void toggleShell(app, workspace, session);
+      if (workspace) void openShell(app, workspace, session);
     },
     pin_session: () => {
       const layout = arranged.layout;
-      const pinned = layout.pinned().includes(session);
+      const placed = layout.placed().includes(session);
       arranged.keep(
-        pinned
-          ? layout.unpinned(session)
-          : layout.pinning(session, { beside: "session", edge: "left" }),
+        placed
+          ? layout.unplaced(session)
+          : layout.placing(session, { beside: "session", edge: "left" }),
       );
-      app.actions.tell(pinned ? "Unpinned it." : "Pinned it in a panel of its own.");
+      app.actions.tell(
+        placed ? "Took it off the screen; it runs on." : "Placed it in a panel of its own.",
+      );
     },
   });
   useKeys(fullScreen ? { Escape: () => app.actions.fillWindow(null) } : {});
@@ -76,21 +79,19 @@ export function usePanelKeys(
     [app, session],
   );
 
-  // A shell beside the session that ended goes, and the keys with it.
-  const keptShell = useUi((state) => state.shell);
-  const shellEnded = useDaemon((state) => {
-    const stored = keptShell ? state.sessions[keptShell] : undefined;
-    return Boolean(stored && !running(stored));
+  // A shell with the keys that ended leaves its panel, and the keys come
+  // back to the list.
+  const typingInEnded = useDaemon((state) => {
+    const ui = app.ui.getState();
+    const stored =
+      ui.keysIn === "terminal" && ui.terminal ? state.sessions[ui.terminal] : undefined;
+    return Boolean(stored && stored.harness === "shell" && !running(stored));
   });
   useEffect(() => {
-    if (!shellEnded || !keptShell) return;
-    const ui = app.ui.getState();
-    if (ui.keysIn === "terminal" && ui.terminal === keptShell) {
-      app.actions.showTerminal(session);
-      app.actions.keysTo("list");
-    }
-    app.actions.showShell(null);
-  }, [app, shellEnded, keptShell, session]);
+    if (!typingInEnded) return;
+    app.actions.showTerminal(session);
+    app.actions.keysTo("list");
+  }, [app, typingInEnded, session]);
 
   // A plugin's panel with the keys that is no longer beside the session
   // (ended, or another's) gives them back (`App::keep_plugin_keys`).

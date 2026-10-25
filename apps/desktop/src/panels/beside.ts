@@ -1,7 +1,10 @@
 // What stands beside the agent (`PRODUCT.md` §6, `ARCHITECTURE.md` §5a): the
-// workspace's shell on `T` and a plugin's panel on its key, as the terminal
-// UI opens them (`app::shell`, `app::plugin_panel`). The shell is put beside
-// the session and kept there until `T` puts it away, still running; a
+// workspace's shells, placed in panels of their own as any terminal is, and a
+// plugin's panel on its key, as the terminal UI opens them (`app::shell`,
+// `app::plugin_panel`). `T` places the workspace's shell beside the session
+// shown: the keys go to one placed already, else the newest running there
+// off the screen is placed, else a new one is started and placed; a shell
+// that ends leaves its panel, the daemon taking it out of the layout. A
 // plugin's panel follows the selection: the newest running beside the
 // session shown, else the newest on its workspace. Put away, a plugin's
 // panel ends and leaves the list, as closing does.
@@ -17,6 +20,7 @@ import type { PanelAction } from "../keys/keymap";
 import { errorText } from "../lib/text";
 import type { DaemonState } from "../state/daemon";
 import { shownHarness } from "../state/selectors";
+import { Layout, type Place } from "./layout";
 
 /** The size a session beside is started at, before its panel gives it its own. */
 const STARTING_SIZE: TermSize = { cols: 80, rows: 24 };
@@ -26,15 +30,6 @@ const PANEL = "plugin:";
 
 export function running(session: Session | undefined): session is Session {
   return Boolean(session && session.ended_at === null && session.status.state !== "exited");
-}
-
-/** The shell beside `shown`: the one put there that still runs, and is not `shown` itself. */
-export function shellBeside(
-  state: DaemonState,
-  shell: SessionId | null,
-  shown: SessionId,
-): SessionId | null {
-  return shell && shell !== shown && running(state.sessions[shell]) ? shell : null;
 }
 
 /**
@@ -77,14 +72,6 @@ function keysBack(app: App, going: SessionId, shown: SessionId | null): void {
   }
 }
 
-/** The shell beside `shown` put away, running on. */
-export function putShellAway(app: App, shown: SessionId | null): void {
-  const shell = app.ui.getState().shell;
-  if (shell) keysBack(app, shell, shown);
-  app.actions.showShell(null);
-  app.actions.tell("The shell is put away; it runs on.");
-}
-
 /** A plugin's panel put away: its program ended, and it leaves the list. */
 export async function putPanelAway(
   app: App,
@@ -102,34 +89,66 @@ export async function putPanelAway(
   }
 }
 
+/** The layout as the person's settings have it now. */
+export function keptLayout(app: App): Layout {
+  return Layout.read(app.daemon.store.getState().preferences?.panels ?? null);
+}
+
+/** Has the daemon keep `layout` in the person's settings; a refusal is said. */
+export async function keepLayout(app: App, layout: Layout): Promise<void> {
+  try {
+    await app.bridge.command({ ChangePreference: { Panels: layout.toString() } });
+  } catch (error) {
+    refused(app, error);
+  }
+}
+
+/** Whether `session` is a shell that still runs. */
+function runningShell(session: Session | undefined): session is Session {
+  return running(session) && shownHarness(session) === SHELL;
+}
+
 /**
- * `T`: the workspace's shell beside the session shown, with the keys: the
- * first running there, or one started for it; again on that workspace, put
- * away, still running. Resolves to the shell shown, if one is.
+ * `T`: the workspace's shell placed beside the session shown (at the
+ * preview's right; along the window's right with none shown), with the keys:
+ * the newest placed already, else the newest running there off the screen,
+ * else a new one. Resolves to the shell, if one is.
  */
-export async function toggleShell(
+export async function openShell(
   app: App,
   workspace: WorkspaceId,
   shown: SessionId | null,
 ): Promise<SessionId | null> {
   const state = app.daemon.store.getState();
-  const ui = app.ui.getState();
-  const beside = shown ? shellBeside(state, ui.shell, shown) : null;
-  if (beside && state.sessions[beside]?.workspace === workspace) {
-    putShellAway(app, shown);
-    return null;
+  const layout = keptLayout(app);
+  const shells = Object.values(state.sessions)
+    .filter((session) => session.workspace === workspace && runningShell(session))
+    .sort((one, other) => one.created_at - other.created_at);
+  const placed = new Set(layout.placed());
+  const on = shells.filter((shell) => placed.has(shell.id)).at(-1);
+  if (on) {
+    giveKeys(app, on.id);
+    return on.id;
   }
-  const existing = state.derived.rows
-    .map((row) => (row.kind === "session" ? state.sessions[row.id] : undefined))
-    .find(
-      (session) =>
-        session?.workspace === workspace && shownHarness(session) === SHELL && running(session),
-    );
-  if (existing) {
-    app.actions.showShell(existing.id);
-    giveKeys(app, existing.id);
-    return existing.id;
+  const place: Place = shown ? { beside: "session", edge: "right" } : { window: "right" };
+  const off = shells.at(-1);
+  if (off) {
+    await keepLayout(app, layout.placing(off.id, place));
+    giveKeys(app, off.id);
+    return off.id;
   }
+  return startShell(app, workspace, place);
+}
+
+/**
+ * A new shell in `workspace`, placed at `place` with the keys, as a panel
+ * split by the panel key opens one. Resolves to it, once started.
+ */
+export async function startShell(
+  app: App,
+  workspace: WorkspaceId,
+  place: Place,
+): Promise<SessionId | null> {
   try {
     const reply = await app.bridge.command({
       StartSession: {
@@ -143,7 +162,7 @@ export async function toggleShell(
     });
     const id = replyAs(reply, "SessionStarted")?.id;
     if (id === undefined) return null;
-    app.actions.showShell(id);
+    await keepLayout(app, keptLayout(app).placing(id, place));
     giveKeys(app, id);
     return id;
   } catch (error) {

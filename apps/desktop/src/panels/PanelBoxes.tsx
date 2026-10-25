@@ -1,9 +1,13 @@
 // Each panel of the session's pane (design system: Panel, as the AllSessions
-// and PluginPanel boards draw them): the agent's, its logo, name and how it
-// stands; a session pinned in a panel of its own, the same with its title and
-// a way to unpin it; the shell's, `❯ Shell` and the program in front in it; a
-// plugin's, its plugin's name and its own title; and the line between two,
-// which a drag or the arrows on it resize.
+// and PluginPanel boards draw them): the preview's, the agent's logo, name
+// and how it stands, and among others `preview`, a `◆` placing its session
+// where it is and a `✕` folding it away; a terminal placed in a panel of its
+// own, an agent's the same with its title, a shell's `❯` and the program in
+// front in it, each saying where it works and with a `✕` taking it off the
+// screen, its session running on; a plugin's, its plugin's name and its own
+// title; and the line between two, which a drag or the arrows on it resize.
+// A double-click on a head zooms its panel over the others, or puts it back,
+// and a zoomed head says how many it hides.
 
 import { type CSSProperties, type KeyboardEvent, lazy, type PointerEvent, Suspense } from "react";
 import { useApp, useDaemon, useUi } from "../app/context";
@@ -13,10 +17,11 @@ import { useKeyLabel } from "../keys/useKeymap";
 import { agentOf } from "../lib/agents";
 import { doing, statusKind } from "../lib/status";
 import { branchOf, shownHarness } from "../state/selectors";
+import { IconButton } from "../ui/controls";
 import { Panel, PanelClose, PanelHead, PanelTitle } from "../ui/Panel";
 import { AgentLogo, BranchName, StatusMark } from "../ui/status";
-import { putPanelAway, putShellAway } from "./beside";
-import { type PanelName, pinnedSession } from "./layout";
+import { putPanelAway } from "./beside";
+import { type PanelName, placedSession } from "./layout";
 import type { Divider } from "./solve";
 
 // xterm is the heaviest part of the window: loaded once a terminal shows (ARC-25).
@@ -29,6 +34,27 @@ interface BoxProps {
   /** Being carried by its head. */
   lifted: boolean;
   onHeadDown: (event: PointerEvent<HTMLDivElement>) => void;
+  /** A double-click on its head: zoomed over the others, or put back. */
+  onZoom: () => void;
+  /** How many others it shows over, zoomed; null while it is not. */
+  hiding: number | null;
+}
+
+/** What a zoomed panel's head says: how many it shows over. */
+function Zoomed({ hiding }: { hiding: number | null }) {
+  if (hiding === null) return null;
+  return <span className="mu-cut panels-zoomed">zoomed · {hiding} more</span>;
+}
+
+/** Where `session` works, for a head among others': its project and its branch. */
+function useWhere(session: SessionId): string {
+  return useDaemon((state) => {
+    const workspace = state.workspaces[state.sessions[session]?.workspace ?? ""];
+    const project = workspace ? state.projects[workspace.project] : undefined;
+    if (!workspace || !project) return "";
+    const branch = branchOf(workspace);
+    return branch ? `${project.name}/${branch}` : project.name;
+  });
 }
 
 function useHasKeys(session: SessionId): boolean {
@@ -74,98 +100,106 @@ function useAgentHead(session: SessionId) {
   return { harness, kind, words, title, name: agentOf(harness).name };
 }
 
-/** A session pinned in a panel of its own: its title as its head says it, and a way to unpin it. */
-export function PinnedPanel({
+/**
+ * A terminal placed in a panel of its own: an agent's title and how it
+ * stands, or a shell's prompt and the program in front in it; where it
+ * works; and a way to take it off the screen, running on.
+ */
+export function PlacedPanel({
   session,
   style,
   lifted,
   onHeadDown,
-  onUnpin,
-}: BoxProps & { session: SessionId; onUnpin: () => void }) {
+  onZoom,
+  hiding,
+  onTakeOff,
+}: BoxProps & { session: SessionId; onTakeOff: () => void }) {
   const { harness, kind, words, title } = useAgentHead(session);
+  const shell = harness === "shell";
+  const where = useWhere(session);
   const key = useKeyLabel("pin_session");
   return (
     <Panel
-      label={title}
+      label={shell ? "Shell" : title}
       hasKeys={useHasKeys(session)}
       className={`panels-box ${lifted ? "is-lifted" : ""}`}
       style={style}
     >
-      <PanelHead onPointerDown={onHeadDown} title="Drag to move it">
-        <AgentLogo harness={harness} size="sm" />
-        <PanelTitle>{title}</PanelTitle>
-        <StatusMark kind={kind} />
-        <span className="mu-cut">{words}</span>
-        <PanelClose label={`Unpin ${title}`} keyHint={key} onClose={onUnpin} />
+      <PanelHead onPointerDown={onHeadDown} onDoubleClick={onZoom} title="Drag to move it">
+        {shell ? (
+          <span className="mu-mono panels-prompt" aria-hidden="true">
+            ❯
+          </span>
+        ) : (
+          <AgentLogo harness={harness} size="sm" />
+        )}
+        <PanelTitle>{shell ? "Shell" : title}</PanelTitle>
+        {shell ? null : <StatusMark kind={kind} />}
+        <span className="mu-cut">{shell ? title : words}</span>
+        {where ? <BranchName className="mu-cut">{where}</BranchName> : null}
+        <Zoomed hiding={hiding} />
+        <PanelClose
+          label={`Take ${shell ? "the shell" : title} off the screen`}
+          keyHint={key}
+          onClose={onTakeOff}
+        />
       </PanelHead>
-      <Body session={session} compact={false} />
+      <Body session={session} compact={shell} />
     </Panel>
   );
 }
 
+/**
+ * The preview: the session the list selects. Among others it says so, and
+ * offers to place its session where it is (`◆`) or to fold it away until
+ * another is selected (`✕`).
+ */
 export function SessionPanel({
   session,
   style,
   lifted,
   onHeadDown,
-}: BoxProps & { session: SessionId }) {
+  onZoom,
+  hiding,
+  among,
+}: BoxProps & {
+  session: SessionId;
+  /** Beside others: its place and its folding, else none. */
+  among: { onPlace: () => void; onFold: () => void } | null;
+}) {
   const { harness, kind, words, name } = useAgentHead(session);
+  const where = useWhere(session);
+  const key = useKeyLabel("pin_session");
   return (
     <Panel
-      label={name}
+      label={among ? `Preview: ${name}` : name}
       hasKeys={useHasKeys(session)}
       className={`panels-box ${lifted ? "is-lifted" : ""}`}
       style={style}
     >
-      <PanelHead onPointerDown={onHeadDown} title="Drag to move it">
+      <PanelHead onPointerDown={onHeadDown} onDoubleClick={onZoom} title="Drag to move it">
+        {among ? <span className="mu-cut panels-preview">preview ·</span> : null}
         <AgentLogo harness={harness} size="sm" />
         <PanelTitle>{name}</PanelTitle>
         <StatusMark kind={kind} />
         <span className="mu-cut">{words}</span>
+        {among && where ? <BranchName className="mu-cut">{where}</BranchName> : null}
+        <Zoomed hiding={hiding} />
+        {among ? (
+          <>
+            <IconButton
+              icon="place"
+              size="sm"
+              label="Place it here"
+              title={`Place it here, in a panel of its own (${key})`}
+              onClick={among.onPlace}
+              onPointerDown={(event) => event.stopPropagation()}
+            />
+            <PanelClose label="Fold the preview away" keyHint={null} onClose={among.onFold} />
+          </>
+        ) : null}
       </PanelHead>
       <Body session={session} compact={false} />
-    </Panel>
-  );
-}
-
-export function ShellPanel({
-  shell,
-  shown,
-  style,
-  lifted,
-  onHeadDown,
-}: BoxProps & { shell: SessionId; shown: SessionId }) {
-  const app = useApp();
-  const program = useDaemon((state) => state.sessions[shell]?.title ?? "");
-  // A shell of another workspace says whose it is.
-  const elsewhere = useDaemon((state) => {
-    const own = state.sessions[shell]?.workspace;
-    const workspace =
-      own && own !== state.sessions[shown]?.workspace ? state.workspaces[own] : null;
-    return workspace ? branchOf(workspace) : null;
-  });
-  const key = useKeyLabel("shell");
-  return (
-    <Panel
-      label="Shell"
-      hasKeys={useHasKeys(shell)}
-      className={`panels-box ${lifted ? "is-lifted" : ""}`}
-      style={style}
-    >
-      <PanelHead onPointerDown={onHeadDown} title="Drag to move it">
-        <span className="mu-mono panels-prompt" aria-hidden="true">
-          ❯
-        </span>
-        <PanelTitle>Shell</PanelTitle>
-        <span className="mu-cut">{program}</span>
-        {elsewhere ? <BranchName className="mu-cut">{elsewhere}</BranchName> : null}
-        <PanelClose
-          label="Put the shell away"
-          keyHint={key}
-          onClose={() => putShellAway(app, shown)}
-        />
-      </PanelHead>
-      <Body session={shell} compact />
     </Panel>
   );
 }
@@ -176,6 +210,8 @@ export function PluginPanel({
   style,
   lifted,
   onHeadDown,
+  onZoom,
+  hiding,
 }: BoxProps & { panel: SessionId; shown: SessionId }) {
   const app = useApp();
   const title = useDaemon((state) => state.sessions[panel]?.title ?? "");
@@ -192,12 +228,13 @@ export function PluginPanel({
       className={`panels-box ${lifted ? "is-lifted" : ""}`}
       style={style}
     >
-      <PanelHead onPointerDown={onHeadDown} title="Drag to move it">
+      <PanelHead onPointerDown={onHeadDown} onDoubleClick={onZoom} title="Drag to move it">
         <span className="mu-mono" aria-hidden="true">
           ◇
         </span>
         <PanelTitle>{plugin}</PanelTitle>
         <span className="mu-cut">{title}, from the plugin</span>
+        <Zoomed hiding={hiding} />
         <PanelClose
           label={`Put the ${title} away`}
           keyHint={key === "none" ? null : key}
@@ -211,15 +248,14 @@ export function PluginPanel({
 
 const NAMES = {
   list: "the list",
-  session: "the agent",
+  session: "the preview",
   changes: "the changes",
-  shell: "the shell",
   plugin: "the plugin's panel",
 } as const;
 
 /** `panel` as a screen reader says it. */
 function nameOf(panel: PanelName): string {
-  return pinnedSession(panel) === null ? NAMES[panel as keyof typeof NAMES] : "a pinned agent";
+  return placedSession(panel) === null ? NAMES[panel as keyof typeof NAMES] : "a terminal placed";
 }
 
 /** The step the arrows move a line by, in percent. */
