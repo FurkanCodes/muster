@@ -32,12 +32,19 @@ const agents = {} as Record<
   Launch
 >;
 
-/** The queue's sessions, in the order shown. */
+/**
+ * The queue's sessions, in the order shown: read at once in the window, as
+ * a list drawn again between one line's read and the next would leave a
+ * line found and gone.
+ */
 async function shownNames(screen: Screen = "Needs you"): Promise<string[]> {
-  const options = await $$(`[role="listbox"][aria-label="${screen} sessions"] [role="option"]`);
-  const names: string[] = [];
-  for (const option of options) names.push((await option.getAttribute("aria-label")) ?? "");
-  return names;
+  return browser.execute(
+    (selector) =>
+      [...document.querySelectorAll(selector)].map(
+        (option) => option.getAttribute("aria-label") ?? "",
+      ),
+    `[role="listbox"][aria-label="${screen} sessions"] [role="option"]`,
+  );
 }
 
 async function untilShown(names: string[], screen: Screen = "Needs you"): Promise<void> {
