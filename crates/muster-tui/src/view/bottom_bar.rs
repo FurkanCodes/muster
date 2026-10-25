@@ -253,8 +253,9 @@ fn hints(app: &App) -> Vec<String> {
         hints.extend(if diff {
             hint(app, Does::CloseChanges, "back")
         } else {
-            Some("esc back to the list".to_owned())
+            hint(app, Does::CloseChanges, "back to the list")
         });
+        hints.extend(hint(app, Does::ChangesHelp, "keys"));
         return hints;
     }
     let mut hints = vec!["↑↓ move".to_owned()];

@@ -62,9 +62,13 @@ mod alarm_tests;
 #[cfg(test)]
 mod by_hand_tests;
 #[cfg(test)]
+mod by_mouse_tests;
+#[cfg(test)]
 mod changes_tests;
 #[cfg(test)]
 mod clashes_tests;
+#[cfg(test)]
+mod controls_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]

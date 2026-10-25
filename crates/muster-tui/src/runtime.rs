@@ -167,6 +167,8 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
     let mut draws = Draws::new(monotonic());
     let mut steps = motion::Steps::new(monotonic());
     let mut pointer = Pointer::detect();
+    // Mouse events are timed from here, for double-clicks.
+    let started = monotonic();
     let outcome = loop {
         // Asleep until an event or something of its own is due: idle, the
         // UI wakes for a time on screen to change, and not at all with no
@@ -206,7 +208,10 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                     }
                     actions
                 }
-                Some(Ok(Event::Mouse(mouse))) => app.on_mouse(mouse),
+                Some(Ok(Event::Mouse(mouse))) => {
+                    let ms = monotonic().saturating_duration_since(started).as_millis();
+                    app.on_mouse_at(mouse, u64::try_from(ms).unwrap_or(u64::MAX))
+                }
                 Some(Ok(Event::FocusGained)) => app.on_focus(true),
                 Some(Ok(Event::FocusLost)) => app.on_focus(false),
                 Some(Ok(Event::Resize(..))) => follow_window(&mut terminal, &mut app)?,

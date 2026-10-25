@@ -202,6 +202,16 @@ fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> B
     }
 }
 
+/// The hints for the selected line of *Tickets* or *Settings*, which its
+/// right-click menu offers too.
+pub(crate) fn line_hints(app: &App) -> Vec<String> {
+    match app.view {
+        View::Tickets => tickets::hints(app),
+        View::Settings => settings::hints(app),
+        View::Sessions | View::NeedsYou => Vec::new(),
+    }
+}
+
 /// Where the list's fold button is (`app::controls`): ` ‹ ` at the right
 /// end of the list's top border, or while the list is folded away, `›` in
 /// the corner of the window's body, where it comes back.

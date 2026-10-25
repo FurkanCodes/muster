@@ -564,6 +564,7 @@ pub(super) fn hints(app: &App) -> Vec<String> {
         ) {
             hints.extend(hint(app, Does::NextPart, "next part"));
             hints.extend(hint(app, Does::ChoosePart, "give it or not"));
+            hints.extend(hint(app, Does::PreviousPart, "previous part"));
         }
     }
     hints.extend(hint(app, Does::RefreshTickets, "refresh"));

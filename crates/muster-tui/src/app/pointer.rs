@@ -24,7 +24,33 @@ use crate::view::browse_areas;
 /// Lines one turn of the wheel scrolls.
 const WHEEL_LINES: isize = 3;
 
+/// The most milliseconds between two presses of a double-click.
+const DOUBLE_CLICK_MS: u64 = 400;
+
 impl App {
+    /// The mouse, `ms` milliseconds into the runtime's clock: what tells a
+    /// double-click.
+    pub(crate) fn on_mouse_at(&mut self, event: MouseEvent, ms: u64) -> Vec<Action> {
+        self.person.clock_ms = Some(ms);
+        self.on_mouse(event)
+    }
+
+    /// Whether a press of the left button at `at` is the second of a
+    /// double-click: soon after one in the same place. It is the last
+    /// press then, so a third is not another.
+    fn double_click(&mut self, at: Position) -> bool {
+        let Some(now) = self.person.clock_ms else {
+            return false;
+        };
+        let double = self.person.last_press.is_some_and(|(was, then)| {
+            now.saturating_sub(then) <= DOUBLE_CLICK_MS
+                && was.y == at.y
+                && was.x.abs_diff(at.x) <= 1
+        });
+        self.person.last_press = (!double).then_some((at, now));
+        double
+    }
+
     pub(crate) fn on_mouse(&mut self, event: MouseEvent) -> Vec<Action> {
         let at = Position::new(event.column, event.row);
         self.person.pointer = Some(at);
@@ -45,6 +71,28 @@ impl App {
     fn pointer(&mut self, event: MouseEvent) -> Vec<Action> {
         if self.skip_welcome() {
             return Vec::new();
+        }
+        // A double-click: on a panel's title it zooms the panel, or puts it
+        // back; on a line of a list it does what ⏎ does there.
+        if event.kind == MouseEventKind::Down(MouseButton::Left)
+            && self.panels.drag.is_none()
+            && self.double_click(Position::new(event.column, event.row))
+        {
+            let at = Position::new(event.column, event.row);
+            if self.can_arrange()
+                && let Some(super::grab::Hold::Title(panel)) = self.hold_at(at)
+                && panel != muster_core::layout::Panel::List
+            {
+                self.panels.zoomed = match self.panels.zoomed {
+                    Some(_) => None,
+                    None => Some(panel),
+                };
+                return self.settle();
+            }
+            let list = browse_areas(self, self.window()).list;
+            if self.mode == Mode::Browse && list.contains(at) {
+                return self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            }
         }
         // A right-click on a panel's title: what the panel key does to it.
         if event.kind == MouseEventKind::Down(MouseButton::Right)

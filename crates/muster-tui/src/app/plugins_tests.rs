@@ -99,7 +99,7 @@ fn plugins(world: &mut World, plugins: Vec<PluginInfo>) {
 
 /// The world on a wide Settings screen with zoe and youtrack, `selected`
 /// selected.
-fn on(selected: SettingRow) -> World {
+pub(super) fn on(selected: SettingRow) -> World {
     let mut world = world();
     world.app.on_resize(WIDE);
     world.app.view = View::Settings;

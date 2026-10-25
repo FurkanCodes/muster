@@ -70,7 +70,7 @@ fn reply(world: &mut World, req_id: u64, outcome: Result<Reply, ErrorBody>) -> V
 
 /// `d` on the world's worktree, answered with nothing changed and
 /// `timeline()`; the selection put on the newest turn.
-fn opened(world: &mut World) {
+pub(crate) fn opened(world: &mut World) {
     world.app.now = Some(Timestamp::from_millis(55 * MINUTE));
     world.app.selected = Some(Row::Worktree(world.worktree.id));
     let asked = commands(&press(&mut world.app, KeyCode::Char('d')));

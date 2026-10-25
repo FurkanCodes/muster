@@ -270,6 +270,41 @@ pub(crate) fn chord(key: &KeyEvent) -> Option<Chord> {
     Some(Chord { key, ctrl, alt })
 }
 
+/// The key press that is `chord`, as the person's terminal sends it: what
+/// a click on something pressing a key of Muster's presses.
+pub(crate) fn press(chord: Chord) -> KeyEvent {
+    let mut modifiers = KeyModifiers::NONE;
+    if chord.ctrl {
+        modifiers |= KeyModifiers::CONTROL;
+    }
+    if chord.alt {
+        modifiers |= KeyModifiers::ALT;
+    }
+    let code = match chord.key {
+        Key::Char(c) => {
+            if c.is_ascii_uppercase() {
+                modifiers |= KeyModifiers::SHIFT;
+            }
+            KeyCode::Char(c)
+        }
+        Key::Tab => KeyCode::Tab,
+        Key::BackTab => KeyCode::BackTab,
+        Key::Esc => KeyCode::Esc,
+        Key::Backspace => KeyCode::Backspace,
+        Key::Enter => KeyCode::Enter,
+        Key::Up => KeyCode::Up,
+        Key::Down => KeyCode::Down,
+        Key::Left => KeyCode::Left,
+        Key::Right => KeyCode::Right,
+        Key::PageUp => KeyCode::PageUp,
+        Key::PageDown => KeyCode::PageDown,
+        Key::Home => KeyCode::Home,
+        Key::End => KeyCode::End,
+        Key::F(n) => KeyCode::F(n),
+    };
+    KeyEvent::new(code, modifiers)
+}
+
 /// The key a hint names by its label, as `Chord::label` writes one (`⏎`,
 /// `esc`, `d`, `Shift-R`, `Ctrl-b`, `⇥`), for a click on the hint to press
 /// it. `None` for a label of several keys (`↑↓`, `hjkl`, `1-9`) or none.
