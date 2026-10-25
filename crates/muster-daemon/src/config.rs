@@ -446,7 +446,7 @@ mod tests {
         std::fs::write(&file, "[layout]\nside_by_side_from = 120 # mine\n").unwrap();
         let read = preferences(&config_dir).unwrap();
         assert_eq!((read.panels, read.list_folded), (Layout::default(), false));
-        let moved = Layout::parse("session | list 28 | (changes / shell / plugin)").unwrap();
+        let moved = Layout::parse("session | list 28 | (changes / plugin)").unwrap();
         change_preference(&config_dir, &PreferenceChange::Panels(moved.clone())).unwrap();
         change_preference(&config_dir, &PreferenceChange::ListFolded(true)).unwrap();
         let read = preferences(&config_dir).unwrap();
@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(read.side_by_side_from, 120, "the rest stays as written");
         assert_eq!(
             std::fs::read_to_string(&file).unwrap(),
-            "[layout]\nside_by_side_from = 120 # mine\npanels = \"session | list 28 | (changes / shell / plugin)\"\n\
+            "[layout]\nside_by_side_from = 120 # mine\npanels = \"session | list 28 | (changes / plugin)\"\n\
              list_folded = true\n"
         );
     }

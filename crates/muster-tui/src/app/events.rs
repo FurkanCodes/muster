@@ -263,8 +263,8 @@ impl App {
             Does::PullRequestInBrowser => return self.browse_pull_request(),
             Does::ShowChanges => return self.open_changes(),
             Does::Fold => self.toggle_fold(),
-            Does::Shell => return self.toggle_shell(),
-            Does::PinSession => return self.toggle_pin(),
+            Does::Shell => return self.open_shell(),
+            Does::PinSession => return self.toggle_place(),
             _ => {}
         }
         Vec::new()

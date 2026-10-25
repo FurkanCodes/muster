@@ -22,7 +22,7 @@ mod narrow;
 mod notch;
 mod panels;
 mod picker;
-mod pinned;
+mod placed;
 mod plugin_panel;
 pub(crate) mod plugins;
 mod pointer;
@@ -100,7 +100,7 @@ mod panels_tests;
 #[cfg(test)]
 mod picker_tests;
 #[cfg(test)]
-mod pinned_tests;
+mod placed_tests;
 #[cfg(test)]
 mod plugin_hooks_tests;
 #[cfg(test)]
@@ -399,8 +399,8 @@ enum Then {
     Models(String),
     /// Offer the repositories GitHub lists, in the dialog open for them.
     Repositories,
-    /// Show the shell started beside the session, with the keys.
-    OpenShell,
+    /// Place the session started for a panel there, with the keys.
+    Place(muster_core::layout::Place),
     /// Show the workspace's changes in the pane.
     Changes(WorkspaceId),
     /// Show the file's or the entry's diff in the pane.
@@ -499,12 +499,9 @@ pub(crate) struct App {
     fitted: Option<TermSize>,
     /// What each key does, Muster's own with the person's over them.
     pub(crate) keymap: muster_core::keys::Keymap,
-    /// The shell beside the session, while it is shown.
-    pub(crate) shell: Option<SessionId>,
-    /// A shell started for the panel, until the state has it.
-    wanted_shell: Option<SessionId>,
-    /// The shell streamed beside the session, and the size it was given.
-    pub(super) shell_stream: settle::Streamed,
+    /// A session started for a panel of its own, a shell, and where it
+    /// goes: placed there, with the keys, once the state has it.
+    wanted_place: Option<(SessionId, muster_core::layout::Place)>,
     /// The plugin's panel streamed beside the session, the same way.
     pub(super) plugin_stream: settle::Streamed,
 }
@@ -554,9 +551,7 @@ impl App {
             areas_cache: std::cell::RefCell::default(),
             fitted: None,
             keymap: muster_core::keys::Keymap::default(),
-            shell: None,
-            wanted_shell: None,
-            shell_stream: settle::Streamed::default(),
+            wanted_place: None,
             plugin_stream: settle::Streamed::default(),
         }
     }
@@ -606,13 +601,10 @@ impl App {
     /// The session shown: open in the terminal, or selected in a list.
     pub(crate) fn focused_session(&self) -> Option<SessionId> {
         match (&self.mode, self.view) {
-            // The shell, a plugin's panel or a session pinned beside the
-            // session has the keys: the session beside the list stays the
-            // one selected.
+            // A plugin's panel or a session placed beside the preview has
+            // the keys: the preview stays on the one selected.
             (Mode::Terminal(session), _)
-                if self.shell != Some(*session)
-                    && !self.is_plugin_panel(*session)
-                    && !self.pinned_beside().contains(session) =>
+                if !self.is_plugin_panel(*session) && !self.placed_beside().contains(session) =>
             {
                 Some(*session)
             }
@@ -653,12 +645,11 @@ impl App {
         }
     }
 
-    /// The session drawn in the session's panel: the one shown, or, while
-    /// that one is pinned in a panel of its own, the last shown that is not
-    /// (none if it is gone or pinned too), so every terminal is drawn and
-    /// none twice.
+    /// The session drawn in the preview: the one shown, or, while that one
+    /// is placed in a panel of its own, the last shown that is not (none if
+    /// it is gone or placed too), so every terminal is drawn and none twice.
     pub(crate) fn session_beside_list(&self) -> Option<SessionId> {
-        let pinned = self.pinned_beside();
+        let pinned = self.placed_beside();
         match self.focused_session() {
             Some(session) if pinned.contains(&session) => self
                 .panels
@@ -670,19 +661,29 @@ impl App {
         }
     }
 
-    /// Whether the session's panel has nothing to draw: the session selected
-    /// is pinned and none is kept beside it, so the panel goes.
+    /// The session the preview shows: the one drawn beside the list, but
+    /// none while the person folded its preview away by its `✕`, unless
+    /// they type in it.
+    pub(crate) fn preview_session(&self) -> Option<SessionId> {
+        self.session_beside_list().filter(|session| {
+            self.panels.preview_folded != Some(*session) || self.mode == Mode::Terminal(*session)
+        })
+    }
+
+    /// Whether the preview has nothing to draw: the session selected is
+    /// placed and none is kept beside it, or its preview is folded away,
+    /// so the preview goes.
     pub(crate) fn session_panel_empty(&self) -> bool {
-        self.focused_session().is_some() && self.session_beside_list().is_none()
+        self.focused_session().is_some() && self.preview_session().is_none()
     }
 
     /// The session whose terminal is drawn, and so streamed: open, or
     /// selected beside the list. A narrow window's list draws none.
     pub(crate) fn shown_session(&self) -> Option<SessionId> {
-        self.session_beside_list()
+        self.preview_session()
             .filter(|session| self.model.session(*session).is_some())
-            // One pinned is drawn, and streamed, in its own panel.
-            .filter(|session| !self.pinned_beside().contains(session))
+            // One placed is drawn, and streamed, in its own panel.
+            .filter(|session| !self.placed_beside().contains(session))
             .filter(|_| self.session_drawn())
     }
 
@@ -693,11 +694,9 @@ impl App {
     /// next prompt only as a turn ends in focus, and the person watches a
     /// turn end from the list.
     pub(crate) fn focus_session(&self) -> Option<SessionId> {
-        let shown = if self.typing_in_shell() {
-            self.shell_beside()
-        } else if self.typing_in_plugin() {
+        let shown = if self.typing_in_plugin() {
             self.plugin_beside()
-        } else if let Some(pinned) = self.typing_in_pinned() {
+        } else if let Some(pinned) = self.typing_in_placed() {
             Some(pinned)
         } else {
             self.shown_session()

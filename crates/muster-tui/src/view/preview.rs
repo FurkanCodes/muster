@@ -9,16 +9,19 @@ use ratatui::style::Stylize;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
 
+use muster_core::layout::Panel;
+
+use super::BrowseAreas;
 use super::terminal::draw_session;
 use super::{kep, panel};
 use crate::app::{App, View};
 use crate::model::Row;
 
-pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect) {
+pub(super) fn draw_preview(frame: &mut Frame<'_>, app: &App, area: Rect, areas: &BrowseAreas) {
     if app.focused_session().is_some() {
-        // A pinned one selected is drawn in its own panel, once only.
-        if let Some(session) = app.session_beside_list() {
-            draw_session(frame, app, session, area, false);
+        // A placed one selected is drawn in its own panel, once only.
+        if let Some(session) = app.preview_session() {
+            draw_session(frame, app, session, area, Panel::Session, areas);
         }
         return;
     }

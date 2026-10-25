@@ -49,12 +49,10 @@ impl App {
     pub(crate) fn panel_with_keys(&self) -> Panel {
         if self.changes_shown() {
             Panel::Changes
-        } else if self.typing_in_shell() {
-            Panel::Shell
         } else if self.typing_in_plugin() {
             Panel::Plugin
-        } else if let Some(pinned) = self.typing_in_pinned() {
-            Panel::Pinned(pinned)
+        } else if let Some(placed) = self.typing_in_placed() {
+            Panel::Placed(placed)
         } else {
             Panel::Session
         }
@@ -69,15 +67,14 @@ impl App {
     pub(crate) fn solve_panels(&self, body: Rect, list: u16) -> Solved {
         let with_list = !self.list_folded();
         let keys = self.panel_with_keys();
-        let pinned = self.pinned_beside();
+        let placed = self.placed_beside();
         let showing = |panel: Panel| match panel {
             Panel::List => with_list,
-            // Nothing to draw there while the session selected is pinned.
+            // Nothing to draw there while the session selected is placed.
             Panel::Session => !self.session_panel_empty(),
             Panel::Changes => self.changes_shown(),
-            Panel::Shell => self.shell_beside().is_some(),
             Panel::Plugin => self.plugin_beside().is_some(),
-            Panel::Pinned(session) => pinned.contains(&session),
+            Panel::Placed(session) => placed.contains(&session),
         };
         let layout = self.panels();
         let fits = |shown: &dyn Fn(Panel) -> bool| {
@@ -85,23 +82,31 @@ impl App {
                 .shown(shown)
                 .filter(|node| needs(node, list).0 <= body.width)
         };
-        let more = self.changes_shown()
-            || self.shell_beside().is_some()
-            || self.plugin_beside().is_some()
-            || !pinned.is_empty();
+        let more = self.changes_shown() || self.plugin_beside().is_some() || !placed.is_empty();
         let tree = fits(&showing)
             .or_else(|| {
                 more.then(|| fits(&|panel| panel != Panel::List && showing(panel)))
                     .flatten()
             })
             .or_else(|| layout.shown(|panel| panel == keys || (panel == Panel::List && with_list)));
-        match tree {
+        let mut solved = match tree {
             Some(tree) => solve(&tree, body, list),
             None => Solved {
                 panels: vec![(keys, body)],
-                dividers: Vec::new(),
+                ..Solved::default()
             },
-        }
+        };
+        // What the panel with the keys shows over, its title says.
+        let wanted = layout
+            .shown(showing)
+            .map_or(0, |node| count(&node, Panel::List));
+        let drawn = solved
+            .panels
+            .iter()
+            .filter(|(panel, _)| *panel != Panel::List)
+            .count();
+        solved.hidden = wanted.saturating_sub(drawn);
+        solved
     }
 
     /// The fold key: folds the list away, so the session takes its place,
@@ -141,6 +146,16 @@ impl App {
         self.panels.folded_kept = None;
         if let Err(error) = outcome {
             self.complain(error.message);
+        }
+    }
+}
+
+/// How many panels `node` holds but `but`.
+fn count(node: &muster_core::layout::Node, but: Panel) -> usize {
+    match &node.part {
+        muster_core::layout::Part::Panel(panel) => usize::from(*panel != but),
+        muster_core::layout::Part::Split(_, first, second) => {
+            count(first, but) + count(second, but)
         }
     }
 }

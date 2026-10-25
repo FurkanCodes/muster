@@ -133,12 +133,17 @@ impl App {
         here
     }
 
-    /// Pinning `session` in a panel of its own, or unpinning it.
+    /// Placing `session` in a panel of its own, or taking it off the
+    /// screen.
     fn pin_here(&self, session: muster_core::SessionId) -> Here {
-        let pinned = self.panels().pinned().contains(&session);
+        let placed = self.panels().placed().contains(&session);
         self.here(
             Does::PinSession,
-            if pinned { "unpin" } else { "pin beside" },
+            if placed {
+                "off the screen"
+            } else {
+                "place beside"
+            },
         )
     }
 

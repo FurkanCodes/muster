@@ -82,12 +82,14 @@ impl Model {
     }
 
     /// Puts the projects in the person's order (`Preferences::projects`),
-    /// the others after them as the daemon lists them, oldest first.
+    /// the others after them oldest first, as the daemon lists them. The
+    /// sort is stable, so projects added in the same moment keep the
+    /// order they came in.
     fn order_projects(&mut self) {
         let order = &self.preferences.projects;
         self.projects.sort_by_key(|project| {
             let at = order.iter().position(|id| *id == project.id);
-            (at.unwrap_or(usize::MAX), project.created_at, project.id)
+            (at.unwrap_or(usize::MAX), project.created_at)
         });
     }
 

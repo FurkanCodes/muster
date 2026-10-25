@@ -74,14 +74,25 @@ fn without_a_plugin_s_panel_nothing_is_shown_for_one() {
     let mut world = wide();
     let before = areas(&world);
     assert!(before.plugin.is_empty());
-    // A shell beside the session, as before.
+    // A shell placed beside the session, as before.
     let mut shell = session(world.worktree.id, "zsh", 4);
     shell.harness = "shell".to_owned();
     upsert(&mut world, shell.clone());
-    world.app.shell = Some(shell.id);
+    world.app.panels.kept = Some(world.app.panels().placing(
+        shell.id,
+        muster_core::layout::Place::Beside(
+            muster_core::layout::Panel::Session,
+            muster_core::layout::Edge::Right,
+        ),
+    ));
     world.app.settle();
     let with_shell = areas(&world);
-    assert!(with_shell.plugin.is_empty() && !with_shell.shell.is_empty());
+    assert!(
+        with_shell.plugin.is_empty()
+            && !with_shell
+                .of(muster_core::layout::Panel::Placed(shell.id))
+                .is_empty()
+    );
     assert_eq!(world.app.plugin_stream.session, None);
 }
 

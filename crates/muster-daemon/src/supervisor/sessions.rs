@@ -594,7 +594,7 @@ impl Supervisor {
         self.release_terminal(session);
         self.state.sessions.retain(|stored| stored.id != session);
         self.broadcast(Delta::SessionRemoved { id: session });
-        self.unpin_gone();
+        self.unplace_gone();
         Ok(Reply::Done)
     }
 
@@ -716,6 +716,8 @@ impl Supervisor {
                     let stored = stored.clone();
                     self.broadcast(Delta::SessionUpserted(stored));
                 }
+                // A shell that ended leaves its panel.
+                self.unplace_gone();
                 self.reopen_panel(session, size).await;
             }
         }
@@ -770,6 +772,7 @@ impl Supervisor {
             let stored = stored.clone();
             self.broadcast(Delta::SessionUpserted(stored));
         }
+        self.unplace_gone();
     }
 
     /// Stops accepting hooks for `session`.
