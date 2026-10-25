@@ -118,6 +118,11 @@ fn tabs(app: &App) -> Vec<Span<'static>> {
         spans.extend(tab);
     }
     spans.push(Span::from(" ⇥   ").dim());
+    // A panel zoomed over the others says so, as the tab lit does.
+    if app.panels.zoomed.is_some() {
+        spans.push(Span::styled(" ZOOM ", theme.tab()));
+        spans.push(Span::raw("  "));
+    }
     spans
 }
 

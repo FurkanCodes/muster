@@ -45,6 +45,16 @@ impl App {
         if self.skip_welcome() {
             return Vec::new();
         }
+        // A right-click on a panel's title: what the panel key does to it.
+        if event.kind == MouseEventKind::Down(MouseButton::Right)
+            && self.can_arrange()
+            && self.panels.drag.is_none()
+            && let Some(super::grab::Hold::Title(panel)) =
+                self.hold_at(Position::new(event.column, event.row))
+        {
+            self.open_title_menu(panel, Position::new(event.column, event.row));
+            return Vec::new();
+        }
         if let Some(mut actions) = self.drag_mouse(event) {
             actions.extend(self.settle());
             return actions;

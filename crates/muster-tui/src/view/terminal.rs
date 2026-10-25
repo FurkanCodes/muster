@@ -73,6 +73,18 @@ pub(super) fn draw_session(
         Style::default().fg(theme.text)
     };
     let mut spans = vec![Span::raw(" ")];
+    // While the panel key waits, each panel's number, to go to it.
+    if app.panels.waiting.is_some()
+        && let Some(at) = app
+            .numbered_panels()
+            .iter()
+            .position(|(numbered, _)| *numbered == panel)
+    {
+        spans.push(Span::styled(
+            format!("{} ", at + 1),
+            Style::default().fg(theme.accent).bold(),
+        ));
+    }
     if panel == Panel::Session && others {
         spans.push(Span::styled("preview · ", theme.quiet));
     }

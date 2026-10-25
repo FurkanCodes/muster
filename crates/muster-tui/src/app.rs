@@ -26,6 +26,7 @@ mod placed;
 mod plugin_panel;
 pub(crate) mod plugins;
 mod pointer;
+mod prefix;
 mod rebind;
 mod rename;
 pub(crate) mod screens;
@@ -109,6 +110,8 @@ mod plugin_panel_tests;
 mod plugins_tests;
 #[cfg(test)]
 mod pointer_tests;
+#[cfg(test)]
+mod prefix_tests;
 #[cfg(test)]
 mod project_tests;
 #[cfg(test)]

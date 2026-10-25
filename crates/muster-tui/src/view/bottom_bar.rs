@@ -139,6 +139,12 @@ fn hints(app: &App) -> Vec<String> {
             "←→↑↓ move it  + − wider or narrower  ⇥ another  ⏎ keep  esc put back".to_owned(),
         ];
     }
+    if app.panels.waiting.is_some() {
+        return vec![panel_key_hints(app)];
+    }
+    if app.panels.resizing.is_some() {
+        return vec!["h j k l move its edge  H J K L five  ⏎ keep  esc put back".to_owned()];
+    }
     if let Mode::Menu(_) = app.mode {
         return vec!["↑↓ choose  ⏎ do it, or press its key  esc close".to_owned()];
     }
@@ -148,7 +154,9 @@ fn hints(app: &App) -> Vec<String> {
     if matches!(app.mode, Mode::Terminal(_)) {
         let back = hint(app, Does::LeaveSession, "back to the list (or click it)")
             .unwrap_or_else(|| "a click on the list goes back to it".to_owned());
-        return vec![format!("keys go to the session   {back}")];
+        let panels = hint(app, Does::PanelKey, "panels")
+            .map_or_else(String::new, |hint| format!("   {hint}"));
+        return vec![format!("keys go to the session   {back}{panels}")];
     }
     if app.mode == Mode::Changes {
         let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
@@ -215,4 +223,47 @@ fn hints(app: &App) -> Vec<String> {
     );
     hints.extend(general.into_iter().flatten());
     hints
+}
+
+/// What the key after the panel key does, while it waits: the most used
+/// first, as many as fit.
+fn panel_key_hints(app: &App) -> String {
+    let after = |does: Does, what: &str| hint(app, does, what);
+    let moves = [
+        Does::FocusLeft,
+        Does::FocusDown,
+        Does::FocusUp,
+        Does::FocusRight,
+    ]
+    .map(|does| app.keymap.label(does))
+    .join("");
+    let swaps = [
+        Does::SwapLeft,
+        Does::SwapDown,
+        Does::SwapUp,
+        Does::SwapRight,
+    ]
+    .map(|does| {
+        app.keymap
+            .label(does)
+            .trim_start_matches("Shift-")
+            .to_owned()
+    })
+    .join("");
+    let hints: Vec<String> = [
+        after(Does::SplitRight, "split →"),
+        after(Does::SplitDown, "split ↓"),
+        Some(format!("{moves} or ←↓↑→ move")),
+        Some(format!("Shift-{swaps} swap")),
+        after(Does::Zoom, "zoom"),
+        after(Does::TakeOff, "off the screen"),
+        after(Does::Resize, "resize"),
+        Some("1-9 a panel".to_owned()),
+        after(Does::PanelKeys, "keys"),
+        Some("esc give up".to_owned()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    hints.join("  ")
 }

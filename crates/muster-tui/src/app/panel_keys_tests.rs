@@ -188,6 +188,7 @@ fn the_menu_lists_the_line_s_panels_with_their_keys_and_choosing_one_opens_it() 
         at: (2, 3),
         items,
         chosen,
+        on: None,
     };
     let actions = world.app.menu_key(menu, &key(KeyCode::Enter));
     assert_eq!(opened(&actions).1, "graph");

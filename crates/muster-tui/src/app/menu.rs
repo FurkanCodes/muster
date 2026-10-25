@@ -1,7 +1,8 @@
 //! The menu a right-click on a line of *Sessions* or *Needs you* opens:
 //! what can be done there (`app::actions`), each with its key, so the
-//! keys can be found without knowing them. Choosing one does what its key does;
-//! Esc or a click outside closes it.
+//! keys can be found without knowing them; and the one a right-click on a
+//! panel's title opens, what the panel key does to it (`app::prefix`).
+//! Choosing one does what its key does; Esc or a click outside closes it.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
@@ -16,6 +17,8 @@ pub(crate) struct Menu {
     pub(crate) items: Vec<Here>,
     /// The item ↑↓ are on, which ⏎ chooses.
     pub(crate) chosen: usize,
+    /// The panel whose title it opened on; `None` on a line.
+    pub(crate) on: Option<muster_core::layout::Panel>,
 }
 
 impl App {
@@ -35,6 +38,21 @@ impl App {
             at: (at.x, at.y),
             items,
             chosen: 0,
+            on: None,
+        });
+    }
+
+    /// A right-click on `panel`'s title at `at`: what the panel key does to
+    /// it, as a menu.
+    pub(super) fn open_title_menu(&mut self, panel: muster_core::layout::Panel, at: Position) {
+        self.note = None;
+        // What is marked in a session is clicked away, as by any click.
+        self.selection = None;
+        self.mode = Mode::Menu(Menu {
+            at: (at.x, at.y),
+            items: self.title_items(panel),
+            chosen: 0,
+            on: Some(panel),
         });
     }
 
@@ -55,9 +73,21 @@ impl App {
                 Vec::new()
             }
             KeyCode::Enter => match menu.items.get(menu.chosen) {
-                Some(item) => self.choose(item),
+                Some(item) => self.choose(&menu, item),
                 None => self.close_menu(),
             },
+            // On a title, an item's own key is the one after the panel key.
+            _ if menu.on.is_some() => {
+                let does = self.does(muster_core::keys::Screen::Prefix, key);
+                match menu
+                    .items
+                    .iter()
+                    .find(|item| item.does.is_some() && item.does == does)
+                {
+                    Some(item) => self.choose(&menu, &item.clone()),
+                    None => self.close_menu(),
+                }
+            }
             KeyCode::Esc => self.close_menu(),
             _ => {
                 self.mode = Mode::Browse;
@@ -80,7 +110,9 @@ impl App {
         if area.contains(at) {
             let item = usize::from(at.y.saturating_sub(area.y + 1));
             return match menu.items.get(item) {
-                Some(item) if pressed == MouseButton::Left && at.y > area.y => self.choose(item),
+                Some(item) if pressed == MouseButton::Left && at.y > area.y => {
+                    self.choose(menu, item)
+                }
                 _ => Vec::new(),
             };
         }
@@ -91,9 +123,13 @@ impl App {
         actions
     }
 
-    /// Does what `item` says, as its key would.
-    fn choose(&mut self, item: &Here) -> Vec<Action> {
+    /// Does what `item` of `menu` says, as its key would.
+    fn choose(&mut self, menu: &Menu, item: &Here) -> Vec<Action> {
         self.mode = Mode::Browse;
+        if let (Some(panel), Some(does)) = (menu.on, item.does) {
+            // The keys back where they were, for the panel key's next key.
+            return self.panel_action(does, panel);
+        }
         match (item.does, &item.panel) {
             (Some(does), _) => self.list_action(does),
             (None, Some(panel)) => self.toggle_panel(panel),
