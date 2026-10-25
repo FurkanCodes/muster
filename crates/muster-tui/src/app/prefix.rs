@@ -102,7 +102,7 @@ impl App {
         match (does, key.code) {
             (Some(Does::ToPanel), KeyCode::Char(digit)) => {
                 let number = digit.to_digit(10).and_then(|n| usize::try_from(n).ok());
-                self.to_panel(number.unwrap_or(0))
+                self.keys_to_number(number.unwrap_or(0))
             }
             (Some(Does::SendPanelKey), _) => self.send_on(pressed),
             (Some(does), _) => self.panel_action(does, self.pane_target()),
@@ -142,20 +142,22 @@ impl App {
                 Vec::new()
             }
             Does::TakeOff => self.take_off_panel(target),
-            Does::ClosePanel => match self.session_in(target) {
-                Some(session) => self.close_session(session),
-                None => {
+            Does::ClosePanel => {
+                if let Some(session) = self.session_in(target) {
+                    self.close_session(session)
+                } else {
                     self.complain("That panel has no session of its own to close.");
                     Vec::new()
                 }
-            },
-            Does::PlacePreview => match self.preview_session() {
-                Some(session) => self.place_at(session, Place::Beside(Panel::Session, Edge::Left)),
-                None => {
+            }
+            Does::PlacePreview => {
+                if let Some(session) = self.preview_session() {
+                    self.place_at(session, Place::Beside(Panel::Session, Edge::Left))
+                } else {
                     self.complain("The preview shows no session to place.");
                     Vec::new()
                 }
-            },
+            }
             Does::Resize => {
                 self.panels.resizing = Some(Resizing {
                     panel: target,
@@ -213,7 +215,7 @@ impl App {
     }
 
     /// The keys to the panel numbered `number`.
-    fn to_panel(&mut self, number: usize) -> Vec<Action> {
+    fn keys_to_number(&mut self, number: usize) -> Vec<Action> {
         match self.numbered_panels().get(number.wrapping_sub(1)) {
             Some((panel, _)) => self.keys_to(*panel),
             None => Vec::new(),

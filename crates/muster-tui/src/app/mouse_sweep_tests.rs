@@ -156,6 +156,10 @@ fn click(world: &mut World, column: u16, row: u16) -> Vec<Action> {
 }
 
 /// What a person reaches for, from wherever the steps left the UI.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one person reaching for everything, in the order they would"
+)]
 fn still_works(world: &mut World, story: &str) {
     let id = world.session.id;
     world.app.on_resize(SIZE);

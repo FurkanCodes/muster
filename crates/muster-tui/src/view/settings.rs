@@ -93,7 +93,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Muster => Line::from(Span::from("Muster").bold()),
         SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
         SettingRow::Agents => labelled(AGENTS, agents_value(app), width),
-        SettingRow::SideBySide => stepped(SIDE_BY_SIDE, side_by_side_value(app), width),
+        SettingRow::SideBySide => stepped(SIDE_BY_SIDE, &side_by_side_value(app), width),
         SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
         SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
         SettingRow::Panels => labelled(PANELS, panels_value(app), width),
@@ -109,7 +109,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         }
         SettingRow::Delegation => labelled(delegation::LABEL, delegation::value(app), width),
         SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
-        SettingRow::Tell(kind) => stepped(&telling::label(kind), telling::value(app, kind), width),
+        SettingRow::Tell(kind) => stepped(&telling::label(kind), &telling::value(app, kind), width),
         SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
             plugins::row_text(app, row, width)
         }
@@ -162,7 +162,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
 
 /// A setting's line whose value steps through choices: ← and → step it,
 /// and so does a click on its arrows (`value_keys`).
-fn stepped(label: &str, value: Span<'static>, width: usize) -> Line<'static> {
+fn stepped(label: &str, value: &Span<'static>, width: usize) -> Line<'static> {
     let shown = Span::styled(format!("{LEFT}{}{RIGHT}", value.content), value.style);
     let mut line = labelled(label, shown, width);
     // The arrows quiet, the value as it was.

@@ -41,8 +41,10 @@ fn control(world: &World, wanted: Control) -> Position {
         .controls()
         .into_iter()
         .find(|(control, _)| *control == wanted)
-        .map(|(_, cells)| Position::new(cells.x, cells.y))
-        .unwrap_or_else(|| panic!("no {wanted:?} in {:?}", world.app.controls()))
+        .map_or_else(
+            || panic!("no {wanted:?} in {:?}", world.app.controls()),
+            |(_, cells)| Position::new(cells.x, cells.y),
+        )
 }
 
 /// A press and its release at `at`, `ms` into the clock.

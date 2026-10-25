@@ -230,33 +230,7 @@ fn hints(app: &App) -> Vec<String> {
         return hints;
     }
     if app.mode == Mode::Changes {
-        let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
-        let entry = app
-            .changes
-            .as_ref()
-            .is_some_and(|pane| pane.selected_entry().is_some());
-        let again = hint(app, Does::ChangesAgain, "again");
-        let undo = entry
-            .then(|| hint(app, Does::PutBack, "put back as before it"))
-            .flatten();
-        let mut hints: Vec<String> = if diff {
-            vec![
-                "↑↓ scroll".to_owned(),
-                "PgUp PgDn page".to_owned(),
-                "esc the changes".to_owned(),
-            ]
-        } else {
-            vec!["↑↓ move".to_owned(), "⏎ its diff".to_owned()]
-        };
-        hints.extend(again);
-        hints.extend(undo);
-        hints.extend(if diff {
-            hint(app, Does::CloseChanges, "back")
-        } else {
-            hint(app, Does::CloseChanges, "back to the list")
-        });
-        hints.extend(hint(app, Does::ChangesHelp, "keys"));
-        return hints;
+        return changes_hints(app);
     }
     let mut hints = vec!["↑↓ move".to_owned()];
     let general = match app.view {
@@ -337,4 +311,36 @@ fn panel_key_hints(app: &App) -> Vec<String> {
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// The hints while a workspace's changes have the keys: in its list, or
+/// in a diff.
+fn changes_hints(app: &App) -> Vec<String> {
+    let diff = app.changes.as_ref().is_some_and(|pane| pane.diff.is_some());
+    let entry = app
+        .changes
+        .as_ref()
+        .is_some_and(|pane| pane.selected_entry().is_some());
+    let again = hint(app, Does::ChangesAgain, "again");
+    let undo = entry
+        .then(|| hint(app, Does::PutBack, "put back as before it"))
+        .flatten();
+    let mut hints: Vec<String> = if diff {
+        vec![
+            "↑↓ scroll".to_owned(),
+            "PgUp PgDn page".to_owned(),
+            "esc the changes".to_owned(),
+        ]
+    } else {
+        vec!["↑↓ move".to_owned(), "⏎ its diff".to_owned()]
+    };
+    hints.extend(again);
+    hints.extend(undo);
+    hints.extend(if diff {
+        hint(app, Does::CloseChanges, "back")
+    } else {
+        hint(app, Does::CloseChanges, "back to the list")
+    });
+    hints.extend(hint(app, Does::ChangesHelp, "keys"));
+    hints
 }

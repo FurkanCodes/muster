@@ -25,8 +25,10 @@ fn bar(world: &World, which: Bar) -> (Rect, super::scrollbars::Extent) {
         .bars()
         .into_iter()
         .find(|(bar, _, _)| *bar == which)
-        .map(|(_, track, extent)| (track, extent))
-        .unwrap_or_else(|| panic!("no {which:?} in {:?}", world.app.bars()))
+        .map_or_else(
+            || panic!("no {which:?} in {:?}", world.app.bars()),
+            |(_, track, extent)| (track, extent),
+        )
 }
 
 fn drag(world: &mut World, column: u16, from: u16, to: u16) {

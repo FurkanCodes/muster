@@ -60,6 +60,9 @@ enum Where {
     Below(usize),
 }
 
+/// Where on a line a click does something: where from, how wide, what.
+type Marked = Vec<(u16, u16, DialogPress)>;
+
 /// The hints in `text` that name a key (`⏎ start`, `esc cancel`, `y yes`),
 /// three spaces apart: where each starts, its width and its key.
 pub(super) fn hint_marks(text: &str) -> Vec<(u16, u16, KeyEvent)> {
@@ -463,17 +466,17 @@ fn naming_model<'a>(
                     (name.clone(), model.text() == name, DialogPress::Offered(at))
                 }),
             );
-            let mut shape = naming_shape(label, model, line);
+            let mut shape = naming_shape(&label, model, line);
             shape.mark(Where::Below(0), offered);
             return shape;
         }
         Some(Err(error)) => Line::from(one_line(error)).fg(theme.waiting),
     };
-    naming_shape(label, model, offered)
+    naming_shape(&label, model, offered)
 }
 
 /// The dialog for the model chats are named with, `offered` under it.
-fn naming_shape<'a>(label: String, model: &'a LineInput, offered: Line<'static>) -> Shape<'a> {
+fn naming_shape<'a>(label: &str, model: &'a LineInput, offered: Line<'static>) -> Shape<'a> {
     Shape {
         below: vec![offered],
         hint: "⇥ ⇧⇥ the models offered   ⏎ keep   esc cancel",
@@ -629,7 +632,7 @@ fn assign_agent(
         .ticket(project, key)
         .map_or(String::new(), |ticket| format!(" {}", ticket.title));
     let mut lines = vec![Line::from(format!("{}{title}", key.shown()))];
-    let mut marks: Vec<(usize, Vec<(u16, u16, DialogPress)>)> = Vec::new();
+    let mut marks: Vec<(usize, Marked)> = Vec::new();
     let sharing = app.sharing(project);
     let keys = if sharing.len() > 1 {
         // Nothing in the ticket says which repository it is for.

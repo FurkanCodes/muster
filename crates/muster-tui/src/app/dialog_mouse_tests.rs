@@ -30,8 +30,10 @@ fn press_of(world: &World, wanted: &DialogPress) -> Position {
     presses
         .iter()
         .find(|(_, press)| press == wanted)
-        .map(|(cells, _)| Position::new(cells.x, cells.y))
-        .unwrap_or_else(|| panic!("no {wanted:?} in {presses:?}"))
+        .map_or_else(
+            || panic!("no {wanted:?} in {presses:?}"),
+            |(cells, _)| Position::new(cells.x, cells.y),
+        )
 }
 
 fn click(world: &mut World, at: Position) -> Vec<super::Action> {
