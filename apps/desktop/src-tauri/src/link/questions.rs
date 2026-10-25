@@ -17,6 +17,11 @@ pub(crate) const LINES: usize = 4;
 const ROWS: u16 = 100;
 const COLS: u16 = 250;
 
+/// vt100 underflows below two cells a side (a wide character on a screen
+/// one column wide), and a terminal squeezed to nothing asks for less, as
+/// the daemon's own screens floor it (`pty::screen`).
+const MIN_SIDE: u16 = 2;
+
 /// A session's screen, read for its question.
 pub(super) struct Screen {
     parser: vt100::Parser,
@@ -32,7 +37,7 @@ impl Screen {
     pub(super) fn new(size: Option<TermSize>) -> Self {
         let (rows, cols) = size.map_or((ROWS, COLS), |size| (size.rows, size.cols));
         Self {
-            parser: vt100::Parser::new(rows.max(1), cols.max(1), 0),
+            parser: vt100::Parser::new(rows.max(MIN_SIDE), cols.max(MIN_SIDE), 0),
             cursor: Cursor::default(),
             lines: Vec::new(),
             dirty: false,
@@ -93,7 +98,7 @@ impl Screen {
     pub(super) fn resize(&mut self, size: TermSize) {
         self.parser
             .screen_mut()
-            .set_size(size.rows.max(1), size.cols.max(1));
+            .set_size(size.rows.max(MIN_SIDE), size.cols.max(MIN_SIDE));
         self.dirty = true;
     }
 
@@ -173,6 +178,21 @@ mod tests {
         assert!(!screen.output(5, b"two\r\n"), "bytes it has already");
         assert!(screen.output(7, b"o\r\nthree\r\n"), "partly new");
         assert_eq!(screen.lines(), ["one", "two", "three"]);
+    }
+
+    #[test]
+    fn a_terminal_squeezed_to_one_column_reads_a_wide_character_without_falling_over() {
+        for mut screen in [
+            Screen::new(Some(TermSize { cols: 1, rows: 1 })),
+            Screen::new(Some(TermSize { cols: 0, rows: 0 })),
+        ] {
+            screen.replay(0, "日本\r\n".as_bytes(), false, false, None);
+            assert!(!screen.lines().is_empty());
+        }
+        let mut screen = screen("one\r\n");
+        screen.resize(TermSize { cols: 1, rows: 1 });
+        assert!(screen.output(5, "語\r\n".as_bytes()));
+        let _ = screen.lines();
     }
 
     #[test]

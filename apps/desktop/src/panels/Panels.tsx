@@ -2,8 +2,8 @@
 // `ARCHITECTURE.md` §5a Panels): the preview (the session the list selects),
 // a plugin's panel and every terminal placed in a panel of its own, an
 // agent's or a shell's, each where the person's layout puts it. A session's
-// line carried from the sidebar and dropped on the pane is placed where it
-// lands (`carry`); `P` places the session shown, and again takes it off the
+// line carried from the sidebar by the pointer and let go on the pane is
+// placed where it lands (`carry`); `P` places the session shown, and again takes it off the
 // screen. A panel dragged by its head goes to an edge of the pane, or beside
 // or under another, the place lighting up as it would land, or, dropped
 // about another's middle, swaps places with it; the line between two is
@@ -15,12 +15,12 @@
 // terminal is drawn as it is. `m` moves them with the keys instead
 // (useArranging), and the panel key's keys act on them (usePrefixKeys).
 
-import { type DragEvent, type PointerEvent, useEffect, useRef, useState } from "react";
+import { type PointerEvent, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useApp, useDaemon, useUi } from "../app/context";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { panelBeside, running } from "./beside";
-import { CARRIED, carriedSession, carry } from "./carry";
+import { type Carrying, onCarrying, useTakesCarried } from "./carry";
 import { type Layout, type PanelName, placedPanel } from "./layout";
 import { PanelLine, PlacedPanel, PluginPanel, SessionPanel, TerminalAlone } from "./PanelBoxes";
 import {
@@ -266,28 +266,29 @@ export function Panels({ session }: { session: SessionId }) {
   };
 
   // A session's line carried over the pane: where it would be placed lights up.
-  const carried = (event: DragEvent) =>
-    event.dataTransfer.types.includes(CARRIED) ? carriedSession() : null;
-  const landing = (event: DragEvent, id: SessionId) => {
-    const at = point(event);
-    return landingAt(placedPanel(id), at.x, at.y, area, solved.panels);
+  const landingOf = (carrying: Carrying | null) => {
+    const bounds = box.current?.getBoundingClientRect();
+    if (carrying?.what.kind !== "session" || !bounds) return null;
+    const { x, y } = carrying;
+    if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null;
+    const id = carrying.what.id;
+    const to = landingAt(placedPanel(id), x - bounds.left, y - bounds.top, area, solved.panels);
+    return to ? { id, to } : null;
   };
-  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
-    const id = carried(event);
-    if (!id) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    const to = landing(event, id);
-    if (to?.rect !== dropping?.rect) setDropping(to);
-  };
-  const onDrop = (event: DragEvent<HTMLDivElement>) => {
-    const id = carried(event);
-    // Where it is let go, not where the last drag over lit.
-    const to = id ? landing(event, id) : null;
-    setDropping(null);
-    carry(null);
-    if (!id || !to) return;
-    event.preventDefault();
+  useEffect(() =>
+    onCarrying((carrying) => {
+      const to = landingOf(carrying)?.to ?? null;
+      setDropping((was) => {
+        if (was && to && was.rect === to.rect) return was;
+        return to;
+      });
+    }),
+  );
+  // Let go here, it is placed where it lands: beside a panel, or at the pane's edge.
+  useTakesCarried((carrying) => {
+    const landed = landingOf(carrying);
+    if (!landed) return false;
+    const { id, to } = landed;
     const panel = placedPanel(id);
     panels.keep(
       to.target
@@ -297,7 +298,8 @@ export function Panels({ session }: { session: SessionId }) {
             .movedToEdgeOf(panel, [...pane, panel], to.edge),
     );
     app.actions.tell("Placed it in a panel of its own.");
-  };
+    return true;
+  });
 
   const placedAt = (panel: PanelName) => solved.panels.find((one) => one.panel === panel)?.rect;
   const style = (rect: Rect | undefined) =>
@@ -308,7 +310,6 @@ export function Panels({ session }: { session: SessionId }) {
   const lineDragged = drag?.kind === "line" ? lineKey(drag.divider) : null;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: a session's line dropped here is placed where it lands; the keys do the same with pin_session.
     <div
       ref={box}
       className={`panels ${drag ? "panels--dragging" : ""}`}
@@ -318,12 +319,6 @@ export function Panels({ session }: { session: SessionId }) {
         panels.show(null);
         setDrag(null);
       }}
-      onDragOver={onDragOver}
-      onDragLeave={(event) => {
-        // Left for good, not for one of its own panels.
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(null);
-      }}
-      onDrop={onDrop}
     >
       {alone ? (
         <TerminalAlone session={session} />

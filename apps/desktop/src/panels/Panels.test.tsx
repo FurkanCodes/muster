@@ -3,7 +3,15 @@
 // the line between two resized and kept in the person's settings, a layout
 // read back from them, and full screen on f (ARC-24, ARC-25, PRD-15, PRD §6).
 
-import { act, createEvent, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { AppContext } from "../app/context";
@@ -13,7 +21,7 @@ import { SessionActionsProvider } from "../session/SessionActionsContext";
 import { SessionPane } from "../session/SessionPane";
 import { renderWithApp } from "../test/render";
 import { tooltipOf } from "../test/tooltip";
-import { CARRIED, carry } from "./carry";
+import { pressToCarry } from "./carry";
 
 const codex = ulid(101);
 const gitLog = ulid(102);
@@ -301,22 +309,63 @@ describe("ARC-24 full screen", () => {
     expect(terminals()).toEqual([codex]);
   });
 
-  it("place a session whose line is carried from the sidebar and dropped on the pane (PRD §6a)", async () => {
+  it("place a session whose line is carried from the sidebar by the pointer and let go on the pane (PRD §6a)", async () => {
     const { app } = await pane();
     const other = ulid(100);
-    const box = (await screen.findByLabelText("Terminal")).closest(".panels") as HTMLElement;
-    carry(other);
-    // jsdom has no DragEvent: the events are given where the pointer is.
-    const at = (event: Event) => {
-      Object.defineProperty(event, "clientX", { value: 1 });
-      Object.defineProperty(event, "clientY", { value: 1 });
-      return event;
+    await screen.findByLabelText("Terminal");
+    // A line of the sidebar's, as SessionLine carries it.
+    render(
+      <button
+        type="button"
+        onPointerDown={(event) => pressToCarry(event, { kind: "session", id: other })}
+      >
+        Other
+      </button>,
+    );
+    // jsdom has no PointerEvent: each is given its button and where the pointer is.
+    const pointer = (target: Element | Window, make: typeof createEvent.pointerDown, x: number) => {
+      const event = make(target);
+      for (const [key, value] of Object.entries({ button: 0, clientX: x, clientY: 0 }))
+        Object.defineProperty(event, key, { value });
+      fireEvent(target, event);
     };
-    const dataTransfer = { types: [CARRIED], dropEffect: "none" };
-    fireEvent(box, at(createEvent.dragOver(box, { dataTransfer })));
-    fireEvent(box, at(createEvent.drop(box, { dataTransfer })));
+    pointer(screen.getByRole("button", { name: "Other" }), createEvent.pointerDown, 40);
+    // Moved less than it takes to carry it, it is still a click.
+    pointer(window, createEvent.pointerMove, 38);
+    expect(document.documentElement).not.toHaveClass("is-carrying");
+    pointer(window, createEvent.pointerMove, 0);
+    expect(document.documentElement).toHaveClass("is-carrying");
+    pointer(window, createEvent.pointerUp, 0);
+    expect(document.documentElement).not.toHaveClass("is-carrying");
     await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));
     expect(app.ui.getState().note?.text).toBe("Placed it in a panel of its own.");
+  });
+
+  it("put a carried line down on Esc, placing nothing (PRD §6a)", async () => {
+    const { bridge } = await pane();
+    await screen.findByLabelText("Terminal");
+    render(
+      <button
+        type="button"
+        onPointerDown={(event) => pressToCarry(event, { kind: "session", id: ulid(100) })}
+      >
+        Other
+      </button>,
+    );
+    const pointer = (target: Element | Window, make: typeof createEvent.pointerDown, x: number) => {
+      const event = make(target);
+      for (const [key, value] of Object.entries({ button: 0, clientX: x, clientY: 0 }))
+        Object.defineProperty(event, key, { value });
+      fireEvent(target, event);
+    };
+    pointer(screen.getByRole("button", { name: "Other" }), createEvent.pointerDown, 40);
+    pointer(window, createEvent.pointerMove, 0);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.documentElement).not.toHaveClass("is-carrying");
+    pointer(window, createEvent.pointerUp, 0);
+    expect(
+      bridge.sent.filter((command) => typeof command === "object" && "ChangePreference" in command),
+    ).toEqual([]);
   });
 
   it("keep the agent shown before beside a placed session selected, both terminals drawn (PRD §6a)", async () => {
