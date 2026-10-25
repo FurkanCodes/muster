@@ -29,6 +29,7 @@ mod plugin_panel;
 pub(crate) mod plugins;
 mod pointer;
 mod prefix;
+mod project_order;
 mod rebind;
 mod rename;
 pub(crate) mod screens;

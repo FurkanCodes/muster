@@ -64,6 +64,14 @@ pub(crate) enum Drag {
     },
     /// A scroll bar's thumb, carried up or down (`app::scrollbars`).
     Bar { bar: super::scrollbars::Bar },
+    /// A project's line taken from the sessions list: the press that took
+    /// it, and the project it would land on now, once it has moved off
+    /// its own (`app::project_order`).
+    Project {
+        project: muster_core::ProjectId,
+        press: MouseEvent,
+        onto: Option<muster_core::ProjectId>,
+    },
 }
 
 /// The panels being moved with the keys: the one picked, and the layout
@@ -123,6 +131,16 @@ impl App {
             self.panels.drag = Some(Drag::Bar { bar });
             return Some(Vec::new());
         }
+        if let Some(project) = self.project_line_at(at) {
+            // The press is the click it always was, and may become a drag.
+            let actions = self.mode_mouse(event);
+            self.panels.drag = Some(Drag::Project {
+                project,
+                press: event,
+                onto: None,
+            });
+            return Some(actions);
+        }
         if let Some(session) = self.session_line_at(at) {
             // The press is the click it always was, and may become a drag.
             let actions = self.mode_mouse(event);
@@ -179,6 +197,16 @@ impl App {
                 });
             }
             Drag::Bar { bar } => self.scroll_bar_to(bar, at.y),
+            Drag::Project { project, press, .. } => {
+                let onto = self
+                    .project_under(at)
+                    .filter(|onto| *onto != project || at.y != press.row);
+                self.panels.drag = Some(Drag::Project {
+                    project,
+                    press,
+                    onto,
+                });
+            }
             // On a scroll bar, a first move up or down takes the bar.
             Drag::Divider {
                 bar: Some(bar),
@@ -257,6 +285,24 @@ impl App {
             Drag::Bar { .. } => {
                 self.panels.drag = None;
                 Vec::new()
+            }
+            Drag::Project {
+                project,
+                onto: Some(onto),
+                ..
+            } if onto != project => {
+                self.panels.drag = None;
+                self.move_project(project, onto)
+            }
+            Drag::Project { press, .. } => {
+                // Let go on itself: the click it was, already taken.
+                self.panels.drag = None;
+                self.mode_mouse(MouseEvent {
+                    kind: MouseEventKind::Up(MouseButton::Left),
+                    column: at.x,
+                    row: at.y,
+                    ..press
+                })
             }
             // A click on a scroll bar on the line: there, at once.
             Drag::Divider {

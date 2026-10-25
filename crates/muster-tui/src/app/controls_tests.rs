@@ -331,3 +331,53 @@ fn a_click_on_a_ticket_part_s_box_gives_it_to_the_agent_or_not() {
     assert_eq!(brief.comments.len(), 1, "mira's given: {brief:?}");
     assert!(render_in(&world.app, WIDE).contains("☑ mira"));
 }
+
+#[test]
+fn a_project_dragged_onto_another_goes_there_and_settings_put_them_back() {
+    let mut world = wide();
+    let other = crate::model::tests::project("web");
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::ProjectUpserted(other.clone())));
+    let first = world.app.project_line_area(world.project.id).unwrap();
+    let second = world.app.project_line_area(other.id).unwrap();
+    world.app.on_mouse(mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        first.x + 6,
+        first.y,
+    ));
+    world.app.on_mouse(mouse(
+        MouseEventKind::Drag(MouseButton::Left),
+        second.x + 6,
+        second.y,
+    ));
+    let actions = world.app.on_mouse(mouse(
+        MouseEventKind::Up(MouseButton::Left),
+        second.x + 6,
+        second.y,
+    ));
+    let (_, asked) = super::tests::command(&actions);
+    assert_eq!(
+        asked,
+        muster_core::protocol::Command::ChangePreference(
+            muster_core::settings::PreferenceChange::ProjectOrder(vec![other.id, world.project.id])
+        )
+    );
+    // Kept, as the daemon says: the list follows.
+    let mut preferences = world.app.model.preferences().clone();
+    preferences.projects = vec![other.id, world.project.id];
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::Preferences(preferences)));
+    assert_eq!(world.app.rows().first(), Some(&Row::Project(other.id)));
+    // Settings › Projects' order puts them back.
+    world.app.show(View::Settings);
+    world.app.settings.selected = Some(super::SettingRow::ProjectOrder);
+    let actions = super::tests::press(&mut world.app, crossterm::event::KeyCode::Enter);
+    assert_eq!(
+        super::tests::command(&actions).1,
+        muster_core::protocol::Command::ChangePreference(
+            muster_core::settings::PreferenceChange::ProjectOrder(Vec::new())
+        )
+    );
+}

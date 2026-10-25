@@ -37,6 +37,8 @@ const COLOURS: &str = "Colours";
 const SESSION_LINES: &str = "Lines for each session";
 /// What the setting of where the panels are is called.
 const PANELS: &str = "Panels";
+/// What the setting of the projects' order is called.
+const PROJECT_ORDER: &str = "Projects' order";
 /// What the setting of the keys is called.
 const KEYS: &str = "Keys";
 /// What the setting of notifications is called.
@@ -95,6 +97,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
         SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
         SettingRow::Panels => labelled(PANELS, panels_value(app), width),
+        SettingRow::ProjectOrder => labelled(PROJECT_ORDER, project_order_value(app), width),
         SettingRow::NamesByAgent => {
             labelled(naming::NAMES_BY_AGENT, naming::by_agent_value(app), width)
         }
@@ -343,6 +346,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
         Some(SettingRow::Colours) => colours_text(app),
         Some(SettingRow::SessionLines) => session_lines_text(app),
         Some(SettingRow::Panels) => panels_text(app),
+        Some(SettingRow::ProjectOrder) => project_order_text(app),
         Some(SettingRow::Keys) => keys_text(app),
         Some(SettingRow::SharedBuilds) => shared_builds::text(app),
         Some(SettingRow::Delegation) => delegation::text(app),
@@ -370,6 +374,7 @@ pub(super) fn draw_setting_details(frame: &mut Frame<'_>, app: &App, area: Rect)
                 SettingRow::Colours => colours_text(app),
                 SettingRow::SessionLines => session_lines_text(app),
                 SettingRow::Panels => panels_text(app),
+                SettingRow::ProjectOrder => project_order_text(app),
                 SettingRow::Keys => keys_text(app),
                 SettingRow::SharedBuilds => shared_builds::text(app),
                 SettingRow::Delegation => delegation::text(app),
@@ -710,6 +715,34 @@ fn panels_value(app: &App) -> Span<'static> {
     }
 }
 
+/// Whether the projects are in the person's order or as they were added.
+fn project_order_value(app: &App) -> Span<'static> {
+    if app.model.preferences().projects.is_empty() {
+        Span::from("as added").dim()
+    } else {
+        Span::from("yours")
+    }
+}
+
+fn project_order_text(app: &App) -> Text<'static> {
+    Text::from(vec![
+        Line::from(vec![
+            Span::from(format!("{PROJECT_ORDER}  ")).bold(),
+            project_order_value(app),
+        ]),
+        Line::from(
+            "Drag a project's line up or down the list to put it there; every Muster window              lists them so, and the next.",
+        ),
+        Line::from(""),
+        detail(
+            "Saved in",
+            app.model.preferences().file.display().to_string(),
+        ),
+        Line::from(""),
+        Line::from("⏎ lists them in the order they were added again.").dim(),
+    ])
+}
+
 fn panels_text(app: &App) -> Text<'static> {
     let folded = if app.list_folded() {
         "folded away"
@@ -957,6 +990,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
             });
         }
         Some(SettingRow::Panels) => hints.push("⏎ put back as at first"),
+        Some(SettingRow::ProjectOrder) => hints.push("⏎ as they were added"),
         Some(SettingRow::NamesByAgent) => {
             hints.push(if app.model.preferences().naming.by_agent {
                 "⏎ turn off"

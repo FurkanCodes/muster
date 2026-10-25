@@ -178,6 +178,7 @@ fn the_width_is_one_of_muster_s_own_settings() {
         SettingRow::Colours,
         SettingRow::SessionLines,
         SettingRow::Panels,
+        SettingRow::ProjectOrder,
         SettingRow::NamesByAgent,
         SettingRow::NamedBy,
         SettingRow::NamingModel,

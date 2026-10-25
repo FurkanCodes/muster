@@ -158,6 +158,19 @@ impl App {
         actions
     }
 
+    /// ⏎ on the Settings screen's *Projects' order*: the projects in the
+    /// order they were added again.
+    pub(super) fn put_projects_back(&mut self) -> Vec<Action> {
+        if self.model.preferences().projects.is_empty() {
+            self.say("The projects are in the order they were added.");
+            return Vec::new();
+        }
+        vec![self.command(
+            Command::ChangePreference(PreferenceChange::ProjectOrder(Vec::new())),
+            Then::Say("The projects are back in the order they were added."),
+        )]
+    }
+
     /// The daemon kept the fold, which its settings now say, or could not.
     pub(super) fn list_folded_kept(
         &mut self,
