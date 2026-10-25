@@ -49,10 +49,42 @@ test("ARC-24 a right-click on a session's line selects it and opens its menu at 
   await page.keyboard.press("ArrowDown");
   await expect(menu.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: /^Pin to the right/ })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(menu.getByRole("menuitem", { name: /^Rename/ })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
   expect(await focused(page)).toBe("listbox: Needs you sessions");
+});
+
+test("PRD §6a a session's menu pins it to the right of the preview in a panel of its own, and takes it off again", async ({
+  page,
+}) => {
+  await page.goto("/");
+  // Another session shown first, so the one pinned stands beside it.
+  await queue(page).getByRole("option", { name: "Sketch the Tauri shell" }).click();
+  const line = queue(page).getByRole("option", { name: "Explain the release script" });
+  await line.click({ button: "right" });
+  await page
+    .getByRole("menu", { name: "Explain the release script" })
+    .getByRole("menuitem", { name: /^Pin to the right/ })
+    .click();
+  const pinned = page
+    .locator(".panels")
+    .getByRole("region", { name: "Explain the release script", exact: true });
+  await expect(pinned).toBeVisible();
+  await expect(page.locator(".mu-note")).toContainText("Placed it in a panel of its own.");
+  const preview = await page.getByRole("region", { name: /^Preview:/ }).boundingBox();
+  const box = await pinned.boundingBox();
+  expect(box?.x ?? 0).toBeGreaterThan(preview?.x ?? 0);
+  // Pinned, the same menu takes it off the screen; it runs on.
+  await line.click({ button: "right" });
+  await page
+    .getByRole("menu", { name: "Explain the release script" })
+    .getByRole("menuitem", { name: /^Take it off the screen/ })
+    .click();
+  await expect(pinned).toHaveCount(0);
+  await expect(page.locator(".mu-note")).toContainText("Took it off the screen; it runs on.");
 });
 
 test("ARC-24 a right-click in All opens a session's menu, and a project's line only selects it", async ({

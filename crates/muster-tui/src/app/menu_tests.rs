@@ -54,7 +54,7 @@ fn a_right_click_on_a_session_opens_what_can_be_done_there_with_the_keys() {
             "Shift-R rename",
             "x close",
             "s stop",
-            "Shift-P place beside",
+            "Shift-P pin to the right",
             "n session"
         ]
     );

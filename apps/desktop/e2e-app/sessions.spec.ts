@@ -328,6 +328,36 @@ describe("Sessions and its panels, over the real daemon", () => {
     await expect(lineLike("Second agent,")).toHaveAttribute("aria-selected", "false");
   });
 
+  it("PRD §6a a session's menu takes it off the screen, and pins it to the right of the preview again", async () => {
+    /** Right-clicks the line, as the person's mouse does, and chooses `item` of its menu. */
+    const choose = async (item: string) => {
+      await browser.execute(() => {
+        const found = document.querySelector('[role="treeitem"][aria-label^="Second agent,"]');
+        const box = found?.getBoundingClientRect();
+        found?.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            button: 2,
+            clientX: (box?.left ?? 0) + 40,
+            clientY: (box?.top ?? 0) + 10,
+          }),
+        );
+      });
+      await $(`//*[@role="menuitem"][starts-with(normalize-space(), "${item}")]`).click();
+    };
+    const id = session("Second agent")?.id ?? "";
+    await choose("Take it off the screen");
+    await until(() => !settingsToml().includes(`session:${id}`), "the layout to let it go");
+    await expect(statusBar()).toHaveText(expect.stringContaining("Took it off the screen"));
+    await choose("Pin to the right");
+    await until(() => settingsToml().includes(`session:${id}`), "the layout to pin it");
+    await expect(panel("Second agent")).toBeDisplayed();
+    const pinned = await boxOf('section.mu-panel[aria-label="Second agent"]');
+    const preview = await boxOf('section.mu-panel[aria-label^="Preview:"]');
+    expect(pinned.x).toBeGreaterThan(preview.x);
+  });
+
   it("PRD §6a a project's line carried up the list goes there, the order in settings.toml", async () => {
     muster("project", "add", repository("api"));
     await expect(line("api")).toBeDisplayed();

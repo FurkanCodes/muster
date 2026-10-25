@@ -11,7 +11,7 @@ import { type App, useApp, useDaemon, useUi } from "../app/context";
 import { useKeys } from "../app/keys";
 import type { SessionId } from "../ipc/generated/SessionId";
 import { KEY_SCREENS, useActionKeys, useKeymap } from "../keys/useKeymap";
-import { giveKeys, openShell, running, togglePanel } from "./beside";
+import { giveKeys, openShell, placedOrTaken, running, togglePanel } from "./beside";
 import type { PanelsLayout } from "./useLayout";
 
 /** Full screen on and off: the session fills the window with the keys, and gives it back. */
@@ -57,16 +57,9 @@ export function usePanelKeys(
       if (workspace) void openShell(app, workspace, session);
     },
     pin_session: () => {
-      const layout = arranged.layout;
-      const placed = layout.placed().includes(session);
-      arranged.keep(
-        placed
-          ? layout.unplaced(session)
-          : layout.placing(session, { beside: "session", edge: "left" }),
-      );
-      app.actions.tell(
-        placed ? "Took it off the screen; it runs on." : "Placed it in a panel of its own.",
-      );
+      const next = placedOrTaken(arranged.layout, session);
+      arranged.keep(next.layout);
+      app.actions.tell(next.said);
     },
   });
   useKeys(fullScreen ? { Escape: () => app.actions.fillWindow(null) } : {});

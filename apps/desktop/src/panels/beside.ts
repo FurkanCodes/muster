@@ -89,6 +89,23 @@ export async function putPanelAway(
   }
 }
 
+/**
+ * `session` placed in a panel of its own at the right of the preview, or,
+ * placed already, taken off the screen, running on: what `pin_session` and
+ * a line's menu do (`app::placed::toggle_place`); and what is said of it.
+ */
+export function placedOrTaken(
+  layout: Layout,
+  session: SessionId,
+): { layout: Layout; said: string } {
+  return layout.placed().includes(session)
+    ? { layout: layout.unplaced(session), said: "Took it off the screen; it runs on." }
+    : {
+        layout: layout.placing(session, { beside: "session", edge: "right" }),
+        said: "Placed it in a panel of its own.",
+      };
+}
+
 /** The layout as the person's settings have it now. */
 export function keptLayout(app: App): Layout {
   return Layout.read(app.daemon.store.getState().preferences?.panels ?? null);

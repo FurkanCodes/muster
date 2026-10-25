@@ -208,6 +208,9 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
         }
         Row::Worktree(id) => ListItem::new(worktree_line(app, id, edge, width, by)),
         Row::Session(id) => match app.model.session(id) {
+            Some(session) if session.harness == muster_core::harness::SHELL => {
+                ListItem::new(shell_lines(app, session, session_lead(edge), width, by))
+            }
             Some(session) if crate::model::stands_beside(session) => {
                 ListItem::new(shell_line(app, session, session_lead(edge), width, by))
             }
@@ -231,10 +234,89 @@ const SHELLS: [&str; 12] = [
     "zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh",
 ];
 
-/// A shell's one line after `lead`: under its worktree's one chat, set in
-/// with `└`, else after the chats it serves; its prompt `❯` and what runs
-/// in it (slid `by` characters where it is cut short), quietly while it
-/// waits at its prompt or has ended, and how long a program has run.
+/// A shell's lines after `lead`, as many as a chat's and drawn as a chat's
+/// are: under its worktree's one chat set in with `└`; its mark, its `❯` and
+/// the program in front in it (slid `by` characters where it is cut short);
+/// then, under it or after it on one line, what it is doing, quietly (at
+/// its prompt, running, or ended), and for how long.
+fn shell_lines(
+    app: &App,
+    shell: &Session,
+    mut lead: Vec<Span<'static>>,
+    width: usize,
+    by: usize,
+) -> Text<'static> {
+    let theme = super::theme::of(app);
+    let under = app.model.under_its_chat(shell);
+    let mut second_lead = lead.clone();
+    if under {
+        lead.push(Span::styled("  └ ", theme.quiet));
+        second_lead.push(Span::raw("    "));
+    }
+    let ended = shell.ended_at.is_some() || matches!(shell.status, SessionStatus::Exited { .. });
+    let waiting = !ended && SHELLS.contains(&shell.title.as_str());
+    let (symbol, style) = mark(
+        app,
+        if waiting {
+            SessionStatus::Fresh
+        } else {
+            shell.status
+        },
+    );
+    let what = if ended {
+        "ended"
+    } else if waiting {
+        "at its prompt"
+    } else {
+        "running"
+    };
+    let time = look::session_time(app, shell).unwrap_or_default();
+    let name_style = if ended || waiting {
+        theme.quiet
+    } else {
+        Style::default().add_modifier(Modifier::BOLD)
+    };
+    let lead_width: usize = lead.iter().map(Span::width).sum();
+    let mut first = lead;
+    first.extend([Span::styled(symbol, style), Span::raw(" ")]);
+    first.extend(logos::spans(
+        app.person.graphics,
+        muster_core::harness::SHELL,
+    ));
+    let indent = 2 + logos::width(app.person.graphics);
+    if app.session_height() == 1 {
+        let tail = cells::width(what)
+            + 2
+            + if time.is_empty() {
+                0
+            } else {
+                cells::width(&time) + 1
+            };
+        let room = width.saturating_sub(lead_width + indent + tail).max(4);
+        first.push(Span::styled(slid(&shell.title, room, by), name_style));
+        first.extend([Span::raw("  "), Span::styled(what, theme.quiet)]);
+        if !time.is_empty() {
+            let used: usize = first.iter().map(Span::width).sum();
+            let gap = width.saturating_sub(used + cells::width(&time)).max(1);
+            first.extend([Span::raw(" ".repeat(gap)), Span::styled(time, theme.quiet)]);
+        }
+        return Text::from(Line::from(first));
+    }
+    let room = width.saturating_sub(lead_width + indent).max(4);
+    first.push(Span::styled(slid(&shell.title, room, by), name_style));
+    let mut second = second_lead;
+    second.push(Span::raw(" ".repeat(indent)));
+    second.push(Span::styled(what, theme.quiet));
+    if !time.is_empty() {
+        second.push(Span::styled(format!(" · {time}"), theme.quiet));
+    }
+    Text::from(vec![Line::from(first), Line::from(second)])
+}
+
+/// A plugin's panel's one line after `lead`: under its worktree's one
+/// chat set in with `└`, else after the chats it serves; `❯` and its title
+/// (slid `by` characters where it is cut short), quietly once it has
+/// ended, and how long it has run.
 fn shell_line(
     app: &App,
     shell: &Session,

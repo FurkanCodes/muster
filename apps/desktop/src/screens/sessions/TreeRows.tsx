@@ -12,7 +12,7 @@ import { useNow } from "../../app/clock";
 import { useDaemon } from "../../app/context";
 import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
-import { doing, statusKind } from "../../lib/status";
+import { doing, type StatusKind, statusKind } from "../../lib/status";
 import { pressToCarry } from "../../panels/carry";
 import { branchOf, projectColour, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
@@ -201,10 +201,24 @@ export function WorktreeLine(props: LineProps) {
 
 function ChatText({ session, lines }: { session: Session; lines: "one" | "two" }) {
   const asking = session.status.state === "needs_you";
-  const what = doing(session);
+  return <LineText name={session.title} what={doing(session)} asking={asking} lines={lines} />;
+}
+
+/** A session's name over what it does, or both on one line, as the person's settings have it. */
+function LineText({
+  name: title,
+  what,
+  asking = false,
+  lines,
+}: {
+  name: string;
+  what: string;
+  asking?: boolean;
+  lines: "one" | "two";
+}) {
   const name = (
-    <ListItemTitle className={asking ? "sessions-asking" : undefined} title={session.title}>
-      {session.title}
+    <ListItemTitle className={asking ? "sessions-asking" : undefined} title={title}>
+      {title}
     </ListItemTitle>
   );
   const words = <ListItemMeta title={what}>{what}</ListItemMeta>;
@@ -244,7 +258,35 @@ export function SessionLine(props: LineProps) {
   );
 }
 
-/** A shell's or a plugin's panel's line, where no chat in its workspace has it beside (`view::sessions::shell_line`). */
+/**
+ * A shell's line, drawn as a chat's is: its mark and how it stands, the
+ * program in front in it over what it is doing, and for how long; carried
+ * to the pane as a chat's line is (`view::sessions::shell_line`).
+ */
+export function ShellLine(props: LineProps) {
+  const session = useDaemon((state) => state.sessions[props.row.id]);
+  const lines = useDaemon((state) => state.preferences?.session_lines ?? "two");
+  if (!session) return null;
+  const ended = session.ended_at !== null || session.status.state === "exited";
+  const waiting = SHELLS.has(session.title);
+  const kind: StatusKind = ended ? statusKind(session) : waiting ? "fresh" : "working";
+  const what = ended ? "ended" : waiting ? "at its prompt" : "running";
+  return (
+    <Line
+      {...props}
+      density="comfortable"
+      label={`Shell: ${session.title}${ended ? ", ended" : ""}`}
+      onCarry={(event) => pressToCarry(event, { kind: "session", id: session.id })}
+    >
+      <StatusMark kind={kind} />
+      <AgentLogo harness="shell" />
+      <LineText name={session.title} what={what} lines={lines} />
+      <Age since={session.status_since} />
+    </Line>
+  );
+}
+
+/** A plugin's panel's line, where no chat in its workspace has it beside (`view::sessions::shell_line`). */
 export function BesideLine(props: LineProps & { panelKey: string | null }) {
   const session = useDaemon((state) => state.sessions[props.row.id]);
   // A plugin's panel goes by its plugin's name, as the PluginPanel board writes it.
@@ -254,25 +296,17 @@ export function BesideLine(props: LineProps & { panelKey: string | null }) {
     return id ? (state.plugins.find((one) => one.id === id)?.details?.name ?? null) : null;
   });
   if (!session) return null;
-  const shell = session.harness === "shell";
-  const name = shell ? session.title : (plugin ?? session.title);
+  const name = plugin ?? session.title;
   const ended = session.ended_at !== null || session.status.state === "exited";
-  const waiting = shell && SHELLS.has(session.title);
-  let end: ReactNode = null;
-  if (ended) end = "ended";
-  else if (!shell) end = props.panelKey;
-  else if (waiting) end = "at its prompt";
-  else end = <Age since={session.status_since} />;
+  const end: ReactNode = ended ? "ended" : props.panelKey;
   return (
     <Line
       {...props}
       density="compact"
       className="mu-tree-shell"
-      label={`${shell ? "Shell" : "Panel"}: ${name}${ended ? ", ended" : ""}`}
+      label={`Panel: ${name}${ended ? ", ended" : ""}`}
     >
-      <span className={`mu-cut ${ended || waiting ? "" : "sessions-running"}`}>
-        {shell ? "❯" : "◇"} {name}
-      </span>
+      <span className={`mu-cut ${ended ? "" : "sessions-running"}`}>◇ {name}</span>
       {end === null ? null : <ListItemEnd>{end}</ListItemEnd>}
     </Line>
   );

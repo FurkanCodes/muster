@@ -156,7 +156,7 @@ impl App {
             if placed {
                 "off the screen"
             } else {
-                "place beside"
+                "pin to the right"
             },
         )
     }

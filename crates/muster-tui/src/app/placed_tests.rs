@@ -1,6 +1,7 @@
-//! Sessions placed in panels of their own (`PRODUCT.md` §6 Sessions): `P`
-//! places the selected session beside the panel with the keys and again
-//! takes it off the screen, as its title's `✕` does; the preview's `◆`
+//! Sessions placed in panels of their own (`PRODUCT.md` §6 Sessions): `P`,
+//! and *pin to the right* on a line's menu, place the selected session at
+//! the right of the panel with the keys and again take it off the screen, as
+//! its title's `✕` does; the preview's `◆`
 //! places the session it shows and its `✕` folds it away; a session's
 //! line dragged out of the list lands where it is dropped, and a panel
 //! dropped on another's middle swaps with it; each is streamed, drawn and
@@ -69,7 +70,7 @@ fn area_of(world: &World, session: SessionId) -> Rect {
 }
 
 #[test]
-fn shift_p_places_the_selected_session_beside_and_again_takes_it_off() {
+fn shift_p_places_the_selected_session_at_the_right_and_again_takes_it_off() {
     let (mut world, second) = two();
     let first = world.session.id;
     world.app.selected = Some(Row::Session(first));
@@ -77,6 +78,12 @@ fn shift_p_places_the_selected_session_beside_and_again_takes_it_off() {
     let actions = press(&mut world.app, KeyCode::Char('P'));
     let layout = kept(&actions).expect("the daemon keeps it");
     assert_eq!(layout.placed(), [first]);
+    assert_eq!(
+        layout,
+        muster_core::layout::Layout::default()
+            .placing(first, Place::Beside(Panel::Session, Edge::Right)),
+        "at the right of the preview"
+    );
     assert_eq!(world.app.panels().placed(), [first], "shown at once");
     assert!(!area_of(&world, first).is_empty());
     // Drawn once, in its own panel: the session's panel, with nothing else
@@ -149,6 +156,41 @@ fn a_session_s_line_dragged_out_of_the_list_is_placed_where_it_is_dropped() {
     assert!(!areas.preview.is_empty(), "{areas:?}");
     let screen = render_in(&world.app, WIDE);
     assert!(!screen.contains("It is in a panel of its own."), "{screen}");
+}
+
+#[test]
+fn pin_to_the_right_on_a_line_s_menu_places_it_there_and_again_takes_it_off() {
+    let (mut world, second) = two();
+    world.app.selected = Some(Row::Session(world.session.id));
+    world.app.settle();
+    let choose = |world: &mut World, wanted: &str| {
+        // A right-click on the second session's line, then its item.
+        world
+            .app
+            .on_mouse(mouse(MouseEventKind::Down(MouseButton::Right), 8, 6));
+        let Mode::Menu(menu) = &world.app.mode else {
+            panic!("no menu: {:?}", world.app.mode);
+        };
+        let at = menu
+            .items
+            .iter()
+            .position(|item| item.what == wanted)
+            .unwrap_or_else(|| panic!("no {wanted:?} in {:?}", menu.items));
+        for _ in 0..at {
+            press(&mut world.app, KeyCode::Down);
+        }
+        press(&mut world.app, KeyCode::Enter)
+    };
+    let actions = choose(&mut world, "pin to the right");
+    assert_eq!(world.app.selected, Some(Row::Session(second)));
+    assert_eq!(
+        kept(&actions).expect("pinned"),
+        muster_core::layout::Layout::default()
+            .placing(second, Place::Beside(Panel::Session, Edge::Right))
+    );
+    // Pinned, its menu takes it off the screen.
+    let actions = choose(&mut world, "off the screen");
+    assert!(kept(&actions).expect("kept").placed().is_empty());
 }
 
 #[test]

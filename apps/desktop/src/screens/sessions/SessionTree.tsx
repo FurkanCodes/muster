@@ -17,6 +17,7 @@ import {
   ProjectLine,
   rowId,
   SessionLine,
+  ShellLine,
   WorktreeLine,
 } from "./TreeRows";
 import type { TreeRow } from "./tree";
@@ -33,6 +34,7 @@ function SessionOrBeside({
     return stored ? shownHarness(stored) : "";
   });
   if (!standsBeside({ harness, agent: null })) return <SessionLine {...props} />;
+  if (harness === "shell") return <ShellLine {...props} />;
   return <BesideLine {...props} panelKey={panelKeys[harness] ?? null} />;
 }
 

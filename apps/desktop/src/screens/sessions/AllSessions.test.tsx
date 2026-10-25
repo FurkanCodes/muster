@@ -110,6 +110,36 @@ describe("ARC-24 All sessions", () => {
     expect(await screen.findByRole("dialog", { name: "Close Rows apart?" })).toBeInTheDocument();
   });
 
+  it("draws a shell's line as a chat's: its mark, the program in it over what it does, and how long (PRD §6a)", async () => {
+    const bridge = new MockBridge(workingDay());
+    // The shell in a checkout with no chat to stand beside: a line of its own.
+    bridge.updateSession(ulid(102), { workspace: ulid(30) });
+    const rendered = renderList("all", true, bridge);
+    uninstall = installKeys(rendered.app);
+    const line = await screen.findByRole("treeitem", { name: "Shell: git log" });
+    expect(line).toHaveClass("mu-list-item--comfortable");
+    expect(line).toHaveTextContent("❯");
+    expect(line.querySelector(".mu-list-item-title")).toHaveTextContent("git log");
+    expect(line.querySelector(".mu-list-item-meta")).toHaveTextContent("running");
+    act(() => {
+      bridge.updateSession(ulid(102), { title: "zsh" });
+      bridge.emitSession(ulid(102));
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("treeitem", { name: "Shell: zsh" }).querySelector(".mu-list-item-meta"),
+      ).toHaveTextContent("at its prompt"),
+    );
+    act(() => bridge.setStatus(ulid(102), { state: "exited", success: true }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("treeitem", { name: "Shell: zsh, ended" })
+          .querySelector(".mu-list-item-meta"),
+      ).toHaveTextContent("ended"),
+    );
+  });
+
   it("lists projects and their sessions only: ← goes from a session to its project, → back", async () => {
     const { app } = await screenShown();
     expect(screen.queryByRole("treeitem", { name: "feature/desktop-app" })).toBeNull();
