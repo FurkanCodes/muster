@@ -75,7 +75,11 @@ async fn a_session_picked_in_the_notch_is_shown_in_the_window_looked_at_last() {
     let daemon = sandbox.start();
     let mut notch = daemon.connect().await;
     let Reply::ProjectAdded { .. } = notch
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -91,12 +95,13 @@ async fn a_session_picked_in_the_notch_is_shown_in_the_window_looked_at_last() {
         .id;
     let Reply::SessionStarted { id: session } = notch
         .command(Command::StartSession {
-            workspace: checkout,
+            workspace: Some(checkout),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

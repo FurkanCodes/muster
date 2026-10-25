@@ -4,6 +4,7 @@ import type { Preferences } from "../Preferences";
 import type { Project } from "../Project";
 import type { ResourceReport } from "../ResourceReport";
 import type { Session } from "../Session";
+import type { Space } from "../Space";
 import type { Workspace } from "../Workspace";
 import type { Derived } from "./Derived";
 import type { Gone } from "./Gone";
@@ -16,6 +17,10 @@ export type Patch = {
  * Replace everything held with this patch's contents.
  */
 reset: boolean, projects: Array<Project>, workspaces: Array<Workspace>, sessions: Array<Session>, gone: Gone, 
+/**
+ * The person's spaces, all of them, when any changed.
+ */
+spaces: Array<Space> | null, 
 /**
  * Muster's own settings, when they changed.
  */

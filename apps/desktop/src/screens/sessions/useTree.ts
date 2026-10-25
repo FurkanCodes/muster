@@ -34,7 +34,8 @@ export function useTree() {
   const actions = useActions();
   const chosen = useUi((state) => state.selected.all);
   const loaded = useDaemon((state) => state.loaded);
-  const lines = useDaemon(useShallow((state) => allRows(state).map(encoded)));
+  const space = useUi((state) => state.space);
+  const lines = useDaemon(useShallow((state) => allRows(state, space).map(encoded)));
   const rows = lines.map(decoded);
   const [folded, setFolded] = useState<ReadonlySet<string>>(readFolds);
   const shown = shownRows(rows, folded);

@@ -5,6 +5,7 @@ import type { Project } from "./Project";
 import type { ResourceReport } from "./ResourceReport";
 import type { Run } from "./Run";
 import type { Session } from "./Session";
+import type { Space } from "./Space";
 import type { Workspace } from "./Workspace";
 
 /**
@@ -33,4 +34,8 @@ notifier: boolean,
 /**
  * Every plugin.
  */
-plugins: Array<PluginInfo>, };
+plugins: Array<PluginInfo>, 
+/**
+ * The person's spaces, in the order they were made.
+ */
+spaces: Array<Space>, };

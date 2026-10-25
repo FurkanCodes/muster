@@ -131,7 +131,7 @@ mod tests {
     fn session(started_by: Option<SessionId>, status: SessionStatus) -> Session {
         Session {
             id: SessionId::new(),
-            workspace: WorkspaceId::new(),
+            workspace: Some(WorkspaceId::new()),
             harness: "claude".to_owned(),
             title: "t".to_owned(),
             status,

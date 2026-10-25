@@ -37,16 +37,17 @@ pub use terminal::{
 use crate::changes::{ChangePart, Changes, FileDiff};
 use crate::colours::TerminalColours;
 use crate::entities::Issue;
-use crate::ids::{ProjectId, RunId, SessionId, WorkspaceId};
+use crate::ids::{ProjectId, RunId, SessionId, SpaceId, WorkspaceId};
 use crate::settings::{PreferenceChange, ProjectSettings, SettingChange};
 use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 56;
-/// The oldest protocol this build still speaks: v0.5.7's, the first of
-/// Muster on other machines. Older clients and daemons are told to update.
-pub const MIN_PROTOCOL_VERSION: u32 = 54;
+pub const PROTOCOL_VERSION: u32 = 57;
+/// The oldest protocol this build still speaks: 57's, the first where a
+/// session may be in no workspace (`ARC-33`), which an older client could
+/// not read. Older clients and daemons are told to update.
+pub const MIN_PROTOCOL_VERSION: u32 = 57;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,17 +182,8 @@ impl ClientFrame {
     /// [`MIN_PROTOCOL_VERSION`] says its version here.
     #[must_use]
     pub fn since(&self) -> u32 {
-        match self {
-            Self::Command {
-                command: Command::ChangePreference(PreferenceChange::ProjectOrder(_)),
-                ..
-            } => 56,
-            Self::Command {
-                command: Command::ExecAgent { .. },
-                ..
-            } => 54,
-            _ => MIN_PROTOCOL_VERSION,
-        }
+        // Every frame is as old as the oldest protocol spoken.
+        MIN_PROTOCOL_VERSION
     }
 }
 
@@ -286,6 +278,9 @@ pub enum Command {
         root: PathBuf,
         /// Defaults to the repository's directory name.
         name: Option<String>,
+        /// The space it joins, the one the client shows; `None` for none.
+        #[serde(default)]
+        space: Option<SpaceId>,
     },
     /// Stop tracking a project. Its repository is not touched. Refused while
     /// it has worktrees (remove them first) or running sessions.
@@ -310,9 +305,10 @@ pub enum Command {
     /// uncommitted changes is removed only with `force`; one with running
     /// sessions never is, nor a project's own checkout.
     RemoveWorktree { workspace: WorkspaceId, force: bool },
-    /// Start a session in a workspace.
+    /// Start a session in a workspace, or a free terminal in none
+    /// (`ARC-33`): an agent always starts in a workspace.
     StartSession {
-        workspace: WorkspaceId,
+        workspace: Option<WorkspaceId>,
         /// A harness id: `shell`, `claude`, or an agent the person added
         /// ([`crate::settings::Preferences::agents`]).
         harness: String,
@@ -326,6 +322,9 @@ pub enum Command {
         /// what it starts.
         #[serde(default)]
         started_by: Option<SessionId>,
+        /// The space it joins, the one the client shows; `None` for none.
+        #[serde(default)]
+        space: Option<SpaceId>,
     },
     /// Stop a running session.
     StopSession { session: SessionId },
@@ -471,7 +470,13 @@ pub enum Command {
     /// Clone `repository` (`owner/name`, or its github.com address) into a
     /// folder of its name in `into`, through the person's own `gh`, and add it
     /// as a project. Answered with [`Reply::ProjectAdded`] once cloned.
-    CloneProject { repository: String, into: PathBuf },
+    CloneProject {
+        repository: String,
+        into: PathBuf,
+        /// The space it joins, the one the client shows; `None` for none.
+        #[serde(default)]
+        space: Option<SpaceId>,
+    },
     /// Change one of the project's settings, in the person's own overrides
     /// of its `muster.toml`, never in the repository (`ARC-05`); refused if
     /// the settings would not read with it. Answered with
@@ -538,6 +543,44 @@ pub enum Command {
     /// turn on or off, or remove one (`ARCHITECTURE.md` §7a), or open one's
     /// panel.
     Plugin(plugins::PluginCommand),
+    /// Make a space; answered with [`Reply::SpaceCreated`].
+    CreateSpace { name: String },
+    /// Rename a space.
+    RenameSpace { space: SpaceId, name: String },
+    /// Remove a space: only the group goes; what was in it stays.
+    DeleteSpace { space: SpaceId },
+    /// Put a project or a free terminal in a space; again does nothing.
+    AddToSpace {
+        space: SpaceId,
+        member: crate::spaces::Member,
+    },
+    /// Take a project or a terminal out of a space.
+    RemoveFromSpace {
+        space: SpaceId,
+        member: crate::spaces::Member,
+    },
+    /// Where a terminal's shell is now; answered with [`Reply::Place`].
+    ReadPlace { session: SessionId },
+    /// File a free terminal under `workspace`, where its shell is in that
+    /// workspace's folder: the same shell runs on (`ARC-33`).
+    FileSession {
+        session: SessionId,
+        workspace: WorkspaceId,
+    },
+    /// Add the folder a free terminal's shell is in as a project, and file
+    /// the terminal under its checkout; answered with
+    /// [`Reply::ProjectAdded`].
+    AddProjectHere {
+        session: SessionId,
+        space: Option<SpaceId>,
+    },
+    /// Start a terminal under the same name in `workspace` where `session`
+    /// is shown, and close `session`: what ran in it ends. Refused while an
+    /// agent runs in it. Answered with [`Reply::SessionStarted`].
+    RestartIn {
+        session: SessionId,
+        workspace: WorkspaceId,
+    },
 }
 
 /// A successful answer to a [`Command`].
@@ -553,6 +596,18 @@ pub enum Reply {
     },
     SessionStarted {
         id: SessionId,
+    },
+    SpaceCreated {
+        id: SpaceId,
+    },
+    /// Where a terminal's shell is now.
+    Place {
+        /// Its folder; `None` where it cannot be read.
+        folder: Option<PathBuf>,
+        /// The workspace whose folder holds it, if one does.
+        workspace: Option<WorkspaceId>,
+        /// What runs in front in it, as the person would name it.
+        front: Option<String>,
     },
     Issues {
         issues: Vec<Issue>,

@@ -172,7 +172,11 @@ pub(crate) async fn setup() -> Setup {
     .await
     .unwrap();
     let Reply::ProjectAdded { id: project } = supervisor
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {

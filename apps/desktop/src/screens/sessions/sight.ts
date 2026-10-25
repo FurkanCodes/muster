@@ -14,7 +14,7 @@ export const UNMEASURED = 800;
 
 /** A line's height before it is drawn: its kind's (the design system's sizes), and the space above it. */
 export function estimate(row: TreeRow, first: boolean, lines: "one" | "two"): number {
-  const above = first ? 0 : row.kind === "project" ? 16 : 2;
+  const above = first ? 0 : row.kind === "project" || row.kind === "terminals" ? 16 : 2;
   // A shell's line is shorter; measured once drawn.
   const own = row.kind === "session" ? (lines === "two" ? 46 : 32) : 28;
   return above + own;

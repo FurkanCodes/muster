@@ -21,11 +21,13 @@ import type { WorkspaceId } from "../../ipc/generated/WorkspaceId";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
 import { useShownSessionActions } from "../../session/SessionActionsContext";
+import { useProjectMenu } from "../../spaces/useProjectMenu";
 import type { DaemonState } from "../../state/daemon";
 import { branchOf, projectColour, shownHarness, standsBeside } from "../../state/selectors";
 import { Banner, BannerBody } from "../../ui/Banner";
 import { Button, IconButton, Spacer } from "../../ui/controls";
 import { ListItemEnd, ListItemMeta, ListItemTitle, RowButton } from "../../ui/List";
+import { ActionMenu } from "../../ui/Menu";
 import { Section, SectionTitle } from "../../ui/Section";
 import { Select } from "../../ui/Select";
 import {
@@ -91,6 +93,9 @@ export function ProjectPage({ project }: { project: ProjectId }) {
   );
   const plain = checkout !== null && checkout.kind.branch === "";
   const places = useDaemon(useShallow((state) => placesOf(state, project)));
+  const menu = useProjectMenu(project);
+  // Asked for by a right-click on the project's line in the list.
+  const menuAt = useUi((state) => (state.menuAt?.project === project ? state.menuAt : null));
   // A plain folder has no worktrees: work starts in the folder itself.
   const [place, setPlace] = useState<Place>(() => (plain && checkout ? checkout.id : "new"));
   const field = useRef<HTMLTextAreaElement>(null);
@@ -129,7 +134,16 @@ export function ProjectPage({ project }: { project: ProjectId }) {
           <Button size="sm" icon="ticket" onClick={() => app.actions.show("tickets")}>
             Tickets
           </Button>
+          <ActionMenu label={name} items={menu} trigger={<IconButton icon="more" label="More" />} />
         </PageActions>
+        {menuAt ? (
+          <ActionMenu
+            label={name}
+            items={menu}
+            at={menuAt}
+            onClose={() => app.actions.openMenuAt(null)}
+          />
+        ) : null}
       </PageHeader>
       <div className="project-body">
         <Composer
@@ -324,9 +338,9 @@ function PlaceCard({ id, onStart }: { id: WorkspaceId; onStart: (id: WorkspaceId
   const pr = useDaemon((state) => state.workspaces[id]?.pull_request ?? null);
   const sessions = useDaemon(
     useShallow((state) =>
-      state.derived.rows
-        .filter((row) => row.kind === "session" && state.sessions[row.id]?.workspace === id)
-        .map((row) => row.id),
+      state.derived.rows.flatMap((row) =>
+        row.kind === "session" && state.sessions[row.id]?.workspace === id ? [row.id] : [],
+      ),
     ),
   );
   return (

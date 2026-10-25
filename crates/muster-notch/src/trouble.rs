@@ -102,7 +102,7 @@ pub fn work(state: &Snapshot, session: &Session) -> String {
     let Some(workspace) = state
         .workspaces
         .iter()
-        .find(|workspace| workspace.id == session.workspace)
+        .find(|workspace| session.is_in(workspace.id))
     else {
         return String::new();
     };
@@ -135,7 +135,7 @@ fn newest(state: &Snapshot, workspace: WorkspaceId) -> Option<&Session> {
     state
         .sessions
         .iter()
-        .filter(|session| session.workspace == workspace)
+        .filter(|session| session.is_in(workspace))
         .max_by_key(|session| session.created_at)
 }
 
@@ -178,7 +178,7 @@ mod tests {
     fn session(workspace: WorkspaceId, created: i64) -> Session {
         Session {
             id: SessionId::new(),
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: "t".to_owned(),
             status: SessionStatus::Running,
@@ -271,7 +271,7 @@ mod tests {
         let newest = state
             .sessions
             .iter()
-            .filter(|session| session.workspace == lesser.id)
+            .filter(|session| session.is_in(lesser.id))
             .max_by_key(|session| session.created_at)
             .unwrap();
         assert_eq!(conflict.session, newest.id);

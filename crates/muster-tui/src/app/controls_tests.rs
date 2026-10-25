@@ -172,6 +172,8 @@ fn a_right_click_on_the_list_s_empty_part_offers_what_starts_something() {
         [
             "add a project",
             "clone one from GitHub",
+            "a terminal in no project",
+            "spaces",
             "the session told of last",
             "every key"
         ]

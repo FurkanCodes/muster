@@ -254,6 +254,7 @@ fn g_clones_a_github_repository_into_the_folder_chosen() {
         Command::CloneProject {
             repository: "o/app".to_owned(),
             into: PathBuf::from("/src/"),
+            space: None,
         }
     );
     assert_eq!(world.app.mode, Mode::Browse);

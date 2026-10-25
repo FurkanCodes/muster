@@ -78,7 +78,10 @@ fn t_starts_a_shell_placed_beside_the_panel_with_the_keys_both_streamed() {
     else {
         panic!("{asked:?}");
     };
-    assert_eq!((workspace, harness.as_str()), (world.worktree.id, "shell"));
+    assert_eq!(
+        (workspace, harness.as_str()),
+        (Some(world.worktree.id), "shell")
+    );
     let shell_id = SessionId::new();
     world.app.on_frame(ServerFrame::Reply {
         req_id,

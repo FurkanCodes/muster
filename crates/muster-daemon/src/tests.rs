@@ -76,6 +76,7 @@ fn add(root: &Path, name: Option<&str>) -> Command {
     Command::AddProject {
         root: root.to_owned(),
         name: name.map(str::to_owned),
+        space: None,
     }
 }
 
@@ -329,7 +330,7 @@ async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::S
     };
     let session = Session {
         id: SessionId::new(),
-        workspace: workspace.id,
+        workspace: Some(workspace.id),
         harness: "shell".to_owned(),
         title: "Shell".to_owned(),
         status: SessionStatus::Fresh,

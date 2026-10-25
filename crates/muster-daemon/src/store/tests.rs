@@ -45,7 +45,7 @@ fn worktree(project: ProjectId) -> Workspace {
 fn session(workspace: WorkspaceId) -> Session {
     Session {
         id: SessionId::new(),
-        workspace,
+        workspace: Some(workspace),
         harness: "claude".to_owned(),
         title: "Fix the login redirect".to_owned(),
         status: SessionStatus::Fresh,

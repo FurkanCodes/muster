@@ -43,7 +43,7 @@ pub fn worktree(project: ProjectId, branch: &str) -> Workspace {
 pub fn session(workspace: WorkspaceId, title: &str, created: i64) -> Session {
     Session {
         id: SessionId::new(),
-        workspace,
+        workspace: Some(workspace),
         harness: "agent".to_owned(),
         title: title.to_owned(),
         status: SessionStatus::Fresh,
@@ -58,5 +58,14 @@ pub fn session(workspace: WorkspaceId, title: &str, created: i64) -> Session {
         beside: None,
         started_by: None,
         agent: None,
+    }
+}
+
+/// A free terminal: a shell in no project (`ARC-33`).
+pub fn free_terminal(title: &str, created: i64) -> Session {
+    Session {
+        workspace: None,
+        harness: muster_core::harness::SHELL.to_owned(),
+        ..session(WorkspaceId::new(), title, created)
     }
 }

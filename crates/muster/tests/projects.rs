@@ -27,7 +27,11 @@ use support::{Sandbox, expect_event, git, read_terminal};
 
 async fn add_project(connection: &mut Connection, root: PathBuf) -> ProjectId {
     match connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     {
@@ -47,12 +51,13 @@ fn checkout(snapshot: &Snapshot, project: ProjectId) -> &Workspace {
 async fn start_shell(connection: &mut Connection, workspace: WorkspaceId) -> SessionId {
     match connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -401,6 +406,7 @@ async fn a_project_is_cloned_from_github_into_the_folder_chosen_and_added() {
     let clone = |repository: &str| Command::CloneProject {
         repository: repository.to_owned(),
         into: into.clone(),
+        space: None,
     };
     let Reply::ProjectAdded { id } = connection
         .command(clone("https://github.com/o/app.git"))

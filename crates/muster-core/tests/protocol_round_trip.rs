@@ -11,7 +11,9 @@
     reason = "a test: a failed step is the test failing"
 )]
 
+mod explain_samples;
 mod plugin_samples;
+mod space_samples;
 mod terminal_samples;
 mod variants;
 
@@ -20,9 +22,6 @@ use std::path::PathBuf;
 use muster_core::changes::{Commit, LineCounts};
 use muster_core::clashes::{Clash, ClashFile};
 use muster_core::colours::{Rgb, TerminalColours};
-use muster_core::explain::{
-    Deadline, DeadlineKind, Explanation, HoldView, MachineView, OpenWait, SignalSeen,
-};
 use muster_core::frame::{FrameDecoder, encode};
 use muster_core::layout::Layout;
 use muster_core::protocol::agents::AgentFound;
@@ -31,7 +30,6 @@ use muster_core::protocol::{
     MouseEncoding, MouseTracking, PixelSize, Reply, ResourceReport, ServerFrame, SessionUsage,
     Snapshot, TermSize, TerminalModes, Welcome,
 };
-use muster_core::session::Origin;
 use muster_core::settings::{
     AddedAgent, Palette, PreferenceChange, Preferences, ProjectSettings, SessionLines,
     SettingChange, SettingSource, TicketsFrom, Toggle,
@@ -44,7 +42,7 @@ use muster_core::timeline::{BranchMove, Entry, EntryKind, Timeline, UndoPlan};
 use muster_core::{
     Activity, AgentNow, ChangeKind, ChangePart, ChangeSummary, Changes, Checks, FileChange,
     FileDiff, Issue, Project, ProjectId, PullRequest, PullRequestState, PullRequestStatus, Review,
-    Run, RunId, RunStage, RunTransition, Session, SessionId, SessionStatus, Spend, Ticket,
+    Run, RunId, RunStage, RunTransition, Session, SessionId, SessionStatus, SpaceId, Spend, Ticket,
     TicketKey, WaitReason, Workspace, WorkspaceId, WorkspaceKind,
 };
 
@@ -156,7 +154,7 @@ fn workspaces() -> Vec<Workspace> {
 fn sessions() -> Vec<Session> {
     let full = Session {
         id: SessionId::new(),
-        workspace: WorkspaceId::new(),
+        workspace: Some(WorkspaceId::new()),
         harness: "claude".to_owned(),
         title: "Fix the login".to_owned(),
         status: SessionStatus::NeedsYou {
@@ -211,6 +209,7 @@ fn sessions() -> Vec<Session> {
         started_by: None,
         ..full.clone()
     }));
+    all.push(space_samples::free_terminal(&all[1]));
     all
 }
 
@@ -302,40 +301,6 @@ fn preferences() -> Preferences {
             at_once: 2,
             depth: 1,
         },
-    }
-}
-
-fn explanation() -> Explanation {
-    Explanation {
-        session: SessionId::new(),
-        status: SessionStatus::NeedsYou {
-            reason: WaitReason::Question,
-        },
-        since: at(0),
-        unseen: true,
-        now: at(9),
-        machine: Some(MachineView {
-            watched: false,
-            waits: vec![OpenWait {
-                origin: Origin::Subagent("a1".to_owned()),
-                reason: WaitReason::Question,
-            }],
-            subagents: vec!["a1".to_owned()],
-            hold: Some(HoldView {
-                since: at(1),
-                drained_at: Some(at(2)),
-            }),
-            awaiting_start: false,
-            next: Some(Deadline {
-                at: at(3),
-                kind: DeadlineKind::Quiet,
-            }),
-        }),
-        signals: vec![SignalSeen {
-            at: at(4),
-            what: "hook: question asked by subagent a1".to_owned(),
-            tool: Some("AskUserQuestion".to_owned()),
-        }],
     }
 }
 
@@ -445,6 +410,7 @@ fn commands() -> Vec<Command> {
         Command::AddProject {
             root: PathBuf::from("/src/app"),
             name: Some("App".to_owned()),
+            space: Some(SpaceId::new()),
         },
         Command::RemoveProject { project },
         Command::CreateWorktree {
@@ -458,12 +424,13 @@ fn commands() -> Vec<Command> {
             force: true,
         },
         Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: Some("Fix".to_owned()),
             size: size(),
             prompt: Some("Fix the login".to_owned()),
             started_by: Some(SessionId::new()),
+            space: Some(SpaceId::new()),
         },
         Command::StopSession { session },
         Command::CheckWorkspace {
@@ -536,6 +503,7 @@ fn commands() -> Vec<Command> {
         Command::CloneProject {
             repository: "o/app".to_owned(),
             into: PathBuf::from("/Users/you/code"),
+            space: Some(SpaceId::new()),
         },
         Command::Reveal { session },
         Command::Switch {
@@ -621,6 +589,7 @@ fn commands() -> Vec<Command> {
             brief: None,
         },
     ];
+    all.extend(space_samples::commands(project, workspace, session));
     all.extend(plugin_samples::commands());
     all
 }
@@ -683,7 +652,7 @@ fn replies() -> Vec<Reply> {
             terminals: 3,
         }),
         Reply::Changes(changes()),
-        Reply::Explanation(Box::new(explanation())),
+        Reply::Explanation(Box::new(explain_samples::explanation())),
         Reply::Models(vec!["haiku".to_owned(), "sonnet".to_owned()]),
         Reply::Repositories(hosted()),
         Reply::Agents(vec![
@@ -729,6 +698,7 @@ fn replies() -> Vec<Reply> {
         },
         Reply::Done,
     ];
+    all.extend(space_samples::replies());
     all.extend(plugin_samples::replies());
     all.extend(terminal_samples::replies());
     all
@@ -766,6 +736,7 @@ fn deltas() -> Vec<Delta> {
         Delta::Preferences(preferences()),
         Delta::Notifier { ready: true },
     ];
+    all.extend(space_samples::deltas());
     all.extend(plugin_samples::deltas());
     all
 }
@@ -856,6 +827,7 @@ fn server_frames() -> Vec<ServerFrame> {
             preferences: preferences(),
             notifier: true,
             plugins: plugin_samples::plugins(),
+            spaces: vec![space_samples::space()],
         }),
         ServerFrame::Error(ErrorBody::new(ErrorCode::BadRequest, "malformed")),
         ServerFrame::Reply {

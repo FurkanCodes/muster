@@ -145,8 +145,9 @@ fn tabs(app: &App) -> Vec<Tagged> {
             None,
         ));
     }
+    let sessions = app.sessions_tab_name();
     for (at, (view, name)) in [
-        (View::Sessions, "Sessions"),
+        (View::Sessions, sessions.as_str()),
         (View::NeedsYou, "Needs you"),
         (View::Tickets, "Tickets"),
         (View::Settings, "Settings"),

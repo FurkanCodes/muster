@@ -42,6 +42,7 @@ export async function startSession(
         harness,
         title: null,
         size: START_SIZE,
+        space: null,
         prompt,
         started_by: null,
       },

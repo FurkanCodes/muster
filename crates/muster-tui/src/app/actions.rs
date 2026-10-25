@@ -25,6 +25,8 @@ pub(crate) struct Here {
     /// What it does, in a word or two: `full screen`, `changes`, a
     /// panel's title.
     pub(crate) what: String,
+    /// What it does in a menu of spaces (`app::spaces`).
+    pub(crate) choice: Option<super::spaces::Choice>,
 }
 
 impl Here {
@@ -39,6 +41,7 @@ impl Here {
             panel: None,
             key: key.to_owned(),
             what: what.to_owned(),
+            choice: None,
         })
     }
 
@@ -76,18 +79,23 @@ impl App {
                     self.pin_here(session.id),
                     self.here(Does::NewSession, "session"),
                 ]);
+                self.spaces_here(&mut here);
                 here
             }
-            (_, _, Some(session)) => vec![
-                enter("open"),
-                self.here(Does::FullScreen, "full screen"),
-                self.here(Does::ShowChanges, "changes"),
-                self.here(Does::Rename, "rename"),
-                self.here(Does::RestartSession, "restart"),
-                self.here(Does::Close, "remove"),
-                self.pin_here(session.id),
-                self.here(Does::NewSession, "session"),
-            ],
+            (_, _, Some(session)) => {
+                let mut here = vec![
+                    enter("open"),
+                    self.here(Does::FullScreen, "full screen"),
+                    self.here(Does::ShowChanges, "changes"),
+                    self.here(Does::Rename, "rename"),
+                    self.here(Does::RestartSession, "restart"),
+                    self.here(Does::Close, "remove"),
+                    self.pin_here(session.id),
+                    self.here(Does::NewSession, "session"),
+                ];
+                self.spaces_here(&mut here);
+                here
+            }
             (View::Sessions, Some(Row::Worktree(id)), None) => self.worktree_actions(id),
             (View::Sessions, Some(Row::Project(id)), None) => {
                 let mut here = vec![enter(if self.model.is_plain_folder(id) {
@@ -103,6 +111,11 @@ impl App {
                     ]);
                 }
                 here.push(self.here(Does::Close, "remove"));
+                here
+            }
+            (View::Sessions, Some(Row::Terminals), None) => {
+                let mut here = vec![self.here(Does::NewTerminal, "terminal")];
+                here.extend(self.fold_action(Row::Terminals));
                 here
             }
             _ => Vec::new(),
@@ -168,6 +181,7 @@ impl App {
             panel: None,
             key: self.keymap.label(does),
             what: what.to_owned(),
+            choice: None,
         }
     }
 
@@ -188,6 +202,7 @@ impl App {
                     key: self.keymap.panel_label(&name),
                     panel: Some(name),
                     what: self.keymap.panel_title(action),
+                    choice: None,
                 }
             })
             .collect()
@@ -210,5 +225,6 @@ fn enter(what: &'static str) -> Here {
         panel: None,
         key: "⏎".to_owned(),
         what: what.to_owned(),
+        choice: None,
     }
 }

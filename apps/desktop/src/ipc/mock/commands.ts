@@ -12,6 +12,7 @@ import { byHandCommand } from "./byHand";
 import { flowCommand } from "./flows";
 import { NOW } from "./now";
 import { sessionsCommand } from "./sessions";
+import { spacesCommand } from "./spaces";
 import { ticketCommand } from "./tickets";
 import { handleUndo } from "./undo";
 
@@ -20,6 +21,8 @@ export function handleCommand(mock: MockBridge, command: Command): Reply | undef
   if (command === "ListRepositories") return { Repositories: mock.flows.repositories };
   const sessions = sessionsCommand(mock, command);
   if (sessions !== undefined) return sessions;
+  const spaces = spacesCommand(mock, command);
+  if (spaces !== undefined) return spaces;
   const settings = mock.settings.handle(command);
   if (settings !== undefined) return settings;
   if (typeof command === "string") return undefined;

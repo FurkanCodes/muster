@@ -198,7 +198,9 @@ impl App {
             .project_of(Row::Session(session))
             .and_then(|id| self.model.project(id))
             .map(|project| project.name.as_str());
-        let branch = self.model.branch(stored.workspace);
+        let branch = stored
+            .workspace
+            .and_then(|workspace| self.model.branch(workspace));
         Some(Action::Notify(muster_core::news::told(
             stored, project, branch,
         )))
@@ -322,6 +324,7 @@ impl App {
                 self.plugin_installed(&preview, outcome.map(drop));
             }
             (outcome, Then::PluginRemoved(id)) => self.plugin_removed(&id, outcome.map(drop)),
+            (outcome, Then::Space(waiting)) => return self.space_reply(waiting, outcome),
             (outcome, Then::ListFolded) => self.list_folded_kept(outcome.map(drop)),
             (outcome, Then::PanelsKept) => self.panels_kept(outcome.map(drop)),
             (Ok(Reply::Models(models)), Then::Models(agent)) => self.on_models(&agent, Ok(models)),

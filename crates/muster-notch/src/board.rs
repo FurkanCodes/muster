@@ -257,7 +257,7 @@ fn row(state: &Snapshot, session: &Session, now: Timestamp) -> Row {
 
 /// The line of trouble `found`, in its workspace's project.
 fn trouble_row(state: &Snapshot, found: &trouble::Trouble) -> Row {
-    let (name, colour) = project_of(state, found.workspace);
+    let (name, colour) = project_of(state, Some(found.workspace));
     Row {
         key: found.key,
         session: found.session,
@@ -277,11 +277,13 @@ fn trouble_row(state: &Snapshot, found: &trouble::Trouble) -> Row {
 
 /// The name of `workspace`'s project, and its place among the projects,
 /// which picks its colour, as in the UI.
-fn project_of(state: &Snapshot, workspace: muster_core::WorkspaceId) -> (String, usize) {
+/// The name and place of the project `workspace` is in; nothing for a
+/// free terminal's, which is in none.
+fn project_of(state: &Snapshot, workspace: Option<muster_core::WorkspaceId>) -> (String, usize) {
     state
         .workspaces
         .iter()
-        .find(|found| found.id == workspace)
+        .find(|found| Some(found.id) == workspace)
         .and_then(|found| {
             state
                 .projects
@@ -387,7 +389,7 @@ mod tests {
     ) -> Session {
         Session {
             id: SessionId::new(),
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: title.to_owned(),
             status,

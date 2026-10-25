@@ -24,6 +24,7 @@ async fn real_setup() -> Setup {
         .command(Command::AddProject {
             root: root.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -196,6 +197,7 @@ async fn work_that_cannot_go_to_a_run_is_refused_plainly() {
         .command(Command::AddProject {
             root: other_root,
             name: None,
+            space: None,
         })
         .await
         .unwrap()

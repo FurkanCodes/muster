@@ -87,7 +87,7 @@ test("PRD §6a a session's menu pins it to the right of the preview in a panel o
   await expect(page.locator(".mu-note")).toContainText("Took it off the screen; it runs on.");
 });
 
-test("ARC-24 a right-click in All opens a session's menu, and a project's line only selects it", async ({
+test("ARC-24 ARC-33 a right-click in All opens a session's menu, and a project's, which puts it in a new space", async ({
   page,
 }) => {
   await page.goto("/");
@@ -103,7 +103,16 @@ test("ARC-24 a right-click in All opens a session's menu, and a project's line o
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("menu")).toHaveCount(0);
+  const menu = page.getByRole("menu", { name: "lamphaus" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: /^Put in a new space/ }).click();
+  const named = page.getByRole("dialog", { name: "New space" });
+  await named.getByLabel("Name").fill("Client");
+  await named.getByRole("button", { name: /Make it/ }).click();
+  // Made with the project in it, and shown.
+  await expect(sidebar(page).getByRole("button", { name: "Spaces" })).toHaveText(/Client/);
+  await expect(tree.getByRole("treeitem", { name: "lamphaus", exact: true })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: "muster", exact: true })).toHaveCount(0);
 });
 
 test("ARC-24 the window opens no browser menu, except over text one can copy", async ({ page }) => {

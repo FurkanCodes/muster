@@ -35,7 +35,11 @@ async fn started(sandbox: &Sandbox, harness: &str) -> (Daemon, Connection, Sessi
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -50,12 +54,13 @@ async fn started(sandbox: &Sandbox, harness: &str) -> (Daemon, Connection, Sessi
         .expect("the project's checkout");
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: harness.to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

@@ -220,7 +220,9 @@ function AgentRow({
   onOpen: (id: string) => void;
 }) {
   const session = useDaemon((s) => s.sessions[id]);
-  const workspace = useDaemon((s) => (session ? s.workspaces[session.workspace] : undefined));
+  const workspace = useDaemon((s) =>
+    session?.workspace ? s.workspaces[session.workspace] : undefined,
+  );
   const now = useNow();
   const label = useDaemon(
     (s) =>

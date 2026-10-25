@@ -107,7 +107,12 @@ describe("ARC-24 the sidebar", () => {
         within(menu)
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
-      ).toEqual(["Open a folder…a", "Clone from GitHub…g"]);
+      ).toEqual([
+        "Open a folder…a",
+        "Clone from GitHub…g",
+        "Terminal in no project+",
+        "New space…",
+      ]);
       await userEvent.click(within(menu).getByRole("menuitem", { name: /Open a folder/ }));
     };
 
@@ -122,7 +127,7 @@ describe("ARC-24 the sidebar", () => {
     await add();
     await waitFor(() =>
       expect(bridge.sent).toContainEqual({
-        AddProject: { root: "/Users/you/code/labs", name: null },
+        AddProject: { root: "/Users/you/code/labs", name: null, space: null },
       }),
     );
     expect(await screen.findByRole("region", { name: "labs" })).toBeInTheDocument();

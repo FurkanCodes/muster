@@ -95,7 +95,7 @@ impl Supervisor {
             .iter()
             .find(|stored| stored.id == session)
             .filter(|stored| !stored.kind().stands_beside())?;
-        Some(self.event_in(kind, stored.workspace)?.of_session(stored))
+        Some(self.event_in(kind, stored.workspace?)?.of_session(stored))
     }
 
     /// A session was added: an agent's starts.

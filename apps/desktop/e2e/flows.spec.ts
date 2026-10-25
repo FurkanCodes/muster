@@ -275,6 +275,7 @@ test.describe("PRD-03 work starts on the project's page", () => {
             size: { cols: 100, rows: 30 },
             prompt: "Add a Not seen filter\nto the sidebar",
             started_by: null,
+            space: null,
           },
         },
       ]);
@@ -431,7 +432,7 @@ test.describe("PRD-01 adding a project", () => {
     await expect(dialog).toBeHidden();
     await expect(statusBar(page)).toContainText("Added lamphaus-api.");
     expect(await sent(page, "AddProject")).toContainEqual({
-      AddProject: { root: "/Users/you/code/lamphaus-api", name: null },
+      AddProject: { root: "/Users/you/code/lamphaus-api", name: null, space: null },
     });
     await expect(page.getByRole("navigation", { name: "Sessions" })).toContainText("lamphaus-api");
   });

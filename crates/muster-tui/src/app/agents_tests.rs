@@ -71,12 +71,13 @@ fn a_new_session_offers_the_person_s_agents_after_muster_s_own() {
     assert_eq!(
         sent,
         Command::StartSession {
-            workspace: world.worktree.id,
+            workspace: Some(world.worktree.id),
             harness: "my-agent".to_owned(),
             title: None,
             size: PANE,
             prompt: Some("fix it".to_owned()),
             started_by: None,
+            space: None,
         }
     );
 

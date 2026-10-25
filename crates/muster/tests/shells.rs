@@ -29,12 +29,13 @@ use support::Sandbox;
 async fn start(connection: &mut Connection, workspace: WorkspaceId, harness: &str) -> SessionId {
     let Reply::SessionStarted { id } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: harness.to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -76,7 +77,11 @@ async fn a_shell_is_named_by_what_runs_in_it_until_the_person_names_it() {
     // Shells are named as measured, which is often only while looked at.
     connection.looking(true).await.unwrap();
     connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap();
     let checkout = connection.subscribe().await.unwrap().workspaces[0].id;
@@ -113,7 +118,11 @@ async fn a_worktree_s_shell_ends_with_it_but_an_agent_at_work_keeps_it() {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {

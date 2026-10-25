@@ -188,7 +188,7 @@ impl App {
             .find(|session| match beside {
                 Beside::Session(chat) => session.beside == Some(chat),
                 Beside::Workspace(workspace) => {
-                    session.workspace == workspace && session.beside.is_none()
+                    session.is_in(workspace) && session.beside.is_none()
                 }
             })
             .map(|session| session.id)

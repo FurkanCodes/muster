@@ -221,12 +221,14 @@ impl TicketBrief {
     }
 }
 
-/// One agent process in one workspace.
+/// One agent process in one workspace, or a terminal in none.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Session {
     pub id: SessionId,
-    pub workspace: WorkspaceId,
+    /// Where it runs; `None` for a free terminal, which is in no project
+    /// and runs in the home folder of its daemon's machine (`ARC-33`).
+    pub workspace: Option<WorkspaceId>,
     /// The harness descriptor's id, such as `claude`.
     pub harness: String,
     pub title: String,
@@ -286,6 +288,16 @@ impl Session {
     /// Whether it is a terminal: the person's shell, whatever runs in it.
     pub fn is_terminal(&self) -> bool {
         self.started_as().is_shell()
+    }
+
+    /// Whether it is a free terminal: in no project (`ARC-33`).
+    pub fn is_free(&self) -> bool {
+        self.workspace.is_none()
+    }
+
+    /// Whether it runs in `workspace`.
+    pub fn is_in(&self, workspace: WorkspaceId) -> bool {
+        self.workspace == Some(workspace)
     }
 
     /// The harness it shows as now: the agent in front in it, else its own.

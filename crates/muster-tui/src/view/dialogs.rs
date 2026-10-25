@@ -21,6 +21,9 @@ use crate::app::{App, Dialog, FolderPicker, HarnessChoice, PICKER_ROWS, Shown};
 use crate::cells;
 use crate::input::LineInput;
 
+mod tickets_from;
+use tickets_from::tickets_from;
+
 /// What a click on part of a dialog does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum DialogPress {
@@ -438,6 +441,31 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
                 Some(name),
             )
         },
+        Dialog::SpaceName { space, name } => space_name(space.is_some(), name),
+    }
+}
+
+/// A new space's name, or a space's new name where `renaming`.
+fn space_name(renaming: bool, name: &LineInput) -> Shape<'_> {
+    Shape {
+        hint: if renaming {
+            "⏎ rename   esc cancel"
+        } else {
+            "⏎ make it   esc cancel"
+        },
+        ..Shape::new(
+            if renaming {
+                " Rename space "
+            } else {
+                " New space "
+            },
+            vec![
+                Line::from("A space groups projects and terminals;"),
+                Line::from("it doesn't change where they run."),
+                Line::from("Its name:"),
+            ],
+            Some(name),
+        )
     }
 }
 
@@ -713,105 +741,6 @@ fn assign_agent(
     for (line, marked) in marks {
         shape.mark(Where::Text(line), marked);
     }
-    shape
-}
-
-fn tickets_from<'a>(
-    app: &App,
-    project: ProjectId,
-    tracker: Option<&str>,
-    fields: &'a [Field],
-    at: usize,
-) -> Shape<'a> {
-    let name = app
-        .model
-        .project(project)
-        .map_or("?", |found| found.name.as_str());
-    let offered = app.offered_trackers();
-    let (from, trackers) = chips(
-        "From ",
-        std::iter::once((
-            "its git remote".to_owned(),
-            tracker.is_none(),
-            DialogPress::Tracker(None),
-        ))
-        .chain(offered.iter().map(|option| {
-            (
-                option.name.clone(),
-                tracker == Some(option.id.as_str()),
-                DialogPress::Tracker(Some(option.id.clone())),
-            )
-        })),
-    );
-    let mut lines = vec![
-        Line::from(format!("Where {name}'s tickets come from")).bold(),
-        from,
-        Line::from(""),
-    ];
-    let mut field_marks: Vec<(Where, usize)> = Vec::new();
-    let chosen = offered
-        .iter()
-        .find(|option| Some(option.id.as_str()) == tracker);
-    let Some(input) = fields.get(at) else {
-        lines.push(
-            Line::from(match chosen {
-                None => "Where its git remote's host keeps them, as Muster can tell.".to_owned(),
-                Some(chosen) => chosen
-                    .description
-                    .clone()
-                    .unwrap_or_else(|| format!("Its tickets in {}.", chosen.name)),
-            })
-            .dim(),
-        );
-        // With nothing to type, its hint is a line of its own.
-        lines.extend([
-            Line::from(""),
-            Line::from("⇥ ⇧⇥ choose   ⏎ save   esc cancel").dim(),
-        ]);
-        let mut shape = Shape::new(" Tickets from ", lines, None);
-        shape.mark(Where::Text(1), trackers);
-        return shape;
-    };
-    let label = |field: &Field| {
-        let needed = if field.setting.required {
-            ""
-        } else {
-            " (if you like)"
-        };
-        Line::from(format!("{}{needed}:", field.setting.label))
-    };
-    for (index, field) in fields[..at].iter().enumerate() {
-        field_marks.push((Where::Text(lines.len()), index));
-        lines.push(label(field));
-        field_marks.push((Where::Text(lines.len()), index));
-        lines.push(typed_line(&field.input));
-    }
-    lines.push(label(input));
-    let below = fields[at + 1..]
-        .iter()
-        .flat_map(|field| [label(field), typed_line(&field.input)])
-        .collect();
-    for line in 0..2 * (fields.len() - at - 1) {
-        field_marks.push((Where::Below(line), at + 1 + line / 2));
-    }
-    let mut shape = Shape {
-        below,
-        hint: if fields.len() > 1 {
-            "⇥ ⇧⇥ choose   ↑↓ field   ⏎ save   esc cancel"
-        } else {
-            "⇥ ⇧⇥ choose   ⏎ save   esc cancel"
-        },
-        ..Shape::new(" Tickets from ", lines, Some(&input.input))
-    };
-    shape.mark(Where::Text(1), trackers);
-    shape
-        .marks
-        .extend(field_marks.into_iter().map(|(line, field)| Mark {
-            line,
-            from: 0,
-            width: None,
-            press: DialogPress::Field(field),
-        }));
     shape
 }
 

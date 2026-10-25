@@ -50,6 +50,7 @@ async fn setup_with(settings: &str) -> Setup {
         .command(Command::AddProject {
             root: repository.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap();
@@ -176,7 +177,8 @@ fn branch_of(snapshot: &Snapshot, session: SessionId) -> String {
         .iter()
         .find(|found| found.id == session)
         .unwrap()
-        .workspace;
+        .workspace
+        .unwrap();
     workspace_branch(snapshot, workspace)
 }
 
@@ -389,15 +391,16 @@ async fn prd_01_an_agent_may_start_agents_and_what_it_starts_names_it() {
 
     // A shell of the person's is the person.
     let mut connection = setup.daemon.connect().await;
-    let workspace = started.workspace;
+    let workspace = started.workspace.unwrap();
     let Reply::SessionStarted { id: shell } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

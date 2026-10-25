@@ -101,7 +101,10 @@ fn the_panel_key_and_v_split_the_panel_right_with_a_new_shell() {
     else {
         panic!("{asked:?}");
     };
-    assert_eq!((workspace, harness.as_str()), (world.worktree.id, "shell"));
+    assert_eq!(
+        (workspace, harness.as_str()),
+        (Some(world.worktree.id), "shell")
+    );
     assert!(typed(&actions).is_empty());
     // And s, or -, down.
     let actions = after_panel_key(&mut world, letter('s'));

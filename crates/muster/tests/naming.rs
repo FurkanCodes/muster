@@ -36,7 +36,11 @@ async fn project(sandbox: &Sandbox) -> (Daemon, Connection, WorkspaceId) {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { .. } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -49,12 +53,13 @@ async fn project(sandbox: &Sandbox) -> (Daemon, Connection, WorkspaceId) {
 async fn start(connection: &mut Connection, workspace: WorkspaceId, prompt: &str) -> SessionId {
     let Reply::SessionStarted { id } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: Some(prompt.to_owned()),
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

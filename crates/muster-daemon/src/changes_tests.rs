@@ -137,6 +137,7 @@ async fn a_plain_folder_has_no_changes_to_ask_for() {
         .command(Command::AddProject {
             root: folder.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap();

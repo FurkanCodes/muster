@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashMap};
 use muster_core::protocol::ResourceReport;
 use muster_core::protocol::plugins::PluginInfo;
 use muster_core::settings::Preferences;
-use muster_core::{Project, ProjectId, Session, SessionId, Workspace, WorkspaceId};
+use muster_core::{Project, ProjectId, Session, SessionId, Space, Workspace, WorkspaceId};
 use muster_model::Model;
 
 use crate::contract::{Counts, Derived, Gone, Patch, Row};
@@ -24,6 +24,7 @@ struct Sent {
     workspaces: HashMap<WorkspaceId, Workspace>,
     sessions: HashMap<SessionId, Session>,
     preferences: Preferences,
+    spaces: Vec<Space>,
     plugins: Vec<PluginInfo>,
     resources: Option<ResourceReport>,
     notifier: bool,
@@ -59,6 +60,7 @@ impl Patcher {
                 workspaces: by_id(&patch.workspaces, |workspace| workspace.id),
                 sessions: by_id(&patch.sessions, |session| session.id),
                 preferences: model.preferences().clone(),
+                spaces: model.spaces().to_vec(),
                 plugins: model.plugins().to_vec(),
                 resources: model.resources().cloned(),
                 notifier: model.notifier(),
@@ -80,6 +82,10 @@ impl Patcher {
         if model.preferences() != &sent.preferences {
             sent.preferences = model.preferences().clone();
             patch.preferences = Some(sent.preferences.clone());
+        }
+        if model.spaces() != sent.spaces.as_slice() {
+            sent.spaces = model.spaces().to_vec();
+            patch.spaces = Some(sent.spaces.clone());
         }
         if model.plugins() != sent.plugins.as_slice() {
             sent.plugins = model.plugins().to_vec();
@@ -104,6 +110,7 @@ impl Patcher {
             || !patch.gone.workspaces.is_empty()
             || !patch.gone.sessions.is_empty()
             || patch.preferences.is_some()
+            || patch.spaces.is_some()
             || patch.plugins.is_some()
             || patch.resources.is_some()
             || patch.notifier.is_some();
@@ -120,6 +127,7 @@ fn whole(model: &Model, derived: Derived) -> Patch {
         sessions: model.sessions().to_vec(),
         gone: Gone::default(),
         preferences: Some(model.preferences().clone()),
+        spaces: Some(model.spaces().to_vec()),
         plugins: Some(model.plugins().to_vec()),
         resources: model.resources().cloned(),
         notifier: Some(model.notifier()),
@@ -134,15 +142,13 @@ pub(super) fn derive(model: &Model, questions: BTreeMap<SessionId, Vec<String>>)
     Derived {
         needs_you: model.needs_you(),
         working: model.working(),
-        rows: model
-            .rows()
-            .into_iter()
-            .map(|row| match row {
-                muster_model::Row::Project(id) => Row::Project(id),
-                muster_model::Row::Worktree(id) => Row::Workspace(id),
-                muster_model::Row::Session(id) => Row::Session(id),
-            })
+        rows: rows(model, muster_model::View::All),
+        space_rows: model
+            .spaces()
+            .iter()
+            .map(|space| (space.id, rows(model, muster_model::View::Space(space.id))))
             .collect(),
+        space_notes: space_notes(model),
         counts: Counts {
             working: count(counts.working),
             waiting: count(counts.waiting),
@@ -150,6 +156,41 @@ pub(super) fn derive(model: &Model, questions: BTreeMap<SessionId, Vec<String>>)
         },
         questions,
     }
+}
+
+/// Each project's spaces, and each waiting session's, as notes.
+fn space_notes(model: &Model) -> BTreeMap<String, String> {
+    let projects = model.projects().iter().map(|project| {
+        let spaces: Vec<_> = model
+            .spaces_of(muster_core::spaces::Member::Project(project.id))
+            .collect();
+        (project.id.to_string(), Model::in_spaces(&spaces))
+    });
+    let waiting = model.needs_you().into_iter().filter_map(|id| {
+        let session = model.session(id)?;
+        Some((
+            id.to_string(),
+            Model::in_spaces(&model.spaces_of_session(session)),
+        ))
+    });
+    projects
+        .chain(waiting)
+        .filter(|(_, note)| !note.is_empty())
+        .collect()
+}
+
+/// The lines `view` lists, as the webview names them.
+fn rows(model: &Model, view: muster_model::View) -> Vec<Row> {
+    model
+        .rows_in(view)
+        .into_iter()
+        .map(|row| match row {
+            muster_model::Row::Project(id) => Row::Project(id),
+            muster_model::Row::Worktree(id) => Row::Workspace(id),
+            muster_model::Row::Session(id) => Row::Session(id),
+            muster_model::Row::Terminals => Row::Terminals,
+        })
+        .collect()
 }
 
 fn by_id<T: Clone, K: std::hash::Hash + Eq>(items: &[T], id: impl Fn(&T) -> K) -> HashMap<K, T> {

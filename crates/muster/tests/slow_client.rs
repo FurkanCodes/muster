@@ -133,24 +133,33 @@ async fn next_frame(receiver: &mut FrameReceiver, quiet: Duration) -> Option<Ser
 }
 
 #[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one client falling behind and catching up, step by step"
+)]
 async fn a_client_that_reads_slowly_catches_up_from_the_ring_arc_14() {
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap();
     let workspace = connection.subscribe().await.unwrap().workspaces[0].id;
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: SIZE,
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -249,18 +258,23 @@ async fn a_client_starting_over_sees_the_program_s_screen_not_the_output_s_middl
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap();
     let workspace = connection.subscribe().await.unwrap().workspaces[0].id;
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: SIZE,
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

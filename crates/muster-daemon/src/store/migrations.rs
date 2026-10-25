@@ -3,12 +3,12 @@
 //! Never edit a migration that has shipped; add a new one. Each runs in its own
 //! transaction together with the version bump.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -139,8 +139,59 @@ const V9: &str = "ALTER TABLE workspaces ADD COLUMN ticket TEXT;";
 /// (`PRD-01`), shown with it and counted against the person's limits.
 const V10: &str = "ALTER TABLE sessions ADD COLUMN started_by TEXT;";
 
+/// Free terminals, in no workspace (`ARC-33`), and the person's spaces
+/// with what is in them. SQLite cannot let a column be empty in place, so
+/// `sessions` is made again and its rows copied, with foreign keys off for
+/// the copy ([`REBUILDS`]) so that dropping the old table removes no
+/// session's history; they are checked before the change is kept.
+const V11: &str = r"
+CREATE TABLE sessions_v11 (
+    id            TEXT PRIMARY KEY,
+    workspace_id  TEXT REFERENCES workspaces (id) ON DELETE CASCADE,
+    harness       TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    status        TEXT NOT NULL CHECK (json_valid(status)),
+    unseen        INTEGER NOT NULL CHECK (unseen IN (0, 1)),
+    resume_id     TEXT,
+    created_at    INTEGER NOT NULL,
+    ended_at      INTEGER,
+    removed_at    INTEGER,
+    beside        TEXT,
+    started_by    TEXT
+) STRICT;
+
+INSERT INTO sessions_v11
+    (id, workspace_id, harness, title, status, unseen, resume_id, created_at, ended_at,
+     removed_at, beside, started_by)
+SELECT id, workspace_id, harness, title, status, unseen, resume_id, created_at, ended_at,
+       removed_at, beside, started_by
+FROM sessions;
+
+DROP TABLE sessions;
+ALTER TABLE sessions_v11 RENAME TO sessions;
+CREATE INDEX sessions_by_workspace ON sessions (workspace_id);
+
+CREATE TABLE spaces (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_at  INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE space_members (
+    space_id   TEXT NOT NULL REFERENCES spaces (id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL CHECK (kind IN ('project', 'session')),
+    member_id  TEXT NOT NULL,
+    PRIMARY KEY (space_id, kind, member_id)
+) STRICT;
+
+CREATE INDEX space_members_by_member ON space_members (kind, member_id);
+";
+
 /// The version whose migration fills in worktrees' tickets.
 const TICKETS: u32 = 9;
+
+/// The version whose migration makes a table again, with foreign keys off.
+const REBUILDS: u32 = 11;
 
 /// Each worktree's ticket, as its branch's name says (`muster/issue-42-…`):
 /// how the ticket's agents were found before it was stored. Run once, in
@@ -159,6 +210,19 @@ fn tickets_from_branches(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreErro
         }
     }
     Ok(())
+}
+
+/// Refuses a migration that left a row naming one that is not there.
+fn check_foreign_keys(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    let broken: Option<String> = tx
+        .query_row("PRAGMA foreign_key_check", [], |row| row.get(0))
+        .optional()?;
+    match broken {
+        Some(table) => Err(StoreError::Invalid(format!(
+            "a row of {table} names one that is not there"
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// The schema version this build creates.
@@ -182,13 +246,24 @@ pub(super) fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         });
     }
     for (version, migration) in (1..=known).zip(MIGRATIONS).skip(current as usize) {
+        // Foreign keys are turned off outside a transaction only.
+        let rebuild = version == REBUILDS;
+        if rebuild {
+            conn.pragma_update(None, "foreign_keys", "OFF")?;
+        }
         let tx = conn.transaction()?;
         tx.execute_batch(migration)?;
         if version == TICKETS {
             tickets_from_branches(&tx)?;
         }
+        if rebuild {
+            check_foreign_keys(&tx)?;
+        }
         tx.pragma_update(None, "user_version", version)?;
         tx.commit()?;
+        if rebuild {
+            conn.pragma_update(None, "foreign_keys", "ON")?;
+        }
     }
     Ok(())
 }

@@ -71,6 +71,7 @@ async fn setup() -> Setup {
         .command(Command::AddProject {
             root: repository.clone(),
             name: None,
+            space: None,
         })
         .await
         .unwrap();
@@ -167,7 +168,11 @@ async fn an_agent_on_a_ticket_works_in_the_workspace_the_person_is_in_prd_6b() {
         .iter()
         .find(|session| session.harness == "claude")
         .unwrap();
-    assert_eq!(agent.workspace, workspace.id, "no worktree made for it");
+    assert_eq!(
+        agent.workspace,
+        Some(workspace.id),
+        "no worktree made for it"
+    );
     assert_eq!(snapshot.workspaces.len(), 2);
     let read = text(&setup.run(&["ticket", "42"]).stdout);
     assert!(read.contains("Worked on in fix-login: 1 agent"), "{read}");

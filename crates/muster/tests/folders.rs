@@ -56,12 +56,13 @@ async fn a_plain_folder_is_a_project_until_and_after_it_becomes_a_repository() {
     // A session runs in the folder.
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace: own.id,
+            workspace: Some(own.id),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

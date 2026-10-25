@@ -452,12 +452,13 @@ fn a_new_session_starts_claude_with_a_prompt_and_opens_it() {
     assert_eq!(
         sent,
         Command::StartSession {
-            workspace: world.worktree.id,
+            workspace: Some(world.worktree.id),
             harness: "claude".to_owned(),
             title: None,
             size: PANE,
             prompt: Some("fix the login".to_owned()),
             started_by: None,
+            space: None,
         }
     );
     let started = session(world.worktree.id, "Claude Code", 4);
@@ -799,7 +800,8 @@ fn a_project_is_added_from_a_typed_path() {
         sent,
         Command::AddProject {
             root: PathBuf::from("/src/other"),
-            name: None
+            name: None,
+            space: None,
         }
     );
     let _ = WorkspaceId::new();

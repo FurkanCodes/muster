@@ -10,6 +10,7 @@
 //! hears only what changed: the terminal's name, and the agent in front.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use muster_core::SessionId;
@@ -29,6 +30,10 @@ const READ_AGAIN: u32 = 4;
 pub(crate) trait Processes: Send + 'static {
     /// Process `pid`'s name and arguments; `None` where it has gone.
     fn facts(&mut self, pid: u32) -> Option<ProcessFacts>;
+
+    /// The folder process `pid` is in; `None` where it has gone or cannot
+    /// be read.
+    fn cwd(&mut self, pid: u32) -> Option<PathBuf>;
 }
 
 /// The system's processes, through sysinfo: one process read at a time,
@@ -69,6 +74,37 @@ impl Processes for SystemProcesses {
                 .collect(),
         })
     }
+
+    fn cwd(&mut self, pid: u32) -> Option<PathBuf> {
+        let pid = Pid::from_u32(pid);
+        self.system.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[pid]),
+            true,
+            ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always),
+        );
+        self.system.process(pid)?.cwd().map(PathBuf::from)
+    }
+}
+
+/// What process group leader `pid` runs, as a person would name it: what
+/// a terminal's shell would end were the terminal closed.
+pub(crate) async fn program(pid: u32) -> Option<String> {
+    tokio::task::spawn_blocking(move || {
+        let facts = SystemProcesses::new().facts(pid)?;
+        Some(muster_core::front::identify(&facts, []).program)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// The folder a terminal's shell, process `pid`, is in now: read only when
+/// asked, on a blocking thread, never on the watcher's tick (`ARC-33`).
+pub(crate) async fn shell_folder(pid: u32) -> Option<PathBuf> {
+    tokio::task::spawn_blocking(move || SystemProcesses::new().cwd(pid))
+        .await
+        .ok()
+        .flatten()
 }
 
 /// What the watcher last saw in one terminal.
@@ -251,5 +287,10 @@ mod tests {
             .expect("this process runs");
         assert!(!facts.argv.is_empty(), "{facts:?}");
         assert!(processes.facts(u32::MAX - 1).is_none());
+        assert_eq!(
+            processes.cwd(std::process::id()),
+            std::env::current_dir().ok()
+        );
+        assert!(processes.cwd(u32::MAX - 1).is_none());
     }
 }

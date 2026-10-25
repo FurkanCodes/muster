@@ -456,6 +456,24 @@ pub(crate) async fn start_terminal(
     workspace: WorkspaceId,
     title: Option<String>,
 ) -> Result<SessionId, Box<dyn std::error::Error>> {
+    started(connection, Some(workspace), title, None).await
+}
+
+/// Starts a terminal in no project (`ARC-33`), joining `space` where given.
+pub(crate) async fn start_free_terminal(
+    connection: &mut Connection,
+    title: Option<String>,
+    space: Option<muster_core::SpaceId>,
+) -> Result<SessionId, Box<dyn std::error::Error>> {
+    started(connection, None, title, space).await
+}
+
+async fn started(
+    connection: &mut Connection,
+    workspace: Option<WorkspaceId>,
+    title: Option<String>,
+    space: Option<muster_core::SpaceId>,
+) -> Result<SessionId, Box<dyn std::error::Error>> {
     let size = crossterm::terminal::size()
         .map(|(cols, rows)| TermSize { cols, rows })
         .unwrap_or_default();
@@ -469,6 +487,7 @@ pub(crate) async fn start_terminal(
             // Marked as started by the agent the command runs under, if any
             // (`PRD-01`).
             started_by: super::started_by(),
+            space,
         })
         .await?;
     let Reply::SessionStarted { id } = reply else {

@@ -40,7 +40,11 @@ async fn setup_in(sandbox: Sandbox) -> Setup {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -72,12 +76,13 @@ async fn start_claude(
 ) -> SessionId {
     match connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: prompt.map(str::to_owned),
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -359,12 +364,13 @@ async fn the_shell_takes_no_prompt() {
     let mut connection = setup.daemon.connect().await;
     let refused = connection
         .command(Command::StartSession {
-            workspace: setup.workspace,
+            workspace: Some(setup.workspace),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: Some("hello".to_owned()),
             started_by: None,
+            space: None,
         })
         .await;
     assert!(
@@ -685,7 +691,11 @@ async fn a_claude_that_never_announces_its_start_is_asking_before_it_starts() {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -727,7 +737,11 @@ async fn a_claude_that_announces_its_start_is_never_taken_to_be_asking() {
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap();
     let snapshot = connection.subscribe().await.unwrap();

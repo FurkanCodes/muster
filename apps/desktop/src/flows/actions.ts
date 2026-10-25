@@ -243,7 +243,11 @@ export function moveBranch(app: App): void {
 
 /** Adds the project at `path`, says so, and selects it. */
 export async function addProjectAt(app: App, path: string): Promise<void> {
-  const reply = await ask(app.bridge, { AddProject: { root: path, name: null } }, "ProjectAdded");
+  const reply = await ask(
+    app.bridge,
+    { AddProject: { root: path, name: null, space: app.ui.getState().space } },
+    "ProjectAdded",
+  );
   const id = reply.id;
   app.actions.show("all");
   whenKnown(app, "projects", id, () => {

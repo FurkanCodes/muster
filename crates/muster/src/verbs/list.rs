@@ -10,7 +10,8 @@ use std::process::ExitCode;
 use clap::ValueEnum;
 use muster_client::ClientError;
 use muster_core::protocol::Snapshot;
-use muster_core::{Paths, ProjectId, Session, WorkspaceId};
+use muster_core::spaces::Member;
+use muster_core::{Paths, ProjectId, Session, SpaceId, WorkspaceId};
 use serde::Serialize;
 
 use super::targets;
@@ -39,6 +40,18 @@ pub(crate) enum Listing {
     /// Your machines, for `muster ssh`.
     #[value(alias = "machine")]
     Machines,
+    /// Your spaces, and what is in each.
+    #[value(alias = "space")]
+    Spaces,
+}
+
+/// Whose a listing is, as asked: every project's, one project's, or one
+/// space's; else where the person is.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Only<'a> {
+    pub(crate) all: bool,
+    pub(crate) project: Option<&'a str>,
+    pub(crate) space: Option<&'a str>,
 }
 
 /// Whose sessions a listing shows.
@@ -47,15 +60,20 @@ enum Scope {
     All,
     Project(ProjectId),
     Workspace(WorkspaceId),
+    Space(SpaceId),
 }
 
 pub(crate) async fn run(
     paths: &Paths,
     what: Option<Listing>,
-    all: bool,
-    project: Option<&str>,
+    only: Only<'_>,
     json: bool,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let Only {
+        all,
+        project,
+        space,
+    } = only;
     let what = what.unwrap_or(Listing::Sessions);
     if what == Listing::Workspaces {
         return super::workspaces::list(paths, all, project, json).await;
@@ -83,9 +101,13 @@ pub(crate) async fn run(
     if what == Listing::Projects {
         return projects(&snapshot, json);
     }
-    let scope = match project {
-        Some(wanted) => Scope::Project(commands::find_project(&snapshot, wanted)?.id),
-        None => scope(&snapshot, all),
+    if what == Listing::Spaces {
+        return super::spaces::list(&snapshot, json);
+    }
+    let scope = match (project, space) {
+        (Some(wanted), _) => Scope::Project(commands::find_project(&snapshot, wanted)?.id),
+        (None, Some(wanted)) => Scope::Space(super::spaces::find(&snapshot, wanted)?.id),
+        (None, None) => scope(&snapshot, all),
     };
     let kept: Vec<&Session> = snapshot
         .sessions
@@ -146,11 +168,19 @@ fn scope(snapshot: &Snapshot, all: bool) -> Scope {
 fn in_scope(snapshot: &Snapshot, scope: Scope, session: &Session) -> bool {
     match scope {
         Scope::All => true,
-        Scope::Workspace(workspace) => session.workspace == workspace,
+        Scope::Workspace(workspace) => session.is_in(workspace),
         Scope::Project(project) => snapshot
             .workspaces
             .iter()
-            .any(|workspace| workspace.id == session.workspace && workspace.project == project),
+            .any(|workspace| session.is_in(workspace.id) && workspace.project == project),
+        Scope::Space(id) => snapshot.spaces.iter().any(|space| {
+            space.id == id
+                && (space.holds(Member::Session(session.id))
+                    || snapshot.workspaces.iter().any(|workspace| {
+                        session.is_in(workspace.id)
+                            && space.holds(Member::Project(workspace.project))
+                    }))
+        }),
     }
 }
 
@@ -175,6 +205,12 @@ fn where_words(snapshot: &Snapshot, scope: Scope) -> String {
             .find(|project| project.id == id)
             .map(|project| format!(" in {}", shown(&project.name)))
             .unwrap_or_default(),
+        Scope::Space(id) => snapshot
+            .spaces
+            .iter()
+            .find(|space| space.id == id)
+            .map(|space| format!(" in space {}", shown(&space.name)))
+            .unwrap_or_default(),
     }
 }
 
@@ -196,7 +232,7 @@ fn print_tree(snapshot: &Snapshot, sessions: &[&Session]) {
             .workspaces
             .iter()
             .filter(|workspace| workspace.project == project.id)
-            .filter(|workspace| sessions.iter().any(|s| s.workspace == workspace.id))
+            .filter(|workspace| sessions.iter().any(|s| s.is_in(workspace.id)))
             .collect();
         if workspaces.is_empty() {
             continue;
@@ -213,6 +249,17 @@ fn print_tree(snapshot: &Snapshot, sessions: &[&Session]) {
                     println!("{}", numbered_line(number, session, now));
                 }
             }
+        }
+    }
+    // Terminals in no project (`ARC-33`), by their ids.
+    let free: Vec<&&Session> = sessions
+        .iter()
+        .filter(|session| session.is_free())
+        .collect();
+    if !free.is_empty() {
+        println!("Terminals");
+        for (number, session) in (1..).zip(free) {
+            println!("{}", numbered_line(number, session, now));
         }
     }
 }
@@ -276,7 +323,7 @@ fn projects(snapshot: &Snapshot, json: bool) -> Result<ExitCode, Box<dyn std::er
                 sessions: snapshot
                     .sessions
                     .iter()
-                    .filter(|session| workspaces.contains(&session.workspace))
+                    .filter(|session| session.workspace.is_some_and(|id| workspaces.contains(&id)))
                     .count(),
             }
         })

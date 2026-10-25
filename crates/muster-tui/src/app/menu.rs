@@ -159,6 +159,8 @@ impl App {
         [
             (Does::AddProject, "add a project"),
             (Does::CloneProject, "clone one from GitHub"),
+            (Does::NewTerminal, "a terminal in no project"),
+            (Does::Spaces, "spaces"),
             (Does::LastAlarm, "the session told of last"),
             (Does::Help, "every key"),
         ]
@@ -168,6 +170,7 @@ impl App {
             panel: None,
             key: self.keymap.label(does),
             what: what.to_owned(),
+            choice: None,
         })
         .collect()
     }
@@ -175,6 +178,9 @@ impl App {
     /// Does what `item` of `menu` says, as its key would.
     fn choose(&mut self, menu: &Menu, item: &Here) -> Vec<Action> {
         self.mode = Mode::Browse;
+        if let Some(choice) = &item.choice {
+            return self.choose_space(choice.clone());
+        }
         if let (Some(panel), Some(does)) = (menu.on, item.does) {
             // The keys back where they were, for the panel key's next key.
             return self.panel_action(does, panel);
@@ -188,6 +194,8 @@ impl App {
                 Some(
                     does @ (muster_core::keys::Action::AddProject
                     | muster_core::keys::Action::CloneProject
+                    | muster_core::keys::Action::NewTerminal
+                    | muster_core::keys::Action::Spaces
                     | muster_core::keys::Action::LastAlarm
                     | muster_core::keys::Action::Help),
                 ),

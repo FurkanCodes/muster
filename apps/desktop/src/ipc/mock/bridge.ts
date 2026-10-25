@@ -149,6 +149,7 @@ export class MockBridge implements Bridge {
       sessions: [],
       gone: { projects: [], workspaces: [], sessions: [] },
       preferences: null,
+      spaces: null,
       plugins: null,
       resources: null,
       notifier: null,

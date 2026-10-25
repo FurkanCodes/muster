@@ -35,8 +35,9 @@ export function projectColour(state: DaemonState, projectId: string): number {
   return at < 0 ? 1 : (at % 6) + 1;
 }
 
+/** The workspace `session` runs in; none for a terminal in no project (`ARC-33`). */
 export function workspaceOf(state: DaemonState, session: Session): Workspace | undefined {
-  return state.workspaces[session.workspace];
+  return session.workspace === null ? undefined : state.workspaces[session.workspace];
 }
 
 export function projectOf(state: DaemonState, session: Session): Project | undefined {

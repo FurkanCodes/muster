@@ -5,6 +5,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import type { Flow } from "../flows/types";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
+import type { SpaceId } from "../ipc/generated/SpaceId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { keep, kept } from "./kept";
 
@@ -83,8 +84,12 @@ export interface UiState {
   note: Note | null;
   /** Whether the person can see the window: animations and streams stop when not. */
   visible: boolean;
-  /** A session's menu asked for by a right-click on its line, opened where the pointer is. */
-  menuAt: { session: SessionId; x: number; y: number } | null;
+  /** A session's or a project's menu asked for by a right-click on its line, opened where the pointer is. */
+  menuAt: { session?: SessionId; project?: ProjectId; x: number; y: number } | null;
+  /** The space the All list shows; null for all of it. The window's own (`ARC-33`). */
+  space: SpaceId | null;
+  /** Whether the menu of spaces is open (the projects' heading, `S`). */
+  spacesOpen: boolean;
 }
 
 export interface UiActions {
@@ -116,11 +121,15 @@ export interface UiActions {
   setVisible(visible: boolean): void;
   /** Opens `session`'s menu at a point of the window (a right-click on its line), or closes it with null. */
   openMenuAt(menu: UiState["menuAt"]): void;
+  /** Shows `space` in the All list, or all of it with null; kept for the window. */
+  showSpace(space: SpaceId | null): void;
+  openSpaces(open: boolean): void;
 }
 
 export type UiStore = StoreApi<UiState>;
 
 const THEME_KEY = "muster.theme";
+const SPACE_KEY = "muster.space";
 
 function storedTheme(): Theme {
   const value = kept(THEME_KEY);
@@ -156,6 +165,8 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     note: null,
     visible: true,
     menuAt: null,
+    space: kept(SPACE_KEY),
+    spacesOpen: false,
   }));
   const set = store.setState;
   let noteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -207,6 +218,11 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     },
     setVisible: (visible) => set({ visible }),
     openMenuAt: (menuAt) => set({ menuAt }),
+    showSpace: (space) => {
+      set({ space });
+      keep(SPACE_KEY, space);
+    },
+    openSpaces: (spacesOpen) => set({ spacesOpen }),
   };
   return { store, actions };
 }

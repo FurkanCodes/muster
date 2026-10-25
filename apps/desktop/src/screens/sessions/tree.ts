@@ -14,15 +14,29 @@ import { standsBeside } from "../../state/selectors";
 
 /** A line of the list, with the project it is under. */
 export interface TreeRow {
-  kind: "project" | "workspace" | "session";
+  kind: "project" | "workspace" | "session" | "terminals";
   id: string;
+  /** The project it is under; {@link TERMINALS} for the terminals in no project. */
   project: string;
-  /** A session's workspace, a worktree's own id; null for a project. */
+  /** A session's workspace, a worktree's own id; null for a project, and for a terminal in none. */
   workspace: string | null;
+}
+
+/** The id of the heading over the terminals in no project (`ARC-33`), which folds as a project does. */
+export const TERMINALS = "terminals";
+
+/** The lines the window's space lists (`Derived::space_rows`), or all of them. */
+export function listedRows(
+  state: DaemonState,
+  space: string | null,
+): DaemonState["derived"]["rows"] {
+  if (space === null || !state.spaces.some((one) => one.id === space)) return state.derived.rows;
+  return state.derived.space_rows[space] ?? [];
 }
 
 /** Whether a shell or a plugin's panel has a chat in its workspace to stand by. */
 function hasChat(state: DaemonState, beside: Session): boolean {
+  if (beside.workspace === null) return false;
   return Object.values(state.sessions).some(
     (session) => session.workspace === beside.workspace && !standsBeside(session),
   );
@@ -33,10 +47,15 @@ function hasSession(state: DaemonState, workspace: string): boolean {
 }
 
 /** The model's projects and sessions, and worktrees with none, each with what it is under. */
-export function allRows(state: DaemonState): TreeRow[] {
+export function allRows(state: DaemonState, space: string | null = null): TreeRow[] {
   const out: TreeRow[] = [];
   let inProject = "";
-  for (const row of state.derived.rows) {
+  for (const row of listedRows(state, space)) {
+    if (row.kind === "terminals") {
+      inProject = TERMINALS;
+      out.push({ kind: "terminals", id: TERMINALS, project: TERMINALS, workspace: null });
+      continue;
+    }
     if (row.kind === "project") {
       inProject = row.id;
       out.push({ kind: "project", id: row.id, project: row.id, workspace: null });
@@ -58,13 +77,17 @@ export function allRows(state: DaemonState): TreeRow[] {
 
 /** The rows drawn: those a folded project hides left out. */
 export function shownRows(rows: readonly TreeRow[], folded: ReadonlySet<string>): TreeRow[] {
-  return rows.filter((row) => row.kind === "project" || !folded.has(row.project));
+  return rows.filter(
+    (row) => row.kind === "project" || row.kind === "terminals" || !folded.has(row.project),
+  );
 }
 
 /** The sessions under a project's line, as the model lists them, shells too; a session's own. */
 export function sessionsOn(state: DaemonState, row: Pick<TreeRow, "kind" | "id">): Session[] {
   return Object.values(state.sessions).filter((session) => {
     if (row.kind === "session") return session.id === row.id;
+    if (row.kind === "terminals") return session.workspace === null;
+    if (session.workspace === null) return false;
     if (row.kind === "workspace") return session.workspace === row.id;
     return state.workspaces[session.workspace]?.project === row.id;
   });
@@ -100,14 +123,17 @@ export function selectionAfterFold(
   project: string,
   selected: TreeRow | undefined,
 ): string | undefined {
-  return selected && selected.kind !== "project" && selected.project === project
+  return selected &&
+    selected.kind !== "project" &&
+    selected.kind !== "terminals" &&
+    selected.project === project
     ? project
     : selected?.id;
 }
 
 /** The folds without the one that hides `row`, so it can be shown (`App::unfold_to`). */
 export function unfoldedTo(folded: ReadonlySet<string>, row: TreeRow): ReadonlySet<string> {
-  if (row.kind === "project" || !folded.has(row.project)) return folded;
+  if (row.kind === "project" || row.kind === "terminals" || !folded.has(row.project)) return folded;
   const next = new Set(folded);
   next.delete(row.project);
   return next;
@@ -115,6 +141,9 @@ export function unfoldedTo(folded: ReadonlySet<string>, row: TreeRow): ReadonlyS
 
 /** The folds that still mean something: a project's, while it is there. */
 export function keptFolds(state: DaemonState, folded: ReadonlySet<string>): ReadonlySet<string> {
-  const kept = [...folded].filter((id) => state.projects[id] !== undefined);
+  const free = Object.values(state.sessions).some((session) => session.workspace === null);
+  const kept = [...folded].filter(
+    (id) => state.projects[id] !== undefined || (id === TERMINALS && free),
+  );
   return kept.length === folded.size ? folded : new Set(kept);
 }

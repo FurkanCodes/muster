@@ -384,9 +384,9 @@ fn ticket_text(
             // Their titles all name the ticket: what tells them apart is
             // which agent each is, how it is doing and where it works.
             let (symbol, style) = mark(app, session.status);
-            let branch = app
-                .model
-                .branch(session.workspace)
+            let branch = session
+                .workspace
+                .and_then(|workspace| app.model.branch(workspace))
                 .unwrap_or("?")
                 .to_owned();
             let mut spans = vec![
@@ -398,7 +398,9 @@ fn ticket_text(
                 spans.push(Span::from(format!("  {}", spend.text())).dim());
             }
             if sharing.len() > 1
-                && let Some(workspace) = app.model.workspace(session.workspace)
+                && let Some(workspace) = session
+                    .workspace
+                    .and_then(|workspace| app.model.workspace(workspace))
                 && let Some(found) = app.model.project(workspace.project)
             {
                 // Which of the projects sharing the ticket it works in.
@@ -409,9 +411,9 @@ fn ticket_text(
                 ));
             }
             spans.push(Span::from(format!("  {branch}")).dim());
-            if let Some(found) = app
-                .model
-                .workspace(session.workspace)
+            if let Some(found) = session
+                .workspace
+                .and_then(|workspace| app.model.workspace(workspace))
                 .and_then(|workspace| workspace.pull_request.as_ref())
             {
                 spans.push(Span::raw("  "));

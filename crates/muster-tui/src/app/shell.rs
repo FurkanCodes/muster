@@ -75,12 +75,13 @@ impl App {
         }
         vec![self.command(
             Command::StartSession {
-                workspace,
+                workspace: Some(workspace),
                 harness: harness::SHELL.to_owned(),
                 title: None,
                 size: self.session_size(),
                 prompt: None,
                 started_by: None,
+                space: None,
             },
             Then::Place(place),
         )]

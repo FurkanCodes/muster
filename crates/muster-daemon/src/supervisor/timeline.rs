@@ -136,8 +136,9 @@ impl Supervisor {
         let found = self
             .harness(&stored.harness)
             .filter(crate::harness::Harness::is_agent)?;
-        self.timeline_place(stored.workspace).ok()?;
-        Some((stored.workspace, found.label().to_owned()))
+        let workspace = stored.workspace?;
+        self.timeline_place(workspace).ok()?;
+        Some((workspace, found.label().to_owned()))
     }
 
     /// The sessions at work in `workspace` now.
@@ -145,7 +146,7 @@ impl Supervisor {
         self.state
             .sessions
             .iter()
-            .filter(|session| session.workspace == workspace && working(session.status))
+            .filter(|session| session.is_in(workspace) && working(session.status))
             .map(|session| session.id)
             .collect()
     }
@@ -340,7 +341,7 @@ impl Supervisor {
             .state
             .sessions
             .iter()
-            .find(|session| session.workspace == workspace && working(session.status))?;
+            .find(|session| session.is_in(workspace) && working(session.status))?;
         Some(ErrorBody::new(
             ErrorCode::Conflict,
             format!(

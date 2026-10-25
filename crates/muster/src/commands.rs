@@ -89,6 +89,21 @@ pub(crate) async fn status(socket: &Path, json: bool) -> ExitCode {
     for project in &snapshot.projects {
         print_project(&snapshot, project, &going);
     }
+    let free: Vec<&muster_core::Session> =
+        snapshot.sessions.iter().filter(|s| s.is_free()).collect();
+    if !free.is_empty() {
+        println!("\nTerminals in no project");
+        for session in free {
+            print_session(&snapshot, session);
+        }
+    }
+    for space in &snapshot.spaces {
+        println!(
+            "\nSpace {}: {}",
+            shown(&space.name),
+            count(space.members.len(), "member")
+        );
+    }
     ExitCode::SUCCESS
 }
 
@@ -154,35 +169,37 @@ fn print_workspace(snapshot: &Snapshot, workspace: &Workspace) {
     if let Some(pull_request) = &workspace.pull_request {
         println!("    pull request {}", shown(&pull_request.summary()));
     }
-    for session in snapshot
-        .sessions
-        .iter()
-        .filter(|s| s.workspace == workspace.id)
-    {
-        let mark = if session.unseen { "•" } else { " " };
-        let usage = snapshot
-            .resources
-            .as_ref()
-            .and_then(|report| report.sessions.iter().find(|u| u.session == session.id))
-            .map(|usage| {
-                format!(
-                    "  {} MB, {}% CPU",
-                    usage.memory_bytes.div_ceil(1_000_000),
-                    usage.cpu_permille.div_ceil(10)
-                )
-            })
-            .unwrap_or_default();
-        let spend = session
-            .spend
-            .map(|spend| format!("  {}", spend.text()))
-            .unwrap_or_default();
-        println!(
-            "   {mark} {}  {}  {}{usage}{spend}",
-            session.id,
-            shown(&session.title),
-            describe(session.status)
-        );
+    for session in snapshot.sessions.iter().filter(|s| s.is_in(workspace.id)) {
+        print_session(snapshot, session);
     }
+}
+
+/// A session as `muster status` prints it, under its workspace or with the
+/// terminals in no project.
+fn print_session(snapshot: &Snapshot, session: &muster_core::Session) {
+    let mark = if session.unseen { "•" } else { " " };
+    let usage = snapshot
+        .resources
+        .as_ref()
+        .and_then(|report| report.sessions.iter().find(|u| u.session == session.id))
+        .map(|usage| {
+            format!(
+                "  {} MB, {}% CPU",
+                usage.memory_bytes.div_ceil(1_000_000),
+                usage.cpu_permille.div_ceil(10)
+            )
+        })
+        .unwrap_or_default();
+    let spend = session
+        .spend
+        .map(|spend| format!("  {}", spend.text()))
+        .unwrap_or_default();
+    println!(
+        "   {mark} {}  {}  {}{usage}{spend}",
+        session.id,
+        shown(&session.title),
+        describe(session.status)
+    );
 }
 
 pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>) -> Outcome {
@@ -202,7 +219,11 @@ pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>
     let root = std::path::absolute(path)?;
     let reply = connect(socket)
         .await?
-        .command(Command::AddProject { root, name })
+        .command(Command::AddProject {
+            root,
+            name,
+            space: None,
+        })
         .await?;
     let Reply::ProjectAdded { id } = reply else {
         return Err(unexpected(&reply));
@@ -463,7 +484,7 @@ fn sessions_on<'a>(
         .iter()
         .filter(|session| {
             snapshot.workspaces.iter().any(|workspace| {
-                workspace.id == session.workspace
+                session.is_in(workspace.id)
                     && workspace.project == project
                     && workspace.kind.is_worktree()
                     && workspace.ticket.as_ref() == Some(key)

@@ -59,6 +59,14 @@ function Where({ session, onChanges }: { session: SessionId; onChanges: () => vo
     return clashes.some((one) => one.conflicts > 0) ? "conflict" : "overlap";
   });
   const pr = useDaemon((state) => state.workspaces[workspaceId]?.pull_request ?? null);
+  const free = useDaemon((state) => state.sessions[session]?.workspace === null);
+  if (free)
+    // A terminal in no project (`ARC-33`): none of what a workspace has.
+    return (
+      <PageMeta>
+        <span className="mu-quiet">no project: no undo, no changes view</span>
+      </PageMeta>
+    );
   return (
     <PageMeta>
       <Pressable

@@ -6,6 +6,7 @@ mod handle;
 mod migrations;
 mod rows;
 mod runs;
+mod spaces;
 
 fn insert_workspace_row(conn: &Connection, workspace: &Workspace) -> Result<()> {
     let columns = rows::workspace_columns(workspace)?;
@@ -180,13 +181,13 @@ impl Store {
 
     /// Forgets a project and everything stored about it: its workspaces,
     /// their sessions and those sessions' history.
+    /// Its memberships of spaces go with it, its sessions' too.
     pub fn delete_project(&mut self, project: muster_core::ProjectId) -> Result<()> {
-        match self
-            .conn
-            .execute("DELETE FROM projects WHERE id = ?1", [id_text(project)])?
-        {
+        let tx = self.conn.transaction()?;
+        spaces::forget_project(&tx, project)?;
+        match tx.execute("DELETE FROM projects WHERE id = ?1", [id_text(project)])? {
             0 => Err(StoreError::NotFound(project.to_string())),
-            _ => Ok(()),
+            _ => Ok(tx.commit()?),
         }
     }
 
@@ -265,7 +266,7 @@ impl Store {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 id_text(session.id),
-                id_text(session.workspace),
+                session.workspace.map(id_text),
                 session.harness,
                 session.title,
                 status_json(session.status)?,
@@ -333,14 +334,31 @@ impl Store {
         }
     }
 
-    /// Marks a session removed from the list. Its history is kept.
+    /// Marks a session removed from the list. Its history is kept; its
+    /// memberships of spaces go.
     pub fn remove_session(&mut self, session: SessionId, at: Timestamp) -> Result<()> {
-        match self.conn.execute(
+        let tx = self.conn.transaction()?;
+        spaces::forget_session(&tx, session)?;
+        match tx.execute(
             "UPDATE sessions SET removed_at = ?2 WHERE id = ?1 AND removed_at IS NULL",
             params![id_text(session), at.as_millis()],
         )? {
             0 => Err(StoreError::NotFound(session.to_string())),
-            _ => Ok(()),
+            _ => Ok(tx.commit()?),
+        }
+    }
+
+    /// Files free terminal `session` under `workspace` (`ARC-33`): it
+    /// leaves its spaces, as it shows with its project from now on.
+    pub fn file_session(&mut self, session: SessionId, workspace: WorkspaceId) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        spaces::forget_session(&tx, session)?;
+        match tx.execute(
+            "UPDATE sessions SET workspace_id = ?2 WHERE id = ?1 AND workspace_id IS NULL",
+            params![id_text(session), id_text(workspace)],
+        )? {
+            0 => Err(StoreError::NotFound(session.to_string())),
+            _ => Ok(tx.commit()?),
         }
     }
 
@@ -395,8 +413,9 @@ impl Store {
                                              WHERE d.session_id = s.id
                                                AND d.status != s.status), 0)),
                     s.beside, s.started_by
-             FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
-             WHERE w.removed_at IS NULL AND s.removed_at IS NULL
+             FROM sessions s LEFT JOIN workspaces w ON w.id = s.workspace_id
+             WHERE s.removed_at IS NULL
+               AND (s.workspace_id IS NULL OR w.removed_at IS NULL)
              ORDER BY s.created_at, s.id",
             rows::session,
         )?;
@@ -406,6 +425,7 @@ impl Store {
             workspaces,
             sessions,
             runs,
+            spaces: self.spaces()?,
             // Not stored: the Supervisor fills them in.
             ..Snapshot::default()
         })

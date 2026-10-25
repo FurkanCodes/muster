@@ -31,6 +31,7 @@ async fn add_project(connection: &mut Connection, root: &Path) -> ProjectId {
         .command(Command::AddProject {
             root: root.to_owned(),
             name: None,
+            space: None,
         })
         .await
         .unwrap()
@@ -101,12 +102,13 @@ async fn a_worktree_made_with_git_appears_and_goes_when_git_removes_it() {
     // A session can run in it.
     let reply = connection
         .command(Command::StartSession {
-            workspace: adopted.id,
+            workspace: Some(adopted.id),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap();
@@ -155,12 +157,13 @@ async fn a_worktree_deleted_by_hand_is_forgotten_once_nothing_runs_in_it() {
     let path = path_of(&snapshot, id);
     let reply = connection
         .command(Command::StartSession {
-            workspace: id,
+            workspace: Some(id),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap();

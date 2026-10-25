@@ -18,6 +18,7 @@ mod init;
 pub(crate) mod list;
 mod logs;
 mod send;
+mod spaces;
 pub(crate) mod start;
 mod tab;
 pub(crate) mod targets;
@@ -48,10 +49,17 @@ pub(crate) enum Verb {
         /// are in.
         #[arg(short, long)]
         project: Option<String>,
+        /// Those in space SPACE: its projects' and its terminals.
+        #[arg(long, value_name = "SPACE", conflicts_with_all = ["project", "all"])]
+        space: Option<String>,
         /// Print them as one JSON document, for scripts.
         #[arg(long)]
         json: bool,
     },
+    /// Spaces: groups of projects and terminals you make, which only group
+    /// (`muster list spaces` lists them).
+    #[command(subcommand)]
+    Space(spaces::SpaceCommand),
     /// Show SESSION (its number in the workspace you are in, `WS/N`, its
     /// id, name or branch) straight in this terminal tab, your keys in it;
     /// Ctrl-Q (Settings › Keys) leaves it running. Inside a Muster
@@ -268,14 +276,24 @@ pub(crate) enum Then {
     Open(SessionId),
 }
 
+#[expect(clippy::too_many_lines, reason = "one arm for each verb")]
 pub(crate) async fn run(paths: &Paths, verb: Verb) -> Then {
     let ran = match verb {
         Verb::List {
             what,
             all,
             project,
+            space,
             json,
-        } => list::run(paths, what, all, project.as_deref(), json).await,
+        } => {
+            let only = list::Only {
+                all,
+                project: project.as_deref(),
+                space: space.as_deref(),
+            };
+            list::run(paths, what, only, json).await
+        }
+        Verb::Space(command) => return spaces::run(paths, command).await,
         Verb::Attach { session, ui } => match attach(paths, &session).await {
             Ok(id) if ui => return Then::Open(id),
             Ok(id) => tab::show(paths, id).await,

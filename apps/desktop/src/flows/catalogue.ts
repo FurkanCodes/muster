@@ -10,7 +10,8 @@ import type { Issue } from "../ipc/generated/Issue";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { Session } from "../ipc/generated/Session";
 import * as byHand from "../session/byHand";
-import { projectsInOrder } from "../state/selectors";
+import * as spaces from "../spaces/spaces";
+import { projectsInOrder, workspaceOf } from "../state/selectors";
 import type { ScreenId } from "../state/ui";
 import * as act from "./actions";
 import { type KeyAction, keysOf, labelOf } from "./keymap";
@@ -210,6 +211,37 @@ function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
       run: () => act.cloneProject(app),
     },
   ];
+  const plain = (id: string, label: string, keys: string | null, run: () => void): PaletteItem => ({
+    id,
+    group,
+    label,
+    keys,
+    meta: null,
+    lead: { kind: "none" },
+    run,
+  });
+  // Terminals in no project and spaces (`ARC-33`).
+  items.push(
+    plain(
+      "do:new_terminal",
+      "Start a terminal in no project",
+      labelOf(keyed, "new_terminal"),
+      () => void spaces.newTerminal(app),
+    ),
+    plain("do:new_space", "Make a space", null, () =>
+      app.actions.openFlow({ kind: "space-name", space: null }),
+    ),
+  );
+  const state = app.daemon.store.getState();
+  if (state.spaces.length > 0)
+    items.push(
+      plain("space:all", "Show everything", null, () => spaces.goTo(app, null)),
+      ...state.spaces.map((space) =>
+        plain(`space:${space.id}`, `Show the space ${space.name}`, null, () =>
+          spaces.goTo(app, space.id),
+        ),
+      ),
+    );
   if (!taken.some((item) => item.id === "do:new_session"))
     items.push({
       id: "do:new_session",
@@ -258,14 +290,14 @@ function sessions(app: App): PaletteItem[] {
   const asking = new Set(state.derived.needs_you);
   const order = [
     ...state.derived.needs_you,
-    ...state.derived.rows
-      .filter((row) => row.kind === "session" && !asking.has(row.id))
-      .map((row) => row.id),
+    ...state.derived.rows.flatMap((row) =>
+      row.kind === "session" && !asking.has(row.id) ? [row.id] : [],
+    ),
   ];
   return order.flatMap((id) => {
     const session = state.sessions[id];
     if (!session) return [];
-    const project = state.projects[state.workspaces[session.workspace]?.project ?? ""];
+    const project = state.projects[workspaceOf(state, session)?.project ?? ""];
     return [
       {
         id: `session:${id}`,

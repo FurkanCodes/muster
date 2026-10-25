@@ -139,7 +139,8 @@ pub(super) fn workspace(row: &Row<'_>) -> rusqlite::Result<Result<Workspace>> {
 }
 
 pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
-    let (id, workspace, status): (String, String, String) = (row.get(0)?, row.get(1)?, row.get(4)?);
+    let (id, workspace, status): (String, Option<String>, String) =
+        (row.get(0)?, row.get(1)?, row.get(4)?);
     let (harness, title, unseen, resume_id) = (row.get(2)?, row.get(3)?, row.get(5)?, row.get(6)?);
     let created_at = Timestamp::from_millis(row.get(7)?);
     let ended_at = row.get::<_, Option<i64>>(8)?.map(Timestamp::from_millis);
@@ -152,7 +153,7 @@ pub(super) fn session(row: &Row<'_>) -> rusqlite::Result<Result<Session>> {
     Ok((|| {
         Ok(Session {
             id: parse_id(&id)?,
-            workspace: parse_id(&workspace)?,
+            workspace: workspace.as_deref().map(parse_id).transpose()?,
             harness,
             title,
             status: parse_status(&status)?,

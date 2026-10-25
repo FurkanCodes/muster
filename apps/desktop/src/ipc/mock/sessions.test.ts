@@ -30,6 +30,7 @@ describe("the mock daemon's sessions and panels", () => {
         size: { cols: 80, rows: 24 },
         prompt: null,
         started_by: null,
+        space: null,
       },
     });
     if (typeof reply !== "object" || !("SessionStarted" in reply)) throw new Error("not started");
@@ -48,6 +49,7 @@ describe("the mock daemon's sessions and panels", () => {
           size: { cols: 1, rows: 1 },
           prompt: null,
           started_by: null,
+          space: null,
         },
       }),
     );
@@ -61,6 +63,7 @@ describe("the mock daemon's sessions and panels", () => {
           size: { cols: 1, rows: 1 },
           prompt: null,
           started_by: null,
+          space: null,
         },
       }),
     );

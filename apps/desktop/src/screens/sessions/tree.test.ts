@@ -39,7 +39,7 @@ describe("ARC-24 the All list's rows", () => {
     expect(rows[0]).toEqual({ kind: "project", id: muster, project: muster, workspace: null });
     const sessions = state.derived.rows.filter((row) => row.kind !== "workspace");
     expect(rows.map((row) => row.id)).toEqual(
-      sessions.map((row) => row.id).filter((id) => id !== ulid(102)),
+      sessions.flatMap((row) => ("id" in row ? [row.id] : [])).filter((id) => id !== ulid(102)),
     );
     expect(rows.find((row) => row.id === ulid(101))).toEqual({
       kind: "session",

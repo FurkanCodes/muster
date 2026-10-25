@@ -4,9 +4,11 @@
 
 import type { Derived } from "../generated/desktop/Derived";
 import type { Row } from "../generated/desktop/Row";
+import type { Member } from "../generated/Member";
 import type { Project } from "../generated/Project";
 import type { Session } from "../generated/Session";
 import type { SessionId } from "../generated/SessionId";
+import type { Space } from "../generated/Space";
 import type { Workspace } from "../generated/Workspace";
 
 /** A shell, or a plugin's panel: the person's own or a plugin's, never an agent's chat. */
@@ -27,6 +29,10 @@ export interface World {
   terminals?: Readonly<Record<string, string>>;
   /** The person's settings, of which the projects' order lists them. */
   preferences?: { projects: readonly string[] };
+  /** The person's spaces. */
+  spaces?: Space[];
+  /** The folder each terminal's shell is in, where it is not the home folder. */
+  folders?: Record<string, string>;
 }
 
 /** The lines a question shows, at most (`link/questions.rs`, `LINES`). */
@@ -113,15 +119,56 @@ export function derive(
     return found < 0 ? order.length : found;
   };
   const projects = [...world.projects].sort((one, other) => at(one.id) - at(other.id));
-  for (const project of projects) {
-    rows.push({ kind: "project", id: project.id });
-    for (const workspace of workspacesOf(world, project.id)) {
-      rows.push({ kind: "workspace", id: workspace.id });
-      for (const session of listedOf(world, workspace.id)) {
-        rows.push({ kind: "session", id: session.id });
+  // `Model::rows_in`: a space's projects, then its terminals in no project.
+  const listed = (shown: (member: Member) => boolean): Row[] => {
+    const out: Row[] = [];
+    for (const project of projects) {
+      if (!shown({ Project: project.id })) continue;
+      out.push({ kind: "project", id: project.id });
+      for (const workspace of workspacesOf(world, project.id)) {
+        out.push({ kind: "workspace", id: workspace.id });
+        for (const session of listedOf(world, workspace.id)) {
+          out.push({ kind: "session", id: session.id });
+        }
       }
     }
+    const free = world.sessions.filter(
+      (session) => session.workspace === null && shown({ Session: session.id }),
+    );
+    if (free.length > 0) {
+      out.push({ kind: "terminals" });
+      for (const session of free) out.push({ kind: "session", id: session.id });
+    }
+    return out;
+  };
+  rows.push(...listed(() => true));
+  // `Model::in_spaces`, for each project and each session waiting.
+  const noteOf = (member: Member) => {
+    const names = (world.spaces ?? [])
+      .filter((space) =>
+        space.members.some((held) => JSON.stringify(held) === JSON.stringify(member)),
+      )
+      .map((space) => space.name);
+    return names.length ? `in ${names.join(", ")}` : "";
+  };
+  const space_notes: Record<string, string> = {};
+  for (const project of world.projects) {
+    const note = noteOf({ Project: project.id });
+    if (note) space_notes[project.id] = note;
   }
+  for (const id of needsYou) {
+    const session = world.sessions.find((one) => one.id === id);
+    const workspace = world.workspaces.find((one) => one.id === session?.workspace);
+    const note = session
+      ? noteOf(workspace ? { Project: workspace.project } : { Session: session.id })
+      : "";
+    if (note) space_notes[id] = note;
+  }
+  const space_rows: Record<string, Row[]> = {};
+  for (const space of world.spaces ?? [])
+    space_rows[space.id] = listed((member) =>
+      space.members.some((held) => JSON.stringify(held) === JSON.stringify(member)),
+    );
 
   const chats = world.sessions.filter((session) => !standsBeside(session.harness));
   // The agents at work, the longest at it first (`Model::working`).
@@ -133,6 +180,8 @@ export function derive(
     needs_you: needsYou,
     working,
     rows,
+    space_rows,
+    space_notes,
     counts: {
       working: chats.filter((session) => session.status.state === "running").length,
       waiting: chats.filter(asking).length,

@@ -33,7 +33,7 @@ impl App {
                     1
                 }
                 Row::Session(_) => self.session_height(),
-                Row::Project(_) | Row::Worktree(_) => 1,
+                Row::Project(_) | Row::Worktree(_) | Row::Terminals => 1,
             })
             .collect()
     }

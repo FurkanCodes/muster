@@ -73,6 +73,7 @@ async fn a_plain_folder_keeps_no_timeline() {
         .command(Command::AddProject {
             root: folder,
             name: None,
+            space: None,
         })
         .await
         .unwrap();

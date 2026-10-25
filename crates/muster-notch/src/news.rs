@@ -101,7 +101,7 @@ pub(crate) fn posts(state: &Snapshot, told: &[SessionId]) -> Vec<Posted> {
             let workspace = state
                 .workspaces
                 .iter()
-                .find(|workspace| workspace.id == stored.workspace);
+                .find(|workspace| stored.is_in(workspace.id));
             let project = workspace.and_then(|workspace| {
                 state
                     .projects
@@ -137,7 +137,7 @@ mod tests {
     fn session(status: SessionStatus, unseen: bool) -> Session {
         Session {
             id: SessionId::new(),
-            workspace: WorkspaceId::new(),
+            workspace: Some(WorkspaceId::new()),
             harness: "claude".to_owned(),
             title: "Fix the login".to_owned(),
             status,
@@ -240,7 +240,7 @@ mod tests {
             },
             false,
         );
-        asking.workspace = workspace.id;
+        asking.workspace = Some(workspace.id);
         let finished = session(SessionStatus::Finished, true);
         let mut state = state(vec![asking.clone(), finished.clone()]);
         state.projects = vec![project.clone()];

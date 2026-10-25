@@ -122,6 +122,7 @@ impl App {
                 Dialog::NewWorktree { branch: input, .. }
                 | Dialog::NewSession { prompt: input, .. }
                 | Dialog::Rename { name: input, .. }
+                | Dialog::SpaceName { name: input, .. }
                 | Dialog::NamingModel { model: input, .. },
             ) => {
                 input.paste(text);
@@ -269,6 +270,11 @@ impl App {
             Does::Fold => self.toggle_fold(),
             Does::Shell => return self.open_shell(),
             Does::PinSession => return self.toggle_place(),
+            Does::NextSpace => return self.cycle_space(1),
+            Does::PreviousSpace => return self.cycle_space(-1),
+            Does::Spaces => return self.open_spaces_menu(),
+            Does::NewTerminal => return self.new_free_terminal(),
+            Does::FileTerminal => return self.ask_place(),
             _ => {}
         }
         Vec::new()
@@ -670,6 +676,7 @@ impl App {
             } => self.undo_key(workspace, &plan, key),
             Dialog::Tidy { workspace, harness } => self.tidy_key(workspace, harness, key),
             Dialog::Rename { session, name } => self.rename_key(session, name, key),
+            Dialog::SpaceName { space, name } => self.space_name_key(space, name, key),
             Dialog::Keys(rebinding) => self.rebind_key(rebinding, key),
             Dialog::Plugin(dialog) => self.plugin_dialog_key(dialog, key),
             Dialog::NamingModel {
@@ -756,12 +763,13 @@ impl App {
                 let prompt = Some(prompt.text().trim().to_owned())
                     .filter(|p| !p.is_empty() && harness.takes_prompt());
                 let command = Command::StartSession {
-                    workspace,
+                    workspace: Some(workspace),
                     harness: harness.id().to_owned(),
                     title: None,
                     size: self.session_size(),
                     prompt,
                     started_by: None,
+                    space: None,
                 };
                 self.last_harness = harness;
                 vec![self.command(command, Then::OpenSession)]
@@ -823,6 +831,9 @@ impl App {
                 return self.clean_up_ticket(project, &key);
             }
             Confirmed::RemovePlugin(id) => self.remove_plugin(id),
+            then @ (Confirmed::DeleteSpace(_) | Confirmed::RestartIn { .. }) => {
+                return self.confirmed_space(&then).into_iter().collect();
+            }
         };
         vec![action]
     }

@@ -40,12 +40,13 @@ async fn a_turn(sandbox: &Sandbox, root: &Path) {
     let workspace = snapshot.workspaces[0].id;
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "claude".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

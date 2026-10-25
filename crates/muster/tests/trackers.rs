@@ -355,6 +355,7 @@ async fn projects_listing_the_same_jira_tickets_share_a_source() {
             .command(Command::AddProject {
                 root: root.clone(),
                 name: None,
+                space: None,
             })
             .await
             .unwrap()

@@ -185,7 +185,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
       refuse("conflict", `${root} is there already: add it as a folder, or clone into another`);
     inside?.push({ name: folder, path: root, git: true });
     flows.folders[root] = [];
-    return flowCommand(mock, { AddProject: { root, name: null } });
+    return flowCommand(mock, { AddProject: { root, name: null, space: null } });
   }
 
   if ("RemoveProject" in command) {
@@ -269,6 +269,7 @@ export function flowCommand(mock: MockBridge, command: Command): Reply | undefin
         "bad_request",
         `no harness called "${harness}"; add an agent of your own as [agents.${harness}] in ${world.preferences.file}`,
       );
+    if (workspace === null) refuse("bad_request", "the flows' mock starts nothing in no project");
     const found = place(workspace);
     if (found.kind.kind === "container" && harness !== "shell")
       refuse(

@@ -165,7 +165,11 @@ impl App {
                     };
                     self.mode = Mode::Browse;
                     let Some(repository) = clone else {
-                        let command = Command::AddProject { root, name: None };
+                        let command = Command::AddProject {
+                            root,
+                            name: None,
+                            space: self.space_id(),
+                        };
                         return vec![self.command(command, Then::SelectProject)];
                     };
                     // Cloned into a folder of its name there; that takes as
@@ -174,6 +178,7 @@ impl App {
                     let command = Command::CloneProject {
                         repository,
                         into: root,
+                        space: self.space_id(),
                     };
                     return vec![self.command(command, Then::SelectProject)];
                 }

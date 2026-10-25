@@ -18,6 +18,7 @@ mod cloning;
 mod containers;
 mod events;
 mod explain;
+mod free;
 mod fronts;
 mod handle;
 mod issues;
@@ -40,6 +41,7 @@ mod sessions;
 mod settings;
 mod shared_builds;
 mod sizing;
+mod spaces;
 mod spend;
 mod stacks;
 mod status;
@@ -208,6 +210,7 @@ pub(crate) async fn spawn(settings: Settings) -> Result<SupervisorHandle, StoreE
         plugins: crate::plugins::Registry::new(&settings.data_dir, settings.config_dir),
         ticket_plugins: settings.ticket_plugins,
         reopening: HashSet::new(),
+        moving: free::Moving::default(),
         events: events::Events::new(settings.hooks),
     };
     supervisor.start_up(settings.adopted, stored_runs).await;
@@ -348,6 +351,8 @@ struct Supervisor {
     ticket_plugins: crate::trackers::plugin::Plugins,
     /// Plugins' panels stopped to be opened afresh as they end.
     reopening: HashSet<SessionId>,
+    /// Terminals closed by a restart elsewhere (`free`).
+    moving: free::Moving,
     /// Plugins' hooks, and what raising their events keeps between
     /// changes.
     events: events::Events,
@@ -451,8 +456,12 @@ impl Supervisor {
                 Command::Agents => self.find_agents(reply),
                 // These ask GitHub, through the person's own gh.
                 Command::ListRepositories => self.list_repositories(reply),
-                Command::CloneProject { repository, into } => {
-                    self.clone_project(&repository, &into, reply);
+                Command::CloneProject {
+                    repository,
+                    into,
+                    space,
+                } => {
+                    self.clone_project(&repository, &into, space, reply);
                 }
                 Command::ChangeSetting { project, change } => {
                     self.change_setting(project, &change, reply);
@@ -713,7 +722,7 @@ impl Supervisor {
                 self.settle_shared_builds_if(sharing).await;
                 Ok(read)
             }
-            Command::AddProject { root, name } => self.add_project(root, name).await,
+            Command::AddProject { root, name, space } => self.add_project(root, name, space).await,
             Command::RemoveProject { project } => self.remove_project(project).await,
             Command::StartSession {
                 workspace,
@@ -722,10 +731,20 @@ impl Supervisor {
                 size,
                 prompt,
                 started_by,
+                space,
             } => {
-                let asked = sessions::Asked::new(title, prompt, started_by);
+                let asked = sessions::Asked::new(title, prompt, started_by).in_space(space);
                 self.start_session(workspace, harness, size, asked).await
             }
+            command @ (Command::CreateSpace { .. }
+            | Command::RenameSpace { .. }
+            | Command::DeleteSpace { .. }
+            | Command::AddToSpace { .. }
+            | Command::RemoveFromSpace { .. }
+            | Command::ReadPlace { .. }
+            | Command::FileSession { .. }
+            | Command::AddProjectHere { .. }
+            | Command::RestartIn { .. }) => self.on_space_command(command).await,
             Command::ReadSession { session, what } => Ok(self.read_session(session, what).await),
             Command::StopSession { session } => self.stop_session(session).await,
             Command::RestartSession { session, size } => self.restart_session(session, size).await,
@@ -912,6 +931,15 @@ fn command_name(command: &Command) -> &'static str {
         Command::RunHistory { .. } => "run history",
         Command::StartFromIssue { .. } => "start from issue",
         Command::Plugin(_) => "plugin",
+        Command::CreateSpace { .. } => "create space",
+        Command::RenameSpace { .. } => "rename space",
+        Command::DeleteSpace { .. } => "delete space",
+        Command::AddToSpace { .. } => "add to space",
+        Command::RemoveFromSpace { .. } => "remove from space",
+        Command::ReadPlace { .. } => "read place",
+        Command::FileSession { .. } => "file session",
+        Command::AddProjectHere { .. } => "add project here",
+        Command::RestartIn { .. } => "restart in",
     }
 }
 

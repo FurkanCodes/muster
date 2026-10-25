@@ -158,7 +158,11 @@ async fn ask_a_shell(sandbox: &Sandbox, what: &str) -> String {
         .await
         .unwrap();
     let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject { root, name: None })
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
         .await
         .unwrap()
     else {
@@ -178,12 +182,13 @@ async fn ask_a_shell(sandbox: &Sandbox, what: &str) -> String {
     };
     let Reply::SessionStarted { id: session } = connection
         .command(Command::StartSession {
-            workspace,
+            workspace: Some(workspace),
             harness: "shell".to_owned(),
             title: None,
             size: TermSize::default(),
             prompt: None,
             started_by: None,
+            space: None,
         })
         .await
         .unwrap()

@@ -192,7 +192,7 @@ impl App {
             panel => self
                 .session_in(panel)
                 .and_then(|session| self.model.session(session))
-                .map(|stored| stored.workspace),
+                .and_then(|stored| stored.workspace),
         }
         .or_else(|| self.selected_workspace());
         let Some(workspace) = workspace else {
@@ -505,6 +505,7 @@ impl App {
                 self.keymap.label(does)
             ),
             what: what.to_owned(),
+            choice: None,
         }
     }
 }

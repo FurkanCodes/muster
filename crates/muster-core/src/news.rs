@@ -99,7 +99,7 @@ mod tests {
     fn session(harness: &str, status: SessionStatus, unseen: bool) -> Session {
         Session {
             id: SessionId::new(),
-            workspace: WorkspaceId::new(),
+            workspace: Some(WorkspaceId::new()),
             harness: harness.to_owned(),
             title: "Fix the login".to_owned(),
             status,

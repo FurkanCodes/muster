@@ -361,13 +361,17 @@ export class MockSettings {
       throw refused("conflict", `${name} has ${worktrees} worktree(s); remove them first`);
     }
     const ids = new Set(workspaces.map((workspace) => workspace.id));
-    const sessions = world.sessions.filter((session) => ids.has(session.workspace));
+    const sessions = world.sessions.filter(
+      (session) => session.workspace !== null && ids.has(session.workspace),
+    );
     const running = sessions.filter((session) => session.status.state === "running").length;
     if (running > 0)
       throw refused("conflict", `stop ${name}'s ${running} running session(s) first`);
     world.projects = world.projects.filter((found) => found.id !== project);
     world.workspaces = world.workspaces.filter((workspace) => !ids.has(workspace.id));
-    world.sessions = world.sessions.filter((session) => !ids.has(session.workspace));
+    world.sessions = world.sessions.filter(
+      (session) => session.workspace === null || !ids.has(session.workspace),
+    );
     this.projects.delete(project);
     delete world.ticketSettings[project];
     delete world.tickets[project];

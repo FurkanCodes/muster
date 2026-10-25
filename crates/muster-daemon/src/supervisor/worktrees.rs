@@ -378,7 +378,7 @@ impl Supervisor {
             .state
             .sessions
             .iter()
-            .filter(|session| session.workspace == workspace)
+            .filter(|session| session.is_in(workspace))
             .map(|session| session.id)
             .collect();
         for session in released {
@@ -386,7 +386,7 @@ impl Supervisor {
         }
         self.state
             .sessions
-            .retain(|session| session.workspace != workspace);
+            .retain(|session| !session.is_in(workspace));
         self.broadcast(Delta::WorkspaceRemoved { id: workspace });
         self.forget_timeline(workspace);
         self.forget_clashes_with(workspace);

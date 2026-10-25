@@ -45,7 +45,7 @@ describe("PRD §6a cloning a project from GitHub", () => {
     await userEvent.keyboard("{Enter}");
     await waitFor(() =>
       expect(clones(bridge)).toEqual([
-        { CloneProject: { repository: "you/dotfiles", into: "/Users/you/code" } },
+        { CloneProject: { repository: "you/dotfiles", into: "/Users/you/code", space: null } },
       ]),
     );
     expect(bridge.pickedWith).toEqual(["Clone you/dotfiles into"]);
@@ -78,7 +78,7 @@ describe("PRD §6a cloning a project from GitHub", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: /^Clone o\/tool here/ }));
     await waitFor(() =>
       expect(clones(bridge)).toEqual([
-        { CloneProject: { repository: "o/tool", into: "/Users/you" } },
+        { CloneProject: { repository: "o/tool", into: "/Users/you", space: null } },
       ]),
     );
     expect(await screen.findByRole("region", { name: "tool" })).toBeInTheDocument();

@@ -6,4 +6,4 @@ import type { WorkspaceId } from "../WorkspaceId";
 /**
  * One line of the sessions list.
  */
-export type Row = { "kind": "project", "id": ProjectId } | { "kind": "workspace", "id": WorkspaceId } | { "kind": "session", "id": SessionId };
+export type Row = { "kind": "project", "id": ProjectId } | { "kind": "workspace", "id": WorkspaceId } | { "kind": "session", "id": SessionId } | { "kind": "terminals" };

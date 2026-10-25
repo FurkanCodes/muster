@@ -12,28 +12,20 @@ use super::{App, View};
 use crate::model::Row;
 
 impl App {
-    /// The sessions list as drawn: each project, its worktrees and their
-    /// sessions, but for what a folded line hides.
+    /// The sessions list as drawn: the space shown, as the model lists it
+    /// (each project, its worktrees and their sessions, then the free
+    /// terminals), but for what a folded line hides.
     pub(crate) fn rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
-        for project in self.model.projects() {
-            let row = Row::Project(project.id);
-            rows.push(row);
-            if self.folded.contains(&row) {
+        let mut hiding: Option<Row> = None;
+        for row in self.model.rows_in(self.list_view()) {
+            if let Some(folded) = hiding
+                && self.is_under(row, folded)
+            {
                 continue;
             }
-            for workspace in self.model.workspaces_of(project.id) {
-                let row = Row::Worktree(workspace.id);
-                rows.push(row);
-                if self.folded.contains(&row) {
-                    continue;
-                }
-                rows.extend(
-                    self.model
-                        .listed_of(workspace.id)
-                        .map(|session| Row::Session(session.id)),
-                );
-            }
+            hiding = self.folded.contains(&row).then_some(row);
+            rows.push(row);
         }
         rows
     }
@@ -47,7 +39,7 @@ impl App {
     /// workspaces, a worktree only once a session is in it.
     pub(crate) fn foldable(&self, row: Row) -> bool {
         match row {
-            Row::Project(_) => true,
+            Row::Project(_) | Row::Terminals => true,
             Row::Worktree(workspace) => self.model.sessions_of(workspace).next().is_some(),
             Row::Session(_) => false,
         }
@@ -70,7 +62,7 @@ impl App {
         }
         let row = match self.selected {
             Some(Row::Session(session)) => match self.model.session(session) {
-                Some(stored) => Row::Worktree(stored.workspace),
+                Some(stored) => stored.workspace.map_or(Row::Terminals, Row::Worktree),
                 None => return,
             },
             Some(row) => row,
@@ -104,6 +96,9 @@ impl App {
         match above {
             Row::Project(project) => self.model.project_of(row) == Some(project),
             Row::Worktree(workspace) => self.model.worktree_of(row) == Some(workspace),
+            Row::Terminals => {
+                matches!(row, Row::Session(id) if self.model.session(id).is_some_and(muster_core::Session::is_free))
+            }
             Row::Session(_) => false,
         }
     }
@@ -118,6 +113,9 @@ impl App {
         if let (Row::Session(_), Some(workspace)) = (row, self.model.worktree_of(row)) {
             self.folded.remove(&Row::Worktree(workspace));
         }
+        if self.is_under(row, Row::Terminals) {
+            self.folded.remove(&Row::Terminals);
+        }
     }
 
     /// Forgets the folds of lines that are gone, and unfolds what hides a
@@ -128,11 +126,12 @@ impl App {
             Row::Project(project) => model.project(*project).is_some(),
             // One left with no session has nothing to hide.
             Row::Worktree(workspace) => model.sessions_of(*workspace).next().is_some(),
+            Row::Terminals => model.free_terminals().next().is_some(),
             Row::Session(_) => false,
         });
         if let Some(row) = self.selected
             && !self.rows().contains(&row)
-            && self.model.rows().contains(&row)
+            && self.model.rows_in(self.list_view()).contains(&row)
         {
             self.unfold_to(row);
         }
