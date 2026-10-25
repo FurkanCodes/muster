@@ -511,6 +511,21 @@ mod tests {
         );
         assert!(refused.to_string().contains("muster reload"));
         assert!(sendable(&ClientFrame::Subscribe, MIN_PROTOCOL_VERSION).is_ok());
+        // The projects' order is a setting a daemon before 56 cannot write.
+        let order = ClientFrame::Command {
+            req_id: 2,
+            command: Command::ChangePreference(
+                muster_core::settings::PreferenceChange::ProjectOrder(Vec::new()),
+            ),
+        };
+        assert!(sendable(&order, 56).is_ok());
+        assert!(matches!(
+            sendable(&order, 55),
+            Err(ClientError::DaemonTooOld {
+                needs: 56,
+                daemon: 55
+            })
+        ));
     }
 
     #[tokio::test(start_paused = true)]

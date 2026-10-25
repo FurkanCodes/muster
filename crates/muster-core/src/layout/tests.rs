@@ -316,3 +316,47 @@ fn a_session_pinned_reads_writes_moves_and_goes_as_any_panel() {
         Err(LayoutError::NotAPanel(_))
     ));
 }
+
+#[test]
+fn two_panels_swap_places_each_place_keeping_its_share() {
+    let one = SessionId::new();
+    let layout = read(&format!(
+        "list | session 60% | (session:{one} / shell / plugin) | changes"
+    ));
+    let swapped = layout.swapped(Panel::Session, Panel::Pinned(one));
+    assert_eq!(
+        swapped.to_string(),
+        format!("list | session:{one} 60% | (session / shell / plugin) | changes")
+    );
+    // Swapped back, it is as it was.
+    assert_eq!(swapped.swapped(Panel::Pinned(one), Panel::Session), layout);
+    // Panels in different parts of the tree swap as well.
+    assert_eq!(
+        layout.swapped(Panel::List, Panel::Changes).to_string(),
+        format!("changes | session 60% | (session:{one} / shell / plugin) | list")
+    );
+}
+
+#[test]
+fn a_width_in_cells_goes_with_its_panel_when_swapped() {
+    let layout = read("list 30 | session 60% | (changes / shell / plugin)");
+    // The list keeps the width it was dragged to; the session, coming into
+    // the list's place, takes what is left there.
+    assert_eq!(
+        layout.swapped(Panel::List, Panel::Session).to_string(),
+        "session | list 30 | (changes / shell / plugin)"
+    );
+    assert_eq!(
+        layout.swapped(Panel::Session, Panel::List).to_string(),
+        "session | list 30 | (changes / shell / plugin)"
+    );
+}
+
+#[test]
+fn a_panel_swapped_with_itself_or_one_not_there_stays() {
+    let layout = Layout::default();
+    assert_eq!(layout.swapped(Panel::Shell, Panel::Shell), layout);
+    let absent = Panel::Pinned(SessionId::new());
+    assert_eq!(layout.swapped(Panel::Shell, absent), layout);
+    assert_eq!(layout.swapped(absent, Panel::Shell), layout);
+}

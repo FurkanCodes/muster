@@ -78,6 +78,17 @@ impl Model {
         self.notifier = snapshot.notifier;
         self.plugins = snapshot.plugins;
         self.loaded = true;
+        self.order_projects();
+    }
+
+    /// Puts the projects in the person's order (`Preferences::projects`),
+    /// the others after them as the daemon lists them, oldest first.
+    fn order_projects(&mut self) {
+        let order = &self.preferences.projects;
+        self.projects.sort_by_key(|project| {
+            let at = order.iter().position(|id| *id == project.id);
+            (at.unwrap_or(usize::MAX), project.created_at, project.id)
+        });
     }
 
     pub fn loaded(&self) -> bool {
@@ -86,7 +97,10 @@ impl Model {
 
     pub fn apply(&mut self, delta: Delta) {
         match delta {
-            Delta::ProjectUpserted(project) => upsert(&mut self.projects, project, |p| p.id),
+            Delta::ProjectUpserted(project) => {
+                upsert(&mut self.projects, project, |p| p.id);
+                self.order_projects();
+            }
             Delta::ProjectRemoved { id } => {
                 let gone: Vec<WorkspaceId> = self
                     .workspaces_of(id)
@@ -135,7 +149,10 @@ impl Model {
             }
             Delta::Resources(report) => self.resources = Some(report),
             Delta::RunUpserted(run) => upsert(&mut self.runs, run, |r| r.id),
-            Delta::Preferences(preferences) => self.preferences = preferences,
+            Delta::Preferences(preferences) => {
+                self.preferences = preferences;
+                self.order_projects();
+            }
             Delta::Notifier { ready } => self.notifier = ready,
             Delta::PluginsChanged(plugins) => self.plugins = plugins,
             // For the notch: this window says itself whether it is looked at.
@@ -519,6 +536,45 @@ mod tests {
         assert_eq!(model.project_of(Row::Session(shell.id)), Some(app.id));
         assert_eq!(model.worktree_of(Row::Session(shell.id)), Some(tree.id));
         assert_eq!(model.branch(tree.id), Some("work"));
+    }
+
+    #[test]
+    fn projects_follow_the_order_the_person_dragged_them_to() {
+        let mut first = project("first");
+        let mut second = project("second");
+        let mut third = project("third");
+        (first.created_at, second.created_at, third.created_at) = (
+            muster_core::Timestamp::from_millis(1),
+            muster_core::Timestamp::from_millis(2),
+            muster_core::Timestamp::from_millis(3),
+        );
+        let names = |model: &Model| -> Vec<String> {
+            model.projects().iter().map(|p| p.name.clone()).collect()
+        };
+        let mut model = Model::default();
+        model.replace(Snapshot {
+            projects: vec![first.clone(), second.clone(), third.clone()],
+            preferences: Preferences {
+                // A removed project's id is passed over.
+                projects: vec![third.id, ProjectId::new(), first.id],
+                ..Preferences::default()
+            },
+            ..Snapshot::default()
+        });
+        // Those not in the order come after, as they were added.
+        assert_eq!(names(&model), ["third", "first", "second"]);
+        let mut fourth = project("fourth");
+        fourth.created_at = muster_core::Timestamp::from_millis(4);
+        model.apply(Delta::ProjectUpserted(fourth));
+        assert_eq!(names(&model), ["third", "first", "second", "fourth"]);
+        model.apply(Delta::Preferences(Preferences {
+            projects: vec![second.id],
+            ..Preferences::default()
+        }));
+        assert_eq!(names(&model), ["second", "first", "third", "fourth"]);
+        // Put back, they are in the order they were added.
+        model.apply(Delta::Preferences(Preferences::default()));
+        assert_eq!(names(&model), ["first", "second", "third", "fourth"]);
     }
 
     #[test]

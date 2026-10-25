@@ -138,6 +138,11 @@ pub struct Preferences {
     /// Whether the list is folded away, the session taking its place (`[layout]
     /// list_folded`).
     pub list_folded: bool,
+    /// The projects in the order the person dragged them to (`[layout]
+    /// projects`), the others after them as the daemon lists them; empty
+    /// until the person moves one. An id of a project since removed is
+    /// passed over.
+    pub projects: Vec<crate::ProjectId>,
     /// How chats are named by an agent (`[names]`).
     pub naming: Naming,
     /// The keys the person set, by action, as written (`[keys]`,
@@ -204,6 +209,7 @@ impl Default for Preferences {
             session_lines: SessionLines::default(),
             panels: Layout::default(),
             list_folded: false,
+            projects: Vec::new(),
             naming: Naming::default(),
             keys: std::collections::BTreeMap::new(),
             notifications: true,
@@ -340,6 +346,9 @@ pub enum PreferenceChange {
     Panels(Layout),
     /// Fold the list away, or bring it back.
     ListFolded(bool),
+    /// The projects in this order, first to last; empty, in the order they
+    /// were added (protocol 56).
+    ProjectOrder(Vec<crate::ProjectId>),
     /// Have an agent name chats, or not.
     NamesByAgent(bool),
     /// The agent that names chats (`None`: each session's own) and its model
@@ -381,6 +390,9 @@ pub const KEYS: &str = "keys";
 
 /// Where the panels are written: `[layout] panels`.
 pub const PANELS: (&str, &str) = ("layout", "panels");
+
+/// Where the projects' order is written: `[layout] projects`.
+pub const PROJECTS: (&str, &str) = ("layout", "projects");
 
 /// Where the list's folding is written: `[layout] list_folded`.
 pub const LIST_FOLDED: (&str, &str) = ("layout", "list_folded");

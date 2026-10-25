@@ -281,6 +281,7 @@ fn preferences() -> Preferences {
         session_lines: SessionLines::One,
         panels: Layout::parse("session | list 30 | (changes / shell)").unwrap(),
         list_folded: true,
+        projects: vec![ProjectId::new(), ProjectId::new()],
         naming: muster_core::settings::Naming {
             by_agent: false,
             agent: Some("claude".to_owned()),
@@ -587,6 +588,8 @@ fn commands() -> Vec<Command> {
         }),
         Command::ChangePreference(PreferenceChange::SharedBuilds(false)),
         Command::ChangePreference(PreferenceChange::AgentsStartAgents(false)),
+        Command::ChangePreference(PreferenceChange::ProjectOrder(vec![ProjectId::new()])),
+        Command::ChangePreference(PreferenceChange::ProjectOrder(Vec::new())),
         Command::ChangeSetting {
             project,
             change: SettingChange::TicketsFrom(Some(tickets_from())),

@@ -149,6 +149,7 @@ struct LayoutTable {
     side_by_side_from: Option<u16>,
     panels: Option<String>,
     list_folded: Option<bool>,
+    projects: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -156,6 +157,24 @@ struct LayoutTable {
 struct Look {
     colours: Option<String>,
     session_lines: Option<u16>,
+}
+
+/// The projects' order as written (`[layout] projects`): each a project's
+/// id, refused where one does not read as one.
+fn project_order(
+    written: Option<Vec<String>>,
+    file: &str,
+) -> Result<Vec<crate::ProjectId>, ConfigError> {
+    written
+        .unwrap_or_default()
+        .iter()
+        .map(|id| {
+            id.parse().map_err(|error| ConfigError::Invalid {
+                file: file.to_owned(),
+                message: format!("layout.projects: {error}"),
+            })
+        })
+        .collect()
 }
 
 impl MusterConfig {
@@ -193,6 +212,7 @@ impl MusterConfig {
             Some(written) => Layout::parse(written)
                 .map_err(|error| invalid(&format!("layout.panels: {error}")))?,
         };
+        let projects = project_order(read.layout.projects, file)?;
         let one_line = |key: &str, text: Option<String>| match text {
             Some(text) if !crate::text::is_one_line(&text) => {
                 Err(invalid(&format!("names.{key} must be one line of text")))
@@ -237,6 +257,7 @@ impl MusterConfig {
             session_lines,
             panels,
             list_folded: read.layout.list_folded.unwrap_or(default.list_folded),
+            projects,
             naming,
             keys,
             notifications: read.notifications.show.unwrap_or(default.notifications),
@@ -473,6 +494,24 @@ mod tests {
             error.contains("layout.panels: list is in the layout twice"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn the_projects_order_is_as_written_or_as_they_were_added() {
+        let nothing = MusterConfig::parse(None, "f").unwrap();
+        assert!(nothing.preferences.projects.is_empty());
+        let (one, two) = (crate::ProjectId::new(), crate::ProjectId::new());
+        let written = MusterConfig::parse(
+            Some(&format!("[layout]\nprojects = [\"{two}\", \"{one}\"]\n")),
+            "f",
+        )
+        .unwrap();
+        assert_eq!(written.preferences.projects, [two, one]);
+        // An id that does not read is said, naming the key.
+        let error = MusterConfig::parse(Some("[layout]\nprojects = [\"muster\"]\n"), "s.toml")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("layout.projects"), "{error}");
     }
 
     #[test]
