@@ -26,8 +26,8 @@
 
 import {
   createContext,
-  type DragEvent,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   use,
   useEffect,
@@ -119,8 +119,8 @@ export function ListItem({
   /** Its own look, beyond a line's (a ticket's key column, a file's kind). */
   className?: string;
   onSelect: () => void;
-  /** Given, the line can be carried away by the pointer: told as it is taken up (its drag's data), and let go (null). */
-  onCarry?: (event: DragEvent<HTMLElement> | null) => void;
+  /** Given, the line can be carried away by the pointer: told of the press that may take it up (src/panels/carry). */
+  onCarry?: (event: PointerEvent<HTMLElement>) => void;
   children: ReactNode;
 }) {
   const { kind, resting, sight } = use(Shape);
@@ -148,9 +148,7 @@ export function ListItem({
       )}
       onMouseDown={keepFocusOnList}
       onClick={onSelect}
-      draggable={onCarry ? true : undefined}
-      onDragStart={onCarry}
-      onDragEnd={onCarry ? () => onCarry(null) : undefined}
+      onPointerDown={onCarry}
     >
       {children}
     </Pressable>

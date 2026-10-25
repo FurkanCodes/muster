@@ -7,13 +7,13 @@
 // a project's line says how the most urgent of what it hides stands, and how
 // many it hides.
 
-import type { DragEvent, MouseEvent, ReactNode } from "react";
+import type { MouseEvent, PointerEvent, ReactNode } from "react";
 import { useNow } from "../../app/clock";
 import { useDaemon } from "../../app/context";
 import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, statusKind } from "../../lib/status";
-import { CARRIED, CARRIED_PROJECT, carry, carryProject } from "../../panels/carry";
+import { pressToCarry } from "../../panels/carry";
 import { branchOf, projectColour, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import {
@@ -123,7 +123,7 @@ function Line({
   density: "comfortable" | "compact";
   className?: string;
   label: string;
-  onCarry?: (event: DragEvent<HTMLElement> | null) => void;
+  onCarry?: (event: PointerEvent<HTMLElement>) => void;
   children: ReactNode;
 }) {
   return (
@@ -155,12 +155,8 @@ export function ProjectLine(props: LineProps) {
       density="compact"
       className="sessions-project"
       label={name}
-      onCarry={(event) => {
-        // Let go on another project's lines, it goes there (projectOrder).
-        carryProject(event ? row.id : null);
-        event?.dataTransfer.setData(CARRIED_PROJECT, row.id);
-        if (event) event.dataTransfer.effectAllowed = "move";
-      }}
+      // Let go on another project's lines, it goes there (projectOrder).
+      onCarry={(event) => pressToCarry(event, { kind: "project", id: row.id })}
     >
       <Fold {...props} />
       <Swatch colour={colour} />
@@ -237,12 +233,8 @@ export function SessionLine(props: LineProps) {
       {...props}
       density="comfortable"
       label={`${session.title}, ${doing(session)}`}
-      onCarry={(event) => {
-        // Dropped on the pane, it is pinned there in a panel of its own.
-        carry(event ? session.id : null);
-        event?.dataTransfer.setData(CARRIED, session.id);
-        if (event) event.dataTransfer.effectAllowed = "move";
-      }}
+      // Let go on the pane, it is placed there in a panel of its own (Panels).
+      onCarry={(event) => pressToCarry(event, { kind: "session", id: session.id })}
     >
       <StatusMark kind={statusKind(session)} />
       <AgentLogo harness={shownHarness(session)} />

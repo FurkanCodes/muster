@@ -139,13 +139,12 @@ export function SessionTree({
     );
   };
 
-  const dropping = useProjectDrop(rows);
+  useProjectDrop(rows, list);
   return (
     <List
       ref={list}
       kind="tree"
       label="Projects and sessions"
-      {...dropping}
       className="sessions-tree"
       activeId={at >= start && at < end && selected ? rowId(selected) : undefined}
       resting={resting}

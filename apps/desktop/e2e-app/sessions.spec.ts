@@ -1,9 +1,9 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { $, browser, expect } from "@wdio/globals";
-import { askingSession, type Launch, launches } from "./support/agents";
+import { askingSession, type Launch, launches, startAgent } from "./support/agents";
 import { keptState, restartApp, sandbox } from "./support/harness";
-import { muster, session, sessions, settingsToml, status, until } from "./support/muster";
+import { muster, project, session, sessions, settingsToml, status, until } from "./support/muster";
 import { boxOf, dragTo, middleOf } from "./support/pointer";
 import { opened } from "./support/record";
 import { commit, ghCalls, git, read, repository } from "./support/repos";
@@ -13,8 +13,9 @@ import { bareId, goTo, pressOnWindow, theWindow } from "./support/window";
 // PRD-15, ARC-24): the All list and its folds, kept across a crash of the
 // app and a ⌘Q; the shell on T and a plugin's panel on its key, beside the
 // agent and on no line of their own; the panels dragged, resized and moved
-// with m, the layout in settings.toml; full screen; and the stages by hand,
-// c, v, o and b on a session's worktree, against real git and the stand-in gh.
+// with m, the layout in settings.toml; full screen; the stages by hand,
+// c, v, o and b on a session's worktree, against real git and the stand-in gh;
+// and a session's line and a project's carried by the pointer (PRD §6a).
 
 let repo = "";
 let worktree = "";
@@ -302,6 +303,45 @@ describe("Sessions and its panels, over the real daemon", () => {
     await pressOnWindow("o");
     await expect(statusBar()).toHaveText(
       expect.stringContaining("Select a session in a worktree to open a pull request from it."),
+    );
+  });
+
+  // Carried by pointer events, as the window's own drags are: the app's
+  // window takes the browser's drag and drop for a folder from the Finder.
+  it("PRD §6a a session's line carried by the pointer onto the pane is placed there, in a panel of its own", async () => {
+    await startAgent("web", "Second agent", { branch: "feature/web" });
+    await lineLike(`${TITLE},`).click();
+    await expect(pane(TITLE)).toBeDisplayed();
+    const area = await boxOf(".panels");
+    await dragTo(
+      '[role="treeitem"][aria-label^="Second agent,"]',
+      area.x + area.width - 20,
+      area.y + area.height / 2,
+    );
+    const id = session("Second agent")?.id ?? "";
+    await until(() => settingsToml().includes(`session:${id}`), "the layout to place it");
+    await expect(panel("Second agent")).toBeDisplayed();
+    await expect(statusBar()).toHaveText(
+      expect.stringContaining("Placed it in a panel of its own."),
+    );
+    // Its line stays where it was, the agent shown as before.
+    await expect(lineLike("Second agent,")).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("PRD §6a a project's line carried up the list goes there, the order in settings.toml", async () => {
+    muster("project", "add", repository("api"));
+    await expect(line("api")).toBeDisplayed();
+    const web = await middleOf('[role="treeitem"][aria-label="web"]');
+    await dragTo('[role="treeitem"][aria-label="api"]', web.x, web.y);
+    const [api, first] = [project("api")?.id ?? "", project("web")?.id ?? ""];
+    await until(() => {
+      const toml = settingsToml();
+      return toml.includes(api) && toml.indexOf(api) < toml.indexOf(first);
+    }, "the order to be kept, api first");
+    await browser.waitUntil(
+      async () =>
+        (await $('[role="treeitem"][aria-level="1"]').getAttribute("aria-label")) === "api",
+      { timeoutMsg: "api was not listed first" },
     );
   });
 });

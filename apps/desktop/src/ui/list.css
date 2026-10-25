@@ -103,3 +103,14 @@
     background-color: transparent;
   }
 }
+
+/* Carried by the pointer (src/panels/carry.ts): the line waits, faint, where it was;
+   the hand says it holds something wherever it goes. */
+.mu-list-item.is-carried {
+  opacity: 0.5;
+}
+:root.is-carrying,
+:root.is-carrying * {
+  cursor: grabbing !important;
+  user-select: none;
+}

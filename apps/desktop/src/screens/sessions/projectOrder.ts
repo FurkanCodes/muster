@@ -5,10 +5,10 @@
 // settings (`ChangePreference(ProjectOrder)`), so the terminal UI lists
 // them so too.
 
-import type { DragEvent } from "react";
+import type { RefObject } from "react";
 import { useApp } from "../../app/context";
 import { errorText } from "../../lib/text";
-import { CARRIED_PROJECT, carriedProjectId, carryProject } from "../../panels/carry";
+import { type Carrying, useTakesCarried } from "../../panels/carry";
 import type { DaemonState } from "../../state/daemon";
 import type { TreeRow } from "./tree";
 
@@ -33,32 +33,23 @@ function projectOf(state: DaemonState, row: TreeRow): string | null {
   return workspace ? (state.workspaces[workspace]?.project ?? null) : null;
 }
 
-/** The list's drag handlers for a project's line carried over it and let go there. */
-export function useProjectDrop(rows: readonly TreeRow[]) {
+/** A project's line carried by the pointer and let go on the list's lines (`list`): the project goes there. */
+export function useProjectDrop(rows: readonly TreeRow[], list: RefObject<HTMLElement | null>) {
   const app = useApp();
-  const carried = (event: DragEvent) =>
-    event.dataTransfer.types.includes(CARRIED_PROJECT) ? carriedProjectId() : null;
-  return {
-    onDragOver(event: DragEvent<HTMLDivElement>) {
-      if (!carried(event)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-    },
-    onDrop(event: DragEvent<HTMLDivElement>) {
-      const moving = carried(event);
-      carryProject(null);
-      if (!moving) return;
-      event.preventDefault();
-      const line = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-line]");
-      const row = line ? rows[Number(line.dataset.line)] : undefined;
-      const state = app.daemon.store.getState();
-      const onto = row ? projectOf(state, row) : null;
-      const order = rows.filter((one) => one.kind === "project").map((one) => one.id);
-      const next = onto ? movedProjects(order, moving, onto) : null;
-      if (!next) return;
+  useTakesCarried((carrying: Carrying) => {
+    if (carrying.what.kind !== "project") return false;
+    const under = document.elementFromPoint(carrying.x, carrying.y);
+    if (!under || !list.current?.contains(under)) return false;
+    const line = under.closest<HTMLElement>("[data-line]");
+    const row = line ? rows[Number(line.dataset.line)] : undefined;
+    const state = app.daemon.store.getState();
+    const onto = row ? projectOf(state, row) : null;
+    const order = rows.filter((one) => one.kind === "project").map((one) => one.id);
+    const next = onto ? movedProjects(order, carrying.what.id, onto) : null;
+    if (next)
       app.bridge
         .command({ ChangePreference: { ProjectOrder: next } })
         .catch((error) => app.actions.tell(errorText(error), true));
-    },
-  };
+    return true;
+  });
 }
