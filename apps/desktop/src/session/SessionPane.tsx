@@ -132,7 +132,6 @@ export function SessionPane({
     return stored ? shownHarness(stored) : "";
   });
   const workspace = useDaemon((state) => state.sessions[session]?.workspace ?? null);
-  const hasKeys = useUi((state) => state.keysIn === "terminal" && state.terminal === session);
   const mode = useUi((state) => state.pane);
   const screen = useUi((state) => KEY_SCREENS[state.screen]);
   const changesKey = useKeyLabel("show_changes");
@@ -154,9 +153,7 @@ export function SessionPane({
     <Page label={title} className="session-pane">
       <PageHeader>
         <AgentLogo harness={harness} />
-        <PageTitle title={title} className={hasKeys ? "app-pane-title--keys" : undefined}>
-          {title}
-        </PageTitle>
+        <PageTitle title={title}>{title}</PageTitle>
         <Where session={session} onChanges={changes} />
         <PageActions>
           <ShellButton session={session} />

@@ -314,9 +314,7 @@ html[data-resizing] * {
   background: transparent;
 }
 
-.app-pane-title--keys {
-  color: var(--keys);
-}
+/* The pane's title stays as it is while its terminal has the keys. */
 
 .app-pane-terminal {
   flex: 1;
@@ -407,9 +405,9 @@ html[data-visible="false"] *::after {
   background: var(--text-selection);
 }
 
-/* While a terminal has the keys the status bar says so in the keys' blue. */
+/* While a terminal has the keys the status bar says so, in its own words. */
 .app-statusbar [data-typing] {
-  color: var(--keys);
+  color: var(--text);
 }
 
 /* The sidebar put away (⌘\), the screen beside it has no edge to draw. */
