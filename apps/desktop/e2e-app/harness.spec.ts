@@ -41,7 +41,7 @@ describe("The real-app harness", () => {
         ),
       "the question in its terminal",
     );
-    await expect($('[role="option"][aria-label="Claude stand-in"] .queue-ask')).toBeDisplayed();
+    await expect($('[role="option"][aria-label="Claude stand-in"] .queue-asking')).toBeDisplayed();
     await work(claude);
     await untilSession("Claude stand-in", "running");
     await untilFlock(1, 0, 0);
@@ -68,7 +68,7 @@ describe("The real-app harness", () => {
 
   it("answers for the tracker with the tickets given, and logs each call", () => {
     tickets([{ number: 42, title: "Fix the login redirect", body: "It lands on /404." }]);
-    expect(muster("issue", "list", "app")).toContain("Fix the login redirect");
+    expect(muster("list", "tickets", "--project", "app")).toContain("Fix the login redirect");
     expect(ghCalls().some((call) => call.startsWith("issue list"))).toBe(true);
   });
 

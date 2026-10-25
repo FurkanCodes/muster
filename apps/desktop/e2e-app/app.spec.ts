@@ -37,7 +37,7 @@ describe("Muster's window over its own daemon", () => {
       async () => (await terminalText(id)).includes("Shall the stand-in go on?"),
       "the question in its terminal",
     );
-    await expect($(`[role="option"][aria-label="${TITLE}"] .queue-ask`)).toBeDisplayed();
+    await expect($(`[role="option"][aria-label="${TITLE}"] .queue-asking`)).toBeDisplayed();
   });
 
   it("types into the session's terminal, and what is typed reaches its program", async () => {

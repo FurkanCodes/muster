@@ -119,6 +119,8 @@ function ListSwitch() {
       ]}
       value={list}
       onChange={(id) => actions.show(id)}
+      // Beside Tickets or Settings the last list shown stays pressed: pressing it shows it.
+      onAgain={(id) => actions.show(id)}
     />
   );
 }

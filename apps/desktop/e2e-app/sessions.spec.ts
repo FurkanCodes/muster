@@ -90,7 +90,7 @@ describe("Sessions and its panels, over the real daemon", () => {
     git(repo, "remote", "add", "origin", "https://github.com/o/app.git");
     git(repo, "config", `url.${bare}.pushInsteadOf`, "https://github.com/o/app.git");
     muster("project", "add", repo);
-    muster("worktree", "add", "web", "--branch", "feature/web");
+    muster("workspace", "add", "--project", "web", "--branch", "feature/web");
     agent = await askingSession("web", TITLE, "Shall I begin?", { branch: "feature/web" });
     worktree = agent.cwd;
     muster("plugin", "link", panelPlugin(), "--yes");
@@ -187,8 +187,8 @@ describe("Sessions and its panels, over the real daemon", () => {
   it("ARC-24 panels dragged by their heads and resized by the line between, the layout in settings.toml", async () => {
     await lineLike(`${TITLE},`).click();
     const before = settingsToml();
-    // The shell's head dropped on the lower part of the agent's panel: under it.
-    const agentPanel = await boxOf('section.mu-panel[aria-label="Claude Code"]');
+    // The shell's head dropped on the lower part of the agent's preview: placed under it.
+    const agentPanel = await boxOf('section.mu-panel[aria-label="Preview: Claude Code"]');
     await dragTo(
       'section.mu-panel[aria-label="Shell"] .mu-panel-head',
       agentPanel.x + agentPanel.width / 2,
@@ -196,17 +196,17 @@ describe("Sessions and its panels, over the real daemon", () => {
     );
     const dropped = await until(() => {
       const now = settingsToml();
-      return now !== before && /panels = ".*session \/ shell/.test(now) ? now : null;
+      return now !== before && /panels = ".*session \/ session:ses_/.test(now) ? now : null;
     }, "the layout under the agent to be written to settings.toml");
     const shell = await boxOf('section.mu-panel[aria-label="Shell"]');
-    const agentNow = await boxOf('section.mu-panel[aria-label="Claude Code"]');
+    const agentNow = await boxOf('section.mu-panel[aria-label="Preview: Claude Code"]');
     expect(shell.y).toBeGreaterThan(agentNow.y);
     // The line between them, dragged up, gives the shell more of the place.
     const separator = '[role="separator"][aria-orientation="horizontal"]';
     const bar = await middleOf(separator);
     await dragTo(separator, bar.x, bar.y - 120);
     await until(
-      () => settingsToml() !== dropped && /session \d+% \/ shell/.test(settingsToml()),
+      () => settingsToml() !== dropped && /session \d+% \/ session:ses_/.test(settingsToml()),
       "the share the line was dragged to to be written",
     );
     expect(Number(settingsToml().match(/session (\d+)%/)?.[1])).toBeLessThan(50);

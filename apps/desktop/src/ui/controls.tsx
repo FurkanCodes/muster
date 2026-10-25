@@ -142,6 +142,7 @@ export function Segmented<T extends string>({
   segments,
   value,
   onChange,
+  onAgain,
   busy = false,
   className,
 }: {
@@ -151,6 +152,8 @@ export function Segmented<T extends string>({
   className?: string;
   value: T;
   onChange: (value: T) => void;
+  /** The pressed one pressed again: where that still goes somewhere (the sidebar's lists, beside a page). */
+  onAgain?: (value: T) => void;
   /** A change is on its way: no second press until it is answered. */
   busy?: boolean;
 }) {
@@ -164,6 +167,7 @@ export function Segmented<T extends string>({
         // One is always pressed: pressing it again keeps it.
         const next = pressed[0] as T | undefined;
         if (next && next !== value) onChange(next);
+        else if (!next) onAgain?.(value);
       }}
       // ← → are the screen's (a setting steps on them), not a walk along the buttons.
       onKeyDown={(event) => {

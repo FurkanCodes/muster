@@ -67,8 +67,8 @@ ${extra}`;
 /** Adds the folder `path` from the Add dialog, and waits for what the daemon shows of it. */
 async function add(path: string): Promise<void> {
   await pressOnWindow("a");
-  await expect($("dialog")).toHaveText(expect.stringContaining("Add a plugin"));
-  await type("dialog input", path);
+  await expect($("[role='dialog']")).toHaveText(expect.stringContaining("Add a plugin"));
+  await type("[role='dialog'] input", path);
   await browser.keys("Enter");
 }
 
@@ -85,7 +85,7 @@ describe("Settings › Plugins over the real daemon", () => {
 
   it("PRD-15 links a folder after showing everything it runs, and turns it on", async () => {
     await add(notes);
-    const preview = $("dialog");
+    const preview = $("[role='dialog']");
     await expect(preview).toHaveText(expect.stringContaining("Link Notes?"));
     await expect(preview).toHaveText(expect.stringContaining("./panel {branch}"));
     await expect(preview).toHaveText(expect.stringContaining("./note {project}"));
@@ -102,7 +102,7 @@ describe("Settings › Plugins over the real daemon", () => {
   it("PRD-15 says nothing was added when the person says no", async () => {
     const other = folder("other", notesManifest("0.1.0").replace('id = "notes"', 'id = "other"'));
     await add(other);
-    await expect($("dialog")).toHaveText(expect.stringContaining("Link Notes?"));
+    await expect($("[role='dialog']")).toHaveText(expect.stringContaining("Link Notes?"));
     await browser.keys("n");
     await expect(note()).toHaveText("Nothing was added.");
     expect(listed("other")).toBeUndefined();
@@ -137,7 +137,7 @@ describe("Settings › Plugins over the real daemon", () => {
     expect(listed("notes")?.problem).not.toBeNull();
     await row("notes").$("button*=Notes").click();
     await pressOnWindow("u");
-    const preview = $("dialog");
+    const preview = $("[role='dialog']");
     await expect(preview).toHaveText(expect.stringContaining("0.2.0"));
     await expect(preview).toHaveText(expect.stringContaining("./note {project} {session}"));
     await browser.keys("y");
@@ -156,14 +156,14 @@ describe("Settings › Plugins over the real daemon", () => {
   it("ARC-24 the daemon's refusals: a manifest that does not read, a path not from /, Muster's own", async () => {
     const broken = folder("broken", 'id = "broken"\nname = 7\n');
     await add(broken);
-    await expect($("dialog [role='alert']")).toHaveText(expect.stringContaining("name"));
-    await type("dialog input", "~/plugins/mine");
+    await expect($("[role='dialog'] [role='alert']")).toHaveText(expect.stringContaining("name"));
+    await type("[role='dialog'] input", "~/plugins/mine");
     await browser.keys("Enter");
-    await expect($("dialog [role='alert']")).toHaveText(
+    await expect($("[role='dialog'] [role='alert']")).toHaveText(
       expect.stringContaining("Type the folder's whole path, from /"),
     );
     await browser.keys("Escape");
-    await expect($("dialog")).not.toBeExisting();
+    await expect($("[role='dialog']")).not.toBeExisting();
 
     await row("github").$("button*=GitHub").click();
     await pressOnWindow("x");
@@ -185,7 +185,7 @@ describe("Settings › Plugins over the real daemon", () => {
         .replace('key = "N"', 'key = "Y"'),
     );
     await add(needy);
-    const preview = $("dialog");
+    const preview = $("[role='dialog']");
     await expect(preview).toHaveText(expect.stringContaining("Link Needy?"));
     await expect(preview).toHaveText(expect.stringContaining("no-such-program"));
     await expect(preview).toHaveText(expect.stringContaining("not found"));
@@ -196,7 +196,7 @@ describe("Settings › Plugins over the real daemon", () => {
   it("PRD-15 removes one after asking; its folder stays", async () => {
     await row("notes").$("button*=Notes").click();
     await pressOnWindow("x");
-    const dialog = $("dialog");
+    const dialog = $("[role='dialog']");
     await expect(dialog).toHaveText(expect.stringContaining("Remove notes?"));
     await dialog.$("button=Remove notes").click();
     await expect(note()).toHaveText("Removed notes.");

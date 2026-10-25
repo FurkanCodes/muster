@@ -56,7 +56,7 @@ export interface StatusWorkspace {
 export interface StatusProject {
   id: string;
   name: string;
-  root: string;
+  path: string;
   workspaces: StatusWorkspace[];
 }
 

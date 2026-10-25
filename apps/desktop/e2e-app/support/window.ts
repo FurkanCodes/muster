@@ -197,14 +197,14 @@ export async function toFront(): Promise<void> {
   );
 }
 
-/** The open dialog titled `title` (ui/Dialog.tsx), or the palette (`Command palette`, `Every key`). */
+/** The open dialog titled `title` (ui/Dialog.tsx, Base UI's `role="dialog"`), or the palette (`Command palette`, `Every key`). */
 export function dialog(title: string) {
-  return $(`//dialog[@open][@aria-label="${title}" or .//h2[normalize-space()="${title}"]]`);
+  return $(`//*[@role="dialog"][@aria-label="${title}" or .//h2[normalize-space()="${title}"]]`);
 }
 
 /** Whether no dialog is open. */
 export async function noDialog(): Promise<boolean> {
-  return !(await $("//dialog[@open]").isExisting());
+  return !(await $('//*[@role="dialog"]').isExisting());
 }
 
 /** The button in `scope` whose words hold `name` (its key cap may follow them). */
@@ -257,11 +257,13 @@ export function alertIn(scope: ChainablePromiseElement) {
 /**
  * The row in the sidebar's list named `name`: a project, or a worktree no
  * session is in, in All, or a session there or in the queue, by its title.
+ * The sidebar shows the queue over All, so a session in both is All's line,
+ * which says what it is doing after its name.
  */
 export function row(name: string) {
-  return $(
-    `${SIDEBAR}//*[(@role="treeitem" or @role="option") and (@aria-label="${name}" or starts-with(@aria-label, "${name},"))]`,
-  );
+  const named = `(@aria-label="${name}" or starts-with(@aria-label, "${name},"))`;
+  const line = `${SIDEBAR}//*[@role="treeitem" and ${named}]`;
+  return $(`${line} | ${SIDEBAR}//*[@role="option" and ${named}][not(${line})]`);
 }
 
 /**
@@ -272,12 +274,13 @@ export function row(name: string) {
  */
 export async function untilRowSays(name: string, doing: RegExp): Promise<void> {
   const found = row(name);
+  let label: string | null = null;
   await browser.waitUntil(
     async () => {
-      const label = (await found.isExisting()) ? await found.getAttribute("aria-label") : "";
+      label = (await found.isExisting()) ? await found.getAttribute("aria-label") : null;
       return doing.test((label ?? "").slice(name.length + 2));
     },
-    { timeoutMsg: `the window never showed ${name} as ${doing}` },
+    { timeoutMsg: `the window never showed ${name} as ${doing}: its line said ${label}` },
   );
 }
 
