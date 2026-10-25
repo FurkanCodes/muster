@@ -106,6 +106,13 @@ pub(crate) struct Panels {
     /// (`session_beside_list`). Two, as a line dragged out of the list is
     /// selected as it is pressed, before it is placed.
     pub(crate) agents: [Option<SessionId>; 2],
+    /// The panel key pressed, waiting for the key after it
+    /// (`app::prefix`), which may send it on.
+    pub(crate) waiting: Option<crossterm::event::KeyEvent>,
+    /// A panel being resized with the keys.
+    pub(crate) resizing: Option<super::prefix::Resizing>,
+    /// The panel zoomed over the others beside the list.
+    pub(crate) zoomed: Option<muster_core::layout::Panel>,
     /// The session whose preview the person folded away by its `✕`: the
     /// preview shows again once the list selects another, or they type in
     /// it.

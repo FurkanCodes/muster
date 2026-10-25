@@ -72,6 +72,10 @@ impl App {
             actions.extend(self.settle());
             return actions;
         }
+        if let Some(mut actions) = self.panel_keys(&key) {
+            actions.extend(self.settle());
+            return actions;
+        }
         let mut actions = match self.mode.clone() {
             Mode::Terminal(session) => return self.terminal_key(session, &key),
             Mode::Dialog(dialog) => self.dialog_key(dialog, &key),
@@ -594,21 +598,26 @@ impl App {
             return Vec::new();
         }
         if let Some(session) = self.focused_session() {
-            let Some(stored) = self.model.session(session) else {
-                return Vec::new();
-            };
-            if stored.ended_at.is_none() {
-                self.mode = Mode::Dialog(Dialog::Confirm {
-                    question: format!("Close {}? It stops and leaves the list.", stored.title),
-                    then: Confirmed::CloseSession(session),
-                });
-                return Vec::new();
-            }
-            let command = Command::RemoveSession { session };
-            return vec![self.command(command, Then::Say("Removed the session."))];
+            return self.close_session(session);
         }
         self.confirm_remove_worktree();
         Vec::new()
+    }
+
+    /// Closes `session`: after asking while it runs, else at once.
+    pub(super) fn close_session(&mut self, session: muster_core::SessionId) -> Vec<Action> {
+        let Some(stored) = self.model.session(session) else {
+            return Vec::new();
+        };
+        if stored.ended_at.is_none() {
+            self.mode = Mode::Dialog(Dialog::Confirm {
+                question: format!("Close {}? It stops and leaves the list.", stored.title),
+                then: Confirmed::CloseSession(session),
+            });
+            return Vec::new();
+        }
+        let command = Command::RemoveSession { session };
+        vec![self.command(command, Then::Say("Removed the session."))]
     }
 
     fn confirm_remove_worktree(&mut self) {

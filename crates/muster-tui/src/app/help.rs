@@ -46,6 +46,7 @@ pub(crate) enum HelpLine {
 use Entry::{Act as D, DoesAs, Fixed};
 
 const ANYWHERE: &[Entry] = &[
+    D(Does::PanelKey),
     DoesAs(Does::NextTab, "the next tab"),
     DoesAs(Does::PreviousTab, "the previous tab"),
     D(Does::SessionsTab),
@@ -66,8 +67,37 @@ const IN_A_SESSION: Section = (
     &[
         D(Does::LeaveSession),
         D(Does::FoldList),
+        D(Does::PanelKey),
         Fixed("Ctrl-1 Ctrl-2 Ctrl-3", "straight to a tab"),
         Fixed("any other key", "goes to its program, esc and ⇥ too"),
+    ],
+);
+
+/// What the key after the panel key does, on the list or in a panel.
+const AFTER_THE_PANEL_KEY: Section = (
+    "After the panel key",
+    &[
+        D(Does::SplitRight),
+        D(Does::SplitDown),
+        D(Does::FocusLeft),
+        D(Does::FocusDown),
+        D(Does::FocusUp),
+        D(Does::FocusRight),
+        D(Does::SwapLeft),
+        D(Does::SwapDown),
+        D(Does::SwapUp),
+        D(Does::SwapRight),
+        D(Does::Zoom),
+        D(Does::TakeOff),
+        D(Does::ClosePanel),
+        D(Does::PlacePreview),
+        D(Does::Resize),
+        D(Does::ToPanel),
+        D(Does::ToList),
+        D(Does::SendPanelKey),
+        D(Does::PanelKeys),
+        Fixed("esc", "give up"),
+        Fixed("right-click a title", "the same, with their keys"),
     ],
 );
 
@@ -106,6 +136,7 @@ const SESSIONS: &[Section] = &[
         ],
     ),
     IN_A_SESSION,
+    AFTER_THE_PANEL_KEY,
     ("Anywhere", ANYWHERE),
 ];
 
@@ -131,6 +162,7 @@ const NEEDS_YOU: &[Section] = &[
         ],
     ),
     IN_A_SESSION,
+    AFTER_THE_PANEL_KEY,
     ("Anywhere", ANYWHERE),
 ];
 

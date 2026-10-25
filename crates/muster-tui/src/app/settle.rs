@@ -62,6 +62,16 @@ impl App {
         {
             self.panels.agents = [Some(session), self.panels.agents[0]];
         }
+        // A zoomed panel follows the keys from panel to panel, and goes
+        // with its panel.
+        if let Some(zoomed) = self.panels.zoomed {
+            let target = self.pane_target();
+            if target != muster_core::layout::Panel::List && target != zoomed {
+                self.panels.zoomed = Some(target);
+            } else if !self.wanted_panels().contains(&zoomed) {
+                self.panels.zoomed = None;
+            }
+        }
         // A preview folded away comes back as the list selects another.
         if self.panels.preview_folded.is_some()
             && self.panels.preview_folded != self.focused_session()

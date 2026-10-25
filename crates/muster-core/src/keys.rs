@@ -38,6 +38,10 @@ pub enum Screen {
     /// (`muster attach`, `muster enter`): every key but this screen's goes
     /// to its program.
     InTab,
+    /// The key after the panel key (`panel_key`), on the list or typing in
+    /// a panel: what it does to the panel with the keys. Nothing of it
+    /// reaches a program.
+    Prefix,
 }
 
 impl Screen {
@@ -51,6 +55,7 @@ impl Screen {
             Self::Changes => "In the changes",
             Self::InSession => "In a session",
             Self::InTab => "In a terminal tab",
+            Self::Prefix => "After the panel key",
         }
     }
 }
@@ -77,6 +82,9 @@ const TABS: &[Screen] = &[
 const SESSION_LISTS: &[Screen] = &[Screen::Sessions, Screen::NeedsYou];
 
 const SESSIONS: &[Screen] = &[Screen::Sessions];
+
+/// After the panel key.
+const PREFIX: &[Screen] = &[Screen::Prefix];
 
 /// Everywhere the list or a session beside it has the keys.
 const EVERYWHERE: &[Screen] = &[
@@ -145,6 +153,8 @@ actions! {
     Help "help" LISTS, ["h", "?"], "these keys";
     FoldList "fold_list" EVERYWHERE, ["ctrl-\\"], "fold the list away, or bring it back";
     MovePanels "move_panels" LISTS, ["m"], "move the panels with the keys (or drag one by its title)";
+    PanelKey "panel_key" EVERYWHERE, ["ctrl-b"],
+        "wait for one more key, to split, zoom, move or close the panel with the keys";
     MoveUp "move_up" LISTS, ["k"], "move up (as ↑)";
     MoveDown "move_down" LISTS, ["j"], "move down (as ↓)";
     AddProject "add_project" SESSION_LISTS, ["a"], "add a project";
@@ -186,6 +196,28 @@ actions! {
         "back to the list (or a click on it)";
     LeaveTab "leave_tab" &[Screen::InTab], ["ctrl-q"],
         "back to the session shown before in the tab, else to your own shell (the session keeps running)";
+    SplitRight "split_right" PREFIX, ["v"], "split the panel right, a new shell in its workspace";
+    SplitDown "split_down" PREFIX, ["s", "-"], "split the panel down, a new shell in its workspace";
+    FocusLeft "focus_left" PREFIX, ["h"], "the keys to the panel on the left (← too)";
+    FocusDown "focus_down" PREFIX, ["j"], "the keys to the panel below (↓ too)";
+    FocusUp "focus_up" PREFIX, ["k"], "the keys to the panel above (↑ too)";
+    FocusRight "focus_right" PREFIX, ["l"], "the keys to the panel on the right (→ too)";
+    SwapLeft "swap_left" PREFIX, ["H"], "swap the panel with the one on the left (⇧← too)";
+    SwapDown "swap_down" PREFIX, ["J"], "swap the panel with the one below (⇧↓ too)";
+    SwapUp "swap_up" PREFIX, ["K"], "swap the panel with the one above (⇧↑ too)";
+    SwapRight "swap_right" PREFIX, ["L"], "swap the panel with the one on the right (⇧→ too)";
+    Zoom "zoom" PREFIX, ["z"], "zoom the panel over the others beside the list, or put it back";
+    TakeOff "take_off" PREFIX, ["x"], "take the panel off the screen; its session runs on";
+    ClosePanel "close_panel" PREFIX, ["X"], "close the panel's session, after asking while it runs";
+    PlacePreview "place_preview" PREFIX, ["p"], "place the preview's session where the preview is";
+    Resize "resize" PREFIX, ["r"],
+        "resize the panel: h j k l move its edge a cell, H J K L five, ⏎ keeps it, esc puts it back";
+    ToPanel "to_panel" PREFIX, ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+        "the keys to the panel of that number, as its title shows while the panel key waits";
+    ToList "to_list" PREFIX, ["w"], "the keys back to the list";
+    SendPanelKey "send_panel_key" PREFIX, ["b"],
+        "send the panel key to the program, as pressing it again does (Claude Code backgrounds a command on Ctrl-B)";
+    PanelKeys "panel_keys" PREFIX, ["?"], "these keys";
 }
 
 impl Action {
@@ -630,214 +662,4 @@ impl Keymap {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_default_key_reads() {
-        for action in Action::ALL {
-            for key in action.defaults() {
-                assert!(Chord::parse(key).is_ok(), "{action:?}: {key}");
-            }
-        }
-    }
-
-    fn set(pairs: &[(&str, &[&str])]) -> BTreeMap<String, Vec<String>> {
-        pairs
-            .iter()
-            .map(|(name, keys)| {
-                (
-                    (*name).to_owned(),
-                    keys.iter().map(|key| (*key).to_owned()).collect(),
-                )
-            })
-            .collect()
-    }
-
-    #[test]
-    fn keys_read_and_write_as_written() {
-        for text in [
-            "a",
-            "R",
-            "?",
-            "ctrl-]",
-            "alt-x",
-            "ctrl-\\",
-            "tab",
-            "shift-tab",
-            "esc",
-            "backspace",
-            "space",
-            "f5",
-            "1",
-        ] {
-            assert_eq!(Chord::parse(text).unwrap().to_string(), text, "{text}");
-        }
-        assert_eq!(Chord::parse("shift-q").unwrap(), Chord::parse("Q").unwrap());
-        assert_eq!(Chord::parse("Ctrl-]").unwrap().label(), "Ctrl-]");
-        assert_eq!(Chord::parse("tab").unwrap().label(), "⇥");
-        for not in ["", "ctrl-", "abc", "f99", "\u{7}"] {
-            assert!(
-                matches!(Chord::parse(not), Err(KeysError::NotAKey(_))),
-                "{not:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn each_action_is_listed_once_under_where_it_works() {
-        assert_eq!(Action::Quit.group(), "Anywhere");
-        assert_eq!(Action::Back.group(), "Anywhere");
-        assert_eq!(Action::FoldList.group(), "Anywhere");
-        assert_eq!(Action::NewSession.group(), "Sessions and Needs you");
-        assert_eq!(Action::Tidy.group(), "Sessions");
-        assert_eq!(Action::CloseTicket.group(), "Tickets");
-        assert_eq!(Action::PutBack.group(), "In the changes");
-        assert_eq!(Action::LeaveSession.group(), "In a session");
-        // Each group's actions come together.
-        let mut seen: Vec<&str> = Vec::new();
-        for action in Action::ALL {
-            if seen.last() != Some(&action.group()) {
-                assert!(!seen.contains(&action.group()), "{} again", action.group());
-                seen.push(action.group());
-            }
-        }
-    }
-
-    #[test]
-    fn muster_s_own_keys_never_clash() {
-        assert_eq!(Keymap::with(&BTreeMap::new()), Ok(Keymap::default()));
-        let names: std::collections::BTreeSet<&str> =
-            Action::ALL.iter().map(|action| action.name()).collect();
-        assert_eq!(names.len(), Action::ALL.len(), "each named once");
-    }
-
-    #[test]
-    fn a_key_does_what_its_screen_says() {
-        let keys = Keymap::default();
-        let r = Chord::parse("r").unwrap();
-        assert_eq!(
-            keys.action(Screen::Sessions, r),
-            Some(Action::RestartSession)
-        );
-        assert_eq!(
-            keys.action(Screen::Tickets, r),
-            Some(Action::RefreshTickets)
-        );
-        assert_eq!(keys.action(Screen::Changes, r), Some(Action::ChangesAgain));
-        assert_eq!(keys.action(Screen::InSession, r), None, "the program's");
-        let leave = Chord::parse("Q").unwrap();
-        assert_eq!(
-            keys.action(Screen::InSession, leave),
-            Some(Action::LeaveSession)
-        );
-        assert_eq!(keys.action(Screen::Sessions, leave), None);
-        assert_eq!(keys.label(Action::Rename), "Shift-R");
-        assert_eq!(keys.labels(Action::Help), "h ?");
-    }
-
-    #[test]
-    fn the_person_s_keys_take_the_place_of_muster_s() {
-        let keys = Keymap::with(&set(&[("new_session", &["N"]), ("rename", &["F2"])])).unwrap();
-        assert_eq!(
-            keys.action(Screen::Sessions, Chord::parse("N").unwrap()),
-            Some(Action::NewSession)
-        );
-        assert_eq!(
-            keys.action(Screen::Sessions, Chord::parse("n").unwrap()),
-            None
-        );
-        assert_eq!(keys.label(Action::Rename), "F2");
-        assert!(!keys.is_default(Action::Rename));
-        // None at all: the action goes without a key.
-        let keys = Keymap::with(&set(&[("move_panels", &[])])).unwrap();
-        assert_eq!(keys.label(Action::MovePanels), "none");
-    }
-
-    #[test]
-    fn a_key_another_action_has_on_the_same_screen_is_refused() {
-        assert_eq!(
-            Keymap::with(&set(&[("new_session", &["d"])])),
-            Err(KeysError::Taken {
-                action: "new_session".to_owned(),
-                key: "d".to_owned(),
-                other: "show_changes".to_owned(),
-            })
-        );
-        // On screens they never share, two actions may have one key.
-        assert!(Keymap::with(&set(&[("refresh_tickets", &["n"])])).is_ok());
-    }
-
-    #[test]
-    fn a_terminal_tab_is_left_on_a_letter_with_ctrl_or_alt_prd_6b() {
-        let keys = Keymap::default();
-        assert_eq!(
-            keys.action(Screen::InTab, Chord::parse("ctrl-q").unwrap()),
-            Some(Action::LeaveTab)
-        );
-        assert_eq!(Action::LeaveTab.group(), "In a terminal tab");
-        assert!(Keymap::with(&set(&[("leave_tab", &["alt-x"])])).is_ok());
-        for typed in ["Q", "x", "f2", "ctrl-]"] {
-            assert!(
-                matches!(
-                    Keymap::with(&set(&[("leave_tab", &[typed])])),
-                    Err(KeysError::InTab { .. })
-                ),
-                "{typed}"
-            );
-        }
-    }
-
-    #[test]
-    fn keys_every_screen_keeps_and_typed_keys_in_a_session_are_refused() {
-        for key in ["enter", "up", "ctrl-c", "pagedown"] {
-            assert!(
-                matches!(
-                    Keymap::with(&set(&[("quit", &[key])])),
-                    Err(KeysError::Kept { .. })
-                ),
-                "{key}"
-            );
-        }
-        let error = Keymap::with(&set(&[("leave_session", &["x"])])).unwrap_err();
-        assert!(matches!(error, KeysError::Typed { .. }), "{error:?}");
-        assert!(error.to_string().contains("needs ctrl or alt"), "{error}");
-        assert!(Keymap::with(&set(&[("leave_session", &["alt-q"])])).is_ok());
-    }
-
-    #[test]
-    fn a_name_that_is_no_action_is_kept_aside_and_warned_of_never_refused() {
-        // A plugin's action, its plugin removed: its key, whatever it is,
-        // takes no other's place and makes nothing unreadable.
-        let keys = Keymap::with(&set(&[
-            ("zoetrope_graph", &["Z"]),
-            ("open_sesame", &["not a key"]),
-            ("rename", &["F2"]),
-        ]))
-        .unwrap();
-        assert_eq!(keys.label(Action::Rename), "F2", "the rest as set");
-        assert_eq!(
-            keys.action(Screen::Sessions, Chord::parse("Z").unwrap()),
-            None
-        );
-        assert_eq!(
-            keys.aside().get("zoetrope_graph"),
-            Some(&vec!["Z".to_owned()])
-        );
-        assert_eq!(
-            keys.warnings(),
-            [
-                KeysWarning::NotAnAction("open_sesame".to_owned()),
-                KeysWarning::NotAnAction("zoetrope_graph".to_owned()),
-            ]
-        );
-        assert!(
-            keys.warnings()[1]
-                .to_string()
-                .starts_with("keys.zoetrope_graph is not something a key does"),
-            "{}",
-            keys.warnings()[1]
-        );
-        assert!(Keymap::default().warnings().is_empty());
-    }
-}
+mod tests;

@@ -68,13 +68,12 @@ impl App {
         let with_list = !self.list_folded();
         let keys = self.panel_with_keys();
         let placed = self.placed_beside();
-        let showing = |panel: Panel| match panel {
-            Panel::List => with_list,
-            // Nothing to draw there while the session selected is placed.
-            Panel::Session => !self.session_panel_empty(),
-            Panel::Changes => self.changes_shown(),
-            Panel::Plugin => self.plugin_beside().is_some(),
-            Panel::Placed(session) => placed.contains(&session),
+        let wanted = |panel: Panel| self.wanted(panel, &placed);
+        // Zoomed, a panel is shown alone beside the list.
+        let zoomed = self.panels.zoomed.filter(|zoomed| wanted(*zoomed));
+        let showing = |panel: Panel| match zoomed {
+            Some(zoomed) => panel == zoomed || (panel == Panel::List && with_list),
+            None => wanted(panel),
         };
         let layout = self.panels();
         let fits = |shown: &dyn Fn(Panel) -> bool| {
@@ -98,7 +97,7 @@ impl App {
         };
         // What the panel with the keys shows over, its title says.
         let wanted = layout
-            .shown(showing)
+            .shown(wanted)
             .map_or(0, |node| count(&node, Panel::List));
         let drawn = solved
             .panels
@@ -107,6 +106,27 @@ impl App {
             .count();
         solved.hidden = wanted.saturating_sub(drawn);
         solved
+    }
+
+    /// Whether `panel` has something to show, `placed` the sessions placed
+    /// that can be.
+    fn wanted(&self, panel: Panel, placed: &[muster_core::SessionId]) -> bool {
+        match panel {
+            Panel::List => !self.list_folded(),
+            // Nothing to draw there while the session selected is placed.
+            Panel::Session => !self.session_panel_empty(),
+            Panel::Changes => self.changes_shown(),
+            Panel::Plugin => self.plugin_beside().is_some(),
+            Panel::Placed(session) => placed.contains(&session),
+        }
+    }
+
+    /// The panels that have something to show, in the layout's order.
+    pub(crate) fn wanted_panels(&self) -> Vec<Panel> {
+        let placed = self.placed_beside();
+        self.panels()
+            .shown(|panel| self.wanted(panel, &placed))
+            .map_or_else(Vec::new, |node| panels_of(&node))
     }
 
     /// The fold key: folds the list away, so the session takes its place,
@@ -156,6 +176,18 @@ fn count(node: &muster_core::layout::Node, but: Panel) -> usize {
         muster_core::layout::Part::Panel(panel) => usize::from(*panel != but),
         muster_core::layout::Part::Split(_, first, second) => {
             count(first, but) + count(second, but)
+        }
+    }
+}
+
+/// The panels in `node`, in its order.
+fn panels_of(node: &muster_core::layout::Node) -> Vec<Panel> {
+    match &node.part {
+        muster_core::layout::Part::Panel(panel) => vec![*panel],
+        muster_core::layout::Part::Split(_, first, second) => {
+            let mut panels = panels_of(first);
+            panels.extend(panels_of(second));
+            panels
         }
     }
 }

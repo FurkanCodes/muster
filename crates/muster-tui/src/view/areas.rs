@@ -21,6 +21,7 @@ pub(super) struct Key {
     placed: Vec<muster_core::SessionId>,
     session_empty: bool,
     keys: Panel,
+    zoomed: Option<Panel>,
 }
 
 impl Key {
@@ -38,6 +39,7 @@ impl Key {
             placed: app.placed_beside(),
             session_empty: app.session_panel_empty(),
             keys: app.panel_with_keys(),
+            zoomed: app.panels.zoomed,
         }
     }
 }
@@ -110,6 +112,7 @@ mod tests {
         changed!(plugin, !key.plugin);
         changed!(placed, vec![muster_core::SessionId::new()]);
         changed!(keys, Panel::Plugin);
+        changed!(zoomed, Some(Panel::Session));
         for changed in changes {
             let mut cache = Cache::default();
             cache.get(key.clone(), || expected.clone());

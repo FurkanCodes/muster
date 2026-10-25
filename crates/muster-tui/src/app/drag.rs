@@ -333,13 +333,7 @@ impl App {
         match (button, panel) {
             (Button::TakeOff, Panel::Placed(session)) => self.take_off(session),
             (Button::TakeOff, Panel::Session) => {
-                if let Some(session) = self.preview_session() {
-                    if self.mode == Mode::Terminal(session) {
-                        self.mode = Mode::Browse;
-                    }
-                    self.panels.preview_folded = Some(session);
-                    self.say("The preview is folded away until you select another session.");
-                }
+                self.fold_preview();
                 Vec::new()
             }
             (Button::Place, Panel::Session) => match self.preview_session() {
@@ -387,7 +381,7 @@ impl App {
 
     /// The layout with `divider` moved so the first of its two takes
     /// `first` cells: the list a width of its own, others a share.
-    fn resized_at(&self, divider: &Divider, first: u16) -> Layout {
+    pub(super) fn resized_at(&self, divider: &Divider, first: u16) -> Layout {
         let layout = self.panels().clone();
         let Some(path) = layout.split_between(&divider.first, &divider.second) else {
             return layout;
@@ -528,7 +522,7 @@ fn body(areas: &crate::view::BrowseAreas) -> Rect {
 }
 
 /// The nearest panel past `area`'s `edge`, overlapping it the other way.
-fn neighbour(shown: &[(Panel, Rect)], area: Rect, edge: Edge) -> Option<Panel> {
+pub(super) fn neighbour(shown: &[(Panel, Rect)], area: Rect, edge: Edge) -> Option<Panel> {
     let across = |other: Rect| other.y < area.bottom() && area.y < other.bottom();
     let down = |other: Rect| other.x < area.right() && area.x < other.right();
     shown
