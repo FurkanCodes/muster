@@ -68,7 +68,7 @@ impl App {
         }
         match &self.panels.drag {
             Some(Drag::Divider { divider, .. }) => Some(Grab::Line(divider.path.clone())),
-            Some(Drag::Panel { .. } | Drag::Line { .. }) => None,
+            Some(Drag::Panel { .. } | Drag::Line { .. } | Drag::Bar { .. }) => None,
             None => self.hold_at(at).map(|hold| match hold {
                 Hold::Line { divider, .. } => Grab::Line(divider.path),
                 Hold::Title(panel) => Grab::Title(panel),
@@ -88,6 +88,7 @@ impl App {
                 Shape::Grabbing
             }
             (Some(Drag::Line { .. }), _) => Shape::Default,
+            (Some(Drag::Bar { .. }), _) => Shape::Rows,
             (Some(Drag::Panel { .. }), _) => Shape::Grab,
             (Some(Drag::Divider { divider, .. }), _) => arrows(divider.split),
             (_, Some(Grab::Title(_))) => Shape::Grab,

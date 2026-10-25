@@ -32,6 +32,7 @@ mod prefix;
 mod rebind;
 mod rename;
 pub(crate) mod screens;
+pub(crate) mod scrollbars;
 pub(crate) mod selection;
 mod settings;
 mod settle;
@@ -126,6 +127,8 @@ mod project_tests;
 mod pull_request_tests;
 #[cfg(test)]
 mod rebind_tests;
+#[cfg(test)]
+mod scrollbars_tests;
 #[cfg(test)]
 mod selection_tests;
 #[cfg(test)]

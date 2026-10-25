@@ -37,6 +37,7 @@ mod plugins;
 mod preview;
 mod pull_request;
 mod rebind;
+pub(crate) mod scrollbar;
 mod selection;
 mod sessions;
 pub(crate) mod settings;
@@ -202,6 +203,11 @@ fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> B
     }
 }
 
+/// Where the help is drawn over `window`.
+pub(crate) fn help_area(window: Rect) -> Rect {
+    help::area(window)
+}
+
 /// The hints for the selected line of *Tickets* or *Settings*, which its
 /// right-click menu offers too.
 pub(crate) fn line_hints(app: &App) -> Vec<String> {
@@ -310,6 +316,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         draw_session(frame, app, *session, *area, Panel::Placed(*session), &areas);
     }
     draw_fold_button(frame, app, &areas);
+    scrollbar::draw_bars(frame, app);
     drag::draw_moving(frame, app, &areas);
     // The daemon out of reach: what it last said stays, dimmed, until it
     // answers again; the bars above and below say so.
@@ -327,7 +334,10 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     match &app.mode {
         Mode::Dialog(dialog) => dialogs::draw_dialog(frame, app, dialog, area),
         Mode::Menu(open) => menu::draw_menu(frame, open, area, theme::of(app)),
-        Mode::Help(open) => help::draw_help(frame, app, open, area),
+        Mode::Help(open) => {
+            help::draw_help(frame, app, open, area);
+            scrollbar::draw_bars(frame, app);
+        }
         _ => {}
     }
 }
