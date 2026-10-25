@@ -98,14 +98,18 @@ pub(crate) struct Panels {
     pub(crate) hover: Option<grab::Grab>,
     /// The panels being moved with the keys.
     pub(crate) arranging: Option<drag::Arranging>,
-    /// The sessions pinned in panels of their own that are streamed, and
+    /// The sessions placed in panels of their own that are streamed, and
     /// the size each was given.
-    pub(crate) pinned: Vec<super::settle::Streamed>,
-    /// The last two sessions the list showed that were not pinned, the
-    /// latest first: the session's panel keeps one while a pinned one is
-    /// selected (`session_beside_list`). Two, as a line dragged out of the
-    /// list is selected as it is pressed, before it is pinned.
+    pub(crate) placed: Vec<super::settle::Streamed>,
+    /// The last two sessions the list showed that were not placed, the
+    /// latest first: the preview keeps one while a placed one is selected
+    /// (`session_beside_list`). Two, as a line dragged out of the list is
+    /// selected as it is pressed, before it is placed.
     pub(crate) agents: [Option<SessionId>; 2],
+    /// The session whose preview the person folded away by its `✕`: the
+    /// preview shows again once the list selects another, or they type in
+    /// it.
+    pub(crate) preview_folded: Option<SessionId>,
 }
 
 /// The news told the person while they look elsewhere (`app::alarm`).

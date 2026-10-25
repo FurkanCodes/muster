@@ -470,11 +470,12 @@ mod tests {
             "f",
         )
         .unwrap();
-        // Written before the plugin's panel: it goes where the default
-        // puts it, under the shell.
+        // Written before the plugin's panel, and naming the shell's, which
+        // shells placed took the place of: the plugin's panel goes where the
+        // default puts it, under the changes, and the shell's is gone.
         assert_eq!(
             written.preferences.panels.to_string(),
-            "session | list 30 | (changes / shell / plugin)"
+            "session | list 30 | (changes / plugin)"
         );
         assert!(written.preferences.list_folded);
         let old_default = MusterConfig::parse(

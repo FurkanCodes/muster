@@ -21,8 +21,10 @@ pub(crate) const LIST_MOST: u16 = 36;
 const fn least(panel: Panel, list: u16) -> (u16, u16) {
     match panel {
         Panel::List => (list, 6),
-        Panel::Session | Panel::Changes | Panel::Pinned(_) => (60, 6),
-        Panel::Shell | Panel::Plugin => (40, 6),
+        Panel::Session | Panel::Changes => (60, 6),
+        // A terminal placed is the person's to make as narrow as they
+        // like, a shell's or an agent's beside others.
+        Panel::Placed(_) | Panel::Plugin => (40, 6),
     }
 }
 
@@ -107,6 +109,8 @@ impl Divider {
 pub(crate) struct Solved {
     pub(crate) panels: Vec<(Panel, Rect)>,
     pub(crate) dividers: Vec<Divider>,
+    /// How many panels to show the window had no room for.
+    pub(crate) hidden: usize,
 }
 
 impl Solved {
@@ -283,17 +287,17 @@ mod tests {
     #[test]
     fn shares_and_widths_are_as_the_person_gave_them() {
         let solved = solved(
-            "list 34 | session 60% | (changes / shell)",
-            &[Panel::List, Panel::Session, Panel::Changes, Panel::Shell],
+            "list 34 | session 60% | (changes / plugin)",
+            &[Panel::List, Panel::Session, Panel::Changes, Panel::Plugin],
             BODY,
         );
         assert_eq!(solved.of(Panel::List).width, 34);
         // 60% of the 166 the session shares with the column beside it.
         assert_eq!(solved.of(Panel::Session).width, 99);
         let changes = solved.of(Panel::Changes);
-        let shell = solved.of(Panel::Shell);
+        let plugin = solved.of(Panel::Plugin);
         assert_eq!((changes.x, changes.width, changes.height), (133, 67, 20));
-        assert_eq!((shell.y, shell.height), (21, 20));
+        assert_eq!((plugin.y, plugin.height), (21, 20));
         // One above the other, the line is the first's bottom edge.
         let down = solved
             .dividers
@@ -308,7 +312,7 @@ mod tests {
     fn a_share_gives_way_to_what_a_panel_needs() {
         // 10% would leave the session fewer columns than it is read in.
         let solved = solved(
-            "list | session 10% | (changes / shell)",
+            "list | session 10% | (changes / plugin)",
             &[Panel::List, Panel::Session, Panel::Changes],
             Rect::new(0, 1, 160, 30),
         );
@@ -319,7 +323,7 @@ mod tests {
     #[test]
     fn the_list_on_the_right_keeps_its_width() {
         let solved = solved(
-            "session | (changes / shell) | list",
+            "session | (changes / plugin) | list",
             &[Panel::List, Panel::Session],
             Rect::new(0, 1, 120, 30),
         );
@@ -331,9 +335,9 @@ mod tests {
     fn what_a_layout_needs_adds_up_side_by_side_and_one_above_the_other() {
         let layout = Layout::default();
         let all = layout.shown(|_| true).unwrap();
-        // The list's 30, the session's 60, and the changes' 60 above the
-        // shell's 40 above a plugin's panel's 40.
-        assert_eq!(needs(&all, 30), (150, 18));
+        // The list's 30, the session's 60, and the changes' 60 above a
+        // plugin's panel's 40.
+        assert_eq!(needs(&all, 30), (150, 12));
         let two = layout
             .shown(|panel| matches!(panel, Panel::List | Panel::Session))
             .unwrap();

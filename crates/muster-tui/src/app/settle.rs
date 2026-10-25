@@ -6,7 +6,7 @@ use muster_core::SessionId;
 use muster_core::layout::Panel;
 use muster_core::protocol::{ClientFrame, Command, TermSize};
 
-/// A session streamed beside the one the list shows, a shell or a plugin's
+/// A session streamed beside the preview, a placed one or a plugin's
 /// panel, and the size its program was last given.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Streamed {
@@ -23,7 +23,7 @@ impl App {
     /// state, after anything changed.
     pub(super) fn settle(&mut self) -> Vec<Action> {
         self.take_wanted();
-        self.take_wanted_shell();
+        let placed = self.take_wanted_place();
         self.follow_answered();
         self.keep_folds();
         self.keep_selection();
@@ -36,32 +36,37 @@ impl App {
             self.mode = Mode::Browse;
             self.full_screen = false;
         }
-        // A shell beside the session that ended goes, and the keys with it.
-        if let Some(shell) = self.shell
+        // A placed shell that ended goes, and the keys with it.
+        if let Mode::Terminal(session) = self.mode
+            && self.panels().placed().contains(&session)
             && self
                 .model
-                .session(shell)
-                .is_none_or(|stored| stored.ended_at.is_some())
+                .session(session)
+                .is_some_and(|stored| stored.kind().is_shell() && stored.ended_at.is_some())
         {
-            self.shell = None;
-            if self.mode == Mode::Terminal(shell) {
-                self.mode = Mode::Browse;
-            }
+            self.mode = Mode::Browse;
         }
         self.keep_plugin_keys();
         if !matches!(self.link, Link::Connected { .. }) {
-            return Vec::new();
+            return placed;
         }
-        let mut actions = self.fetch_tickets();
+        let mut actions = placed;
+        actions.extend(self.fetch_tickets());
         actions.extend(self.fetch_settings());
         actions.extend(self.settle_changes());
         actions.extend(self.remove_closed());
         actions.extend(self.remove_idle_worktrees());
         if let Some(session) = self.focused_session()
-            && !self.pinned_beside().contains(&session)
+            && !self.placed_beside().contains(&session)
             && self.panels.agents[0] != Some(session)
         {
             self.panels.agents = [Some(session), self.panels.agents[0]];
+        }
+        // A preview folded away comes back as the list selects another.
+        if self.panels.preview_folded.is_some()
+            && self.panels.preview_folded != self.focused_session()
+        {
+            self.panels.preview_folded = None;
         }
         let told = self.tell_focus();
         actions.extend(self.settle_streams());
@@ -69,33 +74,26 @@ impl App {
         actions
     }
 
-    /// Streams what is shown: the session the list shows or types in
-    /// (`attached`), and beside it the shell (`shell_stream`), a plugin's
-    /// panel (`plugin_stream`) and the sessions pinned in panels of their
-    /// own (`panels.pinned`), each at its panel's size. A
+    /// Streams what is shown: the session the preview shows or types in
+    /// (`attached`), and beside it a plugin's panel (`plugin_stream`) and
+    /// the sessions placed in panels of their own (`panels.placed`), each
+    /// at its panel's size. A
     /// session that moves from one to another keeps its stream: it is
     /// detached only where none shows it, and attached only where none
     /// streamed it, so a Detach never follows its own Attach.
     fn settle_streams(&mut self) -> Vec<Action> {
         let main = self.shown_session();
-        let shell = self
-            .shell_beside()
-            .filter(|_| !self.narrow() || self.typing_in_shell());
         let plugin = self
             .plugin_beside()
             .filter(|_| !self.narrow() || self.typing_in_plugin());
-        let pinned = self.pinned_beside();
-        let had: Vec<Option<SessionId>> = [
-            self.attached,
-            self.shell_stream.session,
-            self.plugin_stream.session,
-        ]
-        .into_iter()
-        .chain(self.panels.pinned.iter().map(|stream| stream.session))
-        .collect();
-        let wanted: Vec<Option<SessionId>> = [main, shell, plugin]
+        let placed = self.placed_beside();
+        let had: Vec<Option<SessionId>> = [self.attached, self.plugin_stream.session]
             .into_iter()
-            .chain(pinned.iter().copied().map(Some))
+            .chain(self.panels.placed.iter().map(|stream| stream.session))
+            .collect();
+        let wanted: Vec<Option<SessionId>> = [main, plugin]
+            .into_iter()
+            .chain(placed.iter().copied().map(Some))
             .collect();
         let mut actions: Vec<Action> = had
             .iter()
@@ -122,23 +120,20 @@ impl App {
         {
             actions.extend(self.fit_attached());
         }
-        let (stream, more) = self.settle_beside(self.shell_stream, shell, &had, self.shell_size());
-        self.shell_stream = stream;
-        actions.extend(more);
         let (stream, more) =
             self.settle_beside(self.plugin_stream, plugin, &had, self.plugin_size());
         self.plugin_stream = stream;
         actions.extend(more);
-        let streamed = std::mem::take(&mut self.panels.pinned);
-        for session in pinned {
+        let streamed = std::mem::take(&mut self.panels.placed);
+        for session in placed {
             let stream = streamed
                 .iter()
                 .find(|stream| stream.session == Some(session))
                 .copied()
                 .unwrap_or_default();
-            let size = self.panel_size(Panel::Pinned(session));
+            let size = self.panel_size(Panel::Placed(session));
             let (stream, more) = self.settle_beside(stream, Some(session), &had, size);
-            self.panels.pinned.push(stream);
+            self.panels.placed.push(stream);
             actions.extend(more);
         }
         actions

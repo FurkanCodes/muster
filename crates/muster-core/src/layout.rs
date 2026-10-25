@@ -1,13 +1,13 @@
 //! How the UI's panels are laid out (`PRODUCT.md` §6 Sessions): the list,
-//! the session (or what the screen shows beside the list), a workspace's
-//! changes, its shell and a plugin's panel, each where the person put it,
-//! side by side or one above the other; and beside them any sessions the
-//! person pinned there, each its own panel, one agent's terminal. It is a
-//! small tree of them, kept as one line of text in Muster's own settings
-//! (`[layout] panels`):
+//! the preview (the session the list selects, or what the screen shows
+//! beside the list), a workspace's changes and a plugin's panel, each where
+//! the person put it, side by side or one above the other; and beside them
+//! every terminal the person placed there, an agent's or a shell's, each
+//! its own panel. It is a small tree of them, kept as one line of text in
+//! Muster's own settings (`[layout] panels`):
 //!
 //! ```text
-//! session:ses_01J… | list | session 60% | (changes / shell / plugin)
+//! session:ses_01J… | list | session 60% | (changes / plugin)
 //! ```
 //!
 //! `|` puts two side by side and `/` one above the other; a run of one of
@@ -17,8 +17,9 @@
 //! size shares evenly, but the list, which is as wide as its lines need.
 //! A panel with nothing to show leaves its place to the other of its two.
 //! A layout written before a panel was added still reads: the panel is put
-//! where the default layout puts it, beside its neighbour there. Parsing
-//! does no IO (`ARC-01`).
+//! where the default layout puts it, beside its neighbour there; and one
+//! naming the `shell` panel, which gave its place to shells placed as any
+//! terminal is, reads without it. Parsing does no IO (`ARC-01`).
 
 use std::fmt;
 
@@ -32,57 +33,53 @@ pub enum Panel {
     /// The list of the screen shown: sessions, Needs you, tickets or
     /// settings.
     List,
-    /// The selected session's terminal, or what the screen shows of the
-    /// line selected.
+    /// The preview: the selected session's terminal, or what the screen
+    /// shows of the line selected.
     Session,
     /// A workspace's changes and its timeline.
     Changes,
-    /// A shell in the session's workspace.
-    Shell,
     /// A plugin's panel in the session's workspace.
     Plugin,
-    /// One session's terminal, pinned there by the person whatever the
-    /// list selects: `session:<its id>` in the layout's text. Any number
-    /// of them, each once.
-    Pinned(SessionId),
+    /// One session's terminal, an agent's or a shell's, placed there by
+    /// the person whatever the list selects: `session:<its id>` in the
+    /// layout's text. Any number of them, each once.
+    Placed(SessionId),
 }
 
 impl Panel {
     /// Muster's own panels, in the order the default layout names them;
-    /// every layout has each once. Sessions pinned are the person's.
-    pub const ALL: [Self; 5] = [
-        Self::List,
-        Self::Session,
-        Self::Changes,
-        Self::Shell,
-        Self::Plugin,
-    ];
+    /// every layout has each once. Sessions placed are the person's.
+    pub const ALL: [Self; 4] = [Self::List, Self::Session, Self::Changes, Self::Plugin];
 
-    /// As the layout's text names one of Muster's own; a session pinned
+    /// The word of a panel Muster no longer has, which a layout written
+    /// before still names: the shell beside the session, whose place went
+    /// to shells placed as any terminal is.
+    const RETIRED: &'static str = "shell";
+
+    /// As the layout's text names one of Muster's own; a session placed
     /// is named by its id (`Display`).
     #[must_use]
     pub const fn word(self) -> &'static str {
         match self {
             Self::List => "list",
-            Self::Session | Self::Pinned(_) => "session",
+            Self::Session | Self::Placed(_) => "session",
             Self::Changes => "changes",
-            Self::Shell => "shell",
             Self::Plugin => "plugin",
         }
     }
 
-    /// The session pinned there, if it is a pinned session's panel.
+    /// The session placed there, if it is a placed session's panel.
     #[must_use]
-    pub const fn pinned(self) -> Option<SessionId> {
+    pub const fn placed(self) -> Option<SessionId> {
         match self {
-            Self::Pinned(session) => Some(session),
+            Self::Placed(session) => Some(session),
             _ => None,
         }
     }
 
     fn from_word(word: &str) -> Option<Self> {
         if let Some(id) = word.strip_prefix("session:") {
-            return id.parse().ok().map(Self::Pinned);
+            return id.parse().ok().map(Self::Placed);
         }
         let word = word.to_ascii_lowercase();
         Self::ALL.into_iter().find(|panel| panel.word() == word)
@@ -92,7 +89,7 @@ impl Panel {
 impl fmt::Display for Panel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Pinned(session) => write!(f, "session:{session}"),
+            Self::Placed(session) => write!(f, "session:{session}"),
             _ => f.write_str(self.word()),
         }
     }
@@ -176,6 +173,9 @@ pub enum Place {
     Window(Edge),
     /// At an edge of another panel, sharing its place.
     Beside(Panel, Edge),
+    /// In another panel's place, which takes the place left: a panel
+    /// dropped on another's middle swaps with it.
+    Over(Panel),
 }
 
 /// The panels' layout. Every panel is in it once, shown or not.
@@ -186,9 +186,9 @@ pub struct Layout {
     root: Node,
 }
 
-/// What the person sees first: the list, the session beside it, and the
-/// changes above the shell above a plugin's panel beside that.
-pub const DEFAULT: &str = "list | session 60% | (changes / shell / plugin)";
+/// What the person sees first: the list, the preview beside it, and the
+/// changes above a plugin's panel beside that.
+pub const DEFAULT: &str = "list | session 60% | (changes / plugin)";
 
 impl Default for Layout {
     #[expect(
@@ -204,7 +204,7 @@ impl Default for Layout {
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum LayoutError {
     #[error(
-        "{0:?} is not a panel: the panels are list, session, changes, shell and plugin, and a session pinned, session:<its id>"
+        "{0:?} is not a panel: the panels are list, session, changes and plugin, and a session placed, session:<its id>"
     )]
     NotAPanel(String),
     #[error("{0} is in the layout twice")]
@@ -224,7 +224,9 @@ impl Layout {
     /// as one written before that panel was Muster's lacks it, is put
     /// where the default layout puts it.
     pub fn parse(text: &str) -> Result<Self, LayoutError> {
-        let root = tree(text)?;
+        let Some(root) = tree(text)? else {
+            return Ok(Self::default());
+        };
         let mut seen = Vec::new();
         collect(&root, &mut seen);
         for (at, panel) in seen.iter().enumerate() {
@@ -255,19 +257,19 @@ impl Layout {
         }
     }
 
-    /// The sessions pinned, in the layout's order.
+    /// The sessions placed, in the layout's order.
     #[must_use]
-    pub fn pinned(&self) -> Vec<SessionId> {
+    pub fn placed(&self) -> Vec<SessionId> {
         let mut panels = Vec::new();
         collect(&self.root, &mut panels);
-        panels.into_iter().filter_map(Panel::pinned).collect()
+        panels.into_iter().filter_map(Panel::placed).collect()
     }
 
-    /// The layout with `session` pinned at `place`, or moved there where it
-    /// is pinned already.
+    /// The layout with `session` placed at `place`, or moved there where it
+    /// is placed already.
     #[must_use]
-    pub fn pinning(&self, session: SessionId, place: Place) -> Self {
-        let panel = Panel::Pinned(session);
+    pub fn placing(&self, session: SessionId, place: Place) -> Self {
+        let panel = Panel::Placed(session);
         if contains(&self.root, panel) {
             return self.moved(panel, place);
         }
@@ -277,21 +279,29 @@ impl Layout {
         };
         let root = match place {
             Place::Window(edge) => joined(moving, self.root.clone(), edge, None),
-            Place::Beside(target, edge) if contains(&self.root, target) => {
+            // A session not placed yet has no place to give: it goes beside.
+            Place::Beside(target, _) | Place::Over(target) if contains(&self.root, target) => {
+                let edge = if let Place::Beside(_, edge) = place {
+                    edge
+                } else {
+                    Edge::Right
+                };
                 beside(self.root.clone(), target, moving, edge)
             }
-            Place::Beside(..) => joined(moving, self.root.clone(), Edge::Right, None),
+            Place::Beside(..) | Place::Over(_) => {
+                joined(moving, self.root.clone(), Edge::Right, None)
+            }
         };
         Self {
             root: Node { size: None, ..root },
         }
     }
 
-    /// The layout with `session` no longer pinned: its place goes to the
+    /// The layout with `session` no longer placed: its place goes to the
     /// other of its two.
     #[must_use]
-    pub fn unpinned(&self, session: SessionId) -> Self {
-        self.without(Panel::Pinned(session))
+    pub fn unplaced(&self, session: SessionId) -> Self {
+        self.without(Panel::Placed(session))
     }
 
     /// The tree, from the whole window down.
@@ -306,8 +316,11 @@ impl Layout {
     /// the place it left.
     #[must_use]
     pub fn moved(&self, panel: Panel, place: Place) -> Self {
-        if matches!(place, Place::Beside(other, _) if other == panel) {
+        if matches!(place, Place::Beside(other, _) | Place::Over(other) if other == panel) {
             return self.clone();
+        }
+        if let Place::Over(other) = place {
+            return self.swapped(panel, other);
         }
         let Some((rest, size)) = without(&self.root, panel) else {
             return self.clone();
@@ -319,6 +332,7 @@ impl Layout {
         let root = match place {
             Place::Window(edge) => joined(moving, rest, edge, None),
             Place::Beside(target, edge) => beside(rest, target, moving, edge),
+            Place::Over(_) => return self.clone(),
         };
         Self {
             root: Node { size: None, ..root },
@@ -444,8 +458,9 @@ enum Token {
     Close,
 }
 
-/// The tree `text` writes, whatever panels it has.
-fn tree(text: &str) -> Result<Node, LayoutError> {
+/// The tree `text` writes, whatever panels it has, without a retired
+/// one; `None` where it names that alone.
+fn tree(text: &str) -> Result<Option<Node>, LayoutError> {
     let tokens = tokens(text)?;
     let mut at = 0;
     let root = node(&tokens, &mut at)?;
@@ -550,42 +565,59 @@ fn size(word: &str) -> Result<Size, LayoutError> {
     }
 }
 
-/// A run of terms joined by one sign, nested to the right.
-fn node(tokens: &[Token], at: &mut usize) -> Result<Node, LayoutError> {
+/// A run of terms joined by one sign, nested to the right; a retired
+/// panel's term left out, and `None` where nothing else is in it.
+fn node(tokens: &[Token], at: &mut usize) -> Result<Option<Node>, LayoutError> {
     let first = term(tokens, at)?;
     let Some(Token::Sign(split)) = tokens.get(*at) else {
         return Ok(first);
     };
     let split = *split;
-    let mut rest = Vec::new();
+    let mut terms = vec![first];
     while let Some(Token::Sign(sign)) = tokens.get(*at) {
         if *sign != split {
             return Err(LayoutError::Mixed);
         }
         *at += 1;
-        rest.push(term(tokens, at)?);
+        terms.push(term(tokens, at)?);
     }
+    let mut terms: Vec<Node> = terms.into_iter().flatten().collect();
     // `a | b | c` is `a | (b | c)`.
     let joined = |left: Node, right: Node| Node {
         part: Part::Split(split, Box::new(left), Box::new(right)),
         size: None,
     };
-    let Some(mut nested) = rest.pop() else {
-        return Ok(first);
+    let Some(mut nested) = terms.pop() else {
+        return Ok(None);
     };
-    while let Some(term) = rest.pop() {
+    if terms.is_empty() {
+        // The one term left takes the place the run had.
+        return Ok(Some(Node {
+            size: None,
+            ..nested
+        }));
+    }
+    while let Some(term) = terms.pop() {
         nested = joined(term, nested);
     }
-    Ok(joined(first, nested))
+    Ok(Some(nested))
 }
 
-fn term(tokens: &[Token], at: &mut usize) -> Result<Node, LayoutError> {
+/// A panel or a bracket, with its size; `None` for a retired panel, or a
+/// bracket of nothing else.
+fn term(tokens: &[Token], at: &mut usize) -> Result<Option<Node>, LayoutError> {
     let part = match tokens.get(*at) {
         Some(Token::Word(word)) => {
             *at += 1;
-            Panel::from_word(word)
-                .map(Part::Panel)
-                .ok_or_else(|| LayoutError::NotAPanel(word.clone()))?
+            if word.eq_ignore_ascii_case(Panel::RETIRED) {
+                None
+            } else {
+                Some(
+                    Panel::from_word(word)
+                        .map(Part::Panel)
+                        .ok_or_else(|| LayoutError::NotAPanel(word.clone()))?,
+                )
+            }
         }
         Some(Token::Open) => {
             *at += 1;
@@ -594,7 +626,7 @@ fn term(tokens: &[Token], at: &mut usize) -> Result<Node, LayoutError> {
                 return Err(LayoutError::Brackets);
             }
             *at += 1;
-            inner.part
+            inner.map(|inner| inner.part)
         }
         Some(Token::Close) => return Err(LayoutError::Brackets),
         _ => return Err(LayoutError::Incomplete),
@@ -606,7 +638,7 @@ fn term(tokens: &[Token], at: &mut usize) -> Result<Node, LayoutError> {
         }
         _ => None,
     };
-    Ok(Node { part, size })
+    Ok(part.map(|part| Node { part, size }))
 }
 
 fn collect(node: &Node, into: &mut Vec<Panel>) {

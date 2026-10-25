@@ -30,6 +30,7 @@ pub(crate) mod look;
 mod markdown;
 mod menu;
 mod naming;
+pub(crate) mod pane;
 pub(crate) mod picture;
 mod plugin_dialog;
 mod plugins;
@@ -74,16 +75,17 @@ pub(crate) fn terminal_area(area: Rect) -> Rect {
 pub(crate) struct BrowseAreas {
     pub(crate) top: Rect,
     pub(crate) list: Rect,
-    /// The session panel: the selected session's terminal, or what the
-    /// screen shows of the line selected.
+    /// The preview: the selected session's terminal, or what the screen
+    /// shows of the line selected.
     pub(crate) preview: Rect,
     pub(crate) changes: Rect,
-    /// The shell beside the session.
-    pub(crate) shell: Rect,
     /// A plugin's panel beside the session.
     pub(crate) plugin: Rect,
-    /// The sessions pinned in panels of their own.
-    pub(crate) pinned: Vec<(SessionId, Rect)>,
+    /// The sessions placed in panels of their own.
+    pub(crate) placed: Vec<(SessionId, Rect)>,
+    /// How many panels the window is too narrow for, shown over by the one
+    /// with the keys.
+    pub(crate) hidden: usize,
     pub(crate) bottom: Rect,
     /// The lines between panels, which a drag moves.
     pub(crate) dividers: Vec<Divider>,
@@ -96,12 +98,11 @@ impl BrowseAreas {
             Panel::List => self.list,
             Panel::Session => self.preview,
             Panel::Changes => self.changes,
-            Panel::Shell => self.shell,
             Panel::Plugin => self.plugin,
-            Panel::Pinned(session) => self
-                .pinned
+            Panel::Placed(session) => self
+                .placed
                 .iter()
-                .find(|(pinned, _)| *pinned == session)
+                .find(|(placed, _)| *placed == session)
                 .map_or(Rect::default(), |(_, area)| *area),
         }
     }
@@ -112,14 +113,13 @@ impl BrowseAreas {
             (Panel::List, self.list),
             (Panel::Session, self.preview),
             (Panel::Changes, self.changes),
-            (Panel::Shell, self.shell),
             (Panel::Plugin, self.plugin),
         ]
         .into_iter()
         .chain(
-            self.pinned
+            self.placed
                 .iter()
-                .map(|(session, area)| (Panel::Pinned(*session), *area)),
+                .map(|(session, area)| (Panel::Placed(*session), *area)),
         )
         .filter(|(_, area)| !area.is_empty())
         .collect()
@@ -150,7 +150,7 @@ pub(crate) fn session_area(app: &App, area: Rect) -> Rect {
     areas(app, area, 1, true).preview.inner(Margin::new(1, 1))
 }
 
-/// Where `panel` (the shell, a plugin's panel, a session pinned) is drawn
+/// Where `panel` (a plugin's panel, a session placed) is drawn
 /// in `area`, inside its border, measured as [`session_area`] is.
 pub(crate) fn panel_area(app: &App, area: Rect, panel: Panel) -> Rect {
     areas(app, area, 1, true).of(panel).inner(Margin::new(1, 1))
@@ -177,12 +177,12 @@ fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> B
         // list.
         Solved {
             panels: vec![(Panel::Changes, body)],
-            dividers: Vec::new(),
+            ..Solved::default()
         }
     } else {
         Solved {
             panels: vec![(Panel::List, body)],
-            dividers: Vec::new(),
+            ..Solved::default()
         }
     };
     BrowseAreas {
@@ -190,14 +190,14 @@ fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> B
         list: solved.of(Panel::List),
         preview: solved.of(Panel::Session),
         changes: solved.of(Panel::Changes),
-        shell: solved.of(Panel::Shell),
         plugin: solved.of(Panel::Plugin),
-        pinned: solved
+        placed: solved
             .panels
             .iter()
-            .filter_map(|(panel, area)| panel.pinned().map(|session| (session, *area)))
+            .filter_map(|(panel, area)| panel.placed().map(|session| (session, *area)))
             .collect(),
         bottom,
+        hidden: solved.hidden,
         dividers: solved.dividers,
     }
 }
@@ -227,7 +227,6 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
         list,
         preview,
         changes,
-        shell,
         plugin,
         bottom,
         ..
@@ -243,40 +242,28 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     }
     if !preview.is_empty() {
         if let Mode::Terminal(session) = app.mode
-            && !app.typing_in_shell()
             && !app.typing_in_plugin()
-            && app.typing_in_pinned().is_none()
+            && app.typing_in_placed().is_none()
         {
-            draw_session(frame, app, session, preview, true);
+            draw_session(frame, app, session, preview, Panel::Session, &areas);
         } else if app.view == View::Tickets {
             tickets::draw_ticket_details(frame, app, preview);
         } else if app.view == View::Settings {
             settings::draw_setting_details(frame, app, preview);
         } else {
-            draw_preview(frame, app, preview);
+            draw_preview(frame, app, preview, &areas);
         }
     }
     if !changes.is_empty() {
         changes::draw_changes(frame, app, changes);
     }
-    if !shell.is_empty()
-        && let Some(beside) = app.shell_beside()
-    {
-        draw_session(frame, app, beside, shell, app.typing_in_shell());
-    }
     if !plugin.is_empty()
         && let Some(beside) = app.plugin_beside()
     {
-        draw_session(frame, app, beside, plugin, app.typing_in_plugin());
+        draw_session(frame, app, beside, plugin, Panel::Plugin, &areas);
     }
-    for (session, area) in &areas.pinned {
-        draw_session(
-            frame,
-            app,
-            *session,
-            *area,
-            app.mode == Mode::Terminal(*session),
-        );
+    for (session, area) in &areas.placed {
+        draw_session(frame, app, *session, *area, Panel::Placed(*session), &areas);
     }
     drag::draw_moving(frame, app, &areas);
     // The daemon out of reach: what it last said stays, dimmed, until it

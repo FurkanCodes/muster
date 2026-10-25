@@ -17,9 +17,8 @@ pub(super) struct Key {
     narrow: bool,
     fills: bool,
     changes: bool,
-    shell: bool,
     plugin: bool,
-    pinned: Vec<muster_core::SessionId>,
+    placed: Vec<muster_core::SessionId>,
     session_empty: bool,
     keys: Panel,
 }
@@ -35,9 +34,8 @@ impl Key {
             narrow: app.narrow(),
             fills: app.pane_fills_width(),
             changes: app.changes_shown(),
-            shell: app.shell_beside().is_some(),
             plugin: app.plugin_beside().is_some(),
-            pinned: app.pinned_beside(),
+            placed: app.placed_beside(),
             session_empty: app.session_panel_empty(),
             keys: app.panel_with_keys(),
         }
@@ -103,15 +101,15 @@ mod tests {
         changed!(list, 36);
         changed!(
             layout,
-            Layout::parse("session | list | (changes / shell)").unwrap()
+            Layout::parse("session | list | (changes / plugin)").unwrap()
         );
         changed!(folded, !key.folded);
         changed!(narrow, !key.narrow);
         changed!(fills, !key.fills);
         changed!(changes, !key.changes);
-        changed!(shell, !key.shell);
         changed!(plugin, !key.plugin);
-        changed!(keys, Panel::Shell);
+        changed!(placed, vec![muster_core::SessionId::new()]);
+        changed!(keys, Panel::Plugin);
         for changed in changes {
             let mut cache = Cache::default();
             cache.get(key.clone(), || expected.clone());

@@ -17,8 +17,9 @@ impl App {
         self.link = Link::Connected { daemon_version };
         self.keep_in_view();
         self.attached = None;
-        self.shell_stream.session = None;
         self.plugin_stream.session = None;
+        // Every placed panel is streamed afresh.
+        self.panels.placed.clear();
         // A new daemon knows nothing of where the keys are.
         self.focus_told = None;
         self.requests.pending.clear();
@@ -44,8 +45,9 @@ impl App {
     pub(crate) fn on_disconnected(&mut self, reason: String) {
         self.link = Link::Lost(reason);
         self.attached = None;
-        self.shell_stream.session = None;
         self.plugin_stream.session = None;
+        // Every placed panel is streamed afresh.
+        self.panels.placed.clear();
         self.focus_told = None;
         self.requests.pending.clear();
         self.forget_unanswered();
@@ -248,8 +250,8 @@ impl App {
                 self.wanted = Some((Row::Session(id), true));
                 self.note = None;
             }
-            (Ok(Reply::SessionStarted { id }), Then::OpenShell) => {
-                self.wanted_shell = Some(id);
+            (Ok(Reply::SessionStarted { id }), Then::Place(place)) => {
+                self.wanted_place = Some((id, place));
                 self.note = None;
             }
             (Ok(Reply::SessionStarted { id }), Then::OpenRestarted) => {

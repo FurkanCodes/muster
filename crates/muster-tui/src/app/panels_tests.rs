@@ -180,7 +180,7 @@ fn a_panel_dragged_by_its_title_goes_where_it_is_dropped_and_is_kept() {
     };
     assert_eq!(
         layout.to_string(),
-        "(session 60% | (changes / shell / plugin)) | list"
+        "(session 60% | (changes / plugin)) | list"
     );
     let moved = areas(&world);
     assert_eq!((moved.list.x, moved.preview.x), (70, 0));
@@ -218,9 +218,7 @@ fn the_line_between_two_panels_shares_out_their_place_the_program_resized_as_it_
     let (_, change) = changed(&actions).expect("kept");
     assert_eq!(
         change,
-        PreferenceChange::Panels(
-            Layout::parse("list 40 | session 60% | (changes / shell)").unwrap()
-        )
+        PreferenceChange::Panels(Layout::parse("list 40 | session 60% | changes").unwrap())
     );
 }
 
@@ -260,7 +258,7 @@ fn m_moves_the_panels_with_the_keys_and_esc_puts_them_back() {
     assert_eq!(
         changed(&actions).map(|(_, change)| change),
         Some(PreferenceChange::Panels(
-            Layout::parse("list 32 | session 60% | (changes / shell)").unwrap()
+            Layout::parse("list 32 | session 60% | changes").unwrap()
         ))
     );
     assert_eq!(world.app.panels.arranging, None);
@@ -270,7 +268,7 @@ fn m_moves_the_panels_with_the_keys_and_esc_puts_them_back() {
 fn the_settings_screen_puts_the_panels_back_as_they_were_at_first() {
     let mut world = shown();
     preferences(&mut world.app, |preferences| {
-        preferences.panels = Layout::parse("session | list 40 | (changes / shell)").unwrap();
+        preferences.panels = Layout::parse("session | list 40 | changes").unwrap();
         preferences.list_folded = true;
     });
     press(&mut world.app, KeyCode::Char('4'));

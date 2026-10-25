@@ -292,36 +292,65 @@ async fn running_or_unknown_sessions_are_neither_restarted_nor_removed() {
     );
 }
 
-#[tokio::test]
-async fn a_session_pinned_beside_goes_from_the_layout_as_it_is_removed() {
+/// The layout with `session` placed beside the preview, as the daemon
+/// keeps it.
+async fn placed_beside(
+    connection: &mut Connection,
+    session: SessionId,
+) -> muster_core::layout::Layout {
     use muster_core::layout::{Edge, Panel, Place};
     use muster_core::settings::PreferenceChange;
 
-    let setup = setup().await;
-    let mut connection = setup.daemon.connect().await;
-    let session = start(&mut connection, setup.workspace, "shell").await;
     let snapshot = connection.subscribe().await.unwrap();
-    let pinned = snapshot
+    let placed = snapshot
         .preferences
         .panels
-        .pinning(session, Place::Beside(Panel::Session, Edge::Left));
+        .placing(session, Place::Beside(Panel::Session, Edge::Left));
     connection
-        .command(Command::ChangePreference(PreferenceChange::Panels(pinned)))
+        .command(Command::ChangePreference(PreferenceChange::Panels(placed)))
         .await
         .unwrap();
-    let kept = connection.subscribe().await.unwrap().preferences.panels;
-    assert_eq!(kept.pinned(), [session], "the daemon keeps it");
+    connection.subscribe().await.unwrap().preferences.panels
+}
 
+#[tokio::test]
+async fn a_session_placed_beside_goes_from_the_layout_as_it_is_removed() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let session = start(&mut connection, setup.workspace, "claude").await;
+    let kept = placed_beside(&mut connection, session).await;
+    assert_eq!(kept.placed(), [session], "the daemon keeps it");
+
+    // An agent that ends keeps its panel, its last screen there.
     exit(&mut connection, session).await;
+    let ended = connection.subscribe().await.unwrap().preferences.panels;
+    assert_eq!(ended.placed(), [session], "{ended}");
     connection
         .command(Command::RemoveSession { session })
         .await
         .unwrap();
     let after = connection.subscribe().await.unwrap().preferences.panels;
-    assert!(after.pinned().is_empty(), "{after}");
+    assert!(after.placed().is_empty(), "{after}");
     let written = std::fs::read_to_string(setup.sandbox.paths().config_dir.join("settings.toml"))
         .unwrap_or_default();
     assert!(!written.contains(&session.to_string()), "{written}");
+}
+
+#[tokio::test]
+async fn a_placed_shell_that_ends_leaves_its_panel_and_stays_on_the_list() {
+    let setup = setup().await;
+    let mut connection = setup.daemon.connect().await;
+    let shell = start(&mut connection, setup.workspace, "shell").await;
+    let kept = placed_beside(&mut connection, shell).await;
+    assert_eq!(kept.placed(), [shell]);
+    exit(&mut connection, shell).await;
+    let snapshot = connection.subscribe().await.unwrap();
+    assert!(
+        snapshot.preferences.panels.placed().is_empty(),
+        "{}",
+        snapshot.preferences.panels
+    );
+    assert!(snapshot.sessions.iter().any(|session| session.id == shell));
 }
 
 #[tokio::test]

@@ -199,20 +199,20 @@ impl Supervisor {
         Ok(Reply::Done)
     }
 
-    /// Takes out of the layout the sessions pinned there that are gone
-    /// (removed, or with their workspace), so a pinned panel never stays
-    /// for a session no client can show (`PRODUCT.md` §6).
-    pub(super) fn unpin_gone(&mut self) {
+    /// Takes out of the layout the sessions placed there that are gone
+    /// (removed, or with their workspace) and the shells that ended, so a
+    /// placed panel never stays for a session no client can show, nor a
+    /// shell's for a prompt that is no more (`PRODUCT.md` §6).
+    pub(super) fn unplace_gone(&mut self) {
         let panels = &self.state.preferences.panels;
         let gone: Vec<_> = panels
-            .pinned()
+            .placed()
             .into_iter()
-            .filter(|pinned| {
-                !self
-                    .state
-                    .sessions
-                    .iter()
-                    .any(|session| session.id == *pinned)
+            .filter(|placed| {
+                !self.state.sessions.iter().any(|session| {
+                    session.id == *placed
+                        && !(session.kind().is_shell() && session.ended_at.is_some())
+                })
             })
             .collect();
         if gone.is_empty() {
@@ -220,7 +220,7 @@ impl Supervisor {
         }
         let kept = gone
             .iter()
-            .fold(panels.clone(), |layout, session| layout.unpinned(*session));
+            .fold(panels.clone(), |layout, session| layout.unplaced(*session));
         if let Err(error) = self.change_preference(&PreferenceChange::Panels(kept)) {
             tracing::warn!(%error, "could not take sessions gone out of the layout");
         }

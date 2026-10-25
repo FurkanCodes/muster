@@ -1,11 +1,14 @@
-//! A shell beside the agent (`PRODUCT.md` §6): `T` opens the workspace's
-//! shell in a panel of its own beside the session, both streamed, or the
-//! one it has; the list folds where the three do not fit, and the shell
-//! opens over the session where two do not; a click moves the keys
-//! between them; a shell is not counted among the agents; and in the list
-//! it stands by its chats on one line, under the one chat of its worktree.
+//! Shells beside the agents (`PRODUCT.md` §6): `T` places the workspace's
+//! shell beside the panel with the keys, both streamed: one running there
+//! off the screen, else a new one, and where one is on the screen the keys
+//! go to it; the list folds where they do not fit, and the panel with the
+//! keys says how many more it shows over; a click moves the keys between
+//! them; a shell that ends leaves its panel; a shell is not counted among
+//! the agents; and in the list it stands by its chats on one line, under
+//! the one chat of its worktree.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
+use muster_core::layout::{Edge, Panel, Place};
 use muster_core::protocol::{ClientFrame, Command, Delta, Reply, ServerFrame, TermSize};
 use muster_core::{Session, SessionId, SessionStatus};
 
@@ -60,8 +63,13 @@ fn attached(actions: &[Action]) -> Vec<SessionId> {
         .collect()
 }
 
+/// Whether `session` is placed in a panel of its own.
+fn placed(world: &World, session: SessionId) -> bool {
+    world.app.panels().placed().contains(&session)
+}
+
 #[test]
-fn t_starts_the_workspace_s_shell_beside_the_session_both_streamed() {
+fn t_starts_a_shell_placed_beside_the_panel_with_the_keys_both_streamed() {
     let mut world = sized(WIDE);
     let (req_id, asked) = command(&world.app.on_key(shift_t()));
     let Command::StartSession {
@@ -83,46 +91,85 @@ fn t_starts_the_workspace_s_shell_beside_the_session_both_streamed() {
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(shell)));
     assert_eq!(world.app.mode, Mode::Terminal(shell_id));
+    assert!(placed(&world, shell_id), "{}", world.app.panels());
     assert_eq!(attached(&actions), [shell_id]);
     assert_eq!(world.app.attached, Some(world.session.id), "the agent too");
     let shown = areas(&world);
-    assert!(!shown.list.is_empty() && !shown.preview.is_empty() && !shown.shell.is_empty());
-    assert!(shown.shell.x > shown.preview.x, "beside the session");
+    let beside = shown.of(Panel::Placed(shell_id));
+    assert!(!shown.list.is_empty() && !shown.preview.is_empty() && !beside.is_empty());
+    assert!(beside.x > shown.preview.x, "right of the preview");
     let screen = render_in(&world.app, WIDE);
     assert!(screen.contains("zsh"), "{screen}");
+    // Among others, the preview says it is one, and each title where it
+    // works.
+    assert!(screen.contains("preview · "), "{screen}");
+    assert!(
+        screen.contains(&format!("{}/", world.project.name)),
+        "{screen}"
+    );
 }
 
 #[test]
-fn t_opens_the_shell_a_workspace_has_and_again_puts_it_away() {
+fn t_places_the_shell_running_off_the_screen_and_again_gives_it_the_keys() {
     let mut world = sized(WIDE);
     let shell = a_shell(&mut world);
     let actions = world.app.on_key(shift_t());
     assert!(
-        !actions
-            .iter()
-            .any(|action| matches!(action, Action::Send(ClientFrame::Command { .. }))),
+        !actions.iter().any(|action| matches!(
+            action,
+            Action::Send(ClientFrame::Command {
+                command: Command::StartSession { .. },
+                ..
+            })
+        )),
         "none started: {actions:?}"
     );
     assert_eq!(world.app.mode, Mode::Terminal(shell.id));
-    // Back to the list, and T again: put away, still running.
+    assert!(placed(&world, shell.id));
+    // Back to the list, and T again: the keys go to it, where it is.
     world.app.on_key(super::tests::shift_q());
-    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    let layout = world.app.panels().clone();
     world.app.on_key(shift_t());
-    assert_eq!(world.app.shell_beside(), None);
-    assert!(areas(&world).shell.is_empty());
+    assert_eq!(world.app.mode, Mode::Terminal(shell.id));
+    assert_eq!(*world.app.panels(), layout, "it stays where it is");
 }
 
 #[test]
-fn where_three_do_not_fit_the_list_folds_and_where_two_do_not_the_shell_opens_over() {
+fn where_the_panels_do_not_fit_the_list_folds_then_the_one_with_the_keys_shows_over() {
     let mut world = sized(TermSize {
         cols: 120,
         rows: 29,
     });
-    a_shell(&mut world);
+    let shell = a_shell(&mut world);
     world.app.on_key(shift_t());
     let shown = areas(&world);
     assert!(shown.list.is_empty(), "the list folded: {shown:?}");
-    assert!(!shown.preview.is_empty() && !shown.shell.is_empty());
+    assert!(!shown.preview.is_empty() && !shown.of(Panel::Placed(shell.id)).is_empty());
+    assert_eq!(shown.hidden, 0);
+    // Another beside them: the one with the keys shows over the rest, and
+    // says how many.
+    let mut other = session(world.worktree.id, "bun", 6);
+    other.harness = "shell".to_owned();
+    world
+        .app
+        .on_frame(ServerFrame::Delta(Delta::SessionUpserted(other.clone())));
+    let actions = world.app.place_at(
+        other.id,
+        Place::Beside(Panel::Placed(shell.id), Edge::Right),
+    );
+    drop(actions);
+    world.app.mode = Mode::Terminal(other.id);
+    let shown = areas(&world);
+    assert_eq!(shown.hidden, 2, "{shown:?}");
+    assert!(shown.preview.is_empty() && shown.of(Panel::Placed(shell.id)).is_empty());
+    let screen = render_in(
+        &world.app,
+        TermSize {
+            cols: 120,
+            rows: 29,
+        },
+    );
+    assert!(screen.contains("+2 more"), "{screen}");
 
     let mut world = sized(TermSize { cols: 90, rows: 29 });
     a_shell(&mut world);
@@ -142,7 +189,7 @@ fn a_click_moves_the_keys_between_the_session_and_its_shell() {
         .app
         .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), column, row));
     assert_eq!(world.app.mode, Mode::Terminal(world.session.id));
-    let (column, row) = on(areas(&world).shell);
+    let (column, row) = on(areas(&world).of(Panel::Placed(shell.id)));
     world
         .app
         .on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), column, row));
@@ -168,15 +215,21 @@ fn a_shell_is_not_counted_among_the_agents_nor_waits_on_the_person() {
     assert!(world.app.model.needs_you().is_empty());
     let screen = render_in(&world.app, WIDE);
     assert!(screen.contains("no agent at work"), "{screen}");
-    // An ended shell beside the session goes, with the keys.
-    world.app.shell = Some(shell.id);
-    world.app.mode = Mode::Terminal(shell.id);
-    let mut ended = shell;
+}
+
+#[test]
+fn a_placed_shell_that_ends_leaves_its_panel_and_the_keys() {
+    let mut world = sized(WIDE);
+    let shell = a_shell(&mut world);
+    world.app.on_key(shift_t());
+    assert_eq!(world.app.mode, Mode::Terminal(shell.id));
+    let mut ended = shell.clone();
     ended.ended_at = Some(muster_core::Timestamp::from_millis(9));
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
-    assert_eq!(world.app.shell, None);
+    assert!(!world.app.placed_beside().contains(&shell.id));
+    assert!(areas(&world).of(Panel::Placed(shell.id)).is_empty());
     assert_eq!(world.app.mode, Mode::Browse);
 }
 
@@ -256,39 +309,41 @@ fn streamed_after(actions: &[Action], session: SessionId, was: bool) -> bool {
 }
 
 #[test]
-fn the_shell_keeps_streaming_as_the_selection_moves_between_it_and_its_chat() {
+fn a_placed_shell_keeps_streaming_as_the_selection_moves_between_it_and_its_chat() {
     let mut world = sized(WIDE);
     let shell = a_shell(&mut world);
     world.app.on_key(shift_t());
     world.app.on_key(super::tests::shift_q());
     let chat = world.session.id;
-    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    assert!(placed(&world, shell.id));
     let mut streamed = true;
-    // Down to the shell's own line: it is the session shown.
+    let mut chat_streamed = true;
+    // Down to the shell's own line: placed, it stays in its panel, and the
+    // preview keeps the chat.
     let actions = world
         .app
         .on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     assert_eq!(world.app.selected, Some(Row::Session(shell.id)));
     streamed = streamed_after(&actions, shell.id, streamed);
-    assert!(streamed, "shown: {actions:?}");
-    // Up to the chat: the shell beside it again, still streamed.
+    chat_streamed = streamed_after(&actions, chat, chat_streamed);
+    assert!(streamed && chat_streamed, "both shown: {actions:?}");
+    // Up to the chat: both still streamed.
     let actions = world
         .app
         .on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
     assert_eq!(world.app.selected, Some(Row::Session(chat)));
-    assert_eq!(world.app.shell_beside(), Some(shell.id));
     streamed = streamed_after(&actions, shell.id, streamed);
     assert!(streamed, "beside the chat: {actions:?}");
-    assert!(streamed_after(&actions, chat, true), "{actions:?}");
+    assert!(streamed_after(&actions, chat, chat_streamed), "{actions:?}");
 }
 
 #[test]
-fn the_shell_beside_the_chat_streams_again_from_a_new_daemon() {
+fn a_placed_shell_streams_again_from_a_new_daemon() {
     let mut world = sized(WIDE);
     let shell = a_shell(&mut world);
     world.app.on_key(shift_t());
     world.app.on_key(super::tests::shift_q());
-    assert_eq!(world.app.shell_beside(), Some(shell.id));
+    assert!(placed(&world, shell.id));
     // The daemon restarted in place: the UI reconnects to a new one, which
     // streams nothing to it yet.
     world.app.on_disconnected("restarting".to_owned());

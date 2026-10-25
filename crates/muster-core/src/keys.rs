@@ -154,8 +154,8 @@ actions! {
     ShowTickets "show_tickets" SESSION_LISTS, ["i"], "the project's tickets";
     FullScreen "full_screen" SESSION_LISTS, ["f"], "the session full screen";
     ShowChanges "show_changes" SESSION_LISTS, ["d"], "what the worktree or session has changed, and its turns";
-    Shell "shell" SESSION_LISTS, ["T"], "a shell in the workspace, beside the session (again: put it away)";
-    PinSession "pin_session" SESSION_LISTS, ["P"], "pin the session in a panel of its own, beside the one with the keys (again: unpin it; or drag its line)";
+    Shell "shell" SESSION_LISTS, ["T"], "a shell in the workspace, beside the panel with the keys (the one off the screen there, else a new one)";
+    PinSession "pin_session" SESSION_LISTS, ["P"], "place the session in a panel of its own, beside the one with the keys (again: off the screen; or drag its line)";
     StopSession "stop_session" SESSION_LISTS, ["s"], "stop the session";
     RestartSession "restart_session" SESSION_LISTS, ["r"], "start an ended session again";
     Close "close" SESSION_LISTS, ["x"], "close the session; remove the worktree or the project, after asking";

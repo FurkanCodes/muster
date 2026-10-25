@@ -10,9 +10,11 @@
 //! too; from there it moves once the pointer has gone two cells, and a
 //! press that does not is the click it was.
 //!
-//! A session's line in the list, dragged out of it, pins the session in a
-//! panel of its own where it is dropped (`app::pinned`); the press on it
-//! selects it as any does.
+//! A panel dropped on another's middle swaps places with it. A session's
+//! line in the list, dragged out of it, places the session in a panel of
+//! its own where it is dropped (`app::placed`); the press on it selects it
+//! as any does. A press on a button in a title (`view::pane`) does what it
+//! says rather than take the panel.
 
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use muster_core::layout::{Branch, Edge, Layout, Panel, Place, Size, Split};
@@ -109,6 +111,10 @@ impl App {
         if event.kind != MouseEventKind::Down(MouseButton::Left) || !self.can_arrange() {
             return None;
         }
+        if let Some((panel, button)) = crate::view::pane::button_at(self, &self.shown_panels(), at)
+        {
+            return Some(self.press_button(panel, button));
+        }
         if let Some(session) = self.session_line_at(at) {
             // The press is the click it always was, and may become a drag.
             let actions = self.mode_mouse(event);
@@ -143,7 +149,7 @@ impl App {
             Drag::Line { session, press, .. } => {
                 let list = crate::view::browse_areas(self, self.window()).list;
                 let to = (!list.contains(at))
-                    .then(|| self.drop_place(Panel::Pinned(session), at))
+                    .then(|| self.drop_place(Panel::Placed(session), at, false))
                     .flatten();
                 self.panels.drag = Some(Drag::Line { session, press, to });
             }
@@ -151,7 +157,7 @@ impl App {
                 self.panels.drag = Some(Drag::Panel {
                     panel,
                     moved: true,
-                    to: self.drop_place(panel, at),
+                    to: self.drop_place(panel, at, true),
                 });
             }
             Drag::Divider {
@@ -193,7 +199,7 @@ impl App {
                 ..
             } => {
                 self.panels.drag = None;
-                self.pin_at(session, place)
+                self.place_at(session, place)
             }
             Drag::Line { press, .. } => {
                 // Let go in the list: the click it was, already taken.
@@ -270,7 +276,7 @@ impl App {
                 self.open_beside_list();
                 Vec::new()
             }
-            (Panel::Pinned(session), _) => {
+            (Panel::Placed(session), _) => {
                 self.close_changes();
                 self.mode = Mode::Terminal(session);
                 Vec::new()
@@ -280,9 +286,10 @@ impl App {
     }
 
     /// Where `panel` dropped at `at` would land: along an edge of the
-    /// window near it, or at the nearest edge of the panel under it. Over
+    /// window near it, or at the nearest edge of the panel under it, or,
+    /// where it can `swap`, in that panel's place, about its middle. Over
     /// itself, nowhere.
-    fn drop_place(&self, panel: Panel, at: Position) -> Option<Place> {
+    fn drop_place(&self, panel: Panel, at: Position, swap: bool) -> Option<Place> {
         let areas = crate::view::browse_areas(self, self.window());
         let body = body(&areas);
         if at.x <= body.x {
@@ -311,26 +318,56 @@ impl App {
             ((at.y - area.y) * 2, Edge::Top),
             ((area.bottom() - 1 - at.y) * 2, Edge::Bottom),
         ];
-        let (_, edge) = edges.into_iter().min_by_key(|(distance, _)| *distance)?;
+        let (nearest, edge) = edges.into_iter().min_by_key(|(distance, _)| *distance)?;
+        // The middle: as far from every edge as a quarter of the panel.
+        let middle = (area.width / 4).min(area.height / 2);
+        if swap && nearest > middle.max(1) {
+            return Some(Place::Over(target));
+        }
         Some(Place::Beside(target, edge))
+    }
+
+    /// A press on `button` in `panel`'s title.
+    fn press_button(&mut self, panel: Panel, button: crate::view::pane::Button) -> Vec<Action> {
+        use crate::view::pane::Button;
+        match (button, panel) {
+            (Button::TakeOff, Panel::Placed(session)) => self.take_off(session),
+            (Button::TakeOff, Panel::Session) => {
+                if let Some(session) = self.preview_session() {
+                    if self.mode == Mode::Terminal(session) {
+                        self.mode = Mode::Browse;
+                    }
+                    self.panels.preview_folded = Some(session);
+                    self.say("The preview is folded away until you select another session.");
+                }
+                Vec::new()
+            }
+            (Button::Place, Panel::Session) => match self.preview_session() {
+                Some(session) => self.place_at(session, Place::Beside(Panel::Session, Edge::Left)),
+                None => Vec::new(),
+            },
+            _ => Vec::new(),
+        }
     }
 
     /// Where a panel put at `place` would land, as it lights up.
     pub(crate) fn landing(&self, place: Place) -> Rect {
         let areas = crate::view::browse_areas(self, self.window());
+        let area_of = |panel: Panel| {
+            self.shown_panels()
+                .into_iter()
+                .find(|(shown, _)| *shown == panel)
+                .map_or(Rect::default(), |(_, area)| area)
+        };
         let (area, edge) = match place {
             Place::Window(edge) => (body(&areas), edge),
-            Place::Beside(panel, edge) => (
-                self.shown_panels()
-                    .into_iter()
-                    .find(|(shown, _)| *shown == panel)
-                    .map_or(Rect::default(), |(_, area)| area),
-                edge,
-            ),
+            Place::Beside(panel, edge) => (area_of(panel), edge),
+            // Swapped in, it takes the whole of the other's place.
+            Place::Over(panel) => return area_of(panel),
         };
         let (width, height) = match place {
             Place::Window(_) => ((area.width / 4).max(10), (area.height / 3).max(4)),
-            Place::Beside(..) => (area.width / 2, area.height / 2),
+            Place::Beside(..) | Place::Over(_) => (area.width / 2, area.height / 2),
         };
         match edge {
             Edge::Left => Rect { width, ..area },
