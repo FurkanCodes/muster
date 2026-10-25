@@ -7,6 +7,7 @@ mod alarm;
 mod changes;
 pub(crate) mod cloning;
 mod controls;
+mod dialog_mouse;
 pub(crate) mod drag;
 mod events;
 mod fold;
@@ -69,6 +70,8 @@ mod changes_tests;
 mod clashes_tests;
 #[cfg(test)]
 mod controls_tests;
+#[cfg(test)]
+mod dialog_mouse_tests;
 #[cfg(test)]
 mod focus_tests;
 #[cfg(test)]

@@ -240,3 +240,94 @@ fn a_title_s_button_is_lit_under_the_pointer() {
             .is_some_and(|cells| cells.contains(at))
     );
 }
+
+#[test]
+fn a_click_on_a_setting_s_value_changes_it_and_its_arrows_step_it() {
+    let mut world = super::settings_tests::on_settings(true);
+    world.app.on_resize(WIDE);
+    let list = areas(&world).list;
+    let rows = world.app.setting_rows();
+    let width = usize::from(list.width.saturating_sub(2));
+    let line_of = |row| {
+        let at = rows.iter().position(|each| *each == row).unwrap();
+        list.y + 1 + u16::try_from(at).unwrap()
+    };
+    let value = |world: &World, row| crate::view::settings::value_keys(&world.app, row, width);
+    // Chats named by an agent: a click on its switch turns it off.
+    let notch = super::SettingRow::NamesByAgent;
+    let (from, _, key) = value(&world, notch)[0];
+    assert_eq!(key, crossterm::event::KeyCode::Enter);
+    let actions = world.app.on_mouse(mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        list.x + 1 + from,
+        line_of(notch),
+    ));
+    assert!(
+        matches!(
+            super::tests::command(&actions).1,
+            muster_core::protocol::Command::ChangePreference(
+                muster_core::settings::PreferenceChange::NamesByAgent(false)
+            )
+        ),
+        "{actions:?}"
+    );
+    // The width a session sits beside the list from: its arrows.
+    let side = super::SettingRow::SideBySide;
+    let keys = value(&world, side);
+    assert_eq!(
+        keys.iter().map(|(_, _, key)| *key).collect::<Vec<_>>(),
+        [
+            crossterm::event::KeyCode::Left,
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyCode::Right
+        ]
+    );
+    assert!(render_in(&world.app, WIDE).contains("‹ 100 columns ›"));
+    let (from, _, _) = keys[2];
+    let actions = world.app.on_mouse(mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        list.x + 1 + from,
+        line_of(side),
+    ));
+    assert!(
+        matches!(
+            super::tests::command(&actions).1,
+            muster_core::protocol::Command::ChangePreference(
+                muster_core::settings::PreferenceChange::SideBySideFrom(110)
+            )
+        ),
+        "{actions:?}"
+    );
+}
+
+#[test]
+fn a_click_on_a_ticket_part_s_box_gives_it_to_the_agent_or_not() {
+    let mut world = super::tickets_tests::on_tickets();
+    world.app.on_resize(WIDE);
+    let ticket = (world.project.id, super::tickets_tests::key(42));
+    world.app.tickets.texts.insert(
+        ticket.clone(),
+        crate::app::TicketText::Loaded {
+            body: "It fails.".to_owned(),
+            comments: vec![muster_core::IssueComment {
+                author: Some("mira".to_owned()),
+                at: None,
+                body: "Fixed in #43.".to_owned(),
+            }],
+        },
+    );
+    let screen = render_in(&world.app, WIDE);
+    let row = screen
+        .lines()
+        .position(|line| line.contains("☐ mira"))
+        .unwrap_or_else(|| panic!("{screen}"));
+    let preview = areas(&world).preview;
+    world.app.on_mouse(mouse(
+        MouseEventKind::Down(MouseButton::Left),
+        preview.x + 3,
+        u16::try_from(row).unwrap(),
+    ));
+    let brief = world.app.ticket_brief(ticket.0, &ticket.1);
+    assert_eq!(brief.comments.len(), 1, "mira's given: {brief:?}");
+    assert!(render_in(&world.app, WIDE).contains("☑ mira"));
+}

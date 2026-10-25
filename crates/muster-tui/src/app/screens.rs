@@ -198,6 +198,8 @@ pub(crate) struct Person {
     /// Where and when the left button was last pressed, for a second
     /// press soon after to be a double-click.
     pub(crate) last_press: Option<(ratatui::layout::Position, u64)>,
+    /// Whether the press being handled is the second of a double-click.
+    pub(crate) double: bool,
 }
 
 impl Default for Person {
@@ -211,6 +213,7 @@ impl Default for Person {
             pointer: None,
             clock_ms: None,
             last_press: None,
+            double: false,
         }
     }
 }

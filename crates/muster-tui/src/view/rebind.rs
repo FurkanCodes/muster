@@ -15,12 +15,16 @@ use crate::cells;
 /// The cells the keys' column takes.
 const KEYS_WIDTH: usize = 18;
 
-pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebinding, area: Rect) {
+/// The hint at the dialog's foot while it waits for no key.
+const HINT: &str =
+    "↑↓ choose   ⏎ set its key   ⌫ back to Muster's   Shift-R every key back   esc close";
+
+/// Where the dialog is in `area`, inside its frame, how many of its rows
+/// show, and the first shown, scrolled so the chosen line shows, its
+/// heading too where it can.
+fn laid_out(app: &App, rebinding: &Rebinding, area: Rect) -> (Rect, Rect, usize, usize) {
     let area = area.inner(Margin::new(2, 1));
-    frame.render_widget(Clear, area);
-    let block = panel(app, " Keys ", true);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = area.inner(Margin::new(1, 1));
     let rows = app.rebind_rows();
     let chosen = app.rebinding_chosen(rebinding);
     let at = rows
@@ -28,8 +32,61 @@ pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebin
         .position(|row| *row == RebindRow::Key(chosen.clone()))
         .unwrap_or(0);
     let height = usize::from(inner.height.saturating_sub(2)).max(1);
-    // Scrolled so the chosen line shows, its heading too where it can.
-    let offset = at.saturating_sub(height.saturating_sub(2));
+    (
+        area,
+        inner,
+        height,
+        at.saturating_sub(height.saturating_sub(2)),
+    )
+}
+
+/// Where the dialog is in `area`, and where a click chooses an action's
+/// line or presses a key its hint names (`ARC-32`).
+pub(super) fn rebinding_presses(
+    app: &App,
+    rebinding: &Rebinding,
+    area: Rect,
+) -> (Rect, Vec<(Rect, super::dialogs::DialogPress)>) {
+    use super::dialogs::DialogPress;
+    let (area, inner, height, offset) = laid_out(app, rebinding, area);
+    let rows = app.rebind_rows();
+    let mut presses: Vec<(Rect, DialogPress)> = rows
+        .iter()
+        .enumerate()
+        .skip(offset)
+        .take(height)
+        .zip(0u16..)
+        .filter(|((_, row), _)| matches!(row, RebindRow::Key(_)))
+        .map(|((index, _), line)| {
+            (
+                Rect::new(inner.x, inner.y + line, inner.width, 1),
+                DialogPress::Row(index),
+            )
+        })
+        .collect();
+    if !rebinding.waiting {
+        let row = inner.y + u16::try_from(height + 1).unwrap_or(0);
+        presses.extend(
+            super::dialogs::hint_marks(HINT)
+                .into_iter()
+                .map(|(from, width, key)| {
+                    (
+                        Rect::new(inner.x + from, row, width, 1),
+                        DialogPress::Key(key),
+                    )
+                }),
+        );
+    }
+    (area, presses)
+}
+
+pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebinding, area: Rect) {
+    let (area, inner, height, offset) = laid_out(app, rebinding, area);
+    frame.render_widget(Clear, area);
+    let block = panel(app, " Keys ", true);
+    frame.render_widget(block, area);
+    let rows = app.rebind_rows();
+    let chosen = app.rebinding_chosen(rebinding);
     let theme = theme::of(app);
     let mut lines: Vec<Line<'static>> = rows
         .iter()
@@ -54,10 +111,7 @@ pub(super) fn draw_rebinding(frame: &mut Frame<'_>, app: &App, rebinding: &Rebin
         .fg(theme.accent)
         .bold()
     } else {
-        Line::from(
-            "↑↓ choose   ⏎ set its key   ⌫ back to Muster's   Shift-R every key back   esc close",
-        )
-        .dim()
+        Line::from(HINT).dim()
     });
     frame.render_widget(Paragraph::new(lines), inner);
 }

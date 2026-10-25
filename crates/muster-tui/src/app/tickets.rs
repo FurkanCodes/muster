@@ -264,6 +264,27 @@ impl App {
         })
     }
 
+    /// A click on the selected ticket's details at `at`, in `area`: on a
+    /// part's box (its first line), that part given to the agent or not.
+    pub(super) fn click_ticket(
+        &mut self,
+        area: ratatui::layout::Rect,
+        at: ratatui::layout::Position,
+    ) {
+        let Some(row) = self.tickets.selected.clone() else {
+            return;
+        };
+        let width = usize::from(area.width.saturating_sub(2));
+        let height = usize::from(area.height.saturating_sub(2));
+        let last = crate::view::ticket_details_height(self, width).saturating_sub(height);
+        let line = usize::from(at.y.saturating_sub(area.y + 1)) + self.ticket_scrolled().min(last);
+        let parts = crate::view::ticket_part_lines(self, width);
+        if let Some(part) = parts.iter().position(|start| *start == line) {
+            self.tickets.part = Some((row, part));
+            self.choose_part();
+        }
+    }
+
     /// Gives the agent the part the keys are on, or stops giving it; the
     /// last part given stays, as the agent needs something to work on.
     fn choose_part(&mut self) {

@@ -2,6 +2,7 @@
 //! change here, then Muster's own, and what the selected one does and
 //! where it is kept.
 
+use crossterm::event::KeyCode;
 use muster_core::ProjectId;
 use muster_core::settings::{Palette, ProjectSettings, SessionLines, SettingSource};
 use ratatui::Frame;
@@ -90,7 +91,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         SettingRow::Muster => Line::from(Span::from("Muster").bold()),
         SettingRow::Notch => labelled(NOTCH, notch_value(app), width),
         SettingRow::Agents => labelled(AGENTS, agents_value(app), width),
-        SettingRow::SideBySide => labelled(SIDE_BY_SIDE, side_by_side_value(app), width),
+        SettingRow::SideBySide => stepped(SIDE_BY_SIDE, side_by_side_value(app), width),
         SettingRow::Colours => labelled(COLOURS, colours_value(app), width),
         SettingRow::SessionLines => labelled(SESSION_LINES, session_lines_value(app), width),
         SettingRow::Panels => labelled(PANELS, panels_value(app), width),
@@ -105,7 +106,7 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
         }
         SettingRow::Delegation => labelled(delegation::LABEL, delegation::value(app), width),
         SettingRow::Notifications => labelled(NOTIFICATIONS, notifications_value(app), width),
-        SettingRow::Tell(kind) => labelled(&telling::label(kind), telling::value(app, kind), width),
+        SettingRow::Tell(kind) => stepped(&telling::label(kind), telling::value(app, kind), width),
         SettingRow::Plugins | SettingRow::Plugin(_) | SettingRow::AddPlugin => {
             plugins::row_text(app, row, width)
         }
@@ -154,6 +155,69 @@ fn row_text(app: &App, row: SettingRow, width: usize) -> Line<'static> {
             labelled(MUSTER_PREFIX, value, width)
         }
     }
+}
+
+/// A setting's line whose value steps through choices: ← and → step it,
+/// and so does a click on its arrows (`value_keys`).
+fn stepped(label: &str, value: Span<'static>, width: usize) -> Line<'static> {
+    let shown = Span::styled(format!("{LEFT}{}{RIGHT}", value.content), value.style);
+    let mut line = labelled(label, shown, width);
+    // The arrows quiet, the value as it was.
+    if let Some(last) = line.spans.pop() {
+        let text = last.content.to_string();
+        let inner = text
+            .strip_prefix(LEFT)
+            .and_then(|rest| rest.strip_suffix(RIGHT))
+            .unwrap_or(&text)
+            .to_owned();
+        line.spans.push(Span::from(LEFT).dim());
+        line.spans.push(Span::styled(inner, last.style));
+        line.spans.push(Span::from(RIGHT).dim());
+    }
+    line
+}
+
+/// The arrows either side of a value that steps.
+const LEFT: &str = "‹ ";
+const RIGHT: &str = " ›";
+
+/// Where a click on `row`'s value, at its line's end, presses a key, from
+/// the start of the line drawn `width` wide: its arrows ← and →, where it
+/// has them, the value itself ⏎, which turns it on or off, goes to its
+/// next choice or opens its dialog. None for a heading.
+pub(crate) fn value_keys(app: &App, row: SettingRow, width: usize) -> Vec<(u16, u16, KeyCode)> {
+    if matches!(
+        row,
+        SettingRow::Muster | SettingRow::Project(_) | SettingRow::Plugins
+    ) {
+        return Vec::new();
+    }
+    let line = row_line(app, row, width);
+    let spans = &line.spans;
+    let count = spans.len();
+    let arrows =
+        count >= 3 && spans[count - 1].content == RIGHT && spans[count - 3].content == LEFT;
+    let keys: &[KeyCode] = if arrows {
+        &[KeyCode::Left, KeyCode::Enter, KeyCode::Right]
+    } else {
+        &[KeyCode::Enter]
+    };
+    let mut at = line.width()
+        - spans[count - keys.len()..]
+            .iter()
+            .map(Span::width)
+            .sum::<usize>();
+    let mut cells = Vec::new();
+    for (span, key) in spans[count - keys.len()..].iter().zip(keys) {
+        let width = span.width();
+        cells.push((
+            u16::try_from(at).unwrap_or(0),
+            u16::try_from(width).unwrap_or(0),
+            *key,
+        ));
+        at += width;
+    }
+    cells
 }
 
 /// A setting's line: its name, and its value at the line's end.

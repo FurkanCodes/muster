@@ -74,10 +74,10 @@ impl App {
         }
         // A double-click: on a panel's title it zooms the panel, or puts it
         // back; on a line of a list it does what ⏎ does there.
-        if event.kind == MouseEventKind::Down(MouseButton::Left)
+        self.person.double = event.kind == MouseEventKind::Down(MouseButton::Left)
             && self.panels.drag.is_none()
-            && self.double_click(Position::new(event.column, event.row))
-        {
+            && self.double_click(Position::new(event.column, event.row));
+        if self.person.double && !matches!(self.mode, Mode::Dialog(_)) {
             let at = Position::new(event.column, event.row);
             if self.can_arrange()
                 && let Some(super::grab::Hold::Title(panel)) = self.hold_at(at)
@@ -135,7 +135,10 @@ impl App {
                 let help = help.clone();
                 self.help_mouse(help, event)
             }
-            Mode::Dialog(_) => Vec::new(),
+            Mode::Dialog(ref dialog) => {
+                let dialog = dialog.clone();
+                self.dialog_mouse(&dialog, event)
+            }
         };
         actions.extend(self.settle());
         actions
@@ -283,7 +286,9 @@ impl App {
                     .into_iter()
                     .find(|(panel, _)| areas.of(*panel).contains(at));
                 if areas.list.contains(at) {
-                    self.click_list(areas.list, at);
+                    return self.click_list(areas.list, at);
+                } else if self.view == View::Tickets && areas.preview.contains(at) {
+                    self.click_ticket(areas.preview, at);
                 } else if let Some((_, session)) = beside {
                     self.mode = Mode::Terminal(session);
                 } else if areas.preview.contains(at)
@@ -307,23 +312,39 @@ impl App {
     }
 
     /// A click on the list at `at`: selects the line there, and on a
-    /// project's or a worktree's triangle folds or unfolds it.
-    fn click_list(&mut self, list: Rect, at: Position) {
+    /// project's or a worktree's triangle folds or unfolds it; on a
+    /// setting's value, presses what changes it (`view::settings::
+    /// value_keys`).
+    fn click_list(&mut self, list: Rect, at: Position) -> Vec<Action> {
         self.select_at(list, at.y);
+        if self.view == View::Settings
+            && let Some(row) = self.settings.selected
+        {
+            let width = usize::from(list.width.saturating_sub(2));
+            let column = at.x.saturating_sub(list.x + 1);
+            let key = crate::view::settings::value_keys(self, row, width)
+                .into_iter()
+                .find(|(from, cells, _)| (*from..from + cells).contains(&column))
+                .map(|(_, _, key)| key);
+            if let Some(key) = key {
+                return self.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+            }
+        }
         if self.view != View::Sessions {
-            return;
+            return Vec::new();
         }
         let rows = self.rows();
         let heights = self.row_heights(&rows);
         let Some(row) = line_at(list, at.y, &heights, self.list_offset).map(|index| rows[index])
         else {
-            return;
+            return Vec::new();
         };
         let on_triangle =
             crate::view::fold_column(row).is_some_and(|column| at.x == list.x + 1 + column);
         if on_triangle && (self.foldable(row) || self.is_folded(row)) {
             self.fold(row);
         }
+        Vec::new()
     }
 
     /// Selects the list line drawn at `row`, if there is one.
