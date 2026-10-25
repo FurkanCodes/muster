@@ -8,6 +8,7 @@ import { ask } from "../ipc/ask";
 import type { ProjectId } from "../ipc/generated/ProjectId";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
+import { errorText } from "../lib/text";
 import { whenKnown } from "../state/whenKnown";
 import { START_SIZE } from "./actions";
 
@@ -61,4 +62,26 @@ export function openStarted(app: App, session: SessionId, harness: string): void
     app.actions.showTerminal(session);
     app.actions.keysTo("terminal");
   });
+}
+
+/**
+ * `harness` started in `project` at once, from its line's +: an agent in a
+ * new worktree, as the project's page starts one, or in the folder itself
+ * for a plain folder; a shell in its checkout. Then opened.
+ */
+export async function startIn(app: App, project: ProjectId, harness: string): Promise<void> {
+  const state = app.daemon.store.getState();
+  const checkout = Object.values(state.workspaces).find(
+    (workspace) => workspace.project === project && workspace.kind.kind === "checkout",
+  );
+  if (!checkout) return app.actions.tell("The project has no checkout to start in.", true);
+  const plain = checkout.kind.branch === "";
+  try {
+    const workspace =
+      harness === "shell" || plain ? checkout.id : await makeWorktree(app, project, null);
+    const session = await startSession(app, workspace, harness, null);
+    openStarted(app, session, harness);
+  } catch (error) {
+    app.actions.tell(errorText(error), true);
+  }
 }

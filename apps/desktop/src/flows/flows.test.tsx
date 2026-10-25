@@ -147,7 +147,7 @@ describe("ARC-24 the palette's catalogue", () => {
   it("puts actions on the selected first, then anywhere, sessions asking first, tickets, settings", async () => {
     const { app } = renderWithApp(null);
     await waitFor(() => expect(app.daemon.store.getState().loaded).toBe(true));
-    app.actions.select("needs-you", ulid(101));
+    app.actions.select("all", ulid(101));
     const items = catalogue(app, "", [
       {
         project: ulid(1),

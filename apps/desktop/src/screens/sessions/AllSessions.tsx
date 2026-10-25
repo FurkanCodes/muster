@@ -245,7 +245,8 @@ export default function AllSessions({ active }: { active: boolean }) {
           folded={tree.folded}
           selected={selected?.id}
           resting={keysIn !== "list" || !active}
-          renaming={tools.renaming ? tools : null}
+          // Renamed in place where it was asked: on *Needs you*, in the queue's row.
+          renaming={tools.renaming && active ? tools : null}
           panelKeys={panelKeys}
           onPick={(id) => {
             // Picked beside Tickets or Settings, it is shown in their place.

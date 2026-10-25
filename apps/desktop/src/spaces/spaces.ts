@@ -77,25 +77,6 @@ export function spacesOf(state: DaemonState, member: Member): string[] {
     .map((space) => space.name);
 }
 
-/** Shows `space`, or all of the list, and says so. */
-export function goTo(app: App, space: SpaceId | null): void {
-  app.actions.showSpace(space);
-  const name = spaceShown(app.daemon.store.getState(), space)?.name;
-  app.actions.tell(name ? `Showing ${name}.` : "Showing everything.");
-}
-
-/** `]` and `[`: the next space, or the one before; all of the list after the last. */
-export function cycle(app: App, by: number): void {
-  const state = app.daemon.store.getState();
-  const round: (SpaceId | null)[] = [null, ...state.spaces.map((space) => space.id)];
-  if (round.length === 1) {
-    app.actions.tell("There is no space yet: make one from the projects' + menu.", true);
-    return;
-  }
-  const at = Math.max(0, round.indexOf(spaceShown(state, app.ui.getState().space)?.id ?? null));
-  goTo(app, round[(at + by + round.length) % round.length] ?? null);
-}
-
 /** Asks the daemon, saying `done` once it has, or why it would not. */
 export async function command(
   app: App,
@@ -120,14 +101,17 @@ export function moveTo(app: App, space: SpaceId, member: Member): Promise<void> 
   );
 }
 
-/** `+`: a terminal in no project, in the home folder, in the selected line's space, opened; with no space yet, one is named first. */
+/** `+`: a terminal in no project, in the home folder, in the selected line's space, else in none. */
 export async function newTerminal(app: App): Promise<void> {
-  if (spaceFirst(app, { kind: "terminal" })) return;
-  const space = spaceToJoin(app);
-  if (space) await terminalIn(app, space);
+  await terminalIn(app, spaceOfLine(app.daemon.store.getState(), app.ui.getState().selected.all));
 }
 
-async function terminalIn(app: App, space: SpaceId, size = { cols: 100, rows: 30 }) {
+/** A terminal in no project, in the home folder, in `space`, or in none to roam the machine; opened. */
+export async function terminalIn(
+  app: App,
+  space: SpaceId | null,
+  size = { cols: 100, rows: 30 },
+): Promise<void> {
   try {
     const reply = await app.bridge.command({
       StartSession: {
@@ -152,9 +136,7 @@ async function terminalIn(app: App, space: SpaceId, size = { cols: 100, rows: 30
 
 /** `S`: the menu of spaces, or a new one where there is none yet. */
 export function openSpaces(app: App): void {
-  if (app.daemon.store.getState().spaces.length === 0)
-    app.actions.openFlow({ kind: "space-name", space: null });
-  else app.actions.openSpaces(true);
+  app.actions.openFlow({ kind: "space-name", space: null });
 }
 
 /** `F`: where the selected terminal in no project goes under a project. */

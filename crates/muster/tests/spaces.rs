@@ -53,7 +53,7 @@ fn free_terminal(space: Option<SpaceId>) -> Command {
 }
 
 #[tokio::test]
-async fn everything_lives_in_one_space_and_a_space_goes_only_once_empty_arc_33() {
+async fn a_project_lives_in_one_space_and_a_space_goes_only_once_empty_arc_33() {
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
@@ -87,8 +87,15 @@ async fn everything_lives_in_one_space_and_a_space_goes_only_once_empty_arc_33()
         .unwrap_err();
     assert!(refused.to_string().contains("already"), "{refused}");
 
-    // Among several, the space must be said.
-    let refused = connection.command(free_terminal(None)).await.unwrap_err();
+    // Among several, a project's space must be said.
+    let refused = connection
+        .command(Command::AddProject {
+            root: sandbox.repository("lib"),
+            name: None,
+            space: None,
+        })
+        .await
+        .unwrap_err();
     assert!(
         refused.to_string().contains("say which space: Home, Work"),
         "{refused}"
@@ -153,6 +160,27 @@ async fn everything_lives_in_one_space_and_a_space_goes_only_once_empty_arc_33()
     assert_eq!(
         spaces(&mut connection).await[0].members,
         [Member::Project(project)]
+    );
+}
+
+#[tokio::test]
+async fn a_terminal_asked_in_no_space_stays_in_none_to_roam_the_machine_arc_33() {
+    let sandbox = Sandbox::new();
+    let daemon = sandbox.start();
+    let mut connection = daemon.connect().await;
+    make(&mut connection, "Work").await;
+    make(&mut connection, "Home").await;
+    let Reply::SessionStarted { id: roaming } =
+        connection.command(free_terminal(None)).await.unwrap()
+    else {
+        panic!("expected SessionStarted");
+    };
+    let held = spaces(&mut connection).await;
+    assert_eq!(held.len(), 2, "no space made for it");
+    assert!(
+        held.iter()
+            .all(|space| !space.holds(Member::Session(roaming))),
+        "in no space"
     );
 }
 

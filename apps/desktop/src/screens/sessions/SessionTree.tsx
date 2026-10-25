@@ -39,6 +39,28 @@ function SessionOrBeside({
   return <BesideLine {...props} panelKey={panelKeys[harness] ?? null} />;
 }
 
+/** A line's place in the tree: a space's heading starts a section, a project a group in it; what is in either is set in, along its line. */
+function nodeClass(row: TreeRow, index: number): string {
+  const kind =
+    row.kind === "space"
+      ? "sessions-node--space"
+      : row.kind === "project"
+        ? "sessions-node--project"
+        : "sessions-node--under";
+  const inSpace = row.kind !== "space" && row.space ? " sessions-node--in-space" : "";
+  const inProject =
+    row.kind !== "space" && row.kind !== "project" && row.project
+      ? " sessions-node--in-project"
+      : "";
+  // A place's label, and a session under it, along the label's line.
+  const place = !row.place
+    ? ""
+    : row.kind === "workspace"
+      ? " sessions-node--place"
+      : " sessions-node--in-place";
+  return `sessions-node ${index === 0 ? "sessions-node--first" : ""} ${kind}${inSpace}${inProject}${place}`;
+}
+
 export function SessionTree({
   rows,
   folded,
@@ -132,12 +154,7 @@ export function SessionTree({
     else if (renaming?.renaming === row.id) line = <RenameSession actions={renaming} />;
     else line = <SessionOrBeside props={props} panelKeys={panelKeys} />;
     return (
-      <div
-        key={row.id}
-        className={`sessions-node ${index === 0 ? "" : row.kind === "project" || row.kind === "space" ? "sessions-node--project" : "sessions-node--under"}`}
-        role="none"
-        data-line={index}
-      >
+      <div key={row.id} className={nodeClass(row, index)} role="none" data-line={index}>
         <div className="sessions-line">{line}</div>
       </div>
     );

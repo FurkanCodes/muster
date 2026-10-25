@@ -18,7 +18,7 @@ All branch from `feature/desktop-app` (the foundation) and merge back into it wi
 
 ## How every branch works
 
-- **Read first:** `PRODUCT.md`, `ARCHITECTURE.md` (§5c), `AGENTS.md`, this file, and the design system's README (`src/styles/` and the canvas). Use the `vercel-react-best-practices` and `vercel-composition-patterns` skills while writing React, and `web-design-guidelines` before you finish.
+- **Read first:** `PRODUCT.md`, `ARCHITECTURE.md` (§5c), `CLAUDE.md`, this file, and the design system's README (`src/styles/` and the canvas). Use the `vercel-react-best-practices` and `vercel-composition-patterns` skills while writing React, and `web-design-guidelines` before you finish.
 - **Types come from Rust.** Use `src/ipc/generated` (`pnpm bindings` after any Rust type change). Never hand-write a protocol type. Commands are the daemon's `Command`, sent with `useBridge().command(...)`; answer them in the mock (`src/ipc/mock/commands.ts`) as the real daemon would, from its code.
 - **State:** read the daemon through `useDaemon(selector)` and select the smallest thing (a string, a number, one entity); `useShallow` for lists of ids. The window's own state is `useUi`/`useActions`; a screen's private state stays in the screen.
 - **Look:** only the design system's classes and tokens; a new reusable part goes into `src/ui/` and, if the design system lacks it, is noted for it. No inline colours, no new fonts, no emoji, no icon packages (`src/ui/Icon.tsx` draws icons).

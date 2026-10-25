@@ -62,10 +62,14 @@ describe("ARC-33 the All list under each space's heading", () => {
 });
 
 describe("ARC-24 the All list's rows", () => {
-  it("are the projects and their sessions in the model's order, no worktree's line among them", async () => {
+  it("are the projects and their sessions in the model's order, each place labelled where a project works beyond its checkout", async () => {
     const state = await stateOf();
     const rows = allRows(state);
-    expect(rows.some((row) => (row.kind as string) === "workspace")).toBe(false);
+    // muster works in worktrees: its checkout and each worktree with a session labelled.
+    expect(
+      rows.filter((row) => row.kind === "workspace" && row.project === muster).map((row) => row.id),
+    ).toEqual([ulid(10), ulid(12), desktop]);
+    expect(rows.find((row) => row.id === desktop)?.place).toBe(true);
     expect(rows[0]).toEqual({
       kind: "project",
       id: muster,
@@ -73,9 +77,10 @@ describe("ARC-24 the All list's rows", () => {
       space: "",
       workspace: null,
     });
-    const sessions = state.derived.rows.filter((row) => row.kind !== "workspace");
-    expect(rows.map((row) => row.id)).toEqual(
-      sessions.flatMap((row) => ("id" in row ? [row.id] : [])).filter((id) => id !== ulid(102)),
+    // Sessions in the model's order.
+    const sessions = state.derived.rows.filter((row) => row.kind === "session");
+    expect(rows.filter((row) => row.kind === "session").map((row) => row.id)).toEqual(
+      sessions.flatMap((row) => ("id" in row ? [row.id] : [])),
     );
     expect(rows.find((row) => row.id === ulid(101))).toEqual({
       kind: "session",
@@ -83,22 +88,24 @@ describe("ARC-24 the All list's rows", () => {
       project: muster,
       space: "",
       workspace: desktop,
+      place: true,
     });
   });
 
-  it("leave out a shell its workspace's chat has beside it, and list one with no chat to stand by", async () => {
-    const bridge = new MockBridge(workingDay());
-    expect(allRows(await stateOf(bridge)).map((row) => row.id)).not.toContain(ulid(102));
-    // Its chat closed, the shell is the workspace's only session: it has a line of its own.
-    bridge.world.sessions = bridge.world.sessions.filter((session) => session.id !== ulid(101));
-    const rows = allRows(await stateOf(bridge));
+  it("give a shell its own line, under its workspace's chats, so it can be opened", async () => {
+    const rows = allRows(await stateOf());
     expect(rows.find((row) => row.id === ulid(102))).toEqual({
       kind: "session",
       id: ulid(102),
       project: muster,
       space: "",
       workspace: desktop,
+      place: true,
     });
+    // After the workspace's chat.
+    expect(rows.findIndex((row) => row.id === ulid(102))).toBeGreaterThan(
+      rows.findIndex((row) => row.id === ulid(101)),
+    );
   });
 
   it("give a worktree no session is in a line of its own, to start one there or remove it", async () => {

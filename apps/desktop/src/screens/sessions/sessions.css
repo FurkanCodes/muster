@@ -23,10 +23,6 @@
   flex-direction: column;
   position: relative;
 }
-/* Projects are space-16 apart; the lines under them space-2. */
-.sessions-node--project .sessions-line {
-  padding-top: var(--space-16);
-}
 /* A project's line heads its sessions: its swatch and name, quiet, so the
    sessions under it lead; a place one goes to (its page). */
 .sessions-project {
@@ -42,8 +38,173 @@
 .sessions-project .mu-tree-project {
   font-weight: 500;
 }
+/* Spaces are close, space-8 apart, so they read as one list; inside one,
+   space-8 under its heading. Projects are close too, space-6 apart, their
+   lines and chevrons enough to tell them apart; the lines under a project
+   space-2; the list's first line none. */
+.sessions-node--space .sessions-line {
+  padding-top: var(--space-8);
+}
+.sessions-node--project .sessions-line {
+  padding-top: var(--space-6);
+}
 .sessions-node--under .sessions-line {
   padding-top: var(--space-2);
+}
+.sessions-node--place .sessions-line {
+  padding-top: var(--space-6);
+}
+.sessions-node--first .sessions-line {
+  padding-top: 0;
+}
+/* What a space holds hangs from a line under its chevron, set in past it;
+   what a project holds, from a line under the project's chevron, set in
+   past that. Each line is drawn on each of its rows, which meet into one;
+   a fold hides the rows, and the line with them. */
+.sessions-node--in-space .sessions-line {
+  padding-left: var(--space-20);
+}
+.sessions-node--in-project .sessions-line {
+  padding-left: var(--space-20);
+}
+.sessions-node--in-place .sessions-line {
+  padding-left: calc(var(--space-20) + var(--space-16));
+}
+.sessions-node--in-space.sessions-node--in-project .sessions-line {
+  padding-left: calc(2 * var(--space-20));
+}
+.sessions-node--in-space.sessions-node--in-place .sessions-line {
+  padding-left: calc(2 * var(--space-20) + var(--space-16));
+}
+.sessions-node--in-space::before,
+.sessions-node--in-project::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--stroke-hairline);
+  background: var(--line);
+  pointer-events: none;
+}
+.sessions-node--in-space::before {
+  left: 10px;
+}
+.sessions-node--in-project::after {
+  left: 14px;
+}
+.sessions-node--in-space.sessions-node--in-project::after {
+  left: 34px;
+}
+.sessions-node--space + .sessions-node--in-space .sessions-line {
+  padding-top: var(--space-8);
+}
+/* A place's label: its branch, quiet, over the sessions that work there,
+   which hang from a short line under it: agents on one branch, together. */
+.sessions-place {
+  min-height: var(--size-control-sm);
+  font-size: 12px;
+  color: var(--text-quiet);
+}
+.sessions-place-agents {
+  color: var(--working);
+  font-weight: 500;
+}
+.sessions-node--in-place .sessions-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 34px;
+  width: var(--stroke-hairline);
+  background: var(--line);
+  pointer-events: none;
+}
+.sessions-node--in-space.sessions-node--in-place .sessions-line::before {
+  left: 54px;
+}
+/* A space's heading: its chevron, then its name, a section's label, small
+   and spaced, quiet until pointed at. A click on either folds it. */
+.sessions-space {
+  min-height: var(--size-control-sm);
+  padding-left: var(--space-4);
+  color: var(--text-quiet);
+}
+.sessions-space:hover,
+.sessions-space[aria-selected="true"] {
+  color: var(--text);
+}
+.sessions-space-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.sessions-space-name {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* A project's chevron folds what it holds, as the keys do. */
+.sessions-project-fold {
+  display: inline-flex;
+}
+/* Under the pointer, or selected, a project's line reads in its colour at
+   its right end, the left as any line's. */
+.sessions-project--p1 {
+  --row-tint: var(--project-1);
+}
+.sessions-project--p2 {
+  --row-tint: var(--project-2);
+}
+.sessions-project--p3 {
+  --row-tint: var(--project-3);
+}
+.sessions-project--p4 {
+  --row-tint: var(--project-4);
+}
+.sessions-project--p5 {
+  --row-tint: var(--project-5);
+}
+.sessions-project--p6 {
+  --row-tint: var(--project-6);
+}
+.sessions-project:hover {
+  background: linear-gradient(
+    90deg,
+    var(--surface-raised) 40%,
+    color-mix(in srgb, var(--row-tint) 26%, var(--surface-raised))
+  );
+}
+.sessions-project[aria-selected="true"] {
+  background: linear-gradient(
+    90deg,
+    var(--surface-lit) 40%,
+    color-mix(in srgb, var(--row-tint) 34%, var(--surface-lit))
+  );
+}
+/* A space's and a project's buttons, at its line's right end while the
+   pointer is on it; what a folded line says there gives way to them. */
+.sessions-row-actions {
+  position: absolute;
+  right: var(--space-4);
+  bottom: 0;
+  height: var(--size-control-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--timing-fast) var(--ease-out);
+}
+.sessions-line:hover .sessions-row-actions,
+.sessions-row-actions:has([data-popup-open]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sessions-line:has(.sessions-row-actions):hover .mu-list-item-end {
+  visibility: hidden;
 }
 .sessions-tree .mu-list-item {
   flex: none;

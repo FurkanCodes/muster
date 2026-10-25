@@ -1,7 +1,7 @@
 """Where agents' time goes, measured from this checkout's Claude Code transcripts.
 
 Run from the repository's root, to compare with an earlier run before and
-after changing AGENTS.md:
+after changing CLAUDE.md:
 
     python3 -I scripts/agent-sessions.py [out.json] [session id to skip]
 

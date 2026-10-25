@@ -120,11 +120,11 @@ impl Supervisor {
                 "the checks start with the check command",
             ));
         }
-        // A free terminal is in a space; one in a workspace shows where its
-        // project does (`ARC-33`).
-        let home = match workspace {
-            None => Some(self.home_for(space).await?),
-            Some(_) => None,
+        // A free terminal is in the space asked, or in none, to roam the
+        // machine; one in a workspace shows where its project does (`ARC-33`).
+        let home = match (workspace, space) {
+            (None, Some(_)) => Some(self.home_for(space).await?),
+            _ => None,
         };
         let start = if prompt.is_some() {
             Start::WithPrompt

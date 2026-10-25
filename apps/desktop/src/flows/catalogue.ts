@@ -224,7 +224,7 @@ function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
   items.push(
     plain(
       "do:new_terminal",
-      "Start a terminal in no project",
+      "Start a terminal",
       labelOf(keyed, "new_terminal"),
       () => void spaces.newTerminal(app),
     ),
@@ -232,16 +232,6 @@ function anywhere(app: App, taken: readonly PaletteItem[]): PaletteItem[] {
       app.actions.openFlow({ kind: "space-name", space: null }),
     ),
   );
-  const state = app.daemon.store.getState();
-  if (state.spaces.length > 0)
-    items.push(
-      plain("space:all", "Show everything", null, () => spaces.goTo(app, null)),
-      ...state.spaces.map((space) =>
-        plain(`space:${space.id}`, `Show the space ${space.name}`, null, () =>
-          spaces.goTo(app, space.id),
-        ),
-      ),
-    );
   if (!taken.some((item) => item.id === "do:new_session"))
     items.push({
       id: "do:new_session",
@@ -307,9 +297,8 @@ function sessions(app: App): PaletteItem[] {
         meta: project?.name ?? null,
         lead: { kind: "session", session } as const,
         run: () => {
-          const screen = asking.has(id) ? "needs-you" : "all";
-          app.actions.show(screen);
-          app.actions.select(screen, id);
+          app.actions.show("all");
+          app.actions.select("all", id);
           app.actions.showTerminal(id);
         },
       },

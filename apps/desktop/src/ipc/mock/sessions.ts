@@ -72,8 +72,8 @@ export function sessionsCommand(mock: MockBridge, command: Command): Reply | und
     if (workspace !== null && !mock.world.workspaces.some((stored) => stored.id === workspace))
       refuse(`no workspace wsp_${workspace}`, "not_found");
     if (prompt?.trim() && harness === "shell") refuse("Shell takes no prompt", "bad_request");
-    // A terminal in no project is in a space (`ARC-33`).
-    const home = workspace === null ? homeFor(mock, space) : null;
+    // A terminal in no project is in the space asked, or in none (`ARC-33`).
+    const home = workspace === null && space !== null ? homeFor(mock, space) : null;
     // A shell is named for the program in front in it, its own at first.
     const id = started(mock, {
       workspace,

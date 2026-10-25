@@ -1,21 +1,21 @@
-// *Needs you* (design system: Queue): the queue in the sidebar, by project
-// as the All list is, the project with the most urgent first and under it
-// what asks, then what finished not seen, and beside it the selected
-// session's pane, live. The agents at work need nobody yet: *All* lists
-// them, and an empty queue says how many there are. A project's heading
-// goes to its page. While Tickets or Settings is shown beside it
-// instead, the queue stays in the sidebar and its keys are theirs. The keys are the
+// *Needs you* (design system: Queue): a page beside the sidebar, opened
+// from its place under Tickets, while the sidebar lists everything. The
+// queue by project, as the list is, the project with the most urgent first
+// and under it what asks, then what finished not seen. The agents at work
+// need nobody yet: the list has them, and an empty queue says how many
+// there are. A project's heading goes to its page. The keys are the
 // terminal UI's, as the person set them (src/keys): ↑↓ (or k j) move, ⏎
-// gives the session's terminal the keys and ⇧Q gives them back, `l` goes
-// to the session that needed the person last, `d` its changes (the pane's),
-// `z` puts its newest turn back, `R` renames it in place, `x` closes it, `b`
-// its pull request in the browser.
+// (or a click) opens the session in the list with its terminal holding the
+// keys, `l` goes to the session that needed the person last, `z` opens
+// it in the list with its newest turn's putting back, `R` renames it in
+// place, `x` closes it, `b` its pull request in the browser.
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Connecting } from "../../app/Connecting";
 import { useActions, useApp, useDaemon, useUi } from "../../app/context";
 import { useKeys } from "../../app/keys";
+import { SidebarAwayRow } from "../../app/Sidebar";
 import type { SessionId } from "../../ipc/generated/SessionId";
 import { type Keymap, labelOf } from "../../keys/keymap";
 import { useActionKeys, useBorrowedKeys, useKeymap } from "../../keys/useKeymap";
@@ -24,6 +24,7 @@ import { RenameSession, type SessionActions } from "../../session/useSessionActi
 import { projectColour, standsBeside } from "../../state/selectors";
 import type { Hint } from "../../state/ui";
 import { EmptyState, EmptyStateText, EmptyStateTitle } from "../../ui/EmptyState";
+import { Heading, HeadingLead, HeadingTitle } from "../../ui/Heading";
 import { List } from "../../ui/List";
 import { Swatch } from "../../ui/status";
 import { lastNeeded } from "./history";
@@ -86,7 +87,6 @@ function hintsFor(
   const hints: Hint[] = section
     ? [
         { key: "⏎", does: section === "asking" ? "answer" : "open" },
-        { key: key("show_changes"), does: "see changes" },
         ...(canPutBack ? [{ key: key("put_back"), does: "put back" }] : []),
         { key: key("rename"), does: "rename" },
         { key: key("close"), does: "close" },
@@ -172,8 +172,6 @@ export function QueueScreen({ active }: { active: boolean }) {
   }, [actions, active]);
 
   const pick = (id: SessionId) => {
-    // Picked beside Tickets or Settings, it is shown in their place.
-    if (!active) actions.show(AREA);
     actions.select(AREA, id);
     actions.keysTo("list");
   };
@@ -181,18 +179,23 @@ export function QueueScreen({ active }: { active: boolean }) {
     const next = ids[Math.max(0, Math.min(ids.length - 1, (at < 0 ? 0 : at) + by))];
     if (next) pick(next);
   };
-  const open = () => {
-    if (!selected) return;
-    const session = app.daemon.store.getState().sessions[selected];
-    if (!session) return;
+  /** `id`, or the one selected, opened where every session is: in the list, its terminal with the keys. */
+  const open = (id = selected) => {
+    if (!id || !app.daemon.store.getState().sessions[id]) return;
+    actions.select(AREA, id);
+    actions.show("all");
+    actions.select("all", id);
     actions.showPane("terminal");
-    actions.showTerminal(selected);
+    actions.showTerminal(id);
     actions.keysTo("terminal");
   };
   const putBack = () => {
-    if (!workspace || newestTurn === null)
+    if (!selected || !workspace || newestTurn === null)
       return actions.tell("No turn is kept for this workspace yet.", true);
     if (busy) return actions.tell("Wait for its turn to end.", true);
+    // In the list, where its changes are, its newest turn's putting back shown.
+    actions.show("all");
+    actions.select("all", selected);
     actions.showTurn(workspace, newestTurn, "put-back");
   };
   const goToLast = () => {
@@ -203,7 +206,7 @@ export function QueueScreen({ active }: { active: boolean }) {
     actions.select("all", last);
     actions.show("all");
   };
-  useKeys(active ? { ArrowDown: () => move(1), ArrowUp: () => move(-1), Enter: open } : {});
+  useKeys(active ? { ArrowDown: () => move(1), ArrowUp: () => move(-1), Enter: () => open() } : {});
   // The pane answers `d` (show_changes) and its panels' keys.
   useActionKeys(
     "needs_you",
@@ -229,33 +232,50 @@ export function QueueScreen({ active }: { active: boolean }) {
   const nothingWaits = waiting === 0;
 
   return (
-    <section className="queue-column" aria-label={TITLE}>
-      <h1 className="app-hidden">{TITLE}</h1>
-      {!loaded ? (
-        <Connecting />
-      ) : (
-        <List
-          label={`${TITLE} sessions`}
-          activeId={selected ? optionId(selected) : undefined}
-          resting={resting}
-          className="queue-list"
-        >
-          {nothingWaits ? <AllClear working={working} /> : null}
-          {groups.map((group) =>
-            group.ids.map((id, index) => (
-              <QueueRowSlot
-                key={id}
-                project={index === 0 ? group.project : null}
-                renaming={tools.renaming === id ? tools : null}
-              >
-                <QueueEntry id={id} selected={id === selected} onPick={pick} />
-              </QueueRowSlot>
-            )),
-          )}
-        </List>
-      )}
+    <section className="queue-page" aria-label={TITLE}>
+      <SidebarAwayRow />
+      <div className="app-column-heading" data-tauri-drag-region>
+        <Heading>
+          <HeadingTitle level={1}>{TITLE}</HeadingTitle>
+          <HeadingLead>
+            {waiting > 0
+              ? `${waiting} ${waiting === 1 ? "session waits" : "sessions wait"} on you; ⏎ opens one.`
+              : "What asks you something, then what finished that you have not seen."}
+          </HeadingLead>
+        </Heading>
+      </div>
+      <div className="queue-column">
+        {!loaded ? (
+          <Connecting />
+        ) : (
+          <List
+            label={`${TITLE} sessions`}
+            activeId={selected ? optionId(selected) : undefined}
+            resting={resting}
+            className="queue-list"
+          >
+            {nothingWaits ? <AllClear working={working} /> : null}
+            {groups.map((group) =>
+              group.ids.map((id, index) => (
+                <QueueRowSlot
+                  key={id}
+                  project={index === 0 ? group.project : null}
+                  renaming={tools.renaming === id ? tools : null}
+                >
+                  <QueueEntry id={id} selected={id === selected} onPick={open} />
+                </QueueRowSlot>
+              )),
+            )}
+          </List>
+        )}
+      </div>
     </section>
   );
+}
+
+/** *Needs you* as a page: its keys the window's while it is shown. */
+export function NeedsYouPage() {
+  return <QueueScreen active />;
 }
 
 /** A row of the list, under its project's heading where the project's rows begin, or its name being edited. */

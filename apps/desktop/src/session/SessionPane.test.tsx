@@ -23,6 +23,9 @@ describe("ARC-24 the session pane", () => {
 
   it("PRD-12 says its agent and what it uses at the status bar's end, for the session shown", async () => {
     renderApp();
+    await userEvent.click(
+      await screen.findByRole("treeitem", { name: /^Sketch the Tauri shell,/ }),
+    );
     await screen.findByRole("heading", { name: "Sketch the Tauri shell", level: 2 });
     expect(screen.getByRole("contentinfo")).toHaveTextContent(
       "Codex · 182k tokens · 212 MB, 3% CPU",

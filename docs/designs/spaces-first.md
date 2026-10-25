@@ -90,6 +90,7 @@ Where the build differs from the plan above, and what is not done yet.
 *   **The desktop's heading and levels.** A space's heading is drawn as the *Terminals* heading was: a quiet label that folds. Projects keep their place and look under it. Selecting a heading shows nothing beside the list yet; a space's own page is not built.
 *   **"Move to a new space…"** keeps the window on *Everything*, in the TUI and in the desktop app. Making a space from the spaces menu still shows it.
 *   **The desktop's pretend daemon** (`src/ipc/mock`) keeps the rules too: a Home made where none is asked, moves, and refusing to remove a space that holds anything. Its scenario's projects are in no space, so the browser end-to-end tests keep their rows. Tests that add or clone give it a space first.
+*   **A terminal in no space (2026-10-26, the person's ask).** "Users can create a space, or an empty terminal with no space at all, to roam their computer." A free terminal started with no space asked now stays in none, listed after the spaces; projects keep exactly one space. The desktop app's header starts one; the TUI and the CLI still name a space where they have one.
 *   **Not done yet:**
     *   a space's own page beside the list, when its heading is selected;
     *   ordering spaces by hand (they keep the order they were made in);

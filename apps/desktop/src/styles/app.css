@@ -88,7 +88,7 @@ body {
   align-items: center;
   justify-content: center;
 }
-/* The projects' heading over the list, its + always there: the way to add one. */
+/* The list's heading, Spaces, its new terminal and + always there. */
 .app-projects-head {
   position: relative;
   flex: none;
@@ -103,6 +103,11 @@ body {
   line-height: 16px;
   font-weight: 500;
   color: var(--text-quiet);
+}
+.app-projects-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /* The status bar's right: the session's facts give way first as the window narrows. */

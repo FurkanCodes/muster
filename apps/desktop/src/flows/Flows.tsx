@@ -39,8 +39,6 @@ const BOUND: readonly [KeyAction, (app: App) => void, readonly ScreenId[]][] = [
   ["move_branch", act.moveBranch, ["all"]],
   ["new_terminal", (app) => void spaces.newTerminal(app), act.SESSION_LISTS],
   ["spaces", spaces.openSpaces, act.SESSION_LISTS],
-  ["next_space", (app) => spaces.cycle(app, 1), ["all"]],
-  ["previous_space", (app) => spaces.cycle(app, -1), ["all"]],
   ["file_terminal", spaces.fileTerminal, ["all"]],
 ];
 

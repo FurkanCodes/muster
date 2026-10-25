@@ -110,6 +110,28 @@ describe("ARC-24 All sessions", () => {
     expect(await screen.findByRole("dialog", { name: "Close Rows apart?" })).toBeInTheDocument();
   });
 
+  it("labels each place with its branch where a project works beyond its checkout, two agents on one branch said", async () => {
+    const bridge = new MockBridge(workingDay());
+    const rendered = renderList("all", true, bridge);
+    uninstall = installKeys(rendered.app);
+    // muster works in its checkout and two worktrees: each labelled, its sessions under it.
+    const resize = await screen.findByRole("treeitem", { name: "fix/resize-under-load" });
+    const lines = screen.getAllByRole("treeitem").map((line) => line.getAttribute("aria-label"));
+    const at = lines.indexOf("fix/resize-under-load");
+    expect(lines[at + 1]).toMatch(/^Flaky resize test under load,/);
+    expect(lines[at + 2]).toMatch(/^Resize settles once on release,/);
+    expect(resize).not.toHaveTextContent("agents");
+    // Both at work on it: said, as they edit the same files.
+    act(() => bridge.setStatus(ulid(104), { state: "running" }));
+    await waitFor(() => expect(resize).toHaveTextContent("2 agents"));
+    // The chat's line says what it does; its branch is in the tip.
+    const meta = screen
+      .getByRole("treeitem", { name: /^Flaky resize test under load,/ })
+      .querySelector(".mu-list-item-meta");
+    expect(meta).toHaveTextContent("running cargo nextest");
+    expect(meta).toHaveAttribute("title", "running cargo nextest · ⎇ fix/resize-under-load");
+  });
+
   it("draws a shell's line as a chat's: its mark, the program in it over what it does, and how long (PRD §6a)", async () => {
     const bridge = new MockBridge(workingDay());
     // The shell in a checkout with no chat to stand beside: a line of its own.
@@ -120,7 +142,9 @@ describe("ARC-24 All sessions", () => {
     expect(line).toHaveClass("mu-list-item--comfortable");
     expect(line).toHaveTextContent("❯");
     expect(line.querySelector(".mu-list-item-title")).toHaveTextContent("git log");
-    expect(line.querySelector(".mu-list-item-meta")).toHaveTextContent("running");
+    expect(line.querySelector(".mu-list-item-meta")).toHaveTextContent("open");
+    // Nothing says whether the program in front works: the mark never spins.
+    expect(line.querySelector(".mu-mark--working")).toBeNull();
     act(() => {
       bridge.updateSession(ulid(102), { title: "zsh" });
       bridge.emitSession(ulid(102));
@@ -142,8 +166,10 @@ describe("ARC-24 All sessions", () => {
 
   it("lists projects and their sessions only: ← goes from a session to its project, → back", async () => {
     const { app } = await screenShown();
-    expect(screen.queryByRole("treeitem", { name: "feature/desktop-app" })).toBeNull();
-    expect(screen.queryByRole("treeitem", { name: /^Shell: git log/ })).toBeNull();
+    // muster works beyond its checkout: its places are labelled.
+    expect(screen.getByRole("treeitem", { name: "feature/desktop-app" })).toBeInTheDocument();
+    // A shell has a line of its own, so it can be opened.
+    expect(screen.getByRole("treeitem", { name: /^Shell: git log/ })).toBeInTheDocument();
     await userEvent.click(row(/^Sketch the Tauri shell/));
     await userEvent.keyboard("{ArrowLeft}");
     expect(app.ui.getState().selected.all).toBe(ulid(1));
@@ -151,6 +177,9 @@ describe("ARC-24 All sessions", () => {
     expect(row("muster")).toHaveAttribute("aria-expanded", "false");
     await userEvent.keyboard("{ArrowRight}{ArrowRight}");
     expect(row("muster")).toHaveAttribute("aria-expanded", "true");
+    // Its first place's label, then its first session.
+    expect(app.ui.getState().selected.all).toBe(ulid(10));
+    await userEvent.keyboard("{ArrowDown}");
     expect(app.ui.getState().selected.all).toBe(ulid(100));
   });
 

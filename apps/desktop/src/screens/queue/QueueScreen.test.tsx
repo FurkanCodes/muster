@@ -5,19 +5,33 @@ import { MockBridge } from "../../ipc/mock/bridge";
 import { ulid, workingDay } from "../../ipc/mock/scenario";
 import { renderApp } from "../../test/render";
 
-const queue = () => screen.getByRole("listbox");
+const queue = () => screen.getByRole("listbox", { name: "Needs you sessions" });
 const options = () => within(queue()).getAllByRole("option");
 const selected = () => within(queue()).getByRole("option", { selected: true });
 const names = () => options().map((option) => option.getAttribute("aria-label"));
 const hints = () => screen.getByRole("contentinfo").textContent;
 
+/** Selects the queue's row named `name` with the keys, as a click would open it. */
+async function selectNamed(name: string) {
+  for (let step = 0; step < names().length; step += 1) await userEvent.keyboard("{ArrowUp}");
+  for (
+    let step = 0;
+    step < names().length && selected().getAttribute("aria-label") !== name;
+    step += 1
+  )
+    await userEvent.keyboard("{ArrowDown}");
+}
+
+/** The window, on *Needs you*: its page beside the list of everything. */
 async function opened(bridge = new MockBridge(workingDay())) {
   const view = renderApp(bridge);
+  await screen.findByRole("tree", { name: "Projects and sessions" });
+  await userEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
   await screen.findByRole("option", { name: "Sketch the Tauri shell" });
   return view;
 }
 
-describe("ARC-24 Needs you, in the sidebar", () => {
+describe("ARC-24 Needs you, a page beside the list", () => {
   it("lists by project, the most urgent first; under each, who asks, then finishes not seen; never the agents at work", async () => {
     await opened();
     const labels = within(queue())
@@ -66,11 +80,11 @@ describe("ARC-24 Needs you, in the sidebar", () => {
     expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
   });
 
-  it("says it is connecting before the daemon's first word", () => {
+  it("says it is connecting before the daemon's first word", async () => {
     const bridge = new MockBridge(workingDay());
     bridge.open = async () => {};
     renderApp(bridge);
-    // In the list shown; the other list is kept, hidden, in its place.
+    await userEvent.click(await screen.findByRole("button", { name: /^Needs you/ }));
     return waitFor(() =>
       expect(
         within(screen.getByRole("region", { name: "Needs you" })).getByRole("status", {
@@ -82,15 +96,13 @@ describe("ARC-24 Needs you, in the sidebar", () => {
 });
 
 describe("ARC-24 the queue's keys", () => {
-  it("moves with ↑↓ and j k, the pane following, and says each state's keys", async () => {
+  it("moves with ↑↓ and j k, and says each state's keys", async () => {
     await opened();
     expect(hints()).toContain("⏎answer");
     expect(hints()).toContain("zput back");
+    expect(hints()).not.toContain("see changes");
     await userEvent.keyboard("{ArrowDown}");
     expect(selected()).toHaveAccessibleName("Resize settles once on release");
-    expect(
-      screen.getByRole("heading", { level: 2, name: "Resize settles once on release" }),
-    ).toBeInTheDocument();
     expect(hints()).toContain("⏎open");
     expect(hints()).toContain("bpull request");
     await userEvent.keyboard("j");
@@ -101,17 +113,19 @@ describe("ARC-24 the queue's keys", () => {
     expect(queue()).toHaveAttribute("aria-activedescendant", selected().id);
   });
 
-  it("gives the terminal the keys on ⏎ and takes them back on ⇧Q", async () => {
+  it("opens the selected session in the list on ⏎, its terminal with the keys, which ⇧Q gives back", async () => {
     const { container } = await opened();
-    await userEvent.keyboard("{Enter}");
-    expect(selected()).toHaveClass("is-resting");
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Resize settles once on release" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Needs you" })).toBeNull();
+    expect(
+      screen.getByRole("treeitem", { name: /^Resize settles once on release,/ }),
+    ).toHaveAttribute("aria-selected", "true");
     expect(hints()).toContain("⇧Qgive the keys back");
-    expect(hints()).toContain("Typing in Sketch the Tauri shell. Every key goes to Codex.");
-    // Keys go to the program now, not the list.
-    await userEvent.keyboard("{ArrowDown}");
-    expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
     await userEvent.keyboard("Q");
-    expect(selected()).not.toHaveClass("is-resting");
+    expect(hints()).not.toContain("Typing in");
     expect(container.querySelector(".has-keys")).toBeNull();
   });
 
@@ -137,18 +151,6 @@ describe("ARC-24 the queue's keys", () => {
     expect(selected()).toHaveAccessibleName("Share the Gradle cache across worktrees");
   });
 
-  it("goes back to the first that waits after answering one, as the terminal UI does", async () => {
-    const { bridge } = await opened();
-    await userEvent.click(
-      within(queue()).getByRole("option", { name: "Share the Gradle cache across worktrees" }),
-    );
-    await userEvent.keyboard("{Enter}");
-    act(() => bridge.setStatus(ulid(200), { state: "running" }));
-    expect(selected()).toHaveAccessibleName("Share the Gradle cache across worktrees");
-    await userEvent.keyboard("Q");
-    expect(selected()).toHaveAccessibleName("Sketch the Tauri shell");
-  });
-
   it("l goes to the session that needed the person last, here or on Sessions", async () => {
     const { bridge } = await opened();
     await userEvent.keyboard("l");
@@ -162,25 +164,26 @@ describe("ARC-24 the queue's keys", () => {
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeInTheDocument();
   });
 
-  it("PRD-14 d shows the changes; z puts the newest turn back, never while its agent works", async () => {
+  it("PRD-14 z opens the session in the list with its newest turn's putting back, never while its agent works", async () => {
     const { bridge } = await opened();
     act(() => bridge.setStatus(ulid(101), { state: "running" }));
     await userEvent.keyboard("z");
     expect(hints()).toContain("Wait for its turn to end.");
     act(() => bridge.setStatus(ulid(101), { state: "needs_you", reason: "permission" }));
     await userEvent.keyboard("z");
-    const changes = screen.getByRole("button", { name: "Changes" });
-    expect(changes).toHaveAttribute("aria-pressed", "true");
-    await userEvent.click(changes);
-    expect(changes).toHaveAttribute("aria-pressed", "false");
-    await userEvent.keyboard("d");
-    expect(changes).toHaveAttribute("aria-pressed", "true");
-    // The changes have the keys while shown (↑↓ through their files), as in
-    // the TUI: d gives them back to the queue.
-    await userEvent.keyboard("d");
-    expect(changes).toHaveAttribute("aria-pressed", "false");
+    // In the list, its newest turn's putting back asked.
+    expect(
+      await screen.findByRole("heading", { name: /^Put the files back as before/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("treeitem", { name: /^Sketch the Tauri shell,/, hidden: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{Escape}");
     // A workspace with no turn kept has none to put back.
-    await userEvent.keyboard("jj");
+    await userEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
+    await screen.findByRole("heading", { level: 1, name: "Needs you" });
+    await selectNamed("Explain the release script");
+    expect(selected()).toHaveAccessibleName("Explain the release script");
     await userEvent.keyboard("z");
     expect(hints()).toContain("No turn is kept for this workspace yet.");
   });
@@ -255,9 +258,7 @@ describe("ARC-24 renaming, closing and the pull request from the list", () => {
       bridge.updateSession(ulid(104), { ended_at: 0 });
       bridge.setStatus(ulid(104), { state: "exited", success: false }, true);
     });
-    await userEvent.click(
-      within(queue()).getByRole("option", { name: "Resize settles once on release" }),
-    );
+    await userEvent.keyboard("{ArrowDown}");
     expect(selected()).toHaveAccessibleName("Resize settles once on release");
     await userEvent.keyboard("x");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -282,25 +283,11 @@ describe("ARC-24 renaming, closing and the pull request from the list", () => {
     await waitFor(() =>
       expect(bridge.openedUrls).toEqual(["https://github.com/FurkanCodes/muster/pull/91"]),
     );
-    await userEvent.click(
-      within(queue()).getByRole("option", { name: "Explain the release script" }),
-    );
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(selected()).toHaveAccessibleName("Explain the release script");
     await userEvent.keyboard("b");
     expect(hints()).toContain("No pull request from this branch is known; o opens one.");
     expect(bridge.openedUrls).toHaveLength(1);
-  });
-});
-
-describe("ARC-24 the changes beside the queue", () => {
-  it("say their own keys while shown, however the session's status moves", async () => {
-    const { bridge } = await opened();
-    await userEvent.keyboard("d");
-    await waitFor(() => expect(hints()).toContain("ask git again"));
-    act(() => bridge.setStatus(ulid(101), { state: "finished" }, true));
-    await waitFor(() => expect(hints()).toContain("ask git again"));
-    expect(hints()).not.toContain("last needed you");
-    await userEvent.keyboard("d");
-    await waitFor(() => expect(hints()).toContain("last needed you"));
   });
 });
 
@@ -317,22 +304,25 @@ describe("ARC-24 the queue answers the person's keys", () => {
     await waitFor(() => expect(hints()).toContain("⇧Erename"));
     expect(hints()).toContain("ppull request");
     expect(hints()).toContain("uput back");
-    const changes = screen.getByRole("button", { name: "Changes" });
-    await userEvent.keyboard("z");
-    expect(changes).toHaveAttribute("aria-pressed", "false");
-    await userEvent.keyboard("u");
-    expect(changes).toHaveAttribute("aria-pressed", "true");
-    await userEvent.click(changes);
     // Muster's own keys no longer do what the person moved.
+    await userEvent.keyboard("z");
+    expect(screen.getByRole("heading", { level: 1, name: "Needs you" })).toBeInTheDocument();
     await userEvent.keyboard("b");
     expect(bridge.openedUrls).toEqual([]);
     await userEvent.keyboard("p");
     await waitFor(() => expect(bridge.openedUrls).toHaveLength(1));
-    await userEvent.keyboard("y");
-    expect(selected()).toHaveAccessibleName("Resize settles once on release");
     await userEvent.keyboard("R");
     expect(screen.queryByRole("textbox", { name: "Session name" })).toBeNull();
     await userEvent.keyboard("E");
     expect(await screen.findByRole("textbox", { name: "Session name" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.keyboard("y");
+    expect(selected()).toHaveAccessibleName("Resize settles once on release");
+    await selectNamed("Sketch the Tauri shell");
+    // u, the person's put back, opens the session in the list with it.
+    await userEvent.keyboard("u");
+    expect(
+      await screen.findByRole("heading", { name: /^Put the files back as before/ }),
+    ).toBeInTheDocument();
   });
 });
