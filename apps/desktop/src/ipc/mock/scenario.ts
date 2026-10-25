@@ -123,6 +123,7 @@ export function defaultPreferences(): Preferences {
     session_lines: "two",
     panels: "list | session 60% | (changes / shell / plugin)",
     list_folded: false,
+    projects: [],
     naming: { by_agent: true, agent: null, model: null },
     keys: {},
     notifications: true,

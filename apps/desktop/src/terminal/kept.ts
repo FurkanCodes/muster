@@ -12,10 +12,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { type ITheme, Terminal as XTerm } from "@xterm/xterm";
 import type { App } from "../app/context";
+import { chordOf } from "../app/keys";
 import type { Bridge } from "../ipc/bridge";
 import type { TermFrame } from "../ipc/frames";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { TerminalModes } from "../ipc/generated/TerminalModes";
+import { windowTakes } from "../keys/panelKey";
 import { Gpu, type HeldContext } from "./gpu";
 import { Keeper } from "./keeper";
 import { exposeForTests } from "./testing";
@@ -99,8 +101,10 @@ export class KeptTerminal {
     const typed = xterm.onData((text) => void bridge.input(session, text).catch(() => {}));
     this.lets.push(() => typed.dispose());
     xterm.attachCustomKeyEventHandler((event) => {
-      // ⌘ shortcuts and ⇧Q (leave the terminal) are Muster's, never the program's.
+      // ⌘ shortcuts, ⇧Q (leave the terminal) and the panel key and the key
+      // after it are Muster's, never the program's.
       if (event.metaKey) return false;
+      if (event.type === "keydown" && windowTakes(chordOf(event))) return false;
       if (event.type === "keydown" && event.shiftKey && event.key === "Q") return false;
       return true;
     });

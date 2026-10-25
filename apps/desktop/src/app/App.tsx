@@ -8,7 +8,8 @@ import { Flows } from "../flows/Flows";
 import { Welcome } from "../flows/Welcome";
 import type { Bridge } from "../ipc/bridge";
 import { screenKeys } from "../keys/keymap";
-import { KEY_SCREENS, useKeymap } from "../keys/useKeymap";
+import { readKeymapFrom, waitingHint } from "../keys/panelKey";
+import { KEY_SCREENS, keymapFor, useKeymap } from "../keys/useKeymap";
 import { installQueueHistory } from "../screens/queue/history";
 import { SessionActionsProvider } from "../session/SessionActionsContext";
 import { createDaemon } from "../state/daemon";
@@ -44,10 +45,21 @@ function useAppValue(bridge: Bridge): AppValue {
   return app;
 }
 
+/** The person's keys before the daemon has said any. */
+const NO_KEYS: Readonly<Record<string, readonly string[]>> = {};
+
 /** Wires the window to the world once: the link, keys, visibility, the clock, the theme. */
 function useWiring(app: AppValue): void {
   useEffect(() => {
     const keys = installKeys(app);
+    const keymapNow = () => {
+      const state = app.daemon.store.getState();
+      return keymapFor(state.preferences?.keys ?? NO_KEYS, state.plugins);
+    };
+    readKeymapFrom(keymapNow, (waiting) => {
+      if (waiting) app.actions.tell(waitingHint(keymapNow()));
+      else app.actions.clearNote();
+    });
     const visibility = installVisibility(app);
     const history = installQueueHistory(app.daemon);
     const revealed = app.daemon.onReveal((session) => {

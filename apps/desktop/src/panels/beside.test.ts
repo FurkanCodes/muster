@@ -1,5 +1,5 @@
-// What stands beside the agent: the shell on `T` and a plugin's panel on
-// its key, as the terminal UI's `app::shell` and `app::plugin_panel` open
+// What stands beside the agent: a shell placed on `T` and a plugin's panel
+// on its key, as the terminal UI's `app::shell` and `app::plugin_panel` open
 // and put them away, against the mock daemon (ARC-24, PRD-15, PRD §6).
 
 import { describe, expect, it, vi } from "vitest";
@@ -8,7 +8,8 @@ import { MockBridge } from "../ipc/mock/bridge";
 import { ulid, workingDay } from "../ipc/mock/scenario";
 import { createDaemon } from "../state/daemon";
 import { createUi } from "../state/ui";
-import { panelBeside, shellBeside, togglePanel, toggleShell } from "./beside";
+import { openShell, panelBeside, togglePanel } from "./beside";
+import { Layout } from "./layout";
 
 const codex = ulid(101);
 const desktop = ulid(11);
@@ -28,27 +29,33 @@ async function makeApp(
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-describe("the shell beside the agent", () => {
-  it("is the running shell of the workspace, with the keys, on T", async () => {
+/** The layouts the window asked the daemon to keep, in order. */
+function kept(bridge: MockBridge): Layout[] {
+  return bridge.sent.flatMap((command) =>
+    typeof command === "object" &&
+    "ChangePreference" in command &&
+    typeof command.ChangePreference === "object" &&
+    "Panels" in command.ChangePreference
+      ? [Layout.parse(command.ChangePreference.Panels)]
+      : [],
+  );
+}
+
+describe("a shell beside the agent", () => {
+  it("is the workspace's running shell, placed beside the session with the keys, on T", async () => {
     const { app, bridge } = await makeApp();
-    expect(await toggleShell(app, desktop, codex)).toBe(gitLog);
-    expect(app.ui.getState()).toMatchObject({
-      shell: gitLog,
-      terminal: gitLog,
-      keysIn: "terminal",
-    });
-    expect(shellBeside(app.daemon.store.getState(), gitLog, codex)).toBe(gitLog);
-    // Never beside itself.
-    expect(shellBeside(app.daemon.store.getState(), gitLog, gitLog)).toBeNull();
+    expect(await openShell(app, desktop, codex)).toBe(gitLog);
+    expect(app.ui.getState()).toMatchObject({ terminal: gitLog, keysIn: "terminal" });
+    expect(kept(bridge).at(-1)?.placed()).toEqual([gitLog]);
     expect(
       bridge.sent.some((command) => typeof command === "object" && "StartSession" in command),
     ).toBe(false);
   });
 
-  it("is started in a workspace with none, and shown once the daemon has it", async () => {
+  it("is started in a workspace with none, and placed once the daemon has it", async () => {
     const { app, bridge } = await makeApp();
-    const shell = await toggleShell(app, resize, flaky);
-    expect(bridge.sent.at(-1)).toEqual({
+    const shell = await openShell(app, resize, flaky);
+    expect(bridge.sent).toContainEqual({
       StartSession: {
         workspace: resize,
         harness: "shell",
@@ -59,7 +66,7 @@ describe("the shell beside the agent", () => {
       },
     });
     expect(shell).not.toBeNull();
-    // The daemon tells the session after its answer.
+    expect(shell ? kept(bridge).at(-1)?.placed() : null).toEqual([shell]);
     await vi.waitFor(() =>
       expect(shell ? app.daemon.store.getState().sessions[shell] : undefined).toMatchObject({
         harness: "shell",
@@ -67,22 +74,23 @@ describe("the shell beside the agent", () => {
         workspace: resize,
       }),
     );
-    expect(app.ui.getState().shell).toBe(shell);
   });
 
-  it("is put away on T again, running on, the keys back with the list", async () => {
-    const { app } = await makeApp();
-    await toggleShell(app, desktop, codex);
-    expect(await toggleShell(app, desktop, codex)).toBeNull();
-    expect(app.ui.getState()).toMatchObject({ shell: null, keysIn: "list", terminal: codex });
-    expect(app.ui.getState().note?.text).toBe("The shell is put away; it runs on.");
+  it("on T again, gives the one placed the keys and places no other", async () => {
+    const { app, bridge } = await makeApp();
+    await openShell(app, desktop, codex);
+    await settle();
+    app.actions.keysTo("list");
+    expect(await openShell(app, desktop, codex)).toBe(gitLog);
+    expect(app.ui.getState()).toMatchObject({ terminal: gitLog, keysIn: "terminal" });
+    expect(kept(bridge)).toHaveLength(1);
     expect(app.daemon.store.getState().sessions[gitLog]?.ended_at).toBeNull();
   });
 
   it("says why when the daemon refuses to start one", async () => {
     const { app, bridge } = await makeApp();
     bridge.failNext("StartSession", "no workspace 01JD", "not_found");
-    expect(await toggleShell(app, resize, flaky)).toBeNull();
+    expect(await openShell(app, resize, flaky)).toBeNull();
     expect(app.ui.getState().note).toEqual({ text: "no workspace 01JD", error: true });
   });
 });

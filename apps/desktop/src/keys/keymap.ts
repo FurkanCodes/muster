@@ -19,7 +19,8 @@ export type KeyScreen =
   | "settings"
   | "changes"
   | "in_session"
-  | "in_tab";
+  | "in_tab"
+  | "prefix";
 
 export interface KeyAction {
   /** Its name in `[keys]`. */

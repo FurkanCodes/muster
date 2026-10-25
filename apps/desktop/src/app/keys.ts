@@ -15,6 +15,7 @@ import {
 } from "react";
 import { newSession } from "../flows/actions";
 import { charOfCode } from "../keys/chord";
+import { takePanelKey } from "../keys/panelKey";
 import type { App } from "./context";
 
 /** A key as Muster names it: `d`, `T`, `?`, `Enter`, `⌘K`, `⌥X`, `⇧Tab`. */
@@ -158,6 +159,8 @@ export function installKeys(app: App): () => void {
       }
       return;
     }
+    // The panel key, and the key after it, wherever the keys are.
+    if (ui.keysIn !== "dialog" && !editable(event.target) && takePanelKey(event, chord)) return;
     const global = GLOBAL[chord];
     if (global) {
       event.preventDefault();

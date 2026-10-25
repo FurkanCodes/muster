@@ -1,5 +1,5 @@
-// The panels in the session pane: the agent alone, the shell on T and a
-// plugin's panel on its key beside it, each put away by its key or its x,
+// The panels in the session pane: the agent alone, a shell placed on T and
+// a plugin's panel on its key beside it, each put away by its key or its x,
 // the line between two resized and kept in the person's settings, a layout
 // read back from them, and full screen on f (ARC-24, ARC-25, PRD-15, PRD §6).
 
@@ -38,40 +38,56 @@ describe("ARC-24 the panels beside the agent", () => {
     expect(screen.queryByRole("region", { name: "Codex" })).not.toBeInTheDocument();
   });
 
-  it("open the workspace's shell beside it on T, with the keys, and put it away on T", async () => {
-    const { app } = await pane();
+  it("place the workspace's shell beside it on T, with the keys, and give it the keys on T again", async () => {
+    const { app, bridge } = await pane();
     await userEvent.keyboard("T");
-    const shell = await screen.findByRole("region", { name: "Shell" });
+    const shell = await screen.findByRole("region", { name: /^Shell/ });
     expect(shell).toHaveTextContent("Shell");
     expect(shell).toHaveTextContent("git log");
     expect(shell).toHaveClass("has-keys");
-    expect(screen.getByRole("region", { name: "Codex" })).toHaveTextContent(
+    // Among others, the agent's panel is the preview.
+    expect(screen.getByRole("region", { name: "Preview: Codex" })).toHaveTextContent(
       "wants to run cargo build",
     );
     await waitFor(() => expect(terminals()).toEqual([codex, gitLog]));
     expect(screen.getByRole("button", { name: "Shell" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("separator")).toHaveAccessibleName("Between the agent and the shell");
-    // The keys back with Muster, T puts it away; it runs on.
+    expect(screen.getByRole("separator")).toHaveAccessibleName(
+      "Between the preview and a terminal placed",
+    );
+    // The keys back with Muster, T gives the shell placed the keys again.
     act(() => app.actions.keysTo("list"));
+    const layouts = bridge.sent.filter(
+      (command) => typeof command === "object" && "ChangePreference" in command,
+    ).length;
     await userEvent.keyboard("T");
-    expect(screen.queryByRole("region", { name: "Shell" })).not.toBeInTheDocument();
-    expect(app.ui.getState().note?.text).toBe("The shell is put away; it runs on.");
-    expect(screen.getByRole("button", { name: "Shell" })).toHaveAttribute("aria-pressed", "false");
+    expect(app.ui.getState()).toMatchObject({ keysIn: "terminal", terminal: gitLog });
+    expect(
+      bridge.sent.filter((command) => typeof command === "object" && "ChangePreference" in command),
+    ).toHaveLength(layouts);
   });
 
-  it("put the shell away by the x on its head, and take it away as it ends", async () => {
+  it("take the shell off the screen by the x on its head, and take it away as it ends", async () => {
     const { app, bridge } = await pane();
     await userEvent.click(screen.getByRole("button", { name: "Shell" }));
-    const shell = await screen.findByRole("region", { name: "Shell" });
-    await userEvent.click(within(shell).getByRole("button", { name: "Put the shell away" }));
-    expect(screen.queryByRole("region", { name: "Shell" })).not.toBeInTheDocument();
+    const shell = await screen.findByRole("region", { name: /^Shell/ });
+    await userEvent.click(
+      within(shell).getByRole("button", { name: "Take the shell off the screen" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: /^Shell/ })).not.toBeInTheDocument(),
+    );
+    expect(app.daemon.store.getState().sessions[gitLog]?.ended_at).toBeNull();
+    // Kept by the daemon: off the screen, running on.
+    await waitFor(() =>
+      expect(app.daemon.store.getState().preferences?.panels).not.toContain(gitLog),
+    );
     await userEvent.click(screen.getByRole("button", { name: "Shell" }));
-    await screen.findByRole("region", { name: "Shell" });
+    await screen.findByRole("region", { name: /^Shell/ });
     act(() => bridge.setStatus(gitLog, { state: "exited", success: true }));
     await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Shell" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("region", { name: /^Shell/ })).not.toBeInTheDocument(),
     );
-    expect(app.ui.getState()).toMatchObject({ shell: null, keysIn: "list" });
+    await waitFor(() => expect(app.ui.getState().keysIn).toBe("list"));
   });
 
   it("open a plugin's panel on its key beside the session, and put it away on its key (PRD-15)", async () => {
@@ -99,8 +115,8 @@ describe("ARC-24 the panels beside the agent", () => {
     line.focus();
     fireEvent.keyDown(line, { key: "ArrowRight" });
     await waitFor(() =>
-      expect(app.daemon.store.getState().preferences?.panels).not.toBe(
-        "list | session 60% | (changes / shell / plugin)",
+      expect(app.daemon.store.getState().preferences?.panels).not.toMatch(
+        /^list \| \(session \| session:ses_\w+\) 60% \| \(changes \/ plugin\)$/,
       ),
     );
     const sent = bridge.sent.at(-1);
@@ -117,11 +133,10 @@ describe("ARC-24 the panels beside the agent", () => {
       bridge.publish({
         preferences: {
           ...bridge.world.preferences,
-          panels: "list | (session / shell) | changes | plugin",
+          panels: `list | (session / session:ses_${gitLog}) | changes | plugin`,
         },
       }),
     );
-    await userEvent.keyboard("T");
     expect(await screen.findByRole("separator")).toHaveAttribute("aria-orientation", "horizontal");
   });
 
@@ -147,19 +162,17 @@ describe("ARC-24 moving the panels with the keys", () => {
     const { app, bridge } = await pane();
     await userEvent.keyboard("T");
     act(() => app.actions.keysTo("list"));
-    await screen.findByRole("region", { name: "Shell" });
-    // With the keys on the list, the agent is picked; ⇥ picks the shell.
+    await screen.findByRole("region", { name: /^Shell/ });
+    // With the keys on the list, the preview is picked; ⇥ picks the shell.
     await userEvent.keyboard("m");
-    expect(app.ui.getState().note?.text).toMatch(/^Moving the agent: the arrows move it/);
+    expect(app.ui.getState().note?.text).toMatch(/^Moving the preview: the arrows move it/);
     await userEvent.keyboard("{Tab}");
     await userEvent.keyboard("{ArrowDown}");
     expect(screen.getByRole("separator")).toHaveAttribute("aria-orientation", "horizontal");
     expect(app.ui.getState().selected).toEqual({});
     await userEvent.keyboard("{Enter}");
     await waitFor(() =>
-      expect(bridge.world.preferences.panels).toBe(
-        "list | ((session 60% | (changes / plugin)) / shell)",
-      ),
+      expect(bridge.world.preferences.panels).toMatch(new RegExp(`/ session:ses_${gitLog}\\)?$`)),
     );
   });
 
@@ -172,14 +185,17 @@ describe("ARC-24 moving the panels with the keys", () => {
     });
     await userEvent.keyboard("T");
     act(() => app.actions.keysTo("list"));
-    await screen.findByRole("region", { name: "Shell" });
+    await screen.findByRole("region", { name: /^Shell/ });
+    const layouts = bridge.sent.filter(
+      (command) => typeof command === "object" && "ChangePreference" in command,
+    ).length;
     await userEvent.keyboard("m{Tab}{ArrowDown}");
     expect(screen.getByRole("separator")).toHaveAttribute("aria-orientation", "horizontal");
     await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("separator")).toHaveAttribute("aria-orientation", "vertical");
     expect(
-      bridge.sent.some((command) => typeof command === "object" && "ChangePreference" in command),
-    ).toBe(false);
+      bridge.sent.filter((command) => typeof command === "object" && "ChangePreference" in command),
+    ).toHaveLength(layouts);
   });
 });
 
@@ -213,7 +229,7 @@ describe("ARC-24 full screen", () => {
     expect(app.ui.getState().fullScreen).toBeNull();
   });
 
-  it("pin the session shown in a panel of its own on P, drawn once, and unpin it on P again (PRD §6)", async () => {
+  it("place the session shown in a panel of its own on P, drawn once, and take it off on P again (PRD §6)", async () => {
     await pane();
     await screen.findByLabelText("Terminal");
     const box = () => document.querySelector(".panels") as HTMLElement;
@@ -233,7 +249,7 @@ describe("ARC-24 full screen", () => {
     expect(terminals()).toEqual([codex]);
   });
 
-  it("pin a session whose line is carried from the sidebar and dropped on the pane (PRD §6a)", async () => {
+  it("place a session whose line is carried from the sidebar and dropped on the pane (PRD §6a)", async () => {
     const { app } = await pane();
     const other = ulid(100);
     const box = (await screen.findByLabelText("Terminal")).closest(".panels") as HTMLElement;
@@ -248,10 +264,10 @@ describe("ARC-24 full screen", () => {
     fireEvent(box, at(createEvent.dragOver(box, { dataTransfer })));
     fireEvent(box, at(createEvent.drop(box, { dataTransfer })));
     await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));
-    expect(app.ui.getState().note?.text).toBe("Pinned it in a panel of its own.");
+    expect(app.ui.getState().note?.text).toBe("Placed it in a panel of its own.");
   });
 
-  it("keep the agent shown before beside a pinned session selected, both terminals drawn (PRD §6a)", async () => {
+  it("keep the agent shown before beside a placed session selected, both terminals drawn (PRD §6a)", async () => {
     const { app, rerender } = await pane();
     const other = ulid(100);
     await screen.findByLabelText("Terminal");
@@ -262,7 +278,7 @@ describe("ARC-24 full screen", () => {
         </SessionActionsProvider>
       </AppContext>
     );
-    // The other shown as its line is taken up, then pinned: Codex stays.
+    // The other shown as its line is taken up, then placed: Codex stays.
     rerender(shown(other));
     await userEvent.keyboard("P");
     await waitFor(() => expect(terminals()).toEqual(expect.arrayContaining([codex, other])));

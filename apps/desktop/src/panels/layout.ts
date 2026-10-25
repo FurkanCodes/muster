@@ -1,28 +1,37 @@
 // The panels' layout, as the terminal UI keeps it (`muster_core::layout`,
-// `ARCHITECTURE.md` §5a Panels): a small tree of the five panels and the
-// sessions the person pinned in panels of their own (`session:<its id>`),
-// kept as one line of Muster's own settings (`preferences.panels`):
+// `ARCHITECTURE.md` §5a Panels): a small tree of Muster's own panels (the
+// list, the preview, the changes and a plugin's panel) and every terminal the
+// person placed in a panel of its own, an agent's or a shell's
+// (`session:<its id>`), kept as one line of Muster's own settings
+// (`preferences.panels`):
 //
-//   session:ses_01J… | list | session 60% | (changes / shell / plugin)
+//   session:ses_01J… | list | session 60% | (changes / plugin)
 //
 // `|` puts two side by side and `/` one above the other; a run of one of
 // them nests to the right, and brackets mix them. A part may say its size
 // within the two it is one of: a share (`60%`) or cells (`30`). One without
 // a size shares evenly. A layout lacking a panel, as one written before that
-// panel was Muster's, gets it where the default puts it. The daemon checks
+// panel was Muster's, gets it where the default puts it; one naming the
+// retired `shell` panel, whose place went to shells placed as any terminal
+// is, reads without it. Two panels swap places, as one dropped on another's
+// middle does. The daemon checks
 // what it is sent the same way; this reads, moves and sizes it in the window
 // so the two UIs write the same line.
 
-/** One of Muster's own panels. */
-export type OwnPanel = "list" | "session" | "changes" | "shell" | "plugin";
-/** A session pinned in a panel of its own, by its id. */
-export type PinnedPanel = `session:${string}`;
-export type PanelName = OwnPanel | PinnedPanel;
+/** One of Muster's own panels: `session` is the preview. */
+export type OwnPanel = "list" | "session" | "changes" | "plugin";
+/** A session placed in a panel of its own, by its id. */
+export type PlacedPanelName = `session:${string}`;
+export type PanelName = OwnPanel | PlacedPanelName;
 export type Split = "across" | "down";
 export type Size = { share: number } | { cells: number };
 export type Edge = "left" | "right" | "top" | "bottom";
 export type Branch = "first" | "second";
-export type Place = { window: Edge } | { beside: PanelName; edge: Edge };
+export type Place =
+  | { window: Edge }
+  | { beside: PanelName; edge: Edge }
+  /** In another panel's place, which takes the place left. */
+  | { over: PanelName };
 
 export type Part =
   | { kind: "panel"; panel: PanelName }
@@ -34,24 +43,27 @@ export interface LayoutNode {
 }
 
 /** Muster's own panels, in the order the default layout names them; every layout has each once. */
-export const PANELS: readonly OwnPanel[] = ["list", "session", "changes", "shell", "plugin"];
+export const PANELS: readonly OwnPanel[] = ["list", "session", "changes", "plugin"];
 
-const PINNED = "session:";
+/** The word of the panel Muster no longer has, which a layout written before still names. */
+const RETIRED = "shell";
+
+const PLACED = "session:";
 /** How a session's id is printed in the layout's text (`SessionId`'s `Display`); the wire has the bare ULID. */
 const PRINTED = "ses_";
 
-/** The panel of `session` (its id as the wire has it), pinned. */
-export function pinnedPanel(session: string): PinnedPanel {
-  return `${PINNED}${PRINTED}${session}`;
+/** The panel of `session` (its id as the wire has it), placed. */
+export function placedPanel(session: string): PlacedPanelName {
+  return `${PLACED}${PRINTED}${session}`;
 }
 
-/** The session pinned in `panel`, by its id as the wire has it, if it is a pinned session's panel. */
-export function pinnedSession(panel: PanelName): string | null {
-  return panel.startsWith(PINNED + PRINTED) ? panel.slice(PINNED.length + PRINTED.length) : null;
+/** The session placed in `panel`, by its id as the wire has it, if it is a placed session's panel. */
+export function placedSession(panel: PanelName): string | null {
+  return panel.startsWith(PLACED + PRINTED) ? panel.slice(PLACED.length + PRINTED.length) : null;
 }
 
 /** What the person sees first. */
-export const DEFAULT_LAYOUT = "list | session 60% | (changes / shell / plugin)";
+export const DEFAULT_LAYOUT = "list | session 60% | (changes / plugin)";
 
 /** Why a layout does not read, said for the person as the daemon says it. */
 export class LayoutError extends Error {
@@ -68,8 +80,8 @@ type Token =
   | { kind: "close" };
 
 function isPanel(word: string): word is PanelName {
-  if (word.startsWith(PINNED))
-    return /^ses_[0-9A-HJKMNP-TV-Z]{26}$/i.test(word.slice(PINNED.length));
+  if (word.startsWith(PLACED))
+    return /^ses_[0-9A-HJKMNP-TV-Z]{26}$/i.test(word.slice(PLACED.length));
   return (PANELS as readonly string[]).includes(word);
 }
 
@@ -120,8 +132,8 @@ class Reader {
     return this.tokens[this.at];
   }
 
-  /** A run of terms joined by one sign, nested to the right. */
-  node(): LayoutNode {
+  /** A run of terms joined by one sign, nested to the right; a retired panel's left out, null where nothing else is. */
+  node(): LayoutNode | null {
     const first = this.term();
     const sign = this.peek();
     if (sign?.kind !== "sign") return first;
@@ -132,8 +144,12 @@ class Reader {
       this.at += 1;
       terms.push(this.term());
     }
-    let nested = terms.pop() as LayoutNode;
-    for (let term = terms.pop(); term; term = terms.pop()) {
+    const kept = terms.filter((term): term is LayoutNode => term !== null);
+    let nested = kept.pop();
+    if (!nested) return null;
+    // The one term left takes the place the run had.
+    if (kept.length === 0) return { part: nested.part, size: null };
+    for (let term = kept.pop(); term; term = kept.pop()) {
       nested = {
         part: { kind: "split", split: sign.split, first: term, second: nested },
         size: null,
@@ -142,40 +158,40 @@ class Reader {
     return nested;
   }
 
-  term(): LayoutNode {
+  /** A panel or a bracket, with its size; null for a retired panel, or a bracket of nothing else. */
+  term(): LayoutNode | null {
     const token = this.peek();
-    let part: Part;
+    let part: Part | null;
     if (token?.kind === "word") {
       this.at += 1;
-      const word = token.word.startsWith(PINNED) ? token.word : token.word.toLowerCase();
-      if (!isPanel(word))
+      const word = token.word.startsWith(PLACED) ? token.word : token.word.toLowerCase();
+      if (word === RETIRED) part = null;
+      else if (!isPanel(word))
         throw new LayoutError(
-          `"${word}" is not a panel: the panels are list, session, changes, shell and plugin, and a session pinned, session:<its id>`,
+          `"${word}" is not a panel: the panels are list, session, changes and plugin, and a session placed, session:<its id>`,
         );
-      part = { kind: "panel", panel: word };
+      else part = { kind: "panel", panel: word };
     } else if (token?.kind === "open") {
       this.at += 1;
       const inner = this.node();
       if (this.peek()?.kind !== "close")
         throw new LayoutError("a bracket is not closed, or one is closed that was not opened");
       this.at += 1;
-      part = inner.part;
+      part = inner?.part ?? null;
     } else if (token?.kind === "close") {
       throw new LayoutError("a bracket is not closed, or one is closed that was not opened");
     } else {
       throw new LayoutError("something is missing before or after a | or a /");
     }
     const after = this.peek();
-    if (after?.kind === "size") {
-      this.at += 1;
-      return { part, size: after.size };
-    }
-    return { part, size: null };
+    const size = after?.kind === "size" ? after.size : null;
+    if (size) this.at += 1;
+    return part ? { part, size } : null;
   }
 }
 
-/** The tree `text` writes, whatever panels it has. */
-function tree(text: string): LayoutNode {
+/** The tree `text` writes, whatever panels it has, without a retired one; null where it names that alone. */
+function tree(text: string): LayoutNode | null {
   const reader = new Reader(tokens(text));
   const root = reader.node();
   const left = reader.peek();
@@ -274,7 +290,9 @@ function placeIn(
 /** `root` with `panel`, which it lacks, where the default layout puts it. */
 function completed(root: LayoutNode, panel: PanelName): LayoutNode {
   const moving: LayoutNode = { part: { kind: "panel", panel }, size: null };
-  const place = placeIn(tree(DEFAULT_LAYOUT), panel, (other) => contains(root, other));
+  const place = placeIn(tree(DEFAULT_LAYOUT) as LayoutNode, panel, (other) =>
+    contains(root, other),
+  );
   return place ? beside(root, place[0], moving, place[1]) : joined(moving, root, "right", null);
 }
 
@@ -295,6 +313,14 @@ function atPath(node: LayoutNode, path: readonly Branch[]): LayoutNode | null {
     at = step === "first" ? at.part.first : at.part.second;
   }
   return at;
+}
+
+/** The size `panel` is given where it is in `node`, null for none; undefined where it is not there. */
+function sizeIn(node: LayoutNode, panel: PanelName): Size | null | undefined {
+  const part = node.part;
+  if (part.kind === "panel") return part.panel === panel ? node.size : undefined;
+  const first = sizeIn(part.first, panel);
+  return first !== undefined ? first : sizeIn(part.second, panel);
 }
 
 function cloneNode(node: LayoutNode): LayoutNode {
@@ -337,7 +363,9 @@ export class Layout {
 
   /** Reads a layout as `[layout] panels` writes it, completing what it lacks. */
   static parse(text: string): Layout {
-    let root = tree(text);
+    const read = tree(text);
+    if (!read) return Layout.default();
+    let root = read;
     const seen = panelsIn(root);
     for (const [at, panel] of seen.entries()) {
       if (seen.indexOf(panel) !== at) throw new LayoutError(`${panel} is in the layout twice`);
@@ -370,28 +398,60 @@ export class Layout {
     return this.toString() === other.toString();
   }
 
-  /** The sessions pinned, in the layout's order. */
-  pinned(): string[] {
-    return panelsIn(this.root).flatMap((panel) => pinnedSession(panel) ?? []);
+  /** The sessions placed, in the layout's order. */
+  placed(): string[] {
+    return panelsIn(this.root).flatMap((panel) => placedSession(panel) ?? []);
   }
 
-  /** The layout with `session` pinned at `place`, or moved there where it is pinned already. */
-  pinning(session: string, place: Place): Layout {
-    const panel = pinnedPanel(session);
+  /** The layout with `session` placed at `place`, or moved there where it is placed already. */
+  placing(session: string, place: Place): Layout {
+    const panel = placedPanel(session);
     if (contains(this.root, panel)) return this.moved(panel, place);
     const moving: LayoutNode = { part: { kind: "panel", panel }, size: null };
+    // A session not placed yet has no place to give: over another, it goes beside.
+    const target = "beside" in place ? place.beside : "over" in place ? place.over : null;
+    const edge = "beside" in place ? place.edge : "right";
     const root =
       "window" in place
         ? joined(moving, this.root, place.window, null)
-        : contains(this.root, place.beside)
-          ? beside(this.root, place.beside, moving, place.edge)
+        : target && contains(this.root, target)
+          ? beside(this.root, target, moving, edge)
           : joined(moving, this.root, "right", null);
     return new Layout({ part: root.part, size: null });
   }
 
-  /** The layout with `session` no longer pinned: its place goes to the other of its two. */
-  unpinned(session: string): Layout {
-    return this.without(pinnedPanel(session));
+  /** The layout with `session` no longer placed: its place goes to the other of its two. */
+  unplaced(session: string): Layout {
+    return this.without(placedPanel(session));
+  }
+
+  /**
+   * The layout with `one` and `other` in each other's places, as a panel
+   * dropped on another's middle swaps with it. A share stays with its place;
+   * a size in cells goes with its panel. As it was where either is not in
+   * it, or the two are one.
+   */
+  swapped(one: PanelName, other: PanelName): Layout {
+    const oneSize = sizeIn(this.root, one);
+    const otherSize = sizeIn(this.root, other);
+    if (oneSize === undefined || otherSize === undefined || one === other) return this;
+    const taken = (leaving: Size | null, coming: Size | null): Size | null =>
+      coming && "cells" in coming ? coming : leaving && "cells" in leaving ? null : leaving;
+    const exchange = (node: LayoutNode): LayoutNode => {
+      const part = node.part;
+      if (part.kind === "panel") {
+        if (part.panel === one)
+          return { part: { kind: "panel", panel: other }, size: taken(oneSize, otherSize) };
+        if (part.panel === other)
+          return { part: { kind: "panel", panel: one }, size: taken(otherSize, oneSize) };
+        return node;
+      }
+      return {
+        part: { ...part, first: exchange(part.first), second: exchange(part.second) },
+        size: node.size,
+      };
+    };
+    return new Layout(exchange(this.root));
   }
 
   /** The layout without `panel`, its place gone to the other of its two. */
@@ -407,6 +467,7 @@ export class Layout {
    */
   moved(panel: PanelName, place: Place): Layout {
     if ("beside" in place && place.beside === panel) return this;
+    if ("over" in place) return this.swapped(panel, place.over);
     const found = without(this.root, panel);
     if (!found) return this;
     const [rest, size] = found;
