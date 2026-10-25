@@ -7,6 +7,13 @@ import type { SessionId } from "../ipc/generated/SessionId";
 import type { SpaceId } from "../ipc/generated/SpaceId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 
+/** What waits on a space to go in (`ARC-33`): asked while there was none, or for one made for it. */
+export type Later =
+  | { kind: "terminal" }
+  | { kind: "add-project" }
+  | { kind: "clone-project" }
+  | { kind: "move"; member: Member };
+
 export type Flow =
   | { kind: "add-project" }
   /** A project cloned from GitHub, into a folder the person chooses. */
@@ -17,8 +24,8 @@ export type Flow =
   | { kind: "move"; workspace: WorkspaceId }
   | { kind: "remove-worktree"; workspace: WorkspaceId }
   | { kind: "remove-project"; project: ProjectId }
-  /** A new space's name (`space` null), `join` put in it once made; or a space's new name. */
-  | { kind: "space-name"; space: SpaceId | null; join?: Member }
+  /** A new space's name (`space` null), `after` done in it once made; or a space's new name. */
+  | { kind: "space-name"; space: SpaceId | null; after?: Later }
   | { kind: "remove-space"; space: SpaceId }
   /** Where a terminal in no project goes under a project (`ARC-33`). */
   | { kind: "file-terminal"; session: SessionId };

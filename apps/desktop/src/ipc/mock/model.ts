@@ -119,7 +119,7 @@ export function derive(
     return found < 0 ? order.length : found;
   };
   const projects = [...world.projects].sort((one, other) => at(one.id) - at(other.id));
-  // `Model::rows_in`: a space's projects, then its terminals in no project.
+  // `Model::rows_in`: what a space holds: its projects, then its terminals.
   const listed = (shown: (member: Member) => boolean): Row[] => {
     const out: Row[] = [];
     for (const project of projects) {
@@ -132,43 +132,31 @@ export function derive(
         }
       }
     }
-    const free = world.sessions.filter(
-      (session) => session.workspace === null && shown({ Session: session.id }),
-    );
-    if (free.length > 0) {
-      out.push({ kind: "terminals" });
-      for (const session of free) out.push({ kind: "session", id: session.id });
-    }
+    for (const session of world.sessions)
+      if (session.workspace === null && shown({ Session: session.id }))
+        out.push({ kind: "session", id: session.id });
     return out;
   };
-  rows.push(...listed(() => true));
-  // `Model::in_spaces`, for each project and each session waiting.
-  const noteOf = (member: Member) => {
-    const names = (world.spaces ?? [])
-      .filter((space) =>
-        space.members.some((held) => JSON.stringify(held) === JSON.stringify(member)),
-      )
-      .map((space) => space.name);
-    return names.length ? `in ${names.join(", ")}` : "";
-  };
-  const space_notes: Record<string, string> = {};
-  for (const project of world.projects) {
-    const note = noteOf({ Project: project.id });
-    if (note) space_notes[project.id] = note;
+  const holds = (space: Space) => (member: Member) =>
+    space.members.some((held) => JSON.stringify(held) === JSON.stringify(member));
+  // Each space's heading and what it holds; what is in none last.
+  for (const space of world.spaces ?? []) {
+    rows.push({ kind: "space", id: space.id });
+    rows.push(...listed(holds(space)));
   }
+  rows.push(...listed((member) => !(world.spaces ?? []).some((space) => holds(space)(member))));
+  // The space each session waiting is in, as its line in Needs you notes it.
+  const space_notes: Record<string, string> = {};
   for (const id of needsYou) {
     const session = world.sessions.find((one) => one.id === id);
     const workspace = world.workspaces.find((one) => one.id === session?.workspace);
-    const note = session
-      ? noteOf(workspace ? { Project: workspace.project } : { Session: session.id })
-      : "";
-    if (note) space_notes[id] = note;
+    if (!session) continue;
+    const member: Member = workspace ? { Project: workspace.project } : { Session: session.id };
+    const space = (world.spaces ?? []).find((one) => holds(one)(member));
+    if (space) space_notes[id] = `in ${space.name}`;
   }
   const space_rows: Record<string, Row[]> = {};
-  for (const space of world.spaces ?? [])
-    space_rows[space.id] = listed((member) =>
-      space.members.some((held) => JSON.stringify(held) === JSON.stringify(member)),
-    );
+  for (const space of world.spaces ?? []) space_rows[space.id] = listed(holds(space));
 
   const chats = world.sessions.filter((session) => !standsBeside(session.harness));
   // The agents at work, the longest at it first (`Model::working`).

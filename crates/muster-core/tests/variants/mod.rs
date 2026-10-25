@@ -50,7 +50,7 @@ impl Variant for ServerFrame {
 }
 
 impl Variant for Command {
-    const COUNT: usize = 57;
+    const COUNT: usize = 56;
     fn variant(&self) -> usize {
         match self {
             Self::Ping => 0,
@@ -104,12 +104,11 @@ impl Variant for Command {
             Self::CreateSpace { .. } => 48,
             Self::RenameSpace { .. } => 49,
             Self::DeleteSpace { .. } => 50,
-            Self::AddToSpace { .. } => 51,
-            Self::RemoveFromSpace { .. } => 52,
-            Self::ReadPlace { .. } => 53,
-            Self::FileSession { .. } => 54,
-            Self::AddProjectHere { .. } => 55,
-            Self::RestartIn { .. } => 56,
+            Self::MoveToSpace { .. } => 51,
+            Self::ReadPlace { .. } => 52,
+            Self::FileSession { .. } => 53,
+            Self::AddProjectHere { .. } => 54,
+            Self::RestartIn { .. } => 55,
         }
     }
 }

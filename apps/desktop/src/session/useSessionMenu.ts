@@ -9,7 +9,7 @@ import type { SessionId } from "../ipc/generated/SessionId";
 import { useKeymap } from "../keys/useKeymap";
 import { keepLayout, keptLayout, placedOrTaken } from "../panels/beside";
 import { Layout } from "../panels/layout";
-import { toggleMember } from "../spaces/spaces";
+import { moveItems } from "../spaces/moveItems";
 import { standsBeside } from "../state/selectors";
 import { keysOf, type MenuItem } from "../ui/Menu";
 import * as byHand from "./byHand";
@@ -60,14 +60,7 @@ export function useSessionMenu(session: SessionId | undefined): MenuItem[] {
         label: "Put under a project…",
         does: () => app.actions.openFlow({ kind: "file-terminal", session }),
       },
-      ...spaces.map((space) => {
-        const inIt = space.members.some((held) => "Session" in held && held.Session === session);
-        return {
-          key: "",
-          label: inIt ? `Take out of ${space.name}` : `Put in ${space.name}`,
-          does: () => toggleMember(app, space, member, inIt),
-        };
-      }),
+      ...moveItems(app, spaces, member),
       { ...keysOf(map, "close"), label: "Close", does: () => tools.close(), danger: true },
     ];
   }

@@ -441,12 +441,15 @@ fn shape<'a>(app: &App, dialog: &'a Dialog, inner_width: u16) -> Shape<'a> {
                 Some(name),
             )
         },
-        Dialog::SpaceName { space, name } => space_name(space.is_some(), name),
+        Dialog::SpaceName { space, name, then } => {
+            space_name(space.is_some(), then.is_some(), name)
+        }
     }
 }
 
-/// A new space's name, or a space's new name where `renaming`.
-fn space_name(renaming: bool, name: &LineInput) -> Shape<'_> {
+/// A new space's name, or a space's new name where `renaming`; `first`
+/// where what the person asked for waits on it.
+fn space_name(renaming: bool, first: bool, name: &LineInput) -> Shape<'_> {
     Shape {
         hint: if renaming {
             "⏎ rename   esc cancel"
@@ -459,11 +462,19 @@ fn space_name(renaming: bool, name: &LineInput) -> Shape<'_> {
             } else {
                 " New space "
             },
-            vec![
-                Line::from("A space groups projects and terminals;"),
-                Line::from("it doesn't change where they run."),
-                Line::from("Its name:"),
-            ],
+            if first {
+                vec![
+                    Line::from("Everything lives in a space: name one,"),
+                    Line::from("and what you asked for goes in it."),
+                    Line::from("Its name:"),
+                ]
+            } else {
+                vec![
+                    Line::from("A space holds projects and terminals;"),
+                    Line::from("it doesn't change where they run."),
+                    Line::from("Its name:"),
+                ]
+            },
             Some(name),
         )
     }

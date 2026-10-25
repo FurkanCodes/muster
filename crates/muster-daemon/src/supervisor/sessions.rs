@@ -106,7 +106,6 @@ impl Supervisor {
         let started_by = self.starter(started_by)?;
         let harness = self.known_harness(&harness)?;
         let place = self.place_of(workspace, &harness)?;
-        self.space_to_join(space)?;
         let prompt = prompt.filter(|prompt| !prompt.trim().is_empty());
         if prompt.is_some() && !harness.takes_prompt() {
             return Err(ErrorBody::new(
@@ -121,6 +120,12 @@ impl Supervisor {
                 "the checks start with the check command",
             ));
         }
+        // A free terminal is in a space; one in a workspace shows where its
+        // project does (`ARC-33`).
+        let home = match workspace {
+            None => Some(self.home_for(space).await?),
+            Some(_) => None,
+        };
         let start = if prompt.is_some() {
             Start::WithPrompt
         } else {
@@ -160,9 +165,8 @@ impl Supervisor {
         if let Some(prompt) = named_by_prompt {
             self.ask_name(id, &prompt);
         }
-        if let Some(space) = space
-            && workspace.is_none()
-            && let Err(error) = self.join(space, Member::Session(id)).await
+        if let Some(home) = home
+            && let Err(error) = self.move_to(home, Member::Session(id)).await
         {
             tracing::warn!(error = %error.message, "a free terminal did not join its space");
         }

@@ -158,24 +158,16 @@ pub(super) fn derive(model: &Model, questions: BTreeMap<SessionId, Vec<String>>)
     }
 }
 
-/// Each project's spaces, and each waiting session's, as notes.
+/// The space each waiting session is in, as a note.
 fn space_notes(model: &Model) -> BTreeMap<String, String> {
-    let projects = model.projects().iter().map(|project| {
-        let spaces: Vec<_> = model
-            .spaces_of(muster_core::spaces::Member::Project(project.id))
-            .collect();
-        (project.id.to_string(), Model::in_spaces(&spaces))
-    });
-    let waiting = model.needs_you().into_iter().filter_map(|id| {
-        let session = model.session(id)?;
-        Some((
-            id.to_string(),
-            Model::in_spaces(&model.spaces_of_session(session)),
-        ))
-    });
-    projects
-        .chain(waiting)
-        .filter(|(_, note)| !note.is_empty())
+    model
+        .needs_you()
+        .into_iter()
+        .filter_map(|id| {
+            let space = *model.spaces_of_session(model.session(id)?).first()?;
+            let name = muster_core::text::one_line(&space.name);
+            Some((id.to_string(), format!("in {}", name.trim())))
+        })
         .collect()
 }
 
@@ -188,7 +180,7 @@ fn rows(model: &Model, view: muster_model::View) -> Vec<Row> {
             muster_model::Row::Project(id) => Row::Project(id),
             muster_model::Row::Worktree(id) => Row::Workspace(id),
             muster_model::Row::Session(id) => Row::Session(id),
-            muster_model::Row::Terminals => Row::Terminals,
+            muster_model::Row::Space(id) => Row::Space(id),
         })
         .collect()
 }

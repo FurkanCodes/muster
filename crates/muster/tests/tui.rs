@@ -51,7 +51,7 @@ fn the_ui_starts_the_daemon_and_drives_a_session_through_it() {
     ui.wait_for(DAEMON);
 
     // a: add the repository the UI was started in.
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("Add a project");
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
@@ -113,7 +113,7 @@ fn tabs_enter_ctrl_q_and_x_get_about_and_close_a_session() {
     let _stop = StopDaemon(sandbox.paths().socket());
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     // Its checkout too, which can come after the reply.
@@ -174,7 +174,7 @@ fn a_plain_folder_is_added_from_the_ui_and_a_session_runs_in_it() {
     // a: add the folder the UI was started in, though it is no repository.
     let mut ui = Ui::start(&sandbox, &folder);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("or any folder");
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
@@ -212,7 +212,7 @@ fn the_folder_to_add_is_found_by_browsing_folders() {
     // a: the folders where the UI was started, repositories marked.
     let mut ui = Ui::start(&sandbox, &repos);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("app/  git");
     ui.wait_for("notes/");
 
@@ -255,14 +255,15 @@ fn kep_welcomes_the_person_and_a_key_typed_ahead_goes_through() {
     );
 
     // `a`, typed ahead, lets the welcome go and opens what it says.
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("Add a project");
     ui.keys(b"\x1b");
     ui.wait_without("Add a project");
     // Kep sits beside the name in the pane, with nothing to show yet: once
     // the daemon the UI started answers, which the key typed ahead may
-    // well have come before.
-    ui.wait_for("No projects yet");
+    // well have come before. The list holds the empty space just named.
+    ui.wait_for("Press a to add a project");
+    ui.wait_for("Home");
     let screen = ui.text();
     assert!(screen.contains('▀'), "{screen}");
     ui.keys(b"q");
@@ -395,7 +396,7 @@ fn the_wheel_scrolls_a_session_back_and_typing_returns_to_it() {
     let _stop = StopDaemon(sandbox.paths().socket());
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     // Its checkout too, which can come after the reply.
@@ -429,7 +430,7 @@ fn drag_over_two_lines(sandbox: &Sandbox, env: &[(&str, &str)]) -> Ui {
     let root = sandbox.repository("app");
     let mut ui = Ui::start_with(sandbox, &root, env);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     // Its checkout too, which can come after the reply.
@@ -496,7 +497,7 @@ fn shell_with_output(sandbox: &Sandbox, env: &[(&str, &str)]) -> Ui {
     let root = sandbox.repository("app");
     let mut ui = Ui::start_with(sandbox, &root, env);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     // Its checkout too, which can come after the reply.
@@ -625,7 +626,7 @@ fn tickets_are_fetched_and_agents_assigned_to_them_from_the_ui() {
 
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
 
@@ -700,7 +701,7 @@ fn only_my_tickets_is_turned_on_and_off_on_the_settings_screen() {
 
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     ui.keys(b"i");
@@ -770,7 +771,7 @@ fn a_running_agent_s_mark_spins_and_its_line_flashes_as_it_finishes_unless_motio
     // An agent on the ticket, started with it to work on: running.
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     ui.keys(b"i");

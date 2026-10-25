@@ -1,6 +1,6 @@
-//! `muster space add|rename|rm` and `muster list spaces` (`PRODUCT.md`
-//! §6b): the person's spaces, groups of projects and terminals that only
-//! group, from a shell. Putting things in one is the UIs' (`S`).
+//! `muster space add|rename|mv|rm` and `muster list spaces` (`PRODUCT.md`
+//! §6b): the person's spaces, where every project and terminal in no
+//! project lives, one space each (`ARC-33`), from a shell.
 
 use std::fmt::Write as _;
 use std::process::ExitCode;
@@ -19,7 +19,10 @@ pub(crate) enum SpaceCommand {
     Add { name: Vec<String> },
     /// Call space NAME something else.
     Rename { name: String, new: Vec<String> },
-    /// Remove space NAME: what is in it stays.
+    /// Move WHAT (a project's name, id or folder, or a terminal in no
+    /// project) to space SPACE.
+    Mv { what: String, space: String },
+    /// Remove space NAME, once nothing is in it.
     #[command(visible_alias = "remove")]
     Rm { name: String },
 }
@@ -47,9 +50,21 @@ async fn change(
             let said = format!("Renamed {} {}.", shown(&name), shown(new.trim()));
             (Command::RenameSpace { space, name: new }, said)
         }
+        SpaceCommand::Mv { what, space } => {
+            let to = find(&snapshot, &space)?;
+            let said = format!("Moved {} to {}.", shown(&what), shown(&to.name));
+            let member = member(&snapshot, &what)?;
+            (
+                Command::MoveToSpace {
+                    space: to.id,
+                    member,
+                },
+                said,
+            )
+        }
         SpaceCommand::Rm { name } => {
             let space = find(&snapshot, &name)?.id;
-            let said = format!("Removed space {}; what was in it stays.", shown(&name));
+            let said = format!("Removed space {}.", shown(&name));
             (Command::DeleteSpace { space }, said)
         }
     };
@@ -59,6 +74,23 @@ async fn change(
     }
     println!("{said}");
     Ok(ExitCode::SUCCESS)
+}
+
+/// What `wanted` names that a space holds: a project (its name, id or
+/// folder), else a terminal in no project.
+fn member(snapshot: &Snapshot, wanted: &str) -> Result<Member, Box<dyn std::error::Error>> {
+    if let Ok(project) = commands::find_project(snapshot, wanted) {
+        return Ok(Member::Project(project.id));
+    }
+    let session = crate::verbs::targets::find_session(snapshot, wanted)?;
+    if !session.is_free() {
+        return Err(format!(
+            "{} is in a project, which is where it shows: move the project",
+            shown(wanted)
+        )
+        .into());
+    }
+    Ok(Member::Session(session.id))
 }
 
 /// The space called `wanted` (any case), or its id.

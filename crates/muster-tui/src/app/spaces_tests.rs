@@ -51,7 +51,10 @@ fn choose(world: &mut World, what: &str) -> Vec<Action> {
 fn a_space_is_made_from_its_menu_and_shown_once_it_is_there() {
     let mut world = world();
     press(&mut world.app, KeyCode::Char('W'));
-    assert_eq!(offered(&world), ["everything", "new space…"]);
+    assert_eq!(
+        offered(&world),
+        ["everything", "new space…", "move app to a new space…"]
+    );
     choose(&mut world, "new space…");
     assert!(matches!(
         world.app.mode,
@@ -104,69 +107,155 @@ fn the_list_shows_the_space_and_brackets_go_round_them() {
 }
 
 #[test]
-fn a_project_is_put_in_a_space_and_taken_out_from_the_menu() {
+fn a_project_is_moved_to_another_space_or_to_a_new_one_from_the_menu() {
     let mut world = world();
     let project = world.project.id;
-    let work = space("Work", Vec::new());
+    let work = space("Work", vec![Member::Project(project)]);
+    let home = space("Home", Vec::new());
     delta(&mut world, Delta::SpaceUpserted(work.clone()));
+    delta(&mut world, Delta::SpaceUpserted(home.clone()));
     world.app.selected = Some(Row::Project(project));
     press(&mut world.app, KeyCode::Char('W'));
-    let (_, sent) = command(&choose(&mut world, "put app in Work"));
+    assert!(!offered(&world).contains(&"move app to Work".to_owned()));
+    let (_, sent) = command(&choose(&mut world, "move app to Home"));
     assert_eq!(
         sent,
-        Command::AddToSpace {
-            space: work.id,
+        Command::MoveToSpace {
+            space: home.id,
             member: Member::Project(project)
         }
     );
-    delta(
-        &mut world,
-        Delta::SpaceUpserted(Space {
-            members: vec![Member::Project(project)],
-            ..work.clone()
-        }),
-    );
     press(&mut world.app, KeyCode::Char('W'));
-    let (_, sent) = command(&choose(&mut world, "take app out of Work"));
+    choose(&mut world, "move app to a new space…");
+    typed(&mut world.app, "Client");
+    let (req_id, sent) = command(&press(&mut world.app, KeyCode::Enter));
     assert_eq!(
         sent,
-        Command::RemoveFromSpace {
-            space: work.id,
+        Command::CreateSpace {
+            name: "Client".to_owned()
+        }
+    );
+    let client = SpaceId::new();
+    let (_, sent) = command(&reply(
+        &mut world,
+        req_id,
+        Ok(Reply::SpaceCreated { id: client }),
+    ));
+    assert_eq!(
+        sent,
+        Command::MoveToSpace {
+            space: client,
             member: Member::Project(project)
         }
     );
 }
 
 #[test]
-fn a_free_terminal_starts_in_the_space_shown_and_is_listed_under_terminals() {
+fn with_no_space_a_terminal_asks_for_one_first_then_starts_in_it() {
     let mut world = world();
-    let work = space("Work", Vec::new());
-    delta(&mut world, Delta::SpaceUpserted(work.clone()));
-    world.app.space = Some(work.id);
-    let (_, sent) = command(&press(&mut world.app, KeyCode::Char('+')));
+    assert!(press(&mut world.app, KeyCode::Char('+')).is_empty());
+    assert!(matches!(
+        world.app.mode,
+        Mode::Dialog(Dialog::SpaceName {
+            space: None,
+            then: Some(super::Later::Terminal),
+            ..
+        })
+    ));
+    assert!(render(&world.app).contains("Everything lives in a space"));
+    typed(&mut world.app, "Home");
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Enter));
+    let home = SpaceId::new();
+    let (_, sent) = command(&reply(
+        &mut world,
+        req_id,
+        Ok(Reply::SpaceCreated { id: home }),
+    ));
     let Command::StartSession {
         workspace, space, ..
     } = sent
     else {
         panic!("{sent:?}");
     };
-    assert_eq!((workspace, space), (None, Some(work.id)));
+    assert_eq!((workspace, space), (None, Some(home)));
+}
 
-    world.app.space = None;
+#[test]
+fn with_no_space_adding_a_project_asks_for_one_first_then_opens_though_the_reply_comes_first() {
+    let mut world = world();
+    assert!(press(&mut world.app, KeyCode::Char('a')).is_empty());
+    assert!(matches!(
+        world.app.mode,
+        Mode::Dialog(Dialog::SpaceName {
+            then: Some(super::Later::AddProject),
+            ..
+        })
+    ));
+    typed(&mut world.app, "Home");
+    let (req_id, _) = command(&press(&mut world.app, KeyCode::Enter));
+    // The reply before the space's delta: the dialog opens all the same.
+    reply(
+        &mut world,
+        req_id,
+        Ok(Reply::SpaceCreated { id: SpaceId::new() }),
+    );
+    assert!(
+        matches!(world.app.mode, Mode::Dialog(Dialog::AddProject { .. })),
+        "{:?}",
+        world.app.mode
+    );
+}
+
+#[test]
+fn everything_lists_each_space_under_its_heading_which_folds_and_offers_what_goes_in_it() {
+    let mut world = world();
+    let project = world.project.id;
     let free = free_terminal("zsh", 9);
     delta(&mut world, Delta::SessionUpserted(free.clone()));
+    let work = space("Work", vec![Member::Project(project)]);
+    let home = space("Home", vec![Member::Session(free.id)]);
+    delta(&mut world, Delta::SpaceUpserted(work.clone()));
+    delta(&mut world, Delta::SpaceUpserted(home.clone()));
     let rows = world.app.rows();
+    assert_eq!(rows[0], Row::Space(work.id));
+    assert_eq!(rows[1], Row::Project(project));
     assert_eq!(
         rows[rows.len() - 2..],
-        [Row::Terminals, Row::Session(free.id)]
+        [Row::Space(home.id), Row::Session(free.id)]
     );
-    assert!(render(&world.app).contains("Terminals"));
-    // Folded away, and back.
-    world.app.selected = Some(Row::Terminals);
+    let drawn = render(&world.app);
+    assert!(drawn.contains("Work") && drawn.contains("Home"), "{drawn}");
+
+    // A terminal goes in the selected line's space.
+    world.app.selected = Some(Row::Session(free.id));
+    let (_, sent) = command(&press(&mut world.app, KeyCode::Char('+')));
+    assert!(matches!(sent, Command::StartSession { space, .. } if space == Some(home.id)));
+
+    // Its heading folds what it holds away, and back.
+    world.app.mode = Mode::Browse;
+    world.app.selected = Some(Row::Space(work.id));
     press(&mut world.app, KeyCode::Char('e'));
-    assert_eq!(world.app.rows().last(), Some(&Row::Terminals));
+    assert_eq!(
+        world.app.rows()[..2],
+        [Row::Space(work.id), Row::Space(home.id)]
+    );
     press(&mut world.app, KeyCode::Char('e'));
-    assert_eq!(world.app.rows().last(), Some(&Row::Session(free.id)));
+    assert_eq!(world.app.rows()[1], Row::Project(project));
+
+    // Its menu: what can go in it, renaming and removing it.
+    press(&mut world.app, KeyCode::Char('W'));
+    let menu = offered(&world);
+    for item in [
+        "add a project in Work…",
+        "clone from GitHub in Work…",
+        "a terminal in Work…",
+        "rename Work…",
+        "remove Work…",
+    ] {
+        assert!(menu.contains(&item.to_owned()), "{item} not in {menu:?}");
+    }
+    let (_, sent) = command(&choose(&mut world, "a terminal in Work…"));
+    assert!(matches!(sent, Command::StartSession { space, .. } if space == Some(work.id)));
 }
 
 #[test]
@@ -240,17 +329,11 @@ fn a_refusal_about_spaces_is_said() {
 }
 
 #[test]
-fn a_project_s_spaces_are_noted_with_everything_and_a_waiting_session_s_in_the_queue() {
+fn a_waiting_session_s_space_is_noted_in_the_queue() {
     let mut world = world();
     let project = world.project.id;
     let work = space("Work", vec![Member::Project(project)]);
     delta(&mut world, Delta::SpaceUpserted(work.clone()));
-    assert!(render(&world.app).contains("app  in Work"));
-    // In the space, it goes without saying.
-    world.app.space = Some(work.id);
-    assert!(!render(&world.app).contains("in Work"));
-
-    world.app.space = None;
     let mut asking = world.session.clone();
     asking.harness = "claude".to_owned();
     asking.status = muster_core::SessionStatus::NeedsYou {

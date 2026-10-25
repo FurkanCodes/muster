@@ -76,7 +76,7 @@ fn populated() -> (Store, Project, Workspace, Session, Session, Space) {
     let mut work = space("Work");
     store.insert_space(&work).unwrap();
     for member in [Member::Project(project.id), Member::Session(free.id)] {
-        store.add_member(work.id, member).unwrap();
+        store.move_member(work.id, member).unwrap();
         work.members.push(member);
     }
     (store, project, checkout, inside, free, work)
@@ -91,9 +91,13 @@ fn a_free_terminal_and_a_space_with_its_members_survive_reopening_arc_33() {
     store.insert_session(&free).unwrap();
     let mut work = space("Work");
     store.insert_space(&work).unwrap();
-    store.add_member(work.id, Member::Session(free.id)).unwrap();
-    // Again does nothing.
-    store.add_member(work.id, Member::Session(free.id)).unwrap();
+    store
+        .move_member(work.id, Member::Session(free.id))
+        .unwrap();
+    // Again changes nothing.
+    store
+        .move_member(work.id, Member::Session(free.id))
+        .unwrap();
     work.members.push(Member::Session(free.id));
     drop(store);
 
@@ -103,26 +107,98 @@ fn a_free_terminal_and_a_space_with_its_members_survive_reopening_arc_33() {
 }
 
 #[test]
-fn members_keep_the_order_they_were_added_and_leave_as_asked() {
+fn a_member_moves_to_another_space_and_is_in_one_only_arc_33() {
     let (mut store, project, _, _, free, work) = populated();
     assert_eq!(store.spaces().unwrap(), std::slice::from_ref(&work));
+    let home = Space {
+        created_at: at(2),
+        ..space("Home")
+    };
+    store.insert_space(&home).unwrap();
     store
-        .remove_member(work.id, Member::Project(project.id))
+        .move_member(home.id, Member::Project(project.id))
         .unwrap();
-    assert_eq!(
-        store.spaces().unwrap()[0].members,
-        [Member::Session(free.id)]
-    );
-    store.rename_space(work.id, "Home").unwrap();
-    assert_eq!(store.spaces().unwrap()[0].name, "Home");
+    let spaces = store.spaces().unwrap();
+    assert_eq!(spaces[0].members, [Member::Session(free.id)]);
+    assert_eq!(spaces[1].members, [Member::Project(project.id)]);
+    store.rename_space(work.id, "Office").unwrap();
+    assert_eq!(store.spaces().unwrap()[0].name, "Office");
+    store
+        .move_member(home.id, Member::Session(free.id))
+        .unwrap();
     store.delete_space(work.id).unwrap();
-    assert!(store.spaces().unwrap().is_empty());
-    // What was in it stays.
+    assert_eq!(store.spaces().unwrap().len(), 1);
     assert_eq!(store.snapshot().unwrap().sessions.len(), 2);
     assert!(matches!(
         store.delete_space(work.id),
         Err(StoreError::NotFound(_))
     ));
+}
+
+/// A store at schema 11, as `setup` leaves it, opened at the latest, with
+/// the folder it is in.
+fn migrated_from_11(setup: &str) -> (Store, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("muster.db");
+    {
+        let conn = Connection::open(&path).unwrap();
+        for (version, migration) in (1_i64..).zip(&MIGRATIONS[..11]) {
+            conn.execute_batch(migration).unwrap();
+            conn.pragma_update(None, "user_version", version).unwrap();
+        }
+        conn.execute_batch(setup).unwrap();
+    }
+    (Store::open(&path, at(1)).unwrap(), dir)
+}
+
+const TWO_PROJECTS_AND_A_TERMINAL: &str =
+    "INSERT INTO projects VALUES ('prj_01M4NG2BJY5GJ7C4GHEV9ZADAN', 'app', '/src/app', 5);
+     INSERT INTO projects VALUES ('prj_01M4NG2BJY5GJ7C4GHEV9ZADAP', 'lib', '/src/lib', 7);
+     INSERT INTO sessions (id, workspace_id, harness, title, status, unseen, created_at)
+         VALUES ('ses_01M4NG33FANFNPXKH5FFNWYTZA', NULL, 'shell', 'zsh',
+                 '{\"state\":\"fresh\"}', 0, 9);
+     INSERT INTO sessions (id, workspace_id, harness, title, status, unseen, created_at,
+                           removed_at)
+         VALUES ('ses_01M4NG33FANFNPXKH5FFNWYTZB', NULL, 'shell', 'old',
+                 '{\"state\":\"exited\",\"success\":true}', 0, 2, 3);";
+
+#[test]
+fn schema_12_puts_what_is_in_no_space_in_a_home_as_old_as_it_arc_33() {
+    let (store, _dir) = migrated_from_11(TWO_PROJECTS_AND_A_TERMINAL);
+    let spaces = store.spaces().unwrap();
+    assert_eq!(spaces.len(), 1);
+    assert_eq!(spaces[0].name, "Home");
+    assert_eq!(spaces[0].created_at, at(5));
+    // Oldest first; a terminal taken off the list stays out.
+    assert_eq!(
+        spaces[0].members,
+        [
+            Member::Project("prj_01M4NG2BJY5GJ7C4GHEV9ZADAN".parse().unwrap()),
+            Member::Project("prj_01M4NG2BJY5GJ7C4GHEV9ZADAP".parse().unwrap()),
+            Member::Session("ses_01M4NG33FANFNPXKH5FFNWYTZA".parse().unwrap()),
+        ]
+    );
+}
+
+#[test]
+fn schema_12_keeps_one_in_several_spaces_in_the_first_and_uses_a_home_there_is() {
+    let (store, _dir) = migrated_from_11(&format!(
+        "{TWO_PROJECTS_AND_A_TERMINAL}
+         INSERT INTO spaces VALUES ('spc_01M4NG2BJY5GJ7C4GHEV9ZADA1', 'Work', 1);
+         INSERT INTO spaces VALUES ('spc_01M4NG2BJY5GJ7C4GHEV9ZADA2', 'home', 2);
+         INSERT INTO space_members VALUES
+             ('spc_01M4NG2BJY5GJ7C4GHEV9ZADA2', 'project', 'prj_01M4NG2BJY5GJ7C4GHEV9ZADAN');
+         INSERT INTO space_members VALUES
+             ('spc_01M4NG2BJY5GJ7C4GHEV9ZADA1', 'project', 'prj_01M4NG2BJY5GJ7C4GHEV9ZADAN');"
+    ));
+    let spaces = store.spaces().unwrap();
+    assert_eq!(
+        spaces.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+        ["Work", "home"],
+        "no second Home is made"
+    );
+    assert_eq!(spaces[0].members.len(), 1, "app stays in Work, made first");
+    assert_eq!(spaces[1].members.len(), 2, "lib and the terminal go home");
 }
 
 #[test]
@@ -144,10 +220,10 @@ fn a_member_leaves_its_spaces_with_it_arc_14() {
     let other = session(None);
     store.insert_session(&other).unwrap();
     store
-        .add_member(work.id, Member::Session(inside.id))
+        .move_member(work.id, Member::Session(inside.id))
         .unwrap();
     store
-        .add_member(work.id, Member::Session(other.id))
+        .move_member(work.id, Member::Session(other.id))
         .unwrap();
     store.delete_project(project.id).unwrap();
     assert_eq!(

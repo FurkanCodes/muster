@@ -102,16 +102,15 @@ pub struct Derived {
     /// The agents at work, the longest at it first (*Working*): chats
     /// running with no news for the person, never a shell or a panel.
     pub working: Vec<SessionId>,
-    /// The sessions list: each project, its workspaces, their sessions,
-    /// then the terminals in no project, in the order the terminal UI
-    /// lists them.
+    /// The sessions list: each space's heading, then its projects with
+    /// their workspaces and sessions, then its terminals in no project, in
+    /// the order the terminal UI lists them (`ARC-33`).
     pub rows: Vec<Row>,
     /// The same list as each space shows it (`muster_model::Model::rows_in`),
     /// for a window to show the one it chose without filtering.
     pub space_rows: BTreeMap<SpaceId, Vec<Row>>,
-    /// The spaces each project, and each session waiting on the person,
-    /// shows in, as their lines note it (`in Work, Home`); none where in
-    /// no space (`Model::in_spaces`).
+    /// The space each session waiting on the person is in, as its line in
+    /// *Needs you* notes it (`in Work`); none where in no space.
     pub space_notes: BTreeMap<String, String>,
     /// The flock, as the title bar counts it.
     pub counts: Counts,
@@ -130,8 +129,8 @@ pub enum Row {
     Project(ProjectId),
     Workspace(WorkspaceId),
     Session(SessionId),
-    /// The heading over the terminals in no project (`ARC-33`).
-    Terminals,
+    /// A space's heading (`ARC-33`): what it holds follows it.
+    Space(SpaceId),
 }
 
 /// How many agents work, wait on the person and are done, as the terminal

@@ -11,7 +11,7 @@ import type { Reply } from "../generated/Reply";
 import type { Session } from "../generated/Session";
 import type { MockBridge } from "./bridge";
 import { NOW, ulid } from "./scenario";
-import { join } from "./spaces";
+import { homeFor, moveTo } from "./spaces";
 
 const HARNESSES: Record<string, string> = {
   shell: "Shell",
@@ -72,6 +72,8 @@ export function sessionsCommand(mock: MockBridge, command: Command): Reply | und
     if (workspace !== null && !mock.world.workspaces.some((stored) => stored.id === workspace))
       refuse(`no workspace wsp_${workspace}`, "not_found");
     if (prompt?.trim() && harness === "shell") refuse("Shell takes no prompt", "bad_request");
+    // A terminal in no project is in a space (`ARC-33`).
+    const home = workspace === null ? homeFor(mock, space) : null;
     // A shell is named for the program in front in it, its own at first.
     const id = started(mock, {
       workspace,
@@ -79,7 +81,7 @@ export function sessionsCommand(mock: MockBridge, command: Command): Reply | und
       title: title?.trim() || (harness === "shell" ? "zsh" : label),
       beside: null,
     });
-    if (workspace === null) join(mock, space, { Session: id });
+    if (home !== null) moveTo(mock, home, { Session: id });
     return { SessionStarted: { id } };
   }
 

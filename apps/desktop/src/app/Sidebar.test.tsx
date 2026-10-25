@@ -1,7 +1,8 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { ulid } from "../ipc/mock/scenario";
+import { MockBridge } from "../ipc/mock/bridge";
+import { ulid, workingDay } from "../ipc/mock/scenario";
 import { renderApp } from "../test/render";
 
 // The one sidebar (PRD §6a): a new session, the palette and Tickets, the
@@ -97,7 +98,10 @@ describe("ARC-24 the sidebar", () => {
   });
 
   it("adds a project from the Mac's own folder panel, the folder browser standing in where there is none", async () => {
-    const { bridge } = renderApp();
+    const bridge = new MockBridge(workingDay());
+    // A space to add to, as there is once anything was added (`ARC-33`).
+    bridge.world.spaces = [{ id: ulid(700), name: "Home", members: [], created_at: 0 }];
+    renderApp(bridge);
     await screen.findByRole("option", { name: "Sketch the Tauri shell" });
     // The Projects + offers a folder of the Mac's, or a clone from GitHub.
     const add = async () => {
@@ -127,7 +131,7 @@ describe("ARC-24 the sidebar", () => {
     await add();
     await waitFor(() =>
       expect(bridge.sent).toContainEqual({
-        AddProject: { root: "/Users/you/code/labs", name: null, space: null },
+        AddProject: { root: "/Users/you/code/labs", name: null, space: ulid(700) },
       }),
     );
     expect(await screen.findByRole("region", { name: "labs" })).toBeInTheDocument();

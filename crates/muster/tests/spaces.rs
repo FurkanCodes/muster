@@ -1,7 +1,7 @@
-//! End-to-end tests of spaces (`PRODUCT.md` §2): made, renamed and
-//! removed, with projects and free terminals in them; what is in one
-//! leaves it as it goes; two clients see the same; the CLI lists them.
-//! From the real daemon.
+//! End-to-end tests of spaces (`PRODUCT.md` §2, `ARC-33`): everything in
+//! exactly one, a Home made where there is none, moved between them, a
+//! space removed only once empty; two clients see the same; the CLI makes,
+//! moves into and lists them. From the real daemon.
 
 // Helpers outside `#[test]` functions are not covered by clippy.toml's test exemption.
 #![expect(
@@ -40,13 +40,44 @@ async fn spaces(connection: &mut Connection) -> Vec<Space> {
     connection.subscribe().await.unwrap().spaces
 }
 
+fn free_terminal(space: Option<SpaceId>) -> Command {
+    Command::StartSession {
+        workspace: None,
+        harness: "shell".to_owned(),
+        title: None,
+        size: TermSize::default(),
+        prompt: None,
+        started_by: None,
+        space,
+    }
+}
+
 #[tokio::test]
-async fn spaces_hold_projects_and_free_terminals_and_let_them_go_as_they_go() {
+async fn everything_lives_in_one_space_and_a_space_goes_only_once_empty_arc_33() {
     let sandbox = Sandbox::new();
     let root = sandbox.repository("app");
     let daemon = sandbox.start();
     let mut connection = daemon.connect().await;
     let mut other = daemon.connect().await;
+
+    // With no space, the first project gets a Home made for it.
+    let Reply::ProjectAdded { id: project } = connection
+        .command(Command::AddProject {
+            root,
+            name: None,
+            space: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("expected ProjectAdded");
+    };
+    let seen = spaces(&mut other).await;
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].name, "Home");
+    assert_eq!(seen[0].members, [Member::Project(project)]);
+    let home = seen[0].id;
+
     let work = make(&mut connection, "Work").await;
     let refused = connection
         .command(Command::CreateSpace {
@@ -56,52 +87,52 @@ async fn spaces_hold_projects_and_free_terminals_and_let_them_go_as_they_go() {
         .unwrap_err();
     assert!(refused.to_string().contains("already"), "{refused}");
 
-    // A project added in the space shown joins it.
-    let Reply::ProjectAdded { id: project } = connection
-        .command(Command::AddProject {
-            root,
-            name: None,
-            space: Some(work),
-        })
-        .await
-        .unwrap()
-    else {
-        panic!("expected ProjectAdded");
-    };
-    let Reply::SessionStarted { id: free } = connection
-        .command(Command::StartSession {
-            workspace: None,
-            harness: "shell".to_owned(),
-            title: None,
-            size: TermSize::default(),
-            prompt: None,
-            started_by: None,
-            space: Some(work),
-        })
-        .await
-        .unwrap()
+    // Among several, the space must be said.
+    let refused = connection.command(free_terminal(None)).await.unwrap_err();
+    assert!(
+        refused.to_string().contains("say which space: Home, Work"),
+        "{refused}"
+    );
+    let Reply::SessionStarted { id: free } =
+        connection.command(free_terminal(Some(work))).await.unwrap()
     else {
         panic!("expected SessionStarted");
     };
-    // The other client sees the same.
+
+    // A move takes it out of the space it was in.
+    connection
+        .command(Command::MoveToSpace {
+            space: work,
+            member: Member::Project(project),
+        })
+        .await
+        .unwrap();
     let seen = spaces(&mut other).await;
-    assert_eq!(seen.len(), 1);
+    assert!(seen[0].members.is_empty(), "{seen:?}");
     assert_eq!(
-        seen[0].members,
-        [Member::Project(project), Member::Session(free)]
+        seen[1].members,
+        [Member::Session(free), Member::Project(project)]
     );
 
+    // A space goes only once empty; what is in one never goes with it.
+    let refused = connection
+        .command(Command::DeleteSpace { space: work })
+        .await
+        .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("Work still holds 1 project and 1 terminal"),
+        "{refused}"
+    );
+    connection
+        .command(Command::DeleteSpace { space: home })
+        .await
+        .unwrap();
     connection
         .command(Command::RenameSpace {
             space: work,
             name: "Client".to_owned(),
-        })
-        .await
-        .unwrap();
-    connection
-        .command(Command::RemoveFromSpace {
-            space: work,
-            member: Member::Project(project),
         })
         .await
         .unwrap();
@@ -119,23 +150,10 @@ async fn spaces_hold_projects_and_free_terminals_and_let_them_go_as_they_go() {
             .is_ok()
     })
     .await;
-    assert!(spaces(&mut connection).await[0].members.is_empty());
-
-    // What was in a space stays when it goes.
-    connection
-        .command(Command::AddToSpace {
-            space: work,
-            member: Member::Project(project),
-        })
-        .await
-        .unwrap();
-    connection
-        .command(Command::DeleteSpace { space: work })
-        .await
-        .unwrap();
-    let snapshot = connection.subscribe().await.unwrap();
-    assert!(snapshot.spaces.is_empty());
-    assert_eq!(snapshot.projects.len(), 1);
+    assert_eq!(
+        spaces(&mut connection).await[0].members,
+        [Member::Project(project)]
+    );
 }
 
 #[tokio::test]
@@ -168,7 +186,7 @@ async fn a_space_and_its_members_outlast_the_daemon() {
 }
 
 #[tokio::test]
-async fn the_command_line_makes_lists_renames_and_removes_spaces() {
+async fn the_command_line_makes_lists_renames_moves_into_and_removes_spaces() {
     let sandbox = Sandbox::new();
     let _daemon = sandbox.start();
     let made = sandbox.run(&["space", "add", "Client", "work"]);
@@ -198,8 +216,22 @@ async fn the_command_line_makes_lists_renames_and_removes_spaces() {
         status["spaces"][0]["members"].as_array().map(Vec::len),
         Some(1)
     );
+    // Refused while it holds the terminal, which moves elsewhere first.
+    let refused = sandbox.run(&["space", "rm", "Home"]);
+    assert!(!refused.status.success(), "{refused:?}");
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("Home still holds 1 terminal"),
+        "{refused:?}"
+    );
+    assert!(sandbox.run(&["space", "add", "Spare"]).status.success());
+    let terminal = status["terminals"][0]["id"].as_str().unwrap().to_owned();
+    let moved = sandbox.run(&["space", "mv", &terminal, "Spare"]);
+    assert!(moved.status.success(), "{moved:?}");
     let removed = sandbox.run(&["space", "rm", "Home"]);
     assert!(removed.status.success(), "{removed:?}");
     let listed = String::from_utf8(sandbox.run(&["list", "spaces"]).stdout).unwrap();
-    assert!(listed.contains("No spaces"), "{listed}");
+    assert!(
+        listed.contains("Spare") && !listed.contains("Home"),
+        "{listed}"
+    );
 }

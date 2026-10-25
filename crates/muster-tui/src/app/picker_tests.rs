@@ -39,6 +39,7 @@ fn picker(app: &App) -> (&str, &FolderPicker) {
 /// The world with the dialog open and `/src` listed.
 fn opened() -> World {
     let mut world = world();
+    super::tests::a_space(&mut world.app);
     let actions = press(&mut world.app, KeyCode::Char('a'));
     assert_eq!(actions, [Action::ListFolders(PathBuf::from("/src"))]);
     world.app.on_folders(&PathBuf::from("/src"), Ok(src()));
@@ -156,6 +157,7 @@ fn tab_opens_a_folder_and_shift_tab_goes_back_up() {
 #[test]
 fn a_folder_that_cannot_be_read_says_why_and_typing_still_works() {
     let mut world = world();
+    super::tests::a_space(&mut world.app);
     press(&mut world.app, KeyCode::Char('a'));
     world.app.on_key(super::tests::ctrl('u'));
     typed(&mut world.app, "/private/");
@@ -174,6 +176,7 @@ fn a_folder_that_cannot_be_read_says_why_and_typing_still_works() {
 #[test]
 fn a_long_list_scrolls_with_the_choice_and_says_where_it_is() {
     let mut world = world();
+    super::tests::a_space(&mut world.app);
     press(&mut world.app, KeyCode::Char('a'));
     let many = (1..=20)
         .map(|n| folder(&format!("f{n:02}"), false))
@@ -194,6 +197,7 @@ fn a_long_list_scrolls_with_the_choice_and_says_where_it_is() {
 #[test]
 fn pasting_a_path_lists_its_folder() {
     let mut world = world();
+    super::tests::a_space(&mut world.app);
     press(&mut world.app, KeyCode::Char('a'));
     world.app.on_key(super::tests::ctrl('u'));
     let actions = world.app.on_paste("/home/me/Desktop/");
@@ -209,6 +213,7 @@ fn g_clones_a_github_repository_into_the_folder_chosen() {
     use muster_core::protocol::{Reply, ServerFrame};
 
     let mut world = world();
+    let home = super::tests::a_space(&mut world.app);
     let actions = press(&mut world.app, KeyCode::Char('g'));
     let (req_id, asked) = command(&actions);
     assert_eq!(asked, Command::ListRepositories);
@@ -254,7 +259,7 @@ fn g_clones_a_github_repository_into_the_folder_chosen() {
         Command::CloneProject {
             repository: "o/app".to_owned(),
             into: PathBuf::from("/src/"),
-            space: None,
+            space: Some(home),
         }
     );
     assert_eq!(world.app.mode, Mode::Browse);
@@ -265,6 +270,7 @@ fn a_repository_named_is_cloned_though_github_could_not_list_any() {
     use muster_core::protocol::{ErrorBody, ErrorCode, ServerFrame};
 
     let mut world = world();
+    super::tests::a_space(&mut world.app);
     let (req_id, _) = command(&press(&mut world.app, KeyCode::Char('g')));
     world.app.on_frame(ServerFrame::Reply {
         req_id,

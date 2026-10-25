@@ -18,7 +18,7 @@ mod init;
 pub(crate) mod list;
 mod logs;
 mod send;
-mod spaces;
+pub(crate) mod spaces;
 pub(crate) mod start;
 mod tab;
 pub(crate) mod targets;

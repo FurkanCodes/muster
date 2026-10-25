@@ -1,11 +1,12 @@
 //! Spaces and free terminals in the terminal UI (`PRODUCT.md` §6,
-//! `ARCHITECTURE.md` §5a). The list shows one space or all of it: which
-//! is this UI's own, never the daemon's, and what a space lists is the
-//! model's (`muster_model::Model::rows_in`). `[` `]` go round the spaces;
-//! `W` opens a menu of them, and of what the selected line can do with
-//! them; `+` starts a terminal in no project; `F` puts one under a
-//! project, where its shell is or started again there, never typing into
-//! it (`ARC-33`).
+//! `ARCHITECTURE.md` §5a). Everything lives in one space (`ARC-33`). The
+//! list shows every space under its heading, or one: which is this UI's
+//! own, never the daemon's or kept, and what a space lists is the model's
+//! (`muster_model::Model::rows_in`). `[` `]` go round the spaces; `W` opens
+//! a menu of them, and of what the selected line can do with them; `+`
+//! starts a terminal in no project; `F` puts one under a project, where its
+//! shell is or started again there, never typing into it. Something new
+//! goes in the selected line's space; with no space yet, one is named first.
 
 use crossterm::event::KeyEvent;
 use muster_core::protocol::{Command, ErrorBody, Reply};
@@ -25,8 +26,12 @@ pub(crate) enum Choice {
     New,
     Rename(SpaceId),
     Delete(SpaceId),
-    Add(SpaceId, Member),
-    Remove(SpaceId, Member),
+    /// Move a project or a free terminal to the space.
+    Move(SpaceId, Member),
+    /// Make a space, then do this in it.
+    NewThen(Later),
+    /// Do this in the selected line's space.
+    Here(Later),
     /// File the free terminal under the workspace its shell is in.
     FileUnder(SessionId, WorkspaceId),
     /// Add the folder its shell is in as a project, the terminal under it.
@@ -35,11 +40,21 @@ pub(crate) enum Choice {
     RestartIn(SessionId, WorkspaceId, Option<String>),
 }
 
+/// What waits on a space to go in: asked for while there was none, or
+/// for a space made for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Later {
+    Terminal,
+    AddProject,
+    CloneProject,
+    Move(Member),
+}
+
 /// What a reply about spaces is waited for to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Waiting {
-    /// Show the space just made.
-    Made,
+    /// Show the space just made, or do this in it.
+    Made(Option<Later>),
     /// Offer what the free terminal can be filed under.
     Place(SessionId),
     /// Say this once it is done.
@@ -52,9 +67,46 @@ impl App {
         self.space.and_then(|id| self.model.space(id))
     }
 
-    /// The space new things join: the one shown.
+    /// The space shown, by its id.
     pub(crate) fn space_id(&self) -> Option<SpaceId> {
         self.space_shown().map(|space| space.id)
+    }
+
+    /// The space something new goes in: the selected line's, else the one
+    /// shown, else the first; none while there is no space.
+    pub(crate) fn space_to_join(&self) -> Option<SpaceId> {
+        self.selected
+            .and_then(|row| self.model.space_of(row))
+            .or_else(|| self.space_id())
+            .or_else(|| self.model.spaces().first().map(|space| space.id))
+    }
+
+    /// With no space yet, asks for one's name, `later` waiting on it; then
+    /// true, and what was asked waits.
+    pub(super) fn space_first(&mut self, later: Later) -> bool {
+        if !self.model.spaces().is_empty() {
+            return false;
+        }
+        self.mode = Mode::Dialog(Dialog::SpaceName {
+            space: None,
+            name: LineInput::default(),
+            then: Some(later),
+        });
+        true
+    }
+
+    /// Does `later`, a space there to go in, though its delta may come
+    /// after the reply that made it.
+    fn do_later(&mut self, later: Later, space: SpaceId) -> Vec<Action> {
+        match later {
+            Later::Terminal => self.free_terminal_in(space),
+            Later::AddProject => self.add_project_dialog(),
+            Later::CloneProject => self.clone_project_dialog(),
+            Later::Move(member) => vec![self.command(
+                Command::MoveToSpace { space, member },
+                Then::Space(Waiting::Done("Moved to the space.")),
+            )],
+        }
     }
 
     /// What the sessions list shows.
@@ -111,7 +163,16 @@ impl App {
                 let session = self.model.session(id).filter(|session| session.is_free())?;
                 Some((Member::Session(id), one_line(&session.title)))
             }
-            Row::Worktree(_) | Row::Terminals => None,
+            Row::Worktree(_) | Row::Space(_) => None,
+        }
+    }
+
+    /// The space a heading selected stands for, else the one shown: what
+    /// the menu renames or removes.
+    fn space_here(&self) -> Option<&Space> {
+        match self.selected {
+            Some(Row::Space(id)) => self.model.space(id),
+            _ => self.space_shown(),
         }
     }
 
@@ -132,36 +193,47 @@ impl App {
             ));
         }
         items.push(choice(" ".to_owned(), "new space…".to_owned(), Choice::New));
-        if let Some(space) = self.space_shown() {
-            let name = one_line(&space.name);
+        if let Some(space) = self.space_here() {
+            let (id, name) = (space.id, one_line(&space.name));
+            if matches!(self.selected, Some(Row::Space(_))) {
+                for (later, what) in [
+                    (Later::AddProject, "add a project"),
+                    (Later::CloneProject, "clone from GitHub"),
+                    (Later::Terminal, "a terminal"),
+                ] {
+                    items.push(choice(
+                        "+".to_owned(),
+                        format!("{what} in {name}…"),
+                        Choice::Here(later),
+                    ));
+                }
+            }
             items.push(choice(
                 " ".to_owned(),
                 format!("rename {name}…"),
-                Choice::Rename(space.id),
+                Choice::Rename(id),
             ));
             items.push(choice(
                 " ".to_owned(),
                 format!("remove {name}…"),
-                Choice::Delete(space.id),
+                Choice::Delete(id),
             ));
         }
         if let Some((member, what)) = self.member_here() {
             for space in self.model.spaces() {
-                let name = one_line(&space.name);
-                items.push(if space.holds(member) {
-                    choice(
-                        "-".to_owned(),
-                        format!("take {what} out of {name}"),
-                        Choice::Remove(space.id, member),
-                    )
-                } else {
-                    choice(
-                        "+".to_owned(),
-                        format!("put {what} in {name}"),
-                        Choice::Add(space.id, member),
-                    )
-                });
+                if !space.holds(member) {
+                    items.push(choice(
+                        "→".to_owned(),
+                        format!("move {what} to {}", one_line(&space.name)),
+                        Choice::Move(space.id, member),
+                    ));
+                }
             }
+            items.push(choice(
+                "→".to_owned(),
+                format!("move {what} to a new space…"),
+                Choice::NewThen(Later::Move(member)),
+            ));
         }
         self.open_choices(items);
         Vec::new()
@@ -177,9 +249,19 @@ impl App {
         });
     }
 
-    /// `+`: a terminal in no project, in the home folder, in the space
-    /// shown.
+    /// `+`: a terminal in no project, in the home folder, in the selected
+    /// line's space; with no space yet, one is named first.
     pub(super) fn new_free_terminal(&mut self) -> Vec<Action> {
+        if self.space_first(Later::Terminal) {
+            return Vec::new();
+        }
+        match self.space_to_join() {
+            Some(space) => self.free_terminal_in(space),
+            None => Vec::new(),
+        }
+    }
+
+    fn free_terminal_in(&mut self, space: SpaceId) -> Vec<Action> {
         let command = Command::StartSession {
             workspace: None,
             harness: muster_core::harness::SHELL.to_owned(),
@@ -187,7 +269,7 @@ impl App {
             size: self.session_size(),
             prompt: None,
             started_by: None,
-            space: self.space_id(),
+            space: Some(space),
         };
         vec![self.command(command, Then::OpenSession)]
     }
@@ -200,7 +282,7 @@ impl App {
             _ => None,
         };
         let Some(session) = free.map(|session| session.id) else {
-            self.complain("Select a terminal in no project, under Terminals, to put it under one.");
+            self.complain("Select a terminal in no project, under its space, to put it under one.");
             return Vec::new();
         };
         vec![self.command(
@@ -286,18 +368,29 @@ impl App {
         self.mode = Mode::Browse;
         let (command, then) = match choice {
             Choice::GoTo(space) => return self.go_to_space(space),
-            Choice::New => {
+            Choice::New | Choice::NewThen(_) => {
                 self.mode = Mode::Dialog(Dialog::SpaceName {
                     space: None,
                     name: LineInput::default(),
+                    then: match choice {
+                        Choice::NewThen(later) => Some(later),
+                        _ => None,
+                    },
                 });
                 return Vec::new();
+            }
+            Choice::Here(later) => {
+                return match self.space_to_join() {
+                    Some(space) => self.do_later(later, space),
+                    None => Vec::new(),
+                };
             }
             Choice::Rename(space) => {
                 let name = self.model.space(space).map_or("", |found| &found.name);
                 self.mode = Mode::Dialog(Dialog::SpaceName {
                     space: Some(space),
                     name: LineInput::with(name),
+                    then: None,
                 });
                 return Vec::new();
             }
@@ -307,7 +400,7 @@ impl App {
                     .space(space)
                     .map_or("the space".to_owned(), |found| one_line(&found.name));
                 self.mode = Mode::Dialog(Dialog::Confirm {
-                    question: format!("Remove {name}? What is in it stays."),
+                    question: format!("Remove {name}? Only an empty space goes."),
                     then: Confirmed::DeleteSpace(space),
                 });
                 return Vec::new();
@@ -324,24 +417,19 @@ impl App {
                 });
                 return Vec::new();
             }
-            Choice::Add(space, member) => (
-                Command::AddToSpace { space, member },
-                Then::Space(Waiting::Done("Put in the space.")),
-            ),
-            Choice::Remove(space, member) => (
-                Command::RemoveFromSpace { space, member },
-                Then::Space(Waiting::Done(
-                    "Taken out of the space; it is still in everything.",
-                )),
+            Choice::Move(space, member) => (
+                Command::MoveToSpace { space, member },
+                Then::Space(Waiting::Done("Moved to the space.")),
             ),
             Choice::FileUnder(session, workspace) => (
                 Command::FileSession { session, workspace },
                 Then::Space(Waiting::Done("Filed under the project, still running.")),
             ),
+            // The project goes in the terminal's space.
             Choice::AddHere(session) => (
                 Command::AddProjectHere {
                     session,
-                    space: self.space_id(),
+                    space: None,
                 },
                 Then::SelectProject,
             ),
@@ -354,18 +442,23 @@ impl App {
         &mut self,
         space: Option<SpaceId>,
         mut name: LineInput,
+        later: Option<Later>,
         key: &KeyEvent,
     ) -> Vec<Action> {
         match name.handle(key) {
             Edit::Submit if name.text().trim().is_empty() => {
-                self.mode = Mode::Dialog(Dialog::SpaceName { space, name });
+                self.mode = Mode::Dialog(Dialog::SpaceName {
+                    space,
+                    name,
+                    then: later,
+                });
                 Vec::new()
             }
             Edit::Submit => {
                 self.mode = Mode::Browse;
                 let name = name.text().trim().to_owned();
                 let (command, then) = match space {
-                    None => (Command::CreateSpace { name }, Waiting::Made),
+                    None => (Command::CreateSpace { name }, Waiting::Made(later)),
                     Some(space) => (
                         Command::RenameSpace { space, name },
                         Waiting::Done("Renamed."),
@@ -373,7 +466,14 @@ impl App {
                 };
                 vec![self.command(command, Then::Space(then))]
             }
-            edit => self.keep_editing(edit, Dialog::SpaceName { space, name }),
+            edit => self.keep_editing(
+                edit,
+                Dialog::SpaceName {
+                    space,
+                    name,
+                    then: later,
+                },
+            ),
         }
     }
 
@@ -382,7 +482,7 @@ impl App {
         Some(match *then {
             Confirmed::DeleteSpace(space) => self.command(
                 Command::DeleteSpace { space },
-                Then::Space(Waiting::Done("Removed the space; what was in it stays.")),
+                Then::Space(Waiting::Done("Removed the space.")),
             ),
             Confirmed::RestartIn { session, workspace } => {
                 self.command(Command::RestartIn { session, workspace }, Then::OpenSession)
@@ -399,7 +499,12 @@ impl App {
     ) -> Vec<Action> {
         match (waiting, outcome) {
             (_, Err(error)) => self.complain(error.message),
-            (Waiting::Made, Ok(Reply::SpaceCreated { id })) => return self.go_to_space(Some(id)),
+            (Waiting::Made(None), Ok(Reply::SpaceCreated { id })) => {
+                return self.go_to_space(Some(id));
+            }
+            (Waiting::Made(Some(later)), Ok(Reply::SpaceCreated { id })) => {
+                return self.do_later(later, id);
+            }
             (
                 Waiting::Place(session),
                 Ok(Reply::Place {
@@ -415,13 +520,24 @@ impl App {
     }
 
     /// The menu items about spaces on a free terminal's line: a project's
-    /// are in the spaces menu (`S`), which the list's empty part offers.
+    /// are in the spaces menu (`W`), which the list's empty part offers.
     pub(super) fn spaces_here(&self, here: &mut Vec<Here>) {
         use muster_core::keys::Action as Does;
         if matches!(self.member_here(), Some((Member::Session(_), _))) {
             here.push(self.here_does(Does::FileTerminal, "under a project"));
             here.push(self.here_does(Does::Spaces, "spaces"));
         }
+    }
+
+    /// What a space's heading offers: what can go in it, and its menu.
+    pub(super) fn space_heading_here(&self) -> Vec<Here> {
+        use muster_core::keys::Action as Does;
+        vec![
+            self.here_does(Does::AddProject, "add"),
+            self.here_does(Does::CloneProject, "clone"),
+            self.here_does(Does::NewTerminal, "terminal"),
+            self.here_does(Does::Spaces, "space"),
+        ]
     }
 
     fn here_does(&self, does: muster_core::keys::Action, what: &str) -> Here {

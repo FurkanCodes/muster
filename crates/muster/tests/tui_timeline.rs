@@ -90,7 +90,7 @@ fn z_puts_a_turn_s_files_back_once_the_person_says_yes() {
 
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("Add a project");
     ui.keys(b"\r");
     ui.wait_for("⌂ main");

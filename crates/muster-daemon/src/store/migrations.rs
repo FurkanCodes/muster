@@ -8,7 +8,7 @@ use rusqlite::{Connection, OptionalExtension};
 use super::StoreError;
 
 /// Every migration, oldest first. The schema version is the number applied.
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12];
 
 /// Projects, workspaces, sessions, their status history and resource samples.
 const V1: &str = r"
@@ -187,6 +187,10 @@ CREATE TABLE space_members (
 CREATE INDEX space_members_by_member ON space_members (kind, member_id);
 ";
 
+/// Everything in exactly one space (`ARC-33`): no table changes, and
+/// [`one_home_each`] settles what 11 allowed.
+const V12: &str = "";
+
 /// The version whose migration fills in worktrees' tickets.
 const TICKETS: u32 = 9;
 
@@ -208,6 +212,63 @@ fn tickets_from_branches(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreErro
                 rusqlite::params![id, key.as_str()],
             )?;
         }
+    }
+    Ok(())
+}
+
+/// The version whose migration puts everything in exactly one space.
+const ONE_HOME: u32 = 12;
+
+/// Settles what schema 11 allowed into one space each (`ARC-33`): one in
+/// several spaces stays in the one made first; one in none, a project or a
+/// free terminal still listed, goes in the space called Home, made where
+/// there is none, as old as the oldest it takes in. Run once, in the
+/// migration that asks it.
+fn one_home_each(tx: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    tx.execute(
+        "DELETE FROM space_members WHERE rowid IN (
+             SELECT m.rowid FROM space_members m JOIN spaces s ON s.id = m.space_id
+             WHERE EXISTS (
+                 SELECT 1 FROM space_members o JOIN spaces t ON t.id = o.space_id
+                 WHERE o.kind = m.kind AND o.member_id = m.member_id
+                   AND (t.created_at, t.id) < (s.created_at, s.id)))",
+        [],
+    )?;
+    let homeless: Vec<(String, String, i64)> = tx
+        .prepare(
+            "SELECT 'project', id, created_at FROM projects
+             WHERE id NOT IN (SELECT member_id FROM space_members WHERE kind = 'project')
+             UNION ALL
+             SELECT 'session', id, created_at FROM sessions
+             WHERE workspace_id IS NULL AND removed_at IS NULL
+               AND id NOT IN (SELECT member_id FROM space_members WHERE kind = 'session')
+             ORDER BY 3, 2",
+        )?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let Some(oldest) = homeless.iter().map(|(_, _, at)| *at).min() else {
+        return Ok(());
+    };
+    let home: Option<String> = tx
+        .query_row("SELECT id FROM spaces WHERE name = 'Home'", [], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    let home = if let Some(home) = home {
+        home
+    } else {
+        let id = muster_core::SpaceId::new().to_string();
+        tx.execute(
+            "INSERT INTO spaces (id, name, created_at) VALUES (?1, 'Home', ?2)",
+            rusqlite::params![id, oldest],
+        )?;
+        id
+    };
+    for (kind, member, _) in homeless {
+        tx.execute(
+            "INSERT INTO space_members (space_id, kind, member_id) VALUES (?1, ?2, ?3)",
+            rusqlite::params![home, kind, member],
+        )?;
     }
     Ok(())
 }
@@ -255,6 +316,9 @@ pub(super) fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         tx.execute_batch(migration)?;
         if version == TICKETS {
             tickets_from_branches(&tx)?;
+        }
+        if version == ONE_HOME {
+            one_home_each(&tx)?;
         }
         if rebuild {
             check_foreign_keys(&tx)?;

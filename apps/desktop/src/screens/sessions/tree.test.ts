@@ -31,12 +31,48 @@ async function stateOf(bridge = new MockBridge(workingDay())): Promise<DaemonSta
   return daemon.store.getState();
 }
 
+describe("ARC-33 the All list under each space's heading", () => {
+  it("lists each space's heading, what it holds under it, and folds it all away", async () => {
+    const bridge = new MockBridge(workingDay());
+    await bridge.command({ CreateSpace: { name: "Work" } });
+    await bridge.command({ CreateSpace: { name: "Home" } });
+    const [work, home] = (bridge.world.spaces ?? []).map((space) => space.id);
+    if (!work || !home) throw new Error("no spaces");
+    await bridge.command({ MoveToSpace: { space: work, member: { Project: lamphaus } } });
+    await bridge.command({ MoveToSpace: { space: home, member: { Project: muster } } });
+    const state = await stateOf(bridge);
+    const rows = allRows(state);
+    expect(rows[0]).toEqual({ kind: "space", id: work, project: "", space: work, workspace: null });
+    expect(rows[1]).toMatchObject({ kind: "project", id: lamphaus, space: work });
+    const homeAt = rows.findIndex((row) => row.id === home);
+    expect(rows[homeAt + 1]).toMatchObject({ kind: "project", id: muster, space: home });
+    // In no space yet, as between deltas: last, with no heading.
+    expect(rows.at(-1)?.space).toBe("");
+    // Folding Work leaves its heading and every other line.
+    const folded = shownRows(rows, toggled(new Set(), work));
+    expect(folded.some((row) => row.space === work && row.kind !== "space")).toBe(false);
+    expect(folded.map((row) => row.id)).toContain(muster);
+    expect(selectionAfterFold(work, rows[1])).toBe(work);
+    expect(unfoldedTo(new Set([work]), rows[1] as never).has(work)).toBe(false);
+    // A space stands for its projects' sessions.
+    expect(sessionsOn(state, { kind: "space", id: home })).toEqual(
+      sessionsOn(state, { kind: "project", id: muster }),
+    );
+  });
+});
+
 describe("ARC-24 the All list's rows", () => {
   it("are the projects and their sessions in the model's order, no worktree's line among them", async () => {
     const state = await stateOf();
     const rows = allRows(state);
     expect(rows.some((row) => (row.kind as string) === "workspace")).toBe(false);
-    expect(rows[0]).toEqual({ kind: "project", id: muster, project: muster, workspace: null });
+    expect(rows[0]).toEqual({
+      kind: "project",
+      id: muster,
+      project: muster,
+      space: "",
+      workspace: null,
+    });
     const sessions = state.derived.rows.filter((row) => row.kind !== "workspace");
     expect(rows.map((row) => row.id)).toEqual(
       sessions.flatMap((row) => ("id" in row ? [row.id] : [])).filter((id) => id !== ulid(102)),
@@ -45,6 +81,7 @@ describe("ARC-24 the All list's rows", () => {
       kind: "session",
       id: ulid(101),
       project: muster,
+      space: "",
       workspace: desktop,
     });
   });
@@ -59,6 +96,7 @@ describe("ARC-24 the All list's rows", () => {
       kind: "session",
       id: ulid(102),
       project: muster,
+      space: "",
       workspace: desktop,
     });
   });
@@ -71,6 +109,7 @@ describe("ARC-24 the All list's rows", () => {
       kind: "workspace",
       id: ulid(22),
       project: lamphaus,
+      space: "",
       workspace: ulid(22),
     });
     // A project's own checkout never: its line is the project's.

@@ -133,6 +133,7 @@ fn a_long_path_scrolls_so_the_typing_end_stays_in_view() {
     app.on_frame(ServerFrame::Snapshot(
         muster_core::protocol::Snapshot::default(),
     ));
+    super::tests::a_space(&mut app);
     press(&mut app, KeyCode::Char('a'));
     let screen = render(&app);
     assert!(screen.contains("end-of-path"), "{screen}");

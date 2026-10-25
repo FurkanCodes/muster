@@ -203,7 +203,7 @@ describe("ARC-24 the palette's catalogue", () => {
 });
 
 describe("PRD-01 the first run and the daemon out of reach", () => {
-  it("rounds up the sessions, then welcomes a first project", async () => {
+  it("ARC-33 rounds up the sessions, then welcomes a first project, a space named first", async () => {
     const world = workingDay();
     world.projects = [];
     world.workspaces = [];
@@ -213,7 +213,13 @@ describe("PRD-01 the first run and the daemon out of reach", () => {
     expect(await screen.findByRole("heading", { name: "Add a project to start" })).toBeVisible();
     expect(screen.getByText("Or drop a folder on this window.")).toBeVisible();
     await userEvent.keyboard("a");
+    // Everything lives in a space: one is named first, then the project is added in it.
+    const named = await screen.findByRole("dialog", { name: "New space" });
+    expect(named).toHaveTextContent("Everything lives in a space");
+    await userEvent.type(within(named).getByLabelText("Name"), "Home");
+    await userEvent.click(within(named).getByRole("button", { name: /Make it/ }));
     expect(await screen.findByRole("dialog", { name: "Add a project" })).toBeVisible();
+    expect(bridge.world.spaces?.map((space) => space.name)).toEqual(["Home"]);
   });
 
   it("waits for the daemon where nothing was known yet, saying since when and where its log is", async () => {

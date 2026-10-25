@@ -106,6 +106,11 @@ async fn an_added_project_is_broadcast_after_the_snapshot() {
     let Reply::ProjectAdded { id } = supervisor.command(add(&root, None)).await.unwrap() else {
         panic!("expected ProjectAdded");
     };
+    // With no space yet, a Home is made for it first (`ARC-33`).
+    let Delta::SpaceUpserted(home) = deltas.recv().await.unwrap() else {
+        panic!("expected SpaceUpserted");
+    };
+    assert_eq!(home.name, "Home");
     let Delta::ProjectUpserted(project) = deltas.recv().await.unwrap() else {
         panic!("expected ProjectUpserted");
     };
@@ -115,6 +120,10 @@ async fn an_added_project_is_broadcast_after_the_snapshot() {
 
     let (snapshot, _) = supervisor.subscribe().await.unwrap();
     assert_eq!(snapshot.projects, [project]);
+    assert_eq!(
+        snapshot.spaces[0].members,
+        [muster_core::spaces::Member::Project(id)]
+    );
 }
 
 #[tokio::test]

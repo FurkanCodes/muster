@@ -289,7 +289,16 @@ fn unused_samples_are_dropped_only_after_a_complete_backup_arc_14_prd_09() {
         .unwrap();
     let store = Store::open(&path, at(10)).unwrap();
     assert_eq!(store.schema_version().unwrap(), latest_version());
-    assert_eq!(store.snapshot().unwrap(), before);
+    // Everything kept, the project put in a Home of its own (`ARC-33`).
+    let mut after = store.snapshot().unwrap();
+    let spaces = std::mem::take(&mut after.spaces);
+    assert_eq!(after, before);
+    assert_eq!(spaces.len(), 1);
+    assert_eq!(spaces[0].name, "Home");
+    assert_eq!(
+        spaces[0].members,
+        [muster_core::spaces::Member::Project(before.projects[0].id)]
+    );
     let tables: u32 = store
         .conn
         .query_row(

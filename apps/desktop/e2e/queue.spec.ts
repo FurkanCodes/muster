@@ -263,6 +263,8 @@ test("ARC-24 R renames in place, ⎋ gives up, and the more menu offers the same
     "Pull request in the browserb",
     "Closex",
   ]);
+  // Its keys are its own once it has the focus, which it takes as it opens.
+  await expect(menu).toBeFocused();
   await page.keyboard.press("Shift+R");
   await expect(menu).toHaveCount(0);
   await expect(name).toBeFocused();

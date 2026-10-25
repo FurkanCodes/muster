@@ -68,7 +68,7 @@ fn a_title_too_long_for_its_line_slides_along_on_the_selected_line() {
     // An agent on the ticket, its session titled after it.
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     ui.keys(b"i");

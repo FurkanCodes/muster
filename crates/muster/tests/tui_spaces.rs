@@ -1,8 +1,9 @@
 //! End-to-end tests of spaces and terminals in no project in the terminal
 //! UI (`PRODUCT.md` §6, `ARC-33`): the real `muster` binary on a real
-//! pseudo-terminal over the real daemon. `+` starts a terminal in no
-//! project, listed under Terminals; `W` makes a space and shows it; `]`
-//! goes back to everything;
+//! pseudo-terminal over the real daemon. Adding the first project asks for
+//! a space first; `+` starts a terminal in no project, listed under its
+//! space; `W` makes another space and shows it; `]` goes back to
+//! everything, each space under its heading;
 //! `F` files a terminal whose shell went into a project's folder under it,
 //! the same shell running on.
 
@@ -41,31 +42,37 @@ fn a_space_is_made_shown_and_left_and_a_free_terminal_is_filed_where_its_shell_i
     let root = sandbox.repository("app");
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("⌂ main");
 
-    // A terminal in no project, under Terminals; back on the list.
+    // A terminal in no project, under its space; back on the list.
     ui.keys(b"+");
     ui.wait_for("Shift-Q back to the list");
     ui.keys(b"Q");
     ui.wait_without("Shift-Q back to the list");
-    ui.wait_for("Terminals");
+    ui.wait_for("❯");
 
-    // A space, made from the menu and shown at once: empty.
+    // Another space, made from the menu (after everything and Home) and
+    // shown at once: empty.
     ui.keys(b"W");
     ui.wait_for("new space…");
-    ui.keys(b"\x1b[B\r");
+    ui.keys(b"\x1b[B\x1b[B\r");
     ui.wait_for("it doesn't change where they run");
     ui.keys(b"Work\r");
+    // Its name in the tab says it is shown; the note saying so may pass.
     ui.wait_for("Sessions · Work");
-    ui.wait_for("Showing Work.");
     assert!(!ui.text().contains("⌂ main"), "{}", ui.text());
 
-    // Everything again.
+    // Everything again, each space under its heading.
     ui.keys(b"]");
     ui.wait_for("Showing everything.");
     ui.wait_for("⌂ main");
+    let screen = ui.text();
+    assert!(
+        screen.contains("Home") && screen.contains("Work"),
+        "{screen}"
+    );
 
     // The free terminal's shell into the project's folder, by the person:
     // then F files it there, as it is.

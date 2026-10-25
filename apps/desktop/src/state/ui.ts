@@ -84,8 +84,14 @@ export interface UiState {
   note: Note | null;
   /** Whether the person can see the window: animations and streams stop when not. */
   visible: boolean;
-  /** A session's or a project's menu asked for by a right-click on its line, opened where the pointer is. */
-  menuAt: { session?: SessionId; project?: ProjectId; x: number; y: number } | null;
+  /** A session's, a project's or a space's menu asked for by a right-click on its line, opened where the pointer is. */
+  menuAt: {
+    session?: SessionId;
+    project?: ProjectId;
+    space?: SpaceId;
+    x: number;
+    y: number;
+  } | null;
   /** The space the All list shows; null for all of it. The window's own (`ARC-33`). */
   space: SpaceId | null;
   /** Whether the menu of spaces is open (the projects' heading, `S`). */
@@ -129,7 +135,6 @@ export interface UiActions {
 export type UiStore = StoreApi<UiState>;
 
 const THEME_KEY = "muster.theme";
-const SPACE_KEY = "muster.space";
 
 function storedTheme(): Theme {
   const value = kept(THEME_KEY);
@@ -165,7 +170,8 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     note: null,
     visible: true,
     menuAt: null,
-    space: kept(SPACE_KEY),
+    // Every window opens on everything (`ARC-33`).
+    space: null,
     spacesOpen: false,
   }));
   const set = store.setState;
@@ -220,7 +226,6 @@ export function createUi(): { store: UiStore; actions: UiActions } {
     openMenuAt: (menuAt) => set({ menuAt }),
     showSpace: (space) => {
       set({ space });
-      keep(SPACE_KEY, space);
     },
     openSpaces: (spacesOpen) => set({ spacesOpen }),
   };

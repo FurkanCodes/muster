@@ -1,13 +1,17 @@
 //! The person's spaces (`ARCHITECTURE.md` §2): made, renamed, removed,
-//! and what is in them. A space only groups, so nothing here starts, stops
-//! or moves anything; each change is stored, then sent to every client as
-//! the space now is.
+//! and what is in them. Every project and every free terminal is in
+//! exactly one (`ARC-33`), which only this file keeps so. A space only
+//! groups, so nothing here starts, stops or moves anything; each change is
+//! stored, then sent to every client as the space now is.
 
 use muster_core::protocol::{Command, Delta, ErrorBody, ErrorCode, Reply};
 use muster_core::spaces::{self, MAX_SPACES, Member, NameRefusal};
 use muster_core::{Space, SpaceId};
 
 use super::{Supervisor, store_closed, store_error};
+
+/// The space something new goes in where none is asked and there is none.
+const HOME: &str = "Home";
 
 impl Supervisor {
     /// Answers a command about spaces or free terminals.
@@ -16,11 +20,11 @@ impl Supervisor {
             Command::CreateSpace { name } => self.create_space(&name).await,
             Command::RenameSpace { space, name } => self.rename_space(space, &name).await,
             Command::DeleteSpace { space } => self.delete_space(space).await,
-            Command::AddToSpace { space, member } => {
+            Command::MoveToSpace { space, member } => {
                 self.check_member(member)?;
-                self.join(space, member).await.map(|()| Reply::Done)
+                self.space(space)?;
+                self.move_to(space, member).await.map(|()| Reply::Done)
             }
-            Command::RemoveFromSpace { space, member } => self.leave(space, member).await,
             Command::ReadPlace { session } => self.read_place(session).await,
             Command::FileSession { session, workspace } => {
                 self.file_session(session, workspace).await
@@ -101,7 +105,28 @@ impl Supervisor {
     }
 
     async fn delete_space(&mut self, id: SpaceId) -> Result<Reply, ErrorBody> {
-        self.space(id)?;
+        let space = self.space(id)?;
+        if !space.members.is_empty() {
+            let projects = space
+                .members
+                .iter()
+                .filter(|member| matches!(member, Member::Project(_)))
+                .count();
+            let terminals = space.members.len() - projects;
+            let held = [(projects, "project"), (terminals, "terminal")]
+                .into_iter()
+                .filter(|(count, _)| *count > 0)
+                .map(|(count, what)| format!("{count} {what}{}", if count == 1 { "" } else { "s" }))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            return Err(ErrorBody::new(
+                ErrorCode::Conflict,
+                format!(
+                    "{} still holds {held}: move or remove them first",
+                    space.name
+                ),
+            ));
+        }
         self.store
             .call(move |store| store.delete_space(id))
             .await
@@ -146,37 +171,56 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Puts `member` in space `id`; again does nothing.
-    pub(super) async fn join(&mut self, id: SpaceId, member: Member) -> Result<(), ErrorBody> {
+    /// Moves `member` to space `id`, out of the space it was in; to its
+    /// own space does nothing.
+    pub(super) async fn move_to(&mut self, id: SpaceId, member: Member) -> Result<(), ErrorBody> {
         if self.space(id)?.holds(member) {
             return Ok(());
         }
         self.store
-            .call(move |store| store.add_member(id, member))
+            .call(move |store| store.move_member(id, member))
             .await
             .map_err(store_closed)?
             .map_err(store_error)?;
+        self.forget_members(|held| held == member);
         self.change_space(id, |space| space.members.push(member));
         Ok(())
     }
 
-    async fn leave(&mut self, id: SpaceId, member: Member) -> Result<Reply, ErrorBody> {
-        if !self.space(id)?.holds(member) {
-            return Ok(Reply::Done);
+    /// The space something new goes in (`ARC-33`): `wanted`, where it is
+    /// there; else the only space; else a space called Home, made for it,
+    /// where there is none; refused among several, naming them.
+    pub(super) async fn home_for(&mut self, wanted: Option<SpaceId>) -> Result<SpaceId, ErrorBody> {
+        if let Some(id) = wanted {
+            return self.space(id).map(|space| space.id);
         }
-        self.store
-            .call(move |store| store.remove_member(id, member))
-            .await
-            .map_err(store_closed)?
-            .map_err(store_error)?;
-        self.change_space(id, |space| space.members.retain(|kept| *kept != member));
-        Ok(Reply::Done)
+        match self.state.spaces.as_slice() {
+            [] => match self.create_space(HOME).await? {
+                Reply::SpaceCreated { id } => Ok(id),
+                _ => Err(ErrorBody::new(ErrorCode::Internal, "no space made")),
+            },
+            [only] => Ok(only.id),
+            several => Err(ErrorBody::new(
+                ErrorCode::BadRequest,
+                format!(
+                    "say which space: {}",
+                    several
+                        .iter()
+                        .map(|space| space.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            )),
+        }
     }
 
-    /// The space `wanted`, refused where it is not there: asked before
-    /// what joins it is made, so nothing is made for a space that is gone.
-    pub(super) fn space_to_join(&self, wanted: Option<SpaceId>) -> Result<(), ErrorBody> {
-        wanted.map_or(Ok(()), |id| self.space(id).map(|_| ()))
+    /// The space `member` is in, if any.
+    pub(super) fn space_of(&self, member: Member) -> Option<SpaceId> {
+        self.state
+            .spaces
+            .iter()
+            .find(|space| space.holds(member))
+            .map(|space| space.id)
     }
 
     /// Takes what `gone` says out of every space it was in, as the store

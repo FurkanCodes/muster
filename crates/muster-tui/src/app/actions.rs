@@ -113,9 +113,9 @@ impl App {
                 here.push(self.here(Does::Close, "remove"));
                 here
             }
-            (View::Sessions, Some(Row::Terminals), None) => {
-                let mut here = vec![self.here(Does::NewTerminal, "terminal")];
-                here.extend(self.fold_action(Row::Terminals));
+            (View::Sessions, Some(Row::Space(id)), None) => {
+                let mut here = self.space_heading_here();
+                here.extend(self.fold_action(Row::Space(id)));
                 here
             }
             _ => Vec::new(),

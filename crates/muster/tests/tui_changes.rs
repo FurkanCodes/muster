@@ -29,7 +29,7 @@ fn d_shows_what_changed_in_a_checkout_and_enter_a_file_s_diff() {
 
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.wait_for("Add a project");
     ui.keys(b"\r");
     ui.wait_for("⌂ main");

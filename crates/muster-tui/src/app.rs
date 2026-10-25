@@ -300,10 +300,12 @@ pub(crate) enum Dialog {
         session: SessionId,
         name: LineInput,
     },
-    /// A new space's name, or a space's new name (`app::spaces`).
+    /// A new space's name, or a space's new name (`app::spaces`); a new
+    /// one's `then` is done in it once it is made.
     SpaceName {
         space: Option<muster_core::SpaceId>,
         name: LineInput,
+        then: Option<spaces::Later>,
     },
     /// Every action and its keys, for the person to set them.
     Keys(Rebinding),
@@ -360,7 +362,7 @@ pub(crate) enum Confirmed {
     MoveOnto(WorkspaceId),
     /// Remove the plugin by this id.
     RemovePlugin(String),
-    /// Remove the space; what is in it stays.
+    /// Remove the space, which the daemon does only once it is empty.
     DeleteSpace(muster_core::SpaceId),
     /// Start the terminal again in the workspace, ending what runs in it.
     RestartIn {

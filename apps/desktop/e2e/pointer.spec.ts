@@ -87,7 +87,7 @@ test("PRD §6a a session's menu pins it to the right of the preview in a panel o
   await expect(page.locator(".mu-note")).toContainText("Took it off the screen; it runs on.");
 });
 
-test("ARC-24 ARC-33 a right-click in All opens a session's menu, and a project's, which puts it in a new space", async ({
+test("ARC-24 ARC-33 a right-click in All opens a session's menu, and a project's, which moves it to a new space", async ({
   page,
 }) => {
   await page.goto("/");
@@ -105,14 +105,17 @@ test("ARC-24 ARC-33 a right-click in All opens a session's menu, and a project's
   );
   const menu = page.getByRole("menu", { name: "lamphaus" });
   await expect(menu).toBeVisible();
-  await menu.getByRole("menuitem", { name: /^Put in a new space/ }).click();
+  await menu.getByRole("menuitem", { name: /^Move to a new space/ }).click();
   const named = page.getByRole("dialog", { name: "New space" });
   await named.getByLabel("Name").fill("Client");
   await named.getByRole("button", { name: /Make it/ }).click();
-  // Made with the project in it, and shown.
-  await expect(sidebar(page).getByRole("button", { name: "Spaces" })).toHaveText(/Client/);
-  await expect(tree.getByRole("treeitem", { name: "lamphaus", exact: true })).toBeVisible();
-  await expect(tree.getByRole("treeitem", { name: "muster", exact: true })).toHaveCount(0);
+  // Made with the project in it, listed under its heading; the window still shows everything.
+  await expect(tree.getByRole("treeitem", { name: "Client", exact: true })).toBeVisible();
+  await expect(sidebar(page).getByRole("button", { name: "Spaces" })).toHaveText(/Everything/);
+  const lines = await tree
+    .getByRole("treeitem")
+    .evaluateAll((all) => all.map((line) => line.getAttribute("aria-label")));
+  expect(lines.indexOf("lamphaus")).toBe(lines.indexOf("Client") + 1);
 });
 
 test("ARC-24 the window opens no browser menu, except over text one can copy", async ({ page }) => {

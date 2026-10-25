@@ -57,11 +57,11 @@ pub(crate) fn commands(
         Command::DeleteSpace {
             space: SpaceId::new(),
         },
-        Command::AddToSpace {
+        Command::MoveToSpace {
             space: SpaceId::new(),
             member: Member::Project(project),
         },
-        Command::RemoveFromSpace {
+        Command::MoveToSpace {
             space: SpaceId::new(),
             member: Member::Session(session),
         },

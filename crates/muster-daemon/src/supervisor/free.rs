@@ -146,6 +146,8 @@ impl Supervisor {
                 ),
             ));
         }
+        // The project goes in the terminal's space, unless another is asked.
+        let space = space.or_else(|| self.space_of(Member::Session(session)));
         let reply = self.add_project(folder, None, space).await?;
         let Reply::ProjectAdded { id } = reply else {
             return Ok(reply);

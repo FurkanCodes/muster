@@ -202,7 +202,12 @@ fn print_session(snapshot: &Snapshot, session: &muster_core::Session) {
     );
 }
 
-pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>) -> Outcome {
+pub(crate) async fn add_project(
+    socket: &Path,
+    path: &Path,
+    name: Option<String>,
+    space: Option<&str>,
+) -> Outcome {
     // The daemon runs elsewhere, so it needs a path that does not depend on
     // this shell's working directory; another machine's (`--on`) is given
     // whole, as nothing here can make it so.
@@ -217,13 +222,17 @@ pub(crate) async fn add_project(socket: &Path, path: &Path, name: Option<String>
         .into());
     }
     let root = std::path::absolute(path)?;
-    let reply = connect(socket)
-        .await?
-        .command(Command::AddProject {
-            root,
-            name,
-            space: None,
-        })
+    let mut connection = connect(socket).await?;
+    // Named, else the daemon's choice: the only space, or a Home it makes.
+    let space = match space {
+        Some(wanted) => {
+            let snapshot = connection.subscribe().await?;
+            Some(crate::verbs::spaces::find(&snapshot, wanted)?.id)
+        }
+        None => None,
+    };
+    let reply = connection
+        .command(Command::AddProject { root, name, space })
         .await?;
     let Reply::ProjectAdded { id } = reply else {
         return Err(unexpected(&reply));

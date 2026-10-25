@@ -13,8 +13,9 @@ use crate::model::Row;
 
 impl App {
     /// The sessions list as drawn: the space shown, as the model lists it
-    /// (each project, its worktrees and their sessions, then the free
-    /// terminals), but for what a folded line hides.
+    /// (under everything, each space's heading, its projects with their
+    /// worktrees and sessions, then its free terminals), but for what a
+    /// folded line hides.
     pub(crate) fn rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
         let mut hiding: Option<Row> = None;
@@ -36,10 +37,15 @@ impl App {
     }
 
     /// Whether `row` has anything to fold away: a project always has its
-    /// workspaces, a worktree only once a session is in it.
+    /// workspaces, a space whatever it holds, a worktree only once a
+    /// session is in it.
     pub(crate) fn foldable(&self, row: Row) -> bool {
         match row {
-            Row::Project(_) | Row::Terminals => true,
+            Row::Project(_) => true,
+            Row::Space(space) => self
+                .model
+                .space(space)
+                .is_some_and(|s| !s.members.is_empty()),
             Row::Worktree(workspace) => self.model.sessions_of(workspace).next().is_some(),
             Row::Session(_) => false,
         }
@@ -62,7 +68,14 @@ impl App {
         }
         let row = match self.selected {
             Some(Row::Session(session)) => match self.model.session(session) {
-                Some(stored) => stored.workspace.map_or(Row::Terminals, Row::Worktree),
+                Some(stored) => match stored.workspace {
+                    Some(workspace) => Row::Worktree(workspace),
+                    // A free terminal folds its space.
+                    None => match self.model.space_of(Row::Session(session)) {
+                        Some(space) => Row::Space(space),
+                        None => return,
+                    },
+                },
                 None => return,
             },
             Some(row) => row,
@@ -91,14 +104,13 @@ impl App {
     }
 
     /// Whether `row` is under `above`: a session under its worktree and
-    /// its project, a worktree under its project.
+    /// its project, a worktree under its project, and all of them, and a
+    /// free terminal, under their space.
     fn is_under(&self, row: Row, above: Row) -> bool {
         match above {
             Row::Project(project) => self.model.project_of(row) == Some(project),
             Row::Worktree(workspace) => self.model.worktree_of(row) == Some(workspace),
-            Row::Terminals => {
-                matches!(row, Row::Session(id) if self.model.session(id).is_some_and(muster_core::Session::is_free))
-            }
+            Row::Space(space) => row != above && self.model.space_of(row) == Some(space),
             Row::Session(_) => false,
         }
     }
@@ -113,8 +125,10 @@ impl App {
         if let (Row::Session(_), Some(workspace)) = (row, self.model.worktree_of(row)) {
             self.folded.remove(&Row::Worktree(workspace));
         }
-        if self.is_under(row, Row::Terminals) {
-            self.folded.remove(&Row::Terminals);
+        if let Some(space) = self.model.space_of(row)
+            && self.is_under(row, Row::Space(space))
+        {
+            self.folded.remove(&Row::Space(space));
         }
     }
 
@@ -126,7 +140,7 @@ impl App {
             Row::Project(project) => model.project(*project).is_some(),
             // One left with no session has nothing to hide.
             Row::Worktree(workspace) => model.sessions_of(*workspace).next().is_some(),
-            Row::Terminals => model.free_terminals().next().is_some(),
+            Row::Space(space) => model.space(*space).is_some(),
             Row::Session(_) => false,
         });
         if let Some(row) = self.selected

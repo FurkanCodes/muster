@@ -739,8 +739,7 @@ impl Supervisor {
             command @ (Command::CreateSpace { .. }
             | Command::RenameSpace { .. }
             | Command::DeleteSpace { .. }
-            | Command::AddToSpace { .. }
-            | Command::RemoveFromSpace { .. }
+            | Command::MoveToSpace { .. }
             | Command::ReadPlace { .. }
             | Command::FileSession { .. }
             | Command::AddProjectHere { .. }
@@ -934,8 +933,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::CreateSpace { .. } => "create space",
         Command::RenameSpace { .. } => "rename space",
         Command::DeleteSpace { .. } => "delete space",
-        Command::AddToSpace { .. } => "add to space",
-        Command::RemoveFromSpace { .. } => "remove from space",
+        Command::MoveToSpace { .. } => "move to space",
         Command::ReadPlace { .. } => "read place",
         Command::FileSession { .. } => "file session",
         Command::AddProjectHere { .. } => "add project here",

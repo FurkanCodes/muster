@@ -30,7 +30,7 @@ fn anyone_s_ticket_plugin_is_chosen_with_its_setting_and_lists_its_tickets() {
 
     let mut ui = Ui::start(&sandbox, &root);
     ui.wait_for("No projects yet");
-    ui.keys(b"a");
+    ui.add_in_a_new_space();
     ui.keys(b"\r");
     ui.wait_for("Added the project.");
     let address = format!("file://{}", plugin.display());

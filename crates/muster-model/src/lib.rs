@@ -13,8 +13,8 @@ use muster_core::protocol::plugins::PluginInfo;
 use muster_core::protocol::{Delta, ResourceReport, SessionUsage, Snapshot};
 use muster_core::settings::Preferences;
 use muster_core::{
-    Project, ProjectId, Run, Session, SessionId, SessionStatus, Space, TicketKey, Workspace,
-    WorkspaceId,
+    Project, ProjectId, Run, Session, SessionId, SessionStatus, Space, SpaceId, TicketKey,
+    Workspace, WorkspaceId,
 };
 
 #[cfg(any(test, feature = "fixtures"))]
@@ -29,9 +29,9 @@ pub enum Row {
     Project(ProjectId),
     Worktree(WorkspaceId),
     Session(SessionId),
-    /// The heading over the free terminals, those in no project
-    /// (`ARC-33`), which follow it as sessions.
-    Terminals,
+    /// A space's heading (`ARC-33`): its projects' lines and its free
+    /// terminals follow it.
+    Space(SpaceId),
 }
 
 /// How many agents work, wait on the person and are done: a shell, the
@@ -396,8 +396,8 @@ impl Model {
                 == 1
     }
 
-    /// The sessions list: each project, its worktrees, their sessions,
-    /// then the free terminals under their heading.
+    /// The sessions list: each space's heading, then its projects with
+    /// their worktrees and sessions, then its free terminals.
     pub fn rows(&self) -> Vec<Row> {
         self.rows_in(View::All)
     }
@@ -459,7 +459,7 @@ impl Model {
     }
 
     /// The sessions on a row: a project's in all its workspaces, a
-    /// worktree's, or the session itself.
+    /// worktree's, the session itself, or all of a space's.
     pub fn sessions_on(&self, row: Row) -> impl Iterator<Item = &Session> {
         self.sessions.iter().filter(move |session| match row {
             Row::Project(project) => session
@@ -468,7 +468,7 @@ impl Model {
                 .is_some_and(|workspace| workspace.project == project),
             Row::Worktree(workspace) => session.is_in(workspace),
             Row::Session(id) => session.id == id,
-            Row::Terminals => session.is_free(),
+            Row::Space(space) => self.space_of(Row::Session(session.id)) == Some(space),
         })
     }
 
@@ -496,14 +496,14 @@ impl Model {
                 .session(id)
                 .and_then(|session| self.workspace(session.workspace?))
                 .map(|workspace| workspace.project),
-            Row::Terminals => None,
+            Row::Space(_) => None,
         }
     }
 
     /// The worktree a row belongs to, if any.
     pub fn worktree_of(&self, row: Row) -> Option<WorkspaceId> {
         match row {
-            Row::Project(_) | Row::Terminals => None,
+            Row::Project(_) | Row::Space(_) => None,
             Row::Worktree(id) => Some(id),
             Row::Session(id) => self.session(id).and_then(|session| session.workspace),
         }

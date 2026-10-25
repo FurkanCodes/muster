@@ -133,7 +133,7 @@ export function Flows() {
       ) : flow?.kind === "new-worktree" ? (
         <NewWorktree flow={flow} />
       ) : flow?.kind === "space-name" ? (
-        <SpaceName space={flow.space} join={flow.join} />
+        <SpaceName space={flow.space} after={flow.after} />
       ) : flow?.kind === "remove-space" ? (
         <RemoveSpace space={flow.space} />
       ) : flow?.kind === "file-terminal" ? (

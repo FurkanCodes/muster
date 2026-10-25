@@ -16,7 +16,7 @@ import {
 } from "react";
 import { addProject, cloneProject, newSession } from "../flows/actions";
 import { useKeymap } from "../keys/useKeymap";
-import { SpaceMenu } from "../spaces/SpaceMenu";
+import { SpaceLineMenu, SpaceMenu } from "../spaces/SpaceMenu";
 import { newTerminal } from "../spaces/spaces";
 import { keep, kept } from "../state/kept";
 import { chats } from "../state/selectors";
@@ -241,7 +241,7 @@ function useSidebarWidth(): [number, (width: number, done: boolean) => void] {
 /**
  * A right-click on a line of the list selects it, as a click does, and opens
  * its menu where the pointer is: a session's is the one under its ⋯, a
- * project's the one under its page's.
+ * project's the one under its page's, a space's what can go in it.
  */
 function useLineMenu(): (event: MouseEvent<HTMLElement>) => void {
   const app = useApp();
@@ -261,6 +261,8 @@ function useLineMenu(): (event: MouseEvent<HTMLElement>) => void {
       app.actions.openMenuAt({ session: id, x: event.clientX, y: event.clientY });
     else if (id && state.projects[id])
       app.actions.openMenuAt({ project: id, x: event.clientX, y: event.clientY });
+    else if (id && state.spaces.some((space) => space.id === id))
+      app.actions.openMenuAt({ space: id, x: event.clientX, y: event.clientY });
   };
 }
 
@@ -306,6 +308,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
       <div className="app-sidebar-list" onContextMenu={lineMenu}>
         {children}
       </div>
+      <SpaceLineMenu />
       <SideButton
         icon="gear"
         label="Settings"

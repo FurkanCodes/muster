@@ -1,6 +1,8 @@
 // What the mock daemon answers about spaces and terminals in no project, as
-// the daemon's own code does (`supervisor::spaces`, `supervisor::free`): a
-// space made, renamed, removed, things put in it and taken out; a terminal's
+// the daemon's own code does (`supervisor::spaces`, `supervisor::free`):
+// everything in exactly one space (`ARC-33`), a Home made where none is
+// asked and there is none; a space made, renamed, removed once empty,
+// things moved to it; a terminal's
 // folder (`mock.world.folders`, what its shell `cd`'d to: the home folder
 // until a test says), filed where it is, made a project there, or started
 // again in a workspace. Muster never types into the shell.
@@ -68,11 +70,31 @@ function holding(mock: MockBridge, folder: string): string | null {
 }
 
 /** Puts `member` in space `id`, as a start or an add in a space does. */
-export function join(mock: MockBridge, id: string | null, member: Member): void {
-  if (id === null) return;
+/** Moves `member` to space `id`, out of the space it was in. */
+export function moveTo(mock: MockBridge, id: string, member: Member): void {
   const space = spaceOf(mock, id);
-  if (!space.members.some((held) => same(held, member))) space.members.push(member);
+  for (const held of mock.world.spaces ?? [])
+    held.members = held.members.filter((one) => !same(one, member));
+  space.members.push(member);
   changed(mock, space);
+}
+
+/**
+ * The space something new goes in (`Supervisor::home_for`): `wanted`; else
+ * the only space; else a Home made for it where there is none; refused
+ * among several.
+ */
+export function homeFor(mock: MockBridge, wanted: string | null | undefined): string {
+  mock.world.spaces ??= [];
+  const spaces = mock.world.spaces;
+  if (wanted != null) return spaceOf(mock, wanted).id;
+  const [only, ...more] = spaces;
+  if (only && more.length === 0) return only.id;
+  if (only) refuse(`say which space: ${spaces.map((one) => one.name).join(", ")}`, "bad_request");
+  const home: Space = { id: ulid(700), name: "Home", members: [], created_at: NOW };
+  spaces.push(home);
+  changed(mock, home);
+  return home.id;
 }
 
 export function spacesCommand(mock: MockBridge, command: Command): Reply | undefined {
@@ -81,7 +103,7 @@ export function spacesCommand(mock: MockBridge, command: Command): Reply | undef
   const spaces = mock.world.spaces;
   if ("CreateSpace" in command) {
     const space: Space = {
-      id: ulid(700 + spaces.length),
+      id: ulid(701 + spaces.length),
       name: named(mock, command.CreateSpace.name, null),
       members: [],
       created_at: NOW,
@@ -98,19 +120,24 @@ export function spacesCommand(mock: MockBridge, command: Command): Reply | undef
   }
   if ("DeleteSpace" in command) {
     const space = spaceOf(mock, command.DeleteSpace.space);
+    if (space.members.length > 0) {
+      const projects = space.members.filter((held) => "Project" in held).length;
+      const terminals = space.members.length - projects;
+      const held = [
+        [projects, "project"],
+        [terminals, "terminal"],
+      ]
+        .filter(([count]) => Number(count) > 0)
+        .map(([count, what]) => `${count} ${what}${count === 1 ? "" : "s"}`)
+        .join(" and ");
+      refuse(`${space.name} still holds ${held}: move or remove them first`, "conflict");
+    }
     mock.world.spaces = spaces.filter((kept) => kept.id !== space.id);
     changed(mock, space);
     return "Done";
   }
-  if ("AddToSpace" in command) {
-    join(mock, command.AddToSpace.space, command.AddToSpace.member);
-    return "Done";
-  }
-  if ("RemoveFromSpace" in command) {
-    const { space: id, member } = command.RemoveFromSpace;
-    const space = spaceOf(mock, id);
-    space.members = space.members.filter((held) => !same(held, member));
-    changed(mock, space);
+  if ("MoveToSpace" in command) {
+    moveTo(mock, command.MoveToSpace.space, command.MoveToSpace.member);
     return "Done";
   }
   if ("ReadPlace" in command) {

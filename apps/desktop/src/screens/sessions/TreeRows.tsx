@@ -14,7 +14,6 @@ import type { Session } from "../../ipc/generated/Session";
 import { ago } from "../../lib/format";
 import { doing, type StatusKind, statusKind } from "../../lib/status";
 import { pressToCarry } from "../../panels/carry";
-import { SpaceNote } from "../../spaces/SpaceNote";
 import { branchOf, projectColour, shownHarness } from "../../state/selectors";
 import { ListItem, ListItemEnd, ListItemMeta, ListItemText, ListItemTitle } from "../../ui/List";
 import {
@@ -164,25 +163,19 @@ export function ProjectLine(props: LineProps) {
       <span className="mu-tree-project mu-cut" title={homely(root)}>
         {name}
       </span>
-      <SpaceNote of={row.id} always={false} />
       {folded ? <Standing row={row} /> : null}
     </Line>
   );
 }
 
-/** The heading over the terminals in no project (`ARC-33`): it folds them away as a project's line does. */
-export function TerminalsLine(props: LineProps) {
+/** A space's heading (`ARC-33`): it folds away what the space holds, as a project's line does. */
+export function SpaceLine(props: LineProps) {
   const { row, folded } = props;
+  const name = useDaemon((state) => state.spaces.find((space) => space.id === row.id)?.name ?? "");
   return (
-    <Line
-      {...props}
-      expanded={!folded}
-      density="compact"
-      className="sessions-project"
-      label="Terminals in no project"
-    >
+    <Line {...props} expanded={!folded} density="compact" className="sessions-project" label={name}>
       <Fold {...props} />
-      <span className="mu-tree-project mu-quiet mu-cut">Terminals</span>
+      <span className="mu-tree-project mu-quiet mu-cut">{name}</span>
       {folded ? <Standing row={row} /> : null}
     </Line>
   );

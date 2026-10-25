@@ -90,7 +90,8 @@ impl Store {
         }
     }
 
-    /// Removes a space and its memberships; what was in it stays.
+    /// Removes a space and its memberships; the Supervisor removes only
+    /// one that holds nothing.
     pub fn delete_space(&mut self, space: SpaceId) -> Result<()> {
         match self
             .conn
@@ -101,22 +102,20 @@ impl Store {
         }
     }
 
-    /// Puts `member` in `space`; again does nothing.
-    pub fn add_member(&mut self, space: SpaceId, member: Member) -> Result<()> {
+    /// Moves `member` to `space`, out of any space it was in, in one
+    /// transaction: everything is in exactly one space (`ARC-33`).
+    pub fn move_member(&mut self, space: SpaceId, member: Member) -> Result<()> {
         let (kind, id) = kind(member);
-        self.conn.execute(
-            "INSERT OR IGNORE INTO space_members (space_id, kind, member_id) VALUES (?1, ?2, ?3)",
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM space_members WHERE kind = ?1 AND member_id = ?2",
+            params![kind, id],
+        )?;
+        tx.execute(
+            "INSERT INTO space_members (space_id, kind, member_id) VALUES (?1, ?2, ?3)",
             params![id_text(space), kind, id],
         )?;
-        Ok(())
-    }
-
-    pub fn remove_member(&mut self, space: SpaceId, member: Member) -> Result<()> {
-        let (kind, id) = kind(member);
-        self.conn.execute(
-            "DELETE FROM space_members WHERE space_id = ?1 AND kind = ?2 AND member_id = ?3",
-            params![id_text(space), kind, id],
-        )?;
+        tx.commit()?;
         Ok(())
     }
 }

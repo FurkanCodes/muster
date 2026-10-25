@@ -175,7 +175,7 @@ fn every_key_has_a_mouse_arc_32() {
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(ended)));
-    // And a terminal in no project, under Terminals.
+    // And a terminal in no project, under its space.
     world
         .app
         .on_frame(ServerFrame::Delta(Delta::SessionUpserted(

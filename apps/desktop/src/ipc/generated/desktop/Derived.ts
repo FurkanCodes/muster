@@ -19,9 +19,9 @@ needs_you: Array<SessionId>,
  */
 working: Array<SessionId>, 
 /**
- * The sessions list: each project, its workspaces, their sessions,
- * then the terminals in no project, in the order the terminal UI
- * lists them.
+ * The sessions list: each space's heading, then its projects with
+ * their workspaces and sessions, then its terminals in no project, in
+ * the order the terminal UI lists them (`ARC-33`).
  */
 rows: Array<Row>, 
 /**
@@ -30,9 +30,8 @@ rows: Array<Row>,
  */
 space_rows: { [key in SpaceId]: Array<Row> }, 
 /**
- * The spaces each project, and each session waiting on the person,
- * shows in, as their lines note it (`in Work, Home`); none where in
- * no space (`Model::in_spaces`).
+ * The space each session waiting on the person is in, as its line in
+ * *Needs you* notes it (`in Work`); none where in no space.
  */
 space_notes: { [key in string]: string }, 
 /**

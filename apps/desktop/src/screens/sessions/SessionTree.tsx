@@ -18,7 +18,7 @@ import {
   rowId,
   SessionLine,
   ShellLine,
-  TerminalsLine,
+  SpaceLine,
   WorktreeLine,
 } from "./TreeRows";
 import type { TreeRow } from "./tree";
@@ -119,7 +119,7 @@ export function SessionTree({
   const draw = (row: TreeRow, index: number): ReactNode => {
     const props: LineProps = {
       row,
-      level: row.kind === "project" || row.kind === "terminals" ? 1 : 2,
+      level: row.kind === "project" || row.kind === "space" ? 1 : 2,
       selected: row.id === selected,
       folded: folded.has(row.id),
       onPick,
@@ -127,14 +127,14 @@ export function SessionTree({
     };
     let line: ReactNode;
     if (row.kind === "project") line = <ProjectLine {...props} />;
-    else if (row.kind === "terminals") line = <TerminalsLine {...props} />;
+    else if (row.kind === "space") line = <SpaceLine {...props} />;
     else if (row.kind === "workspace") line = <WorktreeLine {...props} />;
     else if (renaming?.renaming === row.id) line = <RenameSession actions={renaming} />;
     else line = <SessionOrBeside props={props} panelKeys={panelKeys} />;
     return (
       <div
         key={row.id}
-        className={`sessions-node ${index === 0 ? "" : row.kind === "project" || row.kind === "terminals" ? "sessions-node--project" : "sessions-node--under"}`}
+        className={`sessions-node ${index === 0 ? "" : row.kind === "project" || row.kind === "space" ? "sessions-node--project" : "sessions-node--under"}`}
         role="none"
         data-line={index}
       >

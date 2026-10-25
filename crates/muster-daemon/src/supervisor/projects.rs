@@ -23,7 +23,6 @@ impl Supervisor {
         name: Option<String>,
         space: Option<SpaceId>,
     ) -> Result<Reply, ErrorBody> {
-        self.space_to_join(space)?;
         let root = folder_root(&root).await?;
         if self
             .state
@@ -53,6 +52,7 @@ impl Supervisor {
             root,
             created_at: self.clock.now(),
         };
+        let home = self.home_for(space).await?;
         let checkout = self.checkout_of(&project).await;
 
         let (stored, stored_checkout) = (project.clone(), checkout.clone());
@@ -67,9 +67,7 @@ impl Supervisor {
         let id = project.id;
         self.broadcast(Delta::ProjectUpserted(project));
         self.broadcast(Delta::WorkspaceUpserted(checkout));
-        if let Some(space) = space
-            && let Err(error) = self.join(space, Member::Project(id)).await
-        {
+        if let Err(error) = self.move_to(home, Member::Project(id)).await {
             tracing::warn!(error = %error.message, "a project did not join its space");
         }
         Ok(Reply::ProjectAdded { id })

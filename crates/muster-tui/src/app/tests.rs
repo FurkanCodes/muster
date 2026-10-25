@@ -58,6 +58,20 @@ pub(super) fn world() -> World {
     }
 }
 
+/// A space for `app`, as the daemon always has one once anything is added
+/// (`ARC-33`): what adds a project or a terminal asks for one before.
+pub(super) fn a_space(app: &mut App) -> muster_core::SpaceId {
+    let home = muster_core::Space {
+        id: muster_core::SpaceId::new(),
+        name: "Home".to_owned(),
+        members: Vec::new(),
+        created_at: muster_core::Timestamp::from_millis(1),
+    };
+    let id = home.id;
+    app.on_frame(ServerFrame::Delta(Delta::SpaceUpserted(home)));
+    id
+}
+
 /// Muster's own settings as they are, with `change` made to them.
 pub(super) fn preferences(
     app: &mut App,
@@ -788,6 +802,7 @@ fn losing_the_daemon_is_shown_and_nothing_streams() {
 #[test]
 fn a_project_is_added_from_a_typed_path() {
     let mut world = world();
+    let home = a_space(&mut world.app);
     press(&mut world.app, KeyCode::Char('a'));
     let Mode::Dialog(Dialog::AddProject { path, .. }) = &world.app.mode else {
         panic!("expected the add-project dialog");
@@ -801,7 +816,7 @@ fn a_project_is_added_from_a_typed_path() {
         Command::AddProject {
             root: PathBuf::from("/src/other"),
             name: None,
-            space: None,
+            space: Some(home),
         }
     );
     let _ = WorkspaceId::new();

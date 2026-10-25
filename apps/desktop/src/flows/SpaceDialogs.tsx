@@ -9,13 +9,12 @@
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useActions, useApp, useDaemon } from "../app/context";
-import type { Member } from "../ipc/generated/Member";
 import type { Reply } from "../ipc/generated/Reply";
 import type { SessionId } from "../ipc/generated/SessionId";
 import type { SpaceId } from "../ipc/generated/SpaceId";
 import type { WorkspaceId } from "../ipc/generated/WorkspaceId";
 import { errorText } from "../lib/text";
-import { goTo, spaceToJoin } from "../spaces/spaces";
+import { doLater, goTo } from "../spaces/spaces";
 import { projectsInOrder } from "../state/selectors";
 import { whenKnown } from "../state/whenKnown";
 import { Button } from "../ui/controls";
@@ -23,11 +22,11 @@ import { Dialog, DialogAnswers, DialogText } from "../ui/Dialog";
 import { ErrorText } from "../ui/status";
 import { TextField } from "../ui/TextField";
 import { Ask } from "./Ask";
-import type { Flow } from "./types";
+import type { Flow, Later } from "./types";
 import { useTask } from "./useTask";
 import "./flows.css";
 
-export function SpaceName({ space, join }: { space: SpaceId | null; join?: Member }) {
+export function SpaceName({ space, after }: { space: SpaceId | null; after?: Later }) {
   const app = useApp();
   const actions = useActions();
   const was = useDaemon((state) => state.spaces.find((one) => one.id === space)?.name ?? "");
@@ -40,10 +39,11 @@ export function SpaceName({ space, join }: { space: SpaceId | null; join?: Membe
     task.run(async () => {
       if (space === null) {
         const reply = await app.bridge.command({ CreateSpace: { name } });
-        if (typeof reply === "object" && "SpaceCreated" in reply && join)
-          await app.bridge.command({ AddToSpace: { space: reply.SpaceCreated.id, member: join } });
         actions.openFlow(null);
-        if (typeof reply === "object" && "SpaceCreated" in reply) {
+        if (typeof reply === "object" && "SpaceCreated" in reply && after) {
+          // What waited on a space goes in it; the window shows everything still.
+          doLater(app, after, reply.SpaceCreated.id);
+        } else if (typeof reply === "object" && "SpaceCreated" in reply) {
           const made = reply.SpaceCreated.id;
           const show = () => goTo(app, made);
           if (app.daemon.store.getState().spaces.some((one) => one.id === made)) show();
@@ -58,7 +58,11 @@ export function SpaceName({ space, join }: { space: SpaceId | null; join?: Membe
   return (
     <Dialog
       title={space === null ? "New space" : `Rename ${was}`}
-      meta="A space groups projects and terminals; it doesn't change where they run."
+      meta={
+        after
+          ? "Everything lives in a space: name one, and what you asked for goes in it."
+          : "A space holds projects and terminals; it doesn't change where they run."
+      }
       onClose={close}
       onAccept={() => void submit()}
       actions={
@@ -94,7 +98,7 @@ export function RemoveSpace({ space }: { space: SpaceId }) {
       await app.bridge.command({ DeleteSpace: { space } });
       app.actions.openFlow(null);
       if (app.ui.getState().space === space) app.actions.showSpace(null);
-      app.actions.tell("Removed the space; what was in it stays.");
+      app.actions.tell("Removed the space.");
     });
   return (
     <Ask
@@ -105,7 +109,7 @@ export function RemoveSpace({ space }: { space: SpaceId }) {
       task={task}
       onAct={remove}
     >
-      <DialogText>Only the group goes: its projects and terminals stay in everything.</DialogText>
+      <DialogText>Only an empty space goes: move or remove what is in it first.</DialogText>
     </Ask>
   );
 }
@@ -151,7 +155,8 @@ export function FileTerminal({ flow }: { flow: Extract<Flow, { kind: "file-termi
   const addHere = () =>
     void task.run(async () => {
       const reply = await app.bridge.command({
-        AddProjectHere: { session, space: spaceToJoin(app) },
+        // The project goes in the terminal's space.
+        AddProjectHere: { session, space: null },
       });
       done("Added the folder as a project, the terminal under it.");
       if (typeof reply === "object" && "ProjectAdded" in reply) {

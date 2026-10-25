@@ -135,7 +135,7 @@ fn line_wants(app: &App, row: Row) -> usize {
                 + logos::width(app.person.graphics)
                 + cells::width(&session.title)
         }),
-        Row::Terminals => 3 + cells::width(super::spaces::TERMINALS),
+        Row::Space(space) => 3 + cells::width(&super::spaces::space_name(app, space)),
     }
 }
 
@@ -204,13 +204,13 @@ fn row_item(app: &App, row: Row, width: usize) -> ListItem<'_> {
                         .add_modifier(Modifier::BOLD),
                 ),
             ];
-            spans.extend(super::spaces::project_note(app, id));
             spans.extend(standing(app, row));
             ListItem::new(Line::from(spans))
         }
         Row::Worktree(id) => ListItem::new(worktree_line(app, id, edge, width, by)),
-        Row::Terminals => ListItem::new(super::spaces::terminals_line(
+        Row::Space(space) => ListItem::new(super::spaces::space_line(
             app,
+            space,
             edge,
             fold_mark(app, row),
         )),
@@ -369,7 +369,7 @@ fn shell_line(
 /// cells from the list's inside edge: what a click folds it on.
 pub(crate) fn fold_column(row: Row) -> Option<u16> {
     match row {
-        Row::Project(_) | Row::Terminals => Some(1),
+        Row::Project(_) | Row::Space(_) => Some(1),
         Row::Worktree(_) => Some(2),
         Row::Session(_) => None,
     }
@@ -836,7 +836,7 @@ fn session_line(
 pub(super) fn cut_name(app: &App, width: usize) -> Option<(usize, usize)> {
     let (name, room) = match app.view {
         View::Sessions => match app.selected? {
-            Row::Project(_) | Row::Terminals => return None,
+            Row::Project(_) | Row::Space(_) => return None,
             Row::Worktree(id) => {
                 let kind = &app.model.workspace(id)?.kind;
                 if !kind.in_git() || app.model.run_of(id).is_some() {

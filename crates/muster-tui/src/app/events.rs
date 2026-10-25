@@ -676,7 +676,7 @@ impl App {
             } => self.undo_key(workspace, &plan, key),
             Dialog::Tidy { workspace, harness } => self.tidy_key(workspace, harness, key),
             Dialog::Rename { session, name } => self.rename_key(session, name, key),
-            Dialog::SpaceName { space, name } => self.space_name_key(space, name, key),
+            Dialog::SpaceName { space, name, then } => self.space_name_key(space, name, then, key),
             Dialog::Keys(rebinding) => self.rebind_key(rebinding, key),
             Dialog::Plugin(dialog) => self.plugin_dialog_key(dialog, key),
             Dialog::NamingModel {

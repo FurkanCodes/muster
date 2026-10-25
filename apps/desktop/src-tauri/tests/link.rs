@@ -170,10 +170,15 @@ async fn the_link_connects_and_patches_the_state_as_the_daemon_changes_it_arc_24
         .until(
             "the project gone, its checkout and shell with it",
             |webview| {
+                // Its space stays, empty: a space goes only when asked (`ARC-33`).
                 webview.projects.is_empty()
                     && webview.workspaces.is_empty()
                     && webview.sessions.is_empty()
-                    && webview.derived.rows.is_empty()
+                    && webview
+                        .derived
+                        .rows
+                        .iter()
+                        .all(|row| matches!(row, Row::Space(_)))
             },
         )
         .await;

@@ -43,11 +43,12 @@ use crate::tickets::TicketKey;
 use crate::timeline::{Timeline, UndoPlan};
 
 /// The newest protocol this build speaks.
-pub const PROTOCOL_VERSION: u32 = 57;
-/// The oldest protocol this build still speaks: 57's, the first where a
-/// session may be in no workspace (`ARC-33`), which an older client could
-/// not read. Older clients and daemons are told to update.
-pub const MIN_PROTOCOL_VERSION: u32 = 57;
+pub const PROTOCOL_VERSION: u32 = 58;
+/// The oldest protocol this build still speaks: 58's, where everything is
+/// in one space and `AddToSpace` and `RemoveFromSpace` gave way to
+/// `MoveToSpace` (`ARC-33`), which an older client could not send. Older
+/// clients and daemons are told to update.
+pub const MIN_PROTOCOL_VERSION: u32 = 58;
 
 /// The first frame a client sends.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -547,15 +548,11 @@ pub enum Command {
     CreateSpace { name: String },
     /// Rename a space.
     RenameSpace { space: SpaceId, name: String },
-    /// Remove a space: only the group goes; what was in it stays.
+    /// Remove a space; refused while it holds anything (`ARC-33`).
     DeleteSpace { space: SpaceId },
-    /// Put a project or a free terminal in a space; again does nothing.
-    AddToSpace {
-        space: SpaceId,
-        member: crate::spaces::Member,
-    },
-    /// Take a project or a terminal out of a space.
-    RemoveFromSpace {
+    /// Move a project or a free terminal to a space, out of the one it was
+    /// in; to its own space does nothing.
+    MoveToSpace {
         space: SpaceId,
         member: crate::spaces::Member,
     },

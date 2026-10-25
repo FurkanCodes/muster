@@ -6,7 +6,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it } from "vitest";
 import { MockBridge } from "../ipc/mock/bridge";
-import { workingDay } from "../ipc/mock/scenario";
+import { ulid, workingDay } from "../ipc/mock/scenario";
 import { renderApp } from "../test/render";
 
 beforeAll(() => {
@@ -19,7 +19,11 @@ beforeAll(() => {
   };
 });
 
+/** A space to clone into, as there is once anything was added (`ARC-33`). */
+const HOME = ulid(700);
+
 async function cloneDialog(bridge = new MockBridge(workingDay())) {
+  bridge.world.spaces = [{ id: HOME, name: "Home", members: [], created_at: 0 }];
   renderApp(bridge);
   await screen.findByRole("img", { name: /working, .* waiting on you/ });
   await userEvent.keyboard("g");
@@ -45,7 +49,7 @@ describe("PRD §6a cloning a project from GitHub", () => {
     await userEvent.keyboard("{Enter}");
     await waitFor(() =>
       expect(clones(bridge)).toEqual([
-        { CloneProject: { repository: "you/dotfiles", into: "/Users/you/code", space: null } },
+        { CloneProject: { repository: "you/dotfiles", into: "/Users/you/code", space: HOME } },
       ]),
     );
     expect(bridge.pickedWith).toEqual(["Clone you/dotfiles into"]);
@@ -78,7 +82,7 @@ describe("PRD §6a cloning a project from GitHub", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: /^Clone o\/tool here/ }));
     await waitFor(() =>
       expect(clones(bridge)).toEqual([
-        { CloneProject: { repository: "o/tool", into: "/Users/you", space: null } },
+        { CloneProject: { repository: "o/tool", into: "/Users/you", space: HOME } },
       ]),
     );
     expect(await screen.findByRole("region", { name: "tool" })).toBeInTheDocument();
