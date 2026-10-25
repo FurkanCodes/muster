@@ -197,9 +197,10 @@ pub async fn run(mut options: Options) -> Result<(), TuiError> {
                 // A move that lights nothing new and sends nothing draws
                 // nothing: the pointer crossing the window costs no frame.
                 Some(Ok(Event::Mouse(mouse))) if mouse.kind == MouseEventKind::Moved => {
-                    let was = app.panels.hover.clone();
+                    let was = (app.panels.hover.clone(), app.lit_control());
                     let actions = app.on_mouse(mouse);
-                    if actions.is_empty() && app.panels.hover == was && due.is_empty() {
+                    let now = (app.panels.hover.clone(), app.lit_control());
+                    if actions.is_empty() && now == was && due.is_empty() {
                         draw_if_due(&mut terminal, &app, &mut draws)?;
                         continue;
                     }

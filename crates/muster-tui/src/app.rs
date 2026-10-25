@@ -6,6 +6,7 @@ mod actions;
 mod alarm;
 mod changes;
 pub(crate) mod cloning;
+mod controls;
 pub(crate) mod drag;
 mod events;
 mod fold;

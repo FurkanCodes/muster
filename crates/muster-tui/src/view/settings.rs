@@ -878,7 +878,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
             });
         }
         Some(SettingRow::SideBySide) if !app.side_by_side_changing() => {
-            hints.extend(["⏎ next width", "← → smaller, larger"]);
+            hints.extend(["⏎ next width", "← smaller", "→ larger"]);
         }
         Some(SettingRow::Colours) if !app.look_changing() => {
             hints.push(match app.model.preferences().palette {
@@ -918,7 +918,7 @@ fn setting_hints(app: &App, selected: Option<SettingRow>) -> Vec<&'static str> {
             } else {
                 "⏎ turn on"
             });
-            hints.push("← → sound");
+            hints.extend(["← sound", "→ sound"]);
         }
         Some(
             SettingRow::Plugins

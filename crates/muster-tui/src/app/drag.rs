@@ -111,10 +111,6 @@ impl App {
         if event.kind != MouseEventKind::Down(MouseButton::Left) || !self.can_arrange() {
             return None;
         }
-        if let Some((panel, button)) = crate::view::pane::button_at(self, &self.shown_panels(), at)
-        {
-            return Some(self.press_button(panel, button));
-        }
         if let Some(session) = self.session_line_at(at) {
             // The press is the click it always was, and may become a drag.
             let actions = self.mode_mouse(event);
@@ -328,7 +324,11 @@ impl App {
     }
 
     /// A press on `button` in `panel`'s title.
-    fn press_button(&mut self, panel: Panel, button: crate::view::pane::Button) -> Vec<Action> {
+    pub(super) fn press_button(
+        &mut self,
+        panel: Panel,
+        button: crate::view::pane::Button,
+    ) -> Vec<Action> {
         use crate::view::pane::Button;
         match (button, panel) {
             (Button::TakeOff, Panel::Placed(session)) => self.take_off(session),

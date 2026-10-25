@@ -27,6 +27,7 @@ const WHEEL_LINES: isize = 3;
 impl App {
     pub(crate) fn on_mouse(&mut self, event: MouseEvent) -> Vec<Action> {
         let at = Position::new(event.column, event.row);
+        self.person.pointer = Some(at);
         // Moving, the pointer only lights what it could take hold of, and
         // reaches the program in a session that asked for it.
         if event.kind == MouseEventKind::Moved {
@@ -54,6 +55,16 @@ impl App {
         {
             self.open_title_menu(panel, Position::new(event.column, event.row));
             return Vec::new();
+        }
+        // A hint, a tab, a title's button or the fold button: pressed.
+        if event.kind == MouseEventKind::Down(MouseButton::Left)
+            && self.panels.drag.is_none()
+            && let Some(control) = self.control_at(Position::new(event.column, event.row))
+        {
+            self.selection = None;
+            let mut actions = self.press_control(control);
+            actions.extend(self.settle());
+            return actions;
         }
         if let Some(mut actions) = self.drag_mouse(event) {
             actions.extend(self.settle());

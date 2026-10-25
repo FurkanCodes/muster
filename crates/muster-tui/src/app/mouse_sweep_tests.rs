@@ -160,9 +160,29 @@ fn still_works(world: &mut World, story: &str) {
     let id = world.session.id;
     world.app.on_resize(SIZE);
     set_modes(world, id, TerminalModes::default());
-    // Back to the session list, by the mouse where it can.
-    if let Mode::Dialog(_) = world.app.mode {
-        press(&mut world.app, KeyCode::Esc);
+    // Back to the session list, by the mouse where it can. A click on a
+    // button may have left a dialog, a menu, the help, the changes or the
+    // panel key open: given up.
+    for _ in 0..4 {
+        let open = matches!(
+            world.app.mode,
+            Mode::Dialog(_) | Mode::Menu(_) | Mode::Help(_) | Mode::Changes
+        ) || world.app.panels.waiting.is_some()
+            || world.app.panels.resizing.is_some();
+        if open {
+            press(&mut world.app, KeyCode::Esc);
+        }
+    }
+    // A panel zoomed is put back by a click on ZOOM, and the list folded
+    // away brought back by its button.
+    if world.app.panels.zoomed.is_some() {
+        let top = crate::view::browse_areas(&world.app, window(world)).top;
+        let (_, zoom) = crate::view::top_bar::top_controls(&world.app, top)
+            .into_iter()
+            .find(|(control, _)| *control == crate::view::top_bar::TopControl::Zoom)
+            .unwrap_or_else(|| panic!("ZOOM in the top bar: {story}"));
+        click(world, zoom.x + 1, zoom.y);
+        assert_eq!(world.app.panels.zoomed, None, "ZOOM: {story}");
     }
     if world.app.mode == Mode::Terminal(id) && world.app.full_screen {
         click(world, 2, 0);
@@ -174,6 +194,13 @@ fn still_works(world: &mut World, story: &str) {
     }
     press(&mut world.app, KeyCode::Char('1'));
     assert_eq!(world.app.view, View::Sessions, "{story}");
+    if world.app.list_folded() {
+        let areas = crate::view::browse_areas(&world.app, window(world));
+        let fold = crate::view::fold_button(&world.app, &areas)
+            .unwrap_or_else(|| panic!("the fold button: {story}"));
+        click(world, fold.x, fold.y);
+        assert!(!world.app.list_folded(), "the fold button: {story}");
+    }
 
     // A click on the session's line selects it, once what a click on a
     // triangle folded away is unfolded.
@@ -192,6 +219,16 @@ fn still_works(world: &mut World, story: &str) {
         .position(|row| *row == Row::Session(id))
         .unwrap();
     let line = u16::try_from(index - world.app.list_offset).unwrap();
+    // The project's line first, so a preview folded away comes back.
+    if let Some(project) = rows
+        .iter()
+        .position(|row| *row == Row::Project(world.project.id))
+        .and_then(|at| at.checked_sub(world.app.list_offset))
+    {
+        // Past its triangle, which would fold it.
+        let project = u16::try_from(project).unwrap();
+        click(world, areas.list.x + 8, areas.list.y + 1 + project);
+    }
     click(world, areas.list.x + 2, areas.list.y + 1 + line);
     assert_eq!(
         world.app.selected,

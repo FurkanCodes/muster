@@ -57,17 +57,3 @@ pub(crate) fn button_areas(app: &App, panel: Panel, area: Rect) -> Vec<(Button, 
         .map(|(button, at)| (*button, Rect::new(start + at * WIDTH, area.y, WIDTH, 1)))
         .collect()
 }
-
-/// The button of a panel shown under `at`, if any.
-pub(crate) fn button_at(
-    app: &App,
-    shown: &[(Panel, Rect)],
-    at: ratatui::layout::Position,
-) -> Option<(Panel, Button)> {
-    shown.iter().find_map(|(panel, area)| {
-        button_areas(app, *panel, *area)
-            .into_iter()
-            .find(|(_, cells)| cells.contains(at))
-            .map(|(button, _)| (*panel, button))
-    })
-}

@@ -190,6 +190,8 @@ pub(crate) struct Person {
     /// One cell of the person's terminal in pixels, as its size says,
     /// read as the UI starts and as the window is resized.
     pub(crate) cell_pixels: Option<muster_core::protocol::PixelSize>,
+    /// Where the pointer last was, which lights what a press there does.
+    pub(crate) pointer: Option<ratatui::layout::Position>,
 }
 
 impl Default for Person {
@@ -200,6 +202,7 @@ impl Default for Person {
             notch_here: false,
             colours: muster_core::colours::TerminalColours::default(),
             cell_pixels: None,
+            pointer: None,
         }
     }
 }

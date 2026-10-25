@@ -97,7 +97,11 @@ pub(super) fn draw_session(
     let mut block = framed(app, Line::from(spans), typing);
     let buttons: Vec<Span<'static>> = pane::button_areas(app, panel, area)
         .into_iter()
-        .map(|(button, _)| Span::styled(format!(" {} ", button.mark()), theme.quiet))
+        .map(|(button, cells)| {
+            let lit = app.person.pointer.is_some_and(|at| cells.contains(at));
+            let style = if lit { theme.pressable() } else { theme.quiet };
+            Span::styled(format!(" {} ", button.mark()), style)
+        })
         .collect();
     if !buttons.is_empty() {
         block = block.title(Line::from(buttons).right_aligned());

@@ -15,7 +15,7 @@ use crate::layout::{Divider, Solved};
 use crate::motion;
 
 pub(crate) mod areas;
-mod bottom_bar;
+pub(crate) mod bottom_bar;
 mod changes;
 mod clashes;
 mod delegation;
@@ -45,7 +45,7 @@ mod telling;
 mod terminal;
 pub(crate) mod theme;
 mod tickets;
-mod top_bar;
+pub(crate) mod top_bar;
 mod version;
 
 use bottom_bar::{bottom_height, draw_bottom_bar};
@@ -202,6 +202,40 @@ fn areas_uncached(app: &App, area: Rect, bottom: u16, beside_session: bool) -> B
     }
 }
 
+/// Where the list's fold button is (`app::controls`): ` ‹ ` at the right
+/// end of the list's top border, or while the list is folded away, `›` in
+/// the corner of the window's body, where it comes back.
+pub(crate) fn fold_button(app: &App, areas: &BrowseAreas) -> Option<Rect> {
+    if app.narrow() || !matches!(app.view, View::Sessions | View::NeedsYou) {
+        return None;
+    }
+    if !areas.list.is_empty() {
+        let list = areas.list;
+        return (list.width >= 16).then(|| Rect::new(list.right() - 4, list.y, 3, 1));
+    }
+    let body_y = areas.top.bottom();
+    (areas.bottom.y > body_y).then(|| Rect::new(areas.top.x, body_y, 1, 1))
+}
+
+/// Draws the fold button, lit under the pointer.
+fn draw_fold_button(frame: &mut Frame<'_>, app: &App, areas: &BrowseAreas) {
+    let Some(cells) = fold_button(app, areas) else {
+        return;
+    };
+    let theme = theme::of(app);
+    let mark = if areas.list.is_empty() {
+        "›"
+    } else {
+        " ‹ "
+    };
+    let style = if app.person.pointer.is_some_and(|at| cells.contains(at)) {
+        theme.pressable()
+    } else {
+        theme.quiet
+    };
+    frame.render_widget(Line::styled(mark, style), cells);
+}
+
 pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     let area = frame.area();
     if app.welcome {
@@ -265,6 +299,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &App) {
     for (session, area) in &areas.placed {
         draw_session(frame, app, *session, *area, Panel::Placed(*session), &areas);
     }
+    draw_fold_button(frame, app, &areas);
     drag::draw_moving(frame, app, &areas);
     // The daemon out of reach: what it last said stays, dimmed, until it
     // answers again; the bars above and below say so.

@@ -51,7 +51,10 @@ fn each_kind_has_a_row_under_notifications() {
         screen.contains("[notifications] finishes, finishes_sound"),
         "{screen}"
     );
-    assert!(screen.contains("← → sound"), "{screen}");
+    assert!(
+        screen.contains("← sound") && screen.contains("→ sound"),
+        "{screen}"
+    );
 }
 
 #[test]
