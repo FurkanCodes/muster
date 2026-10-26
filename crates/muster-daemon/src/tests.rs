@@ -298,18 +298,28 @@ async fn a_subscriber_that_falls_behind_gets_a_fresh_snapshot() {
         supervisor.command(add(&root, None)).await.unwrap();
     }
 
-    let resent = timeout(Duration::from_secs(5), async {
-        loop {
+    // The pump may fall behind before the last project is added: the fresh
+    // snapshot then holds those so far, and the rest follow it as deltas.
+    let mut projects = std::collections::HashSet::new();
+    let mut resent = false;
+    timeout(Duration::from_secs(5), async {
+        while projects.len() < 6 {
             match frames.recv().await {
-                Some(ServerFrame::Snapshot(snapshot)) => return snapshot,
+                Some(ServerFrame::Snapshot(snapshot)) => {
+                    resent = true;
+                    projects = snapshot.projects.iter().map(|project| project.id).collect();
+                }
+                Some(ServerFrame::Delta(Delta::ProjectUpserted(project))) if resent => {
+                    projects.insert(project.id);
+                }
                 Some(ServerFrame::Delta(_)) => {}
                 other => panic!("unexpected {other:?}"),
             }
         }
     })
     .await
-    .expect("a fresh snapshot");
-    assert_eq!(resent.projects.len(), 6);
+    .expect("a fresh snapshot, then every project");
+    assert!(resent, "a fresh snapshot");
 }
 
 async fn resource_supervisor() -> (SupervisorHandle, StoreHandle, muster_core::SessionId) {

@@ -84,11 +84,16 @@ fn a_space_is_made_shown_and_left_and_a_free_terminal_is_filed_where_its_shell_i
     // The free terminal's shell into the project's folder, by the person:
     // then F files it there, as it is.
     // The shell says it has the line before the keys leave it, so none of
-    // the path's letters can reach the list as its keys.
-    let typed = format!("cd {} && echo moved-$((2*3))\r", root.display());
+    // the path's letters can reach the list as its keys. The line is pasted,
+    // as a random temporary folder's name may hold a `Q`, which typed is
+    // the key back to the list.
+    let pasted = format!(
+        "\x1b[200~cd {} && echo moved-$((2*3))\x1b[201~\r",
+        root.display()
+    );
     ui.keys(b"+");
     ui.wait_for("Shift-Q back to the list");
-    ui.keys(typed.as_bytes());
+    ui.keys(pasted.as_bytes());
     ui.wait_for("moved-6");
     ui.keys(b"Q");
     ui.wait_without("Shift-Q back to the list");
