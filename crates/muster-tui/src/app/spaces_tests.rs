@@ -48,7 +48,7 @@ fn choose(world: &mut World, what: &str) -> Vec<Action> {
 }
 
 #[test]
-fn a_space_is_made_from_its_menu_and_shown_once_it_is_there() {
+fn a_space_is_made_from_its_menu_and_its_heading_selected_among_every_space_arc_33() {
     let mut world = world();
     press(&mut world.app, KeyCode::Char('W'));
     assert_eq!(
@@ -69,13 +69,29 @@ fn a_space_is_made_from_its_menu_and_shown_once_it_is_there() {
             name: "Work".to_owned()
         }
     );
+    let home = space("Home", Vec::new());
+    delta(&mut world, Delta::SpaceUpserted(home.clone()));
+    // The reply may come before the space does.
+    let work = space("Work", Vec::new());
+    reply(&mut world, req_id, Ok(Reply::SpaceCreated { id: work.id }));
+    delta(&mut world, Delta::SpaceUpserted(work.clone()));
+    // Never narrowed to it: every space is listed, its heading selected.
+    assert_eq!(world.app.space_id(), None);
+    assert!(world.app.rows().contains(&Row::Space(home.id)));
+    assert_eq!(world.app.selected, Some(Row::Space(work.id)));
+    let shown = render(&world.app);
+    assert!(!shown.contains("Sessions · Work"), "{shown}");
+    assert!(shown.contains("Home") && shown.contains("Work"), "{shown}");
+}
+
+#[test]
+fn a_space_shown_alone_says_the_way_back_to_every_space_arc_33() {
+    let mut world = world();
     let work = space("Work", Vec::new());
     delta(&mut world, Delta::SpaceUpserted(work.clone()));
-    reply(&mut world, req_id, Ok(Reply::SpaceCreated { id: work.id }));
+    press(&mut world.app, KeyCode::Char(']'));
     assert_eq!(world.app.space_id(), Some(work.id));
-    assert!(render(&world.app).contains("Sessions · Work"));
-    // Empty: the project is in no space.
-    assert!(world.app.rows().is_empty());
+    assert!(render(&world.app).contains("everything shows every space"));
 }
 
 #[test]

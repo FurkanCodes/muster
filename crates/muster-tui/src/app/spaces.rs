@@ -117,10 +117,14 @@ impl App {
     /// Shows `space`, or all of the list.
     pub(super) fn go_to_space(&mut self, space: Option<SpaceId>) -> Vec<Action> {
         self.space = space;
-        let name = self
-            .space_shown()
-            .map_or("everything".to_owned(), |space| one_line(&space.name));
-        self.say(format!("Showing {name}."));
+        match self.space_shown().map(|space| one_line(&space.name)) {
+            // Narrowed, it says the way back to every space.
+            Some(name) => self.say(format!(
+                "Showing {name} only: {} › everything shows every space.",
+                self.key(muster_core::keys::Action::Spaces)
+            )),
+            None => self.say("Showing every space."),
+        }
         if self.selected.is_some_and(|row| !self.rows().contains(&row)) {
             self.selected = self.rows().first().copied();
         }
@@ -499,8 +503,13 @@ impl App {
     ) -> Vec<Action> {
         match (waiting, outcome) {
             (_, Err(error)) => self.complain(error.message),
+            // Every space stays in the list, as the window's sidebar shows
+            // them: the new one's heading is selected once it is there,
+            // and the list is never narrowed to it.
             (Waiting::Made(None), Ok(Reply::SpaceCreated { id })) => {
-                return self.go_to_space(Some(id));
+                self.space = None;
+                self.wanted = Some((Row::Space(id), false));
+                self.say("Made the space.");
             }
             (Waiting::Made(Some(later)), Ok(Reply::SpaceCreated { id })) => {
                 return self.do_later(later, id);
