@@ -2,23 +2,25 @@
   "name": "muster-video",
   "private": true,
   "version": "0.0.0",
-  "description": "Muster's launch video: the desktop app's real window, recorded over its pretend daemon, cut to music on a beat grid.",
+  "description": "Muster's videos: the desktop app's real window and the terminal UI's real screen, each recorded over a pretend or throwaway daemon, cut on a beat grid.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "record": "node kit/record.mjs",
+    "record:tui": "node kit/tui/record.mjs",
     "audio": "./kit/fetch-audio.sh",
+    "check": "node launch/check.mjs",
     "stills": "node launch/render.mjs --stills",
     "contact": "node launch/render.mjs --contact",
     "render": "node launch/render.mjs",
-    "check": "node launch/check.mjs",
     "sound": "node launch/render.mjs --sound",
     "media": "./launch/media.sh"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "5.3.0",
-    "@fontsource/jetbrains-mono": "5.3.0"
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@xterm/xterm": "6.0.0"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1"

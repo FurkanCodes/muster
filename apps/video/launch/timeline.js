@@ -22,6 +22,20 @@ export const FADE = [88, 92];
 /** Seconds at a beat. */
 export const at = (beat) => beat * BEAT;
 
+// What this cut is made from, and how its window looks.
+
+/** The kit its shots and crops come from, and the window they fill. */
+export const KIT = "kit";
+export const WINDOW = { width: 1440, height: 900 };
+/** The Mac window's three buttons, where the app leaves room for them. */
+export const LIGHTS = true;
+/** The beat the window starts to come in on. */
+export const WINDOW_IN = 19.5;
+/** What Muster is, said as Kep lands. */
+export const TAGLINE = "One place to run all your coding agents.";
+/** Keys pressed, shown under the headline: none here, as the desktop app is clicked. */
+export const KEYS = [];
+
 // Act 1: the problem, on the quiet build before the drop.
 
 export const ACT1 = {

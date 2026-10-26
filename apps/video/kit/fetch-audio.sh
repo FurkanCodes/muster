@@ -5,6 +5,7 @@
 # as those licenses do not allow passing the files on as they are.
 # AUDIO.md says what each is and where it was measured to peak.
 set -eu
+mkdir -p "$(dirname "$0")/audio"
 cd "$(dirname "$0")/audio"
 
 fetch() {

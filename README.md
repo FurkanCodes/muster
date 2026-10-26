@@ -6,7 +6,17 @@
 
 **One place to run all your coding agents.**
 
+<details open>
+<summary><b>Desktop app</b></summary>
+<br>
 <img src="docs/media/muster.gif" alt="Muster's desktop app: agents in one list, a new one started in its own worktree, one that needs you answered with a click, an agent's turn put back, a ticket handed to an agent, and muster ssh to a server" width="100%">
+</details>
+
+<details>
+<summary><b>Terminal UI</b></summary>
+<br>
+<img src="docs/media/muster-tui.gif" alt="Muster's terminal UI: agents in one list, a worktree made and an agent started in it, one that needs you answered from the queue, its turn put back, and a ticket handed to an agent" width="100%">
+</details>
 
 Run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and plain shells side by side, each in its own git worktree, and see at a glance which one is working, which has finished, and which is waiting on you.
 
@@ -249,7 +259,7 @@ Every code directory has a `README.md` contract of its own (its interface, invar
   - `muster-client`: transport;
   - `muster-daemon`: the Supervisor and everything it reaches;
   - `muster-tui`, `muster-notch` and the `muster` binary.
-- apps: [./apps/README.md](./apps/README.md): the desktop app (Tauri 2 + React 19), a window over the same daemon (`ARC-24`, `ARC-25`, `ARC-26`), and the README's video, cut from the desktop app's real window (`apps/video`).
+- apps: [./apps/README.md](./apps/README.md): the desktop app (Tauri 2 + React 19), a window over the same daemon (`ARC-24`, `ARC-25`, `ARC-26`), and the README's videos, cut from the desktop app's real window and the terminal UI's real screen (`apps/video`).
 - scripts: [./scripts/README.md](./scripts/README.md):
   - CI rule checks (`check-*`): file and type size `ARC-08`, secrets `PRD-06`, test sleeps `ARC-30`, TUI colours `ARC-29`, duplication `ARC-31`;
   - agent-session measurement;
@@ -257,7 +267,7 @@ Every code directory has a `README.md` contract of its own (its interface, invar
   - logo rendering;
   - the daemon soak test;
   - Claude Code hooks.
-- docs, examples: no code contracts. [docs/guide.md](docs/guide.md) is the user guide, `docs/media` holds the README's video (made by `apps/video`), [docs/plugins.md](docs/plugins.md) explains how to write a plugin, and each folder under [examples/plugins](examples/plugins) has a README of its own.
+- docs, examples: no code contracts. [docs/guide.md](docs/guide.md) is the user guide, `docs/media` holds the README's videos (made by `apps/video`), [docs/plugins.md](docs/plugins.md) explains how to write a plugin, and each folder under [examples/plugins](examples/plugins) has a README of its own.
 
 **Global invariants**
 

@@ -1,5 +1,6 @@
 // Renders the clip from index.html's seek(t), in headless Chromium:
 //
+//   add --cut tui for the terminal UI's cut (out/tui/); the desktop's is the default
 //   node launch/render.mjs --stills 7,17,46   one PNG per beat named
 //   node launch/render.mjs --contact          a frame per beat in out/contact.png
 //   node launch/render.mjs                    the clip: out/muster.mp4
@@ -18,21 +19,23 @@ import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { hidden } from "./check.mjs";
-import { at, FADE, LENGTH, MUSIC, MUSIC_START, SOUNDS } from "./timeline.js";
+import { loadCut } from "./cut.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(here, "..");
-const out = join(here, "out");
-const FPS = 60;
-const FAST = 15;
-const WORKERS = 3;
-mkdirSync(out, { recursive: true });
-
 const args = process.argv.slice(2);
 const flag = (name) => {
   const index = args.indexOf(name);
   return index < 0 ? null : (args[index + 1] ?? "");
 };
+const { name: cutName, cut, kit } = await loadCut(flag("--cut") ?? "desktop");
+const { at, FADE, LENGTH, MUSIC, MUSIC_START, SOUNDS } = cut;
+const out = cutName === "desktop" ? join(here, "out") : join(here, "out", cutName);
+const FPS = 60;
+const FAST = 15;
+const WORKERS = 3;
+mkdirSync(out, { recursive: true });
+
 
 const types = {
   ".html": "text/html",
@@ -54,13 +57,15 @@ const server = createServer((request, response) => {
   createReadStream(file).pipe(response);
 });
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
-const url = `http://127.0.0.1:${server.address().port}/launch/index.html`;
+const url = `http://127.0.0.1:${server.address().port}/launch/index.html?cut=${cutName}`;
 
 const browser = await chromium.launch();
 async function open() {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
   page.on("pageerror", (error) => console.error("page:", error.message));
   await page.goto(url);
+  // `ready` exists once the cut has loaded, and resolves once its faces and shots have.
+  await page.waitForFunction(() => window.ready !== undefined);
   await page.evaluate(() => window.ready);
   return page;
 }
@@ -112,7 +117,7 @@ if (flag("--stills") !== null) {
   mixSound();
   mux();
 } else {
-  const problems = hidden();
+  const problems = hidden(cut, kit);
   if (problems.length) throw new Error(`hidden from view:\n${problems.join("\n")}`);
   await renderVideo();
   mixSound();
