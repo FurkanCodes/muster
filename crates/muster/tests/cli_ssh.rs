@@ -512,6 +512,36 @@ async fn a_command_there_is_the_person_s_as_ssh_runs_one_arc_27() {
 }
 
 #[tokio::test]
+async fn no_command_opens_the_person_s_login_shell_there_arc_27() {
+    let setup = setup();
+    setup.run(&["machine", "add", "vm", "tester@vm.example"]);
+    // The person's shell there, standing in: says how it was started and
+    // whether Muster there is found.
+    let shell = setup.sandbox.root().join("login-shell");
+    std::fs::write(
+        &shell,
+        "#!/bin/sh\necho \"shell $* in $(pwd)\"\ncommand -v muster\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&shell, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::create_dir_all(setup.home.join("code")).unwrap();
+    let opened = setup
+        .sandbox
+        .command()
+        .args(["ssh", "vm", "--install", "--dir", "~/code"])
+        .env("FAKE_SSH_HOME", &setup.home)
+        .env("SHELL", &shell)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(opened.status.success(), "{}", text(&opened.stderr));
+    let said = text(&opened.stdout);
+    assert!(said.contains("shell -l in "), "{said}");
+    assert!(said.contains("machine-home/code"), "{said}");
+    assert!(said.contains(".local/bin/muster"), "{said}");
+}
+
+#[tokio::test]
 async fn a_machine_named_without_a_user_says_who_ssh_signs_in_as() {
     let setup = setup();
     setup.run(&["machine", "add", "vm", "vm.example"]);

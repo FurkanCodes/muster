@@ -163,11 +163,11 @@ muster keys fix-login/1 ctrl+c             # press keys by name: enter, esc, up,
 muster move fix-login/1 --to api-cache     # a terminal into another workspace
 ```
 
-Run agents on a machine of your own (a server, a cloud VM such as a DigitalOcean droplet, a Linux VM on your PC, a Mac at home: macOS or Linux, Intel/AMD or ARM, anything you can `ssh` into), so they keep working while your laptop sleeps. The first `muster ssh` there is where ssh may ask you for a password or to trust the machine; after that, connections are shared and never stop to ask. If your ssh forwards your agent (`ForwardAgent yes` for that host), agents there push with your keys. Muster installs itself there only after asking, says what's missing (Claude Code signed in there, git, gh), and opens Muster on it through your own ssh:
+Run agents on a machine of your own (a server, a cloud VM such as a DigitalOcean droplet, a Linux VM on your PC, a Mac at home: macOS or Linux, Intel/AMD or ARM, anything you can `ssh` into), so they keep working while your laptop sleeps. The first `muster ssh` there is where ssh may ask you for a password or to trust the machine; after that, connections are shared and never stop to ask. If your ssh forwards your agent (`ForwardAgent yes` for that host), agents there push with your keys. Muster installs itself there only after asking, says what's missing (Claude Code signed in there, git, gh), and opens a shell there through your own ssh, where `muster` and `claude` are found:
 
 ```bash
 muster machine add vm you@203.0.113.7   # a name for it; your ssh keys stay ssh's
-muster ssh vm                           # check, install after asking, open its Muster
+muster ssh vm                           # check, install after asking, open a shell there
 muster ssh vm claude auth login         # a command there, as ssh runs one (sign Claude Code in there)
 muster ssh vm --install-claude          # Claude Code there, with its own installer
 muster --on vm list agents              # your own muster, asking vm's

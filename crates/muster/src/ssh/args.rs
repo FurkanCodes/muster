@@ -106,15 +106,15 @@ pub(crate) fn quoted(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
 
-/// The command ssh runs there for Muster's UI: `muster`, in `dir` where
-/// given.
-pub(crate) fn ui_command(remote: &str, dir: Option<&str>) -> String {
-    let muster = if remote.starts_with("$HOME") {
-        format!("\"{remote}\"")
-    } else {
-        quoted(remote)
-    };
-    format!("{}exec {muster}", in_dir(dir))
+/// The command ssh runs there with no words: the person's own login
+/// shell, as `ssh MACHINE` opens one, with Muster's `PATH` (so `muster`
+/// and an agent in `~/.local/bin` are found), in `dir` where given.
+pub(crate) fn login_shell(dir: Option<&str>) -> String {
+    let script = format!(
+        "{REMOTE_PATH}; {}exec \"${{SHELL:-/bin/sh}}\" -l",
+        in_dir(dir)
+    );
+    format!("sh -c {}", quoted(&script))
 }
 
 /// The command ssh runs there for the person's `words`, as ssh would run
@@ -276,18 +276,18 @@ mod tests {
     }
 
     #[test]
-    fn muster_s_ui_there_runs_where_asked_arc_27() {
-        assert_eq!(
-            ui_command("$HOME/.local/bin/muster", None),
-            "exec \"$HOME/.local/bin/muster\""
+    fn no_words_open_the_person_s_login_shell_there_with_muster_s_path_arc_27() {
+        let shell = login_shell(None);
+        assert!(shell.starts_with("sh -c '"), "{shell}");
+        assert!(shell.contains(".local/bin"), "{shell}");
+        assert!(
+            shell.ends_with("; exec \"${SHELL:-/bin/sh}\" -l'"),
+            "{shell}"
         );
-        assert_eq!(
-            ui_command("/opt/m/muster", Some("~/code it")),
-            "cd \"$HOME\"/'code it' && exec '/opt/m/muster'"
-        );
-        assert_eq!(
-            ui_command("/opt/m/muster", Some("/srv/a'b")),
-            "cd '/srv/a'\\''b' && exec '/opt/m/muster'"
+        let in_dir = login_shell(Some("~/code it"));
+        assert!(
+            in_dir.contains("cd \"$HOME\"/'\\''code it'\\'' && exec "),
+            "{in_dir}"
         );
     }
 

@@ -6,7 +6,7 @@ How the `muster` binary reaches Muster on another of the person's machines
 through their own `ssh` (`PRODUCT.md` §6b, `ARC-27`). The parent
 [`../ssh.rs`](../ssh.rs) holds `muster machine add|remove`, `muster list machines`,
 the `--on MACHINE` switch and `muster ssh MACHINE [COMMAND…]` (probe, install
-or upgrade, then `exec ssh`). This directory holds:
+or upgrade, then `exec ssh` into a login shell or the given command). This directory holds:
 
 - `args.rs`: the one place ssh options are chosen.
 - `link.rs`: the `--on` carrier (ssh to a remote `muster bridge`) and the
@@ -22,9 +22,9 @@ or upgrade, then `exec ssh`). This directory holds:
   ControlMaster sharing (persist 600 s), then `-- target`.
 - `control_dir` (args.rs) — the private `/tmp/muster-<uid>/ssh` folder for
   shared connections, or `None` when it cannot be trusted.
-- `REMOTE_PATH`, `quoted`, `ui_command`, `shell_command` (args.rs) — the PATH
-  prefix every remote script sets; shell quoting; the remote `exec muster` and
-  `sh -c` command lines.
+- `REMOTE_PATH`, `quoted`, `login_shell`, `shell_command` (args.rs) — the PATH
+  prefix every remote script sets; shell quoting; the remote login shell
+  (`exec "$SHELL" -l`, no words given) and the person's `sh -c` command line.
 - `user_for` (args.rs) — the user ssh would sign in as (`ssh -G`).
 - `hint` (args.rs) — turns ssh's stderr (host key, auth, unreachable, Muster
   missing or old) into advice.
@@ -59,6 +59,10 @@ or upgrade, then `exec ssh`). This directory holds:
   within 25 s.
 - ssh's stderr (16 KiB at most) is turned into advice and never written over
   the UI.
+- `muster ssh` (`../ssh.rs`, `progress`) says each step on stderr, one plain
+  `· …` line (connecting, what is there, downloading, sending, checking,
+  opening a shell), only where stderr is a terminal: never animated, as ssh
+  may ask for a password between them, and never into a script's output.
 - The `--on` carrier's ssh child (`connect`) is not killed on drop, so the
   last input reaches the other end. The bridge spawns no ssh of its own.
 - The agent link points only at a socket owned by the same uid, replaced
