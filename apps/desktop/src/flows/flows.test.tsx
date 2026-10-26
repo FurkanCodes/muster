@@ -222,6 +222,20 @@ describe("PRD-01 the first run and the daemon out of reach", () => {
     expect(bridge.world.spaces?.map((space) => space.name)).toEqual(["Home"]);
   });
 
+  it("ARC-33 shows a terminal in a space with no project, never the welcome", async () => {
+    const world = workingDay();
+    const shell =
+      world.sessions.find((session) => session.harness === "shell") ?? world.sessions[0];
+    if (!shell) throw new Error("the working day has a session");
+    world.projects = [];
+    world.workspaces = [];
+    world.sessions = [{ ...shell, workspace: null, title: "zsh" }];
+    world.spaces = [{ id: ulid(700), name: "VM", members: [{ Session: shell.id }], created_at: 0 }];
+    renderApp(new MockBridge(world));
+    expect(await screen.findByRole("heading", { name: "zsh" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Add a project to start" })).toBeNull();
+  });
+
   it("waits for the daemon where nothing was known yet, saying since when and where its log is", async () => {
     const bridge = new MockBridge(workingDay());
     bridge.open = async (onMessage) => {

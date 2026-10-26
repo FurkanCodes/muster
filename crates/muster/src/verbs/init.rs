@@ -69,6 +69,11 @@ fn functions(shell: Shell, names: &[String]) -> String {
         "# Muster (`muster init`): in a terminal of Muster's, an agent typed by its name\n\
          # runs there with Muster's hooks. `command <agent>` runs the program itself.\n",
     );
+    // zsh's `correct_all` (oh-my-zsh's `ENABLE_CORRECTION`) would offer to
+    // turn `muster ssh` into `muster .ssh` in a home with `~/.ssh`.
+    if shell == Shell::Zsh {
+        out.push_str("alias muster='nocorrect muster'\n");
+    }
     for name in names.iter().filter(|name| usable(name)) {
         let function = match shell {
             // An alias of the name, as some installers write, would be read
@@ -134,5 +139,25 @@ mod tests {
             assert_eq!(said.matches("function").count(), 2, "{program}: {said}");
             assert!(!said.contains("alias"), "{program}: {said}");
         }
+    }
+
+    /// zsh with `correct_all` never offers to correct a word after `muster`
+    /// (`muster ssh` beside `~/.ssh`).
+    #[test]
+    fn zsh_never_corrects_muster_s_words() {
+        if !std::path::Path::new("/bin/zsh").exists() {
+            return;
+        }
+        let script = format!(
+            "setopt correct_all\n{}\nwhence -v muster",
+            functions(Shell::Zsh, &[])
+        );
+        let output = std::process::Command::new("/bin/zsh")
+            .args(["-c", &script])
+            .output()
+            .unwrap();
+        let said = String::from_utf8_lossy(&output.stdout);
+        assert!(said.contains("nocorrect muster"), "{said}");
+        assert!(!functions(Shell::Bash, &[]).contains("nocorrect"));
     }
 }

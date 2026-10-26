@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/main/install.sh 
 
 It downloads the prebuilt binary for your machine from the latest release, checks it against its published checksum and, if the [GitHub CLI](https://cli.github.com) is signed in, against the attestation GitHub made as the release workflow built it, and puts it in `~/.local/bin`. `MUSTER_VERSION=v0.3.15` installs that release instead. On a machine without a prebuilt binary it builds the same release from source, which needs [Rust](https://rustup.rs). `muster upgrade` checks a new release the same way.
 
-On a Mac it asks whether to install the Muster app too, the window over the same daemon (`PRODUCT.md` §6a), from the same release, checked the same way, into `/Applications` (or `~/Applications`). Answer for it ahead with `sh -s -- --app` or `--no-app` (`MUSTER_APP=1` or `0`), as a script would; an app already there is simply updated. The app is not signed by Apple, only ad hoc: installed this way it carries no quarantine, so macOS opens it with no question. Copied from a browser download instead, macOS refuses it until you allow it once in System Settings › Privacy & Security › Open Anyway.
+On a Mac it installs the Muster app too, the window over the same daemon (`PRODUCT.md` §6a), from the same release, checked the same way, into `/Applications` (or `~/Applications`); `sh -s -- --no-app` (or `MUSTER_APP=0`) leaves it out, and an app already there is simply updated. The app is not signed by Apple, only ad hoc: installed this way it carries no quarantine, so macOS opens it with no question. Copied from a browser download instead, macOS refuses it until you allow it once in System Settings › Privacy & Security › Open Anyway.
 
 Later, `muster upgrade` installs the newest release the same way, but only once the attestation is checked (sign in to the GitHub CLI with `gh auth login`, or set `MUSTER_SKIP_ATTESTATION=1` to take the checksum alone), the Muster app too where it is installed, and moves the running daemon onto it in place: every session keeps running, a shell's work and an agent's turn included, and the UI reconnects by itself. When a new version changes how Muster's database is laid out, it first keeps a copy of the database as it was, in `backups/` in Muster's data folder (the newest three), and does not start if it cannot. After installing some other way, `muster reload` does the second half. (A daemon from before 0.2.0 cannot restart in place: stop it once with `muster daemon stop`; agents resume their conversations when it starts again.)
 
@@ -163,11 +163,11 @@ muster keys fix-login/1 ctrl+c             # press keys by name: enter, esc, up,
 muster move fix-login/1 --to api-cache     # a terminal into another workspace
 ```
 
-Run agents on a machine of your own (a server, a cloud VM such as a DigitalOcean droplet, a Linux VM on your PC, a Mac at home: macOS or Linux, Intel/AMD or ARM, anything you can `ssh` into), so they keep working while your laptop sleeps. The first `muster ssh` there is where ssh may ask you for a password or to trust the machine; after that, connections are shared and never stop to ask. If your ssh forwards your agent (`ForwardAgent yes` for that host), agents there push with your keys. Muster installs itself there only after asking, says what's missing (Claude Code signed in there, git, gh), and opens Muster on it through your own ssh:
+Run agents on a machine of your own (a server, a cloud VM such as a DigitalOcean droplet, a Linux VM on your PC, a Mac at home: macOS or Linux, Intel/AMD or ARM, anything you can `ssh` into), so they keep working while your laptop sleeps. The first `muster ssh` there is where ssh may ask you for a password or to trust the machine; after that, connections are shared and never stop to ask. If your ssh forwards your agent (`ForwardAgent yes` for that host), agents there push with your keys. Muster installs itself there only after asking, says what's missing (Claude Code signed in there, git, gh), and opens a shell there through your own ssh, where `muster` and `claude` are found:
 
 ```bash
 muster machine add vm you@203.0.113.7   # a name for it; your ssh keys stay ssh's
-muster ssh vm                           # check, install after asking, open its Muster
+muster ssh vm                           # check, install after asking, open a shell there
 muster ssh vm claude auth login         # a command there, as ssh runs one (sign Claude Code in there)
 muster ssh vm --install-claude          # Claude Code there, with its own installer
 muster --on vm list agents              # your own muster, asking vm's
@@ -350,7 +350,7 @@ Every code directory has a `README.md` contract of its own (its interface, invar
 
 ### Local interface and invariants
 
-- `install.sh` — the one-command installer (`curl … | sh`): downloads the release binary for this machine (`MUSTER_VERSION`, `MUSTER_INSTALL_DIR`), checks its SHA-256 and, where `gh` is signed in, its build attestation (`MUSTER_SKIP_ATTESTATION=1` takes the checksum alone), builds from source where no binary exists, and on a Mac offers the Muster app (`--app`, `--no-app`, `MUSTER_APP`, `MUSTER_APP_DIR`). A download that fails its checks installs nothing (`ARC-21`). `MUSTER_DOWNLOADS` points it at a stand-in for tests.
+- `install.sh` — the one-command installer (`curl … | sh`): downloads the release binary for this machine (`MUSTER_VERSION`, `MUSTER_INSTALL_DIR`), checks its SHA-256 and, where `gh` is signed in, its build attestation (`MUSTER_SKIP_ATTESTATION=1` takes the checksum alone), builds from source where no binary exists, and on a Mac installs the Muster app too (`--no-app` or `MUSTER_APP=0` leaves it out; `MUSTER_APP_DIR`). On a terminal it speaks in colour (`NO_COLOR` for none). A download that fails its checks installs nothing (`ARC-21`). `MUSTER_DOWNLOADS` points it at a stand-in for tests.
 - `Cargo.toml` — the workspace of the crates below; `apps/desktop/src-tauri` is a Cargo workspace of its own.
 
 ### Subdirectories and system boundaries

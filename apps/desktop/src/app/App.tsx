@@ -184,10 +184,13 @@ function Body() {
   const list = useUi((state) => state.list);
   const loaded = useDaemon((state) => state.loaded);
   const away = useDaemon((state) => state.link.state === "down");
-  const empty = useDaemon((state) => Object.keys(state.projects).length === 0);
+  const empty = useDaemon(
+    (state) => Object.keys(state.projects).length === 0 && Object.keys(state.sessions).length === 0,
+  );
   // Out of reach, the window stays as it was, still (src/flows: Away), or
-  // Kep waits where nothing was known yet; with no projects, the lists of
-  // sessions welcome a first one.
+  // Kep waits where nothing was known yet; with no projects and no sessions,
+  // the lists of sessions welcome a first project. A terminal or an agent in
+  // a space needs no project: it is shown as it is.
   let page: ReactNode = null;
   if (away && !loaded) page = <Away />;
   else if (loaded && empty && SESSION_LISTS.includes(screen)) page = <Welcome />;

@@ -4,10 +4,11 @@
 //! after asking (a copy of this one where it runs the same build, else
 //! this version's release for it, downloaded here and sent over ssh, so
 //! the machine needs only ssh), says what is missing
-//! for agents to work there, and opens its Muster through ssh: its UI, or
-//! one command (`muster ssh vm claude auth login`), or Muster's own
-//! commands from here (`muster --on vm list agents`). Agents there keep working
-//! while the person's own computer sleeps.
+//! for agents to work there, and opens a shell there through ssh, where
+//! `muster` and the agents are found, or runs one command (`muster ssh vm
+//! claude auth login`); Muster's own commands from here are `muster --on
+//! vm list agents`. Agents there keep working while the person's own
+//! computer sleeps.
 //!
 //! The machine is reached only through the `ssh` program on `PATH`, with
 //! the person's own settings, keys and agent (`ARC-27`): Muster has no
@@ -28,7 +29,7 @@ use muster_core::machines::{self, Machines, Probe};
 use sha2::Digest as _;
 
 use self::args::{
-    How, REMOTE_PATH, control_dir, quoted, shell_command, ssh_args, ui_command, user_for,
+    How, REMOTE_PATH, control_dir, login_shell, quoted, shell_command, ssh_args, user_for,
 };
 pub(crate) use self::link::{bridge, connector};
 
@@ -177,9 +178,10 @@ pub(crate) async fn run(
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let target = read_machines(paths)?.target(&asked.machine)?;
     say_user(&target);
+    progress(&format!("Connecting to {target}…"));
     let probe = Probe::read(&ask(&target, &probe_script())?);
     let system = probe.system.clone().unwrap_or_else(|| "?".to_owned());
-    let mut remote = probe.muster.clone();
+    progress(&found(&probe, &system));
     let mut installed = false;
     if probe.needs(VERSION) && !asked.no_install {
         let how = install_words(&probe);
@@ -204,14 +206,11 @@ pub(crate) async fn run(
             }
         } else {
             install(&target, &probe).await?;
-            remote = Some(REMOTE_BIN.to_owned());
             installed = true;
         }
     }
-    let Some(remote) = remote else {
-        return Err(format!("Muster is not on {}", asked.machine).into());
-    };
     if installed || asked.check || asked.install_claude {
+        progress("Checking what agents need there…");
         let checked = ask(&target, &report::script())?;
         eprint!(
             "{}",
@@ -230,9 +229,10 @@ pub(crate) async fn run(
     if (asked.check || asked.install_claude) && asked.words.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
-    // Muster's UI there, or the person's command, as ssh runs one.
+    // The person's shell there, or their command, as ssh runs one.
     let command = if asked.words.is_empty() {
-        ui_command(&remote, asked.dir.as_deref())
+        progress(&format!("Opening a shell on {}…", asked.machine));
+        login_shell(asked.dir.as_deref())
     } else {
         shell_command(asked.dir.as_deref(), &asked.words)
     };
@@ -321,8 +321,12 @@ async fn install(target: &str, probe: &Probe) -> Result<(), Box<dyn std::error::
     } else if probe.same_build(std::env::consts::OS, std::env::consts::ARCH) {
         read_binary(&std::env::current_exe()?)?
     } else if let Some(release) = probe.release_target() {
+        progress(&format!(
+            "Downloading muster {VERSION} for {release} and checking it…"
+        ));
         crate::upgrade::release_binary(VERSION, &release).await?
     } else {
+        progress("Running Muster's installer there…");
         let script = format!(
             "curl -fsSL https://raw.githubusercontent.com/FurkanCodes/muster/v{VERSION}/install.sh | MUSTER_VERSION=v{VERSION} sh -s -- --no-app"
         );
@@ -336,6 +340,10 @@ async fn install(target: &str, probe: &Probe) -> Result<(), Box<dyn std::error::
         reloaded(target);
         return Ok(());
     };
+    progress(&format!(
+        "Sending muster {VERSION} there ({} MB)…",
+        bytes.len().div_ceil(1_048_576)
+    ));
     put(target, &bytes)?;
     reloaded(target);
     Ok(())
@@ -377,6 +385,7 @@ fn put(target: &str, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         said.lines()
             .find_map(|line| line.trim().strip_prefix(mark).map(str::to_owned))
     };
+    progress("Checking the copy there…");
     if line("muster-sha256:").as_deref() != Some(ours.as_str()) {
         return Err("the copy there is not this muster: it was changed on its way".into());
     }
@@ -412,6 +421,25 @@ fn reloaded(target: &str) {
             "Installed muster {VERSION} there, but its daemon could not be moved onto it: \
              `muster ssh {target} muster reload` tries again."
         );
+    }
+}
+
+/// Says a step of `muster ssh` at the person's terminal, so the wait for
+/// ssh, a download or a copy is never silent: one plain line each, as ssh
+/// may ask for a password or a host key between them. Nothing where
+/// standard error is no terminal (a script, a log).
+fn progress(text: &str) {
+    if std::io::stderr().is_terminal() {
+        eprintln!("· {text}");
+    }
+}
+
+/// What the probe found there, in words.
+fn found(probe: &Probe, system: &str) -> String {
+    match &probe.version {
+        Some(version) => format!("Connected ({system}): muster {version} is there."),
+        None if probe.muster.is_some() => format!("Connected ({system}): muster is there."),
+        None => format!("Connected ({system}): Muster is not there yet."),
     }
 }
 
@@ -471,4 +499,25 @@ fn install_claude(
          login` (open its link here, paste the code back)."
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn what_the_probe_found_is_said_in_words_arc_27() {
+        let probe = |muster: Option<&str>, version: Option<&str>| Probe {
+            muster: muster.map(str::to_owned),
+            version: version.map(str::to_owned),
+            system: None,
+        };
+        let there = found(
+            &probe(Some("/usr/bin/muster"), Some("0.7.1")),
+            "Linux x86_64",
+        );
+        assert_eq!(there, "Connected (Linux x86_64): muster 0.7.1 is there.");
+        assert!(found(&probe(Some("/m"), None), "?").ends_with("muster is there."));
+        assert!(found(&probe(None, None), "?").ends_with("Muster is not there yet."));
+    }
 }

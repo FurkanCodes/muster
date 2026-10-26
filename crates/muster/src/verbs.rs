@@ -126,8 +126,9 @@ pub(crate) enum Verb {
     Machine(crate::ssh::MachineCommand),
     /// Muster on MACHINE (saved with `muster machine add`, or any host your
     /// ssh knows): checks it, installs Muster there after asking, and opens
-    /// its Muster, or runs one shell command there (`muster ssh vm claude
-    /// auth login`); `muster --on vm …` runs Muster's own commands there.
+    /// your shell there, where `muster` and `claude` are found, or runs one
+    /// command there (`muster ssh vm claude auth login`); `muster --on vm …`
+    /// runs Muster's own commands there from here.
     /// Its agents keep working while this computer sleeps.
     Ssh {
         machine: String,
@@ -144,11 +145,11 @@ pub(crate) enum Verb {
         /// Install Claude Code there with its own installer, without asking.
         #[arg(long)]
         install_claude: bool,
-        /// The folder there to run it in.
+        /// The folder there to open the shell or run the command in.
         #[arg(long, value_name = "DIR")]
         dir: Option<String>,
         /// A command to run there, as `ssh` runs one, with Muster's PATH
-        /// (`muster ssh vm claude auth login`), rather than Muster's UI.
+        /// (`muster ssh vm claude auth login`), rather than a shell.
         /// Muster's own commands there are `muster --on MACHINE …`.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         words: Vec<String>,

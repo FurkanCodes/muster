@@ -14,7 +14,7 @@ The window's shell. `App({bridge})` makes the two stores once (`createDaemon()`,
 The window applies the theme and pushes the terminal colours to the daemon. It
 blocks the browser's right-click menu except over text, and tracks Mac full
 screen. `Body` fills the main area with one of: `Away` (daemon down, nothing
-loaded), `Welcome` (no projects), a page from `PAGES`, or `Detail`. The sidebar
+loaded), `Welcome` (no projects and no sessions: a terminal in a space is shown, not the welcome), a page from `PAGES`, or `Detail`. The sidebar
 list is drawn inside React `<Activity>`, so it keeps its state while hidden.
 
 ## Interface
